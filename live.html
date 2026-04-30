@@ -1,0 +1,986 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // live</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:title" content="NEWSPEECH // live">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="og-image.png">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #fff; overflow: hidden; }
+  body { width: 100vw; height: 100vh; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  #bg { position: fixed; inset: 0; z-index: 0; display: block; pointer-events: none; }
+
+  /* editor shell — floats bottom-center, newspeech chrome */
+  #editor-shell {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
+    z-index: 2;
+    width: min(880px, calc(100vw - 64px));
+    max-height: min(60vh, 520px);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(5, 5, 5, 0.82);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #editor-shell header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.85);
+  }
+  #editor-shell header .title { font-family: "zxx-sans", monospace; letter-spacing: 0.08em; }
+  #editor-shell header .hint { font-size: 10px; opacity: 0.6; letter-spacing: 0.1em; }
+
+  #editor-shell strudel-editor { display: block; flex: 1; min-height: 0; overflow: auto; }
+
+  /* try to push CodeMirror toward the newspeech vibe — Strudel renders into
+     light DOM so most of these will land. anything inside shadow DOM has to
+     be themed via the component's own CSS variables (sparse today). */
+  #editor-shell .cm-editor { background: transparent !important; height: 100%; }
+  #editor-shell .cm-scroller { font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; font-size: 13px; line-height: 1.55; padding: 14px 6px; }
+  #editor-shell .cm-content { caret-color: #fff; color: #f5f5f5; }
+  #editor-shell .cm-gutters { background: transparent !important; border-right: 1px solid rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.35); }
+  #editor-shell .cm-activeLine, #editor-shell .cm-activeLineGutter { background: rgba(255, 255, 255, 0.04) !important; }
+  #editor-shell .cm-cursor { border-left-color: #fff !important; }
+  #editor-shell .cm-selectionBackground { background: rgba(255, 255, 255, 0.18) !important; }
+
+  #status {
+    position: fixed;
+    left: 24px;
+    top: 24px;
+    z-index: 3;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    pointer-events: none;
+    line-height: 1.6;
+  }
+  #status .k { color: rgba(255, 255, 255, 0.85); }
+  #status .head { color: rgba(255, 255, 255, 0.85); margin-bottom: 6px; }
+  #status .head .sep { opacity: 0.4; margin: 0 6px; }
+  /* meter bars use block glyphs — kill letter-spacing locally so they butt against each other */
+  #status .meter { display: flex; gap: 16px; margin-bottom: 2px; letter-spacing: 0; }
+  #status .meter .seg { color: rgba(255, 255, 255, 0.85); }
+  #status .meter .seg .lab { opacity: 0.5; margin-right: 6px; letter-spacing: 0.18em; }
+  #status .onsets { display: flex; gap: 16px; margin-bottom: 6px; }
+  #status .onsets .onset { color: rgba(255, 255, 255, 0.85); transition: opacity 0.06s linear; opacity: 0.2; }
+
+  #editor-shell header .controls { display: flex; gap: 6px; }
+  #editor-shell header button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.85);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    cursor: pointer;
+  }
+  #editor-shell header button:hover { border-color: rgba(255, 255, 255, 0.7); background: rgba(255, 255, 255, 0.06); }
+  #editor-shell header button:active { background: rgba(255, 255, 255, 0.12); }
+  #editor-shell header button.icon-btn { padding: 4px 8px; display: inline-flex; align-items: center; justify-content: center; }
+  #editor-shell header button.icon-btn svg { display: block; }
+
+  /* header now wraps on narrow viewports so title+select can stack above controls */
+  #editor-shell header { flex-wrap: wrap; gap: 8px 12px; }
+  #editor-shell header .title-group { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  #editor-shell header select.patch-select {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.85);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 4px 22px 4px 10px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5' fill='none' stroke='white' stroke-opacity='0.6' stroke-width='1'%3E%3Cpath d='M0.5 0.5 L4 4 L7.5 0.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 8px 5px;
+  }
+  #editor-shell header select.patch-select:hover { border-color: rgba(255, 255, 255, 0.7); }
+  #editor-shell header select.patch-select option { background: #050505; color: #fff; }
+
+  @media (max-width: 640px) {
+    #editor-shell { left: 16px; right: 16px; transform: none; width: auto; bottom: 16px; max-height: 70vh; }
+    #status { font-size: 9px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div id="status">
+  <div class="head">
+    <span>NEWSPEECH</span>
+    <span class="sep">·</span>
+    <span id="trans-track">—</span>
+    <span class="sep">·</span>
+    <span id="trans-cpm">— cpm</span>
+    <span class="sep">·</span>
+    <span id="trans-elapsed">00:00</span>
+  </div>
+  <div class="meter">
+    <span class="seg"><span class="lab">LO</span><span id="bar-lo">░░░░░░░░░░</span></span>
+    <span class="seg"><span class="lab">MI</span><span id="bar-mi">░░░░░░░░░░</span></span>
+    <span class="seg"><span class="lab">HI</span><span id="bar-hi">░░░░░░░░░░</span></span>
+  </div>
+  <div class="onsets">
+    <span class="onset" id="onset-lo">BASS</span>
+    <span class="onset" id="onset-mi">MID</span>
+    <span class="onset" id="onset-hi">HIGH</span>
+  </div>
+  <div><span class="k">1–5</span> visualizer · <span class="k">ctrl+enter</span> evaluate · <span class="k">ctrl+.</span> hush</div>
+</div>
+
+<div id="editor-shell">
+  <header>
+    <span class="title-group">
+      <span class="title">newspeech</span>
+      <select id="patch-select" class="patch-select" aria-label="select patch"></select>
+    </span>
+    <span class="controls">
+      <button type="button" id="btn-play">play</button>
+      <button type="button" id="btn-pause">pause</button>
+      <button type="button" id="btn-share">share</button>
+      <button type="button" id="btn-download" class="icon-btn" title="download .strudel" aria-label="download">
+        <svg viewBox="0 0 14 14" width="12" height="12" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="square" stroke-linejoin="miter">
+          <path d="M7 2 L7 9"/>
+          <path d="M3.5 6 L7 9.5 L10.5 6"/>
+          <path d="M2.5 12 L11.5 12"/>
+        </svg>
+      </button>
+      <button type="button" id="btn-import" class="icon-btn" title="import .strudel" aria-label="import">
+        <svg viewBox="0 0 14 14" width="12" height="12" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="square" stroke-linejoin="miter">
+          <path d="M7 12 L7 5"/>
+          <path d="M3.5 8 L7 4.5 L10.5 8"/>
+          <path d="M2.5 2 L11.5 2"/>
+        </svg>
+      </button>
+      <input type="file" id="file-import" accept=".strudel,.txt,text/plain" style="display:none">
+    </span>
+  </header>
+  <strudel-editor></strudel-editor>
+</div>
+
+<!-- audio analyser tap MUST be set up before Strudel constructs its audio
+     graph. monkey-patches AudioNode.connect so anything connecting to
+     ctx.destination also branches into our analyser. -->
+<script>
+(function setupAnalyserTap() {
+  let analyser = null;
+  let analyserCtx = null;
+  const origConnect = AudioNode.prototype.connect;
+
+  function ensureAnalyser(ctx) {
+    if (analyser && analyserCtx === ctx) return analyser;
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.4;
+    analyserCtx = ctx;
+    window.__newspeechAnalyser = analyser;
+    window.__newspeechAudioCtx = ctx;
+    window.__newspeechTapCount = (window.__newspeechTapCount || 0) + 1;
+    return analyser;
+  }
+
+  // tap A: anything that connects to ctx.destination
+  AudioNode.prototype.connect = function(target, ...rest) {
+    try {
+      const ctx = this.context;
+      if (ctx && target === ctx.destination) {
+        const a = ensureAnalyser(ctx);
+        try { origConnect.call(this, a); } catch (e) {}
+      }
+    } catch (e) {}
+    return origConnect.call(this, target, ...rest);
+  };
+
+  // tap B: every AudioBufferSourceNode at construction. Strudel's sample
+  // playback (bd, hh, cp, etc.) goes through this node — its connect chain
+  // doesn't always end at ctx.destination directly.
+  if (typeof BaseAudioContext !== "undefined") {
+    const origCreateBufferSource = BaseAudioContext.prototype.createBufferSource;
+    BaseAudioContext.prototype.createBufferSource = function() {
+      const node = origCreateBufferSource.apply(this, arguments);
+      try {
+        const a = ensureAnalyser(this);
+        origConnect.call(node, a);
+        window.__newspeechBufferTaps = (window.__newspeechBufferTaps || 0) + 1;
+      } catch (e) {}
+      return node;
+    };
+  }
+})();
+</script>
+
+<script src="https://unpkg.com/@strudel/repl@latest"></script>
+
+<script>
+// ---- audio analysis: overall + band split + per-band onset detection ----
+let audioLevel = 0;
+let lowLevel = 0, midLevel = 0, highLevel = 0;
+// peak-tracker per band — onset fires when band level rises sharply above its
+// slowly-decaying peak. cooldowns prevent retriggering inside one transient.
+let lowPeak = 0, midPeak = 0, highPeak = 0;
+let lowCool = 0, midCool = 0, highCool = 0;
+// one-frame onset flags drained by the RAF loop
+let lowOnset = false, midOnset = false, highOnset = false;
+
+const ONSET_RISE = 0.07;          // level jump above peak that counts
+const ONSET_COOL_MS = 80;         // refractory window per band
+const PEAK_DECAY = 0.985;         // per-frame peak release
+
+function readAudio(dtMs) {
+  const a = window.__newspeechAnalyser;
+  if (!a) return;
+
+  // time-domain RMS
+  const tbuf = new Uint8Array(a.fftSize);
+  a.getByteTimeDomainData(tbuf);
+  let sum = 0;
+  for (let i = 0; i < tbuf.length; i++) {
+    const v = (tbuf[i] - 128) / 128;
+    sum += v * v;
+  }
+  const timeRMS = Math.sqrt(sum / tbuf.length);
+
+  // frequency-domain band split
+  const bins = a.frequencyBinCount;
+  const fbuf = new Uint8Array(bins);
+  a.getByteFrequencyData(fbuf);
+  const b1 = Math.max(1, Math.floor(bins * 0.06));   // ~bass cutoff
+  const b2 = Math.max(b1 + 1, Math.floor(bins * 0.35)); // ~mid cutoff
+  let lowSum = 0, midSum = 0, highSum = 0, allSum = 0;
+  for (let i = 0; i < b1; i++) lowSum += fbuf[i];
+  for (let i = b1; i < b2; i++) midSum += fbuf[i];
+  for (let i = b2; i < bins; i++) highSum += fbuf[i];
+  for (let i = 0; i < bins; i++) allSum += fbuf[i];
+  const low  = Math.min(1, (lowSum  / b1) / 255 * 1.6);
+  const mid  = Math.min(1, (midSum  / (b2 - b1)) / 255 * 2.0);
+  const high = Math.min(1, (highSum / (bins - b2)) / 255 * 2.4);
+  const overall = Math.min(1, Math.max(timeRMS * 5, (allSum / bins) / 255 * 2.2));
+
+  // smoothed levels
+  audioLevel += (overall - audioLevel) * 0.25;
+  lowLevel  += (low  - lowLevel)  * 0.35;
+  midLevel  += (mid  - midLevel)  * 0.35;
+  highLevel += (high - highLevel) * 0.4;
+
+  // onset detection per band
+  lowCool  = Math.max(0, lowCool  - dtMs);
+  midCool  = Math.max(0, midCool  - dtMs);
+  highCool = Math.max(0, highCool - dtMs);
+  lowOnset  = lowCool  === 0 && low  > lowPeak  + ONSET_RISE;
+  midOnset  = midCool  === 0 && mid  > midPeak  + ONSET_RISE;
+  highOnset = highCool === 0 && high > highPeak + ONSET_RISE;
+  if (lowOnset)  lowCool  = ONSET_COOL_MS;
+  if (midOnset)  midCool  = ONSET_COOL_MS;
+  if (highOnset) highCool = ONSET_COOL_MS;
+  lowPeak  = Math.max(low,  lowPeak  * PEAK_DECAY);
+  midPeak  = Math.max(mid,  midPeak  * PEAK_DECAY);
+  highPeak = Math.max(high, highPeak * PEAK_DECAY);
+
+}
+
+// intensity is now purely the smoothed audio level.
+function intensity() { return audioLevel; }
+
+// ---- canvas ----
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+const tex = document.createElement("canvas");
+const tctx = tex.getContext("2d");
+
+let viewW, viewH, dpr;
+let scrollY = 0;
+let scrollSpeed = 0.5;
+
+function buildTexture() {
+  const w = viewW;
+  const h = viewH * 2;
+  tex.width = w;
+  tex.height = h;
+  tctx.fillStyle = "#050505";
+  tctx.fillRect(0, 0, w, h);
+  const numStreaks = Math.floor(h * 2.5);
+  for (let i = 0; i < numStreaks; i++) {
+    const y = (Math.random() * h) | 0;
+    const xStart = Math.random() * w;
+    const xLen = 30 + Math.random() * (w * 0.7);
+    const a = Math.pow(Math.random(), 4) * 0.5 + 0.006;
+    tctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tctx.fillRect(xStart, y, xLen, 1);
+  }
+  for (let i = 0; i < 5; i++) {
+    const y = (Math.random() * h) | 0;
+    const a = 0.25 + Math.random() * 0.45;
+    tctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tctx.fillRect(0, y, w, 1 + ((Math.random() * 2) | 0));
+  }
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildTexture();
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---- chevron bands ----
+const chevronBands = [];
+function makeChevronTile(period, h) {
+  const tw = Math.ceil(period * 2);
+  const tile = document.createElement("canvas");
+  tile.width = tw;
+  tile.height = h;
+  const tx = tile.getContext("2d");
+  tx.fillStyle = "#ffffff";
+  const amp = h * 0.45;
+  for (let x = 0; x < tw; x++) {
+    const tri = Math.abs(((x / period) % 2) - 1);
+    const yy = (h / 2) + (tri - 0.5) * amp;
+    tx.fillRect(x, yy, 1, 2);
+  }
+  return tile;
+}
+function spawnChevronBands() {
+  chevronBands.length = 0;
+  const num = 5 + ((Math.random() * 4) | 0);
+  for (let i = 0; i < num; i++) {
+    const h = 12 + ((Math.random() * 50) | 0);
+    const period = 6 + Math.random() * 10;
+    chevronBands.push({
+      y: Math.random() * (viewH - h),
+      h, period,
+      tile: makeChevronTile(period, h),
+      x: Math.random() * 1000,
+      vx: (Math.random() * 2 - 1) * (40 + Math.random() * 120),
+      baseAlpha: 0.04 + Math.random() * 0.10,
+      breathPeriod: 3000 + Math.random() * 9000,
+      breathPhase: Math.random() * Math.PI * 2,
+    });
+  }
+}
+spawnChevronBands();
+const tears = [];
+
+// ---- streaks ----
+// audio dispatch: low onset → tear, mid onset → chevron respawn, high onset →
+// texture rebuild. chevron alpha rides high band; scroll speed rides low.
+function drawStreaks(t, dt) {
+  if (lowOnset) {
+    const h = 4 + Math.random() * 18 + lowLevel * 24;
+    const y = Math.random() * (viewH - h);
+    tears.push({ y, h, until: t + 80 + Math.random() * 80 });
+  }
+  if (midOnset) spawnChevronBands();
+  if (highOnset && highLevel > 0.4) buildTexture();
+
+  const scroll = scrollSpeed * (0.3 + 2.4 * lowLevel);
+  scrollY = (scrollY + scroll * dt) % viewH;
+  ctx.clearRect(0, 0, viewW, viewH);
+  ctx.drawImage(tex, 0, scrollY, viewW, viewH, 0, 0, viewW, viewH);
+
+  for (const b of chevronBands) {
+    b.x += b.vx * dt * (0.4 + 1.6 * highLevel);
+    const a = b.baseAlpha * (0.2 + 4 * highLevel);
+    if (a < 0.005) continue;
+    ctx.globalAlpha = Math.min(1, a);
+    const tw = b.tile.width;
+    const startX = -(((b.x % tw) + tw) % tw);
+    for (let dx = startX; dx < viewW; dx += tw) {
+      ctx.drawImage(b.tile, dx, b.y);
+    }
+  }
+  ctx.globalAlpha = 1;
+  for (let i = tears.length - 1; i >= 0; i--) {
+    const tr = tears[i];
+    if (t > tr.until) { tears.splice(i, 1); continue; }
+    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.fillRect(0, tr.y, viewW, tr.h);
+  }
+}
+
+// ---- static ----
+const STATIC_W = 480, STATIC_H = 270;
+let staticCanvas, staticCtx, staticImg;
+function initStatic() {
+  staticCanvas = document.createElement("canvas");
+  staticCanvas.width = STATIC_W;
+  staticCanvas.height = STATIC_H;
+  staticCtx = staticCanvas.getContext("2d");
+  staticImg = staticCtx.createImageData(STATIC_W, STATIC_H);
+  const d = staticImg.data;
+  for (let i = 0; i < d.length; i += 4) { d[i] = d[i+1] = d[i+2] = 255; }
+}
+function drawStatic(t, dt) {
+  if (!staticImg) initStatic();
+  // density tracks overall level — silent = empty, loud = dense
+  const density = audioLevel * 0.8;
+  const brightness = 120 + 135 * highLevel; // hats brighten the snow
+  const d = staticImg.data;
+  for (let i = 3; i < d.length; i += 4) {
+    if (density > 0 && Math.random() < density) {
+      const r = Math.random();
+      d[i] = (r * r * brightness) | 0;
+    } else {
+      d[i] = 0;
+    }
+  }
+  staticCtx.putImageData(staticImg, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.drawImage(staticCanvas, 0, 0, viewW, viewH);
+}
+
+// ---- invert ----
+// reroll on low onset (kick). silent = no inversion blocks.
+let invertBlocks = null;
+function initInvert() { invertBlocks = null; }
+function rerollInvertBlocks() {
+  invertBlocks = [];
+  const num = 3 + ((Math.random() * 8) | 0) + (lowLevel * 6) | 0;
+  for (let i = 0; i < num; i++) {
+    invertBlocks.push({
+      x: ((Math.random() * viewW) | 0) - 80,
+      y: ((Math.random() * viewH) | 0) - 30,
+      w: 100 + ((Math.random() * 360) | 0),
+      h: 40 + ((Math.random() * 200) | 0),
+    });
+  }
+}
+function drawInvert(t, dt) {
+  if (!tex.width) return;
+  if (lowOnset) rerollInvertBlocks();
+  if (highOnset && highLevel > 0.4) buildTexture();
+
+  const scroll = scrollSpeed * (0.3 + 2.4 * lowLevel);
+  scrollY = (scrollY + scroll * dt) % viewH;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.drawImage(tex, 0, scrollY, viewW, viewH, 0, 0, viewW, viewH);
+  if (invertBlocks) {
+    ctx.save();
+    ctx.globalCompositeOperation = "difference";
+    ctx.fillStyle = "#ffffff";
+    for (const b of invertBlocks) ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.restore();
+  }
+}
+
+// ---- blocks ----
+// reroll on low or mid onset. invert ratio rides high level.
+let blockTiles = null;
+function initBlocks() { blockTiles = null; }
+function rerollBlocks() {
+  blockTiles = [];
+  const cols = 5 + ((Math.random() * 5) | 0);
+  const rows = 4 + ((Math.random() * 4) | 0);
+  const baseW = viewW / cols;
+  const baseH = viewH / rows;
+  const invertRatio = 0.05 + highLevel * 0.45;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const d = Math.random();
+      let sw = baseW, sh = baseH;
+      if (d < 0.25) sh = baseH * (0.25 + Math.random() * 0.4);
+      else if (d < 0.5) sw = baseW * (0.25 + Math.random() * 0.4);
+      blockTiles.push({
+        dx: c * baseW, dy: r * baseH, dw: baseW, dh: baseH,
+        sx: Math.random() * Math.max(1, tex.width - sw),
+        sy: Math.random() * Math.max(1, tex.height - sh),
+        sw, sh,
+        inverted: Math.random() < invertRatio,
+      });
+    }
+  }
+}
+function drawBlocks(t, dt) {
+  if (!tex.width) return;
+  if (lowOnset || midOnset) rerollBlocks();
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+  if (!blockTiles) return;
+  for (const tile of blockTiles) {
+    ctx.drawImage(tex, tile.sx, tile.sy, tile.sw, tile.sh,
+                       tile.dx, tile.dy, tile.dw, tile.dh);
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = "difference";
+  ctx.fillStyle = "#ffffff";
+  for (const tile of blockTiles) {
+    if (tile.inverted) ctx.fillRect(tile.dx, tile.dy, tile.dw, tile.dh);
+  }
+  ctx.restore();
+}
+
+// ---- stars ----
+const STAR_DEPTH_CHARS = ".,'+*oO@#";
+const STAR_GLITCH_CHARS = "/\\|=~<>?!*#";
+let stars = null;
+function initStars() {
+  const num = 600 + ((Math.random() * 300) | 0);
+  stars = [];
+  for (let i = 0; i < num; i++) stars.push(spawnStar(true));
+}
+function spawnStar(scattered) {
+  return {
+    x: (Math.random() - 0.5) * 2,
+    y: (Math.random() - 0.5) * 2,
+    z: scattered ? Math.random() * 0.95 + 0.05 : 1,
+    speed: 0.12 + Math.random() * 0.55,
+    held: null,
+    holdUntil: 0,
+  };
+}
+// stars: low onset → warp kick boost (decays), mid onset → polarity flip,
+// high onset → horizontal scan flash. glitch rate rides high level. silent =
+// stars drift at minimum speed, no glitches.
+let starsWarpBoost = 1;
+let starsPolarityFlash = false;
+let starsHScan = null; // {y, h, until}
+let starsVScan = null; // {x, w, until}
+function drawStars(t, dt) {
+  if (!stars) initStars();
+
+  if (lowOnset)  starsWarpBoost = Math.max(starsWarpBoost, 2 + lowLevel * 5);
+  if (midOnset && midLevel > 0.4) starsPolarityFlash = true;
+  if (highOnset) {
+    starsHScan = { y: Math.random() * viewH, h: 1 + Math.random() * 5, until: t + 60 };
+    if (highLevel > 0.5) starsVScan = { x: Math.random() * viewW, w: 1 + Math.random() * 4, until: t + 60 };
+  }
+  // warp boost decays exponentially toward 1
+  starsWarpBoost = 1 + (starsWarpBoost - 1) * Math.pow(0.001, dt);
+
+  ctx.fillStyle = "rgba(5, 5, 5, 0.42)";
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+
+  const cx = viewW / 2;
+  const cy = viewH / 2;
+  const speedScale = 0.15 + 1.5 * audioLevel;
+  const glitchRate = 0.005 + 0.18 * highLevel;
+
+  for (const s of stars) {
+    s.z -= s.speed * dt * speedScale * starsWarpBoost;
+    if (s.z <= 0.02) { Object.assign(s, spawnStar(false)); continue; }
+    const px = cx + (s.x / s.z) * (viewW * 0.5);
+    const py = cy + (s.y / s.z) * (viewH * 0.5);
+    if (px < -30 || px > viewW + 30 || py < -30 || py > viewH + 30) continue;
+    const idx = Math.min(STAR_DEPTH_CHARS.length - 1,
+      Math.max(0, Math.floor((1 - s.z) * STAR_DEPTH_CHARS.length)));
+    let ch = STAR_DEPTH_CHARS[idx];
+    let glitched = false;
+    if (s.held && t < s.holdUntil) { ch = s.held; glitched = true; }
+    else if (Math.random() < glitchRate) {
+      s.held = STAR_GLITCH_CHARS[(Math.random() * STAR_GLITCH_CHARS.length) | 0];
+      s.holdUntil = t + 50 + Math.random() * 110;
+      ch = s.held;
+      glitched = true;
+    } else { s.held = null; }
+    const a = Math.min(1, 1.05 - s.z * 0.7);
+    ctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    ctx.fillText(ch, px, py);
+    if (glitched) {
+      ctx.globalAlpha = a * 0.55;
+      ctx.fillText(STAR_GLITCH_CHARS[(Math.random() * STAR_GLITCH_CHARS.length) | 0], px, py - 14);
+      ctx.globalAlpha = a * 0.30;
+      ctx.fillText(STAR_GLITCH_CHARS[(Math.random() * STAR_GLITCH_CHARS.length) | 0], px, py - 28);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  if (starsHScan && t < starsHScan.until) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.fillRect(0, starsHScan.y, viewW, starsHScan.h);
+  } else starsHScan = null;
+  if (starsVScan && t < starsVScan.until) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.fillRect(starsVScan.x, 0, starsVScan.w, viewH);
+  } else starsVScan = null;
+  if (starsPolarityFlash) {
+    ctx.save();
+    ctx.globalCompositeOperation = "difference";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.restore();
+    starsPolarityFlash = false;
+  }
+}
+
+// ---- mode toggle ----
+const MODES = { streaks: drawStreaks, static: drawStatic, invert: drawInvert, blocks: drawBlocks, stars: drawStars };
+const MODE_ORDER = ["streaks", "static", "invert", "blocks", "stars"];
+let currentMode = MODE_ORDER[(Math.random() * MODE_ORDER.length) | 0];
+
+function setMode(name) {
+  if (!(name in MODES) || name === currentMode) return;
+  currentMode = name;
+  ctx.clearRect(0, 0, viewW, viewH);
+  if (name === "static") initStatic();
+  else if (name === "invert") initInvert();
+  else if (name === "blocks") initBlocks();
+  else if (name === "stars") initStars();
+}
+
+// ---- transmission readout: track / tempo / elapsed + band meters + onset pulses ----
+function parseCpm(code) {
+  if (!code) return null;
+  const m = code.match(/\.cpm\(([^)]+)\)/);
+  if (!m) return null;
+  // safe parse: we only support N or N/M numeric forms (no eval)
+  const expr = m[1].replace(/\s+/g, "");
+  if (/^\d+(\.\d+)?$/.test(expr)) return parseFloat(expr);
+  const div = expr.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+  if (div) {
+    const d = parseFloat(div[2]);
+    return d ? parseFloat(div[1]) / d : null;
+  }
+  return null;
+}
+
+function bar10(level) {
+  const n = Math.max(0, Math.min(10, Math.round(level * 10)));
+  return "█".repeat(n) + "░".repeat(10 - n);
+}
+
+const transTrackEl   = document.getElementById("trans-track");
+const transCpmEl     = document.getElementById("trans-cpm");
+const transElapsedEl = document.getElementById("trans-elapsed");
+const barLoEl        = document.getElementById("bar-lo");
+const barMiEl        = document.getElementById("bar-mi");
+const barHiEl        = document.getElementById("bar-hi");
+const onsetLoEl      = document.getElementById("onset-lo");
+const onsetMiEl      = document.getElementById("onset-mi");
+const onsetHiEl      = document.getElementById("onset-hi");
+
+let pulseLo = 0, pulseMi = 0, pulseHi = 0;
+let elapsedStartAt = 0;
+let lastSlowUpdate = 0;
+
+function updateStatus(t) {
+  // pulse decay each frame — onset = bright flash, then decays toward resting dim
+  if (lowOnset)  pulseLo = 1;
+  if (midOnset)  pulseMi = 1;
+  if (highOnset) pulseHi = 1;
+  pulseLo *= 0.88;
+  pulseMi *= 0.88;
+  pulseHi *= 0.88;
+  onsetLoEl.style.opacity = (0.2 + pulseLo * 0.7).toFixed(2);
+  onsetMiEl.style.opacity = (0.2 + pulseMi * 0.7).toFixed(2);
+  onsetHiEl.style.opacity = (0.2 + pulseHi * 0.7).toFixed(2);
+
+  // bars — only re-render when the discrete cell count changes
+  const bL = bar10(lowLevel), bM = bar10(midLevel), bH = bar10(highLevel);
+  if (bL !== barLoEl.textContent) barLoEl.textContent = bL;
+  if (bM !== barMiEl.textContent) barMiEl.textContent = bM;
+  if (bH !== barHiEl.textContent) barHiEl.textContent = bH;
+
+  // slow tick — track name, parsed cpm, elapsed clock (every ~500ms)
+  if (t - lastSlowUpdate > 500) {
+    lastSlowUpdate = t;
+    const opt = patchSelect.options[patchSelect.selectedIndex];
+    const name = (opt && opt.text) || "—";
+    if (transTrackEl.textContent !== name) transTrackEl.textContent = name;
+
+    const ed = getStrudelEditor();
+    const code = (ed && (
+      (typeof ed.code === "string" && ed.code) ||
+      (ed.editor && ed.editor.state && ed.editor.state.doc && ed.editor.state.doc.toString())
+    )) || "";
+    const cpm = parseCpm(code);
+    const cpmText = cpm == null ? "— cpm" : `${cpm % 1 === 0 ? cpm.toFixed(0) : cpm.toFixed(1)} cpm`;
+    if (transCpmEl.textContent !== cpmText) transCpmEl.textContent = cpmText;
+
+    // start the elapsed clock once audio is actually running
+    const ctx = window.__newspeechAudioCtx;
+    if (ctx && ctx.state === "running" && elapsedStartAt === 0) {
+      elapsedStartAt = performance.now();
+    }
+    let elapsedText = "00:00";
+    if (elapsedStartAt > 0) {
+      const total = Math.floor((performance.now() - elapsedStartAt) / 1000);
+      elapsedText = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+    }
+    if (transElapsedEl.textContent !== elapsedText) transElapsedEl.textContent = elapsedText;
+  }
+}
+
+// ---- RAF loop ----
+// kick-driven mode switcher: each low-band onset advances to the next
+// visualizer.
+let lastT = performance.now();
+function frame(t) {
+  const dt = (t - lastT) / 1000;
+  const dtMs = t - lastT;
+  lastT = t;
+  readAudio(dtMs);
+  updateStatus(t);
+
+  if (lowOnset) {
+    const i = MODE_ORDER.indexOf(currentMode);
+    setMode(MODE_ORDER[(i + 1) % MODE_ORDER.length]);
+  }
+
+  MODES[currentMode](t, dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+window.addEventListener("keydown", (e) => {
+  // ignore key handling when typing in the editor
+  if (e.target.closest("strudel-editor, input, textarea, [contenteditable]")) return;
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= MODE_ORDER.length) setMode(MODE_ORDER[n - 1]);
+});
+
+// ---- play / pause buttons → StrudelMirror API ----
+function getStrudelEditor() {
+  const el = document.querySelector("strudel-editor");
+  return el && el.editor; // StrudelMirror instance, populated once the
+                          // custom element upgrades after the script loads.
+}
+document.getElementById("btn-play").addEventListener("click", () => {
+  const ed = getStrudelEditor();
+  if (!ed) return;
+  // evaluate compiles current code and starts the scheduler — this is what
+  // ctrl+enter does inside the editor.
+  if (typeof ed.evaluate === "function") ed.evaluate();
+  else if (typeof ed.start === "function") ed.start();
+});
+document.getElementById("btn-pause").addEventListener("click", () => {
+  const ed = getStrudelEditor();
+  if (!ed) return;
+  if (typeof ed.stop === "function") ed.stop();
+});
+
+// ---- share URL: pack current code into location hash, copy to clipboard ----
+// url-safe base64 with explicit UTF-8 round-trip (btoa alone breaks on non-ascii)
+function encodeCode(s) {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function decodeCode(b64) {
+  const padded = b64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((b64.length + 3) % 4);
+  const bin = atob(padded);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+const shareBtn = document.getElementById("btn-share");
+shareBtn.addEventListener("click", async () => {
+  const ed = getStrudelEditor();
+  if (!ed) return;
+  const code = (typeof ed.code === "string" && ed.code)
+    || (ed.editor && ed.editor.state && ed.editor.state.doc && ed.editor.state.doc.toString())
+    || "";
+  if (!code.trim()) return;
+  const url = location.origin + location.pathname + "#code=" + encodeCode(code);
+  const orig = shareBtn.textContent;
+  try {
+    await navigator.clipboard.writeText(url);
+    shareBtn.textContent = "copied";
+  } catch (e) {
+    // clipboard API blocked (e.g. file://) — fall back to a prompt the user can copy from
+    prompt("copy this URL", url);
+    shareBtn.textContent = "shown";
+  }
+  setTimeout(() => { shareBtn.textContent = orig; }, 1400);
+});
+
+// ---- download / import: timestamped .strudel files round-trip via the editor ----
+function timestampSlug() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+document.getElementById("btn-download").addEventListener("click", () => {
+  const ed = getStrudelEditor();
+  if (!ed) return;
+  const code = (typeof ed.code === "string" && ed.code)
+    || (ed.editor && ed.editor.state && ed.editor.state.doc && ed.editor.state.doc.toString())
+    || "";
+  if (!code.trim()) return;
+  const blob = new Blob([code], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `newspeech-${timestampSlug()}.strudel`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+const fileInput = document.getElementById("file-import");
+document.getElementById("btn-import").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async () => {
+  const f = fileInput.files && fileInput.files[0];
+  if (!f) return;
+  const text = await f.text();
+  const ed = getStrudelEditor();
+  if (ed && typeof ed.setCode === "function") ed.setCode(text);
+  // reset so picking the same file again still fires `change`
+  fileInput.value = "";
+});
+
+// ---- bundled patches: the "playlist" the dropdown selects from ----
+const PATCHES = [
+  {
+    name: "transmission",
+    code: `stack(
+  // ratcheting kick — count varies per cycle
+  s("bd*<2 4 2 8>").gain(0.95).shape(0.4),
+  // dense bitcrushed hats with random pan
+  s("hh*16 [hh*16](3,8)").gain(2).coarse("<1 4 8 2>").pan(rand),
+  // distorted clap with occasional triplet ratchet
+  s("~ cp ~ <cp [cp cp cp]>").gain(0.7).crush(3),
+  // crushed lo-fi bass
+  note("<c2 g1 a1 e1 f1>").s("sawtooth").cutoff(perlin.range(200, 2400).slow(2)).gain(0.4).crush(5).distort(1.5),
+  // shaped square lead
+  note("<c4 eb4 g4 bb4>(3,8)").s("square").delay(0.4).room(0.7).gain(0.2).shape(0.5)
+).cpm(120/4)`
+  },
+  {
+    name: "vacuum",
+    code: `stack(
+  // sparse kick — once per bar
+  s("bd ~ ~ ~").gain(0.7),
+  // ghost hats — quiet, scattered
+  s("hh*8").gain(0.18).pan(rand),
+  // slow chord cycle, perlin-swept cutoff, long delay + room
+  note("<c3 g2 ab2 eb3>").s("sawtooth").cutoff(perlin.range(300, 1500).slow(6)).gain(0.3).delay(0.6).room(0.9),
+  // bell arpeggio — pentatonic over the changes, rate-cycle of 7 sporadic
+  // speeds against an 8-note arp + 4-chord pad means the timing never repeats.
+  // soaked: high delay feedback + large room so trails pile into each other
+  note("<c4 eb4 g4 bb4 c5 bb4 g4 eb4>").fast("<1 2 1 3 4 1.5 2>").s("triangle").cutoff(perlin.range(800, 4000).slow(5)).gain(0.2).delay(0.85).delaytime(0.4).delayfeedback(0.7).room(0.95).roomsize(8),
+  // sub-bass drop
+  note("<c1 ~ ab1 ~>").s("sine").gain(0.5)
+).cpm(80/4)`
+  },
+  {
+    name: "fracture",
+    code: `stack(
+  // displaced kick — odd cycle counts
+  s("bd*<3 5 4 7>").gain(0.85).shape(0.5),
+  // stutter clap, sometimes ratcheted
+  s("~ cp ~ [cp*<1 4 2>]").gain(0.5).crush(4),
+  // chopped hats — density rolls
+  s("hh*<8 16 4 12>").gain(0.5).coarse("<1 8 2>").pan(rand),
+  // crushed bass stabs, sparse
+  note("<c2 ~ eb2 ~ g1 ~ bb1 ~>").s("sawtooth").gain(0.4).distort(2).crush(6).cutoff(800)
+).cpm(140/4)`
+  },
+  {
+    name: "lattice",
+    code: `stack(
+  // muted kick on alternating beats
+  s("bd ~ bd ~").gain(0.6).shape(0.2),
+  // even shaker
+  s("hh*8").gain(0.3).pan(rand),
+  // bell melody up high
+  note("<c5 eb5 g5 bb5 g5 eb5>").s("triangle").gain(0.35).delay(0.5).room(0.7),
+  // counter arpeggio
+  note("<c4 g4 eb5 g4>(5,8)").s("square").gain(0.18).delay(0.3),
+  // sparse bass
+  note("<c2 ~ ~ g2 ~ ~ ab2 ~>").s("sine").gain(0.5)
+).cpm(110/4)`
+  },
+  {
+    name: "halo",
+    code: `stack(
+  // very sparse kick — pulse every long cycle
+  s("bd ~ ~ ~ ~ ~ ~ ~").gain(0.6),
+  // slow drone — long sweep, distorted
+  note("<c2 c2 ab1 c2>").s("sawtooth").cutoff(perlin.range(200, 800).slow(12)).gain(0.4).distort(0.8).room(0.9),
+  // overtone layer with delay
+  note("<g3 g3 eb3 g3>").s("sawtooth").cutoff(perlin.range(400, 2000).slow(10)).gain(0.15).delay(0.7).room(0.9),
+  // distant bell arpeggio — high register, rate-cycle includes sub-1 values
+  // so notes occasionally stretch out, soaked deep in delay + reverb
+  note("<c5 eb5 g5 bb5 c6 bb5 g5 eb5>").fast("<1 2 0.5 3 1.5 0.75 2>").s("triangle").cutoff(perlin.range(1000, 5000).slow(7)).gain(0.13).delay(0.85).delaytime(0.5).delayfeedback(0.75).room(0.95).roomsize(10),
+  // rare hat hit
+  s("~ ~ ~ ~ ~ ~ hh ~").gain(0.25).pan(rand)
+).cpm(60/4)`
+  }
+];
+
+const patchSelect = document.getElementById("patch-select");
+PATCHES.forEach((p, i) => {
+  const o = document.createElement("option");
+  o.value = String(i);
+  o.textContent = p.name;
+  patchSelect.appendChild(o);
+});
+// picking from the dropdown swaps the editor buffer AND evaluates — the
+// select interaction is itself a user gesture, so audio context starts cleanly.
+patchSelect.addEventListener("change", () => {
+  const idx = parseInt(patchSelect.value, 10);
+  const ed = getStrudelEditor();
+  if (!ed || !PATCHES[idx]) return;
+  ed.setCode(PATCHES[idx].code);
+  if (typeof ed.evaluate === "function") ed.evaluate();
+});
+
+// ---- boot: wait for the custom element to upgrade, then load either the
+// shared hash patch or PATCHES[0] as the default. don't auto-evaluate on boot
+// because there's no user gesture yet — autoplay would be blocked anyway.
+(async function bootEditor() {
+  await customElements.whenDefined("strudel-editor");
+  const el = document.querySelector("strudel-editor");
+  for (let i = 0; i < 50 && !el.editor; i++) await new Promise(r => setTimeout(r, 50));
+  if (!el.editor || typeof el.editor.setCode !== "function") return;
+
+  const m = location.hash.match(/^#code=(.+)$/);
+  if (m) {
+    try { el.editor.setCode(decodeCode(m[1])); return; } catch (e) {}
+  }
+  el.editor.setCode(PATCHES[0].code);
+  patchSelect.value = "0";
+})();
+</script>
+</body>
+</html>

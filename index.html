@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0a0a">
+<title>NEWSPEECH // audio experimentation</title>
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // audio experimentation">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="og-image.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); font-display: swap; }
+
+  :root {
+    --bg: #050505;
+    --fg: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow: hidden; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  #bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  #bg-mask {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 20vw;
+    background: var(--bg);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  #stage {
+    position: relative;
+    z-index: 1;
+    font-family: "zxx-sans", monospace;
+    font-size: clamp(32px, 6vw, 90px);
+    letter-spacing: 0.02em;
+    line-height: 1;
+    user-select: none;
+  }
+  #stage span { display: inline-block; will-change: transform; }
+  #stage.chroma {
+    text-shadow:
+      -5px 0 0 #00ffff,
+       5px 0 0 #ff00ff;
+  }
+
+  #links {
+    position: fixed;
+    left: 72px;
+    bottom: 72px;
+    z-index: 2;
+    display: flex;
+    gap: 32px;
+    padding: 32px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    line-height: 18px; /* fixed in px so swapping fonts can't shift line-box height */
+    letter-spacing: 0.04em;
+    background: transparent;
+  }
+  #links a {
+    color: var(--fg);
+    text-decoration: none;
+    display: inline-flex;
+    cursor: pointer;
+  }
+  #links a span { display: inline-block; }
+
+
+  /* mobile: push the text up the viewport, center+stack the dialog */
+  @media (max-width: 640px) {
+    body {
+      align-items: flex-start;
+      padding-top: 22vh;
+    }
+    #stage {
+      font-size: clamp(44px, 14vw, 84px);
+    }
+    #links {
+      left: 50%;
+      bottom: 64px;
+      transform: translateX(-50%);
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 22px 28px;
+    }
+    #links a { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+<div id="bg-mask"></div>
+<div id="stage" aria-label="newspeech">NEWSPEECH</div>
+
+
+<nav id="links">
+  <a href="live.html" data-link>play</a>
+  <a href="#" data-link>downloads</a>
+  <a href="#" data-link>words</a>
+  <a href="#" data-link>shows</a>
+  <a href="#" data-link>apple music</a>
+  <a href="#" data-link>s****fy</a>
+</nav>
+
+<script>
+// ---- intensity envelope ----
+let mouseActivity = 0; // 0..1, fed by mousemove, decays each frame
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
+}
+
+// ---- poisson event scheduler ----
+function poisson(rateFn, fire) {
+  function step() {
+    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+    const wait = -Math.log(1 - Math.random()) / ratePerMs;
+    setTimeout(() => { fire(); step(); }, wait);
+  }
+  step();
+}
+
+// ---- foreground ----
+const FONTS = [
+  ["zxx-sans",  1],
+  ["zxx-bold",  0],
+  ["zxx-noise", 7],
+  ["zxx-camo",  3],
+  ["zxx-xed",   5],
+];
+
+const stage = document.getElementById("stage");
+const text = stage.textContent;
+stage.textContent = "";
+const spans = [...text].map(ch => {
+  const s = document.createElement("span");
+  s.textContent = ch === " " ? " " : ch;
+  s.style.fontFamily = `"zxx-sans", monospace`;
+  stage.appendChild(s);
+  return s;
+});
+
+const TOTAL_W = FONTS.reduce((a, [, w]) => a + w, 0);
+function pickFont() {
+  if (TOTAL_W <= 0) return "zxx-sans";
+  let r = Math.random() * TOTAL_W;
+  for (const [f, w] of FONTS) {
+    r -= w;
+    if (r <= 0) return f;
+  }
+  return FONTS[FONTS.length - 1][0];
+}
+
+// per-span cursor-proximity hover state — populated each frame in updateHover().
+// _hoverI ∈ [0,1] scales glitch rates and jitter range; _reviveAt is the
+// timestamp at which a killed (opacity=0) span returns to opacity 1.
+for (const s of spans) { s._hoverI = 0; s._reviveAt = 0; }
+
+for (const s of spans) {
+  poisson(
+    () => 0.7 + 7.7 * intensity() + 21 * s._hoverI,
+    () => { s.style.fontFamily = `"${pickFont()}", monospace`; }
+  );
+}
+
+const JITTER_X = 6;
+for (const s of spans) {
+  poisson(
+    () => 0.030 + 0.270 * intensity() + 0.8 * s._hoverI,
+    () => {
+      const boost = 1 + 3 * s._hoverI;
+      const jx = (Math.random() * 2 - 1) * JITTER_X * boost;
+      s.style.transform = `translateX(${jx.toFixed(1)}px)`;
+      setTimeout(() => { s.style.transform = ""; }, 80 + Math.random() * 140);
+    }
+  );
+}
+
+poisson(
+  () => 0.05 + 0.95 * intensity(),
+  () => {
+    stage.classList.add("chroma");
+    setTimeout(() => stage.classList.remove("chroma"), 80 + Math.random() * 80);
+  }
+);
+
+// ---- background: VHS-streak signal field ----
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+const tex = document.createElement("canvas");
+const tctx = tex.getContext("2d");
+
+let viewW, viewH, dpr;
+let scrollY = 0;
+let scrollSpeed = 0.5;   // px/sec base vertical scroll (subtle drift only)
+
+function buildTexture() {
+  const w = viewW;
+  const h = viewH * 2; // 2x tall so we can scroll-wrap
+  tex.width = w;
+  tex.height = h;
+
+  tctx.fillStyle = "#050505";
+  tctx.fillRect(0, 0, w, h);
+
+  // dense low-alpha horizontal streak segments
+  const numStreaks = Math.floor(h * 2.5);
+  for (let i = 0; i < numStreaks; i++) {
+    const y = (Math.random() * h) | 0;
+    const xStart = Math.random() * w;
+    const xLen = 30 + Math.random() * (w * 0.7);
+    // heavy bias toward faint (Math.pow(r, 4) keeps most near 0)
+    const a = Math.pow(Math.random(), 4) * 0.5 + 0.006;
+    tctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tctx.fillRect(xStart, y, xLen, 1);
+  }
+
+  // sharp bright scan errors (rare full-width streaks)
+  const numBright = 5;
+  for (let i = 0; i < numBright; i++) {
+    const y = (Math.random() * h) | 0;
+    const a = 0.25 + Math.random() * 0.45;
+    tctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tctx.fillRect(0, y, w, 1 + ((Math.random() * 2) | 0));
+  }
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  buildTexture();
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+// ---- chevron pattern bands (animated layer over the texture) ----
+// each band drifts horizontally at its own velocity and breathes its alpha
+// independently, scaled by the global intensity envelope.
+const chevronBands = [];
+
+function makeChevronTile(period, h) {
+  const tw = Math.ceil(period * 2); // one full triangle-wave cycle
+  const tile = document.createElement("canvas");
+  tile.width = tw;
+  tile.height = h;
+  const tx = tile.getContext("2d");
+  tx.fillStyle = "#ffffff";
+  const amp = h * 0.45;
+  for (let x = 0; x < tw; x++) {
+    const tri = Math.abs(((x / period) % 2) - 1);
+    const yy = (h / 2) + (tri - 0.5) * amp;
+    tx.fillRect(x, yy, 1, 2);
+  }
+  return tile;
+}
+
+function spawnChevronBands() {
+  chevronBands.length = 0;
+  const num = 5 + ((Math.random() * 4) | 0);
+  for (let i = 0; i < num; i++) {
+    const h = 12 + ((Math.random() * 50) | 0);
+    const period = 6 + Math.random() * 10;
+    chevronBands.push({
+      y: Math.random() * (viewH - h),
+      h,
+      period,
+      tile: makeChevronTile(period, h),
+      x: Math.random() * 1000,
+      vx: (Math.random() * 2 - 1) * (40 + Math.random() * 120), // ±40–160 px/sec
+      baseAlpha: 0.04 + Math.random() * 0.10,
+      breathPeriod: 3000 + Math.random() * 9000,
+      breathPhase: Math.random() * Math.PI * 2,
+    });
+  }
+}
+spawnChevronBands();
+
+// respawn the band layout occasionally
+poisson(
+  () => 0.05 + 0.05 * intensity(),
+  spawnChevronBands
+);
+
+// regenerate streak texture so the static layer shifts shape over time
+poisson(
+  () => 0.18 + 0.35 * intensity(), // every ~2–6s
+  () => buildTexture()
+);
+
+// active tear-band slabs (drawn on top of streaks)
+const tears = []; // {y, h, until}
+poisson(
+  () => 0.05 + 0.5 * intensity(),
+  () => {
+    const h = 4 + Math.random() * 18;
+    const y = Math.random() * (viewH - h);
+    tears.push({ y, h, until: performance.now() + 60 + Math.random() * 60 });
+  }
+);
+
+// "thrash burst" — replicates the feel of dragging the browser edge: a brief
+// window during which the texture rebuilds at a frantic rate, with the
+// chevron layout occasionally rerolling on top.
+let thrashing = false;
+function triggerThrash() {
+  if (thrashing) return;
+  thrashing = true;
+  const dur = 500 + Math.random() * 700;       // 0.5–1.2s burst
+  const startedAt = performance.now();
+  function step() {
+    const elapsed = performance.now() - startedAt;
+    if (elapsed > dur) { thrashing = false; return; }
+    buildTexture();
+    if (Math.random() < 0.35) spawnChevronBands();
+    mouseActivity = Math.max(mouseActivity, 0.7);
+    setTimeout(step, 9 + Math.random() * 10); // 9–19ms between rebuilds
+  }
+  step();
+}
+poisson(
+  () => 0.2 + 0.44 * intensity(), // every ~1.5–5s
+  triggerThrash
+);
+
+// per-span hover proximity — kill within HOVER_KILL_DIST, glitch-boost out to HOVER_RADIUS.
+// revival is a probabilistic binary flicker (alive/dead) whose alive-bias ramps
+// 0→1 across REVIVE_MS, instead of a smooth opacity lerp — keeps the text in
+// vocabulary with the rest of the system (no continuous tweens anywhere).
+const HOVER_KILL_DIST = 32;
+const HOVER_RADIUS = 220;
+const REVIVE_MS = 250;
+function updateHover(t) {
+  const rects = spans.map(s => s.getBoundingClientRect());
+  for (let i = 0; i < spans.length; i++) {
+    const s = spans[i];
+    const r = rects[i];
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const dist = Math.hypot(cx - lastMouseX, cy - lastMouseY);
+
+    if (dist < HOVER_KILL_DIST) {
+      s.style.opacity = "0";
+      s._reviveAt = t + REVIVE_MS;
+      s._hoverI = 1;
+    } else {
+      s._hoverI = dist < HOVER_RADIUS
+        ? 1 - (dist - HOVER_KILL_DIST) / (HOVER_RADIUS - HOVER_KILL_DIST)
+        : 0;
+      if (s._reviveAt && t < s._reviveAt) {
+        const p = 1 - (s._reviveAt - t) / REVIVE_MS; // 0 just-died → 1 fully back
+        s.style.opacity = Math.random() < p ? "1" : "0";
+      } else if (s._reviveAt) {
+        s.style.opacity = "1";
+        s._reviveAt = 0;
+      }
+    }
+  }
+}
+
+// streaks visualizer — the original VHS-streak field with chevrons + tears
+function drawStreaks(t, dt) {
+  const scroll = scrollSpeed * (0.5 + 0.8 * intensity());
+  scrollY = (scrollY + scroll * dt) % viewH;
+
+  ctx.clearRect(0, 0, viewW, viewH);
+  ctx.drawImage(tex, 0, scrollY, viewW, viewH, 0, 0, viewW, viewH);
+
+  const env = intensity();
+
+  // chevron bands — drift horizontally, breathe in alpha
+  for (const b of chevronBands) {
+    b.x += b.vx * dt;
+    const breath = 0.5 + 0.5 * Math.sin((t + b.breathPhase * 1000) / b.breathPeriod * 2 * Math.PI);
+    const a = b.baseAlpha * breath * (0.3 + 0.9 * env);
+    if (a < 0.005) continue;
+    ctx.globalAlpha = Math.min(1, a);
+    const tw = b.tile.width;
+    const startX = -(((b.x % tw) + tw) % tw);
+    for (let dx = startX; dx < viewW; dx += tw) {
+      ctx.drawImage(b.tile, dx, b.y);
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // active tear bands on top
+  for (let i = tears.length - 1; i >= 0; i--) {
+    const tr = tears[i];
+    if (t > tr.until) { tears.splice(i, 1); continue; }
+    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.fillRect(0, tr.y, viewW, tr.h);
+  }
+}
+
+// ---- static (TV snow) ----
+const STATIC_W = 480, STATIC_H = 270;
+let staticCanvas, staticCtx, staticImg;
+function initStatic() {
+  staticCanvas = document.createElement("canvas");
+  staticCanvas.width = STATIC_W;
+  staticCanvas.height = STATIC_H;
+  staticCtx = staticCanvas.getContext("2d");
+  staticImg = staticCtx.createImageData(STATIC_W, STATIC_H);
+  const d = staticImg.data;
+  for (let i = 0; i < d.length; i += 4) { d[i] = d[i+1] = d[i+2] = 255; }
+}
+function drawStatic(t, dt) {
+  if (!staticImg) initStatic();
+  const env = intensity();
+  const density = 0.10 + 0.20 * env;
+  const d = staticImg.data;
+  for (let i = 3; i < d.length; i += 4) {
+    if (Math.random() < density) {
+      const r = Math.random();
+      d[i] = (r * r * 180) | 0; // mostly dim, occasionally bright
+    } else {
+      d[i] = 0;
+    }
+  }
+  staticCtx.putImageData(staticImg, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.drawImage(staticCanvas, 0, 0, viewW, viewH);
+}
+
+// ---- vertical streaks (orthogonal sibling of #1) ----
+let vertTex, vertScrollX = 0;
+function initVertical() {
+  const w = viewW * 2; // 2x wide so we can scroll-wrap
+  const h = viewH;
+  vertTex = document.createElement("canvas");
+  vertTex.width = w;
+  vertTex.height = h;
+  const tx = vertTex.getContext("2d");
+  tx.fillStyle = "#050505";
+  tx.fillRect(0, 0, w, h);
+
+  // dense low-alpha vertical streak segments
+  const numStreaks = Math.floor(w * 2.5);
+  for (let i = 0; i < numStreaks; i++) {
+    const x = (Math.random() * w) | 0;
+    const yStart = Math.random() * h;
+    const yLen = 30 + Math.random() * (h * 0.7);
+    const a = Math.pow(Math.random(), 4) * 0.5 + 0.006;
+    tx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tx.fillRect(x, yStart, 1, yLen);
+  }
+
+  // sharp bright full-height scan errors
+  for (let i = 0; i < 5; i++) {
+    const x = (Math.random() * w) | 0;
+    const a = 0.25 + Math.random() * 0.45;
+    tx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tx.fillRect(x, 0, 1 + ((Math.random() * 2) | 0), h);
+  }
+}
+// (initVertical / vertTex / vertScrollX above are shared infra used by #4 wave
+// and #5 echo too — they're the vertical-streak source those corruptions sample.)
+
+// ---- slot 3: invert. horizontal streak field with a handful of difference-
+// blended rectangular patches that locally polarity-flip the underlying
+// streaks. patches reroll every ~250–850ms so the corruption walks around.
+let invertBlocks = null;
+let invertRerollAt = 0;
+function initInvert() { invertBlocks = null; invertRerollAt = 0; }
+function rerollInvertBlocks(t) {
+  invertBlocks = [];
+  const num = 4 + ((Math.random() * 8) | 0);
+  for (let i = 0; i < num; i++) {
+    invertBlocks.push({
+      x: ((Math.random() * viewW) | 0) - 80,
+      y: ((Math.random() * viewH) | 0) - 30,
+      w: 100 + ((Math.random() * 360) | 0),
+      h: 40 + ((Math.random() * 200) | 0),
+    });
+  }
+  invertRerollAt = t + 250 + Math.random() * 600;
+}
+function drawInvert(t, dt) {
+  if (!tex.width) return;
+  if (!invertBlocks || t > invertRerollAt) rerollInvertBlocks(t);
+
+  const env = intensity();
+  const scroll = scrollSpeed * (0.5 + 0.8 * env);
+  scrollY = (scrollY + scroll * dt) % viewH;
+
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.drawImage(tex, 0, scrollY, viewW, viewH, 0, 0, viewW, viewH);
+
+  // difference-blend with white = local invert
+  ctx.save();
+  ctx.globalCompositeOperation = "difference";
+  ctx.fillStyle = "#ffffff";
+  for (const b of invertBlocks) ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.restore();
+}
+
+// ---- slot 4: blocks. tile-grid mosaic of the streak texture. each tile
+// samples a random region with optional vertical/horizontal stretch and a
+// random subset of tiles get difference-blend-inverted. tiles reroll every
+// ~250–950ms so the mosaic walks.
+let blockTiles = null;
+let blockRerollAt = 0;
+function initBlocks() { blockTiles = null; blockRerollAt = 0; }
+function rerollBlocks(t) {
+  blockTiles = [];
+  const cols = 5 + ((Math.random() * 5) | 0);
+  const rows = 4 + ((Math.random() * 4) | 0);
+  const baseW = viewW / cols;
+  const baseH = viewH / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const d = Math.random();
+      let sw = baseW, sh = baseH;
+      if (d < 0.25) sh = baseH * (0.25 + Math.random() * 0.4);   // vertical stretch
+      else if (d < 0.5) sw = baseW * (0.25 + Math.random() * 0.4); // horizontal stretch
+      blockTiles.push({
+        dx: c * baseW,
+        dy: r * baseH,
+        dw: baseW,
+        dh: baseH,
+        sx: Math.random() * Math.max(1, tex.width - sw),
+        sy: Math.random() * Math.max(1, tex.height - sh),
+        sw, sh,
+        inverted: Math.random() < 0.18,
+      });
+    }
+  }
+  blockRerollAt = t + 250 + Math.random() * 700;
+}
+function drawBlocks(t, dt) {
+  if (!tex.width) return;
+  if (!blockTiles || t > blockRerollAt) rerollBlocks(t);
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+  for (const tile of blockTiles) {
+    ctx.drawImage(
+      tex,
+      tile.sx, tile.sy, tile.sw, tile.sh,
+      tile.dx, tile.dy, tile.dw, tile.dh
+    );
+  }
+  // invert subset
+  ctx.save();
+  ctx.globalCompositeOperation = "difference";
+  ctx.fillStyle = "#ffffff";
+  for (const tile of blockTiles) {
+    if (tile.inverted) ctx.fillRect(tile.dx, tile.dy, tile.dw, tile.dh);
+  }
+  ctx.restore();
+}
+
+// ---- slot 5: ASCII starfield glitch. perspective stars projected from 3-space,
+// each rendered as a monospace glyph that scales by depth. occasional
+// corruption: glyphs randomly mutate, rare full-width scan flashes.
+const STAR_DEPTH_CHARS = ".,'+*oO@#";
+const STAR_GLITCH_CHARS = "/\\|=~<>?!*#";
+let stars = null;
+function initStars() {
+  const num = 600 + ((Math.random() * 300) | 0);
+  stars = [];
+  for (let i = 0; i < num; i++) stars.push(spawnStar(true));
+}
+function spawnStar(scattered) {
+  return {
+    x: (Math.random() - 0.5) * 2,
+    y: (Math.random() - 0.5) * 2,
+    z: scattered ? Math.random() * 0.95 + 0.05 : 1,
+    speed: 0.12 + Math.random() * 0.55,
+    held: null, // when set, locks the rendered glyph to a glitched value briefly
+    holdUntil: 0,
+  };
+}
+function drawStars(t, dt) {
+  if (!stars) initStars();
+  ctx.fillStyle = "rgba(5, 5, 5, 0.42)";
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+
+  const env = intensity();
+  const cx = viewW / 2;
+  const cy = viewH / 2;
+
+  // periodic warp burst — every frame has a small chance of a 3–5× speed kick
+  const warpKick = Math.random() < 0.012 ? (3 + Math.random() * 2) : 1;
+
+  for (const s of stars) {
+    s.z -= s.speed * dt * (0.6 + 0.8 * env) * warpKick;
+    if (s.z <= 0.02) {
+      Object.assign(s, spawnStar(false));
+      continue;
+    }
+    const px = cx + (s.x / s.z) * (viewW * 0.5);
+    const py = cy + (s.y / s.z) * (viewH * 0.5);
+    if (px < -30 || px > viewW + 30 || py < -30 || py > viewH + 30) continue;
+
+    const idx = Math.min(STAR_DEPTH_CHARS.length - 1,
+      Math.max(0, Math.floor((1 - s.z) * STAR_DEPTH_CHARS.length)));
+    let ch = STAR_DEPTH_CHARS[idx];
+
+    // much higher glitch rate, shorter holds → rapid mutation
+    let glitched = false;
+    if (s.held && t < s.holdUntil) {
+      ch = s.held;
+      glitched = true;
+    } else if (Math.random() < 0.025 + 0.035 * env) {
+      s.held = STAR_GLITCH_CHARS[(Math.random() * STAR_GLITCH_CHARS.length) | 0];
+      s.holdUntil = t + 50 + Math.random() * 110;
+      ch = s.held;
+      glitched = true;
+    } else {
+      s.held = null;
+    }
+
+    const a = Math.min(1, 1.05 - s.z * 0.7);
+    ctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    ctx.fillText(ch, px, py);
+
+    // glitched stars get a vertical char-tear above them (3 stacked glyphs)
+    if (glitched) {
+      ctx.globalAlpha = a * 0.55;
+      ctx.fillText(STAR_GLITCH_CHARS[(Math.random() * STAR_GLITCH_CHARS.length) | 0], px, py - 14);
+      ctx.globalAlpha = a * 0.30;
+      ctx.fillText(STAR_GLITCH_CHARS[(Math.random() * STAR_GLITCH_CHARS.length) | 0], px, py - 28);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // horizontal scan-error band — more frequent
+  if (Math.random() < 0.030) {
+    const fy = Math.random() * viewH;
+    const fh = 1 + Math.random() * 5;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+    ctx.fillRect(0, fy, viewW, fh);
+  }
+  // vertical scan-error column (new)
+  if (Math.random() < 0.018) {
+    const fx = Math.random() * viewW;
+    const fw = 1 + Math.random() * 4;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.fillRect(fx, 0, fw, viewH);
+  }
+  // rare full-frame difference flip (single-frame polarity invert)
+  if (Math.random() < 0.0025) {
+    ctx.save();
+    ctx.globalCompositeOperation = "difference";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.restore();
+  }
+}
+
+// ---- visualizer registry + mode toggle ----
+const MODES = {
+  streaks: drawStreaks,
+  static:  drawStatic,
+  invert:  drawInvert,
+  blocks:  drawBlocks,
+  stars:   drawStars,
+};
+const MODE_ORDER = ["streaks", "static", "invert", "blocks", "stars"];
+let currentMode = "streaks";
+function setMode(name) {
+  if (!(name in MODES) || name === currentMode) return;
+  currentMode = name;
+  ctx.clearRect(0, 0, viewW, viewH);
+  if (name === "static")      initStatic();
+  else if (name === "invert") initInvert();
+  else if (name === "blocks") initBlocks();
+  else if (name === "stars")  initStars();
+  for (const btn of document.querySelectorAll("#debug button")) {
+    btn.classList.toggle("active", btn.dataset.mode === name);
+  }
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dt = (t - lastT) / 1000;
+  lastT = t;
+
+  updateHover(t);
+  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+
+  MODES[currentMode](t, dt);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// pick a random visualizer on each page load (keyboard 1–5 still overrides)
+setMode(MODE_ORDER[(Math.random() * MODE_ORDER.length) | 0]);
+
+// ---- mouse / click bindings ----
+// start off-screen so no proximity-based effects fire before the first mousemove
+let lastMouseX = -10000, lastMouseY = -10000;
+window.addEventListener("mousemove", (e) => {
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  const dist = Math.hypot(dx, dy);
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  // each pixel of motion adds a touch of activity; saturates at 1
+  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+});
+
+// click = punch event: chroma + tear at click Y + texture rebuild + chevron reroll
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#debug")) return; // debug panel handles its own clicks
+  // chroma flash (slightly longer than ambient flashes)
+  stage.classList.add("chroma");
+  setTimeout(() => stage.classList.remove("chroma"), 140);
+
+  // tear band at click Y
+  const th = 6 + Math.random() * 18;
+  tears.push({
+    y: Math.max(0, Math.min(viewH - th, e.clientY - th / 2)),
+    h: th,
+    until: performance.now() + 90 + Math.random() * 80,
+  });
+
+  // re-render the streak texture
+  buildTexture();
+
+  // reroll chevron band layout
+  spawnChevronBands();
+
+  // big intensity boost
+  mouseActivity = 1;
+});
+
+// ---- visualizer toggle: keyboard 1–5 to override the auto-cycler.
+// pressing a key pauses the cycler for 25s so you can dwell on a mode.
+const MANUAL_PAUSE_MS = 25000;
+let manualOverrideUntil = 0;
+window.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea, [contenteditable]")) return;
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= MODE_ORDER.length) {
+    manualOverrideUntil = performance.now() + MANUAL_PAUSE_MS;
+    setMode(MODE_ORDER[n - 1]);
+  }
+});
+// auto-cycle: Poisson-scheduled mode swap to a random non-current visualizer
+poisson(
+  () => 0.20 + 0.30 * intensity(),
+  () => {
+    if (performance.now() < manualOverrideUntil) return;
+    const choices = MODE_ORDER.filter(m => m !== currentMode);
+    setMode(choices[(Math.random() * choices.length) | 0]);
+  }
+);
+
+// ---- link hover: cycle each char through the zxx variants ----
+// bold is intentionally excluded — its glyph metrics differ enough from the
+// others that it forces the link wider than the locked width.
+const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+const LINK_CYCLE_MS = 80;
+// uniformly-narrow corruption glyphs — fit any locked-width char slot
+const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
+
+async function setupLinks() {
+  // force-load every variant we cycle through, so measurements are accurate
+  // (document.fonts.ready alone only waits for fonts already in use).
+  if (document.fonts && document.fonts.load) {
+    await Promise.all(LINK_FONT_CYCLE.map(fam => document.fonts.load(`13px "${fam}"`)));
+  }
+
+  document.querySelectorAll("[data-link]").forEach(link => {
+    const txt = link.textContent;
+    link.textContent = "";
+    const charSpans = [...txt].map(ch => {
+      const s = document.createElement("span");
+      const display = ch === " " ? " " : ch;
+      s.textContent = display;
+      s.dataset.original = display; // truth source — scrambles always restore from here
+      s.style.display = "inline-block";
+      s.style.textAlign = "center";
+      link.appendChild(s);
+      return s;
+    });
+
+    // lock EACH character span to its max width across the default + every
+    // cycled variant, so the link's width is the sum of fixed slots — the box
+    // can no longer flex regardless of which variant a slot is rendering.
+    for (const s of charSpans) {
+      let maxW = s.getBoundingClientRect().width;
+      for (const fam of LINK_FONT_CYCLE) {
+        s.style.fontFamily = `"${fam}", monospace`;
+        const w = s.getBoundingClientRect().width;
+        if (w > maxW) maxW = w;
+      }
+      s.style.fontFamily = "";
+      s.style.width = `${(Math.ceil(maxW * 10) / 10).toFixed(1)}px`;
+    }
+
+    // each char starts at a different point in the cycle so they desync
+    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
+
+    let timer = null;
+    link.addEventListener("mouseenter", () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        for (let i = 0; i < charSpans.length; i++) {
+          idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
+          charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
+        }
+      }, LINK_CYCLE_MS);
+    });
+    link.addEventListener("mouseleave", () => {
+      clearInterval(timer);
+      timer = null;
+      for (const s of charSpans) s.style.fontFamily = "";
+    });
+
+    // ambient scramble: randomly replace a subset of chars with corruption
+    // glyphs for ~200ms, then restore. fires per-link on its own Poisson
+    // schedule so links scramble independently, not in lockstep.
+    poisson(
+      () => 0.1 + 0.15 * intensity(),
+      () => {
+        if (link._scrambling) return;
+        const targets = charSpans.filter(s => s.dataset.original.trim() !== "" && Math.random() < 0.55);
+        if (!targets.length) return;
+        link._scrambling = true;
+        let cycles = 2 + ((Math.random() * 3) | 0);
+        function tick() {
+          if (cycles-- <= 0) {
+            for (const s of targets) s.textContent = s.dataset.original;
+            link._scrambling = false;
+            return;
+          }
+          for (const s of targets) {
+            s.textContent = SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+          }
+          setTimeout(tick, 50 + Math.random() * 60);
+        }
+        tick();
+      }
+    );
+  });
+}
+
+setupLinks();
+</script>
+</body>
+</html>

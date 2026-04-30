@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // blocks</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<script>
+let mouseActivity = 0;
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
+}
+
+function poisson(rateFn, fire) {
+  function step() {
+    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+    const wait = -Math.log(1 - Math.random()) / ratePerMs;
+    setTimeout(() => { fire(); step(); }, wait);
+  }
+  step();
+}
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+const tex = document.createElement("canvas");
+const tctx = tex.getContext("2d");
+
+let viewW, viewH, dpr;
+
+function buildTexture() {
+  const w = viewW;
+  const h = viewH * 2;
+  tex.width = w;
+  tex.height = h;
+
+  tctx.fillStyle = "#050505";
+  tctx.fillRect(0, 0, w, h);
+
+  const numStreaks = Math.floor(h * 2.5);
+  for (let i = 0; i < numStreaks; i++) {
+    const y = (Math.random() * h) | 0;
+    const xStart = Math.random() * w;
+    const xLen = 30 + Math.random() * (w * 0.7);
+    const a = Math.pow(Math.random(), 4) * 0.5 + 0.006;
+    tctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tctx.fillRect(xStart, y, xLen, 1);
+  }
+
+  for (let i = 0; i < 5; i++) {
+    const y = (Math.random() * h) | 0;
+    const a = 0.25 + Math.random() * 0.45;
+    tctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tctx.fillRect(0, y, w, 1 + ((Math.random() * 2) | 0));
+  }
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildTexture();
+}
+window.addEventListener("resize", resize);
+resize();
+
+poisson(() => 0.18 + 0.35 * intensity(), () => buildTexture());
+
+// ---- block tiles ----
+let blockTiles = null;
+let blockRerollAt = 0;
+function rerollBlocks(t) {
+  blockTiles = [];
+  const cols = 5 + ((Math.random() * 5) | 0);
+  const rows = 4 + ((Math.random() * 4) | 0);
+  const baseW = viewW / cols;
+  const baseH = viewH / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const d = Math.random();
+      let sw = baseW, sh = baseH;
+      if (d < 0.25) sh = baseH * (0.25 + Math.random() * 0.4);
+      else if (d < 0.5) sw = baseW * (0.25 + Math.random() * 0.4);
+      blockTiles.push({
+        dx: c * baseW,
+        dy: r * baseH,
+        dw: baseW,
+        dh: baseH,
+        sx: Math.random() * Math.max(1, tex.width - sw),
+        sy: Math.random() * Math.max(1, tex.height - sh),
+        sw, sh,
+        inverted: Math.random() < 0.18,
+      });
+    }
+  }
+  blockRerollAt = t + 250 + Math.random() * 700;
+}
+function drawBlocks(t, dt) {
+  if (!tex.width) return;
+  if (!blockTiles || t > blockRerollAt) rerollBlocks(t);
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+  for (const tile of blockTiles) {
+    ctx.drawImage(
+      tex,
+      tile.sx, tile.sy, tile.sw, tile.sh,
+      tile.dx, tile.dy, tile.dw, tile.dh
+    );
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = "difference";
+  ctx.fillStyle = "#ffffff";
+  for (const tile of blockTiles) {
+    if (tile.inverted) ctx.fillRect(tile.dx, tile.dy, tile.dw, tile.dh);
+  }
+  ctx.restore();
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dt = (t - lastT) / 1000;
+  lastT = t;
+  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+  drawBlocks(t, dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+let lastMouseX = -10000, lastMouseY = -10000;
+window.addEventListener("mousemove", (e) => {
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  const dist = Math.hypot(dx, dy);
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+});
+
+window.addEventListener("click", () => {
+  buildTexture();
+  rerollBlocks(performance.now());
+  mouseActivity = 1;
+});
+</script>
+</body>
+</html>

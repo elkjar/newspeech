@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // static</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<script>
+let mouseActivity = 0;
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
+}
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+let viewW, viewH, dpr;
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---- static (TV snow) ----
+const STATIC_W = 480, STATIC_H = 270;
+let staticCanvas, staticCtx, staticImg;
+function initStatic() {
+  staticCanvas = document.createElement("canvas");
+  staticCanvas.width = STATIC_W;
+  staticCanvas.height = STATIC_H;
+  staticCtx = staticCanvas.getContext("2d");
+  staticImg = staticCtx.createImageData(STATIC_W, STATIC_H);
+  const d = staticImg.data;
+  for (let i = 0; i < d.length; i += 4) { d[i] = d[i+1] = d[i+2] = 255; }
+}
+function drawStatic(t, dt) {
+  if (!staticImg) initStatic();
+  const env = intensity();
+  const density = 0.10 + 0.20 * env;
+  const d = staticImg.data;
+  for (let i = 3; i < d.length; i += 4) {
+    if (Math.random() < density) {
+      const r = Math.random();
+      d[i] = (r * r * 180) | 0;
+    } else {
+      d[i] = 0;
+    }
+  }
+  staticCtx.putImageData(staticImg, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.drawImage(staticCanvas, 0, 0, viewW, viewH);
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dt = (t - lastT) / 1000;
+  lastT = t;
+  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+  drawStatic(t, dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+let lastMouseX = -10000, lastMouseY = -10000;
+window.addEventListener("mousemove", (e) => {
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  const dist = Math.hypot(dx, dy);
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+});
+
+window.addEventListener("click", () => {
+  mouseActivity = 1;
+});
+</script>
+</body>
+</html>
