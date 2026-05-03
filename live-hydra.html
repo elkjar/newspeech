@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // live-hydra</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // live-hydra">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/live-hydra.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // live-hydra">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #fff; overflow: hidden; }
+  body { width: 100vw; height: 100vh; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  #bg { position: fixed; inset: 0; z-index: 0; display: block; pointer-events: none; }
+
+  #editor-shell {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
+    z-index: 2;
+    width: min(880px, calc(100vw - 64px));
+    max-height: min(60vh, 520px);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(5, 5, 5, 0.82);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #editor-shell header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.85);
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  #editor-shell header .title { font-family: "zxx-sans", monospace; letter-spacing: 0.08em; }
+  #editor-shell header .controls { display: flex; gap: 6px; }
+  #editor-shell header button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.85);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    cursor: pointer;
+  }
+  #editor-shell header button:hover { border-color: rgba(255, 255, 255, 0.7); background: rgba(255, 255, 255, 0.06); }
+  #editor-shell header button:active { background: rgba(255, 255, 255, 0.12); }
+
+  #editor-shell strudel-editor { display: block; flex: 1; min-height: 0; overflow: auto; }
+  #editor-shell .cm-editor { background: transparent !important; height: 100%; }
+  #editor-shell .cm-scroller { font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; font-size: 13px; line-height: 1.55; padding: 14px 6px; }
+  #editor-shell .cm-content { caret-color: #fff; color: #f5f5f5; }
+  #editor-shell .cm-gutters { background: transparent !important; border-right: 1px solid rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.35); }
+  #editor-shell .cm-activeLine, #editor-shell .cm-activeLineGutter { background: rgba(255, 255, 255, 0.04) !important; }
+  #editor-shell .cm-cursor { border-left-color: #fff !important; }
+  #editor-shell .cm-selectionBackground { background: rgba(255, 255, 255, 0.18) !important; }
+
+  #status {
+    position: fixed;
+    left: 24px;
+    top: 24px;
+    z-index: 3;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    pointer-events: none;
+    line-height: 1.6;
+  }
+  #status .head { color: rgba(255, 255, 255, 0.85); margin-bottom: 6px; }
+  #status .meter { display: flex; gap: 16px; letter-spacing: 0; }
+  #status .meter .seg .lab { opacity: 0.5; margin-right: 6px; letter-spacing: 0.18em; }
+  #status .meter .seg { color: rgba(255, 255, 255, 0.85); }
+  #status .sys { color: rgba(255, 255, 255, 0.55); margin-bottom: 6px; }
+  #status .sys .k { color: rgba(255, 255, 255, 0.85); }
+  #status .sys .bad { color: #ff8a8a; }
+  #status .vals { letter-spacing: 0; color: rgba(255, 255, 255, 0.4); margin-top: 4px; }
+  #status .vals .lab { letter-spacing: 0.18em; opacity: 0.5; margin-right: 4px; }
+  #status .vals .v { color: rgba(255, 255, 255, 0.85); margin-right: 10px; font-feature-settings: "tnum"; }
+  #status #frame { color: #fff; letter-spacing: 0; font-feature-settings: "tnum"; }
+
+  @media (max-width: 640px) {
+    #editor-shell { left: 16px; right: 16px; transform: none; width: auto; bottom: 16px; max-height: 70vh; }
+    #status { font-size: 9px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div id="status">
+  <div class="head">NEWSPEECH · HYDRA · GRID · <span id="frame">000000</span></div>
+  <div class="sys">
+    HYDRA <span class="k" id="sys-hydra">--</span>
+    · ANLYSR <span class="k" id="sys-anlysr">--</span>
+    · CTX <span class="k" id="sys-ctx">--</span>
+  </div>
+  <div class="meter">
+    <span class="seg"><span class="lab">LO</span><span id="bar-lo">░░░░░░░░░░</span></span>
+    <span class="seg"><span class="lab">MI</span><span id="bar-mi">░░░░░░░░░░</span></span>
+    <span class="seg"><span class="lab">HI</span><span id="bar-hi">░░░░░░░░░░</span></span>
+  </div>
+  <div class="vals">
+    <span class="lab">LO</span><span class="v" id="v-lo">0.00</span>
+    <span class="lab">MI</span><span class="v" id="v-mi">0.00</span>
+    <span class="lab">HI</span><span class="v" id="v-hi">0.00</span>
+    <span class="lab">AMP</span><span class="v" id="v-amp">0.00</span>
+  </div>
+</div>
+
+<div id="editor-shell">
+  <header>
+    <span class="title">newspeech // hydra</span>
+    <span class="controls">
+      <button type="button" id="btn-play">play</button>
+      <button type="button" id="btn-pause">pause</button>
+    </span>
+  </header>
+  <strudel-editor></strudel-editor>
+</div>
+
+<!-- analyser tap MUST set up before strudel constructs its audio graph.
+     monkey-patches AudioNode.connect so anything routed to ctx.destination
+     also branches into our analyser. lifted from live.html. -->
+<script>
+(function setupAnalyserTap() {
+  let analyser = null;
+  let analyserCtx = null;
+  const origConnect = AudioNode.prototype.connect;
+
+  function ensureAnalyser(ctx) {
+    if (analyser && analyserCtx === ctx) return analyser;
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.4;
+    analyserCtx = ctx;
+    window.__newspeechAnalyser = analyser;
+    window.__newspeechAudioCtx = ctx;
+    return analyser;
+  }
+
+  AudioNode.prototype.connect = function(target, ...rest) {
+    try {
+      const ctx = this.context;
+      if (ctx && target === ctx.destination) {
+        const a = ensureAnalyser(ctx);
+        try { origConnect.call(this, a); } catch (e) {}
+      }
+    } catch (e) {}
+    return origConnect.call(this, target, ...rest);
+  };
+
+  if (typeof BaseAudioContext !== "undefined") {
+    const origCreateBufferSource = BaseAudioContext.prototype.createBufferSource;
+    BaseAudioContext.prototype.createBufferSource = function() {
+      const node = origCreateBufferSource.apply(this, arguments);
+      try {
+        const a = ensureAnalyser(this);
+        origConnect.call(node, a);
+      } catch (e) {}
+      return node;
+    };
+  }
+})();
+</script>
+
+<script src="https://unpkg.com/@strudel/repl@latest"></script>
+<script src="https://unpkg.com/hydra-synth"></script>
+
+<script>
+// ---- canvas sizing ----
+const canvas = document.getElementById("bg");
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+
+// ---- hydra ----
+// detectAudio:false because we have our own analyser tap. makeGlobal exposes
+// shape/osc/noise/etc. as globals so the patch below reads as a normal Hydra
+// snippet you could paste into hydra.ojack.xyz.
+let hydra;
+try {
+  if (typeof Hydra === "undefined") throw new Error("Hydra not loaded (CDN blocked?)");
+  hydra = new Hydra({
+    canvas,
+    detectAudio: false,
+    makeGlobal: true,
+    width: canvas.width,
+    height: canvas.height,
+  });
+} catch (e) {
+  console.error("hydra init failed:", e);
+}
+
+window.addEventListener("resize", () => {
+  resizeCanvas();
+  if (hydra && typeof hydra.setResolution === "function") {
+    hydra.setResolution(canvas.width, canvas.height);
+  }
+});
+
+// ---- audio analysis: smoothed band levels exposed as window.__low/mid/high ----
+let audioLevel = 0, lowLevel = 0, midLevel = 0, highLevel = 0;
+function readAudio() {
+  const a = window.__newspeechAnalyser;
+  if (!a) return;
+  const bins = a.frequencyBinCount;
+  const fbuf = new Uint8Array(bins);
+  a.getByteFrequencyData(fbuf);
+  const b1 = Math.max(1, Math.floor(bins * 0.06));
+  const b2 = Math.max(b1 + 1, Math.floor(bins * 0.35));
+  let lo = 0, mi = 0, hi = 0, all = 0;
+  for (let i = 0; i < b1; i++)         lo  += fbuf[i];
+  for (let i = b1; i < b2; i++)        mi  += fbuf[i];
+  for (let i = b2; i < bins; i++)      hi  += fbuf[i];
+  for (let i = 0; i < bins; i++)       all += fbuf[i];
+  const low  = Math.min(1, (lo  / b1)         / 255 * 1.6);
+  const mid  = Math.min(1, (mi  / (b2 - b1))  / 255 * 2.0);
+  const high = Math.min(1, (hi  / (bins - b2))/ 255 * 2.4);
+  const amp  = Math.min(1, (all / bins)       / 255 * 2.2);
+  lowLevel  += (low  - lowLevel)  * 0.35;
+  midLevel  += (mid  - midLevel)  * 0.35;
+  highLevel += (high - highLevel) * 0.4;
+  audioLevel += (amp - audioLevel) * 0.25;
+  window.__low  = lowLevel;
+  window.__mid  = midLevel;
+  window.__high = highLevel;
+  window.__amp  = audioLevel;
+}
+
+const barLo = document.getElementById("bar-lo");
+const barMi = document.getElementById("bar-mi");
+const barHi = document.getElementById("bar-hi");
+function bar10(v) {
+  const n = Math.max(0, Math.min(10, Math.round(v * 10)));
+  return "█".repeat(n) + "░".repeat(10 - n);
+}
+// ---- diagnostics loop ----
+// setInterval, NOT requestAnimationFrame — Hydra silently swallows external
+// RAF callbacks once it's loaded (see the Hydra-gotchas memory). 50ms / 20Hz
+// is plenty for the audio analyser + telemetry.
+const frameEl    = document.getElementById("frame");
+const sysHydraEl = document.getElementById("sys-hydra");
+const sysAnEl    = document.getElementById("sys-anlysr");
+const sysCtxEl   = document.getElementById("sys-ctx");
+const vLoEl      = document.getElementById("v-lo");
+const vMiEl      = document.getElementById("v-mi");
+const vHiEl      = document.getElementById("v-hi");
+const vAmpEl     = document.getElementById("v-amp");
+
+sysHydraEl.textContent = hydra ? "OK" : "FAIL";
+if (!hydra) sysHydraEl.classList.add("bad");
+
+let tickCount = 0;
+function pad6(n) { return String(n).padStart(6, "0"); }
+setInterval(() => {
+  tickCount++;
+  readAudio();
+
+  // band meter bars
+  const bL = bar10(lowLevel), bM = bar10(midLevel), bH = bar10(highLevel);
+  if (bL !== barLo.textContent) barLo.textContent = bL;
+  if (bM !== barMi.textContent) barMi.textContent = bM;
+  if (bH !== barHi.textContent) barHi.textContent = bH;
+
+  // numeric values
+  vLoEl.textContent  = lowLevel.toFixed(2);
+  vMiEl.textContent  = midLevel.toFixed(2);
+  vHiEl.textContent  = highLevel.toFixed(2);
+  vAmpEl.textContent = audioLevel.toFixed(2);
+
+  // frame counter + sys state
+  frameEl.textContent = pad6(tickCount);
+  const a = window.__newspeechAnalyser;
+  const c = window.__newspeechAudioCtx;
+  const an = a ? "OK" : "--";
+  if (sysAnEl.textContent !== an) {
+    sysAnEl.textContent = an;
+    sysAnEl.classList.toggle("bad", !a);
+  }
+  const cs = c ? c.state.toUpperCase() : "--";
+  if (sysCtxEl.textContent !== cs) sysCtxEl.textContent = cs;
+}, 50);
+
+// ---- hydra patch: 40x40 grid of 1px square outlines, infinite-zoom + B&W ----
+// Outline = outer square minus slightly smaller inner square (diff). At 40
+// cells across a ~1280px canvas, cells are ~32px; outer 0.95 / inner 0.88
+// gives a ~1.1 device px line. Trailing .thresh(0.5) keeps everything binary
+// even where the smoothstep edges produce sub-pixel greys.
+//
+// Ambient motion: scale = 2^((time*0.08) % 1) — exponential zoom from 1× to
+// 2×, looping every ~12.5s. Combined with repeat(40,40), the loop boundary
+// reads as "zooming past one level of detail" rather than a reset, because
+// the smaller cells visible at scale=1 are the same pattern as the larger
+// ones at scale=2. That's the infinite-zoom illusion.
+//
+// Audio: bass folds in as a small zoom-out pulse on the ambient base. Kept
+// subtle (×0.85 at peak) so the zoom keeps reading even with no music.
+// Only .scale and .thresh accept fn args cleanly here — see Hydra-gotchas.
+// factor the outline shape so we can reuse it for the moiré layer.
+const grid = () => shape(4, 0.95, 0.001).diff(shape(4, 0.88, 0.001));
+
+// chain factored as a function so we can re-issue with new static scroll
+// offsets to produce sudden jump-cuts. scrollX/scrollY don't safely accept
+// fn-args here (see Hydra-gotchas memory), so static rebuild is the path.
+function buildPatch(snapX, snapY) {
+  if (!hydra) return;
+  try {
+    grid().repeat(40, 40)
+      // moiré: mismatched 41x41 grid rotated slightly. diff cancels
+      // coincident lines, dark voids sweep as alignment shifts with zoom.
+      .diff(grid().repeat(41, 41).rotate(0.07))
+      // static-amount noise warp — organic wobble on every line.
+      .modulate(noise(3, 0.4), 0.012)
+      .scale(() => Math.pow(2, (time * 0.08) % 1) * (1 - (window.__low || 0) * 0.15))
+      // jitter snap — static offset each rebuild. 0 most of the time;
+      // briefly non-zero during a snap event.
+      .scrollX(snapX)
+      .scrollY(snapY)
+      .thresh(0.5, 0.001)
+      // bass-triggered invert — only fires on the very peak of the kick
+      // transient (>0.9). aim is a brief flash rather than sustained white.
+      .invert(() => (window.__low || 0) > 0.9 ? 1 : 0)
+      .out();
+  } catch (e) {
+    console.error("hydra patch failed:", e);
+  }
+}
+
+// initial neutral patch — no scroll offset.
+buildPatch(0, 0);
+
+// Time-jittered scroll snaps. Every 700ms, 15% chance of a snap event:
+// rebuild the chain with a random scroll offset (±15% in each axis),
+// hold for ~100ms, rebuild back to zero. Avg ~1 snap every 5s.
+// Hydra should reclaim old chain GLSL programs across rebuilds; if not,
+// memory will grow slowly — watch for over a long session.
+setInterval(() => {
+  if (Math.random() < 0.15) {
+    const sx = (Math.random() - 0.5) * 0.3;
+    const sy = (Math.random() - 0.5) * 0.3;
+    buildPatch(sx, sy);
+    setTimeout(() => buildPatch(0, 0), 100);
+  }
+}, 700);
+
+// ---- strudel bridge: default patch + play/pause ----
+const DEFAULT_PATCH = `stack(
+  s("bd*<2 4 2 4>").gain(0.95).shape(0.4),
+  s("hh*16").gain(0.55).pan(rand),
+  s("~ cp ~ cp").gain(0.7).crush(4),
+  note("<c2 g1 ab1 eb2>").s("sawtooth").cutoff(perlin.range(300, 1800).slow(4)).gain(0.4).distort(1.2),
+  note("<c4 eb4 g4 bb4>(3,8)").s("square").delay(0.4).room(0.7).gain(0.18)
+).cpm(110/4)`;
+
+function getStrudelEditor() {
+  const el = document.querySelector("strudel-editor");
+  return el && el.editor;
+}
+
+document.getElementById("btn-play").addEventListener("click", () => {
+  const ed = getStrudelEditor();
+  if (!ed) return;
+  if (typeof ed.evaluate === "function") ed.evaluate();
+  else if (typeof ed.start === "function") ed.start();
+});
+document.getElementById("btn-pause").addEventListener("click", () => {
+  const ed = getStrudelEditor();
+  if (ed && typeof ed.stop === "function") ed.stop();
+});
+
+(async function bootEditor() {
+  await customElements.whenDefined("strudel-editor");
+  const el = document.querySelector("strudel-editor");
+  for (let i = 0; i < 50 && !el.editor; i++) await new Promise(r => setTimeout(r, 50));
+  if (el.editor && typeof el.editor.setCode === "function") {
+    el.editor.setCode(DEFAULT_PATCH);
+  }
+})();
+</script>
+</body>
+</html>
