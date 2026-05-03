@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // rings</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // rings">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/8-rings.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // rings">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<script>
+let mouseActivity = 0;
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
+}
+
+function poisson(rateFn, fire) {
+  function step() {
+    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+    const wait = -Math.log(1 - Math.random()) / ratePerMs;
+    setTimeout(() => { fire(); step(); }, wait);
+  }
+  step();
+}
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+let viewW, viewH, dpr;
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width  = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  canvas.style.width  = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---- ring stack ----
+// concentric rings with their radius perturbed by a multi-frequency angular
+// wave + always-on positive bumps + poisson-scheduled angular peak events
+// that pulse outward and decay over ~1.5s. outer rings receive more push
+// than inner ones so peaks burst outward rather than rippling from center.
+const RING_COUNT       = 36;
+const ANGULAR_SAMPLES  = 360;
+const INNER_R          = 50;
+
+// poisson-scheduled angular peak events. each is centered on a random θ
+// with a gaussian envelope across angular width and a fast-rise/slow-fall
+// envelope over time.
+const ringPeakEvents = [];
+function spawnRingPeak() {
+  ringPeakEvents.push({
+    theta: Math.random() * Math.PI * 2,
+    angularWidth: 0.1 + Math.random() * 0.4,   // ~6°–23° spread
+    height: 90 + Math.random() * 300,
+    born: performance.now(),
+    duration: 800 + Math.random() * 1500,
+  });
+}
+poisson(() => 0.4 + intensity() * 2, spawnRingPeak);
+
+function ringEventPeakAt(theta, t) {
+  let h = 0;
+  for (let i = ringPeakEvents.length - 1; i >= 0; i--) {
+    const ev = ringPeakEvents[i];
+    const age = t - ev.born;
+    if (age > ev.duration) { ringPeakEvents.splice(i, 1); continue; }
+    // angular distance with 2π wraparound
+    let dTheta = theta - ev.theta;
+    if (dTheta >  Math.PI) dTheta -= Math.PI * 2;
+    if (dTheta < -Math.PI) dTheta += Math.PI * 2;
+    const envelope = Math.exp(-Math.pow(dTheta / ev.angularWidth, 2));
+    const lifeT = age / ev.duration;
+    const lifeEnv = lifeT < 0.15 ? lifeT / 0.15 : 1 - (lifeT - 0.15) / 0.85;
+    h += ev.height * envelope * Math.max(0, lifeEnv);
+  }
+  return h;
+}
+
+function frame(t) {
+  const tSec = t / 1000;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  const env = intensity();
+  const cx = viewW / 2;
+  const cy = viewH / 2;
+  const outerR = Math.min(viewW, viewH) * 0.45;
+  const ringGap = (outerR - INNER_R) / (RING_COUNT - 1);
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.lineWidth = 1;
+  ctx.lineJoin = "round";
+
+  for (let ring = 0; ring < RING_COUNT; ring++) {
+    const r0 = INNER_R + ringGap * ring;
+    const ringPhase = ring * 0.43;
+    // outer rings push further out — opposite of ridges' top-fans-out.
+    const depthFactor = 0.25 + 0.75 * (ring / (RING_COUNT - 1));
+
+    ctx.beginPath();
+
+    for (let s = 0; s <= ANGULAR_SAMPLES; s++) {
+      const theta = (s / ANGULAR_SAMPLES) * Math.PI * 2;
+
+      // multi-frequency angular wave — integer θ multiples keep it 2π-periodic
+      let wave = 0;
+      wave += Math.sin(theta * 3  + tSec * 0.27 + ringPhase * 0.7) * 15;
+      wave += Math.sin(theta * 5  + tSec * 0.41 + ringPhase * 1.2) * 10.5;
+      wave += Math.sin(theta * 11 + tSec * 0.69 + ringPhase * 0.4) * 6;
+      wave += Math.sin(theta * 19 + tSec * 1.07 + ringPhase * 1.5) * 3;
+
+      // always-on positive-bump component, intensity-modulated
+      const bump = Math.max(0,
+        0.6 * Math.sin(theta * 2 + tSec * 0.31 + ringPhase * 0.2) +
+        0.4 * Math.sin(theta * 3 + tSec * 0.19 + ringPhase * 0.5)
+      );
+      const steadyPeak = Math.pow(bump, 5) * (45 + env * 180) * depthFactor;
+
+      // poisson-scheduled angular event peaks
+      const evPeak = ringEventPeakAt(theta, t) * depthFactor;
+
+      const r = r0 + wave + steadyPeak + evPeak;
+      const x = cx + Math.cos(theta) * r;
+      const y = cy + Math.sin(theta) * r;
+
+      if (s === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
+let lastT = performance.now();
+function loop(t) {
+  const dt = (t - lastT) / 1000;
+  lastT = t;
+  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+  frame(t);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+let lastMouseX = -10000, lastMouseY = -10000;
+window.addEventListener("mousemove", (e) => {
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  const dist = Math.hypot(dx, dy);
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+});
+window.addEventListener("click", () => { mouseActivity = 1; });
+</script>
+</body>
+</html>

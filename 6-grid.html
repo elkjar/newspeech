@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // grid</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // grid">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/6-grid.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // grid">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<script src="https://unpkg.com/hydra-synth"></script>
+<script>
+let mouseActivity = 0;
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
+}
+
+function poisson(rateFn, fire) {
+  function step() {
+    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+    const wait = -Math.log(1 - Math.random()) / ratePerMs;
+    setTimeout(() => { fire(); step(); }, wait);
+  }
+  step();
+}
+
+const canvas = document.getElementById("bg");
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+
+let hydra;
+try {
+  if (typeof Hydra === "undefined") throw new Error("Hydra not loaded");
+  hydra = new Hydra({
+    canvas,
+    detectAudio: false,
+    makeGlobal: true,
+    width: canvas.width,
+    height: canvas.height,
+  });
+} catch (e) {
+  console.error("hydra init failed:", e);
+}
+
+window.addEventListener("resize", () => {
+  resizeCanvas();
+  if (hydra && typeof hydra.setResolution === "function") {
+    hydra.setResolution(canvas.width, canvas.height);
+  }
+});
+
+// globals that hydra fn-args read (per Hydra-gotchas: only single-scalar
+// fn-args like .scale and .invert are reliable; everything else is static).
+window.__intensity   = 0;
+window.__invertFlash = 0;
+
+// factor the outline shape so the moiré layer can reuse it.
+const grid = () => shape(4, 0.95, 0.001).diff(shape(4, 0.88, 0.001));
+
+// chain factored as a function so we can re-issue with new static scroll
+// offsets to produce sudden jump-cuts.
+function buildPatch(snapX, snapY) {
+  if (!hydra) return;
+  try {
+    grid().repeat(40, 40)
+      // moiré: mismatched 41x41 grid rotated slightly. as alignment shifts
+      // under the ambient zoom, dark "void" bands sweep through the lattice.
+      .diff(grid().repeat(41, 41).rotate(0.07))
+      .modulate(noise(3, 0.4), 0.012)
+      // ambient infinite zoom: 2^((time*0.08)%1) — exponential 1×→2× loop
+      // every ~12.5s. repeat() means the loop boundary reads as "zoom past
+      // a level of detail" rather than a reset. intensity LFO subtly
+      // modulates the zoom on top.
+      .scale(() => Math.pow(2, (time * 0.08) % 1) * (1 - (window.__intensity || 0) * 0.15))
+      .scrollX(snapX)
+      .scrollY(snapY)
+      .thresh(0.5, 0.001)
+      // poisson-driven invert flashes — held briefly by a JS-side timer.
+      .invert(() => window.__invertFlash || 0)
+      .out();
+  } catch (e) {
+    console.error("hydra patch failed:", e);
+  }
+}
+
+buildPatch(0, 0);
+
+// hydra-gotchas: external requestAnimationFrame is swallowed once Hydra is
+// loaded. setInterval works. 50ms = 20Hz — enough for smooth intensity
+// updates and snap scheduling.
+setInterval(() => {
+  // mouse activity decays
+  mouseActivity = Math.max(0, mouseActivity - 0.02);
+  window.__intensity = intensity();
+
+  // time-jittered scroll snaps: ~15% chance per tick → ~3 snaps/sec. each
+  // snap rebuilds the chain with a random offset, then snaps back after
+  // 100ms.
+  if (Math.random() < 0.025) {
+    const sx = (Math.random() - 0.5) * 0.3;
+    const sy = (Math.random() - 0.5) * 0.3;
+    buildPatch(sx, sy);
+    setTimeout(() => buildPatch(0, 0), 100);
+  }
+}, 50);
+
+// poisson-scheduled invert flashes — irregular schedule, intensity modulates
+// the rate. flash held for ~70ms then released. setTimeout is unaffected by
+// the Hydra-RAF gotcha.
+poisson(
+  () => 0.25 + intensity() * 0.7,  // 0.25–0.95 flashes/sec
+  () => {
+    window.__invertFlash = 1;
+    setTimeout(() => { window.__invertFlash = 0; }, 70);
+  }
+);
+
+let lastMouseX = -10000, lastMouseY = -10000;
+window.addEventListener("mousemove", (e) => {
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  const dist = Math.hypot(dx, dy);
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+});
+window.addEventListener("click", () => { mouseActivity = 1; });
+</script>
+</body>
+</html>

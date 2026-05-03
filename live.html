@@ -167,7 +167,7 @@
     <span class="onset" id="onset-mi">MID</span>
     <span class="onset" id="onset-hi">HIGH</span>
   </div>
-  <div><span class="k">1–5</span> visualizer · <span class="k">ctrl+enter</span> evaluate · <span class="k">ctrl+.</span> hush</div>
+  <div><span class="k">1–8</span> lock visualizer · <span class="k">0</span> auto · <span class="k">ctrl+enter</span> evaluate · <span class="k">ctrl+.</span> hush</div>
 </div>
 
 <div id="editor-shell">
@@ -656,10 +656,265 @@ function drawStars(t, dt) {
   }
 }
 
+// ---- grid ----
+// 40x40 grid of 1px square outlines, exponential ambient zoom, moiré from
+// a 41x41 rotated overlay composited via difference, noise-warped vertices,
+// jittered scroll snaps every few seconds, invert flash on bass onset.
+// 2D-canvas implementation of the live-hydra grid — sidesteps having to
+// load Hydra into this page (which would break the existing modes' RAF).
+let gridFlashUntil = 0;
+let gridSnapX = 0, gridSnapY = 0, gridSnapEnd = 0;
+
+function gridNoiseAt(x, y, t) {
+  return 0.5 * (
+    Math.sin(x * 0.010 + t * 0.5) +
+    Math.sin(y * 0.013 + t * 0.7) +
+    Math.sin((x + y) * 0.007 + t * 0.3)
+  );
+}
+function drawGridLines(N, segPerLine, t, useDifference) {
+  const cellW = viewW / N;
+  const cellH = viewH / N;
+  if (useDifference) { ctx.save(); ctx.globalCompositeOperation = "difference"; }
+  ctx.strokeStyle = "rgba(255,255,255,0.95)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= N; i++) {
+    const x = i * cellW;
+    ctx.beginPath();
+    for (let s = 0; s <= segPerLine; s++) {
+      const y = (s / segPerLine) * viewH;
+      const dx = gridNoiseAt(x, y, t) * 1.5;
+      if (s === 0) ctx.moveTo(x + dx, y); else ctx.lineTo(x + dx, y);
+    }
+    ctx.stroke();
+  }
+  for (let j = 0; j <= N; j++) {
+    const y = j * cellH;
+    ctx.beginPath();
+    for (let s = 0; s <= segPerLine; s++) {
+      const x = (s / segPerLine) * viewW;
+      const dy = gridNoiseAt(x + 100, y + 100, t) * 1.5;
+      if (s === 0) ctx.moveTo(x, y + dy); else ctx.lineTo(x, y + dy);
+    }
+    ctx.stroke();
+  }
+  if (useDifference) ctx.restore();
+}
+function drawGrid(t, dt) {
+  if (lowOnset) gridFlashUntil = t + 70;
+  if (t > gridSnapEnd) { gridSnapX = 0; gridSnapY = 0; }
+
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  const tSec = t / 1000;
+  // exponential ambient zoom (1× → 2× loop ~12.5s) with bass-driven pulldown.
+  const zoom = Math.pow(2, (tSec * 0.08) % 1) * (1 - lowLevel * 0.15);
+
+  ctx.save();
+  ctx.translate(gridSnapX + viewW / 2, gridSnapY + viewH / 2);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-viewW / 2, -viewH / 2);
+
+  drawGridLines(40, 32, tSec, false);
+
+  ctx.save();
+  ctx.translate(viewW / 2, viewH / 2);
+  ctx.rotate(0.07);
+  ctx.translate(-viewW / 2, -viewH / 2);
+  drawGridLines(41, 32, tSec, true);
+  ctx.restore();
+
+  ctx.restore();
+
+  // bass-triggered full-frame invert via difference compositing
+  if (t < gridFlashUntil) {
+    ctx.save();
+    ctx.globalCompositeOperation = "difference";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.restore();
+  }
+}
+// jittered scroll snaps — gated on currentMode so other modes don't pay
+// the random-number cost while inactive.
+setInterval(() => {
+  if (currentMode === "grid" && Math.random() < 0.15) {
+    gridSnapX = (Math.random() - 0.5) * 0.3 * viewW;
+    gridSnapY = (Math.random() - 0.5) * 0.3 * viewH;
+    gridSnapEnd = performance.now() + 100;
+  }
+}, 700);
+
+// ---- ridges ----
+// stack of horizontal multi-frequency wave traces. baseline waviness from
+// summed sines + always-on positive bumps + bass-onset event peaks that
+// rise fast then slow-fall over ~1.5s. top lines fan out further than
+// bottom (depthFactor) so peaks tower visually rather than translating
+// the whole stack.
+const RIDGE_LINES   = 36;
+const RIDGE_TOP     = 0.18;
+const RIDGE_BOT     = 0.92;
+const RIDGE_SAMPLES = 320;
+const ridgePeakEvents = [];
+function spawnRidgePeak() {
+  ridgePeakEvents.push({
+    x: Math.random() * viewW,
+    width: 60 + Math.random() * 220,
+    height: 60 + lowLevel * 200,
+    born: performance.now(),
+    duration: 800 + Math.random() * 1500,
+  });
+}
+function ridgeEventPeakAt(x, t) {
+  let h = 0;
+  for (let i = ridgePeakEvents.length - 1; i >= 0; i--) {
+    const ev = ridgePeakEvents[i];
+    const age = t - ev.born;
+    if (age > ev.duration) { ridgePeakEvents.splice(i, 1); continue; }
+    const dx = x - ev.x;
+    const envelope = Math.exp(-Math.pow(dx / ev.width, 2));
+    const lifeT = age / ev.duration;
+    const lifeEnv = lifeT < 0.15 ? lifeT / 0.15 : 1 - (lifeT - 0.15) / 0.85;
+    h += ev.height * envelope * Math.max(0, lifeEnv);
+  }
+  return h;
+}
+function drawRidges(t, dt) {
+  if (lowOnset) spawnRidgePeak();
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  const tSec = t / 1000;
+  const yTop = viewH * RIDGE_TOP;
+  const yBot = viewH * RIDGE_BOT;
+  const lineGap = (yBot - yTop) / (RIDGE_LINES - 1);
+
+  ctx.strokeStyle = "rgba(255,255,255,0.92)";
+  ctx.lineWidth = 1;
+  ctx.lineJoin = "round";
+
+  for (let line = 0; line < RIDGE_LINES; line++) {
+    const y0 = yTop + lineGap * line;
+    const linePhase = line * 0.43;
+    const depthFactor = 0.3 + 0.7 * (1 - line / (RIDGE_LINES - 1));
+
+    ctx.beginPath();
+    for (let s = 0; s <= RIDGE_SAMPLES; s++) {
+      const x = (s / RIDGE_SAMPLES) * viewW;
+      const xn = x * 0.0055;
+
+      let wave = 0;
+      wave += Math.sin(xn * 1.0  + tSec * 0.27 + linePhase * 0.7) * 14;
+      wave += Math.sin(xn * 2.3  + tSec * 0.41 + linePhase * 1.2) * 10;
+      wave += Math.sin(xn * 5.7  + tSec * 0.69 + linePhase * 0.4) *  6;
+      wave += Math.sin(xn * 13.1 + tSec * 1.07 + linePhase * 1.5) *  3;
+
+      const bump = Math.max(0,
+        0.6 * Math.sin(xn * 0.5 + tSec * 0.31 + linePhase * 0.2) +
+        0.4 * Math.sin(xn * 0.9 + tSec * 0.19 + linePhase * 0.5)
+      );
+      const steadyPeak = Math.pow(bump, 5) * (30 + audioLevel * 80) * depthFactor;
+      const evPeak     = ridgeEventPeakAt(x, t) * depthFactor;
+
+      const y = y0 + wave - steadyPeak - evPeak;
+      if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
+// ---- rings ----
+// concentric rings with multi-frequency angular waves + always-on positive
+// bumps + bass-onset event peaks pulsing outward at random angles. outer
+// rings receive more push than inner so peaks burst outward. circular
+// sibling of ridges. integer θ multipliers in the wave keep the polyline
+// 2π-periodic so each ring closes cleanly.
+const RING_COUNT     = 36;
+const RING_SAMPLES   = 360;
+const RING_INNER     = 50;
+const ringPeakEvents = [];
+
+function spawnRingPeak() {
+  ringPeakEvents.push({
+    theta: Math.random() * Math.PI * 2,
+    angularWidth: 0.1 + Math.random() * 0.4,
+    height: 90 + lowLevel * 300,
+    born: performance.now(),
+    duration: 800 + Math.random() * 1500,
+  });
+}
+function ringEventPeakAt(theta, t) {
+  let h = 0;
+  for (let i = ringPeakEvents.length - 1; i >= 0; i--) {
+    const ev = ringPeakEvents[i];
+    const age = t - ev.born;
+    if (age > ev.duration) { ringPeakEvents.splice(i, 1); continue; }
+    // angular distance with 2π wraparound
+    let dTheta = theta - ev.theta;
+    if (dTheta >  Math.PI) dTheta -= Math.PI * 2;
+    if (dTheta < -Math.PI) dTheta += Math.PI * 2;
+    const envelope = Math.exp(-Math.pow(dTheta / ev.angularWidth, 2));
+    const lifeT = age / ev.duration;
+    const lifeEnv = lifeT < 0.15 ? lifeT / 0.15 : 1 - (lifeT - 0.15) / 0.85;
+    h += ev.height * envelope * Math.max(0, lifeEnv);
+  }
+  return h;
+}
+function drawRings(t, dt) {
+  if (lowOnset) spawnRingPeak();
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  const tSec = t / 1000;
+  const cx = viewW / 2, cy = viewH / 2;
+  const outerR = Math.min(viewW, viewH) * 0.45;
+  const ringGap = (outerR - RING_INNER) / (RING_COUNT - 1);
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.lineWidth = 1;
+  ctx.lineJoin = "round";
+
+  for (let ring = 0; ring < RING_COUNT; ring++) {
+    const r0 = RING_INNER + ringGap * ring;
+    const ringPhase = ring * 0.43;
+    const depthFactor = 0.25 + 0.75 * (ring / (RING_COUNT - 1));
+
+    ctx.beginPath();
+    for (let s = 0; s <= RING_SAMPLES; s++) {
+      const theta = (s / RING_SAMPLES) * Math.PI * 2;
+
+      let wave = 0;
+      wave += Math.sin(theta * 3  + tSec * 0.27 + ringPhase * 0.7) * 15;
+      wave += Math.sin(theta * 5  + tSec * 0.41 + ringPhase * 1.2) * 10.5;
+      wave += Math.sin(theta * 11 + tSec * 0.69 + ringPhase * 0.4) * 6;
+      wave += Math.sin(theta * 19 + tSec * 1.07 + ringPhase * 1.5) * 3;
+
+      const bump = Math.max(0,
+        0.6 * Math.sin(theta * 2 + tSec * 0.31 + ringPhase * 0.2) +
+        0.4 * Math.sin(theta * 3 + tSec * 0.19 + ringPhase * 0.5)
+      );
+      const steadyPeak = Math.pow(bump, 5) * (45 + audioLevel * 180) * depthFactor;
+      const evPeak     = ringEventPeakAt(theta, t) * depthFactor;
+
+      const r = r0 + wave + steadyPeak + evPeak;
+      const x = cx + Math.cos(theta) * r;
+      const y = cy + Math.sin(theta) * r;
+      if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
 // ---- mode toggle ----
-const MODES = { streaks: drawStreaks, static: drawStatic, invert: drawInvert, blocks: drawBlocks, stars: drawStars };
-const MODE_ORDER = ["streaks", "static", "invert", "blocks", "stars"];
+// rings sits at index 2 (key "3") so it's separated from ridges (key "8"),
+// per the "don't put similar visualizers adjacent" rule.
+const MODES = { streaks: drawStreaks, static: drawStatic, invert: drawInvert, blocks: drawBlocks, stars: drawStars, grid: drawGrid, ridges: drawRidges, rings: drawRings };
+const MODE_ORDER = ["streaks", "static", "rings", "invert", "blocks", "stars", "grid", "ridges"];
 let currentMode = MODE_ORDER[(Math.random() * MODE_ORDER.length) | 0];
+// kick-driven auto-cycle is the default; locked when the user picks a mode
+// via number keys, resumed by pressing 0.
+let modeLocked = false;
 
 function setMode(name) {
   if (!(name in MODES) || name === currentMode) return;
@@ -765,7 +1020,7 @@ function frame(t) {
   readAudio(dtMs);
   updateStatus(t);
 
-  if (lowOnset) {
+  if (lowOnset && !modeLocked) {
     const i = MODE_ORDER.indexOf(currentMode);
     setMode(MODE_ORDER[(i + 1) % MODE_ORDER.length]);
   }
@@ -778,8 +1033,12 @@ requestAnimationFrame(frame);
 window.addEventListener("keydown", (e) => {
   // ignore key handling when typing in the editor
   if (e.target.closest("strudel-editor, input, textarea, [contenteditable]")) return;
+  if (e.key === "0") { modeLocked = false; return; }
   const n = parseInt(e.key, 10);
-  if (n >= 1 && n <= MODE_ORDER.length) setMode(MODE_ORDER[n - 1]);
+  if (n >= 1 && n <= MODE_ORDER.length) {
+    setMode(MODE_ORDER[n - 1]);
+    modeLocked = true;
+  }
 });
 
 // ---- play / pause buttons → StrudelMirror API ----

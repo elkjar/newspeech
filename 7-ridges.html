@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // ridges</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // ridges">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/7-ridges.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // ridges">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<script>
+let mouseActivity = 0;
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
+}
+
+function poisson(rateFn, fire) {
+  function step() {
+    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+    const wait = -Math.log(1 - Math.random()) / ratePerMs;
+    setTimeout(() => { fire(); step(); }, wait);
+  }
+  step();
+}
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+let viewW, viewH, dpr;
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width  = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  canvas.style.width  = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---- ridge stack ----
+// each line is a sum of sines (multi-frequency baseline waviness) plus a
+// slow always-on positive-only peak component plus poisson-scheduled
+// "event" peaks that rise and fall over a couple of seconds. all peaks
+// push UP (subtract from y in canvas coords). lines stack top-to-bottom
+// over the middle of the viewport.
+const NUM_LINES   = 36;
+const TOP_FRAC    = 0.18;
+const BOT_FRAC    = 0.92;
+const NUM_SAMPLES = 320;
+
+// poisson-scheduled dramatic peak events. each sits at a random x with a
+// gaussian envelope across width and a fast-rise/slow-fall envelope over
+// time. they accumulate and fade — multiple can be alive at once.
+const peakEvents = [];
+function spawnPeak() {
+  peakEvents.push({
+    x: Math.random() * viewW,
+    width: 60 + Math.random() * 220,
+    height: 60 + Math.random() * 220,
+    born: performance.now(),
+    duration: 800 + Math.random() * 2000,
+  });
+}
+
+// peaks rate scales with intensity: 0.4 idle, up to 2.4 peaks/sec at full.
+poisson(() => 0.4 + intensity() * 2, spawnPeak);
+
+function eventPeakAt(x, t) {
+  let h = 0;
+  for (let i = peakEvents.length - 1; i >= 0; i--) {
+    const ev = peakEvents[i];
+    const age = t - ev.born;
+    if (age > ev.duration) { peakEvents.splice(i, 1); continue; }
+    const dx = x - ev.x;
+    const envelope = Math.exp(-Math.pow(dx / ev.width, 2));
+    const lifeT = age / ev.duration;
+    // rise quick (15% of life), fall slow (85%).
+    const lifeEnv = lifeT < 0.15
+      ? lifeT / 0.15
+      : 1 - (lifeT - 0.15) / 0.85;
+    h += ev.height * envelope * Math.max(0, lifeEnv);
+  }
+  return h;
+}
+
+function frame(t) {
+  const tSec = t / 1000;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  const env = intensity();
+  const yTop = viewH * TOP_FRAC;
+  const yBot = viewH * BOT_FRAC;
+  const lineGap = (yBot - yTop) / (NUM_LINES - 1);
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.lineWidth = 1;
+  ctx.lineJoin = "round";
+
+  for (let line = 0; line < NUM_LINES; line++) {
+    const y0 = yTop + lineGap * line;
+    const linePhase = line * 0.43;
+    // top lines get more peak push than bottom lines — gives the fanning-out
+    // look from the reference (peaks tower at top, baseline tightens at bottom).
+    const depthFactor = 0.3 + 0.7 * (1 - line / (NUM_LINES - 1));
+
+    ctx.beginPath();
+
+    for (let s = 0; s <= NUM_SAMPLES; s++) {
+      const x = (s / NUM_SAMPLES) * viewW;
+      const xn = x * 0.0055;
+
+      // multi-frequency baseline wave — 4 octaves of sin with offset phases.
+      let wave = 0;
+      wave += Math.sin(xn * 1.0  + tSec * 0.27 + linePhase * 0.7) * 14;
+      wave += Math.sin(xn * 2.3  + tSec * 0.41 + linePhase * 1.2) * 10;
+      wave += Math.sin(xn * 5.7  + tSec * 0.69 + linePhase * 0.4) *  6;
+      wave += Math.sin(xn * 13.1 + tSec * 1.07 + linePhase * 1.5) *  3;
+
+      // always-on positive-bumps component — sin peaks raised to a power so
+      // most of the line sits flat and only the tops protrude. modulated by
+      // intensity so silent moments are calmer.
+      const bump = Math.max(0,
+        0.6 * Math.sin(xn * 0.5 + tSec * 0.31 + linePhase * 0.2) +
+        0.4 * Math.sin(xn * 0.9 + tSec * 0.19 + linePhase * 0.5)
+      );
+      const steadyPeak = Math.pow(bump, 5) * (30 + env * 80) * depthFactor;
+
+      // poisson-scheduled dramatic event peaks
+      const evPeak = eventPeakAt(x, t) * depthFactor;
+
+      const y = y0 + wave - steadyPeak - evPeak;
+
+      if (s === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
+let lastT = performance.now();
+function loop(t) {
+  const dt = (t - lastT) / 1000;
+  lastT = t;
+  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+  frame(t);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+let lastMouseX = -10000, lastMouseY = -10000;
+window.addEventListener("mousemove", (e) => {
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  const dist = Math.hypot(dx, dy);
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+});
+window.addEventListener("click", () => { mouseActivity = 1; });
+</script>
+</body>
+</html>

@@ -4,13 +4,13 @@ Things in flight for newspeech. Stable conventions and decided direction live in
 
 ---
 
-## 1. Hydra visualizer integration
+## 1. Homepage Hydra background
 
-**Standalone visualizer page(s).** Add Hydra as one or more `N-*.html` entries in the existing `/visualizers` set. Follows the conventions in `CLAUDE.md` (CDN-loaded, fullscreen canvas, self-contained per page).
+Autonomous Hydra piece behind the existing typography on `index.html`. Same vibe as the standalone visualizers — no audio reactivity, no interaction, just atmosphere. Typography remains the focal point; Hydra is mood underneath.
 
-**Homepage background.** Autonomous Hydra piece behind the existing typography. Same vibe as the standalone visualizers — no audio reactivity, no interaction, just atmosphere. Typography remains the focal point; Hydra is mood underneath.
+Treat homepage Hydra and the Strudel-player (`live.html`) backgrounds as **separate concerns** — different audiences, different intent. Don't share code between them.
 
-Treat homepage Hydra and any future Strudel-player (`live.html`) backgrounds as **separate concerns** — different audiences, different intent. Don't share code between them.
+**Status of related work.** Standalone visualizer integration shipped: `6-grid.html` (Hydra), `7-ridges.html` and `8-rings.html` (2D canvas, audio-shaped sibling visuals). The renderer-choice rule (pen-and-ink → 2D canvas, shader fields → Hydra) and Hydra gotchas live in `CLAUDE.md`. `live.html` now hosts all eight visualizer modes (keys 1–8 lock, 0 resumes auto-cycle).
 
 **Open:** does the homepage Hydra piece stay fixed, or rotate through several over time / on reload?
 

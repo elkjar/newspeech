@@ -24,13 +24,22 @@ When adding a new visualizer:
 2. Add an entry to `visualizers.html` (the `<ol>` and the count in the header).
 3. Increment the number prefix.
 
+## Renderer choice
+
+Pen-and-ink visuals (lines, particles, glyphs, filled shapes) → 2D canvas (`getContext("2d")`). Shader-field visuals (continuous warps, modulate-driven coord interference, recursive feedback, kaleid mirroring) → Hydra via `hydra-synth` from unpkg. Don't reach for Hydra by default just because a piece is audio-reactive — both renderers can read `lowLevel` / `audioLevel` from the analyser tap.
+
+Hydra (currently `hydra-synth@1.4.0` via `https://unpkg.com/hydra-synth`) has two known traps on this site:
+
+- **fn-arg → NaN → white canvas.** `.modulate(src, () => n)`, `.rotate(() => n)`, and `.scrollX(0, () => n)` silently produce a fully-white canvas — the function arg reaches the GLSL as NaN. Only single-scalar fn-args like `.scale(() => n)`, `.brightness(() => n)`, `.invert(() => n)`, `.thresh(() => n)` are reliable. For other channels, drive `window.__*` globals from a `setInterval` and re-issue the chain with static numeric args (the chain-factory pattern in `6-grid.html` is the reference).
+- **requestAnimationFrame swallowing.** Once `new Hydra(...)` runs, external `requestAnimationFrame` callbacks queued by site code stop firing. Use `setInterval` (≈50ms / 20Hz) for any non-Hydra render or polling loop on a Hydra page. Hydra's own canvas keeps rendering at full RAF cadence on its internal loop; only external RAF is affected.
+
+If `hydra-synth` later pins to a newer version, retest both before assuming the rules still hold.
+
 ## Loading external libraries
 
-Convention is **CDN via unpkg**, no local vendoring, no build step. Current example: `live.html` loads Strudel via `<script src="https://unpkg.com/@strudel/repl@latest">`.
+Convention is **CDN via unpkg**, no local vendoring, no build step. Current example: `live.html` loads Strudel via `<script src="https://unpkg.com/@strudel/repl@latest">`. Hydra (`hydra-synth`) is loaded the same way — see *Renderer choice* above for its quirks.
 
 **Recommended (not yet applied):** pin versions instead of `@latest`. `@latest` on a deployed site can break unexpectedly when upstream ships changes. Form: `https://unpkg.com/<pkg>@<version>`.
-
-If a future visualizer uses Hydra (`hydra-synth`), follow the same pattern — CDN script tag, render into the existing `<canvas id="bg">`, no repo bloat.
 
 ## Roadmap notes (decisions made, not yet implemented)
 
