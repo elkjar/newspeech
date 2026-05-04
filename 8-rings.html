@@ -31,25 +31,48 @@
 </head>
 <body>
 <canvas id="bg"></canvas>
-<script>
-let mouseActivity = 0;
-function intensity() {
-  const t = performance.now();
-  const sum = 0.5
-    + 0.25 * Math.sin(t / 17000)
-    + 0.18 * Math.sin(t / 31000)
-    + 0.12 * Math.sin(t / 47000);
-  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
-}
 
-function poisson(rateFn, fire) {
-  function step() {
-    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
-    const wait = -Math.log(1 - Math.random()) / ratePerMs;
-    setTimeout(() => { fire(); step(); }, wait);
-  }
-  step();
-}
+<div id="panel" hidden>
+  <div class="panel-title">rings · params · [0] toggle</div>
+  <label>
+    <span class="name">ring count</span><span class="val"></span>
+    <input type="range" min="4" max="80" step="1" data-k="ringCount">
+  </label>
+  <label>
+    <span class="name">peak event rate</span><span class="val"></span>
+    <input type="range" min="0" max="4" step="0.05" data-k="peakRate">
+  </label>
+  <label>
+    <span class="name">peak strength</span><span class="val"></span>
+    <input type="range" min="0" max="4" step="0.05" data-k="peakStrength">
+  </label>
+  <label>
+    <span class="name">steady peak strength</span><span class="val"></span>
+    <input type="range" min="0" max="4" step="0.05" data-k="steadyStrength">
+  </label>
+  <label>
+    <span class="name">wave amplitude</span><span class="val"></span>
+    <input type="range" min="0" max="4" step="0.05" data-k="waveAmp">
+  </label>
+  <label>
+    <span class="name">inner radius</span><span class="val"></span>
+    <input type="range" min="0" max="300" step="5" data-k="innerR">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel } = Newspeech;
+installInputs();
+
+const params = {
+  ringCount: 36,
+  peakRate: 0.4,
+  peakStrength: 1,
+  steadyStrength: 1,
+  waveAmp: 1,
+  innerR: 50,
+};
 
 const canvas = document.getElementById("bg");
 const ctx = canvas.getContext("2d");
@@ -72,9 +95,7 @@ resize();
 // wave + always-on positive bumps + poisson-scheduled angular peak events
 // that pulse outward and decay over ~1.5s. outer rings receive more push
 // than inner ones so peaks burst outward rather than rippling from center.
-const RING_COUNT       = 36;
 const ANGULAR_SAMPLES  = 360;
-const INNER_R          = 50;
 
 // poisson-scheduled angular peak events. each is centered on a random θ
 // with a gaussian envelope across angular width and a fast-rise/slow-fall
@@ -84,12 +105,12 @@ function spawnRingPeak() {
   ringPeakEvents.push({
     theta: Math.random() * Math.PI * 2,
     angularWidth: 0.1 + Math.random() * 0.4,   // ~6°–23° spread
-    height: 90 + Math.random() * 300,
+    height: (90 + Math.random() * 300) * params.peakStrength,
     born: performance.now(),
     duration: 800 + Math.random() * 1500,
   });
 }
-poisson(() => 0.4 + intensity() * 2, spawnRingPeak);
+poisson(() => params.peakRate + intensity() * 2, spawnRingPeak);
 
 function ringEventPeakAt(theta, t) {
   let h = 0;
@@ -115,20 +136,22 @@ function frame(t) {
   ctx.fillRect(0, 0, viewW, viewH);
 
   const env = intensity();
+  const numRings = Math.max(2, Math.round(params.ringCount));
   const cx = viewW / 2;
   const cy = viewH / 2;
   const outerR = Math.min(viewW, viewH) * 0.45;
-  const ringGap = (outerR - INNER_R) / (RING_COUNT - 1);
+  const innerR = Math.min(params.innerR, outerR - 1);
+  const ringGap = (outerR - innerR) / (numRings - 1);
 
   ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
   ctx.lineWidth = 1;
   ctx.lineJoin = "round";
 
-  for (let ring = 0; ring < RING_COUNT; ring++) {
-    const r0 = INNER_R + ringGap * ring;
+  for (let ring = 0; ring < numRings; ring++) {
+    const r0 = innerR + ringGap * ring;
     const ringPhase = ring * 0.43;
     // outer rings push further out — opposite of ridges' top-fans-out.
-    const depthFactor = 0.25 + 0.75 * (ring / (RING_COUNT - 1));
+    const depthFactor = 0.25 + 0.75 * (ring / (numRings - 1));
 
     ctx.beginPath();
 
@@ -141,13 +164,14 @@ function frame(t) {
       wave += Math.sin(theta * 5  + tSec * 0.41 + ringPhase * 1.2) * 10.5;
       wave += Math.sin(theta * 11 + tSec * 0.69 + ringPhase * 0.4) * 6;
       wave += Math.sin(theta * 19 + tSec * 1.07 + ringPhase * 1.5) * 3;
+      wave *= params.waveAmp;
 
       // always-on positive-bump component, intensity-modulated
       const bump = Math.max(0,
         0.6 * Math.sin(theta * 2 + tSec * 0.31 + ringPhase * 0.2) +
         0.4 * Math.sin(theta * 3 + tSec * 0.19 + ringPhase * 0.5)
       );
-      const steadyPeak = Math.pow(bump, 5) * (45 + env * 180) * depthFactor;
+      const steadyPeak = Math.pow(bump, 5) * (45 + env * 180) * depthFactor * params.steadyStrength;
 
       // poisson-scheduled angular event peaks
       const evPeak = ringEventPeakAt(theta, t) * depthFactor;
@@ -167,22 +191,18 @@ let lastT = performance.now();
 function loop(t) {
   const dt = (t - lastT) / 1000;
   lastT = t;
-  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+  tickInputs(dt);
   frame(t);
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
-let lastMouseX = -10000, lastMouseY = -10000;
-window.addEventListener("mousemove", (e) => {
-  const dx = e.clientX - lastMouseX;
-  const dy = e.clientY - lastMouseY;
-  const dist = Math.hypot(dx, dy);
-  lastMouseX = e.clientX;
-  lastMouseY = e.clientY;
-  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  bumpActivity();
 });
-window.addEventListener("click", () => { mouseActivity = 1; });
+
+installPanel(params);
 </script>
 </body>
 </html>

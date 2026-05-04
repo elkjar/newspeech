@@ -31,27 +31,50 @@
 </head>
 <body>
 <canvas id="bg"></canvas>
-<script>
-// ---- intensity envelope ----
-let mouseActivity = 0;
-function intensity() {
-  const t = performance.now();
-  const sum = 0.5
-    + 0.25 * Math.sin(t / 17000)
-    + 0.18 * Math.sin(t / 31000)
-    + 0.12 * Math.sin(t / 47000);
-  return Math.max(0, Math.min(1, sum + mouseActivity * 0.3));
-}
 
-// ---- poisson event scheduler ----
-function poisson(rateFn, fire) {
-  function step() {
-    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
-    const wait = -Math.log(1 - Math.random()) / ratePerMs;
-    setTimeout(() => { fire(); step(); }, wait);
-  }
-  step();
-}
+<div id="panel" hidden>
+  <div class="panel-title">swarm · params · [0] toggle</div>
+  <label>
+    <span class="name">particle count</span><span class="val"></span>
+    <input type="range" min="0.1" max="3" step="0.05" data-k="particleMul">
+  </label>
+  <label>
+    <span class="name">speed multiplier</span><span class="val"></span>
+    <input type="range" min="0.1" max="4" step="0.05" data-k="speedMul">
+  </label>
+  <label>
+    <span class="name">directions</span><span class="val"></span>
+    <input type="range" min="4" max="32" step="1" data-k="directions">
+  </label>
+  <label>
+    <span class="name">kick rate</span><span class="val"></span>
+    <input type="range" min="0" max="2" step="0.01" data-k="kickRate">
+  </label>
+  <label>
+    <span class="name">trail fade</span><span class="val"></span>
+    <input type="range" min="0.1" max="4" step="0.05" data-k="fadeMul">
+  </label>
+  <label>
+    <span class="name">bright particle ratio</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="brightRatio">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel } = Newspeech;
+// swarm uses lighter mouse coupling (mouse weight 0.3 vs default 0.4) and
+// slightly slower decay than other 2D pages.
+installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
+
+const params = {
+  particleMul: 1,
+  speedMul: 1,
+  directions: 8,
+  kickRate: 0.04,
+  fadeMul: 1,
+  brightRatio: 0.05,
+};
 
 // ---- canvas: draw at device-pixel resolution, no scale transform ----
 // each particle is exactly one device pixel.
@@ -64,10 +87,10 @@ let cw, ch;             // device-pixel canvas dimensions
 let particles = [];
 
 // quantize movement to N cardinal/diagonal directions for a digital feel
-const DIRS = 8;
-const STEP = (Math.PI * 2) / DIRS;
 function quantize(ang) {
-  return Math.round(ang / STEP) * STEP;
+  const dirs = Math.max(1, Math.round(params.directions));
+  const step = (Math.PI * 2) / dirs;
+  return Math.round(ang / step) * step;
 }
 
 function makeParticle(x, y) {
@@ -79,8 +102,18 @@ function makeParticle(x, y) {
     nextTurn: 6 + Math.random() * 24, // device-px to travel before re-sampling
     age: 0,
     life: 0.8 + Math.random() * 2.6, // seconds
-    bright: Math.random() < 0.05,
+    bright: Math.random() < params.brightRatio,
   };
+}
+
+function targetParticleCount() {
+  const base = Math.min(9000, Math.max(1500, Math.floor(cw * ch / 900)));
+  return Math.max(1, Math.round(base * params.particleMul));
+}
+function adjustParticleCount() {
+  const target = targetParticleCount();
+  while (particles.length < target) particles.push(makeParticle());
+  if (particles.length > target) particles.length = target;
 }
 
 function resize() {
@@ -100,9 +133,7 @@ function resize() {
   ctx.fillRect(0, 0, cw, ch);
 
   // density tuned for 1-device-pixel dots; trails do most of the visual work
-  const target = Math.min(9000, Math.max(1500, Math.floor(cw * ch / 900)));
-  while (particles.length < target) particles.push(makeParticle());
-  if (particles.length > target) particles.length = target;
+  adjustParticleCount();
 }
 window.addEventListener("resize", resize);
 
@@ -124,7 +155,7 @@ function applyKick() {
   kickPhase = Math.random() * Math.PI * 2;
   kickAmount = 0.6 + Math.random() * 0.6;
 }
-poisson(() => 0.04 + 0.08 * intensity(), applyKick);
+poisson(() => params.kickRate + 0.08 * intensity(), applyKick);
 
 // ---- step ----
 function step(dt) {
@@ -132,12 +163,12 @@ function step(dt) {
   const env = intensity();
 
   // trail fade — longer trails when calm
-  const fadeAlpha = Math.min(0.4, (1.6 + 2.4 * (1 - env)) * dt);
+  const fadeAlpha = Math.min(0.4, (1.6 + 2.4 * (1 - env)) * dt * params.fadeMul);
   ctx.fillStyle = `rgba(5, 5, 5, ${fadeAlpha})`;
   ctx.fillRect(0, 0, cw, ch);
 
   // motion speed in CSS px / sec → multiply by dpr for device-px space
-  const speedCss = 90 + 180 * env;
+  const speedCss = (90 + 180 * env) * params.speedMul;
   const speed = speedCss * dpr;
 
   kickAmount *= Math.pow(0.5, dt / 0.7);
@@ -168,7 +199,7 @@ function step(dt) {
       p.y = Math.random() * ch;
       p.age = 0;
       p.life = 0.8 + Math.random() * 2.6;
-      p.bright = Math.random() < 0.05;
+      p.bright = Math.random() < params.brightRatio;
       p.distSinceTurn = 1e9;
     }
 
@@ -192,7 +223,7 @@ function frame(t) {
   const dtRaw = (t - lastT) / 1000;
   lastT = t;
   const dt = Math.min(0.05, dtRaw);
-  mouseActivity = Math.max(0, mouseActivity - 1.0 * dt);
+  tickInputs(dt);
   step(dt);
   requestAnimationFrame(frame);
 }
@@ -200,18 +231,8 @@ function frame(t) {
 resize();
 requestAnimationFrame(frame);
 
-// ---- mouse / click ----
-let lastMouseX = -10000, lastMouseY = -10000;
-window.addEventListener("mousemove", (e) => {
-  const dx = e.clientX - lastMouseX;
-  const dy = e.clientY - lastMouseY;
-  const dist = Math.hypot(dx, dy);
-  lastMouseX = e.clientX;
-  lastMouseY = e.clientY;
-  mouseActivity = Math.min(1, mouseActivity + dist * 0.003);
-});
-
 window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
   const cx = e.clientX * dpr;
   const cy = e.clientY * dpr;
   const burst = 200;
@@ -224,8 +245,14 @@ window.addEventListener("click", (e) => {
     if (Math.random() < 0.15) particles[idx].bright = true;
   }
   applyKick();
-  mouseActivity = 1;
+  bumpActivity();
 });
+
+window.onParamChange = (k) => {
+  if (k === "particleMul") adjustParticleCount();
+};
+
+installPanel(params);
 </script>
 </body>
 </html>

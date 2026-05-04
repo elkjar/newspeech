@@ -31,25 +31,43 @@
 </head>
 <body>
 <canvas id="bg"></canvas>
-<script>
-let mouseActivity = 0;
-function intensity() {
-  const t = performance.now();
-  const sum = 0.5
-    + 0.25 * Math.sin(t / 17000)
-    + 0.18 * Math.sin(t / 31000)
-    + 0.12 * Math.sin(t / 47000);
-  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
-}
 
-function poisson(rateFn, fire) {
-  function step() {
-    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
-    const wait = -Math.log(1 - Math.random()) / ratePerMs;
-    setTimeout(() => { fire(); step(); }, wait);
-  }
-  step();
-}
+<div id="panel" hidden>
+  <div class="panel-title">blocks · params · [0] toggle</div>
+  <label>
+    <span class="name">grid cols</span><span class="val"></span>
+    <input type="range" min="2" max="16" step="1" data-k="cols">
+  </label>
+  <label>
+    <span class="name">grid rows</span><span class="val"></span>
+    <input type="range" min="2" max="12" step="1" data-k="rows">
+  </label>
+  <label>
+    <span class="name">invert chance</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="invertChance">
+  </label>
+  <label>
+    <span class="name">reroll (ms)</span><span class="val"></span>
+    <input type="range" min="80" max="3000" step="10" data-k="rerollMs">
+  </label>
+  <label>
+    <span class="name">texture rebuild rate</span><span class="val"></span>
+    <input type="range" min="0" max="2" step="0.01" data-k="textureRate">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel } = Newspeech;
+installInputs();
+
+const params = {
+  cols: 7,
+  rows: 5,
+  invertChance: 0.18,
+  rerollMs: 600,
+  textureRate: 0.18,
+};
 
 const canvas = document.getElementById("bg");
 const ctx = canvas.getContext("2d");
@@ -99,15 +117,15 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-poisson(() => 0.18 + 0.35 * intensity(), () => buildTexture());
+poisson(() => params.textureRate + 0.35 * intensity(), () => buildTexture());
 
 // ---- block tiles ----
 let blockTiles = null;
 let blockRerollAt = 0;
 function rerollBlocks(t) {
   blockTiles = [];
-  const cols = 5 + ((Math.random() * 5) | 0);
-  const rows = 4 + ((Math.random() * 4) | 0);
+  const cols = Math.max(1, Math.round(params.cols));
+  const rows = Math.max(1, Math.round(params.rows));
   const baseW = viewW / cols;
   const baseH = viewH / rows;
   for (let r = 0; r < rows; r++) {
@@ -124,11 +142,11 @@ function rerollBlocks(t) {
         sx: Math.random() * Math.max(1, tex.width - sw),
         sy: Math.random() * Math.max(1, tex.height - sh),
         sw, sh,
-        inverted: Math.random() < 0.18,
+        inverted: Math.random() < params.invertChance,
       });
     }
   }
-  blockRerollAt = t + 250 + Math.random() * 700;
+  blockRerollAt = t + params.rerollMs * 0.45 + Math.random() * params.rerollMs * 1.1;
 }
 function drawBlocks(t, dt) {
   if (!tex.width) return;
@@ -155,27 +173,20 @@ let lastT = performance.now();
 function frame(t) {
   const dt = (t - lastT) / 1000;
   lastT = t;
-  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+  tickInputs(dt);
   drawBlocks(t, dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-let lastMouseX = -10000, lastMouseY = -10000;
-window.addEventListener("mousemove", (e) => {
-  const dx = e.clientX - lastMouseX;
-  const dy = e.clientY - lastMouseY;
-  const dist = Math.hypot(dx, dy);
-  lastMouseX = e.clientX;
-  lastMouseY = e.clientY;
-  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
-});
-
-window.addEventListener("click", () => {
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
   buildTexture();
   rerollBlocks(performance.now());
-  mouseActivity = 1;
+  bumpActivity();
 });
+
+installPanel(params);
 </script>
 </body>
 </html>

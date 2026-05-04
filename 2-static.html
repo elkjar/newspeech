@@ -31,16 +31,33 @@
 </head>
 <body>
 <canvas id="bg"></canvas>
+
+<div id="panel" hidden>
+  <div class="panel-title">static · params · [0] toggle</div>
+  <label>
+    <span class="name">density base</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="densityBase">
+  </label>
+  <label>
+    <span class="name">density · intensity</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="densityEnv">
+  </label>
+  <label>
+    <span class="name">bright cutoff</span><span class="val"></span>
+    <input type="range" min="0" max="255" step="1" data-k="brightCutoff">
+  </label>
+</div>
+
+<script src="core.js"></script>
 <script>
-let mouseActivity = 0;
-function intensity() {
-  const t = performance.now();
-  const sum = 0.5
-    + 0.25 * Math.sin(t / 17000)
-    + 0.18 * Math.sin(t / 31000)
-    + 0.12 * Math.sin(t / 47000);
-  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
-}
+const { intensity, installInputs, tickInputs, bumpActivity, installPanel } = Newspeech;
+installInputs();
+
+const params = {
+  densityBase: 0.10,
+  densityEnv: 0.20,
+  brightCutoff: 180,
+};
 
 const canvas = document.getElementById("bg");
 const ctx = canvas.getContext("2d");
@@ -74,12 +91,12 @@ function initStatic() {
 function drawStatic(t, dt) {
   if (!staticImg) initStatic();
   const env = intensity();
-  const density = 0.10 + 0.20 * env;
+  const density = params.densityBase + params.densityEnv * env;
   const d = staticImg.data;
   for (let i = 3; i < d.length; i += 4) {
     if (Math.random() < density) {
       const r = Math.random();
-      d[i] = (r * r * 180) | 0;
+      d[i] = (r * r * params.brightCutoff) | 0;
     } else {
       d[i] = 0;
     }
@@ -95,25 +112,18 @@ let lastT = performance.now();
 function frame(t) {
   const dt = (t - lastT) / 1000;
   lastT = t;
-  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+  tickInputs(dt);
   drawStatic(t, dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-let lastMouseX = -10000, lastMouseY = -10000;
-window.addEventListener("mousemove", (e) => {
-  const dx = e.clientX - lastMouseX;
-  const dy = e.clientY - lastMouseY;
-  const dist = Math.hypot(dx, dy);
-  lastMouseX = e.clientX;
-  lastMouseY = e.clientY;
-  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  bumpActivity();
 });
 
-window.addEventListener("click", () => {
-  mouseActivity = 1;
-});
+installPanel(params);
 </script>
 </body>
 </html>
