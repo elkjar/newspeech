@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // samples</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — sample library. CC BY-SA 4.0.">
+<meta property="og:title" content="NEWSPEECH // samples">
+<meta property="og:description" content="newspeech — sample library. CC BY-SA 4.0.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/samples.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // samples">
+<meta name="twitter:description" content="newspeech — sample library. CC BY-SA 4.0.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")  format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")  format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")   format("woff2"); font-display: swap; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #fff; }
+  body {
+    min-height: 100vh;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 72px 72px 96px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    margin-bottom: 64px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    flex-wrap: wrap;
+  }
+  header .label { opacity: 1; }
+  header .sep { opacity: 0.35; }
+
+  #tree {
+    font-size: 13px;
+    line-height: 26px;
+    max-width: 960px;
+  }
+
+  .row {
+    display: flex;
+    align-items: baseline;
+    white-space: pre;
+    cursor: pointer;
+    user-select: none;
+    padding: 0 6px;
+    margin: 0 -6px;
+    color: rgba(255, 255, 255, 0.85);
+    transition: background 80ms ease, color 80ms ease;
+  }
+  .row:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+  }
+  .row.expanded { background: rgba(255, 255, 255, 0.06); color: #fff; }
+
+  .row .prefix { opacity: 0.42; }
+  .row .name { white-space: pre; }
+  .row.dir .name { letter-spacing: 0.04em; }
+
+  .row .meta {
+    margin-left: auto;
+    padding-left: 32px;
+    display: flex;
+    gap: 24px;
+    opacity: 0.45;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .row .meta span { white-space: nowrap; }
+
+  /* file count badge on directory rows */
+  .row.dir .name::after {
+    content: attr(data-count);
+    margin-left: 14px;
+    opacity: 0.4;
+    letter-spacing: 0;
+  }
+
+  /* a chevron in the prefix indicates open/closed for dirs */
+  .row.dir .marker { display: inline-block; width: 1ch; opacity: 0.6; }
+
+  .preview {
+    padding: 14px 0 22px 0;
+    margin: 0 -6px;
+    padding-left: calc(6px + 8ch);
+    padding-right: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+    display: none;
+  }
+  .row.expanded + .preview { display: block; }
+
+  .preview canvas {
+    display: block;
+    width: 100%;
+    height: 72px;
+    image-rendering: pixelated;
+    cursor: pointer;
+  }
+
+  .preview .controls {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    margin-top: 12px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    opacity: 0.85;
+  }
+  .preview .play-btn {
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    padding: 6px 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 80ms;
+  }
+  .preview .play-btn:hover { background: rgba(255, 255, 255, 0.08); }
+  .preview .time { font-variant-numeric: tabular-nums; opacity: 0.6; }
+  .preview .dl {
+    margin-left: auto;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+    padding-bottom: 1px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 12px;
+  }
+  .preview .dl:hover { border-color: #fff; }
+  .preview .license {
+    font-size: 11px;
+    opacity: 0.4;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 8px;
+  }
+
+  @media (max-width: 720px) {
+    body { padding: 36px 24px 64px; font-size: 12px; }
+    #tree { font-size: 12px; line-height: 22px; }
+    .row .meta { display: none; }
+    .preview .controls { flex-wrap: wrap; gap: 14px; }
+    .preview .dl { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="label">newspeech / samples</span>
+    <span class="sep">·</span>
+    <span id="count">— files</span>
+    <span class="sep">·</span>
+    <span>cc by-sa 4.0</span>
+    <span class="sep">·</span>
+    <span><a href="index.html" style="color:inherit;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.3);">↩ home</a></span>
+  </header>
+
+  <div id="tree"></div>
+
+<script>
+// =========================================================================
+// MANIFEST
+// recursive tree. a node is either a folder ({ name, children: [...] }) or
+// a file ({ name, duration, size, date }). real audio is not wired yet —
+// drop a `url` field on a file once recorded and the preview will
+// fetch+decode it instead of using the synthetic shape.
+// =========================================================================
+const MANIFEST = [
+  { name: "noise", children: [
+    { name: "tape-hiss-warm.wav",        duration: 42,  size: "7.4 MB",  date: "2026-04-12" },
+    { name: "amp-hum-60hz.wav",          duration: 18,  size: "3.1 MB",  date: "2026-04-12" },
+    { name: "tube-saturation-loop.wav",  duration: 24,  size: "4.2 MB",  date: "2026-04-13" },
+    { name: "contact-mic-cloth.wav",     duration: 36,  size: "6.3 MB",  date: "2026-04-15" },
+    { name: "broken-cassette-rewind.wav",duration: 12,  size: "2.1 MB",  date: "2026-04-15" },
+  ]},
+  { name: "pads", children: [
+    { name: "halo-c2-slow.wav",          duration: 84,  size: "14.8 MB", date: "2026-04-18" },
+    { name: "halo-g2-slow.wav",          duration: 84,  size: "14.8 MB", date: "2026-04-18" },
+    { name: "vacuum-drone-low.wav",      duration: 120, size: "21.0 MB", date: "2026-04-19" },
+    { name: "breath-pad-shimmer.wav",    duration: 64,  size: "11.2 MB", date: "2026-04-19" },
+    { name: "analog-swell-eb3.wav",      duration: 48,  size: "8.4 MB",  date: "2026-04-21" },
+  ]},
+  { name: "instruments", children: [
+    { name: "bass", children: [
+      { name: "bass-c2.wav", duration: 8, size: "1.4 MB", date: "2026-04-22" },
+      { name: "bass-g2.wav", duration: 8, size: "1.4 MB", date: "2026-04-22" },
+      { name: "bass-c3.wav", duration: 8, size: "1.4 MB", date: "2026-04-22" },
+    ]},
+    { name: "lead", children: [
+      { name: "lead-c4.wav", duration: 6, size: "1.0 MB", date: "2026-04-23" },
+      { name: "lead-g4.wav", duration: 6, size: "1.0 MB", date: "2026-04-23" },
+    ]},
+    { name: "bell", children: [
+      { name: "bell-c5.wav", duration: 4, size: "0.7 MB", date: "2026-04-24" },
+      { name: "bell-g5.wav", duration: 4, size: "0.7 MB", date: "2026-04-24" },
+    ]},
+    { name: "sub", children: [
+      { name: "sub-c1.wav", duration: 10, size: "1.7 MB", date: "2026-04-24" },
+    ]},
+  ]},
+  { name: "sound", children: [
+    { name: "bowl-strike-resonant.wav",  duration: 14,  size: "2.5 MB",  date: "2026-04-26" },
+    { name: "glass-rim-bowed.wav",       duration: 22,  size: "3.9 MB",  date: "2026-04-26" },
+    { name: "match-strike.wav",          duration: 3,   size: "0.5 MB",  date: "2026-04-27" },
+    { name: "field-rain-loop.wav",       duration: 120, size: "21.0 MB", date: "2026-04-27" },
+    { name: "door-creak-low.wav",        duration: 6,   size: "1.0 MB",  date: "2026-04-28" },
+    { name: "room-tone-cold.wav",        duration: 60,  size: "10.5 MB", date: "2026-04-28" },
+  ]},
+];
+
+// flat lookup by path: "instruments/bass/c2.wav" → entry
+const NODE_BY_PATH = new Map();
+function indexNodes(nodes, parentPath) {
+  for (const n of nodes) {
+    const path = parentPath ? `${parentPath}/${n.name}` : n.name;
+    NODE_BY_PATH.set(path, n);
+    if (n.children) indexNodes(n.children, path);
+  }
+}
+indexNodes(MANIFEST, "");
+
+function countFiles(node) {
+  if (!node.children) return 1;
+  return node.children.reduce((s, c) => s + countFiles(c), 0);
+}
+// top-level category for a path — drives synthPeaks variant
+function topCat(path) { return path.split("/")[0]; }
+
+// =========================================================================
+// helpers
+// =========================================================================
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function mulberry32(a) {
+  return function() {
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function seedFromName(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// generate a per-category synthetic peaks array for waveform rendering.
+// when real audio lands, replace with peaks computed from decodeAudioData.
+function synthPeaks(name, category, n) {
+  const rng = mulberry32(seedFromName(category + "/" + name));
+  const peaks = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    let env;
+    if (category === "pads") {
+      // slow attack & release, sustained bloom
+      env = Math.min(t * 3.5, 1) * Math.min((1 - t) * 3.5, 1);
+      env = Math.pow(env, 0.6);
+    } else if (category === "instruments") {
+      // ADSR — fast attack, exponential decay
+      env = t < 0.04 ? t / 0.04 : Math.pow(0.94, (t - 0.04) * 90);
+    } else if (category === "noise") {
+      // dense, slight long-form drift
+      env = 0.62 + 0.18 * Math.sin(t * Math.PI * 1.3 + rng() * 6);
+    } else {
+      // sound — varied transient shapes
+      const center = 0.18 + rng() * 0.4;
+      env = Math.exp(-Math.pow((t - center) * 4, 2)) * (0.6 + 0.4 * rng());
+    }
+    let detail;
+    if (category === "noise") {
+      detail = (rng() * 2 - 1);
+    } else if (category === "instruments") {
+      detail = Math.sin(t * 60 + rng() * 4) * 0.7 + (rng() - 0.5) * 0.3;
+    } else if (category === "pads") {
+      detail = Math.sin(t * 14 + rng() * 4) * 0.85 + (rng() - 0.5) * 0.15;
+    } else {
+      detail = Math.sin(t * 30 + rng() * 6) * 0.6 + (rng() - 0.5) * 0.4;
+    }
+    peaks[i] = Math.max(0.04, Math.min(1, Math.abs(env * detail)));
+  }
+  return peaks;
+}
+
+// =========================================================================
+// render the tree
+// =========================================================================
+const tree = document.getElementById("tree");
+
+function buildPrefix(parentLast, isLast) {
+  // parentLast: array of booleans for ancestor "is last child" (deepest last)
+  // isLast: this node is the last child of its parent
+  let s = "";
+  for (let i = 0; i < parentLast.length; i++) {
+    s += parentLast[i] ? "    " : "│   ";
+  }
+  s += isLast ? "└── " : "├── ";
+  return s;
+}
+
+function continuationPrefix(parentLast, isLast) {
+  // prefix for content INSIDE an expanded file row's preview.
+  // mirrors buildPrefix but uses spaces in the file-position column.
+  let s = "";
+  for (let i = 0; i < parentLast.length; i++) {
+    s += parentLast[i] ? "    " : "│   ";
+  }
+  s += isLast ? "    " : "│   ";
+  return s;
+}
+
+// recursive render — walks the manifest at arbitrary depth
+function renderNode(node, parentLast, isLast, parentPath) {
+  const path = parentPath ? `${parentPath}/${node.name}` : node.name;
+  const prefix = buildPrefix(parentLast, isLast);
+
+  // everything except top-level rows starts hidden (default = all collapsed)
+  const startHidden = parentLast.length > 0;
+
+  if (node.children) {
+    // directory row — defaults to collapsed
+    const dir = document.createElement("div");
+    dir.className = "row dir";
+    dir.dataset.collapsed = "1";
+    dir.dataset.path = path;
+    dir.dataset.depth = String(parentLast.length);
+    if (startHidden) dir.style.display = "none";
+    const fileCount = countFiles(node);
+    dir.innerHTML =
+      `<span class="prefix">${prefix}<span class="marker">▸</span> </span>` +
+      `<span class="name" data-count="${fileCount} ${fileCount === 1 ? 'file' : 'files'}">${node.name}/</span>`;
+    tree.appendChild(dir);
+
+    // recurse into children
+    node.children.forEach((child, i) => {
+      const childIsLast = i === node.children.length - 1;
+      renderNode(child, [...parentLast, isLast], childIsLast, path);
+    });
+  } else {
+    // file row
+    const row = document.createElement("div");
+    row.className = "row file";
+    row.dataset.path = path;
+    row.dataset.depth = String(parentLast.length);
+    if (startHidden) row.style.display = "none";
+    row.innerHTML =
+      `<span class="prefix">${prefix}</span>` +
+      `<span class="name">${node.name}</span>` +
+      `<span class="meta">` +
+        `<span>${fmtTime(node.duration)}</span>` +
+        `<span>${node.size}</span>` +
+        `<span>${node.date}</span>` +
+      `</span>`;
+    tree.appendChild(row);
+
+    // preview block (sibling of row, hidden until row.expanded)
+    const prev = document.createElement("div");
+    prev.className = "preview";
+    prev.dataset.path = path;
+    prev.style.paddingLeft = `calc(6px + ${prefix.length}ch)`;
+    if (startHidden) prev.style.display = "none";
+    prev.innerHTML = `
+      <canvas class="wave" width="1200" height="144"></canvas>
+      <div class="controls">
+        <button type="button" class="play-btn" aria-label="play">▶ play</button>
+        <span class="time">00:00 / ${fmtTime(node.duration)}</span>
+        <a class="dl" href="#" download>↓ download · wav</a>
+      </div>
+      <div class="license">creative commons · attribution-sharealike 4.0</div>
+    `;
+    tree.appendChild(prev);
+  }
+}
+
+MANIFEST.forEach((node, i) => {
+  renderNode(node, [], i === MANIFEST.length - 1, "");
+});
+
+const totalCount = MANIFEST.reduce((s, n) => s + countFiles(n), 0);
+document.getElementById("count").textContent = `${totalCount} files`;
+
+// =========================================================================
+// directory collapse/expand — path-prefix-based, supports arbitrary depth
+// =========================================================================
+function isDescendantPath(childPath, ancestorPath) {
+  return childPath.startsWith(ancestorPath + "/");
+}
+
+function setDirCollapsed(dirRow, collapsed) {
+  const path = dirRow.dataset.path;
+  dirRow.dataset.collapsed = collapsed ? "1" : "0";
+  dirRow.querySelector(".marker").textContent = collapsed ? "▸" : "▾";
+
+  // direct vs transitive: when expanding, only un-hide DIRECT children (a
+  // descendant whose own ancestor dir is collapsed must stay hidden).
+  for (const el of tree.querySelectorAll("[data-path]")) {
+    const p = el.dataset.path;
+    if (!isDescendantPath(p, path)) continue;
+    if (collapsed) {
+      el.style.display = "none";
+    } else {
+      // visible iff every ancestor dir on its path (up to but not including this one) is open
+      let visible = true;
+      const segs = p.split("/");
+      // build all ancestor paths between dirRow's path and the element
+      for (let i = path.split("/").length; i < segs.length; i++) {
+        const ancestor = segs.slice(0, i).join("/");
+        const ancestorRow = tree.querySelector(`.row.dir[data-path="${ancestor}"]`);
+        if (ancestorRow && ancestorRow.dataset.collapsed === "1") { visible = false; break; }
+      }
+      el.style.display = visible ? "" : "none";
+    }
+  }
+
+  // when collapsing, also reset any expanded file row inside this dir
+  if (collapsed) {
+    for (const r of tree.querySelectorAll(".row.file.expanded")) {
+      if (isDescendantPath(r.dataset.path, path)) collapseFile(r);
+    }
+  }
+}
+
+// =========================================================================
+// file expand/collapse + waveform render + playhead animation
+// =========================================================================
+function getPreview(row) {
+  return row.nextElementSibling; // the .preview block sits directly after the row
+}
+
+function renderWaveform(canvas, peaks, progress, dpr) {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const cy = h / 2;
+  const barW = 2;
+  const gap = 1;
+  const stride = barW + gap;
+  const count = Math.max(20, Math.floor(w / stride));
+  // resample peaks to bar count
+  const playedX = w * progress;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    const idx = Math.min(peaks.length - 1, Math.floor(t * peaks.length));
+    const v = peaks[idx];
+    const half = Math.max(1, v * (h * 0.46));
+    const x = i * stride;
+    const played = x < playedX;
+    ctx.fillStyle = played ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.42)";
+    ctx.fillRect(x, cy - half, barW, half * 2);
+  }
+  // playhead line
+  if (progress > 0 && progress < 1) {
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillRect(Math.min(w - 1, playedX), 0, 1, h);
+  }
+}
+
+const players = new Map(); // row -> { rafId, startedAt, offset, duration, peaks, canvas, timeEl, btn, paused, dpr }
+
+function expandFile(row) {
+  // collapse any other expanded file (single-expanded rule)
+  for (const r of tree.querySelectorAll(".row.file.expanded")) {
+    if (r !== row) collapseFile(r);
+  }
+  row.classList.add("expanded");
+
+  const path = row.dataset.path;
+  const entry = NODE_BY_PATH.get(path);
+  const cat = topCat(path);
+  const prev = getPreview(row);
+  const canvas = prev.querySelector("canvas.wave");
+  const btn = prev.querySelector(".play-btn");
+  const timeEl = prev.querySelector(".time");
+
+  const peaks = synthPeaks(entry.name, cat, 240);
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  // canvas needs measurable size before render
+  requestAnimationFrame(() => renderWaveform(canvas, peaks, 0, dpr));
+
+  const state = {
+    duration: entry.duration,
+    offset: 0,
+    startedAt: 0,
+    paused: true,
+    peaks, canvas, timeEl, btn, dpr,
+    rafId: 0,
+  };
+  players.set(row, state);
+
+  // canvas click → seek
+  canvas.onclick = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    state.offset = p * state.duration;
+    if (!state.paused) state.startedAt = performance.now();
+    drawAndTick(state);
+  };
+
+  btn.onclick = () => {
+    if (state.paused) startPlayback(state);
+    else pausePlayback(state);
+  };
+
+  // download placeholder — disabled visually until real files exist
+  const dl = prev.querySelector(".dl");
+  dl.addEventListener("click", (e) => { e.preventDefault(); });
+  dl.title = "files coming soon";
+  dl.style.opacity = "0.45";
+  dl.style.cursor = "not-allowed";
+}
+
+function collapseFile(row) {
+  row.classList.remove("expanded");
+  const state = players.get(row);
+  if (state) {
+    cancelAnimationFrame(state.rafId);
+    players.delete(row);
+  }
+}
+
+function startPlayback(state) {
+  state.paused = false;
+  state.startedAt = performance.now();
+  state.btn.textContent = "■ pause";
+  drawAndTick(state);
+}
+
+function pausePlayback(state) {
+  if (!state.paused) {
+    state.offset += (performance.now() - state.startedAt) / 1000;
+    state.paused = true;
+  }
+  state.btn.textContent = "▶ play";
+  cancelAnimationFrame(state.rafId);
+  // re-render at resting state
+  const progress = Math.min(1, state.offset / state.duration);
+  renderWaveform(state.canvas, state.peaks, progress, state.dpr);
+}
+
+function drawAndTick(state) {
+  cancelAnimationFrame(state.rafId);
+  function tick() {
+    const elapsed = state.paused ? state.offset : state.offset + (performance.now() - state.startedAt) / 1000;
+    const progress = Math.min(1, elapsed / state.duration);
+    renderWaveform(state.canvas, state.peaks, progress, state.dpr);
+    state.timeEl.textContent = `${fmtTime(elapsed)} / ${fmtTime(state.duration)}`;
+    if (progress >= 1 && !state.paused) {
+      // loop end — pause and reset
+      state.offset = 0;
+      state.paused = true;
+      state.btn.textContent = "▶ play";
+      renderWaveform(state.canvas, state.peaks, 0, state.dpr);
+      state.timeEl.textContent = `00:00 / ${fmtTime(state.duration)}`;
+      return;
+    }
+    if (!state.paused) state.rafId = requestAnimationFrame(tick);
+  }
+  if (state.paused) tick();
+  else state.rafId = requestAnimationFrame(tick);
+}
+
+// =========================================================================
+// click delegation
+// =========================================================================
+tree.addEventListener("click", (e) => {
+  const row = e.target.closest(".row");
+  if (!row) return;
+  if (row.classList.contains("dir")) {
+    setDirCollapsed(row, row.dataset.collapsed !== "1" ? true : false);
+  } else if (row.classList.contains("file")) {
+    if (row.classList.contains("expanded")) collapseFile(row);
+    else expandFile(row);
+  }
+});
+
+// re-render any expanded waveforms on resize (canvas width changed)
+window.addEventListener("resize", () => {
+  for (const [row, state] of players) {
+    const progress = state.paused
+      ? state.offset / state.duration
+      : (state.offset + (performance.now() - state.startedAt) / 1000) / state.duration;
+    renderWaveform(state.canvas, state.peaks, Math.min(1, progress), state.dpr);
+  }
+});
+</script>
+</body>
+</html>
