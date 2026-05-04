@@ -90,6 +90,44 @@
       background: rgba(255, 255, 255, 0.85);
       transition: width 60ms linear;
     }
+    #panel .panel-close {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.55);
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      padding: 4px 6px;
+      line-height: 1;
+    }
+    #panel .panel-close:hover { color: rgba(255, 255, 255, 1); }
+    #panel-handle {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      padding: 8px 12px;
+      background: rgba(10, 10, 10, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.85);
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      z-index: 10;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    #panel-handle[hidden] { display: none; }
+    #panel-handle:hover { background: rgba(20, 20, 20, 0.85); }
+    /* desktop has the [0] keyboard toggle — only show the tap chrome on mobile. */
+    @media (min-width: 721px) {
+      #panel .panel-close,
+      #panel-handle { display: none !important; }
+    }
   `;
   const style = document.createElement("style");
   style.textContent = css;
@@ -343,6 +381,36 @@
     _mouseActivity = Math.min(1, Math.max(_mouseActivity, t));
   }
 
+  // panel close [x] + reopen handle — keyboard `0` works on desktop, but
+  // mobile users need a tap target for both directions.
+  function setPanelVisible(visible) {
+    const panel = document.getElementById("panel");
+    if (!panel) return;
+    panel.hidden = !visible;
+    const handle = document.getElementById("panel-handle");
+    if (handle) handle.hidden = visible;
+  }
+  function ensurePanelChrome(panel) {
+    if (!panel.querySelector(".panel-close")) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "panel-close";
+      btn.setAttribute("aria-label", "close panel");
+      btn.textContent = "[x]";
+      btn.addEventListener("click", () => setPanelVisible(false));
+      panel.appendChild(btn);
+    }
+    if (!document.getElementById("panel-handle")) {
+      const h = document.createElement("button");
+      h.type = "button";
+      h.id = "panel-handle";
+      h.textContent = "[params]";
+      h.hidden = panel.hidden ? false : true; // mirror current panel state
+      h.addEventListener("click", () => setPanelVisible(true));
+      document.body.appendChild(h);
+    }
+  }
+
   function installPanel(params) {
     const panel = document.getElementById("panel");
     if (!panel) return;
@@ -361,6 +429,7 @@
       sync();
     });
     ensureAudioStatusEl(panel);
+    ensurePanelChrome(panel);
     updateAudioStatus();
   }
 
@@ -371,7 +440,7 @@
     if (e.target && e.target.tagName === "INPUT") return;
     if (e.key === "0") {
       const panel = document.getElementById("panel");
-      if (panel) panel.hidden = !panel.hidden;
+      if (panel) setPanelVisible(panel.hidden);
     } else if (e.key === "9") {
       const ap = document.getElementById("audio-panel");
       if (ap) { ap.hidden = !ap.hidden; if (!ap.hidden) updateAudioMeters(); }
