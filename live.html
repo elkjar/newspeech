@@ -167,7 +167,7 @@
     <span class="onset" id="onset-mi">MID</span>
     <span class="onset" id="onset-hi">HIGH</span>
   </div>
-  <div><span class="k">1–8</span> lock visualizer · <span class="k">0</span> auto · <span class="k">ctrl+enter</span> evaluate · <span class="k">ctrl+.</span> hush</div>
+  <div><span class="k">1–9</span> lock visualizer · <span class="k">0</span> auto · <span class="k">ctrl+enter</span> evaluate · <span class="k">ctrl+.</span> hush</div>
 </div>
 
 <div id="editor-shell">
@@ -906,11 +906,113 @@ function drawRings(t, dt) {
   }
 }
 
+// ---- swarm. 8-direction quantized flow-field particles, 1 device px each.
+// audio hooks: speed rides audioLevel; lowOnset triggers a directional kick
+// (kick strength scales with lowLevel). identity-transform during draw so
+// each particle is one device pixel even at high DPR.
+const SWARM_DIRS = 8;
+const SWARM_STEP = (Math.PI * 2) / SWARM_DIRS;
+let swarmParticles = null;
+let swarmCw = 0, swarmCh = 0;
+let swarmKickPhase = 0, swarmKickAmount = 0;
+
+function initSwarm() { swarmParticles = null; }
+function ensureSwarm() {
+  const w = canvas.width, h = canvas.height;
+  if (swarmParticles && swarmCw === w && swarmCh === h) return;
+  swarmCw = w; swarmCh = h;
+  const target = Math.min(9000, Math.max(1500, Math.floor(w * h / 900)));
+  swarmParticles = [];
+  for (let i = 0; i < target; i++) {
+    swarmParticles.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      dir: 0,
+      distSinceTurn: 1e9,
+      nextTurn: 6 + Math.random() * 24,
+      age: 0,
+      life: 0.8 + Math.random() * 2.6,
+      bright: Math.random() < 0.05,
+    });
+  }
+}
+function swarmField(x, y, t) {
+  const u = x / swarmCw;
+  const v = y / swarmCh;
+  const a = Math.sin(u * 6.0 + t * 0.00031);
+  const b = Math.sin(v * 5.0 - t * 0.00023);
+  const c = Math.sin((u + v) * 4.0 + t * 0.00041);
+  const d = Math.sin((u - v) * 7.0 - t * 0.00017);
+  return (a + b + 0.6 * c + 0.4 * d) * Math.PI;
+}
+function applySwarmKick(strength) {
+  swarmKickPhase = Math.random() * Math.PI * 2;
+  swarmKickAmount = strength !== undefined ? strength : 0.6 + Math.random() * 0.6;
+}
+function drawSwarm(t, dt) {
+  ensureSwarm();
+  // bass onset → strong directional kick (scales with bass loudness)
+  if (lowOnset) applySwarmKick(0.8 + Math.random() * 0.6 + lowLevel);
+
+  const env = audioLevel;
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // identity — draw 1 device-px particles
+  ctx.imageSmoothingEnabled = false;
+
+  const fadeAlpha = Math.min(0.4, (1.6 + 2.4 * (1 - env)) * dt);
+  ctx.fillStyle = `rgba(5, 5, 5, ${fadeAlpha})`;
+  ctx.fillRect(0, 0, swarmCw, swarmCh);
+
+  const speed = (60 + 240 * env) * dpr;
+  swarmKickAmount *= Math.pow(0.5, dt / 0.7);
+
+  for (const p of swarmParticles) {
+    if (p.distSinceTurn >= p.nextTurn) {
+      let raw = swarmField(p.x, p.y, t);
+      if (swarmKickAmount > 0.02) raw += swarmKickAmount * Math.sin(swarmKickPhase);
+      p.dir = Math.round(raw / SWARM_STEP) * SWARM_STEP;
+      p.distSinceTurn = 0;
+      p.nextTurn = 6 + Math.random() * 24;
+    }
+    const dx = Math.cos(p.dir) * speed * dt;
+    const dy = Math.sin(p.dir) * speed * dt;
+    p.x += dx; p.y += dy;
+    p.distSinceTurn += Math.hypot(dx, dy);
+    p.age += dt;
+
+    if (p.x < 0) p.x += swarmCw;
+    else if (p.x >= swarmCw) p.x -= swarmCw;
+    if (p.y < 0) p.y += swarmCh;
+    else if (p.y >= swarmCh) p.y -= swarmCh;
+
+    if (p.age > p.life) {
+      p.x = Math.random() * swarmCw;
+      p.y = Math.random() * swarmCh;
+      p.age = 0;
+      p.life = 0.8 + Math.random() * 2.6;
+      p.bright = Math.random() < 0.05;
+      p.distSinceTurn = 1e9;
+    }
+
+    const xi = p.x | 0, yi = p.y | 0;
+    if (p.bright) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    } else {
+      const ageK = 1 - Math.min(1, p.age / p.life);
+      const a = 0.45 + 0.35 * ageK;
+      ctx.fillStyle = `rgba(220, 220, 220, ${a.toFixed(3)})`;
+    }
+    ctx.fillRect(xi, yi, 1, 1);
+  }
+  ctx.restore();
+}
+
 // ---- mode toggle ----
 // rings sits at index 2 (key "3") so it's separated from ridges (key "8"),
 // per the "don't put similar visualizers adjacent" rule.
-const MODES = { streaks: drawStreaks, static: drawStatic, invert: drawInvert, blocks: drawBlocks, stars: drawStars, grid: drawGrid, ridges: drawRidges, rings: drawRings };
-const MODE_ORDER = ["streaks", "static", "rings", "invert", "blocks", "stars", "grid", "ridges"];
+const MODES = { streaks: drawStreaks, static: drawStatic, invert: drawInvert, blocks: drawBlocks, stars: drawStars, grid: drawGrid, ridges: drawRidges, rings: drawRings, swarm: drawSwarm };
+const MODE_ORDER = ["streaks", "static", "rings", "invert", "blocks", "stars", "grid", "ridges", "swarm"];
 let currentMode = MODE_ORDER[(Math.random() * MODE_ORDER.length) | 0];
 // kick-driven auto-cycle is the default; locked when the user picks a mode
 // via number keys, resumed by pressing 0.
@@ -924,6 +1026,7 @@ function setMode(name) {
   else if (name === "invert") initInvert();
   else if (name === "blocks") initBlocks();
   else if (name === "stars") initStars();
+  else if (name === "swarm") initSwarm();
 }
 
 // ---- transmission readout: track / tempo / elapsed + band meters + onset pulses ----

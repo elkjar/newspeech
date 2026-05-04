@@ -708,6 +708,107 @@ function drawStars(t, dt) {
   }
 }
 
+// ---- slot 6: swarm. 8-direction quantized flow-field particles, 1 device px each.
+// works in raw device-pixel coords inside drawSwarm (transient identity transform)
+// so each particle renders as exactly one pixel even at high DPR.
+const SWARM_DIRS = 8;
+const SWARM_STEP = (Math.PI * 2) / SWARM_DIRS;
+let swarmParticles = null;
+let swarmCw = 0, swarmCh = 0;
+let swarmKickPhase = 0, swarmKickAmount = 0;
+
+function initSwarm() { swarmParticles = null; }
+function ensureSwarm() {
+  const w = canvas.width, h = canvas.height;
+  if (swarmParticles && swarmCw === w && swarmCh === h) return;
+  swarmCw = w; swarmCh = h;
+  const target = Math.min(9000, Math.max(1500, Math.floor(w * h / 900)));
+  swarmParticles = [];
+  for (let i = 0; i < target; i++) {
+    swarmParticles.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      dir: 0,
+      distSinceTurn: 1e9,
+      nextTurn: 6 + Math.random() * 24,
+      age: 0,
+      life: 0.8 + Math.random() * 2.6,
+      bright: Math.random() < 0.05,
+    });
+  }
+}
+function swarmField(x, y, t) {
+  const u = x / swarmCw;
+  const v = y / swarmCh;
+  const a = Math.sin(u * 6.0 + t * 0.00031);
+  const b = Math.sin(v * 5.0 - t * 0.00023);
+  const c = Math.sin((u + v) * 4.0 + t * 0.00041);
+  const d = Math.sin((u - v) * 7.0 - t * 0.00017);
+  return (a + b + 0.6 * c + 0.4 * d) * Math.PI;
+}
+function applySwarmKick(strength) {
+  swarmKickPhase = Math.random() * Math.PI * 2;
+  swarmKickAmount = strength !== undefined ? strength : 0.6 + Math.random() * 0.6;
+}
+poisson(() => 0.04 + 0.08 * intensity(), () => {
+  if (currentMode === "swarm") applySwarmKick();
+});
+function drawSwarm(t, dt) {
+  ensureSwarm();
+  const env = intensity();
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // identity — draw in raw device-pixel space
+  ctx.imageSmoothingEnabled = false;
+
+  const fadeAlpha = Math.min(0.4, (1.6 + 2.4 * (1 - env)) * dt);
+  ctx.fillStyle = `rgba(5, 5, 5, ${fadeAlpha})`;
+  ctx.fillRect(0, 0, swarmCw, swarmCh);
+
+  const speed = (90 + 180 * env) * dpr;
+  swarmKickAmount *= Math.pow(0.5, dt / 0.7);
+
+  for (const p of swarmParticles) {
+    if (p.distSinceTurn >= p.nextTurn) {
+      let raw = swarmField(p.x, p.y, t);
+      if (swarmKickAmount > 0.02) raw += swarmKickAmount * Math.sin(swarmKickPhase);
+      p.dir = Math.round(raw / SWARM_STEP) * SWARM_STEP;
+      p.distSinceTurn = 0;
+      p.nextTurn = 6 + Math.random() * 24;
+    }
+    const dx = Math.cos(p.dir) * speed * dt;
+    const dy = Math.sin(p.dir) * speed * dt;
+    p.x += dx; p.y += dy;
+    p.distSinceTurn += Math.hypot(dx, dy);
+    p.age += dt;
+
+    if (p.x < 0) p.x += swarmCw;
+    else if (p.x >= swarmCw) p.x -= swarmCw;
+    if (p.y < 0) p.y += swarmCh;
+    else if (p.y >= swarmCh) p.y -= swarmCh;
+
+    if (p.age > p.life) {
+      p.x = Math.random() * swarmCw;
+      p.y = Math.random() * swarmCh;
+      p.age = 0;
+      p.life = 0.8 + Math.random() * 2.6;
+      p.bright = Math.random() < 0.05;
+      p.distSinceTurn = 1e9;
+    }
+
+    const xi = p.x | 0, yi = p.y | 0;
+    if (p.bright) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    } else {
+      const ageK = 1 - Math.min(1, p.age / p.life);
+      const a = 0.45 + 0.35 * ageK;
+      ctx.fillStyle = `rgba(220, 220, 220, ${a.toFixed(3)})`;
+    }
+    ctx.fillRect(xi, yi, 1, 1);
+  }
+  ctx.restore();
+}
+
 // ---- visualizer registry + mode toggle ----
 const MODES = {
   streaks: drawStreaks,
@@ -715,8 +816,9 @@ const MODES = {
   invert:  drawInvert,
   blocks:  drawBlocks,
   stars:   drawStars,
+  swarm:   drawSwarm,
 };
-const MODE_ORDER = ["streaks", "static", "invert", "blocks", "stars"];
+const MODE_ORDER = ["streaks", "static", "invert", "blocks", "stars", "swarm"];
 let currentMode = "streaks";
 function setMode(name) {
   if (!(name in MODES) || name === currentMode) return;
@@ -726,6 +828,7 @@ function setMode(name) {
   else if (name === "invert") initInvert();
   else if (name === "blocks") initBlocks();
   else if (name === "stars")  initStars();
+  else if (name === "swarm")  initSwarm();
   for (const btn of document.querySelectorAll("#debug button")) {
     btn.classList.toggle("active", btn.dataset.mode === name);
   }
@@ -784,6 +887,27 @@ window.addEventListener("click", (e) => {
 
   // big intensity boost
   mouseActivity = 1;
+
+  // swarm: inject a particle burst at the click point + apply a kick
+  if (currentMode === "swarm" && swarmParticles) {
+    const cx = e.clientX * dpr;
+    const cy = e.clientY * dpr;
+    const burst = 200;
+    const radius = 40 * dpr;
+    for (let i = 0; i < burst; i++) {
+      const r = Math.pow(Math.random(), 0.5) * radius;
+      const a = Math.random() * Math.PI * 2;
+      const idx = (Math.random() * swarmParticles.length) | 0;
+      const p = swarmParticles[idx];
+      p.x = cx + Math.cos(a) * r;
+      p.y = cy + Math.sin(a) * r;
+      p.age = 0;
+      p.life = 0.8 + Math.random() * 2.6;
+      p.bright = Math.random() < 0.15;
+      p.distSinceTurn = 1e9;
+    }
+    applySwarmKick();
+  }
 });
 
 // ---- visualizer toggle: keyboard 1–5 to override the auto-cycler.
