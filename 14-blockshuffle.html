@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // blockshuffle</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // blockshuffle">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/14-blockshuffle.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // blockshuffle">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+
+  #panel .panel-source {
+    display: grid; gap: 6px; margin-bottom: 14px;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  #panel .panel-source .src-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #panel .panel-source .src-name { font-size: 10px; text-transform: uppercase; letter-spacing: 0.10em; opacity: 0.55; }
+  #panel .panel-source .src-status { font-size: 10px; letter-spacing: 0.04em; opacity: 0.45; font-variant-numeric: tabular-nums; }
+  #panel .panel-source .src-status.err { color: rgba(255, 180, 180, 0.95); opacity: 0.9; }
+  #panel .panel-source input[type="file"] { font-size: 10px; color: rgba(255, 255, 255, 0.75); width: 100%; }
+  #panel .panel-source input[type="file"]::file-selector-button {
+    background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18); padding: 4px 8px;
+    font-family: inherit; font-size: 10px; letter-spacing: 0.04em;
+    cursor: pointer; margin-right: 8px;
+  }
+  #panel .panel-source input[type="file"]::file-selector-button:hover { background: rgba(255, 255, 255, 0.16); }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">blockshuffle · params · [0] toggle</div>
+  <div class="panel-source">
+    <div class="src-row">
+      <span class="src-name">source</span>
+      <span class="src-status" id="src-status">no source</span>
+    </div>
+    <input id="src-file" type="file" accept="image/*,video/*">
+  </div>
+  <label>
+    <span class="name">block size (px)</span><span class="val"></span>
+    <input type="range" min="6" max="120" step="1" data-k="blockSize">
+  </label>
+  <label>
+    <span class="name">freeze rate</span><span class="val"></span>
+    <input type="range" min="0" max="40" step="0.2" data-k="freezeRate">
+  </label>
+  <label>
+    <span class="name">freeze duration</span><span class="val"></span>
+    <input type="range" min="0.1" max="6" step="0.05" data-k="freezeDuration">
+  </label>
+  <label>
+    <span class="name">misalign rate</span><span class="val"></span>
+    <input type="range" min="0" max="60" step="0.5" data-k="misalignRate">
+  </label>
+  <label>
+    <span class="name">misalign amount (px)</span><span class="val"></span>
+    <input type="range" min="0" max="80" step="1" data-k="misalignAmount">
+  </label>
+  <label>
+    <span class="name">audio boost</span><span class="val"></span>
+    <input type="range" min="0" max="10" step="0.1" data-k="audioBoost">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const { intensity, onset, poisson, installInputs, tickInputs, installPanel } = Newspeech;
+installInputs();
+
+const params = {
+  blockSize: 28,
+  freezeRate: 6,
+  freezeDuration: 1.4,
+  misalignRate: 10,
+  misalignAmount: 22,
+  audioBoost: 4,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+let viewW, viewH, dpr, cw, ch;
+let imgW = 0, imgH = 0;
+
+let freshCanvas, freshCtx;
+let freezeBuf, freezeBufCtx;
+
+let cols = 0, rows = 0;
+let blockPx = 0;            // block size in device pixels
+let freezeUntil = null;     // Float32Array of t-end seconds per block
+let misalignList = [];      // active misaligns: { i, dx, dy, ttl_end }
+
+const statusEl = document.getElementById("src-status");
+function setStatus(text, isErr) {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.classList.toggle("err", !!isErr);
+}
+
+let videoEl = null;
+let videoUrl = null;
+let imgEl = null;
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`image load failed: ${url}`));
+    img.src = url;
+  });
+}
+
+function stopVideo() {
+  if (!videoEl) return;
+  try { videoEl.pause(); } catch (_) {}
+  videoEl.removeAttribute("src");
+  try { videoEl.load(); } catch (_) {}
+  videoEl = null;
+  if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+}
+
+async function loadImageSource(file) {
+  let url = null, revoke = false;
+  try {
+    url = URL.createObjectURL(file);
+    revoke = true;
+    const img = await loadImage(url);
+    imgW = img.naturalWidth;
+    imgH = img.naturalHeight;
+    imgEl = img;
+    setStatus(`${imgW}×${imgH}`);
+  } catch (err) {
+    console.warn("image load failed:", err);
+    setStatus("load failed", true);
+  } finally {
+    if (revoke && url) URL.revokeObjectURL(url);
+  }
+}
+
+function loadVideoSource(file) {
+  return new Promise((resolve) => {
+    videoUrl = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.src = videoUrl;
+    v.loop = true;
+    v.muted = true;
+    v.playsInline = true;
+    v.autoplay = true;
+    v.addEventListener("loadedmetadata", () => {
+      imgW = v.videoWidth;
+      imgH = v.videoHeight;
+      videoEl = v;
+      v.play().catch((err) => {
+        console.warn("video play blocked:", err);
+        setStatus("video play blocked", true);
+      });
+      setStatus(`${imgW}×${imgH} · video`);
+      resolve();
+    }, { once: true });
+    v.addEventListener("error", () => {
+      console.warn("video load failed");
+      setStatus("video load failed", true);
+      if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+      resolve();
+    }, { once: true });
+  });
+}
+
+async function loadSource(file) {
+  setStatus("loading…");
+  stopVideo();
+  imgEl = null;
+  if (file && file.type && file.type.startsWith("video/")) return loadVideoSource(file);
+  return loadImageSource(file);
+}
+
+function ensureCanvases() {
+  if (!freshCanvas || freshCanvas.width !== cw || freshCanvas.height !== ch) {
+    freshCanvas = document.createElement("canvas");
+    freshCanvas.width = cw; freshCanvas.height = ch;
+    freshCtx = freshCanvas.getContext("2d");
+    freezeBuf = document.createElement("canvas");
+    freezeBuf.width = cw; freezeBuf.height = ch;
+    freezeBufCtx = freezeBuf.getContext("2d");
+  }
+}
+
+function recomputeGrid() {
+  blockPx = Math.max(2, Math.round(params.blockSize * dpr));
+  cols = Math.max(1, Math.ceil(cw / blockPx));
+  rows = Math.max(1, Math.ceil(ch / blockPx));
+  freezeUntil = new Float32Array(cols * rows);
+  misalignList = [];
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  cw = Math.floor(viewW * dpr);
+  ch = Math.floor(viewH * dpr);
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+  ensureCanvases();
+  recomputeGrid();
+}
+window.addEventListener("resize", resize);
+
+function drawCover(targetCtx, src) {
+  const scale = Math.max(cw / imgW, ch / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+  targetCtx.drawImage(src, (cw - drawW) * 0.5, (ch - drawH) * 0.5, drawW, drawH);
+}
+
+function blockOriginPx(i) {
+  const r = (i / cols) | 0;
+  const c = i - r * cols;
+  return [c * blockPx, r * blockPx];
+}
+
+function spawnFreeze(audioMul) {
+  if (!freezeUntil) return;
+  const burstCount = audioMul > 1 ? 1 + Math.floor(audioMul * 2) : 1;
+  const tEnd = performance.now() / 1000 + params.freezeDuration * (0.7 + Math.random() * 0.6);
+  for (let n = 0; n < burstCount; n++) {
+    const i = Math.floor(Math.random() * cols * rows);
+    const [bx, by] = blockOriginPx(i);
+    // snapshot the block from the current fresh frame so the freeze pins the
+    // moment of capture, not whatever is in the global freezeBuf from earlier.
+    freezeBufCtx.clearRect(bx, by, blockPx, blockPx);
+    freezeBufCtx.drawImage(freshCanvas, bx, by, blockPx, blockPx, bx, by, blockPx, blockPx);
+    freezeUntil[i] = tEnd;
+  }
+}
+
+function spawnMisalign(audioMul) {
+  if (!cols) return;
+  const burstCount = audioMul > 1 ? 1 + Math.floor(audioMul * 1.5) : 1;
+  const now = performance.now() / 1000;
+  for (let n = 0; n < burstCount; n++) {
+    const i = Math.floor(Math.random() * cols * rows);
+    const amp = params.misalignAmount * dpr * (0.4 + Math.random() * 1.6);
+    const dx = (Math.random() < 0.5 ? -1 : 1) * amp * Math.random();
+    const dy = (Math.random() < 0.5 ? -1 : 1) * amp * Math.random();
+    misalignList.push({ i, dx, dy, ttl_end: now + 0.4 + Math.random() * 0.8 });
+  }
+}
+
+poisson(
+  () => params.freezeRate * (1 + intensity() * params.audioBoost * 0.3),
+  () => spawnFreeze(1)
+);
+poisson(
+  () => params.misalignRate * (1 + intensity() * params.audioBoost * 0.3),
+  () => spawnMisalign(1)
+);
+
+function step(dt) {
+  const src = videoEl && videoEl.readyState >= 2 ? videoEl : imgEl;
+  if (!src || imgW === 0) {
+    ctx.fillStyle = "#050505";
+    ctx.fillRect(0, 0, cw, ch);
+    return;
+  }
+
+  // bass-onset bursts: bigger waves of corruption, scaled by the audioBoost
+  // knob. core.js's onset() returns false when the mic is off so this only
+  // fires under live audio.
+  if (onset("low") && params.audioBoost > 0) {
+    spawnFreeze(params.audioBoost);
+    spawnMisalign(params.audioBoost);
+  }
+
+  // refresh the source frame
+  freshCtx.fillStyle = "#000";
+  freshCtx.fillRect(0, 0, cw, ch);
+  freshCtx.save();
+  freshCtx.filter = "grayscale(1)";
+  drawCover(freshCtx, src);
+  freshCtx.restore();
+
+  // base layer: clean fresh frame
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.drawImage(freshCanvas, 0, 0);
+
+  const now = performance.now() / 1000;
+
+  // overlay frozen blocks
+  if (freezeUntil) {
+    for (let i = 0; i < freezeUntil.length; i++) {
+      if (freezeUntil[i] > now) {
+        const [bx, by] = blockOriginPx(i);
+        ctx.drawImage(freezeBuf, bx, by, blockPx, blockPx, bx, by, blockPx, blockPx);
+      }
+    }
+  }
+
+  // overlay misaligned blocks (read offset from fresh canvas)
+  for (let k = misalignList.length - 1; k >= 0; k--) {
+    const m = misalignList[k];
+    if (m.ttl_end <= now) {
+      misalignList.splice(k, 1);
+      continue;
+    }
+    const [bx, by] = blockOriginPx(m.i);
+    let sx = bx + m.dx, sy = by + m.dy;
+    if (sx < 0) sx = 0; else if (sx + blockPx > cw) sx = cw - blockPx;
+    if (sy < 0) sy = 0; else if (sy + blockPx > ch) sy = ch - blockPx;
+    ctx.drawImage(freshCanvas, sx, sy, blockPx, blockPx, bx, by, blockPx, blockPx);
+  }
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dtRaw = (t - lastT) / 1000;
+  lastT = t;
+  const dt = Math.min(0.05, dtRaw);
+  tickInputs(dt);
+  step(dt);
+  requestAnimationFrame(frame);
+}
+
+resize();
+requestAnimationFrame(frame);
+
+installPanel(params);
+
+window.onParamChange = (k) => {
+  if (k === "blockSize") recomputeGrid();
+};
+
+document.getElementById("src-file").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadSource(f);
+});
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  // click → corruption burst for instant feedback
+  spawnFreeze(2);
+  spawnMisalign(2);
+});
+</script>
+</body>
+</html>

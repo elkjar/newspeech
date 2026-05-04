@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // slitscan</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // slitscan">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/11-slitscan.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // slitscan">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+
+  #panel .panel-source {
+    display: grid; gap: 6px; margin-bottom: 14px;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  #panel .panel-source .src-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #panel .panel-source .src-name { font-size: 10px; text-transform: uppercase; letter-spacing: 0.10em; opacity: 0.55; }
+  #panel .panel-source .src-status { font-size: 10px; letter-spacing: 0.04em; opacity: 0.45; font-variant-numeric: tabular-nums; }
+  #panel .panel-source .src-status.err { color: rgba(255, 180, 180, 0.95); opacity: 0.9; }
+  #panel .panel-source input[type="file"] { font-size: 10px; color: rgba(255, 255, 255, 0.75); width: 100%; }
+  #panel .panel-source input[type="file"]::file-selector-button {
+    background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18); padding: 4px 8px;
+    font-family: inherit; font-size: 10px; letter-spacing: 0.04em;
+    cursor: pointer; margin-right: 8px;
+  }
+  #panel .panel-source input[type="file"]::file-selector-button:hover { background: rgba(255, 255, 255, 0.16); }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">slitscan · params · [0] toggle</div>
+  <div class="panel-source">
+    <div class="src-row">
+      <span class="src-name">source</span>
+      <span class="src-status" id="src-status">no source</span>
+    </div>
+    <input id="src-file" type="file" accept="video/*">
+  </div>
+  <label>
+    <span class="name">depth</span><span class="val"></span>
+    <input type="range" min="0.05" max="1.5" step="0.01" data-k="depth">
+  </label>
+  <label>
+    <span class="name">wave amount</span><span class="val"></span>
+    <input type="range" min="0" max="60" step="0.5" data-k="waveAmp">
+  </label>
+  <label>
+    <span class="name">wave frequency</span><span class="val"></span>
+    <input type="range" min="0" max="0.2" step="0.001" data-k="waveFreq">
+  </label>
+  <label>
+    <span class="name">wave speed</span><span class="val"></span>
+    <input type="range" min="0" max="6" step="0.05" data-k="waveSpeed">
+  </label>
+  <label>
+    <span class="name">audio scrub</span><span class="val"></span>
+    <input type="range" min="0" max="120" step="1" data-k="audioScrub">
+  </label>
+  <label>
+    <span class="name">contrast</span><span class="val"></span>
+    <input type="range" min="0.5" max="2.5" step="0.01" data-k="contrast">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const { intensity, installInputs, tickInputs, installPanel } = Newspeech;
+installInputs();
+
+const params = {
+  depth: 0.5,
+  waveAmp: 14,
+  waveFreq: 0.025,
+  waveSpeed: 0.7,
+  audioScrub: 50,
+  contrast: 1.0,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+// ring buffer of recent video frames at fixed low resolution; per-row blits
+// from this buffer give each output row a different time slice.
+const RING_W = 480, RING_H = 270, RING_N = 144;
+const ring = [];
+for (let i = 0; i < RING_N; i++) {
+  const c = document.createElement("canvas");
+  c.width = RING_W; c.height = RING_H;
+  ring.push(c);
+}
+let ringHead = 0;
+let ringFilled = 0;
+
+const slitCanvas = document.createElement("canvas");
+slitCanvas.width = RING_W; slitCanvas.height = RING_H;
+const slitCtx = slitCanvas.getContext("2d");
+slitCtx.imageSmoothingEnabled = false;
+
+let viewW, viewH, dpr, cw, ch;
+let imgW = 0, imgH = 0;
+
+const statusEl = document.getElementById("src-status");
+function setStatus(text, isErr) {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.classList.toggle("err", !!isErr);
+}
+
+let videoEl = null;
+let videoUrl = null;
+
+function stopVideo() {
+  if (!videoEl) return;
+  try { videoEl.pause(); } catch (_) {}
+  videoEl.removeAttribute("src");
+  try { videoEl.load(); } catch (_) {}
+  videoEl = null;
+  if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+  ringHead = 0;
+  ringFilled = 0;
+}
+
+function loadVideoSource(file) {
+  return new Promise((resolve) => {
+    videoUrl = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.src = videoUrl;
+    v.loop = true;
+    v.muted = true;
+    v.playsInline = true;
+    v.autoplay = true;
+    v.addEventListener("loadedmetadata", () => {
+      imgW = v.videoWidth;
+      imgH = v.videoHeight;
+      videoEl = v;
+      v.play().catch((err) => {
+        console.warn("video play blocked:", err);
+        setStatus("video play blocked", true);
+      });
+      setStatus(`${imgW}×${imgH} · video`);
+      resolve();
+    }, { once: true });
+    v.addEventListener("error", () => {
+      console.warn("video load failed");
+      setStatus("video load failed", true);
+      if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+      resolve();
+    }, { once: true });
+  });
+}
+
+async function loadSource(file) {
+  setStatus("loading…");
+  stopVideo();
+  if (file && file.type && file.type.startsWith("video/")) {
+    return loadVideoSource(file);
+  }
+  setStatus("video required", true);
+}
+
+function captureFrame() {
+  if (!videoEl || videoEl.readyState < 2 || videoEl.paused) return;
+  const target = ring[ringHead];
+  const tctx = target.getContext("2d");
+  const scale = Math.max(RING_W / imgW, RING_H / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+  const offX = (RING_W - drawW) * 0.5;
+  const offY = (RING_H - drawH) * 0.5;
+  tctx.fillStyle = "#000";
+  tctx.fillRect(0, 0, RING_W, RING_H);
+  tctx.save();
+  tctx.filter = "grayscale(1)";
+  tctx.drawImage(videoEl, offX, offY, drawW, drawH);
+  tctx.restore();
+  ringHead = (ringHead + 1) % RING_N;
+  if (ringFilled < RING_N) ringFilled++;
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  cw = Math.floor(viewW * dpr);
+  ch = Math.floor(viewH * dpr);
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+}
+window.addEventListener("resize", resize);
+
+function renderSlit(t) {
+  if (ringFilled === 0) return;
+  const env = intensity();
+  const audio = env * params.audioScrub;
+  const newest = (ringHead - 1 + RING_N) % RING_N;
+  const tt = t * 0.001;
+  // each row y samples from a frame age = depth*y + sinusoidal warp + audio scrub.
+  for (let y = 0; y < RING_H; y++) {
+    let age = y * params.depth + Math.sin(y * params.waveFreq + tt * params.waveSpeed) * params.waveAmp + audio;
+    if (age < 0) age = 0;
+    let ai = age | 0;
+    if (ai >= ringFilled) ai = ringFilled - 1;
+    const idx = (newest - ai + RING_N) % RING_N;
+    slitCtx.drawImage(ring[idx], 0, y, RING_W, 1, 0, y, RING_W, 1);
+  }
+}
+
+function blitToMain() {
+  const scale = Math.max(cw / RING_W, ch / RING_H);
+  const drawW = RING_W * scale;
+  const drawH = RING_H * scale;
+  const offX = (cw - drawW) * 0.5;
+  const offY = (ch - drawH) * 0.5;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.save();
+  if (params.contrast !== 1.0) ctx.filter = `contrast(${params.contrast})`;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(slitCanvas, offX, offY, drawW, drawH);
+  ctx.restore();
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dtRaw = (t - lastT) / 1000;
+  lastT = t;
+  const dt = Math.min(0.05, dtRaw);
+  tickInputs(dt);
+  captureFrame();
+  renderSlit(t);
+  blitToMain();
+  requestAnimationFrame(frame);
+}
+
+resize();
+requestAnimationFrame(frame);
+
+installPanel(params);
+
+document.getElementById("src-file").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadSource(f);
+});
+</script>
+</body>
+</html>

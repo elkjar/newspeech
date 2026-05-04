@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // edgemask</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // edgemask">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/12-edgemask.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // edgemask">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+
+  #panel .panel-source {
+    display: grid; gap: 6px; margin-bottom: 14px;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  #panel .panel-source .src-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #panel .panel-source .src-name { font-size: 10px; text-transform: uppercase; letter-spacing: 0.10em; opacity: 0.55; }
+  #panel .panel-source .src-status { font-size: 10px; letter-spacing: 0.04em; opacity: 0.45; font-variant-numeric: tabular-nums; }
+  #panel .panel-source .src-status.err { color: rgba(255, 180, 180, 0.95); opacity: 0.9; }
+  #panel .panel-source input[type="file"] { font-size: 10px; color: rgba(255, 255, 255, 0.75); width: 100%; }
+  #panel .panel-source input[type="file"]::file-selector-button {
+    background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18); padding: 4px 8px;
+    font-family: inherit; font-size: 10px; letter-spacing: 0.04em;
+    cursor: pointer; margin-right: 8px;
+  }
+  #panel .panel-source input[type="file"]::file-selector-button:hover { background: rgba(255, 255, 255, 0.16); }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">edgemask · params · [0] toggle</div>
+  <div class="panel-source">
+    <div class="src-row">
+      <span class="src-name">source</span>
+      <span class="src-status" id="src-status">no source</span>
+    </div>
+    <input id="src-file" type="file" accept="image/*,video/*">
+  </div>
+  <label>
+    <span class="name">threshold</span><span class="val"></span>
+    <input type="range" min="0" max="0.9" step="0.01" data-k="threshold">
+  </label>
+  <label>
+    <span class="name">gamma</span><span class="val"></span>
+    <input type="range" min="0.2" max="3" step="0.01" data-k="gamma">
+  </label>
+  <label>
+    <span class="name">edge softness</span><span class="val"></span>
+    <input type="range" min="0" max="8" step="0.1" data-k="softness">
+  </label>
+  <label>
+    <span class="name">floor</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="floor">
+  </label>
+  <label>
+    <span class="name">trail fade</span><span class="val"></span>
+    <input type="range" min="0.2" max="8" step="0.05" data-k="trailFade">
+  </label>
+  <label>
+    <span class="name">audio bloom</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="audioBoost">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const { intensity, installInputs, tickInputs, installPanel } = Newspeech;
+installInputs();
+
+const params = {
+  threshold: 0.18,
+  gamma: 0.7,
+  softness: 1.5,
+  floor: 0.05,
+  trailFade: 1.5,
+  audioBoost: 0.5,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+let viewW, viewH, dpr, cw, ch;
+let imgW = 0, imgH = 0;
+
+const SOBEL_LONG = 480;
+let sw = 0, sh = 0;
+
+let sobelOff, sobelOffCtx, grayBuf, magBuf;
+let maskCanvas, maskCtx;
+let procCanvas, procCtx;
+let trailsCanvas, trailsCtx;
+
+const statusEl = document.getElementById("src-status");
+function setStatus(text, isErr) {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.classList.toggle("err", !!isErr);
+}
+
+let videoEl = null;
+let videoUrl = null;
+let imgEl = null;
+
+function ensureSobelBuffers() {
+  if (!sobelOff || sobelOff.width !== sw || sobelOff.height !== sh) {
+    sobelOff = document.createElement("canvas");
+    sobelOff.width = sw; sobelOff.height = sh;
+    sobelOffCtx = sobelOff.getContext("2d", { willReadFrequently: true });
+    maskCanvas = document.createElement("canvas");
+    maskCanvas.width = sw; maskCanvas.height = sh;
+    maskCtx = maskCanvas.getContext("2d");
+  }
+  const n = sw * sh;
+  if (!grayBuf || grayBuf.length !== n) {
+    grayBuf = new Float32Array(n);
+    magBuf = new Float32Array(n);
+  }
+}
+
+function computeSobel(srcEl) {
+  ensureSobelBuffers();
+  sobelOffCtx.drawImage(srcEl, 0, 0, sw, sh);
+  const { data } = sobelOffCtx.getImageData(0, 0, sw, sh);
+  const g = grayBuf;
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) {
+    g[i] = (data[j] * 0.299 + data[j+1] * 0.587 + data[j+2] * 0.114) / 255;
+  }
+  const mag = magBuf;
+  let maxMag = 1e-6;
+  for (let i = 0; i < mag.length; i++) mag[i] = 0;
+  for (let y = 1; y < sh - 1; y++) {
+    for (let x = 1; x < sw - 1; x++) {
+      const i = y * sw + x;
+      const a = g[i - sw - 1], b = g[i - sw], c = g[i - sw + 1];
+      const d = g[i - 1],                 f = g[i + 1];
+      const e = g[i + sw - 1], h = g[i + sw], k = g[i + sw + 1];
+      const gx = -a + c - 2 * d + 2 * f - e + k;
+      const gy = -a - 2 * b - c + e + 2 * h + k;
+      const m = Math.hypot(gx, gy);
+      mag[i] = m;
+      if (m > maxMag) maxMag = m;
+    }
+  }
+  const sample = [];
+  for (let i = 0; i < mag.length; i += 5) if (mag[i] > 0) sample.push(mag[i]);
+  sample.sort((a, b) => a - b);
+  const norm = sample.length ? sample[Math.floor(sample.length * 0.95)] : maxMag;
+  const inv = 1 / Math.max(1e-6, norm);
+  for (let i = 0; i < mag.length; i++) {
+    const v = mag[i] * inv;
+    mag[i] = v > 1 ? 1 : v;
+  }
+}
+
+function buildMask(env) {
+  if (!magBuf) return;
+  const audioDrop = env * params.audioBoost * 0.5;
+  const thresh = Math.max(0, params.threshold - audioDrop);
+  const denom = Math.max(1e-3, 1 - thresh);
+  const gamma = params.gamma;
+  const floor = params.floor;
+  const out = maskCtx.createImageData(sw, sh);
+  const data = out.data;
+  for (let i = 0; i < magBuf.length; i++) {
+    const m = magBuf[i];
+    const adj = m > thresh ? Math.pow((m - thresh) / denom, gamma) : 0;
+    const alpha = floor + (1 - floor) * adj;
+    const j = i * 4;
+    data[j] = 255; data[j+1] = 255; data[j+2] = 255;
+    data[j+3] = (alpha > 1 ? 1 : alpha < 0 ? 0 : alpha) * 255 | 0;
+  }
+  maskCtx.putImageData(out, 0, 0);
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`image load failed: ${url}`));
+    img.src = url;
+  });
+}
+
+function stopVideo() {
+  if (!videoEl) return;
+  try { videoEl.pause(); } catch (_) {}
+  videoEl.removeAttribute("src");
+  try { videoEl.load(); } catch (_) {}
+  videoEl = null;
+  if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+}
+
+async function loadImageSource(file) {
+  let url = null, revoke = false;
+  try {
+    url = URL.createObjectURL(file);
+    revoke = true;
+    const img = await loadImage(url);
+    imgW = img.naturalWidth;
+    imgH = img.naturalHeight;
+    const scale = SOBEL_LONG / Math.max(imgW, imgH);
+    sw = Math.max(2, Math.floor(imgW * scale));
+    sh = Math.max(2, Math.floor(imgH * scale));
+    ensureSobelBuffers();
+    computeSobel(img);
+    imgEl = img;
+    setStatus(`${imgW}×${imgH}`);
+  } catch (err) {
+    console.warn("image load failed:", err);
+    setStatus("load failed", true);
+  } finally {
+    if (revoke && url) URL.revokeObjectURL(url);
+  }
+}
+
+function loadVideoSource(file) {
+  return new Promise((resolve) => {
+    videoUrl = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.src = videoUrl;
+    v.loop = true;
+    v.muted = true;
+    v.playsInline = true;
+    v.autoplay = true;
+    v.addEventListener("loadedmetadata", () => {
+      imgW = v.videoWidth;
+      imgH = v.videoHeight;
+      const scale = SOBEL_LONG / Math.max(imgW, imgH);
+      sw = Math.max(2, Math.floor(imgW * scale));
+      sh = Math.max(2, Math.floor(imgH * scale));
+      ensureSobelBuffers();
+      videoEl = v;
+      v.play().catch((err) => {
+        console.warn("video play blocked:", err);
+        setStatus("video play blocked", true);
+      });
+      setStatus(`${imgW}×${imgH} · video`);
+      resolve();
+    }, { once: true });
+    v.addEventListener("error", () => {
+      console.warn("video load failed");
+      setStatus("video load failed", true);
+      if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+      resolve();
+    }, { once: true });
+  });
+}
+
+async function loadSource(file) {
+  setStatus("loading…");
+  stopVideo();
+  imgEl = null;
+  if (file && file.type && file.type.startsWith("video/")) return loadVideoSource(file);
+  return loadImageSource(file);
+}
+
+function ensureCanvases() {
+  if (!procCanvas || procCanvas.width !== cw || procCanvas.height !== ch) {
+    procCanvas = document.createElement("canvas");
+    procCanvas.width = cw; procCanvas.height = ch;
+    procCtx = procCanvas.getContext("2d");
+    trailsCanvas = document.createElement("canvas");
+    trailsCanvas.width = cw; trailsCanvas.height = ch;
+    trailsCtx = trailsCanvas.getContext("2d");
+  }
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  cw = Math.floor(viewW * dpr);
+  ch = Math.floor(viewH * dpr);
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+  ensureCanvases();
+}
+window.addEventListener("resize", resize);
+
+function drawCover(targetCtx, src) {
+  const scale = Math.max(cw / imgW, ch / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+  const offX = (cw - drawW) * 0.5;
+  const offY = (ch - drawH) * 0.5;
+  targetCtx.drawImage(src, offX, offY, drawW, drawH);
+}
+
+function step(dt) {
+  const src = videoEl && videoEl.readyState >= 2 ? videoEl : imgEl;
+  if (!src || imgW === 0) {
+    ctx.fillStyle = "#050505";
+    ctx.fillRect(0, 0, cw, ch);
+    return;
+  }
+  const env = intensity();
+
+  if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
+    computeSobel(videoEl);
+  }
+  buildMask(env);
+
+  procCtx.fillStyle = "#000";
+  procCtx.fillRect(0, 0, cw, ch);
+  procCtx.save();
+  procCtx.filter = "grayscale(1)";
+  drawCover(procCtx, src);
+  procCtx.restore();
+
+  procCtx.save();
+  procCtx.globalCompositeOperation = "destination-in";
+  procCtx.imageSmoothingEnabled = true;
+  if (params.softness > 0) procCtx.filter = `blur(${params.softness}px)`;
+  procCtx.drawImage(maskCanvas, 0, 0, cw, ch);
+  procCtx.restore();
+
+  const fadeAlpha = Math.min(0.6, 0.6 * dt * params.trailFade);
+  trailsCtx.globalCompositeOperation = "destination-out";
+  trailsCtx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+  trailsCtx.fillRect(0, 0, cw, ch);
+  trailsCtx.globalCompositeOperation = "source-over";
+  trailsCtx.drawImage(procCanvas, 0, 0);
+
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.drawImage(trailsCanvas, 0, 0);
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dtRaw = (t - lastT) / 1000;
+  lastT = t;
+  const dt = Math.min(0.05, dtRaw);
+  tickInputs(dt);
+  step(dt);
+  requestAnimationFrame(frame);
+}
+
+resize();
+requestAnimationFrame(frame);
+
+installPanel(params);
+
+document.getElementById("src-file").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadSource(f);
+});
+</script>
+</body>
+</html>
