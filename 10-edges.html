@@ -78,14 +78,14 @@
 <body>
 <canvas id="bg"></canvas>
 
-<div id="panel" hidden>
+<div id="panel">
   <div class="panel-title">edges · params · [0] toggle</div>
   <div class="panel-source">
     <div class="src-row">
-      <span class="src-name">source image</span>
+      <span class="src-name">source</span>
       <span class="src-status" id="src-status">loading…</span>
     </div>
-    <input id="src-file" type="file" accept="image/*">
+    <input id="src-file" type="file" accept="image/*,video/*">
   </div>
   <label>
     <span class="name">particle count</span><span class="val"></span>
@@ -108,6 +108,14 @@
     <input type="range" min="0" max="1.5" step="0.01" data-k="dissolve">
   </label>
   <label>
+    <span class="name">overlay opacity</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="overlay">
+  </label>
+  <label>
+    <span class="name">overlay invert</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="invert">
+  </label>
+  <label>
     <span class="name">trail fade</span><span class="val"></span>
     <input type="range" min="0.1" max="8" step="0.05" data-k="fadeMul">
   </label>
@@ -124,6 +132,8 @@ const params = {
   directions: 16,
   edgeWeight: 2.5,
   dissolve: 1,
+  overlay: 0,
+  invert: 0,
   fadeMul: 1,
 };
 
@@ -131,10 +141,15 @@ const DEFAULT_SRC = "assets/DSC00733.jpg";
 
 const canvas = document.getElementById("bg");
 const ctx = canvas.getContext("2d");
+// trails draw onto a separate offscreen canvas so the source-image overlay
+// can sit cleanly underneath without being chewed up by trail-fade compositing.
+const trailsCanvas = document.createElement("canvas");
+const trailsCtx = trailsCanvas.getContext("2d");
 
 let viewW, viewH, dpr;
 let cw, ch;
 let particles = [];
+let currentImg = null; // last-loaded image element (for overlay rendering)
 
 // ---- edge field (built from source image) ----
 let edgeMag = null;       // Float32Array — normalized 0..1
@@ -150,17 +165,95 @@ function setStatus(text, isErr) {
   statusEl.classList.toggle("err", !!isErr);
 }
 
+// ---- video source state (when active, frame loop recomputes Sobel each tick) ----
+let videoEl = null;
+let videoUrl = null;
+
+// ---- shared buffers for the Sobel pass — reused across frames for video ----
+let _offCanvas = null;
+let _offCtx = null;
+let _grayBuf = null;
+let _magBuf = null;
+let _tanBuf = null;
+
+function ensureSobelBuffers() {
+  if (!_offCanvas || _offCanvas.width !== sw || _offCanvas.height !== sh) {
+    _offCanvas = document.createElement("canvas");
+    _offCanvas.width = sw;
+    _offCanvas.height = sh;
+    _offCtx = _offCanvas.getContext("2d", { willReadFrequently: true });
+  }
+  const n = sw * sh;
+  if (!_grayBuf || _grayBuf.length !== n) {
+    _grayBuf = new Float32Array(n);
+    _magBuf  = new Float32Array(n);
+    _tanBuf  = new Float32Array(n);
+  }
+}
+
+// computes edge magnitude + tangent for the current source element (image or
+// video frame) into _magBuf/_tanBuf, then publishes them to edgeMag/edgeTan.
+function computeSobel(srcEl) {
+  ensureSobelBuffers();
+  _offCtx.drawImage(srcEl, 0, 0, sw, sh);
+  const { data } = _offCtx.getImageData(0, 0, sw, sh);
+  const g = _grayBuf;
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) {
+    g[i] = (data[j] * 0.299 + data[j + 1] * 0.587 + data[j + 2] * 0.114) / 255;
+  }
+  const mag = _magBuf;
+  const tan = _tanBuf;
+  let maxMag = 1e-6;
+  for (let y = 1; y < sh - 1; y++) {
+    for (let x = 1; x < sw - 1; x++) {
+      const i = y * sw + x;
+      const a = g[i - sw - 1], b = g[i - sw], c = g[i - sw + 1];
+      const d = g[i - 1],                 f = g[i + 1];
+      const e = g[i + sw - 1], h = g[i + sw], k = g[i + sw + 1];
+      const gx = -a + c - 2 * d + 2 * f - e + k;
+      const gy = -a - 2 * b - c + e + 2 * h + k;
+      const m = Math.hypot(gx, gy);
+      mag[i] = m;
+      // tangent perpendicular to gradient: rotate (gx,gy) by 90° → (-gy, gx)
+      tan[i] = Math.atan2(gx, -gy);
+      if (m > maxMag) maxMag = m;
+    }
+  }
+  // normalize against the 95th-percentile rather than absolute max — a
+  // single high-contrast region otherwise pegs the max and crushes every
+  // other edge into near-zero.
+  const sample = [];
+  for (let i = 0; i < mag.length; i += 5) if (mag[i] > 0) sample.push(mag[i]);
+  sample.sort((a, b) => a - b);
+  const norm = sample.length ? sample[Math.floor(sample.length * 0.95)] : maxMag;
+  const inv = 1 / Math.max(1e-6, norm);
+  for (let i = 0; i < mag.length; i++) {
+    const v = mag[i] * inv;
+    mag[i] = v > 1 ? 1 : v;
+  }
+  edgeMag = mag;
+  edgeTan = tan;
+}
+
 function loadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = (e) => reject(new Error(`image load failed: ${url}`));
+    img.onerror = () => reject(new Error(`image load failed: ${url}`));
     img.src = url;
   });
 }
 
-async function loadSource(srcOrFile) {
-  setStatus("loading…");
+function stopVideo() {
+  if (!videoEl) return;
+  try { videoEl.pause(); } catch (_) {}
+  videoEl.removeAttribute("src");
+  try { videoEl.load(); } catch (_) {}
+  videoEl = null;
+  if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+}
+
+async function loadImageSource(srcOrFile) {
   let url = null;
   let revoke = false;
   try {
@@ -176,51 +269,8 @@ async function loadSource(srcOrFile) {
     const scale = SOBEL_LONG_EDGE / Math.max(imgW, imgH);
     sw = Math.max(2, Math.floor(imgW * scale));
     sh = Math.max(2, Math.floor(imgH * scale));
-    const off = document.createElement("canvas");
-    off.width = sw;
-    off.height = sh;
-    const offc = off.getContext("2d", { willReadFrequently: true });
-    offc.drawImage(img, 0, 0, sw, sh);
-    const { data } = offc.getImageData(0, 0, sw, sh);
-
-    const g = new Float32Array(sw * sh);
-    for (let i = 0, j = 0; i < g.length; i++, j += 4) {
-      g[i] = (data[j] * 0.299 + data[j + 1] * 0.587 + data[j + 2] * 0.114) / 255;
-    }
-
-    const mag = new Float32Array(sw * sh);
-    const tan = new Float32Array(sw * sh);
-    let maxMag = 1e-6;
-    for (let y = 1; y < sh - 1; y++) {
-      for (let x = 1; x < sw - 1; x++) {
-        const i = y * sw + x;
-        const a = g[i - sw - 1], b = g[i - sw], c = g[i - sw + 1];
-        const d = g[i - 1],                 f = g[i + 1];
-        const e = g[i + sw - 1], h = g[i + sw], k = g[i + sw + 1];
-        const gx = -a + c - 2 * d + 2 * f - e + k;
-        const gy = -a - 2 * b - c + e + 2 * h + k;
-        const m = Math.hypot(gx, gy);
-        mag[i] = m;
-        // tangent perpendicular to gradient: rotate (gx,gy) by 90° → (-gy, gx)
-        tan[i] = Math.atan2(gx, -gy);
-        if (m > maxMag) maxMag = m;
-      }
-    }
-    // normalize against the 95th-percentile rather than absolute max — a
-    // single high-contrast region (keyboard keys here) otherwise pegs the
-    // max and crushes every other edge into near-zero.
-    const sample = [];
-    for (let i = 0; i < mag.length; i += 5) if (mag[i] > 0) sample.push(mag[i]);
-    sample.sort((a, b) => a - b);
-    const norm = sample.length ? sample[Math.floor(sample.length * 0.95)] : maxMag;
-    const inv = 1 / Math.max(1e-6, norm);
-    for (let i = 0; i < mag.length; i++) {
-      const v = mag[i] * inv;
-      mag[i] = v > 1 ? 1 : v;
-    }
-
-    edgeMag = mag;
-    edgeTan = tan;
+    computeSobel(img);
+    currentImg = img;
     setStatus(`${imgW}×${imgH}`);
   } catch (err) {
     console.warn("source image load failed:", err);
@@ -230,6 +280,48 @@ async function loadSource(srcOrFile) {
   } finally {
     if (revoke && url) URL.revokeObjectURL(url);
   }
+}
+
+function loadVideoSource(file) {
+  return new Promise((resolve) => {
+    videoUrl = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.src = videoUrl;
+    v.loop = true;
+    v.muted = true;       // required for autoplay; the visualizer uses the mic for audio
+    v.playsInline = true;
+    v.autoplay = true;
+    v.addEventListener("loadedmetadata", () => {
+      imgW = v.videoWidth;
+      imgH = v.videoHeight;
+      const scale = SOBEL_LONG_EDGE / Math.max(imgW, imgH);
+      sw = Math.max(2, Math.floor(imgW * scale));
+      sh = Math.max(2, Math.floor(imgH * scale));
+      ensureSobelBuffers();
+      videoEl = v;
+      v.play().catch((err) => {
+        console.warn("video play blocked:", err);
+        setStatus("video play blocked", true);
+      });
+      setStatus(`${imgW}×${imgH} · video`);
+      resolve();
+    }, { once: true });
+    v.addEventListener("error", () => {
+      console.warn("video load failed");
+      setStatus("video load failed", true);
+      if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+      resolve();
+    }, { once: true });
+  });
+}
+
+async function loadSource(srcOrFile) {
+  setStatus("loading…");
+  stopVideo();
+  const isVideoFile = srcOrFile && typeof srcOrFile !== "string"
+    && srcOrFile.type && srcOrFile.type.startsWith("video/");
+  if (isVideoFile) return loadVideoSource(srcOrFile);
+  return loadImageSource(srcOrFile);
 }
 
 // device-px (x, y) → edge sample, with cover-fit mapping (image fills canvas, overflow cropped)
@@ -256,10 +348,34 @@ function quantize(ang) {
   return Math.round(ang / step) * step;
 }
 
+// rejection-sample a spawn position weighted by edge magnitude — concentrates
+// particle density on contours so the source is legible from instantaneous
+// distribution alone (critical for video, where trails can't accumulate).
+// audio dissolve also scales the bias back to uniform.
+function sampleSpawnPosition() {
+  if (!edgeMag) return [Math.random() * cw, Math.random() * ch];
+  const env = intensity();
+  const dissolveK = Math.max(0, 1 - env * params.dissolve);
+  if (dissolveK <= 0) return [Math.random() * cw, Math.random() * ch];
+  for (let attempts = 0; attempts < 12; attempts++) {
+    const cx = Math.random() * cw;
+    const cy = Math.random() * ch;
+    const e = sampleEdge(cx, cy);
+    if (e && Math.random() < e.m * dissolveK) return [cx, cy];
+  }
+  return [Math.random() * cw, Math.random() * ch];
+}
+
 function makeParticle(x, y) {
+  let px, py;
+  if (x !== undefined && y !== undefined) {
+    px = x; py = y;
+  } else {
+    [px, py] = sampleSpawnPosition();
+  }
   return {
-    x: x !== undefined ? x : Math.random() * cw,
-    y: y !== undefined ? y : Math.random() * ch,
+    x: px,
+    y: py,
     dir: Math.random() * Math.PI * 2,
     distSinceTurn: 1e9,
     nextTurn: 6 + Math.random() * 24,
@@ -292,6 +408,11 @@ function resize() {
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#050505";
   ctx.fillRect(0, 0, cw, ch);
+  trailsCanvas.width = cw;
+  trailsCanvas.height = ch;
+  trailsCtx.imageSmoothingEnabled = false;
+  // trails canvas stays transparent — fading uses destination-out so the
+  // overlay underneath shows through wherever particles haven't drawn.
   adjustParticleCount();
 }
 window.addEventListener("resize", resize);
@@ -324,13 +445,36 @@ function field(x, y, t, prevDir) {
   return ta;
 }
 
+function drawOverlay(alpha) {
+  let src = null;
+  if (videoEl && videoEl.readyState >= 2) src = videoEl;
+  else if (currentImg) src = currentImg;
+  if (!src || imgW === 0 || imgH === 0) return;
+  const scale = Math.max(cw / imgW, ch / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+  const offX = (cw - drawW) * 0.5;
+  const offY = (ch - drawH) * 0.5;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.filter = `grayscale(1) invert(${params.invert})`;
+  ctx.drawImage(src, offX, offY, drawW, drawH);
+  ctx.restore();
+}
+
 function step(dt) {
   const t = performance.now();
   const env = intensity();
+  const dissolveK = Math.max(0, 1 - env * params.dissolve);
 
+  // fade trails by removing alpha (destination-out) instead of overwriting
+  // with bg color — keeps the trails canvas transparent so the overlay
+  // shows through where there aren't particles.
   const fadeAlpha = Math.min(0.4, (1.6 + 2.4 * (1 - env)) * dt * params.fadeMul);
-  ctx.fillStyle = `rgba(5, 5, 5, ${fadeAlpha})`;
-  ctx.fillRect(0, 0, cw, ch);
+  trailsCtx.globalCompositeOperation = "destination-out";
+  trailsCtx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+  trailsCtx.fillRect(0, 0, cw, ch);
+  trailsCtx.globalCompositeOperation = "source-over";
 
   const speedCss = (90 + 180 * env) * params.speedMul;
   const speed = speedCss * dpr;
@@ -354,26 +498,41 @@ function step(dt) {
     else if (p.y >= ch) p.y -= ch;
 
     if (p.age > p.life) {
-      p.x = Math.random() * cw;
-      p.y = Math.random() * ch;
+      const [nx, ny] = sampleSpawnPosition();
+      p.x = nx;
+      p.y = ny;
       p.age = 0;
       p.life = 0.8 + Math.random() * 2.6;
       p.bright = Math.random() < 0.05;
       p.distSinceTurn = 1e9;
     }
 
+    // alpha scales with local edge magnitude — particles on contours read
+    // bright, off-contour particles dim toward a 15% floor. dissolveK lerps
+    // back to uniform full visibility under audio.
+    const eHere = sampleEdge(p.x, p.y);
+    const m = eHere ? eHere.m : 0;
+    const visScale = 1 - 0.85 * dissolveK * (1 - m);
+
     const xi = p.x | 0;
     const yi = p.y | 0;
     if (p.bright) {
-      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-      ctx.fillRect(xi, yi, 1, 1);
+      const a = 0.95 * visScale;
+      trailsCtx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
+      trailsCtx.fillRect(xi, yi, 1, 1);
     } else {
       const ageK = 1 - Math.min(1, p.age / p.life);
-      const a = 0.45 + 0.35 * ageK;
-      ctx.fillStyle = `rgba(220, 220, 220, ${a.toFixed(3)})`;
-      ctx.fillRect(xi, yi, 1, 1);
+      const a = (0.45 + 0.35 * ageK) * visScale;
+      trailsCtx.fillStyle = `rgba(220, 220, 220, ${a.toFixed(3)})`;
+      trailsCtx.fillRect(xi, yi, 1, 1);
     }
   }
+
+  // composite to main canvas: bg → optional source overlay → trails layer
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+  if (params.overlay > 0) drawOverlay(params.overlay);
+  ctx.drawImage(trailsCanvas, 0, 0);
 }
 
 let lastT = performance.now();
@@ -382,6 +541,11 @@ function frame(t) {
   lastT = t;
   const dt = Math.min(0.05, dtRaw);
   tickInputs(dt);
+  // when a video source is active, recompute the edge field from the current
+  // frame so particles track moving contours.
+  if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
+    computeSobel(videoEl);
+  }
   step(dt);
   requestAnimationFrame(frame);
 }
