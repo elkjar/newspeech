@@ -83,7 +83,7 @@
   <div class="panel-source">
     <div class="src-row">
       <span class="src-name">source</span>
-      <span class="src-status" id="src-status">loading…</span>
+      <span class="src-status" id="src-status">no source</span>
     </div>
     <input id="src-file" type="file" accept="image/*,video/*">
   </div>
@@ -136,8 +136,6 @@ const params = {
   invert: 0,
   fadeMul: 1,
 };
-
-const DEFAULT_SRC = "assets/DSC00733.jpg";
 
 const canvas = document.getElementById("bg");
 const ctx = canvas.getContext("2d");
@@ -552,7 +550,6 @@ function frame(t) {
 
 resize();
 requestAnimationFrame(frame);
-loadSource(DEFAULT_SRC);
 
 window.addEventListener("click", (e) => {
   if (e.target.closest("#panel")) return;
