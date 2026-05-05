@@ -30,10 +30,13 @@ Each visualizer page is one HTML file with its own draw logic. Boilerplate that'
 
 **Audio dialog.** Toggle with `9` (bottom-left, mirrors the params panel in bottom-right). Built by `core.js`, shared across pages — no per-page setup. Contains: clickable mic on/off row, sensitivity slider (0.1×–5×, gain applied on every read of `audioLevel()` / `bandLevel()` / `intensity()`), and live low/mid/high band meters showing post-gain levels. Use the slider to compensate for ambient room volume — crank up for quiet music, pull back for loud.
 
+**MIDI mapping.** Hardware knobs / faders sending MIDI CC drive the params-panel sliders by panel-slot position — knob 1 controls the first slider on whatever visualizer is open, knob 2 the second, etc. A "learn" button in the audio dialog enables the binding: while learn is on, the params panel sliders go inert and you click a slider then twist a knob to bind that CC to that slot. Mappings are global (cc → slot index) and persist in `localStorage` so the same physical knob keeps its slot across pages and reloads. Web MIDI is supported on Chromium (Chrome/Edge/Brave/Opera) and Safari 18+; Firefox shows an "unsupported" status. Slot indexing is by position of `<label>` containing an `<input type="range">` inside `#panel`, so if a page has 5 sliders and a controller has 8 knobs, the last 3 knobs do nothing on that page.
+
 **Page-wide keys** (all live in `core.js`; pages don't wire keys themselves):
 - `0` — toggle params panel
 - `9` — toggle audio dialog
 - `a` — toggle mic on/off
+- `m` — toggle midi learn mode
 
 **Per-page markup:** dark `#050505` background, `<canvas id="bg">` fixed-positioned at `inset: 0`, cursor hidden, body overflow hidden. Standard OG/Twitter meta block.
 
