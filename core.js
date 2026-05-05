@@ -128,6 +128,49 @@
       #panel .panel-close,
       #panel-handle { display: none !important; }
     }
+    /* keyboard-shortcut hints in panel titles disappear on mobile so they
+       don't collide with the [x] close button (no keyboard there anyway). */
+    @media (max-width: 720px) {
+      .panel-title .kbd-hint { display: none; }
+    }
+
+    /* display-level filter (grayscale + contrast). composed via a CSS
+       variable in core.js so it works on mobile Safari (ctx.filter
+       silently no-ops pre-18) and so multiple effects compose cleanly. */
+    canvas#bg { filter: var(--ns-canvas-filter, none); }
+    #panel .panel-globals {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #panel .panel-grayscale {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      opacity: 0.55;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    #panel .panel-grayscale.on { opacity: 0.95; color: rgba(180, 220, 255, 1); }
+    /* contrast slider — outside <label> so MIDI slot indexing skips it. */
+    #panel .panel-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: baseline;
+      gap: 2px 10px;
+    }
+    #panel .panel-row .name { opacity: 0.75; }
+    #panel .panel-row .val {
+      opacity: 0.5;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    #panel .panel-row input[type="range"] {
+      grid-column: 1 / -1;
+      width: 100%;
+      margin: 4px 0 0;
+      accent-color: rgba(255, 255, 255, 0.75);
+    }
 
     /* ---- midi mapping ---- */
     #audio-panel .midi-section {
@@ -333,7 +376,7 @@
     div.id = "audio-panel";
     div.hidden = true;
     div.innerHTML = `
-      <div class="panel-title">audio · [9] toggle</div>
+      <div class="panel-title">audio · <span class="kbd-hint">[9] toggle</span></div>
       <div class="audio-state">[a] mic off</div>
       <label>
         <span class="name">sensitivity</span><span class="val"></span>
@@ -463,8 +506,10 @@
   }
 
   function panelSliderInputs() {
+    // per-page sliders only — global controls (contrast, etc.) live outside
+    // <label> wrappers and carry data-global so MIDI slot indexing skips them.
     const panel = document.getElementById("panel");
-    return panel ? panel.querySelectorAll('input[type="range"]') : [];
+    return panel ? panel.querySelectorAll('label input[type="range"]:not([data-global])') : [];
   }
 
   function applyToSlot(slot, t) {
@@ -578,6 +623,65 @@
     });
   }
 
+  // ---- display filter (grayscale + contrast) ----
+  // composed via CSS var on <html> so it works on mobile Safari (ctx.filter
+  // silently no-ops pre-18) and so the two effects layer cleanly. Both states
+  // persisted across reloads; grayscale defaults ON, contrast defaults 1.0.
+  const GRAYSCALE_KEY = "newspeech.grayscale";
+  const CONTRAST_KEY  = "newspeech.contrast";
+  let _grayscale = true;
+  let _contrast  = 1;
+  function loadGrayscale() {
+    try {
+      const raw = localStorage.getItem(GRAYSCALE_KEY);
+      if (raw === "0") _grayscale = false;
+    } catch (_) {}
+  }
+  function loadContrast() {
+    try {
+      const raw = localStorage.getItem(CONTRAST_KEY);
+      if (raw != null) {
+        const v = parseFloat(raw);
+        if (isFinite(v) && v > 0) _contrast = v;
+      }
+    } catch (_) {}
+  }
+  function rebuildCanvasFilter() {
+    const parts = [];
+    if (_grayscale) parts.push("grayscale(1)");
+    if (Math.abs(_contrast - 1) > 0.001) parts.push(`contrast(${_contrast})`);
+    document.documentElement.style.setProperty(
+      "--ns-canvas-filter", parts.length ? parts.join(" ") : "none"
+    );
+  }
+  function applyGrayscale() {
+    document.querySelectorAll("#panel .panel-grayscale").forEach(el => {
+      el.textContent = `grayscale: ${_grayscale ? "on" : "off"}`;
+      el.classList.toggle("on", _grayscale);
+    });
+    rebuildCanvasFilter();
+  }
+  function applyContrast() {
+    document.querySelectorAll("#panel .panel-contrast input").forEach(input => {
+      if (parseFloat(input.value) !== _contrast) input.value = _contrast;
+    });
+    document.querySelectorAll("#panel .panel-contrast .val").forEach(el => {
+      el.textContent = _contrast.toFixed(2);
+    });
+    rebuildCanvasFilter();
+  }
+  function toggleGrayscale() {
+    _grayscale = !_grayscale;
+    try { localStorage.setItem(GRAYSCALE_KEY, _grayscale ? "1" : "0"); } catch (_) {}
+    applyGrayscale();
+  }
+  function setContrast(v) {
+    if (!isFinite(v) || v <= 0) return;
+    _contrast = v;
+    try { localStorage.setItem(CONTRAST_KEY, String(_contrast)); } catch (_) {}
+    applyContrast();
+  }
+
   function intensity() {
     if (_audioActive) return gain(_audioLevel);
     const t = performance.now();
@@ -650,10 +754,56 @@
     }
   }
 
+  // wrap "· [N] toggle" tail of a panel-title in a .kbd-hint span so the
+  // mobile media query can hide it (it overlaps the [x] close button there
+  // and the keyboard shortcut is meaningless on touch).
+  function wrapPanelTitleHint(panel) {
+    const title = panel.querySelector(".panel-title");
+    if (!title || title.dataset.kbdWrapped === "1") return;
+    if (title.querySelector(".kbd-hint")) { title.dataset.kbdWrapped = "1"; return; }
+    const m = title.textContent.match(/^(.*?)(\s*·\s*\[[^\]]+\]\s*toggle\s*)$/);
+    if (!m) return;
+    title.textContent = "";
+    title.appendChild(document.createTextNode(m[1].trimEnd() + " "));
+    const span = document.createElement("span");
+    span.className = "kbd-hint";
+    span.textContent = m[2].replace(/^\s*/, "").trimEnd();
+    title.appendChild(span);
+    title.dataset.kbdWrapped = "1";
+  }
+
+  // append a globals block to the params panel: grayscale tap-row + contrast
+  // slider. global render settings, sit alongside per-page params, reachable
+  // on mobile by tap. the contrast slider is wrapped in a div (not <label>)
+  // so MIDI slot indexing skips it — knobs continue to map to per-page sliders.
+  function ensurePanelGlobals(panel) {
+    if (panel.querySelector(".panel-globals")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "panel-globals";
+
+    const gray = document.createElement("div");
+    gray.className = "panel-grayscale";
+    gray.addEventListener("click", toggleGrayscale);
+    wrap.appendChild(gray);
+
+    const contrast = document.createElement("div");
+    contrast.className = "panel-row panel-contrast";
+    contrast.innerHTML =
+      '<span class="name">contrast</span><span class="val"></span>' +
+      '<input type="range" min="0.5" max="2.5" step="0.01" data-global="1">';
+    const input = contrast.querySelector("input");
+    input.value = _contrast;
+    input.addEventListener("input", () => setContrast(parseFloat(input.value)));
+    wrap.appendChild(contrast);
+
+    panel.appendChild(wrap);
+  }
+
   function installPanel(params) {
     const panel = document.getElementById("panel");
     if (!panel) return;
-    panel.querySelectorAll("input[type=range]").forEach(input => {
+    wrapPanelTitleHint(panel);
+    panel.querySelectorAll("label input[type=range][data-k]").forEach(input => {
       const k = input.dataset.k;
       const valEl = input.parentElement.querySelector(".val");
       const step = parseFloat(input.step) || 1;
@@ -668,8 +818,11 @@
       sync();
     });
     ensureAudioStatusEl(panel);
+    ensurePanelGlobals(panel);
     ensurePanelChrome(panel);
     updateAudioStatus();
+    applyGrayscale();
+    applyContrast();
     wirePanelSlots(panel);
     refreshSliderBadges();
     refreshMidiUI();
@@ -696,10 +849,15 @@
   // load any persisted midi mappings before audio panel is built so initial UI
   // reflects the count.
   loadMidiMap();
+  loadGrayscale();
+  loadContrast();
 
-  // build the audio dialog at module load (hidden by default).
-  if (document.body) buildAudioPanel();
-  else document.addEventListener("DOMContentLoaded", buildAudioPanel);
+  // build the audio dialog and apply persisted display-filter state at module
+  // load (so the canvas filter is set before the page's first paint, not just
+  // when the visualizer page later calls installPanel).
+  function _coreInit() { buildAudioPanel(); rebuildCanvasFilter(); }
+  if (document.body) _coreInit();
+  else document.addEventListener("DOMContentLoaded", _coreInit);
 
   window.Newspeech = {
     intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel,

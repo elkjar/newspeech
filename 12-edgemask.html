@@ -328,10 +328,7 @@ function step(dt) {
 
   procCtx.fillStyle = "#000";
   procCtx.fillRect(0, 0, cw, ch);
-  procCtx.save();
-  procCtx.filter = "grayscale(1)";
   drawCover(procCtx, src);
-  procCtx.restore();
 
   procCtx.save();
   procCtx.globalCompositeOperation = "destination-in";

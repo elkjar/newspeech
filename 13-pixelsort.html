@@ -297,10 +297,7 @@ function step(dt) {
   const scale = Math.max(PROC_W / imgW, PROC_H / imgH);
   const drawW = imgW * scale;
   const drawH = imgH * scale;
-  procCtx.save();
-  procCtx.filter = "grayscale(1)";
   procCtx.drawImage(src, (PROC_W - drawW) * 0.5, (PROC_H - drawH) * 0.5, drawW, drawH);
-  procCtx.restore();
 
   // tick + prune bands
   for (let k = bands.length - 1; k >= 0; k--) {

@@ -455,7 +455,7 @@ function drawOverlay(alpha) {
   const offY = (ch - drawH) * 0.5;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.filter = `grayscale(1) invert(${params.invert})`;
+  ctx.filter = `invert(${params.invert})`;
   ctx.drawImage(src, offX, offY, drawW, drawH);
   ctx.restore();
 }

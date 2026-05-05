@@ -302,10 +302,7 @@ function step(dt) {
   // refresh the source frame
   freshCtx.fillStyle = "#000";
   freshCtx.fillRect(0, 0, cw, ch);
-  freshCtx.save();
-  freshCtx.filter = "grayscale(1)";
   drawCover(freshCtx, src);
-  freshCtx.restore();
 
   // base layer: clean fresh frame
   ctx.fillStyle = "#050505";

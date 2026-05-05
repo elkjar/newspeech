@@ -78,10 +78,6 @@
     <span class="name">audio scrub</span><span class="val"></span>
     <input type="range" min="0" max="120" step="1" data-k="audioScrub">
   </label>
-  <label>
-    <span class="name">contrast</span><span class="val"></span>
-    <input type="range" min="0.5" max="2.5" step="0.01" data-k="contrast">
-  </label>
 </div>
 
 <script src="core.js"></script>
@@ -95,7 +91,6 @@ const params = {
   waveFreq: 0.025,
   waveSpeed: 0.7,
   audioScrub: 50,
-  contrast: 1.0,
 };
 
 const canvas = document.getElementById("bg");
@@ -191,10 +186,7 @@ function captureFrame() {
   const offY = (RING_H - drawH) * 0.5;
   tctx.fillStyle = "#000";
   tctx.fillRect(0, 0, RING_W, RING_H);
-  tctx.save();
-  tctx.filter = "grayscale(1)";
   tctx.drawImage(videoEl, offX, offY, drawW, drawH);
-  tctx.restore();
   ringHead = (ringHead + 1) % RING_N;
   if (ringFilled < RING_N) ringFilled++;
 }
@@ -240,11 +232,8 @@ function blitToMain() {
   const offY = (ch - drawH) * 0.5;
   ctx.fillStyle = "#050505";
   ctx.fillRect(0, 0, cw, ch);
-  ctx.save();
-  if (params.contrast !== 1.0) ctx.filter = `contrast(${params.contrast})`;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(slitCanvas, offX, offY, drawW, drawH);
-  ctx.restore();
 }
 
 let lastT = performance.now();
