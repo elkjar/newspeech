@@ -32,18 +32,18 @@
       opacity: 0.55;
       margin-bottom: 4px;
     }
-    #panel .panel-audio-status, #audio-panel .audio-state {
+    #audio-panel .audio-state {
       font-size: 10px;
       text-transform: uppercase;
       letter-spacing: 0.10em;
       opacity: 0.45;
       margin-bottom: 12px;
+      cursor: pointer;
     }
-    #panel .panel-audio-status.on, #audio-panel .audio-state.on {
+    #audio-panel .audio-state.on {
       opacity: 0.95;
       color: rgba(180, 220, 255, 1);
     }
-    #audio-panel .audio-state { cursor: pointer; }
     #panel label, #audio-panel label {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -344,24 +344,8 @@
   function bandLevel(b)  { return _audioActive ? gain(_bandLevel[b] || 0) : 0; }
   function onset(b)      { return _audioActive ? !!_bandOnset[b] : false; }
 
-  function ensureAudioStatusEl(panel) {
-    let s = panel.querySelector(".panel-audio-status");
-    if (!s) {
-      s = document.createElement("div");
-      s.className = "panel-audio-status";
-      const title = panel.querySelector(".panel-title");
-      if (title) title.parentNode.insertBefore(s, title.nextSibling);
-      else panel.insertBefore(s, panel.firstChild);
-    }
-    return s;
-  }
   function updateAudioStatus() {
     const text = `[a] mic ${_audioActive ? "on" : "off"}`;
-    document.querySelectorAll("#panel").forEach(panel => {
-      const s = ensureAudioStatusEl(panel);
-      s.textContent = text;
-      s.classList.toggle("on", _audioActive);
-    });
     document.querySelectorAll("#audio-panel .audio-state").forEach(s => {
       s.textContent = text;
       s.classList.toggle("on", _audioActive);
@@ -817,7 +801,6 @@
       input.addEventListener("input", sync);
       sync();
     });
-    ensureAudioStatusEl(panel);
     ensurePanelGlobals(panel);
     ensurePanelChrome(panel);
     updateAudioStatus();
