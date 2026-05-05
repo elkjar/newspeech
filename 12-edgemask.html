@@ -82,7 +82,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, installInputs, tickInputs, installPanel, installMarkers, tickMarkers } = Newspeech;
+const { intensity, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry } = Newspeech;
 installInputs();
 
 const params = {
@@ -343,6 +343,7 @@ function step(dt) {
   ctx.drawImage(trailsCanvas, 0, 0);
 
   tickMarkers(dt);
+  tickTelemetry(dt);
 }
 
 let lastT = performance.now();
@@ -364,6 +365,8 @@ installMarkers({
   getSourceDims: () => ({ w: imgW, h: imgH }),
   getEdgeData: () => magBuf ? { mag: magBuf, w: sw, h: sh } : null,
 });
+
+installTelemetry({ params });
 
 installPanel(params);
 

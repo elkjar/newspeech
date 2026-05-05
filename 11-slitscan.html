@@ -82,7 +82,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, installInputs, tickInputs, installPanel, installMarkers, tickMarkers } = Newspeech;
+const { intensity, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry } = Newspeech;
 installInputs();
 
 const params = {
@@ -246,6 +246,7 @@ function frame(t) {
   renderSlit(t);
   blitToMain();
   tickMarkers(dt);
+  tickTelemetry(dt);
   requestAnimationFrame(frame);
 }
 
@@ -257,6 +258,8 @@ installMarkers({
   getSource: () => (videoEl && videoEl.readyState >= 2) ? videoEl : null,
   getSourceDims: () => ({ w: imgW, h: imgH }),
 });
+
+installTelemetry({ params });
 
 installPanel(params);
 

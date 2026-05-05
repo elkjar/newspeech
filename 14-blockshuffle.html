@@ -86,7 +86,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, onset, poisson, installInputs, tickInputs, installPanel, installMarkers, tickMarkers } = Newspeech;
+const { intensity, onset, poisson, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry } = Newspeech;
 installInputs();
 
 const params = {
@@ -336,6 +336,7 @@ function step(dt) {
   }
 
   tickMarkers(dt);
+  tickTelemetry(dt);
 }
 
 let lastT = performance.now();
@@ -356,6 +357,8 @@ installMarkers({
   getSource: () => (videoEl && videoEl.readyState >= 2) ? videoEl : imgEl,
   getSourceDims: () => ({ w: imgW, h: imgH }),
 });
+
+installTelemetry({ params });
 
 installPanel(params);
 

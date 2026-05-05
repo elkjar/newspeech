@@ -214,6 +214,16 @@
       outline-offset: 2px;
       background: rgba(255, 220, 180, 0.06);
     }
+
+    /* inline tap-targets in slider names (e.g. [s] next to "telemetry") */
+    #panel .ns-shuffle {
+      margin-left: 6px;
+      opacity: 0.45;
+      cursor: pointer;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+    }
+    #panel .ns-shuffle:hover { opacity: 0.95; color: rgba(180, 220, 255, 1); }
   `;
   const style = document.createElement("style");
   style.textContent = css;
@@ -919,6 +929,403 @@
     _drawMarkers(ctx);
   }
 
+  // ---- telemetry (top-left HUD overlay) ----
+  // pinned vertical stack of small monospace widgets that render a
+  // surveillance-feed look. each widget reads live core.js signals (band
+  // levels, intensity, audio level) when available and synthesizes plausible
+  // "documentation" content otherwise. layout is fixed: slot order is
+  // bands → waveform → coords → xfer → events → coords (extra). slider
+  // controls how many slots are visible from the top.
+  const TELEMETRY_PAD_TOP = 28;
+  const TELEMETRY_PAD_LEFT = 32;
+  const TELEMETRY_GAP = 18;
+  const TELEMETRY_LAYOUT = ["bands", "waveform", "coords", "xfer", "events", "hex"];
+  const _telemetryOrder = [...TELEMETRY_LAYOUT];
+  const _telemetrySlots = [];
+  let _telemetryParams = null;
+
+  function _bandLive(b, t) {
+    const real = bandLevel(b);
+    if (real > 0.001) return Math.min(1, real);
+    if (b === "low")  return Math.max(0, 0.30 + 0.25 * Math.sin(t / 1100));
+    if (b === "mid")  return Math.max(0, 0.40 + 0.30 * Math.sin(t / 800 + 1));
+    return                  Math.max(0, 0.35 + 0.25 * Math.sin(t / 600 + 2));
+  }
+  function _audioLive(t) {
+    const real = audioLevel();
+    if (real > 0.001) return Math.min(1, real);
+    return Math.max(0, 0.35 + 0.20 * Math.sin(t / 950));
+  }
+  function _hexLine(len) {
+    const c = "0123456789abcdef";
+    let s = "";
+    for (let i = 0; i < len; i++) s += c[(Math.random() * 16) | 0];
+    return s;
+  }
+  function _padBar(level, width) {
+    const filled = Math.max(0, Math.min(width, Math.round(level * width)));
+    return "█".repeat(filled) + "░".repeat(width - filled);
+  }
+  function _drawHeader(ctx, text, x, y, dpr) {
+    ctx.font = `${Math.round(9 * dpr)}px ui-monospace, "SF Mono", Menlo, monospace`;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.fillText(text, x, y);
+  }
+  function _bodyFont(ctx, dpr) {
+    ctx.font = `${Math.round(10 * dpr)}px ui-monospace, "SF Mono", Menlo, monospace`;
+  }
+
+  function _makeBands() {
+    return {
+      type: "bands",
+      tick(dt) {},
+      render(ctx, x, y, dpr) {
+        const t = performance.now();
+        const headerH = Math.round(11 * dpr);
+        const lineH   = Math.round(13 * dpr);
+        _drawHeader(ctx, "BAND.LMH", x, y, dpr);
+        let yy = y + headerH + Math.round(4 * dpr);
+        _bodyFont(ctx, dpr);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+        const bands = ["low", "mid", "high"];
+        const labels = ["LO", "MD", "HI"];
+        for (let i = 0; i < 3; i++) {
+          const v = _bandLive(bands[i], t);
+          ctx.fillText(`${labels[i]} ${v.toFixed(2)} ${_padBar(v, 14)}`, x, yy);
+          yy += lineH;
+        }
+        return yy - y;
+      },
+    };
+  }
+
+  function _makeWaveform() {
+    const N = 32;
+    const samples = new Float32Array(N);
+    let idx = 0, lastTick = 0;
+    return {
+      type: "waveform",
+      tick(dt) {},
+      render(ctx, x, y, dpr) {
+        const now = performance.now();
+        if (now - lastTick > 35) {
+          lastTick = now;
+          samples[idx] = _audioLive(now);
+          idx = (idx + 1) % N;
+        }
+        const headerH = Math.round(11 * dpr);
+        _drawHeader(ctx, "WAVEFORM.RT", x, y, dpr);
+        const yy = y + headerH + Math.round(4 * dpr);
+        const barH = Math.round(28 * dpr);
+        const barW = Math.max(2, Math.floor(2 * dpr));
+        const gap  = Math.max(1, Math.floor(1 * dpr));
+        ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+        for (let i = 0; i < N; i++) {
+          const v = samples[(idx + i) % N];
+          const h = Math.max(1, Math.round(v * barH));
+          ctx.fillRect(x + i * (barW + gap), yy + barH - h, barW, h);
+        }
+        return headerH + Math.round(4 * dpr) + barH;
+      },
+    };
+  }
+
+  function _makeCoords() {
+    const N = 3;
+    const seeds = [];
+    for (let i = 0; i < N; i++) {
+      seeds.push({
+        lat: (Math.random() - 0.5) * 160,
+        lon: (Math.random() - 0.5) * 360,
+        driftLat: (Math.random() - 0.5) * 0.0006,
+        driftLon: (Math.random() - 0.5) * 0.0006,
+        id: _hexLine(6).toUpperCase(),
+      });
+    }
+    return {
+      type: "coords",
+      tick(dt) {
+        for (const s of seeds) {
+          s.lat += s.driftLat * dt * 60;
+          s.lon += s.driftLon * dt * 60;
+          if (Math.random() < dt * 0.04) s.id = _hexLine(6).toUpperCase();
+        }
+      },
+      render(ctx, x, y, dpr) {
+        const headerH = Math.round(11 * dpr);
+        const lineH   = Math.round(13 * dpr);
+        _drawHeader(ctx, "COORDS.LIVE", x, y, dpr);
+        let yy = y + headerH + Math.round(4 * dpr);
+        _bodyFont(ctx, dpr);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+        for (const s of seeds) {
+          const latDir = s.lat >= 0 ? "N" : "S";
+          const lonDir = s.lon >= 0 ? "E" : "W";
+          const lat = Math.abs(s.lat).toFixed(4);
+          const lon = Math.abs(s.lon).toFixed(4);
+          ctx.fillText(`${s.id}  ${lat}° ${latDir}  ${lon}° ${lonDir}`, x, yy);
+          yy += lineH;
+        }
+        return yy - y;
+      },
+    };
+  }
+
+  const _XFER_NAMES = ["frame.dat", "spectro.bin", "feed.cap", "stream.tap", "drone.fix", "raw.idx", "tile.lz4", "thumb.idx", "vox.q"];
+  function _makeXfer() {
+    const transfers = [];
+    function newXfer() {
+      const base = _XFER_NAMES[(Math.random() * _XFER_NAMES.length) | 0];
+      return {
+        name: `${base}.${_hexLine(4)}`,
+        progress: 0,
+        total: 1 + Math.random() * 12,
+        rate: 0.4 + Math.random() * 1.8,
+      };
+    }
+    transfers.push(newXfer(), newXfer());
+    return {
+      type: "xfer",
+      tick(dt) {
+        for (let i = 0; i < transfers.length; i++) {
+          transfers[i].progress += transfers[i].rate * dt;
+          if (transfers[i].progress >= transfers[i].total) transfers[i] = newXfer();
+        }
+      },
+      render(ctx, x, y, dpr) {
+        const headerH = Math.round(11 * dpr);
+        const lineH   = Math.round(13 * dpr);
+        _drawHeader(ctx, "XFER.QUEUE", x, y, dpr);
+        let yy = y + headerH + Math.round(4 * dpr);
+        _bodyFont(ctx, dpr);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+        for (const t of transfers) {
+          const pct = Math.min(1, t.progress / t.total);
+          const bar = _padBar(pct, 12);
+          const pctStr = `${(pct * 100).toFixed(0).padStart(3, " ")}%`;
+          const nameClipped = t.name.slice(0, 18).padEnd(18, " ");
+          ctx.fillText(`${nameClipped} ${bar} ${pctStr}`, x, yy);
+          yy += lineH;
+        }
+        return yy - y;
+      },
+    };
+  }
+
+  const _EVT_LEVELS  = ["INF", "WRN", "DBG", "TRC"];
+  const _EVT_MODULES = ["sig", "frame", "tap", "iface", "vfx", "drv", "ctl", "buf", "asy", "io", "px"];
+  const _EVT_VERBS   = ["captured", "scheduled", "ack", "flushed", "queued", "stalled", "rebound",
+                        "dispatched", "subscribed", "synced", "expired", "rotated", "verified", "tapped"];
+  // EP title + track titles seeded into the event stream as decoded payloads.
+  // sometimes whole titles surface, sometimes single words, sometimes
+  // recombined word fragments — mirrors how a surveillance feed would only
+  // catch coherent strings intermittently.
+  const _RELEASE_ALBUM = "HOW STRANGE TO BE ANYTHING";
+  const _RELEASE_TRACKS = [
+    "Solutions for Modern Culting",
+    "Sinewaves at The Scope",
+    "Subset Field Error",
+    "Concrete Crown / Metanoia",
+    "Vacation to French Hospitals",
+  ];
+  const _RELEASE_WORDS = (() => {
+    const set = new Set();
+    const all = [_RELEASE_ALBUM, ..._RELEASE_TRACKS].join(" ");
+    for (const w of all.split(/\s+/)) {
+      const c = w.replace(/[^A-Za-z]/g, "");
+      if (c.length >= 2) set.add(c);
+    }
+    return [...set];
+  })();
+  function _pickReleaseFragment() {
+    const r = Math.random();
+    if (r < 0.60) {
+      return _RELEASE_WORDS[(Math.random() * _RELEASE_WORDS.length) | 0];
+    } else if (r < 0.85) {
+      const n = 2 + ((Math.random() * 2) | 0);
+      const parts = [];
+      for (let i = 0; i < n; i++) parts.push(_RELEASE_WORDS[(Math.random() * _RELEASE_WORDS.length) | 0]);
+      return parts.join(" ");
+    } else if (r < 0.97) {
+      return _RELEASE_TRACKS[(Math.random() * _RELEASE_TRACKS.length) | 0];
+    } else {
+      return _RELEASE_ALBUM;
+    }
+  }
+  function _makeEvents() {
+    const lines = [];
+    let lastSpawn = performance.now();
+    function timeStr(ms) {
+      const d = new Date(ms);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      const sss = String(d.getMilliseconds()).padStart(3, "0");
+      return `${hh}:${mm}:${ss}.${sss}`;
+    }
+    function newLine() {
+      // ~30% of new lines surface "decoded" content drawn from the release
+      // word pool (single words, short fragments, full titles, occasionally
+      // the album title as a top-priority match).
+      if (Math.random() < 0.30) {
+        const frag = _pickReleaseFragment();
+        const isAlbum = frag === _RELEASE_ALBUM;
+        const lvl = isAlbum ? "ERR" : (Math.random() < 0.5 ? "INF" : "TRC");
+        const verb = isAlbum
+          ? "match.album"
+          : (Math.random() < 0.45 ? "match.signature" : "dec.payload");
+        return `${timeStr(Date.now())} ${lvl} ${verb}="${frag}"`;
+      }
+      const lvl = _EVT_LEVELS[(Math.random() * _EVT_LEVELS.length) | 0];
+      const mod = _EVT_MODULES[(Math.random() * _EVT_MODULES.length) | 0];
+      const verb = _EVT_VERBS[(Math.random() * _EVT_VERBS.length) | 0];
+      return `${timeStr(Date.now())} ${lvl} ${mod}.${verb} ${_hexLine(8)}`;
+    }
+    for (let i = 0; i < 7; i++) lines.push(newLine());
+    return {
+      type: "events",
+      tick(dt) {
+        const now = performance.now();
+        const env = intensity();
+        const interval = 600 - env * 380; // 220-600ms
+        if (now - lastSpawn > interval) {
+          lastSpawn = now;
+          lines.push(newLine());
+          while (lines.length > 7) lines.shift();
+        }
+      },
+      render(ctx, x, y, dpr) {
+        const headerH = Math.round(11 * dpr);
+        const lineH   = Math.round(12 * dpr);
+        _drawHeader(ctx, "EVENTS.STREAM", x, y, dpr);
+        let yy = y + headerH + Math.round(4 * dpr);
+        _bodyFont(ctx, dpr);
+        for (let i = 0; i < lines.length; i++) {
+          const fade = 0.30 + 0.55 * (i / Math.max(1, lines.length - 1));
+          ctx.fillStyle = `rgba(255, 255, 255, ${fade.toFixed(2)})`;
+          ctx.fillText(lines[i], x, yy);
+          yy += lineH;
+        }
+        return yy - y;
+      },
+    };
+  }
+
+  function _makeHex() {
+    const ROWS = 6;
+    const COLS = 16;
+    const bytes = new Uint8Array(ROWS * COLS);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (Math.random() * 256) | 0;
+    let baseAddr = (Math.random() * 0xffff0) & 0xffff0;
+    let lastShift = performance.now();
+    return {
+      type: "hex",
+      tick(dt) {
+        // mutate a fraction of bytes each frame so the dump reads like
+        // memory being scanned, not random noise
+        const churn = Math.max(1, Math.round(bytes.length * dt * 0.6));
+        for (let k = 0; k < churn; k++) {
+          bytes[(Math.random() * bytes.length) | 0] = (Math.random() * 256) | 0;
+        }
+        const now = performance.now();
+        if (now - lastShift > 1800) {
+          lastShift = now;
+          baseAddr = (baseAddr + 0x10) & 0xffffff;
+        }
+      },
+      render(ctx, x, y, dpr) {
+        const headerH = Math.round(11 * dpr);
+        const lineH   = Math.round(12 * dpr);
+        _drawHeader(ctx, "MEM.DUMP", x, y, dpr);
+        let yy = y + headerH + Math.round(4 * dpr);
+        _bodyFont(ctx, dpr);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+        for (let r = 0; r < ROWS; r++) {
+          const addr = ((baseAddr + r * COLS) & 0xffffff).toString(16).padStart(6, "0");
+          let line = `${addr}:`;
+          for (let c = 0; c < COLS; c++) {
+            line += " " + bytes[r * COLS + c].toString(16).padStart(2, "0");
+          }
+          ctx.fillText(line, x, yy);
+          yy += lineH;
+        }
+        return yy - y;
+      },
+    };
+  }
+
+  function _makeTelemetrySlot(type) {
+    if (type === "bands")    return _makeBands();
+    if (type === "waveform") return _makeWaveform();
+    if (type === "coords")   return _makeCoords();
+    if (type === "xfer")     return _makeXfer();
+    if (type === "events")   return _makeEvents();
+    if (type === "hex")      return _makeHex();
+    return null;
+  }
+
+  function _telemetryEnsureSlots() {
+    if (!_telemetryParams) return;
+    const max = _telemetryOrder.length;
+    const count = Math.max(0, Math.min(max, _telemetryParams.telemetry | 0));
+    while (_telemetrySlots.length < count) {
+      const i = _telemetrySlots.length;
+      _telemetrySlots.push(_makeTelemetrySlot(_telemetryOrder[i]));
+    }
+    while (_telemetrySlots.length > count) _telemetrySlots.pop();
+  }
+
+  function shuffleTelemetry() {
+    for (let i = _telemetryOrder.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      const tmp = _telemetryOrder[i]; _telemetryOrder[i] = _telemetryOrder[j]; _telemetryOrder[j] = tmp;
+    }
+    // drop existing slots so they rebuild against the new order — also
+    // refreshes widget state, which reads as a fresh capture
+    _telemetrySlots.length = 0;
+  }
+
+  function installTelemetry(opts) {
+    _telemetryParams = (opts && opts.params) || {};
+    if (_telemetryParams.telemetry == null) _telemetryParams.telemetry = 0;
+    const panel = document.getElementById("panel");
+    if (panel && !panel.querySelector('input[data-k="telemetry"]')) {
+      const label = document.createElement("label");
+      label.innerHTML =
+        '<span class="name">telemetry<span class="ns-shuffle" role="button" title="shuffle order">[s]</span></span><span class="val"></span>' +
+        `<input type="range" min="0" max="${TELEMETRY_LAYOUT.length}" step="1" data-k="telemetry">`;
+      const shuffleBtn = label.querySelector(".ns-shuffle");
+      shuffleBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        shuffleTelemetry();
+      });
+      const globals = panel.querySelector(".panel-globals");
+      if (globals) panel.insertBefore(label, globals);
+      else panel.appendChild(label);
+    }
+  }
+
+  function tickTelemetry(dt) {
+    if (!_telemetryParams) return;
+    _telemetryEnsureSlots();
+    if (_telemetrySlots.length === 0) return;
+    const canvas = document.getElementById("bg");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    ctx.save();
+    ctx.textBaseline = "top";
+    let y = TELEMETRY_PAD_TOP * dpr;
+    const x = TELEMETRY_PAD_LEFT * dpr;
+    for (const slot of _telemetrySlots) {
+      slot.tick(dt);
+      const h = slot.render(ctx, x, y, dpr);
+      y += h + TELEMETRY_GAP * dpr;
+    }
+    ctx.restore();
+  }
+
   function intensity() {
     if (_audioActive) return gain(_audioLevel);
     const t = performance.now();
@@ -1099,5 +1506,6 @@
     intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel,
     enableAudio, disableAudio, audioActive, audioLevel, bandLevel, onset,
     installMarkers, tickMarkers,
+    installTelemetry, tickTelemetry,
   };
 })();

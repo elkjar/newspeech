@@ -50,7 +50,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, installInputs, tickInputs, bumpActivity, installPanel } = Newspeech;
+const { intensity, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry } = Newspeech;
 installInputs();
 
 const params = {
@@ -114,6 +114,7 @@ function frame(t) {
   lastT = t;
   tickInputs(dt);
   drawStatic(t, dt);
+  tickTelemetry(dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -123,6 +124,7 @@ window.addEventListener("click", (e) => {
   bumpActivity();
 });
 
+installTelemetry({ params });
 installPanel(params);
 </script>
 </body>

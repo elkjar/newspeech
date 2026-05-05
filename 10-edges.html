@@ -123,7 +123,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, installInputs, tickInputs, bumpActivity, installPanel, installMarkers, tickMarkers } = Newspeech;
+const { intensity, installInputs, tickInputs, bumpActivity, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry } = Newspeech;
 installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
 
 const params = {
@@ -532,6 +532,7 @@ function step(dt) {
   if (params.overlay > 0) drawOverlay(params.overlay);
   ctx.drawImage(trailsCanvas, 0, 0);
   tickMarkers(dt);
+  tickTelemetry(dt);
 }
 
 let lastT = performance.now();
@@ -578,6 +579,8 @@ installMarkers({
   getSourceDims: () => ({ w: imgW, h: imgH }),
   getEdgeData: () => edgeMag ? { mag: edgeMag, w: sw, h: sh } : null,
 });
+
+installTelemetry({ params });
 
 installPanel(params);
 
