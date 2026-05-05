@@ -49,8 +49,13 @@
     opacity: 0.55;
   }
   header .label { opacity: 1; }
-  header .count { opacity: 0.6; }
-  header .readme { flex-basis: 100%; }
+  header .aux { flex-basis: 100%; }
+  header a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  header a:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
 
   ol {
     list-style: none;
@@ -75,6 +80,7 @@
     opacity: 0.55;
     margin: 56px 0 20px;
   }
+  .section-label .count { opacity: 0.6; margin-left: 4px; }
   .section-label:first-of-type { margin-top: 0; }
   @media (max-width: 720px) {
     .section-label { margin: 36px 0 14px; }
@@ -106,12 +112,10 @@
 </head>
 <body>
   <header>
-    <span class="label">newspeech / visualizers</span>
-    <span class="count">14</span>
-    <span><a href="index.html" style="color:inherit;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.3);">↩ home</a></span>
-    <span class="readme"><a href="visualizers-readme.html" style="color:inherit;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.3);">readme.txt</a></span>
+    <span class="label"><a href="index.html">newspeech</a> / visualizers</span>
+    <span class="aux"><a href="visualizers-readme.html">readme.txt</a></span>
   </header>
-  <div class="section-label">self-contained</div>
+  <div class="section-label">self-contained <span class="count">[9]</span></div>
   <ol>
     <li><span class="num">01</span><a href="1-streaks.html" target="_blank" rel="noopener" data-link>streaks</a></li>
     <li><span class="num">02</span><a href="2-static.html" target="_blank" rel="noopener" data-link>static</a></li>
@@ -124,7 +128,7 @@
     <li><span class="num">09</span><a href="9-swarm.html" target="_blank" rel="noopener" data-link>swarm</a></li>
   </ol>
 
-  <div class="section-label">source-driven</div>
+  <div class="section-label">source-driven <span class="count">[5]</span></div>
   <ol>
     <li><span class="num">01</span><a href="10-edges.html" target="_blank" rel="noopener" data-link>edges</a></li>
     <li><span class="num">02</span><a href="11-slitscan.html" target="_blank" rel="noopener" data-link>slitscan</a></li>

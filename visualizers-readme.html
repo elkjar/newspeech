@@ -52,8 +52,9 @@
   header a {
     color: inherit;
     text-decoration: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
   }
+  header a:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
 
   main { max-width: 720px; }
 
@@ -135,7 +136,6 @@
   @media (max-width: 720px) {
     body { padding: 36px 24px 64px; }
     header { flex-wrap: wrap; gap: 14px 20px; margin-bottom: 40px; }
-    header .label { flex-basis: 100%; }
     main { max-width: none; }
     dl { grid-template-columns: 80px 1fr; gap: 6px 16px; }
   }
@@ -143,9 +143,7 @@
 </head>
 <body>
   <header>
-    <span class="label">newspeech / visualizers / readme</span>
-    <span><a href="visualizers.html">↩ visualizers</a></span>
-    <span><a href="index.html">↩ home</a></span>
+    <span class="label"><a href="index.html">newspeech</a> / <a href="visualizers.html">visualizers</a> / readme.txt</span>
   </header>
 
   <main>

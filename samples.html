@@ -51,6 +51,19 @@
   }
   header .label { opacity: 1; }
   header .sep { opacity: 0.35; }
+  header .aux {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 14px;
+  }
+  header a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  header a:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
 
   #tree {
     font-size: 13px;
@@ -173,13 +186,12 @@
 </head>
 <body>
   <header>
-    <span class="label">newspeech / samples</span>
-    <span class="sep">·</span>
-    <span id="count">— files</span>
-    <span class="sep">·</span>
-    <span>cc by-sa 4.0</span>
-    <span class="sep">·</span>
-    <span><a href="index.html" style="color:inherit;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.3);">↩ home</a></span>
+    <span class="label"><a href="index.html">newspeech</a> / samples</span>
+    <span class="aux">
+      <span id="count">— files</span>
+      <span class="sep">·</span>
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">cc by-sa 4.0</a>
+    </span>
   </header>
 
   <div id="tree"></div>
