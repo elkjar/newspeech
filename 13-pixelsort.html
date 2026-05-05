@@ -86,7 +86,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, poisson, installInputs, tickInputs, installPanel } = Newspeech;
+const { intensity, poisson, installInputs, tickInputs, installPanel, installMarkers, tickMarkers } = Newspeech;
 installInputs();
 
 const params = {
@@ -320,6 +320,7 @@ function step(dt) {
   ctx.fillRect(0, 0, cw, ch);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(procCanvas, (cw - mW) * 0.5, (ch - mH) * 0.5, mW, mH);
+  tickMarkers(dt);
 }
 
 let lastT = performance.now();
@@ -334,6 +335,12 @@ function frame(t) {
 
 resize();
 requestAnimationFrame(frame);
+
+installMarkers({
+  params,
+  getSource: () => (videoEl && videoEl.readyState >= 2) ? videoEl : imgEl,
+  getSourceDims: () => ({ w: imgW, h: imgH }),
+});
 
 installPanel(params);
 

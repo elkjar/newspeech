@@ -666,6 +666,259 @@
     applyContrast();
   }
 
+  // ---- markers (source-driven overlay) ----
+  // shared infra: small sobel pass on whatever video/image element the page
+  // exposes via getSource/getSourceDims, sample high-magnitude pixels into a
+  // marker pool, snap each marker to the local edge center-of-mass each frame
+  // (so markers track features as the source moves), draw nearest-neighbor
+  // connector lines + [xyz] labels on top of #bg.
+  const MARKER_SOBEL_LONG = 480;
+  let _mkSw = 0, _mkSh = 0;
+  let _mkOff = null, _mkOffCtx = null;
+  let _mkGray = null, _mkMag = null;
+  const _markers = [];
+  let _markerCooldown = 0;
+  let _markerLastSrc = null;
+  let _markerParams = null;
+  let _markerGetSource = null;
+  let _markerGetDims = null;
+  let _markerGetEdgeData = null;
+
+  const _LABEL_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+  function _randLabel() {
+    let s = "";
+    for (let i = 0; i < 3; i++) s += _LABEL_CHARS[(Math.random() * _LABEL_CHARS.length) | 0];
+    return `[${s}]`;
+  }
+
+  function _ensureMarkerBuffers(srcW, srcH) {
+    const scale = MARKER_SOBEL_LONG / Math.max(srcW, srcH);
+    const sw = Math.max(2, Math.floor(srcW * scale));
+    const sh = Math.max(2, Math.floor(srcH * scale));
+    if (sw === _mkSw && sh === _mkSh && _mkOff) return;
+    _mkSw = sw; _mkSh = sh;
+    _mkOff = document.createElement("canvas");
+    _mkOff.width = sw; _mkOff.height = sh;
+    _mkOffCtx = _mkOff.getContext("2d", { willReadFrequently: true });
+    const n = sw * sh;
+    _mkGray = new Float32Array(n);
+    _mkMag = new Float32Array(n);
+  }
+
+  function _computeMarkerSobel(srcEl) {
+    _mkOffCtx.drawImage(srcEl, 0, 0, _mkSw, _mkSh);
+    const { data } = _mkOffCtx.getImageData(0, 0, _mkSw, _mkSh);
+    const g = _mkGray;
+    for (let i = 0, j = 0; i < g.length; i++, j += 4) {
+      g[i] = (data[j] * 0.299 + data[j+1] * 0.587 + data[j+2] * 0.114) / 255;
+    }
+    const mag = _mkMag;
+    let maxMag = 1e-6;
+    for (let i = 0; i < mag.length; i++) mag[i] = 0;
+    for (let y = 1; y < _mkSh - 1; y++) {
+      for (let x = 1; x < _mkSw - 1; x++) {
+        const i = y * _mkSw + x;
+        const a = g[i - _mkSw - 1], b = g[i - _mkSw], c = g[i - _mkSw + 1];
+        const d = g[i - 1],                            f = g[i + 1];
+        const e = g[i + _mkSw - 1], h = g[i + _mkSw], k = g[i + _mkSw + 1];
+        const gx = -a + c - 2 * d + 2 * f - e + k;
+        const gy = -a - 2 * b - c + e + 2 * h + k;
+        const m = Math.hypot(gx, gy);
+        mag[i] = m;
+        if (m > maxMag) maxMag = m;
+      }
+    }
+    // normalize against 95th-percentile magnitude so contrast stays sane
+    // across very different source images.
+    const sample = [];
+    for (let i = 0; i < mag.length; i += 5) if (mag[i] > 0) sample.push(mag[i]);
+    sample.sort((a, b) => a - b);
+    const norm = sample.length ? sample[Math.floor(sample.length * 0.95)] : maxMag;
+    const inv = 1 / Math.max(1e-6, norm);
+    for (let i = 0; i < mag.length; i++) {
+      const v = mag[i] * inv;
+      mag[i] = v > 1 ? 1 : v;
+    }
+  }
+
+  function _pickMarkerEdgePoint() {
+    if (!_mkMag || _mkMag.length === 0) return null;
+    let bestIdx = -1, bestMag = 0;
+    for (let i = 0; i < 60; i++) {
+      const idx = (Math.random() * _mkMag.length) | 0;
+      if (_mkMag[idx] > bestMag) { bestMag = _mkMag[idx]; bestIdx = idx; }
+    }
+    if (bestIdx < 0 || bestMag < 0.25) return null;
+    return { sx: bestIdx % _mkSw, sy: (bestIdx / _mkSw) | 0 };
+  }
+
+  function _snapMarker(m, dt) {
+    const radius = 6;
+    const cx = m.sx | 0, cy = m.sy | 0;
+    const x0 = Math.max(1, cx - radius), x1 = Math.min(_mkSw - 2, cx + radius);
+    const y0 = Math.max(1, cy - radius), y1 = Math.min(_mkSh - 2, cy + radius);
+    let sumW = 0, sumX = 0, sumY = 0;
+    for (let y = y0; y <= y1; y++) {
+      const row = y * _mkSw;
+      for (let x = x0; x <= x1; x++) {
+        const v = _mkMag[row + x];
+        if (v > 0.2) {
+          const w = v * v;
+          sumW += w; sumX += w * x; sumY += w * y;
+        }
+      }
+    }
+    if (sumW > 0) {
+      const tx = sumX / sumW, ty = sumY / sumW;
+      const k = Math.min(1, dt * 18);
+      m.sx += (tx - m.sx) * k;
+      m.sy += (ty - m.sy) * k;
+      m.lostTime = 0;
+    } else {
+      m.lostTime += dt;
+      if (m.lostTime > 0.3) m.life = Math.min(m.life, m.age + 0.3);
+    }
+  }
+
+  function _updateMarkers(dt, cw, ch, dims) {
+    const target = _markerParams ? (_markerParams.dataPoints | 0) : 0;
+    if (_mkMag) for (const m of _markers) _snapMarker(m, dt);
+    for (let i = _markers.length - 1; i >= 0; i--) {
+      const m = _markers[i];
+      m.age += dt;
+      if (m.age > m.life) _markers.splice(i, 1);
+    }
+    while (_markers.length > target) {
+      let oldest = 0;
+      for (let i = 1; i < _markers.length; i++) if (_markers[i].age > _markers[oldest].age) oldest = i;
+      _markers.splice(oldest, 1);
+    }
+    _markerCooldown -= dt;
+    while (_markers.length < target && _markerCooldown <= 0) {
+      const p = _pickMarkerEdgePoint();
+      if (!p) break;
+      _markers.push({
+        sx: p.sx, sy: p.sy,
+        label: _randLabel(),
+        age: 0,
+        life: 5 + Math.random() * 7,
+        fadeIn: 0.4,
+        lostTime: 0,
+      });
+      _markerCooldown = 0.06;
+    }
+    const scale = Math.max(cw / dims.w, ch / dims.h);
+    const drawW = dims.w * scale, drawH = dims.h * scale;
+    const offX = (cw - drawW) * 0.5, offY = (ch - drawH) * 0.5;
+    const fx = drawW / _mkSw, fy = drawH / _mkSh;
+    for (const m of _markers) {
+      m.x = offX + (m.sx + 0.5) * fx;
+      m.y = offY + (m.sy + 0.5) * fy;
+    }
+  }
+
+  function _drawMarkers(ctx) {
+    if (_markers.length === 0) return;
+    const cw = ctx.canvas.width, ch = ctx.canvas.height;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const fontSize = Math.round(11 * dpr);
+    const maxLineDist = Math.hypot(cw, ch) * 0.28;
+    const maxLineDist2 = maxLineDist * maxLineDist;
+
+    ctx.save();
+    ctx.font = `${fontSize}px ui-monospace, "SF Mono", Menlo, monospace`;
+    ctx.textBaseline = "top";
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+    ctx.lineWidth = Math.max(1, dpr * 0.75);
+    ctx.beginPath();
+    for (let i = 0; i < _markers.length; i++) {
+      const a = _markers[i];
+      let bestJ = -1, bestD = Infinity;
+      for (let j = 0; j < _markers.length; j++) {
+        if (j === i) continue;
+        const dx = _markers[j].x - a.x;
+        const dy = _markers[j].y - a.y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; bestJ = j; }
+      }
+      if (bestJ >= 0 && bestD <= maxLineDist2) {
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(_markers[bestJ].x, _markers[bestJ].y);
+      }
+    }
+    ctx.stroke();
+
+    for (const m of _markers) {
+      const tIn = Math.min(1, m.age / m.fadeIn);
+      const remain = 1 - m.age / m.life;
+      const fade = Math.min(tIn, Math.min(1, remain * 4));
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.85 * fade})`;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 2 * dpr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.7 * fade})`;
+      ctx.fillText(m.label, m.x + 5 * dpr, m.y + 5 * dpr);
+    }
+    ctx.restore();
+  }
+
+  function installMarkers(opts) {
+    if (!opts || typeof opts.getSource !== "function") return;
+    _markerGetSource = opts.getSource;
+    _markerGetDims = opts.getSourceDims || null;
+    // optional: page already runs its own sobel (10-edges, 12-edgemask) and
+    // can hand its buffer over to skip the duplicate readback. should return
+    // { mag: Float32Array, w: int, h: int } or null when not yet computed.
+    _markerGetEdgeData = opts.getEdgeData || null;
+    _markerParams = opts.params || {};
+    if (_markerParams.dataPoints == null) _markerParams.dataPoints = 0;
+    // auto-inject the data-points slider into #panel (before .panel-globals
+    // if present, otherwise at the end). pages don't need to declare it.
+    const panel = document.getElementById("panel");
+    if (panel && !panel.querySelector('input[data-k="dataPoints"]')) {
+      const label = document.createElement("label");
+      label.innerHTML =
+        '<span class="name">data points</span><span class="val"></span>' +
+        '<input type="range" min="0" max="128" step="1" data-k="dataPoints">';
+      const globals = panel.querySelector(".panel-globals");
+      if (globals) panel.insertBefore(label, globals);
+      else panel.appendChild(label);
+    }
+  }
+
+  function tickMarkers(dt) {
+    if (!_markerGetSource) return;
+    const src = _markerGetSource();
+    if (!src) { _markers.length = 0; _markerLastSrc = null; return; }
+    const dims = _markerGetDims ? _markerGetDims() : null;
+    if (!dims || !dims.w || !dims.h) return;
+    const sourceChanged = src !== _markerLastSrc;
+    if (sourceChanged) {
+      _markers.length = 0;
+      _markerLastSrc = src;
+    }
+    if (_markerGetEdgeData) {
+      const e = _markerGetEdgeData();
+      if (!e || !e.mag) return;
+      _mkMag = e.mag;
+      _mkSw = e.w;
+      _mkSh = e.h;
+    } else {
+      if (sourceChanged) {
+        _ensureMarkerBuffers(dims.w, dims.h);
+        _computeMarkerSobel(src);
+      } else if (src.tagName === "VIDEO" && src.readyState >= 2 && !src.paused) {
+        _computeMarkerSobel(src);
+      }
+    }
+    const canvas = document.getElementById("bg");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    _updateMarkers(dt, canvas.width, canvas.height, dims);
+    _drawMarkers(ctx);
+  }
+
   function intensity() {
     if (_audioActive) return gain(_audioLevel);
     const t = performance.now();
@@ -845,5 +1098,6 @@
   window.Newspeech = {
     intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel,
     enableAudio, disableAudio, audioActive, audioLevel, bandLevel, onset,
+    installMarkers, tickMarkers,
   };
 })();

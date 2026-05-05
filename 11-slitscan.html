@@ -82,7 +82,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, installInputs, tickInputs, installPanel } = Newspeech;
+const { intensity, installInputs, tickInputs, installPanel, installMarkers, tickMarkers } = Newspeech;
 installInputs();
 
 const params = {
@@ -245,11 +245,18 @@ function frame(t) {
   captureFrame();
   renderSlit(t);
   blitToMain();
+  tickMarkers(dt);
   requestAnimationFrame(frame);
 }
 
 resize();
 requestAnimationFrame(frame);
+
+installMarkers({
+  params,
+  getSource: () => (videoEl && videoEl.readyState >= 2) ? videoEl : null,
+  getSourceDims: () => ({ w: imgW, h: imgH }),
+});
 
 installPanel(params);
 

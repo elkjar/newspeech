@@ -123,7 +123,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, installInputs, tickInputs, bumpActivity, installPanel } = Newspeech;
+const { intensity, installInputs, tickInputs, bumpActivity, installPanel, installMarkers, tickMarkers } = Newspeech;
 installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
 
 const params = {
@@ -531,6 +531,7 @@ function step(dt) {
   ctx.fillRect(0, 0, cw, ch);
   if (params.overlay > 0) drawOverlay(params.overlay);
   ctx.drawImage(trailsCanvas, 0, 0);
+  tickMarkers(dt);
 }
 
 let lastT = performance.now();
@@ -570,6 +571,13 @@ window.addEventListener("click", (e) => {
 window.onParamChange = (k) => {
   if (k === "particleMul") adjustParticleCount();
 };
+
+installMarkers({
+  params,
+  getSource: () => (videoEl && videoEl.readyState >= 2) ? videoEl : currentImg,
+  getSourceDims: () => ({ w: imgW, h: imgH }),
+  getEdgeData: () => edgeMag ? { mag: edgeMag, w: sw, h: sh } : null,
+});
 
 installPanel(params);
 
