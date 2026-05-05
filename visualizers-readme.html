@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<meta name="robots" content="noindex, nofollow">
+<title>NEWSPEECH // visualizers / readme</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // visualizers / readme">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/visualizers-readme.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // visualizers / readme">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")  format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")  format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")   format("woff2"); font-display: swap; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #fff; }
+  body {
+    min-height: 100vh;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 72px 72px 96px;
+    line-height: 1.55;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    margin-bottom: 64px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.55;
+  }
+  header .label { opacity: 1; }
+  header a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  main { max-width: 720px; }
+
+  h1 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(36px, 5vw, 56px);
+    line-height: 1.05;
+    letter-spacing: 0.01em;
+    margin: 0 0 36px;
+    font-weight: normal;
+  }
+
+  h2 {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin: 56px 0 18px;
+    font-weight: normal;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: 28px;
+  }
+
+  p {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.78);
+    margin: 0 0 14px;
+  }
+
+  ul, dl { margin: 0 0 14px; padding: 0; }
+  ul { list-style: none; }
+  ul li {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.78);
+    padding-left: 18px;
+    position: relative;
+    margin-bottom: 6px;
+  }
+  ul li::before {
+    content: "·";
+    position: absolute;
+    left: 4px;
+    opacity: 0.5;
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px 24px;
+    font-size: 14px;
+  }
+  dt {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: rgba(180, 220, 255, 0.95);
+    letter-spacing: 0.04em;
+  }
+  dd {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  code, .kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    padding: 1px 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  a.inline {
+    color: inherit;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    text-decoration: none;
+  }
+  a.inline:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
+
+  @media (max-width: 720px) {
+    body { padding: 36px 24px 64px; }
+    header { flex-wrap: wrap; gap: 14px 20px; margin-bottom: 40px; }
+    header .label { flex-basis: 100%; }
+    main { max-width: none; }
+    dl { grid-template-columns: 80px 1fr; gap: 6px 16px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="label">newspeech / visualizers / readme</span>
+    <span><a href="visualizers.html">↩ visualizers</a></span>
+    <span><a href="index.html">↩ home</a></span>
+  </header>
+
+  <main>
+    <h1 data-link>about the visualizers</h1>
+    <p>each piece is a fullscreen, audio-reactive 2D canvas sketch. they share a small bit of plumbing — a slow-LFO mood envelope, mouse-activity tap, mic analyser — and otherwise each one is its own idea.</p>
+    <p>they're meant to be left running. low-key by default, more active when you move the cursor or feed them audio.</p>
+
+    <h2>two categories</h2>
+    <dl>
+      <dt>self-contained</dt>
+      <dd>generative — the visual is drawn from scratch, no input needed.</dd>
+      <dt>source-driven</dt>
+      <dd>consume a still image or video you drop in. the source's edges, brightness, or color drive the field. drag-and-drop or use the file picker in the params panel.</dd>
+    </dl>
+
+    <h2>keyboard</h2>
+    <dl>
+      <dt>0</dt><dd>toggle the params panel (per-page sliders, bottom right)</dd>
+      <dt>9</dt><dd>toggle the audio / midi panel (bottom left)</dd>
+      <dt>a</dt><dd>toggle the microphone on / off</dd>
+      <dt>m</dt><dd>toggle midi learn mode</dd>
+    </dl>
+
+    <h2>params panel · <span class="kbd">0</span></h2>
+    <p>per-visualizer sliders — 4–6 of the most meaningful knobs for that piece. tweak freely; nothing persists between reloads.</p>
+    <p>at the bottom are two global controls that apply across every visualizer:</p>
+    <ul>
+      <li><span class="kbd">grayscale</span> — tap to toggle. on by default. composes with contrast as a CSS filter on the canvas.</li>
+      <li><span class="kbd">contrast</span> — 0.5×–2.5×. defaults to 1.0.</li>
+    </ul>
+    <p>both global states persist in <code>localStorage</code>, so the look you set carries across reloads and pages.</p>
+    <p>on mobile the panel has an <span class="kbd">[x]</span> close button and a <span class="kbd">[params]</span> tap-handle to reopen, since there's no keyboard.</p>
+
+    <h2>audio · <span class="kbd">9</span> · <span class="kbd">a</span></h2>
+    <p>press <span class="kbd">a</span> to grant mic access. while the mic is on, audio amplitude drives the visualizer's intensity directly — every piece reacts without any per-page setup. when the mic is off, intensity falls back to a slow ambient envelope plus your mouse movement.</p>
+    <p>the audio panel (<span class="kbd">9</span>, bottom-left) holds:</p>
+    <ul>
+      <li><span class="kbd">[a] mic on/off</span> — clickable status row.</li>
+      <li><span class="kbd">sensitivity</span> — 0.1×–5× gain. crank up for quiet rooms, pull back for loud music.</li>
+      <li><span class="kbd">low / mid / high</span> — live FFT band meters, post-gain. useful for dialing in sensitivity by eye.</li>
+    </ul>
+
+    <h2>midi · <span class="kbd">m</span></h2>
+    <p>plug in any USB midi controller that sends CC messages and you can drive the params-panel sliders from hardware. mappings are by panel <em>slot position</em> — knob 1 controls the first slider on whatever visualizer is open, knob 2 the second, and so on.</p>
+    <p>to bind a knob:</p>
+    <ul>
+      <li>open the audio panel (<span class="kbd">9</span>) and tap <span class="kbd">[learn]</span>.</li>
+      <li>the params panel sliders go inert; click a slider to select it as the target.</li>
+      <li>twist the knob you want bound — a small <span class="kbd">●</span> appears next to that slider's name to confirm.</li>
+      <li>repeat for each knob, then tap <span class="kbd">[learn]</span> again to exit.</li>
+    </ul>
+    <p>mappings are global (cc → slot index) and persist in <code>localStorage</code>, so the same physical knob keeps its slot across pages and reloads. <span class="kbd">[clear]</span> wipes them.</p>
+    <p>web midi works on chromium browsers (chrome, edge, brave, opera) and safari 18+. firefox shows an "unsupported" status.</p>
+
+    <h2>source-driven specifics</h2>
+    <p>visualizers in the second list have an extra <span class="kbd">source</span> row at the top of their params panel. drop in any image or video file — the visualizer rebuilds its underlying field (edge map, slitscan column, sort buffer, etc.) from your source and runs from there. video sources keep updating per-frame.</p>
+    <p>nothing is uploaded; everything happens locally in the browser tab.</p>
+
+    <p style="margin-top: 56px;"><a class="inline" href="visualizers.html">↩ back to visualizers</a></p>
+  </main>
+
+<script>
+const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+const LINK_CYCLE_MS = 80;
+const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
+
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum));
+}
+
+function poisson(rateFn, fire) {
+  function step() {
+    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+    const wait = -Math.log(1 - Math.random()) / ratePerMs;
+    setTimeout(() => { fire(); step(); }, wait);
+  }
+  step();
+}
+
+async function setupLinks() {
+  if (document.fonts && document.fonts.load) {
+    await Promise.all(LINK_FONT_CYCLE.map(fam => document.fonts.load(`60px "${fam}"`)));
+  }
+
+  document.querySelectorAll("[data-link]").forEach(link => {
+    const txt = link.textContent;
+    link.textContent = "";
+    const charSpans = [...txt].map(ch => {
+      const s = document.createElement("span");
+      const display = ch === " " ? " " : ch;
+      s.textContent = display;
+      s.dataset.original = display;
+      s.style.textAlign = "center";
+      link.appendChild(s);
+      return s;
+    });
+
+    for (const s of charSpans) {
+      let maxW = s.getBoundingClientRect().width;
+      for (const fam of LINK_FONT_CYCLE) {
+        s.style.fontFamily = `"${fam}", monospace`;
+        const w = s.getBoundingClientRect().width;
+        if (w > maxW) maxW = w;
+      }
+      s.style.fontFamily = "";
+      s.style.width = `${(Math.ceil(maxW * 10) / 10).toFixed(1)}px`;
+    }
+
+    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
+
+    let timer = null;
+    link.addEventListener("mouseenter", () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        for (let i = 0; i < charSpans.length; i++) {
+          idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
+          charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
+        }
+      }, LINK_CYCLE_MS);
+    });
+    link.addEventListener("mouseleave", () => {
+      clearInterval(timer);
+      timer = null;
+      for (const s of charSpans) s.style.fontFamily = "";
+    });
+
+    poisson(
+      () => 0.1 + 0.15 * intensity(),
+      () => {
+        if (link._scrambling) return;
+        const targets = charSpans.filter(s => s.dataset.original.trim() !== "" && Math.random() < 0.55);
+        if (!targets.length) return;
+        link._scrambling = true;
+        let cycles = 2 + ((Math.random() * 3) | 0);
+        function tick() {
+          if (cycles-- <= 0) {
+            for (const s of targets) s.textContent = s.dataset.original;
+            link._scrambling = false;
+            return;
+          }
+          for (const s of targets) {
+            s.textContent = SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+          }
+          setTimeout(tick, 50 + Math.random() * 60);
+        }
+        tick();
+      }
+    );
+  });
+}
+
+setupLinks();
+</script>
+</body>
+</html>

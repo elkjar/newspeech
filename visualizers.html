@@ -39,8 +39,9 @@
 
   header {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: 24px;
+    gap: 14px 24px;
     margin-bottom: 64px;
     font-size: 12px;
     letter-spacing: 0.12em;
@@ -49,6 +50,7 @@
   }
   header .label { opacity: 1; }
   header .count { opacity: 0.6; }
+  header .readme { flex-basis: 100%; }
 
   ol {
     list-style: none;
@@ -97,7 +99,7 @@
 
   @media (max-width: 720px) {
     body { padding: 36px 24px 64px; }
-    header { flex-wrap: wrap; gap: 14px 20px; margin-bottom: 40px; }
+    header { gap: 14px 20px; margin-bottom: 40px; }
     li { gap: 20px; padding: 16px 0; }
   }
 </style>
@@ -107,6 +109,7 @@
     <span class="label">newspeech / visualizers</span>
     <span class="count">14</span>
     <span><a href="index.html" style="color:inherit;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.3);">↩ home</a></span>
+    <span class="readme"><a href="visualizers-readme.html" style="color:inherit;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.3);">readme.txt</a></span>
   </header>
   <div class="section-label">self-contained</div>
   <ol>
