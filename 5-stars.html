@@ -62,7 +62,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry } = Newspeech;
+const { intensity, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers } = Newspeech;
 installInputs();
 
 const params = {
@@ -198,6 +198,7 @@ function frame(t) {
   lastT = t;
   tickInputs(dt);
   drawStars(t, dt);
+  tickMarkers(dt);
   tickTelemetry(dt);
   requestAnimationFrame(frame);
 }
@@ -212,6 +213,7 @@ window.onParamChange = (k) => {
   if (k === "starCount") adjustStarCount();
 };
 
+installMarkers({ params });
 installTelemetry({ params });
 installPanel(params);
 </script>

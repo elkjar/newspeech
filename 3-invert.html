@@ -58,7 +58,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry } = Newspeech;
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers } = Newspeech;
 installInputs();
 
 const params = {
@@ -161,6 +161,7 @@ function frame(t) {
   lastT = t;
   tickInputs(dt);
   drawInvert(t, dt);
+  tickMarkers(dt);
   tickTelemetry(dt);
   requestAnimationFrame(frame);
 }
@@ -173,6 +174,7 @@ window.addEventListener("click", (e) => {
   bumpActivity();
 });
 
+installMarkers({ params });
 installTelemetry({ params });
 installPanel(params);
 </script>

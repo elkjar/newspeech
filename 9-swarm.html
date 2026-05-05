@@ -62,7 +62,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry } = Newspeech;
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers } = Newspeech;
 // swarm uses lighter mouse coupling (mouse weight 0.3 vs default 0.4) and
 // slightly slower decay than other 2D pages.
 installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
@@ -225,6 +225,7 @@ function frame(t) {
   const dt = Math.min(0.05, dtRaw);
   tickInputs(dt);
   step(dt);
+  tickMarkers(dt);
   tickTelemetry(dt);
   requestAnimationFrame(frame);
 }
@@ -253,6 +254,7 @@ window.onParamChange = (k) => {
   if (k === "particleMul") adjustParticleCount();
 };
 
+installMarkers({ params });
 installTelemetry({ params });
 installPanel(params);
 </script>

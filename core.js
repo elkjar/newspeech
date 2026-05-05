@@ -136,8 +136,16 @@
 
     /* display-level filter (grayscale + contrast). composed via a CSS
        variable in core.js so it works on mobile Safari (ctx.filter
-       silently no-ops pre-18) and so multiple effects compose cleanly. */
-    canvas#bg { filter: var(--ns-canvas-filter, none); }
+       silently no-ops pre-18) and so multiple effects compose cleanly.
+       hud-overlay shares the filter so markers + telemetry stay in the
+       same monochrome treatment as the visualizer beneath. */
+    canvas#bg, canvas#hud-overlay { filter: var(--ns-canvas-filter, none); }
+    canvas#hud-overlay {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 5;
+      display: block;
+    }
     #panel .panel-globals {
       margin-top: 12px;
       padding-top: 10px;
@@ -676,6 +684,29 @@
     applyContrast();
   }
 
+  // ---- HUD overlay canvas (shared by markers + telemetry) ----
+  // separate canvas stacked above #bg so HUD pixels don't end up in the
+  // visualizer's render pipeline. critical for pages that fade trails on
+  // the main canvas (9-swarm) — without this, the canvas-fallback sobel
+  // reads its own marker text as edges and markers stop tracking.
+  let _hudCanvas = null;
+  let _hudCtx = null;
+  function _ensureHud() {
+    const bg = document.getElementById("bg");
+    if (!bg || bg.width === 0) return null;
+    if (!_hudCanvas) {
+      _hudCanvas = document.createElement("canvas");
+      _hudCanvas.id = "hud-overlay";
+      document.body.appendChild(_hudCanvas);
+      _hudCtx = _hudCanvas.getContext("2d");
+    }
+    if (_hudCanvas.width !== bg.width) _hudCanvas.width = bg.width;
+    if (_hudCanvas.height !== bg.height) _hudCanvas.height = bg.height;
+    if (_hudCanvas.style.width !== bg.style.width) _hudCanvas.style.width = bg.style.width;
+    if (_hudCanvas.style.height !== bg.style.height) _hudCanvas.style.height = bg.style.height;
+    return _hudCanvas;
+  }
+
   // ---- markers (source-driven overlay) ----
   // shared infra: small sobel pass on whatever video/image element the page
   // exposes via getSource/getSourceDims, sample high-magnitude pixels into a
@@ -836,8 +867,16 @@
     const maxLineDist2 = maxLineDist * maxLineDist;
 
     ctx.save();
+    // standalone visualizers apply ctx.setTransform(dpr, ...) for logical-px
+    // drawing and may leave text/composite state set (e.g. 5-stars uses
+    // textAlign="center") — normalize all of it so the HUD always renders
+    // at left-anchored device-px space regardless of what the page did.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.font = `${fontSize}px ui-monospace, "SF Mono", Menlo, monospace`;
     ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
 
     ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
     ctx.lineWidth = Math.max(1, dpr * 0.75);
@@ -874,8 +913,11 @@
   }
 
   function installMarkers(opts) {
-    if (!opts || typeof opts.getSource !== "function") return;
-    _markerGetSource = opts.getSource;
+    if (!opts) return;
+    // when getSource is omitted, tickMarkers falls back to sobeling the
+    // canvas itself — lets the standalone visualizers anchor markers to
+    // bright pixels in their own rendered output.
+    _markerGetSource = opts.getSource || null;
     _markerGetDims = opts.getSourceDims || null;
     // optional: page already runs its own sobel (10-edges, 12-edgemask) and
     // can hand its buffer over to skip the duplicate readback. should return
@@ -898,22 +940,35 @@
   }
 
   function tickMarkers(dt) {
-    if (!_markerGetSource) return;
-    const src = _markerGetSource();
-    if (!src) { _markers.length = 0; _markerLastSrc = null; return; }
-    const dims = _markerGetDims ? _markerGetDims() : null;
-    if (!dims || !dims.w || !dims.h) return;
+    if (!_markerParams) return;
+    const canvas = document.getElementById("bg");
+    if (!canvas || canvas.width === 0) return;
+    let src = _markerGetSource ? _markerGetSource() : null;
+    let dims = _markerGetDims ? _markerGetDims() : null;
+    let usingCanvas = false;
+    if (!src || !dims || !dims.w || !dims.h) {
+      // canvas-fallback: sobel whatever the page just rendered. tickMarkers
+      // is called at end of render, so the canvas already has this frame's
+      // visualizer content but no markers yet (last frame's markers were
+      // wiped by the visualizer's redraw).
+      src = canvas;
+      dims = { w: canvas.width, h: canvas.height };
+      usingCanvas = true;
+    }
     const sourceChanged = src !== _markerLastSrc;
     if (sourceChanged) {
       _markers.length = 0;
       _markerLastSrc = src;
     }
-    if (_markerGetEdgeData) {
+    if (_markerGetEdgeData && !usingCanvas) {
       const e = _markerGetEdgeData();
       if (!e || !e.mag) return;
       _mkMag = e.mag;
       _mkSw = e.w;
       _mkSh = e.h;
+    } else if (usingCanvas) {
+      _ensureMarkerBuffers(dims.w, dims.h);
+      _computeMarkerSobel(src);
     } else {
       if (sourceChanged) {
         _ensureMarkerBuffers(dims.w, dims.h);
@@ -922,11 +977,13 @@
         _computeMarkerSobel(src);
       }
     }
-    const canvas = document.getElementById("bg");
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
     _updateMarkers(dt, canvas.width, canvas.height, dims);
-    _drawMarkers(ctx);
+    // draw markers on the HUD overlay (cleared each frame in tickInputs)
+    // rather than directly on #bg, so they don't pollute the canvas the
+    // fallback sobel reads on the next frame.
+    const hud = _ensureHud();
+    if (!hud) return;
+    _drawMarkers(_hudCtx);
   }
 
   // ---- telemetry (top-left HUD overlay) ----
@@ -1310,12 +1367,20 @@
     if (!_telemetryParams) return;
     _telemetryEnsureSlots();
     if (_telemetrySlots.length === 0) return;
-    const canvas = document.getElementById("bg");
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const hud = _ensureHud();
+    if (!hud) return;
+    const ctx = _hudCtx;
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     ctx.save();
+    // standalone visualizers apply ctx.setTransform(dpr, ...) for logical-px
+    // drawing and may leave text/composite state set (e.g. 5-stars uses
+    // textAlign="center") — normalize all of it so the HUD always renders
+    // at left-anchored device-px space regardless of what the page did.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
     let y = TELEMETRY_PAD_TOP * dpr;
     const x = TELEMETRY_PAD_LEFT * dpr;
     for (const slot of _telemetrySlots) {
@@ -1361,6 +1426,14 @@
   function tickInputs(dt) {
     _mouseActivity = Math.max(0, _mouseActivity - _config.decay * dt);
     if (_audioActive) tickAudio(dt * 1000);
+    // clear the HUD overlay once per frame at the top so subsequent
+    // tickMarkers/tickTelemetry calls render on a fresh surface.
+    if (_hudCanvas && _hudCtx) {
+      _hudCtx.save();
+      _hudCtx.setTransform(1, 0, 0, 1, 0, 0);
+      _hudCtx.clearRect(0, 0, _hudCanvas.width, _hudCanvas.height);
+      _hudCtx.restore();
+    }
   }
 
   function bumpActivity(target) {
