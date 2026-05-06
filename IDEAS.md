@@ -4,21 +4,9 @@ Things in flight for newspeech. Stable conventions and decided direction live in
 
 ---
 
-## 1. Homepage Hydra background
+## 1. Custom sample library — every sound on the site is original
 
-Autonomous Hydra piece behind the existing typography on `index.html`. Same vibe as the standalone visualizers — no audio reactivity, no interaction, just atmosphere. Typography remains the focal point; Hydra is mood underneath.
-
-Treat homepage Hydra and the Strudel-player (`live.html`) backgrounds as **separate concerns** — different audiences, different intent. Don't share code between them.
-
-**Status of related work.** Standalone visualizer integration shipped: `6-grid.html` (Hydra), `7-ridges.html` and `8-rings.html` (2D canvas, audio-shaped sibling visuals). The renderer-choice rule (pen-and-ink → 2D canvas, shader fields → Hydra) and Hydra gotchas live in `CLAUDE.md`. `live.html` now hosts all eight visualizer modes (keys 1–8 lock, 0 resumes auto-cycle).
-
-**Open:** does the homepage Hydra piece stay fixed, or rotate through several over time / on reload?
-
----
-
-## 2. Custom sample library — every sound on the site is original
-
-Replace **all** prebuilt sounds in the Strudel patches — both the drum samples and the built-in oscillators — with custom-recorded material. Premise: prebuilt anything reads as borrowed; if every sound is yours, the site has a single coherent audio identity. Lines up with the "art project, not utility" framing in #3.
+Replace **all** prebuilt sounds in the Strudel patches — both the drum samples and the built-in oscillators — with custom-recorded material. Premise: prebuilt anything reads as borrowed; if every sound is yours, the site has a single coherent audio identity. Lines up with the "art project, not utility" framing in #2.
 
 ### What needs replacing
 
@@ -66,7 +54,7 @@ Significantly more tracking than the original 3-drum plan — call it a multi-se
 
 ---
 
-## 3. Audio file showcase / pseudo-filesystem browser
+## 2. Audio file showcase / pseudo-filesystem browser
 
 New page on the site — file-explorer-style UI for browsing → previewing → downloading audio files. Showcases the band's work as individual elements (stems, samples, sketches) rather than only as cohesive releases. **Framing: art project, not utility.**
 
@@ -74,13 +62,13 @@ New page on the site — file-explorer-style UI for browsing → previewing → 
 
 **License:** all files Creative Commons ShareAlike. Surface the license prominently on the page header and on each file's metadata row.
 
-**Dependency with #2:** the sample library and this showcase share source material. Sample library = building blocks (one-shots, hits, loops); showcase = curated finished pieces and stems. Worth recording/curating with both uses in mind from the start so a single session feeds both.
+**Dependency with #1:** the sample library and this showcase share source material. Sample library = building blocks (one-shots, hits, loops); showcase = curated finished pieces and stems. Worth recording/curating with both uses in mind from the start so a single session feeds both.
 
 **Open:** file-tree taxonomy — by track? by instrument? by session? by date? Decide before populating; restructuring later is annoying.
 
 ---
 
-## 4. Multi-block Strudel arrangements
+## 3. Multi-block Strudel arrangements
 
 Goal: extend current single-loop patches into structured arrangements (intro / verse / chorus / breakdown / etc.) where blocks fire sequentially or after N cycles.
 
