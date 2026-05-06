@@ -138,14 +138,28 @@
        variable in core.js so it works on mobile Safari (ctx.filter
        silently no-ops pre-18) and so multiple effects compose cleanly.
        hud-overlay shares the filter so markers + telemetry stay in the
-       same monochrome treatment as the visualizer beneath. */
-    canvas#bg, canvas#hud-overlay { filter: var(--ns-canvas-filter, none); }
+       same monochrome treatment as the visualizer beneath. bg-grid
+       receives the same filter so it sits in the same monochrome /
+       contrast treatment as the visualizer above it. */
+    canvas#bg, canvas#hud-overlay, canvas#bg-grid { filter: var(--ns-canvas-filter, none); }
     canvas#hud-overlay {
       position: fixed; inset: 0;
       pointer-events: none;
       z-index: 5;
       display: block;
     }
+    /* static background grid sitting behind #bg. drawn once per resize /
+       style-change; opacity is a CSS var so the slider doesn't trigger a
+       redraw. when style is "off" we set opacity to 0 (canvas stays in
+       the DOM but contributes nothing). */
+    canvas#bg-grid {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      display: block;
+      z-index: 0;
+      opacity: var(--ns-grid-opacity, 0);
+    }
+    canvas#bg { z-index: 1; }
     #panel .panel-globals {
       margin-top: 12px;
       padding-top: 10px;
@@ -160,6 +174,16 @@
       margin-bottom: 10px;
     }
     #panel .panel-grayscale.on { opacity: 0.95; color: rgba(180, 220, 255, 1); }
+    #panel .panel-grid {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      opacity: 0.55;
+      cursor: pointer;
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+    #panel .panel-grid.on { opacity: 0.95; color: rgba(180, 220, 255, 1); }
     /* contrast slider — outside <label> so MIDI slot indexing skips it. */
     #panel .panel-row {
       display: grid;
@@ -684,6 +708,169 @@
     applyContrast();
   }
 
+  // ---- background grid (off / dots / grid+marks / topo) ----
+  // a separate canvas#bg-grid sits at z-index 0, behind #bg (z-index 1).
+  // visualizer pages clear with clearRect (transparent) instead of opaque
+  // dark fill, so the grid bleeds through the gaps in their rendered output.
+  // body still has bg #050505 so visual is identical when grid style is
+  // "off" or opacity is 0. drawn once per resize / style-change; opacity is
+  // applied via a CSS var (no redraw on slide).
+  const GRID_STYLE_KEY   = "newspeech.gridStyle";
+  const GRID_OPACITY_KEY = "newspeech.gridOpacity";
+  const GRID_STYLES = ["off", "dots", "grid", "topo"];
+  let _gridStyle = "off";
+  let _gridOpacity = 0.5;
+  let _gridCanvas = null;
+  let _gridCtx = null;
+  let _gridDirty = true;
+
+  function loadGridState() {
+    try {
+      const s = localStorage.getItem(GRID_STYLE_KEY);
+      if (s && GRID_STYLES.indexOf(s) >= 0) _gridStyle = s;
+      const o = localStorage.getItem(GRID_OPACITY_KEY);
+      if (o != null) {
+        const v = parseFloat(o);
+        if (isFinite(v)) _gridOpacity = Math.max(0, Math.min(1, v));
+      }
+    } catch (_) {}
+  }
+
+  function applyGridOpacityVar() {
+    document.documentElement.style.setProperty(
+      "--ns-grid-opacity",
+      _gridStyle === "off" ? "0" : _gridOpacity.toFixed(3)
+    );
+  }
+  function applyGridStyle() {
+    document.querySelectorAll("#panel .panel-grid").forEach(el => {
+      el.textContent = `grid: ${_gridStyle}`;
+      el.classList.toggle("on", _gridStyle !== "off");
+    });
+    applyGridOpacityVar();
+    _gridDirty = true;
+    _ensureGridCanvas();
+  }
+  function applyGridOpacity() {
+    document.querySelectorAll("#panel .panel-grid-opacity input").forEach(input => {
+      if (parseFloat(input.value) !== _gridOpacity) input.value = _gridOpacity;
+    });
+    document.querySelectorAll("#panel .panel-grid-opacity .val").forEach(el => {
+      el.textContent = _gridOpacity.toFixed(2);
+    });
+    applyGridOpacityVar();
+  }
+  function cycleGridStyle() {
+    const i = GRID_STYLES.indexOf(_gridStyle);
+    _gridStyle = GRID_STYLES[(i + 1) % GRID_STYLES.length];
+    try { localStorage.setItem(GRID_STYLE_KEY, _gridStyle); } catch (_) {}
+    applyGridStyle();
+  }
+  function setGridOpacity(v) {
+    if (!isFinite(v)) return;
+    _gridOpacity = Math.max(0, Math.min(1, v));
+    try { localStorage.setItem(GRID_OPACITY_KEY, String(_gridOpacity)); } catch (_) {}
+    applyGridOpacity();
+  }
+
+  function _ensureGridCanvas() {
+    if (!document.body) return;
+    if (!_gridCanvas) {
+      _gridCanvas = document.createElement("canvas");
+      _gridCanvas.id = "bg-grid";
+      // insert at top of body so it sits behind #bg in document order too
+      // (z-index handles correctness, this just keeps the DOM tidy).
+      document.body.insertBefore(_gridCanvas, document.body.firstChild);
+      _gridCtx = _gridCanvas.getContext("2d");
+    }
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const cssW = window.innerWidth;
+    const cssH = window.innerHeight;
+    const w = Math.max(2, Math.floor(cssW * dpr));
+    const h = Math.max(2, Math.floor(cssH * dpr));
+    if (_gridCanvas.width !== w || _gridCanvas.height !== h) {
+      _gridCanvas.width = w;
+      _gridCanvas.height = h;
+      _gridCanvas.style.width = cssW + "px";
+      _gridCanvas.style.height = cssH + "px";
+      _gridDirty = true;
+    }
+    if (_gridDirty) {
+      _drawGrid(_gridCtx, w, h, dpr);
+      _gridDirty = false;
+    }
+  }
+
+  function _drawGrid(ctx, w, h, dpr) {
+    ctx.clearRect(0, 0, w, h);
+    if (_gridStyle === "off")  return;
+    if (_gridStyle === "dots") return _drawGridDots(ctx, w, h, dpr);
+    if (_gridStyle === "grid") return _drawGridLines(ctx, w, h, dpr);
+    if (_gridStyle === "topo") return _drawGridTopo(ctx, w, h, dpr);
+  }
+  function _drawGridDots(ctx, w, h, dpr) {
+    const spacing = 32 * dpr;
+    const r = Math.max(0.9, 1.0 * dpr);
+    ctx.fillStyle = "rgba(255, 255, 255, 1)";
+    for (let y = spacing; y < h; y += spacing) {
+      for (let x = spacing; x < w; x += spacing) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  function _drawGridLines(ctx, w, h, dpr) {
+    const spacing = 48 * dpr;
+    const tick = 4 * dpr;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.30)";
+    ctx.lineWidth = Math.max(1, 0.6 * dpr);
+    ctx.beginPath();
+    for (let x = spacing; x < w; x += spacing) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+    for (let y = spacing; y < h; y += spacing) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+    ctx.stroke();
+    // brighter crosshair ticks at intersections
+    ctx.strokeStyle = "rgba(255, 255, 255, 1)";
+    ctx.lineWidth = Math.max(1, 0.9 * dpr);
+    ctx.beginPath();
+    for (let y = spacing; y < h; y += spacing) {
+      for (let x = spacing; x < w; x += spacing) {
+        ctx.moveTo(x - tick, y); ctx.lineTo(x + tick, y);
+        ctx.moveTo(x, y - tick); ctx.lineTo(x, y + tick);
+      }
+    }
+    ctx.stroke();
+  }
+  function _drawGridTopo(ctx, w, h, dpr) {
+    // contour-line look: outline boundaries between bands of a multi-octave
+    // sin field. step in device px but evaluate the field in CSS px so the
+    // pattern looks the same density on all displays.
+    const step = Math.max(2, Math.floor(2 * dpr));
+    const cssStep = step / dpr;
+    const band = 0.55;
+    function field(xCss, yCss) {
+      return Math.sin(xCss * 0.012)
+           + Math.sin(yCss * 0.010)
+           + Math.sin((xCss + yCss) * 0.008)
+           + Math.sin((xCss - yCss) * 0.014) * 0.6;
+    }
+    ctx.strokeStyle = "rgba(255, 255, 255, 1)";
+    ctx.lineWidth = Math.max(1, 0.55 * dpr);
+    ctx.beginPath();
+    for (let y = 0; y < h; y += step) {
+      const yCss = y / dpr;
+      for (let x = 0; x < w; x += step) {
+        const xCss = x / dpr;
+        const b  = Math.floor(field(xCss, yCss) / band);
+        const b2 = Math.floor(field(xCss + cssStep, yCss) / band);
+        const b3 = Math.floor(field(xCss, yCss + cssStep) / band);
+        if (b2 !== b) { ctx.moveTo(x + step, y); ctx.lineTo(x + step, y + step); }
+        if (b3 !== b) { ctx.moveTo(x, y + step); ctx.lineTo(x + step, y + step); }
+      }
+    }
+    ctx.stroke();
+  }
+
   // ---- HUD overlay canvas (shared by markers + telemetry) ----
   // separate canvas stacked above #bg so HUD pixels don't end up in the
   // visualizer's render pipeline. critical for pages that fade trails on
@@ -987,16 +1174,29 @@
   }
 
   // ---- telemetry (top-left HUD overlay) ----
-  // pinned vertical stack of small monospace widgets that render a
-  // surveillance-feed look. each widget reads live core.js signals (band
-  // levels, intensity, audio level) when available and synthesizes plausible
-  // "documentation" content otherwise. layout is fixed: slot order is
-  // bands → waveform → coords → xfer → events → coords (extra). slider
-  // controls how many slots are visible from the top.
+  // pinned vertical stack of small widgets that render a surveillance-feed
+  // look. each widget reads live core.js signals (band levels, intensity,
+  // audio level) when available and synthesizes plausible "documentation"
+  // content otherwise. the pool has 11 widget types — 5 graphic-display
+  // and 6 text-feed. only TELEMETRY_MAX_VISIBLE slots render at once, and
+  // within those visible slots at most MAX_GRAPHIC_VISIBLE are graphic
+  // (the rest are text). this keeps the HUD visually mixed: graphics give
+  // density / focal points, text widgets give the readable / surveillance
+  // texture between them.
   const TELEMETRY_PAD_TOP = 28;
   const TELEMETRY_PAD_LEFT = 32;
   const TELEMETRY_GAP = 18;
-  const TELEMETRY_LAYOUT = ["bands", "waveform", "coords", "xfer", "events", "hex"];
+  const TELEMETRY_MAX_VISIBLE = 5;
+  const MAX_GRAPHIC_VISIBLE = 2;
+  const GRAPHIC_TELEMETRY = new Set(["radar", "scope", "profile", "vector", "tunnel"]);
+  // default order — first 5 (visible region) hold 2 graphic + 3 text so the
+  // initial render already satisfies the cap. shuffle preserves the cap.
+  const TELEMETRY_LAYOUT = [
+    // visible region (positions 0-4): 2 graphic + 3 text
+    "radar", "scope", "bands", "events", "waveform",
+    // overflow region (positions 5-10): remaining 3 graphic + 3 text
+    "profile", "vector", "tunnel", "coords", "xfer", "hex",
+  ];
   const _telemetryOrder = [...TELEMETRY_LAYOUT];
   const _telemetrySlots = [];
   let _telemetryParams = null;
@@ -1311,6 +1511,306 @@
     };
   }
 
+  // ---- graphic telemetry widgets ----
+  // shape conventions for these: NO header label (the visual stands on its
+  // own — labels would just clutter), body draws straight from the slot's
+  // y; height returned is the body height. all stroke styles are white at
+  // varying alpha so they read like a single CRT phosphor color even when
+  // grayscale is off — keeps the surveillance-feed aesthetic coherent.
+
+  function _makeRadar() {
+    const blips = [];
+    let sweepAngle = 0;
+    let lastSpawn = performance.now();
+    return {
+      type: "radar",
+      tick(dt) {
+        sweepAngle += dt * 0.9; // ~7s / rev
+        if (sweepAngle > Math.PI * 2) sweepAngle -= Math.PI * 2;
+        for (let i = blips.length - 1; i >= 0; i--) {
+          blips[i].age += dt;
+          if (blips[i].age > blips[i].life) blips.splice(i, 1);
+        }
+        const now = performance.now();
+        const env = intensity();
+        const interval = 1200 - env * 700;
+        const onsetBoost = onset("low") || onset("mid") || onset("high");
+        if ((onsetBoost || now - lastSpawn > interval) && blips.length < 9) {
+          blips.push({
+            ang: Math.random() * Math.PI * 2,
+            rad: 0.30 + Math.random() * 0.65,
+            age: 0,
+            life: 1.6 + Math.random() * 2.0,
+          });
+          lastSpawn = now;
+        }
+      },
+      render(ctx, x, y, dpr) {
+        const size = Math.round(96 * dpr);
+        const cx = x + size / 2;
+        const cy = y + size / 2;
+        const R = size * 0.46;
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.30)";
+        ctx.lineWidth = Math.max(1, 0.55 * dpr);
+        for (let i = 1; i <= 3; i++) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, R * (i / 3), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+        ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = Math.max(1, 0.9 * dpr);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(sweepAngle) * R, cy + Math.sin(sweepAngle) * R);
+        ctx.stroke();
+
+        for (const b of blips) {
+          const t = b.age / b.life;
+          const alpha = (1 - t) * 0.9;
+          const bx = cx + Math.cos(b.ang) * R * b.rad;
+          const by = cy + Math.sin(b.ang) * R * b.rad;
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(2)})`;
+          ctx.beginPath();
+          ctx.arc(bx, by, Math.max(1.5, 1.7 * dpr), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        return size;
+      },
+    };
+  }
+
+  function _makeScope() {
+    // 3 traces with slow phase drift so the lines slide across the grid
+    // independently. amplitude scales with intensity so quiet moments show
+    // calm low-amplitude lines, peaks slam to the grid edges.
+    const traces = [
+      { freq: 0.0050, phase: 0,    alpha: 0.85 },
+      { freq: 0.0078, phase: 1.2,  alpha: 0.65 },
+      { freq: 0.0110, phase: 2.6,  alpha: 0.50 },
+    ];
+    return {
+      type: "scope",
+      tick(dt) {
+        for (const tr of traces) tr.phase += dt * (0.6 + tr.freq * 200);
+      },
+      render(ctx, x, y, dpr) {
+        const w = Math.round(144 * dpr);
+        const h = Math.round(56 * dpr);
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+        ctx.lineWidth = Math.max(1, 0.5 * dpr);
+        ctx.beginPath();
+        const gx = 4, gy = 4;
+        for (let i = 0; i <= gx; i++) {
+          const xx = x + (w * i) / gx;
+          ctx.moveTo(xx, y); ctx.lineTo(xx, y + h);
+        }
+        for (let i = 0; i <= gy; i++) {
+          const yy = y + (h * i) / gy;
+          ctx.moveTo(x, yy); ctx.lineTo(x + w, yy);
+        }
+        ctx.stroke();
+
+        const env = intensity();
+        const ampMul = 0.55 + 0.45 * env;
+        const stride = Math.max(1, Math.floor(dpr));
+        for (const tr of traces) {
+          ctx.strokeStyle = `rgba(255, 255, 255, ${tr.alpha.toFixed(2)})`;
+          ctx.lineWidth = Math.max(1, 0.7 * dpr);
+          ctx.beginPath();
+          for (let i = 0; i <= w; i += stride) {
+            const v = Math.sin(i * tr.freq + tr.phase) * ampMul;
+            const yy = y + h * 0.5 + v * h * 0.42;
+            if (i === 0) ctx.moveTo(x + i, yy);
+            else ctx.lineTo(x + i, yy);
+          }
+          ctx.stroke();
+        }
+        return h;
+      },
+    };
+  }
+
+  function _makeProfile() {
+    // ring-buffer of recent audio-level samples drawn as a filled ridge
+    // that scrolls right-to-left. quiet → flat low ridge, loud → spiky.
+    const N = 60;
+    const samples = new Float32Array(N);
+    let head = 0;
+    let lastTick = 0;
+    return {
+      type: "profile",
+      tick(dt) {
+        const now = performance.now();
+        if (now - lastTick > 50) {
+          lastTick = now;
+          const lvl = audioLevel();
+          const env = intensity();
+          const v = lvl > 0.001
+            ? lvl
+            : (env * 0.55 + 0.20 + Math.sin(now / 1300) * 0.15);
+          samples[head] = Math.max(0, Math.min(1, v + (Math.random() - 0.5) * 0.05));
+          head = (head + 1) % N;
+        }
+      },
+      render(ctx, x, y, dpr) {
+        const w = Math.round(144 * dpr);
+        const h = Math.round(40 * dpr);
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.20)";
+        ctx.lineWidth = Math.max(1, 0.5 * dpr);
+        ctx.setLineDash([Math.max(2, 2 * dpr), Math.max(2, 3 * dpr)]);
+        ctx.beginPath();
+        ctx.moveTo(x, y + h * 0.5);
+        ctx.lineTo(x + w, y + h * 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.30)";
+        ctx.beginPath();
+        ctx.moveTo(x, y + h);
+        for (let i = 0; i < N; i++) {
+          const v = samples[(head + i) % N];
+          const xx = x + (w * i) / (N - 1);
+          const yy = y + h - v * h;
+          ctx.lineTo(xx, yy);
+        }
+        ctx.lineTo(x + w, y + h);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = Math.max(1, 0.7 * dpr);
+        ctx.beginPath();
+        for (let i = 0; i < N; i++) {
+          const v = samples[(head + i) % N];
+          const xx = x + (w * i) / (N - 1);
+          const yy = y + h - v * h;
+          if (i === 0) ctx.moveTo(xx, yy);
+          else ctx.lineTo(xx, yy);
+        }
+        ctx.stroke();
+        return h;
+      },
+    };
+  }
+
+  function _makeVector() {
+    // central hub with N lines radiating to small target reticles. node
+    // angle drifts slowly; line-length tracks the band level the node is
+    // bound to (low/mid/high cycle), so the vector star pulses with audio.
+    const NODES = 5;
+    const nodes = [];
+    for (let i = 0; i < NODES; i++) {
+      nodes.push({
+        ang: (i / NODES) * Math.PI * 2 + (Math.random() - 0.5) * 0.5,
+        radK: 0.55 + Math.random() * 0.40,
+        drift: (Math.random() - 0.5) * 0.06,
+        band: ["low", "mid", "high"][i % 3],
+      });
+    }
+    return {
+      type: "vector",
+      tick(dt) {
+        for (const n of nodes) n.ang += n.drift * dt;
+      },
+      render(ctx, x, y, dpr) {
+        const w = Math.round(132 * dpr);
+        const h = Math.round(80 * dpr);
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        const Rmax = Math.min(w, h) * 0.45;
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = Math.max(1, 0.8 * dpr);
+        const hubR = Math.max(2, 2 * dpr);
+        ctx.strokeRect(cx - hubR, cy - hubR, hubR * 2, hubR * 2);
+
+        const env = intensity();
+        for (const n of nodes) {
+          const real = bandLevel(n.band);
+          const lvl = real > 0.001 ? real : (env * 0.5 + 0.35);
+          const r = Rmax * (0.4 + n.radK * 0.6) * (0.55 + lvl * 0.55);
+          const tx = cx + Math.cos(n.ang) * r;
+          const ty = cy + Math.sin(n.ang) * r;
+
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+          ctx.lineWidth = Math.max(1, 0.55 * dpr);
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(tx, ty);
+          ctx.stroke();
+
+          // target reticle: small circle + tiny ticks
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.lineWidth = Math.max(1, 0.7 * dpr);
+          const tR = Math.max(2, 2.6 * dpr);
+          ctx.beginPath();
+          ctx.arc(tx, ty, tR, 0, Math.PI * 2);
+          ctx.moveTo(tx - tR - 1.5 * dpr, ty); ctx.lineTo(tx - tR + 0.5 * dpr, ty);
+          ctx.moveTo(tx + tR - 0.5 * dpr, ty); ctx.lineTo(tx + tR + 1.5 * dpr, ty);
+          ctx.stroke();
+        }
+        return h;
+      },
+    };
+  }
+
+  function _makeTunnel() {
+    // wireframe perspective: a stack of receding rectangles centered on
+    // a vanishing point, advancing toward the viewer. closer rects are
+    // brighter; phase loops so the closest rect is replaced by a fresh
+    // one from the back each cycle. corner-to-VP guide lines pin the
+    // perspective.
+    let phase = 0;
+    return {
+      type: "tunnel",
+      tick(dt) {
+        phase += dt * 0.45;
+        if (phase > 1) phase -= 1;
+      },
+      render(ctx, x, y, dpr) {
+        const w = Math.round(144 * dpr);
+        const h = Math.round(80 * dpr);
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.30)";
+        ctx.lineWidth = Math.max(1, 0.4 * dpr);
+        ctx.beginPath();
+        ctx.moveTo(x, y);         ctx.lineTo(cx, cy);
+        ctx.moveTo(x + w, y);     ctx.lineTo(cx, cy);
+        ctx.moveTo(x, y + h);     ctx.lineTo(cx, cy);
+        ctx.moveTo(x + w, y + h); ctx.lineTo(cx, cy);
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.30)";
+        ctx.lineWidth = Math.max(1, 0.5 * dpr);
+        ctx.strokeRect(x, y, w, h);
+
+        const N = 6;
+        for (let i = 0; i < N; i++) {
+          const t = ((i + phase) % N) / N;
+          const scale = Math.pow(t, 1.55);
+          if (scale < 0.04) continue;
+          const rw = w * scale;
+          const rh = h * scale;
+          const alpha = Math.min(1, 0.25 + t * 0.75);
+          ctx.strokeStyle = `rgba(255, 255, 255, ${alpha.toFixed(2)})`;
+          ctx.lineWidth = Math.max(1, 0.6 * dpr);
+          ctx.strokeRect(cx - rw / 2, cy - rh / 2, rw, rh);
+        }
+        return h;
+      },
+    };
+  }
+
   function _makeTelemetrySlot(type) {
     if (type === "bands")    return _makeBands();
     if (type === "waveform") return _makeWaveform();
@@ -1318,13 +1818,17 @@
     if (type === "xfer")     return _makeXfer();
     if (type === "events")   return _makeEvents();
     if (type === "hex")      return _makeHex();
+    if (type === "radar")    return _makeRadar();
+    if (type === "scope")    return _makeScope();
+    if (type === "profile")  return _makeProfile();
+    if (type === "vector")   return _makeVector();
+    if (type === "tunnel")   return _makeTunnel();
     return null;
   }
 
   function _telemetryEnsureSlots() {
     if (!_telemetryParams) return;
-    const max = _telemetryOrder.length;
-    const count = Math.max(0, Math.min(max, _telemetryParams.telemetry | 0));
+    const count = Math.max(0, Math.min(TELEMETRY_MAX_VISIBLE, _telemetryParams.telemetry | 0));
     while (_telemetrySlots.length < count) {
       const i = _telemetrySlots.length;
       _telemetrySlots.push(_makeTelemetrySlot(_telemetryOrder[i]));
@@ -1332,11 +1836,27 @@
     while (_telemetrySlots.length > count) _telemetrySlots.pop();
   }
 
-  function shuffleTelemetry() {
-    for (let i = _telemetryOrder.length - 1; i > 0; i--) {
+  function _shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
       const j = (Math.random() * (i + 1)) | 0;
-      const tmp = _telemetryOrder[i]; _telemetryOrder[i] = _telemetryOrder[j]; _telemetryOrder[j] = tmp;
+      const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
     }
+    return arr;
+  }
+  function shuffleTelemetry() {
+    // partition the pool into graphic + text, shuffle each, fill the
+    // visible region with up to MAX_GRAPHIC_VISIBLE graphic + the rest text,
+    // then shuffle the visible region's order so graphics aren't always at
+    // the top. overflow region (positions 5-10) holds the leftovers in
+    // arbitrary order — never visible unless the cap or pool changes.
+    const graphics = _shuffleInPlace(TELEMETRY_LAYOUT.filter(t => GRAPHIC_TELEMETRY.has(t)));
+    const text     = _shuffleInPlace(TELEMETRY_LAYOUT.filter(t => !GRAPHIC_TELEMETRY.has(t)));
+    const gVis = graphics.slice(0, MAX_GRAPHIC_VISIBLE);
+    const tVis = text.slice(0, TELEMETRY_MAX_VISIBLE - gVis.length);
+    const visible = _shuffleInPlace([...gVis, ...tVis]);
+    const rest = _shuffleInPlace([...graphics.slice(gVis.length), ...text.slice(tVis.length)]);
+    _telemetryOrder.length = 0;
+    _telemetryOrder.push(...visible, ...rest);
     // drop existing slots so they rebuild against the new order — also
     // refreshes widget state, which reads as a fresh capture
     _telemetrySlots.length = 0;
@@ -1350,7 +1870,7 @@
       const label = document.createElement("label");
       label.innerHTML =
         '<span class="name">telemetry<span class="ns-shuffle" role="button" title="shuffle order">[s]</span></span><span class="val"></span>' +
-        `<input type="range" min="0" max="${TELEMETRY_LAYOUT.length}" step="1" data-k="telemetry">`;
+        `<input type="range" min="0" max="${TELEMETRY_MAX_VISIBLE}" step="1" data-k="telemetry">`;
       const shuffleBtn = label.querySelector(".ns-shuffle");
       shuffleBtn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -1513,6 +2033,23 @@
     input.addEventListener("input", () => setContrast(parseFloat(input.value)));
     wrap.appendChild(contrast);
 
+    // grid style cycler (off → dots → grid → topo → off …)
+    const grid = document.createElement("div");
+    grid.className = "panel-grid";
+    grid.addEventListener("click", cycleGridStyle);
+    wrap.appendChild(grid);
+
+    // grid opacity — wrapped in div with data-global so MIDI slot indexing skips it.
+    const gridOp = document.createElement("div");
+    gridOp.className = "panel-row panel-grid-opacity";
+    gridOp.innerHTML =
+      '<span class="name">grid opacity</span><span class="val"></span>' +
+      '<input type="range" min="0" max="1" step="0.01" data-global="1">';
+    const gop = gridOp.querySelector("input");
+    gop.value = _gridOpacity;
+    gop.addEventListener("input", () => setGridOpacity(parseFloat(gop.value)));
+    wrap.appendChild(gridOp);
+
     panel.appendChild(wrap);
   }
 
@@ -1539,6 +2076,8 @@
     updateAudioStatus();
     applyGrayscale();
     applyContrast();
+    applyGridStyle();
+    applyGridOpacity();
     wirePanelSlots(panel);
     refreshSliderBadges();
     refreshMidiUI();
@@ -1567,11 +2106,22 @@
   loadMidiMap();
   loadGrayscale();
   loadContrast();
+  loadGridState();
 
-  // build the audio dialog and apply persisted display-filter state at module
-  // load (so the canvas filter is set before the page's first paint, not just
+  // build the audio dialog, apply persisted display-filter state, and
+  // install bg-grid at module load (so filter, grid canvas, and grid
+  // opacity are all in place before the page's first paint, not just
   // when the visualizer page later calls installPanel).
-  function _coreInit() { buildAudioPanel(); rebuildCanvasFilter(); }
+  function _coreInit() {
+    buildAudioPanel();
+    rebuildCanvasFilter();
+    applyGridOpacityVar();
+    _ensureGridCanvas();
+  }
+  // bg-grid tracks viewport size — same window resize event each visualizer
+  // already listens to, so by the time this fires the page has begun its
+  // own resize handler. cheap when nothing changed (size compare).
+  window.addEventListener("resize", () => _ensureGridCanvas());
   if (document.body) _coreInit();
   else document.addEventListener("DOMContentLoaded", _coreInit);
 

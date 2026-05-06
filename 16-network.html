@@ -135,8 +135,7 @@ function resize() {
   canvas.height = ch;
   canvas.style.width = viewW + "px";
   canvas.style.height = viewH + "px";
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
   adjustNodeCount();
 }
 window.addEventListener("resize", resize);
@@ -162,9 +161,8 @@ function step(dt) {
   if (audio && onset("mid")) pulseRandomNodes(0.7, 5);
   if (audio && onset("high")) pulseRandomNodes(0.5, 4);
 
-  // clear — full opaque redraw, no trails
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  // clear — full canvas redraw, no trails
+  ctx.clearRect(0, 0, cw, ch);
 
   // body-frame drift: small random nudge in 3D + soft pull back to origin
   // so nodes stay clustered near the cloud center. damping keeps motion

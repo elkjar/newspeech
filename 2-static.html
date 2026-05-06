@@ -103,8 +103,7 @@ function drawStatic(t, dt) {
   }
   staticCtx.putImageData(staticImg, 0, 0);
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.clearRect(0, 0, viewW, viewH);
   ctx.drawImage(staticCanvas, 0, 0, viewW, viewH);
 }
 

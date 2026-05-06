@@ -151,8 +151,7 @@ function rerollBlocks(t) {
 function drawBlocks(t, dt) {
   if (!tex.width) return;
   if (!blockTiles || t > blockRerollAt) rerollBlocks(t);
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.clearRect(0, 0, viewW, viewH);
   for (const tile of blockTiles) {
     ctx.drawImage(
       tex,

@@ -144,8 +144,7 @@ function drawInvert(t, dt) {
   const scroll = params.scrollSpeed * (0.5 + 0.8 * env);
   scrollY = (scrollY + scroll * dt) % viewH;
 
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.clearRect(0, 0, viewW, viewH);
   ctx.drawImage(tex, 0, scrollY, viewW, viewH, 0, 0, viewW, viewH);
 
   ctx.save();

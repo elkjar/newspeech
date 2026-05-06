@@ -127,8 +127,7 @@ function drawGridLines(N, segPerLine, t, useDifference) {
 function drawGrid(t) {
   if (t > snapEnd) { snapX = 0; snapY = 0; }
 
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.clearRect(0, 0, viewW, viewH);
 
   const tSec = t / 1000;
   const zoom = Math.pow(2, (tSec * params.zoomRate) % 1) * (1 - intensity() * 0.15);

@@ -226,8 +226,7 @@ function resize() {
   canvas.style.width = viewW + "px";
   canvas.style.height = viewH + "px";
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
   ensureCanvases();
   recomputeGrid();
 }
@@ -286,8 +285,7 @@ poisson(
 function step(dt) {
   const src = videoEl && videoEl.readyState >= 2 ? videoEl : imgEl;
   if (!src || imgW === 0) {
-    ctx.fillStyle = "#050505";
-    ctx.fillRect(0, 0, cw, ch);
+    ctx.clearRect(0, 0, cw, ch);
     return;
   }
 
@@ -305,8 +303,7 @@ function step(dt) {
   drawCover(freshCtx, src);
 
   // base layer: clean fresh frame
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
   ctx.drawImage(freshCanvas, 0, 0);
 
   const now = performance.now() / 1000;

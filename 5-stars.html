@@ -118,8 +118,13 @@ function spawnStar(scattered) {
 }
 function drawStars(t, dt) {
   if (!stars) initStars();
-  ctx.fillStyle = "rgba(5, 5, 5, 0.42)";
+  // trail fade — destination-out so star trails decay toward transparent
+  // (revealing bg-grid through the gaps), not toward an opaque dark layer.
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.42)";
   ctx.fillRect(0, 0, viewW, viewH);
+  ctx.restore();
 
   ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textBaseline = "middle";

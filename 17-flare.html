@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // flare</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // flare">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/17-flare.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // flare">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">flare · params · [0] toggle</div>
+  <label>
+    <span class="name">mass radius</span><span class="val"></span>
+    <input type="range" min="0.20" max="1.50" step="0.01" data-k="massR">
+  </label>
+  <label>
+    <span class="name">particle rate</span><span class="val"></span>
+    <input type="range" min="400" max="9600" step="80" data-k="particleRate">
+  </label>
+  <label>
+    <span class="name">density</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="density">
+  </label>
+  <label>
+    <span class="name">particle speed</span><span class="val"></span>
+    <input type="range" min="0.3" max="3" step="0.05" data-k="speedMul">
+  </label>
+  <label>
+    <span class="name">flare rate</span><span class="val"></span>
+    <input type="range" min="0" max="3" step="0.05" data-k="flareRate">
+  </label>
+  <label>
+    <span class="name">flare spread</span><span class="val"></span>
+    <input type="range" min="0.75" max="2.0" step="0.01" data-k="flareSpread">
+  </label>
+  <label>
+    <span class="name">audio boost</span><span class="val"></span>
+    <input type="range" min="0" max="2" step="0.05" data-k="audioBoost">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const {
+  intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel,
+  installMarkers, tickMarkers, installTelemetry, tickTelemetry, onset, audioActive,
+} = Newspeech;
+installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
+
+const params = {
+  massR: 0.55,
+  particleRate: 4400,
+  density: 0.72,
+  speedMul: 1.0,
+  flareRate: 0.7,
+  flareSpread: 0.75,
+  audioBoost: 1.0,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+let viewW = 0, viewH = 0, dpr = 1, cw = 0, ch = 0;
+let massCx = 0, massCy = 0, massR = 0;
+
+// device-pixel particles. flat object array — perf is fine at our counts and
+// the field churn (insert + cull each frame) reads cleanly this way.
+const MAX_PARTICLES = 20000;
+const particles = [];
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  cw = Math.floor(viewW * dpr);
+  ch = Math.floor(viewH * dpr);
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.imageSmoothingEnabled = false;
+  recomputeMass();
+}
+window.addEventListener("resize", resize);
+
+function recomputeMass() {
+  // mass center sits partially off the right edge so we see roughly half the
+  // disc. radius scales with the short axis so portrait/landscape both look
+  // right; offset the center 12% of radius past the right edge so the slice
+  // is consistently larger than half but not the full disc.
+  massR = Math.min(cw, ch) * params.massR;
+  massCx = cw + massR * 0.12;
+  massCy = ch * 0.5;
+}
+
+// spawn a single particle at the mass surface heading roughly along `angle`
+// (radians, canvas convention: 0 = +x, π/2 = +y down). angSpread widens the
+// cone; speedMin/speedMax are radial speed in device-px / sec; sizeMul scales
+// per-particle pixel size; lifeMin/lifeMax bound the particle's lifetime in
+// seconds (life × speed sets how far the particle travels before fading).
+// speedBias > 1 biases the speed distribution toward speedMin — most particles
+// move slowly so they pile up at the surface; a thin tail of fast ones extends
+// outward. with constant life this produces a density gradient (concentration
+// at the surface fading outward) instead of a uniform band. speedBias=1 is
+// uniform sampling.
+function spawnParticle(angle, angSpread, speedMin, speedMax, sizeMul, lifeMin, lifeMax, speedBias) {
+  if (particles.length >= MAX_PARTICLES) return;
+  const a = angle + (Math.random() - 0.5) * angSpread;
+  const surfR = massR * (1 + Math.random() * 0.04);
+  const ca = Math.cos(a), sa = Math.sin(a);
+  const u = speedBias && speedBias !== 1 ? Math.pow(Math.random(), speedBias) : Math.random();
+  const speed = speedMin + u * (speedMax - speedMin);
+  // tangential jitter — large magnitude so streams curve noticeably away
+  // from perfectly radial. without enough lateral component, particles
+  // trace straight lines and adjacent spawn-angle bins produce visibly
+  // distinct rays, which reads as polygonal cluster boundaries.
+  const lateral = (Math.random() - 0.5) * 42 * dpr;
+  particles.push({
+    x: massCx + ca * surfR,
+    y: massCy + sa * surfR,
+    vx: ca * speed - sa * lateral,
+    vy: sa * speed + ca * lateral,
+    // ~18% chunky / ~82% small — matches the dust-vs-debris texture in the ref.
+    size: (Math.random() < 0.18 ? 2.6 : 1.0) * dpr * sizeMul,
+    life: lifeMin + Math.random() * (lifeMax - lifeMin),
+    age: 0,
+  });
+}
+
+// non-uniform spawn-angle weighting. uniform random across the visible
+// hemisphere makes the disc emit evenly — reads as a static ring. best-of-2
+// sampling against a smooth low-frequency noise field (drifting in time)
+// biases spawns toward broad active regions of the surface, while keeping
+// the bias gentle enough that no hard-edged hotspots form. lower-freq sin
+// terms + only 2 candidates are deliberate: more aggressive bias produced
+// sharp ray patterns that read as polygonal rather than organic.
+function pickAmbientAngle() {
+  const t = performance.now() * 0.001;
+  let bestA = 0, bestW = -Infinity;
+  for (let i = 0; i < 2; i++) {
+    const a = Math.PI * 0.5 + Math.random() * Math.PI;
+    const w =
+      Math.sin(a * 1.5 + t * 0.30) +
+      Math.cos(a * 2.5 - t * 0.21) * 0.55;
+    if (w > bestW) { bestW = w; bestA = a; }
+  }
+  return bestA;
+}
+
+// ambient spawn — biased to the visible (left) hemisphere of the mass so the
+// stream reads as emanating toward camera, not into off-screen space. two
+// tiers: halo (slow + short-lived) gives the dense band at the surface that
+// defines the edge of the disc; wake (faster + longer-lived) fills the field
+// beyond. ratio is biased heavy on halo so the edge stays defined even at
+// lower particle rates.
+function spawnAmbient(dt, env) {
+  const rate = params.particleRate * (0.4 + 0.9 * env);
+  const n = Math.min(480, Math.round(rate * dt));
+  for (let k = 0; k < n; k++) {
+    const a = pickAmbientAngle();
+    if (Math.random() < params.density) {
+      // halo: wide speed range + wide life range with strong cubic-ish bias.
+      // most particles are slow + short-lived → pile up at the surface as a
+      // very dense inner band; a thin tail of fast + long-lived ones reaches
+      // deep into the field, so the halo gradient extends gradually outward
+      // instead of cutting off at a fixed radius. wide angle spread (~57°
+      // cone) blurs adjacent spawn-angle bins together so cluster boundaries
+      // read as soft gradients, not faceted edges.
+      spawnParticle(a, 1.00, 8 * dpr, 220 * dpr, 1, 0.5, 3.0, 3.5);
+    } else {
+      // wake: higher velocity + medium life → escapes the halo, fills the
+      // field beyond as a thinner cloud. even wider spread than halo since
+      // wake particles travel farther, where any directional bias amplifies.
+      spawnParticle(a, 1.30, 90 * dpr, 170 * dpr, 1, 1.4, 2.8);
+    }
+  }
+}
+
+// flares = directed bursts. each one fires for `duration` seconds, emitting
+// fast cone-spread particles whose count follows a sin envelope (0→1→0) so
+// the stream ramps up and tails off.
+const flares = [];
+function spawnFlare(boost) {
+  const a = Math.PI * 0.5 + Math.random() * Math.PI;
+  flares.push({
+    angle: a,
+    spread: params.flareSpread * (0.7 + Math.random() * 0.6),
+    duration: 0.6 + Math.random() * 1.2,
+    age: 0,
+    intensity: (0.8 + Math.random() * 0.6) * (boost || 1),
+  });
+}
+poisson(() => params.flareRate * (1 + 1.5 * intensity()), () => spawnFlare(1));
+
+function tickFlares(dt) {
+  const env = intensity();
+  for (let i = flares.length - 1; i >= 0; i--) {
+    const f = flares[i];
+    f.age += dt;
+    if (f.age > f.duration) { flares.splice(i, 1); continue; }
+    const t = f.age / f.duration;
+    const envelope = Math.sin(t * Math.PI);
+    const burst = Math.round(220 * dt * envelope * f.intensity * (0.7 + env));
+    for (let k = 0; k < burst; k++) {
+      // flare particles get a longer life so the streams visibly reach into
+      // the field rather than dying inside the halo band.
+      spawnParticle(f.angle, f.spread, 180 * dpr, 380 * dpr, 1.4, 2.0, 3.6);
+    }
+  }
+}
+
+function audioBumps() {
+  const boost = params.audioBoost;
+  if (boost <= 0) return;
+  // bass hits → big flare. mids → small extra flare. treble → ambient burst.
+  if (onset("low"))  spawnFlare(boost * 1.4);
+  if (onset("mid") && Math.random() < 0.5) spawnFlare(boost * 0.8);
+  if (onset("high")) {
+    const n = Math.round(160 * boost);
+    for (let k = 0; k < n; k++) {
+      spawnParticle(pickAmbientAngle(), 0.25, 80 * dpr, 200 * dpr, 1, 1.0, 2.0);
+    }
+  }
+}
+
+function step(dt) {
+  const env = intensity();
+  audioBumps();
+  spawnAmbient(dt, env);
+  tickFlares(dt);
+
+  // update + cull. compact in place so live entries stay packed at array head.
+  const speedMul = params.speedMul;
+  const margin = 60 * dpr;
+  let w = 0;
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    p.age += dt;
+    if (p.age >= p.life) continue;
+    p.x += p.vx * dt * speedMul;
+    p.y += p.vy * dt * speedMul;
+    if (p.x < -margin || p.x > cw + margin || p.y < -margin || p.y > ch + margin) continue;
+    if (w !== i) particles[w] = p;
+    w++;
+  }
+  particles.length = w;
+}
+
+// particles — bright at peak, fade in fast and fade out gradually so trails
+// taper instead of cutting hard. small particles render as 1px rects; chunky
+// ones as small filled circles for a slightly softer dot.
+function drawParticles() {
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const t = p.age / p.life;
+    if (t >= 1) continue;
+    // fade-out only — no fade-in. fade-in pushed the brightest zone outward
+    // because freshly-spawned particles started invisible and ramped up over
+    // the first ~17% of life; by then they'd already drifted past the surface
+    // and the visual concentration formed a band offset from the disc instead
+    // of sitting on it. fade-out alone keeps the surface bright and lets old
+    // particles taper away naturally.
+    const alpha = Math.min(1, (1 - t) * 1.6);
+    if (alpha <= 0.02) continue;
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+    // arc + fill for everything (vs fillRect for the small ones) so canvas
+    // AA softens the per-particle pixel edges. slightly more expensive than
+    // fillRect but reads much softer — at this density it's the difference
+    // between "field of glowing dust" and "field of hard pixel grit".
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// mass — radial gradient from solid black to transparent black over the
+// outer ~4% of radius so the boundary softens into the particle field
+// instead of cutting hard against it. drawn AFTER tickMarkers so the
+// canvas-fallback sobel inside tickMarkers sees only the particle field —
+// markers anchor to bright particles instead of the mass perimeter, which
+// would otherwise dominate sobel contrast.
+function drawMass() {
+  const featherStart = massR * 0.96;
+  const grad = ctx.createRadialGradient(massCx, massCy, featherStart, massCx, massCy, massR);
+  grad.addColorStop(0, "rgba(0, 0, 0, 1)");
+  grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(massCx, massCy, massR, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dt = Math.min(0.05, (t - lastT) / 1000);
+  lastT = t;
+  tickInputs(dt);
+  step(dt);
+  ctx.clearRect(0, 0, cw, ch);
+  drawParticles();
+  tickMarkers(dt);   // sobel sees only particles → markers track them
+  drawMass();        // mass painted on top, after sobel snapshot
+  tickTelemetry(dt);
+  requestAnimationFrame(frame);
+}
+
+resize();
+
+// pre-roll the simulation so the first painted frame already shows a populated
+// field — without this, the page opens with a clean disc and particles trickle
+// in over a second, which reads as broken on the first impression.
+for (let k = 0; k < 30; k++) step(0.05);
+
+requestAnimationFrame(frame);
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  spawnFlare(1.6);
+  bumpActivity();
+});
+
+window.onParamChange = (k) => {
+  if (k === "massR") recomputeMass();
+};
+
+installMarkers({ params });
+installTelemetry({ params });
+installPanel(params);
+</script>
+</body>
+</html>

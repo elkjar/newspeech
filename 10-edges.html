@@ -404,8 +404,7 @@ function resize() {
   canvas.style.width = viewW + "px";
   canvas.style.height = viewH + "px";
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
   trailsCanvas.width = cw;
   trailsCanvas.height = ch;
   trailsCtx.imageSmoothingEnabled = false;
@@ -527,8 +526,7 @@ function step(dt) {
   }
 
   // composite to main canvas: bg → optional source overlay → trails layer
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
   if (params.overlay > 0) drawOverlay(params.overlay);
   ctx.drawImage(trailsCanvas, 0, 0);
   tickMarkers(dt);

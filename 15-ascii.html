@@ -219,8 +219,7 @@ function resize() {
   canvas.height = ch;
   canvas.style.width = viewW + "px";
   canvas.style.height = viewH + "px";
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
 }
 window.addEventListener("resize", resize);
 
@@ -300,8 +299,7 @@ function step(dt) {
     ? Math.floor(t * 0.001 * (1 + 60 * params.audioJitter * env))
     : 0;
 
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
 
   const fontPx = cs * Math.max(0.4, params.charScale);
   ctx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, monospace`;

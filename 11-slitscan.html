@@ -202,8 +202,7 @@ function resize() {
   canvas.style.width = viewW + "px";
   canvas.style.height = viewH + "px";
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
 }
 window.addEventListener("resize", resize);
 
@@ -230,8 +229,7 @@ function blitToMain() {
   const drawH = RING_H * scale;
   const offX = (cw - drawW) * 0.5;
   const offY = (ch - drawH) * 0.5;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(slitCanvas, offX, offY, drawW, drawH);
 }

@@ -129,8 +129,7 @@ function resize() {
   canvas.style.height = viewH + "px";
   // NO setTransform — work in raw device pixels so 1px = 1 device pixel
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
 
   // density tuned for 1-device-pixel dots; trails do most of the visual work
   adjustParticleCount();
@@ -162,10 +161,15 @@ function step(dt) {
   const t = performance.now();
   const env = intensity();
 
-  // trail fade — longer trails when calm
+  // trail fade — longer trails when calm. destination-out subtracts alpha
+  // from existing pixels so trails decay toward transparent (revealing
+  // bg-grid through the gaps), not toward an opaque dark layer.
   const fadeAlpha = Math.min(0.4, (1.6 + 2.4 * (1 - env)) * dt * params.fadeMul);
-  ctx.fillStyle = `rgba(5, 5, 5, ${fadeAlpha})`;
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
   ctx.fillRect(0, 0, cw, ch);
+  ctx.restore();
 
   // motion speed in CSS px / sec → multiply by dpr for device-px space
   const speedCss = (90 + 180 * env) * params.speedMul;

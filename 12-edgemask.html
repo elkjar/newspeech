@@ -292,8 +292,7 @@ function resize() {
   canvas.height = ch;
   canvas.style.width = viewW + "px";
   canvas.style.height = viewH + "px";
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
   ensureCanvases();
 }
 window.addEventListener("resize", resize);
@@ -310,8 +309,7 @@ function drawCover(targetCtx, src) {
 function step(dt) {
   const src = videoEl && videoEl.readyState >= 2 ? videoEl : imgEl;
   if (!src || imgW === 0) {
-    ctx.fillStyle = "#050505";
-    ctx.fillRect(0, 0, cw, ch);
+    ctx.clearRect(0, 0, cw, ch);
     return;
   }
   const env = intensity();
@@ -338,8 +336,7 @@ function step(dt) {
   trailsCtx.globalCompositeOperation = "source-over";
   trailsCtx.drawImage(procCanvas, 0, 0);
 
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cw, ch);
   ctx.drawImage(trailsCanvas, 0, 0);
 
   tickMarkers(dt);
