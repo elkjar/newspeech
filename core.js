@@ -247,15 +247,72 @@
       background: rgba(255, 220, 180, 0.06);
     }
 
-    /* inline tap-targets in slider names (e.g. [s] next to "telemetry") */
-    #panel .ns-shuffle {
+    /* inline tap-targets in slider names (e.g. [s] / [pick] next to "telemetry") */
+    #panel .ns-shuffle, #panel .ns-pick {
       margin-left: 6px;
       opacity: 0.45;
       cursor: pointer;
       font-size: 10px;
       letter-spacing: 0.04em;
     }
-    #panel .ns-shuffle:hover { opacity: 0.95; color: rgba(180, 220, 255, 1); }
+    #panel .ns-shuffle:hover, #panel .ns-pick:hover {
+      opacity: 0.95; color: rgba(180, 220, 255, 1);
+    }
+
+    /* telemetry control row — replaces the count slider. label + count
+       readout, with [pick] and [s] tap-targets. count text is dim like
+       slider .val so the row matches the rest of the panel visually. */
+    #panel .panel-telemetry {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      margin-bottom: 10px;
+    }
+    #panel .panel-telemetry .label { opacity: 0.75; }
+    #panel .panel-telemetry .count { opacity: 0.5; font-variant-numeric: tabular-nums; }
+
+    /* picker mode — hide every regular panel child except the title +
+       picker overlay + close button. picker fills the panel surface. */
+    #panel.picker-mode > *:not(.panel-title):not(.panel-picker):not(.panel-close) {
+      display: none !important;
+    }
+    #panel .panel-picker {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-top: 6px;
+    }
+    #panel .panel-picker .picker-head {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      opacity: 0.55;
+      margin-bottom: 4px;
+    }
+    #panel .panel-picker .pick-row {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      opacity: 0.4;
+      cursor: pointer;
+      padding: 4px 2px;
+    }
+    #panel .panel-picker .pick-row:hover { opacity: 0.7; }
+    #panel .panel-picker .pick-row.on { opacity: 0.95; color: rgba(180, 220, 255, 1); }
+    #panel .panel-picker .pick-actions {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      gap: 14px;
+    }
+    #panel .panel-picker .pick-action {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      opacity: 0.7;
+      cursor: pointer;
+    }
+    #panel .panel-picker .pick-action:hover { opacity: 1; color: rgba(180, 220, 255, 1); }
   `;
   const style = document.createElement("style");
   style.textContent = css;
@@ -1177,27 +1234,24 @@
   // pinned vertical stack of small widgets that render a surveillance-feed
   // look. each widget reads live core.js signals (band levels, intensity,
   // audio level) when available and synthesizes plausible "documentation"
-  // content otherwise. the pool has 11 widget types — 5 graphic-display
-  // and 6 text-feed. only TELEMETRY_MAX_VISIBLE slots render at once, and
-  // within those visible slots at most MAX_GRAPHIC_VISIBLE are graphic
-  // (the rest are text). this keeps the HUD visually mixed: graphics give
-  // density / focal points, text widgets give the readable / surveillance
-  // texture between them.
+  // content otherwise. visibility is fully user-driven via the panel's
+  // [pick] mode — _telemetryEnabled is the source of truth for which
+  // widgets render, _telemetryOrder controls their stack order. shuffle
+  // randomizes the order; disabled types stay in the order array but
+  // contribute nothing to the rendered stack.
   const TELEMETRY_PAD_TOP = 28;
   const TELEMETRY_PAD_LEFT = 32;
   const TELEMETRY_GAP = 18;
-  const TELEMETRY_MAX_VISIBLE = 5;
-  const MAX_GRAPHIC_VISIBLE = 2;
-  const GRAPHIC_TELEMETRY = new Set(["radar", "scope", "profile", "vector", "tunnel"]);
-  // default order — first 5 (visible region) hold 2 graphic + 3 text so the
-  // initial render already satisfies the cap. shuffle preserves the cap.
-  const TELEMETRY_LAYOUT = [
-    // visible region (positions 0-4): 2 graphic + 3 text
+  const TELEMETRY_TYPES = [
     "radar", "scope", "bands", "events", "waveform",
-    // overflow region (positions 5-10): remaining 3 graphic + 3 text
     "profile", "vector", "tunnel", "coords", "xfer", "hex",
   ];
-  const _telemetryOrder = [...TELEMETRY_LAYOUT];
+  const TELEMETRY_ENABLED_KEY = "newspeech.telemetryEnabled";
+  const TELEMETRY_ORDER_KEY   = "newspeech.telemetryOrder";
+  const _telemetryOrder = [...TELEMETRY_TYPES];
+  // default visible set matches the prior hard-coded first 5 — same look on
+  // a fresh load, but every widget can now be toggled via [pick].
+  const _telemetryEnabled = new Set(["radar", "scope", "bands", "events", "waveform"]);
   const _telemetrySlots = [];
   let _telemetryParams = null;
 
@@ -1828,12 +1882,12 @@
 
   function _telemetryEnsureSlots() {
     if (!_telemetryParams) return;
-    const count = Math.max(0, Math.min(TELEMETRY_MAX_VISIBLE, _telemetryParams.telemetry | 0));
-    while (_telemetrySlots.length < count) {
-      const i = _telemetrySlots.length;
-      _telemetrySlots.push(_makeTelemetrySlot(_telemetryOrder[i]));
-    }
-    while (_telemetrySlots.length > count) _telemetrySlots.pop();
+    const visible = _telemetryOrder.filter(t => _telemetryEnabled.has(t));
+    const matches = _telemetrySlots.length === visible.length
+      && _telemetrySlots.every((s, i) => s.type === visible[i]);
+    if (matches) return;
+    _telemetrySlots.length = 0;
+    for (const t of visible) _telemetrySlots.push(_makeTelemetrySlot(t));
   }
 
   function _shuffleInPlace(arr) {
@@ -1843,44 +1897,182 @@
     }
     return arr;
   }
+  function _telemetryToggle(type) {
+    // toggle enabled state, then move the type to the enabled/disabled
+    // boundary so `_telemetryOrder` stays partitioned as
+    // [enabled in click-order, disabled in canonical order].
+    if (_telemetryEnabled.has(type)) _telemetryEnabled.delete(type);
+    else _telemetryEnabled.add(type);
+    const idx = _telemetryOrder.indexOf(type);
+    if (idx >= 0) _telemetryOrder.splice(idx, 1);
+    // boundary = number of enabled types still present in order. inserting
+    // here puts the toggled type at end-of-enabled (if now enabled) or
+    // start-of-disabled (if now disabled).
+    let boundary = 0;
+    for (const t of _telemetryOrder) if (_telemetryEnabled.has(t)) boundary++;
+    _telemetryOrder.splice(boundary, 0, type);
+  }
+
   function shuffleTelemetry() {
-    // partition the pool into graphic + text, shuffle each, fill the
-    // visible region with up to MAX_GRAPHIC_VISIBLE graphic + the rest text,
-    // then shuffle the visible region's order so graphics aren't always at
-    // the top. overflow region (positions 5-10) holds the leftovers in
-    // arbitrary order — never visible unless the cap or pool changes.
-    const graphics = _shuffleInPlace(TELEMETRY_LAYOUT.filter(t => GRAPHIC_TELEMETRY.has(t)));
-    const text     = _shuffleInPlace(TELEMETRY_LAYOUT.filter(t => !GRAPHIC_TELEMETRY.has(t)));
-    const gVis = graphics.slice(0, MAX_GRAPHIC_VISIBLE);
-    const tVis = text.slice(0, TELEMETRY_MAX_VISIBLE - gVis.length);
-    const visible = _shuffleInPlace([...gVis, ...tVis]);
-    const rest = _shuffleInPlace([...graphics.slice(gVis.length), ...text.slice(tVis.length)]);
-    _telemetryOrder.length = 0;
-    _telemetryOrder.push(...visible, ...rest);
+    // shuffle only the enabled portion — disabled types don't render, so
+    // permuting them is wasted motion. preserves which slots are visible
+    // but randomizes their stack order.
+    const enabledIdxs = [];
+    const enabledItems = [];
+    for (let i = 0; i < _telemetryOrder.length; i++) {
+      if (_telemetryEnabled.has(_telemetryOrder[i])) {
+        enabledIdxs.push(i);
+        enabledItems.push(_telemetryOrder[i]);
+      }
+    }
+    _shuffleInPlace(enabledItems);
+    for (let k = 0; k < enabledIdxs.length; k++) {
+      _telemetryOrder[enabledIdxs[k]] = enabledItems[k];
+    }
+    _saveTelemetry();
     // drop existing slots so they rebuild against the new order — also
     // refreshes widget state, which reads as a fresh capture
     _telemetrySlots.length = 0;
   }
 
+  function _saveTelemetry() {
+    try {
+      localStorage.setItem(TELEMETRY_ENABLED_KEY, JSON.stringify([..._telemetryEnabled]));
+      localStorage.setItem(TELEMETRY_ORDER_KEY,   JSON.stringify(_telemetryOrder));
+    } catch (_) {}
+  }
+  function _loadTelemetry() {
+    try {
+      const e = localStorage.getItem(TELEMETRY_ENABLED_KEY);
+      if (e != null) {
+        const arr = JSON.parse(e);
+        if (Array.isArray(arr)) {
+          _telemetryEnabled.clear();
+          for (const t of arr) if (TELEMETRY_TYPES.indexOf(t) >= 0) _telemetryEnabled.add(t);
+        }
+      }
+      const o = localStorage.getItem(TELEMETRY_ORDER_KEY);
+      if (o != null) {
+        const arr = JSON.parse(o);
+        if (Array.isArray(arr)) {
+          const seen = new Set();
+          const next = [];
+          for (const t of arr) {
+            if (TELEMETRY_TYPES.indexOf(t) >= 0 && !seen.has(t)) { next.push(t); seen.add(t); }
+          }
+          // append any missing types so the order array always covers all 11
+          for (const t of TELEMETRY_TYPES) if (!seen.has(t)) next.push(t);
+          _telemetryOrder.length = 0;
+          _telemetryOrder.push(...next);
+        }
+      }
+      // normalize: enabled types form prefix in their loaded relative order,
+      // disabled types follow in their loaded relative order. maintains the
+      // invariant the toggle/shuffle logic assumes, even after old-format
+      // data or external mutation.
+      const enabledList  = _telemetryOrder.filter(t =>  _telemetryEnabled.has(t));
+      const disabledList = _telemetryOrder.filter(t => !_telemetryEnabled.has(t));
+      _telemetryOrder.length = 0;
+      _telemetryOrder.push(...enabledList, ...disabledList);
+    } catch (_) {}
+  }
+
+  function _refreshTelemetryCount() {
+    document.querySelectorAll("#panel .panel-telemetry .count").forEach(el => {
+      el.textContent = `${_telemetryEnabled.size}/${TELEMETRY_TYPES.length}`;
+    });
+  }
+
+  function _buildPickerRows(wrap) {
+    // wipe existing rows + rebuild in current _telemetryOrder. called on
+    // initial open AND after every toggle, so the picker always previews
+    // the HUD stack — enabled types at top in click-order, disabled below.
+    wrap.querySelectorAll(".pick-row").forEach(el => el.remove());
+    const actions = wrap.querySelector(".pick-actions");
+    for (const type of _telemetryOrder) {
+      const r = document.createElement("div");
+      r.className = "pick-row" + (_telemetryEnabled.has(type) ? " on" : "");
+      r.dataset.type = type;
+      r.textContent = type;
+      r.addEventListener("click", () => {
+        _telemetryToggle(type);
+        _saveTelemetry();
+        _telemetrySlots.length = 0; // HUD rebuilds on next tick
+        _buildPickerRows(wrap);     // picker reorders to match
+      });
+      if (actions) wrap.insertBefore(r, actions);
+      else wrap.appendChild(r);
+    }
+  }
+
+  function _clearTelemetry(wrap) {
+    _telemetryEnabled.clear();
+    _saveTelemetry();
+    _telemetrySlots.length = 0;
+    if (wrap) _buildPickerRows(wrap);
+  }
+
+  function enterTelemetryPicker() {
+    const panel = document.getElementById("panel");
+    if (!panel || panel.querySelector(".panel-picker")) return;
+    panel.classList.add("picker-mode");
+    const wrap = document.createElement("div");
+    wrap.className = "panel-picker";
+    const head = document.createElement("div");
+    head.className = "picker-head";
+    head.textContent = "telemetry · pick widgets";
+    wrap.appendChild(head);
+    const actions = document.createElement("div");
+    actions.className = "pick-actions";
+    const clear = document.createElement("span");
+    clear.className = "pick-action";
+    clear.textContent = "[clear]";
+    clear.addEventListener("click", () => _clearTelemetry(wrap));
+    const done = document.createElement("span");
+    done.className = "pick-action";
+    done.textContent = "[done]";
+    done.addEventListener("click", exitTelemetryPicker);
+    actions.appendChild(clear);
+    actions.appendChild(done);
+    wrap.appendChild(actions);
+    panel.appendChild(wrap);
+    _buildPickerRows(wrap);
+  }
+
+  function exitTelemetryPicker() {
+    const panel = document.getElementById("panel");
+    if (!panel) return;
+    panel.classList.remove("picker-mode");
+    const picker = panel.querySelector(".panel-picker");
+    if (picker) picker.remove();
+    _refreshTelemetryCount();
+  }
+
   function installTelemetry(opts) {
     _telemetryParams = (opts && opts.params) || {};
-    if (_telemetryParams.telemetry == null) _telemetryParams.telemetry = 0;
     const panel = document.getElementById("panel");
-    if (panel && !panel.querySelector('input[data-k="telemetry"]')) {
-      const label = document.createElement("label");
-      label.innerHTML =
-        '<span class="name">telemetry<span class="ns-shuffle" role="button" title="shuffle order">[s]</span></span><span class="val"></span>' +
-        `<input type="range" min="0" max="${TELEMETRY_MAX_VISIBLE}" step="1" data-k="telemetry">`;
-      const shuffleBtn = label.querySelector(".ns-shuffle");
-      shuffleBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        shuffleTelemetry();
-      });
-      const globals = panel.querySelector(".panel-globals");
-      if (globals) panel.insertBefore(label, globals);
-      else panel.appendChild(label);
-    }
+    if (!panel || panel.querySelector(".panel-telemetry")) return;
+    const row = document.createElement("div");
+    row.className = "panel-telemetry";
+    row.innerHTML =
+      '<span class="label">telemetry</span> ' +
+      '<span class="count"></span>' +
+      '<span class="ns-pick" role="button" title="pick widgets">[pick]</span>' +
+      '<span class="ns-shuffle" role="button" title="shuffle order">[s]</span>';
+    row.querySelector(".ns-pick").addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      enterTelemetryPicker();
+    });
+    row.querySelector(".ns-shuffle").addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      shuffleTelemetry();
+    });
+    const globals = panel.querySelector(".panel-globals");
+    if (globals) panel.insertBefore(row, globals);
+    else panel.appendChild(row);
+    _refreshTelemetryCount();
   }
 
   function tickTelemetry(dt) {
@@ -2107,6 +2299,7 @@
   loadGrayscale();
   loadContrast();
   loadGridState();
+  _loadTelemetry();
 
   // build the audio dialog, apply persisted display-filter state, and
   // install bg-grid at module load (so filter, grid canvas, and grid
