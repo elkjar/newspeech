@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // network</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio experimentation.">
+<meta property="og:title" content="NEWSPEECH // network">
+<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/16-network.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // network">
+<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">network · params · [0] toggle</div>
+  <label>
+    <span class="name">node count</span><span class="val"></span>
+    <input type="range" min="20" max="400" step="5" data-k="nodeCount">
+  </label>
+  <label>
+    <span class="name">link radius</span><span class="val"></span>
+    <input type="range" min="40" max="400" step="2" data-k="linkRadius">
+  </label>
+  <label>
+    <span class="name">drift speed</span><span class="val"></span>
+    <input type="range" min="0" max="8" step="0.05" data-k="driftSpeed">
+  </label>
+  <label>
+    <span class="name">link opacity</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="linkOpacity">
+  </label>
+  <label>
+    <span class="name">glow size</span><span class="val"></span>
+    <input type="range" min="0" max="6" step="0.1" data-k="glowSize">
+  </label>
+  <label>
+    <span class="name">audio pulse</span><span class="val"></span>
+    <input type="range" min="0" max="1.5" step="0.01" data-k="audioPulse">
+  </label>
+  <label>
+    <span class="name">cloud spread</span><span class="val"></span>
+    <input type="range" min="0.15" max="0.9" step="0.01" data-k="spread">
+  </label>
+  <label>
+    <span class="name">stretch</span><span class="val"></span>
+    <input type="range" min="0.4" max="3" step="0.02" data-k="stretch">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, onset, audioActive } = Newspeech;
+installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
+
+const params = {
+  nodeCount: 120,
+  linkRadius: 180,
+  driftSpeed: 1,
+  linkOpacity: 0.45,
+  glowSize: 2.5,
+  audioPulse: 0.6,
+  spread: 0.42,
+  stretch: 1,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+let viewW, viewH, dpr, cw, ch;
+let nodes = [];
+
+// auto-rotation phase, accumulates each frame. driftSpeed scales the rate
+// so the same slider controls both internal jitter and cloud rotation.
+let rotY = 0;
+let rotX = 0;
+
+// perspective focal length in body-frame units. nodes live in roughly the
+// unit sphere, so a focal of 2.6 puts the camera comfortably outside the
+// cloud — front nodes scale up ~1.6×, back nodes scale down ~0.7×.
+const FOCAL = 2.6;
+
+// rejection-sample inside the unit sphere so the cloud reads as a volume
+// rather than a cube — corners on a uniform [-1,1]³ would create square
+// silhouettes when the rotation lines up with an axis.
+function makeNode() {
+  let x, y, z;
+  do {
+    x = Math.random() * 2 - 1;
+    y = Math.random() * 2 - 1;
+    z = Math.random() * 2 - 1;
+  } while (x * x + y * y + z * z > 1);
+  return {
+    x, y, z,
+    vx: (Math.random() - 0.5) * 0.02,
+    vy: (Math.random() - 0.5) * 0.02,
+    vz: (Math.random() - 0.5) * 0.02,
+    pulse: 0,
+  };
+}
+
+function adjustNodeCount() {
+  const target = Math.max(2, params.nodeCount | 0);
+  while (nodes.length < target) nodes.push(makeNode());
+  if (nodes.length > target) nodes.length = target;
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  cw = Math.floor(viewW * dpr);
+  ch = Math.floor(viewH * dpr);
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+  adjustNodeCount();
+}
+window.addEventListener("resize", resize);
+
+// onsets in any band trigger a pulse on a small random subset of nodes.
+// pulse decays each frame and modulates node radius + glow.
+function pulseRandomNodes(strength, count) {
+  const n = Math.min(nodes.length, count);
+  for (let i = 0; i < n; i++) {
+    const k = (Math.random() * nodes.length) | 0;
+    nodes[k].pulse = Math.max(nodes[k].pulse, strength);
+  }
+}
+
+// scratch projection buffer reused each frame — {sx, sy, persp, depth, pulse}
+const proj = [];
+
+function step(dt) {
+  const env = intensity();
+  const audio = audioActive();
+
+  if (audio && onset("low")) pulseRandomNodes(1.0, 8);
+  if (audio && onset("mid")) pulseRandomNodes(0.7, 5);
+  if (audio && onset("high")) pulseRandomNodes(0.5, 4);
+
+  // clear — full opaque redraw, no trails
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, cw, ch);
+
+  // body-frame drift: small random nudge in 3D + soft pull back to origin
+  // so nodes stay clustered near the cloud center. damping keeps motion
+  // calm without explicit velocity caps.
+  const jitter = 0.04 * params.driftSpeed * (0.4 + 0.9 * env);
+  const damp = Math.pow(0.985, dt * 60);
+  for (const n of nodes) {
+    n.vx += (Math.random() - 0.5) * jitter * dt;
+    n.vy += (Math.random() - 0.5) * jitter * dt;
+    n.vz += (Math.random() - 0.5) * jitter * dt;
+    n.vx *= damp; n.vy *= damp; n.vz *= damp;
+    n.x += n.vx * dt * 60;
+    n.y += n.vy * dt * 60;
+    n.z += n.vz * dt * 60;
+    // soft radial pull when a node strays past the unit sphere — keeps the
+    // cloud bounded without hard wrapping (which would tear connections).
+    const r2 = n.x * n.x + n.y * n.y + n.z * n.z;
+    if (r2 > 1) {
+      const pull = Math.min(0.08, (Math.sqrt(r2) - 1) * 0.5);
+      n.x *= 1 - pull;
+      n.y *= 1 - pull;
+      n.z *= 1 - pull;
+    }
+    n.pulse *= Math.pow(0.18, dt);
+  }
+
+  // cloud rotation: slow auto-orbit on Y, gentle wobble on X. driftSpeed
+  // scales the rate so the same slider controls jitter + rotation.
+  rotY += dt * 0.18 * (0.5 + 0.7 * env) * params.driftSpeed;
+  rotX += dt * 0.06 * (0.5 + 0.5 * env) * params.driftSpeed;
+
+  const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
+  const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+
+  // project body-frame → screen. spread is fraction of min(cw,ch)/2 → cloud
+  // diameter on screen. perspective scales by FOCAL/(FOCAL - z_world) so
+  // closer nodes project further from center and render larger.
+  const scale = params.spread * Math.min(cw, ch) * 0.5;
+  const stretchX = Math.max(0.1, params.stretch);
+  const cx = cw * 0.5;
+  const cyS = ch * 0.5;
+  proj.length = nodes.length;
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    // rotate around Y: x' = x*cosY - z*sinY, z' = x*sinY + z*cosY
+    const rx = n.x * cosY - n.z * sinY;
+    let ry = n.y;
+    let rz = n.x * sinY + n.z * cosY;
+    // rotate around X: y' = y*cosX - z*sinX, z' = y*sinX + z*cosX
+    const ry2 = ry * cosX - rz * sinX;
+    const rz2 = ry * sinX + rz * cosX;
+    ry = ry2; rz = rz2;
+    const persp = FOCAL / (FOCAL - rz);
+    // post-projection horizontal stretch — the cloud always reads as wider
+    // (or narrower) on screen regardless of rotation. body-frame structure
+    // is preserved so links stay the same after compensation below.
+    proj[i] = {
+      sx: cx + rx * scale * persp * stretchX,
+      sy: cyS + ry * scale * persp,
+      persp,
+      depth: rz,
+      pulse: n.pulse,
+    };
+  }
+
+  // links: O(N²) proximity in screen space. linkRadius stays in CSS px so
+  // the slider semantic is the same as the 2D version. audio pulse expands
+  // it momentarily on level peaks.
+  const linkR = params.linkRadius * dpr * (1 + params.audioPulse * env);
+  const linkR2 = linkR * linkR;
+  const linkBaseAlpha = params.linkOpacity;
+  ctx.lineWidth = 1 * dpr;
+  // bucket lines by 8 alpha levels + 4 depth bands (back lines dimmer for
+  // atmospheric depth) to limit strokeStyle changes — 32 strokes total.
+  const ALPHA_BUCKETS = 8;
+  const DEPTH_BUCKETS = 4;
+  const bucketPaths = [];
+  for (let i = 0; i < ALPHA_BUCKETS * DEPTH_BUCKETS; i++) bucketPaths.push(new Path2D());
+  // undo the horizontal stretch in link distance so the connectivity graph
+  // is identical to the unstretched cloud — stretching only changes the
+  // visual layout, not which pairs link.
+  const invStretch = 1 / stretchX;
+  for (let i = 0; i < nodes.length; i++) {
+    const a = proj[i];
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = proj[j];
+      const dx = (b.sx - a.sx) * invStretch, dy = b.sy - a.sy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > linkR2) continue;
+      const d = Math.sqrt(d2);
+      const k = 1 - d / linkR;
+      const ai = Math.min(ALPHA_BUCKETS - 1, Math.max(0, Math.floor(k * ALPHA_BUCKETS)));
+      // depth: average z mapped from [-1,1] → [0, DEPTH_BUCKETS-1], front=high
+      const zAvg = (a.depth + b.depth) * 0.5;
+      const di = Math.min(DEPTH_BUCKETS - 1, Math.max(0, Math.floor((zAvg + 1) * 0.5 * DEPTH_BUCKETS)));
+      bucketPaths[di * ALPHA_BUCKETS + ai].moveTo(a.sx, a.sy);
+      bucketPaths[di * ALPHA_BUCKETS + ai].lineTo(b.sx, b.sy);
+    }
+  }
+  for (let di = 0; di < DEPTH_BUCKETS; di++) {
+    // depthK: 0.45 at back → 1.0 at front
+    const depthK = 0.45 + 0.55 * (di + 0.5) / DEPTH_BUCKETS;
+    for (let ai = 0; ai < ALPHA_BUCKETS; ai++) {
+      const k = (ai + 0.5) / ALPHA_BUCKETS;
+      const alpha = linkBaseAlpha * k * depthK;
+      if (alpha < 0.005) continue;
+      ctx.strokeStyle = `rgba(225, 225, 225, ${alpha.toFixed(3)})`;
+      ctx.stroke(bucketPaths[di * ALPHA_BUCKETS + ai]);
+    }
+  }
+
+  // nodes: depth-sorted back-to-front so front nodes occlude correctly.
+  // Use index list sorted by depth to avoid mutating proj order.
+  const order = new Array(nodes.length);
+  for (let i = 0; i < nodes.length; i++) order[i] = i;
+  order.sort((a, b) => proj[a].depth - proj[b].depth);
+
+  const baseR = 1.6 * dpr;
+  const glowR = params.glowSize * dpr;
+  if (glowR > 0) {
+    for (let oi = 0; oi < order.length; oi++) {
+      const p = proj[order[oi]];
+      const depthK = 0.55 + 0.45 * (p.depth + 1) * 0.5;
+      const r = (baseR + glowR * (1 + p.pulse * 1.4)) * p.persp;
+      const a = (0.10 + 0.18 * p.pulse) * depthK;
+      ctx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  for (let oi = 0; oi < order.length; oi++) {
+    const p = proj[order[oi]];
+    const depthK = 0.55 + 0.45 * (p.depth + 1) * 0.5;
+    const r = baseR * (1 + p.pulse * 1.6) * p.persp;
+    ctx.fillStyle = `rgba(255, 255, 255, ${(0.98 * depthK).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  tickTelemetry(dt);
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dtRaw = (t - lastT) / 1000;
+  lastT = t;
+  const dt = Math.min(0.05, dtRaw);
+  tickInputs(dt);
+  step(dt);
+  requestAnimationFrame(frame);
+}
+
+resize();
+requestAnimationFrame(frame);
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  // 3D cloud has no fixed screen→body mapping under rotation, so clicks
+  // pulse the whole cloud rather than spawning at a 2D location.
+  for (const n of nodes) n.pulse = 1.0;
+  bumpActivity();
+});
+
+window.onParamChange = (k) => {
+  if (k === "nodeCount") adjustNodeCount();
+};
+
+installTelemetry({ params });
+installPanel(params);
+</script>
+</body>
+</html>
