@@ -31,7 +31,7 @@ class SamplePlayer {
     );
   }
 
-  trigger(voice: SampleId, when: number, velocity = 1, midiNote?: number) {
+  trigger(voice: SampleId, when: number, velocity = 1, midiNote?: number, gate = 1) {
     const ctx = getAudioContext();
     const out = ctx.destination;
 
@@ -69,19 +69,19 @@ class SamplePlayer {
 
     switch (voice) {
       case 'kick':
-        synthKick(when, velocity, out);
+        synthKick(when, velocity, out, gate);
         break;
       case 'snare':
-        synthSnare(when, velocity, out);
+        synthSnare(when, velocity, out, gate);
         break;
       case 'hat-c':
-        synthHatC(when, velocity, out);
+        synthHatC(when, velocity, out, gate);
         break;
       case 'hat-o':
-        synthHatO(when, velocity, out);
+        synthHatO(when, velocity, out, gate);
         break;
       default:
-        if (midiNote !== undefined) synthMelodic(when, midiNote, velocity, out);
+        if (midiNote !== undefined) synthMelodic(when, midiNote, velocity, out, gate);
     }
   }
 }

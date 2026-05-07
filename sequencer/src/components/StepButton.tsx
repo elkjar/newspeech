@@ -31,9 +31,21 @@ const PITCH_MIN = -14;
 const PITCH_MAX = 14;
 const PROB_STEP = 5;
 const VEL_STEP = 0.05;
+const RATCHET_COOLDOWN_MS = 100;
+const RATCHET_MIN = 1;
+const RATCHET_MAX = 8;
+const TIMING_STEP = 0.05;
+const TIMING_MIN = -0.5;
+const TIMING_MAX = 0.5;
+const GATE_STEP = 0.05;
+const GATE_MIN = 0.1;
+const GATE_MAX = 2;
 const DRAG_THRESHOLD_PX = 4;
 const VEL_DRAG_PX_PER_UNIT = 100;
 const PITCH_DRAG_PX_PER_DEGREE = 8;
+const RATCHET_DRAG_PX_PER_UNIT = 14;
+const TIMING_DRAG_PX_PER_UNIT = 100;
+const GATE_DRAG_PX_PER_UNIT = 60;
 
 export function StepButton({
   trackId,
@@ -56,6 +68,7 @@ export function StepButton({
     const el = ref.current;
     if (!el) return;
     let lastPitchTime = 0;
+    let lastRatchetTime = 0;
     const handleWheel = (e: WheelEvent) => {
       const store = useSequencerStore.getState();
       const t = store.tracks.find((tr) => tr.id === trackId);
@@ -77,6 +90,33 @@ export function StepButton({
         const delta = e.deltaY > 0 ? -PROB_STEP : PROB_STEP;
         const next = Math.max(0, Math.min(100, s.probability + delta));
         if (next !== s.probability) store.setStepProbability(trackId, index, next);
+        return;
+      }
+
+      if (mode === 'ratchet') {
+        e.preventDefault();
+        const now = performance.now();
+        if (now - lastRatchetTime < RATCHET_COOLDOWN_MS) return;
+        lastRatchetTime = now;
+        const delta = e.deltaY > 0 ? -1 : 1;
+        const next = Math.max(RATCHET_MIN, Math.min(RATCHET_MAX, s.ratchet + delta));
+        if (next !== s.ratchet) store.setStepRatchet(trackId, index, next);
+        return;
+      }
+
+      if (mode === 'timing') {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -TIMING_STEP : TIMING_STEP;
+        const next = Math.max(TIMING_MIN, Math.min(TIMING_MAX, s.microTiming + delta));
+        if (next !== s.microTiming) store.setStepMicroTiming(trackId, index, next);
+        return;
+      }
+
+      if (mode === 'gate') {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -GATE_STEP : GATE_STEP;
+        const next = Math.max(GATE_MIN, Math.min(GATE_MAX, s.gate + delta));
+        if (next !== s.gate) store.setStepGate(trackId, index, next);
         return;
       }
 
@@ -109,6 +149,9 @@ export function StepButton({
     const startVel = s.velocity;
     const startPitch = s.pitch;
     const startProb = s.probability;
+    const startRatchet = s.ratchet;
+    const startTiming = s.microTiming;
+    const startGate = s.gate;
 
     const onMove = (ev: MouseEvent) => {
       const dy = startY - ev.clientY;
@@ -122,6 +165,20 @@ export function StepButton({
       } else if (mode === 'chance') {
         const next = Math.max(0, Math.min(100, startProb + dy));
         live.setStepProbability(trackId, index, next);
+      } else if (mode === 'ratchet') {
+        const units = Math.round(dy / RATCHET_DRAG_PX_PER_UNIT);
+        const next = Math.max(RATCHET_MIN, Math.min(RATCHET_MAX, startRatchet + units));
+        const cur = live.tracks.find((tr) => tr.id === trackId)?.steps[index].ratchet;
+        if (next !== cur) live.setStepRatchet(trackId, index, next);
+      } else if (mode === 'timing') {
+        const next = Math.max(
+          TIMING_MIN,
+          Math.min(TIMING_MAX, startTiming + dy / TIMING_DRAG_PX_PER_UNIT)
+        );
+        live.setStepMicroTiming(trackId, index, next);
+      } else if (mode === 'gate') {
+        const next = Math.max(GATE_MIN, Math.min(GATE_MAX, startGate + dy / GATE_DRAG_PX_PER_UNIT));
+        live.setStepGate(trackId, index, next);
       } else if (mode === 'note') {
         const degrees = Math.round(dy / PITCH_DRAG_PX_PER_DEGREE);
         const next = Math.max(PITCH_MIN, Math.min(PITCH_MAX, startPitch + degrees));

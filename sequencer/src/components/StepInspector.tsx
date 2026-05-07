@@ -1,7 +1,7 @@
 import { useSequencerStore } from '../state/store';
 import { midiToName, quantize } from '../audio/scale';
 
-const PANEL = 'border border-white/20 px-4 py-2 flex items-center gap-4 w-[220px]';
+const PANEL = 'border border-white/20 px-4 py-2 flex items-center gap-4 w-[320px]';
 
 export function StepInspector() {
   const selectedStep = useSequencerStore((s) => s.selectedStep);
@@ -18,7 +18,16 @@ export function StepInspector() {
   let big = '—';
   let velStr = '—';
   let probStr = '—';
+  let ratchetStr = '—';
+  let timingStr = '—';
+  let gateStr = '—';
   let dim = true;
+  let velActive = false;
+  let probActive = false;
+  let ratchetActive = false;
+  let timingActive = false;
+  let gateActive = false;
+
   if (track && step) {
     big =
       track.type === 'melodic'
@@ -26,25 +35,40 @@ export function StepInspector() {
         : track.name.toUpperCase();
     velStr = step.velocity.toFixed(2);
     probStr = `${step.probability}%`;
+    ratchetStr = `${step.ratchet}`;
+    timingStr = `${step.microTiming >= 0 ? '+' : ''}${step.microTiming.toFixed(2)}`;
+    gateStr = step.gate.toFixed(2);
     dim = !step.on;
+    velActive = step.velocity !== 1;
+    probActive = step.probability !== 100;
+    ratchetActive = step.ratchet !== 1;
+    timingActive = step.microTiming !== 0;
+    gateActive = step.gate !== 1;
   }
 
   return (
     <div className={`${PANEL} ${dim ? 'opacity-50' : ''}`}>
       <span className="text-2xl tracking-wider text-white inline-block min-w-[88px]">{big}</span>
-      <div className="flex flex-col gap-0.5 text-[10px] uppercase tracking-widest leading-tight min-w-[60px]">
-        <Field label="v" value={velStr} />
-        <Field label="c" value={probStr} />
+      <div className="flex flex-col gap-0.5 text-[10px] uppercase tracking-widest leading-tight min-w-[180px]">
+        <div className="flex gap-3">
+          <Field label="v" value={velStr} active={velActive} />
+          <Field label="c" value={probStr} active={probActive} />
+        </div>
+        <div className="flex gap-3">
+          <Field label="r" value={ratchetStr} active={ratchetActive} />
+          <Field label="t" value={timingStr} active={timingActive} />
+          <Field label="g" value={gateStr} active={gateActive} />
+        </div>
       </div>
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value, active }: { label: string; value: string; active: boolean }) {
   return (
     <span>
       <span className="text-white/40">{label}:</span>
-      <span className="text-white tabular-nums">{value}</span>
+      <span className={`tabular-nums ${active ? 'text-white' : 'text-white/55'}`}>{value}</span>
     </span>
   );
 }

@@ -3,7 +3,7 @@ import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 
 export type TrackType = 'drum' | 'melodic';
-export type EditMode = 'note' | 'velocity' | 'chance';
+export type EditMode = 'note' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
 export interface StepSelection {
   trackId: string;
@@ -15,6 +15,9 @@ export interface Step {
   velocity: number;
   pitch: number;
   probability: number;
+  ratchet: number;
+  microTiming: number;
+  gate: number;
 }
 
 export interface EuclideanParams {
@@ -57,6 +60,9 @@ interface SequencerState {
   setStepPitch: (trackId: string, index: number, pitch: number) => void;
   setStepVelocity: (trackId: string, index: number, velocity: number) => void;
   setStepProbability: (trackId: string, index: number, probability: number) => void;
+  setStepRatchet: (trackId: string, index: number, ratchet: number) => void;
+  setStepMicroTiming: (trackId: string, index: number, microTiming: number) => void;
+  setStepGate: (trackId: string, index: number, gate: number) => void;
   setTrackType: (trackId: string, type: TrackType) => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
@@ -76,6 +82,9 @@ function emptySteps(): Step[] {
     velocity: 1,
     pitch: 0,
     probability: 100,
+    ratchet: 1,
+    microTiming: 0,
+    gate: 1,
   }));
 }
 
@@ -89,6 +98,9 @@ function patternedSteps(
     velocity,
     pitch: pitches[i] ?? 0,
     probability: 100,
+    ratchet: 1,
+    microTiming: 0,
+    gate: 1,
   }));
 }
 
@@ -252,6 +264,33 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         if (t.id !== trackId) return t;
         const steps = t.steps.slice();
         steps[index] = { ...steps[index], probability };
+        return { ...t, steps };
+      }),
+    })),
+  setStepRatchet: (trackId, index, ratchet) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const steps = t.steps.slice();
+        steps[index] = { ...steps[index], ratchet };
+        return { ...t, steps };
+      }),
+    })),
+  setStepMicroTiming: (trackId, index, microTiming) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const steps = t.steps.slice();
+        steps[index] = { ...steps[index], microTiming };
+        return { ...t, steps };
+      }),
+    })),
+  setStepGate: (trackId, index, gate) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const steps = t.steps.slice();
+        steps[index] = { ...steps[index], gate };
         return { ...t, steps };
       }),
     })),
