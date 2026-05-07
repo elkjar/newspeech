@@ -8,12 +8,15 @@ const STEP_SIZE = 36;
 export function Track({ track }: { track: TrackData }) {
   const globalStep = useSequencerStore((s) => s.globalStep);
   const playing = useSequencerStore((s) => s.playing);
+  const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
   const setTrackType = useSequencerStore((s) => s.setTrackType);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
   const setTrackLength = useSequencerStore((s) => s.setTrackLength);
   const setTrackPage = useSequencerStore((s) => s.setTrackPage);
   const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
+
+  const silenced = track.mute || (anySolo && !track.solo);
 
   const pillBase =
     'w-6 h-6 text-[10px] uppercase border transition-colors flex items-center justify-center';
@@ -76,7 +79,7 @@ export function Track({ track }: { track: TrackData }) {
           className={
             track.mute
               ? 'bg-white'
-              : 'bg-white/25 hover:bg-white/50 transition-colors'
+              : 'bg-white/5 hover:bg-white/15 transition-colors'
           }
           title="mute"
         />
@@ -86,12 +89,15 @@ export function Track({ track }: { track: TrackData }) {
           className={
             track.solo
               ? 'bg-white'
-              : 'bg-white/25 hover:bg-white/50 transition-colors'
+              : 'bg-white/5 hover:bg-white/15 transition-colors'
           }
           title="solo"
         />
       </div>
 
+      <div
+        className={`flex items-center gap-3 transition-opacity ${silenced ? 'opacity-30' : ''}`}
+      >
       <div className="flex" style={{ gap: `${STEP_GAP}px` }}>
         {Array.from({ length: NUM_PAGES }, (_, p) => {
           const reachable = p * PAGE_SIZE < track.length;
@@ -152,6 +158,7 @@ export function Track({ track }: { track: TrackData }) {
             );
           }
         )}
+      </div>
       </div>
     </div>
   );
