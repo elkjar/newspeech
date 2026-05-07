@@ -18,7 +18,6 @@ export interface Step {
 }
 
 export interface EuclideanParams {
-  steps: number;
   hits: number;
   rotation: number;
 }
@@ -104,7 +103,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
-    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
+    euclidean: { hits: 0, rotation: 0 },
     steps: patternedSteps([0, 4, 8, 12], {}, 1),
   },
   {
@@ -117,7 +116,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
-    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
+    euclidean: { hits: 0, rotation: 0 },
     steps: patternedSteps([4, 12], {}, 0.9),
   },
   {
@@ -130,7 +129,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
-    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
+    euclidean: { hits: 0, rotation: 0 },
     steps: patternedSteps([0, 2, 4, 8, 10, 12], {}, 0.7),
   },
   {
@@ -143,7 +142,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
-    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
+    euclidean: { hits: 0, rotation: 0 },
     steps: patternedSteps([6, 14], {}, 0.6),
   },
   {
@@ -156,7 +155,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
-    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
+    euclidean: { hits: 0, rotation: 0 },
     steps: patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }, 0.8),
   },
   {
@@ -169,7 +168,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
-    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
+    euclidean: { hits: 0, rotation: 0 },
     steps: emptySteps(),
   },
   {
@@ -182,7 +181,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
-    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
+    euclidean: { hits: 0, rotation: 0 },
     steps: emptySteps(),
   },
   {
@@ -195,7 +194,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
-    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
+    euclidean: { hits: 0, rotation: 0 },
     steps: emptySteps(),
   },
 ];
@@ -281,7 +280,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => {
         if (t.id !== trackId) return t;
         const maxPage = Math.max(0, Math.ceil(clamped / PAGE_SIZE) - 1);
-        return { ...t, length: clamped, viewPage: Math.min(t.viewPage, maxPage) };
+        const eHits = Math.min(t.euclidean.hits, clamped);
+        const eRotation = clamped > 0 ? t.euclidean.rotation % clamped : 0;
+        return {
+          ...t,
+          length: clamped,
+          viewPage: Math.min(t.viewPage, maxPage),
+          euclidean: { hits: eHits, rotation: eRotation },
+        };
       }),
     }));
   },
@@ -299,25 +305,24 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => {
         if (t.id !== trackId) return t;
         const merged = { ...t.euclidean, ...partial };
-        const eSteps = Math.max(
-          1,
-          Math.min(MAX_STEPS, Number.isFinite(merged.steps) ? Math.floor(merged.steps) : 1)
-        );
+        const len = t.length;
         const eHits = Math.max(
           0,
-          Math.min(eSteps, Number.isFinite(merged.hits) ? Math.floor(merged.hits) : 0)
+          Math.min(len, Number.isFinite(merged.hits) ? Math.floor(merged.hits) : 0)
         );
         const eRotation =
-          (((Number.isFinite(merged.rotation) ? Math.floor(merged.rotation) : 0) % eSteps) +
-            eSteps) %
-          eSteps;
-        const pattern = euclidean(eSteps, eHits, eRotation);
+          len > 0
+            ? (((Number.isFinite(merged.rotation) ? Math.floor(merged.rotation) : 0) % len) +
+                len) %
+              len
+            : 0;
+        const pattern = euclidean(len, eHits, eRotation);
         const newSteps = t.steps.map((s, i) =>
-          i < t.length ? { ...s, on: pattern[i % eSteps] ?? false } : s
+          i < len ? { ...s, on: pattern[i] ?? false } : s
         );
         return {
           ...t,
-          euclidean: { steps: eSteps, hits: eHits, rotation: eRotation },
+          euclidean: { hits: eHits, rotation: eRotation },
           steps: newSteps,
         };
       }),

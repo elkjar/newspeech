@@ -26,7 +26,7 @@ export function Track({ track }: { track: TrackData }) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2 w-[360px]">
+      <div className="flex items-center gap-2 w-[300px]">
         <span className="w-14 text-xs uppercase tracking-widest opacity-80 truncate">
           {track.name}
         </span>
@@ -65,17 +65,8 @@ export function Track({ track }: { track: TrackData }) {
         <span className="text-[9px] uppercase tracking-widest text-white/40 ml-1">eu</span>
         <input
           type="number"
-          min={1}
-          max={64}
-          value={track.euclidean.steps}
-          onChange={(e) => setTrackEuclidean(track.id, { steps: Number(e.target.value) })}
-          className="w-10 bg-transparent border border-white/30 text-[10px] tabular-nums px-1 py-0.5 focus:outline-none focus:border-white"
-          title="euclidean steps"
-        />
-        <input
-          type="number"
           min={0}
-          max={track.euclidean.steps}
+          max={track.length}
           value={track.euclidean.hits}
           onChange={(e) => setTrackEuclidean(track.id, { hits: Number(e.target.value) })}
           className="w-10 bg-transparent border border-white/30 text-[10px] tabular-nums px-1 py-0.5 focus:outline-none focus:border-white"
@@ -84,7 +75,7 @@ export function Track({ track }: { track: TrackData }) {
         <input
           type="number"
           min={0}
-          max={Math.max(0, track.euclidean.steps - 1)}
+          max={Math.max(0, track.length - 1)}
           value={track.euclidean.rotation}
           onChange={(e) => setTrackEuclidean(track.id, { rotation: Number(e.target.value) })}
           className="w-10 bg-transparent border border-white/30 text-[10px] tabular-nums px-1 py-0.5 focus:outline-none focus:border-white"
