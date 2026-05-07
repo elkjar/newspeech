@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 
 export type TrackType = 'drum' | 'melodic';
+export type EditMode = 'note' | 'velocity' | 'chance';
 
 export interface Step {
   on: boolean;
@@ -30,6 +31,8 @@ interface SequencerState {
   tracks: Track[];
   globalStep: number;
   playing: boolean;
+  editMode: EditMode;
+  setEditMode: (mode: EditMode) => void;
   setBpm: (bpm: number) => void;
   setRootNote: (midi: number) => void;
   setScale: (scale: Scale) => void;
@@ -173,6 +176,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   tracks: initialTracks,
   globalStep: 0,
   playing: false,
+  editMode: 'note',
+  setEditMode: (editMode) => set({ editMode }),
   setBpm: (bpm) => set({ bpm }),
   setRootNote: (rootNote) => set({ rootNote }),
   setScale: (scale) => set({ scale }),
