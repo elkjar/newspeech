@@ -1,6 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { useSequencerStore } from '../state/store';
+import { useSequencerStore, type EditMode } from '../state/store';
 import { quantize, midiToName, type Scale } from '../audio/scale';
+
+function effectiveMode(
+  e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
+  base: EditMode
+): EditMode {
+  if (e.shiftKey) return 'velocity';
+  if (e.metaKey || e.ctrlKey) return 'chance';
+  return base;
+}
 
 interface StepButtonProps {
   trackId: string;
@@ -51,7 +60,7 @@ export function StepButton({
       if (!t) return;
       const s = t.steps[index];
       if (!s?.on) return;
-      const mode = store.editMode;
+      const mode = effectiveMode(e, store.editMode);
 
       if (mode === 'velocity') {
         e.preventDefault();
@@ -90,7 +99,7 @@ export function StepButton({
     if (!t) return;
     const s = t.steps[index];
     if (!s?.on) return;
-    const mode = store.editMode;
+    const mode = effectiveMode(e, store.editMode);
     if (mode === 'note' && !isMelodic) return;
 
     e.preventDefault();

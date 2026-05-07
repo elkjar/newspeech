@@ -68,7 +68,7 @@ export function App() {
           <span className="sep"> / </span>sequence
         </span>
         <span className="aux">
-          phase 3 — pick a mode (top right) → drag or scroll on a step to adjust · click toggles
+          phase 3 — drag/scroll on a step adjusts the active mode · shift = velocity · cmd = chance · click toggles
         </span>
       </header>
       <ModeSwitcher />
