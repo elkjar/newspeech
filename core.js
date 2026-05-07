@@ -235,6 +235,64 @@
     #audio-panel .midi-btn:hover    { background: rgba(255, 255, 255, 0.16); }
     #audio-panel .midi-btn.active   { background: rgba(255, 220, 180, 0.20); color: rgba(255, 220, 180, 1); border-color: rgba(255, 220, 180, 0.45); }
 
+    /* ---- tempo ---- */
+    #audio-panel .tempo-section {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #audio-panel .tempo-state {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      opacity: 0.45;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #audio-panel .tempo-state.on { opacity: 0.85; color: rgba(180, 255, 200, 1); }
+    #audio-panel .beat-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: rgba(180, 255, 200, 1);
+      opacity: 0.18;
+      transition: opacity 0.45s;
+    }
+    #audio-panel .beat-dot.flash { opacity: 1; transition: none; }
+    #audio-panel .tempo-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    #audio-panel .tempo-btn {
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      padding: 4px 10px;
+      font-family: inherit;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+    }
+    #audio-panel .tempo-btn:hover { background: rgba(255, 255, 255, 0.16); }
+    #audio-panel .tempo-bpm {
+      flex: 1;
+      min-width: 0;
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 4px 6px;
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+    #audio-panel .tempo-bpm::-webkit-outer-spin-button,
+    #audio-panel .tempo-bpm::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
     /* dot after slider name when its slot has a MIDI binding */
     #panel label.midi-mapped .name::after { content: " ●"; font-size: 9px; opacity: 0.55; }
     /* in learn mode, the slider input itself is inert so label clicks select it as target */
@@ -477,6 +535,14 @@
           <button class="midi-btn" data-act="clear" type="button">[clear]</button>
         </div>
       </div>
+      <div class="tempo-section">
+        <div class="tempo-state"><span class="tempo-label">[t] tap tempo </span><span class="beat-dot"></span></div>
+        <div class="tempo-controls">
+          <button class="tempo-btn" data-act="tap" type="button">[tap]</button>
+          <input class="tempo-bpm" type="number" min="30" max="300" step="1" placeholder="bpm">
+          <button class="tempo-btn" data-act="clear-tempo" type="button">[clear]</button>
+        </div>
+      </div>
     `;
     document.body.appendChild(div);
 
@@ -497,6 +563,30 @@
     div.querySelector('.midi-btn[data-act="learn"]').addEventListener("click", toggleMidiLearn);
     div.querySelector('.midi-btn[data-act="clear"]').addEventListener("click", clearMidiMap);
 
+    // tempo wiring — tap button + manual BPM input + clear. clicking the
+    // state line is also a tap target (so users get a big hitbox).
+    div.querySelector('.tempo-state').addEventListener("click", tap);
+    div.querySelector('.tempo-btn[data-act="tap"]').addEventListener("click", (e) => {
+      e.stopPropagation();
+      tap();
+    });
+    div.querySelector('.tempo-btn[data-act="clear-tempo"]').addEventListener("click", (e) => {
+      e.stopPropagation();
+      clearBpm();
+    });
+    const bpmInput = div.querySelector('.tempo-bpm');
+    bpmInput.addEventListener("change", () => {
+      const v = parseFloat(bpmInput.value);
+      if (isFinite(v) && v >= 30 && v <= 300) setBpm(v);
+      else if (bpmInput.value === "") clearBpm();
+      else refreshTempoUI();
+    });
+    bpmInput.addEventListener("keydown", (e) => {
+      // swallow so the page-wide [t] handler doesn't tap when typing here
+      e.stopPropagation();
+    });
+    bpmInput.addEventListener("click", (e) => e.stopPropagation());
+
     _meterEls = {
       low:  div.querySelector('i[data-band="low"]'),
       mid:  div.querySelector('i[data-band="mid"]'),
@@ -504,6 +594,7 @@
     };
 
     refreshMidiUI();
+    refreshTempoUI();
   }
   function updateAudioMeters() {
     const panel = document.getElementById("audio-panel");
@@ -704,6 +795,128 @@
         setLearnTarget(i);
       }, true);
     });
+  }
+
+  // ---- tempo (tap-tempo + manual BPM, global beat clock) ----
+  // when bpm > 0, beatPhase / beat / onBeat are live for any visualizer that
+  // wants to lock to the music. tap re-anchors beat 0 to the latest tap and
+  // refines bpm from the running average of recent inter-tap intervals.
+  // setBpm only sets tempo (preserves phase) so manual entry doesn't yank
+  // the clock; tap is the way to align phase to the music.
+  const TEMPO_KEY = "newspeech.bpm";
+  const TAP_RESET_MS = 2000;     // gap longer than this clears the tap buffer
+  const TAP_BUFFER = 8;          // average over the last N tap intervals
+  let _bpm = 0;
+  let _tempoAnchor = 0;          // performance.now() anchoring beat 0
+  let _tempoTaps = [];
+  let _tempoPrevBeat = -1;
+  const _tempoCallbacks = [];
+
+  function loadTempo() {
+    try {
+      const v = parseFloat(localStorage.getItem(TEMPO_KEY) || "0");
+      if (v >= 30 && v <= 300) {
+        _bpm = v;
+        _tempoAnchor = performance.now();
+      }
+    } catch (_) {}
+  }
+  function saveTempo() {
+    try { localStorage.setItem(TEMPO_KEY, String(_bpm)); } catch (_) {}
+  }
+
+  function tap() {
+    const now = performance.now();
+    if (_tempoTaps.length && now - _tempoTaps[_tempoTaps.length - 1] > TAP_RESET_MS) {
+      _tempoTaps = [];
+    }
+    _tempoTaps.push(now);
+    if (_tempoTaps.length > TAP_BUFFER) _tempoTaps.shift();
+    if (_tempoTaps.length >= 2) {
+      let sum = 0;
+      for (let i = 1; i < _tempoTaps.length; i++) sum += _tempoTaps[i] - _tempoTaps[i - 1];
+      const avg = sum / (_tempoTaps.length - 1);
+      const newBpm = 60000 / avg;
+      if (newBpm >= 30 && newBpm <= 300) _bpm = newBpm;
+    }
+    _tempoAnchor = now;
+    _tempoPrevBeat = -1;
+    saveTempo();
+    refreshTempoUI();
+  }
+
+  function setBpm(v) {
+    const n = +v;
+    if (!isFinite(n) || n < 30 || n > 300) return;
+    if (_bpm === 0) _tempoAnchor = performance.now();
+    _bpm = n;
+    saveTempo();
+    refreshTempoUI();
+  }
+
+  function clearBpm() {
+    _bpm = 0;
+    _tempoTaps = [];
+    _tempoPrevBeat = -1;
+    saveTempo();
+    refreshTempoUI();
+  }
+
+  function bpm() { return _bpm; }
+  function beatCount() {
+    if (!_bpm) return 0;
+    return Math.floor((performance.now() - _tempoAnchor) / (60000 / _bpm));
+  }
+  function beatPhase(div) {
+    if (!_bpm) return 0;
+    const beatMs = 60000 / _bpm;
+    const elapsed = performance.now() - _tempoAnchor;
+    const phase = ((elapsed % beatMs) + beatMs) % beatMs / beatMs;
+    if (!div || div === 1) return phase;
+    return (phase * div) % 1;
+  }
+  function onBeat(cb) {
+    if (typeof cb === "function") _tempoCallbacks.push(cb);
+  }
+
+  function tickTempo() {
+    if (!_bpm) return;
+    const cur = beatCount();
+    if (_tempoPrevBeat === -1) { _tempoPrevBeat = cur; return; }
+    if (cur > _tempoPrevBeat) {
+      _tempoPrevBeat = cur;
+      flashBeatDot();
+      for (const cb of _tempoCallbacks) {
+        try { cb(cur); } catch (e) { console.warn("onBeat cb threw:", e); }
+      }
+    }
+  }
+
+  function flashBeatDot() {
+    const dot = document.querySelector("#audio-panel .beat-dot");
+    if (!dot) return;
+    dot.classList.add("flash");
+    void dot.offsetWidth;        // force reflow so the transition restarts
+    dot.classList.remove("flash");
+  }
+
+  function refreshTempoUI() {
+    const panel = document.getElementById("audio-panel");
+    if (!panel) return;
+    const stateEl = panel.querySelector(".tempo-state");
+    const labelEl = panel.querySelector(".tempo-label");
+    const input = panel.querySelector(".tempo-bpm");
+    if (!stateEl || !labelEl) return;
+    if (_bpm > 0) {
+      stateEl.classList.add("on");
+      labelEl.textContent = `${Math.round(_bpm)} bpm `;
+    } else {
+      stateEl.classList.remove("on");
+      labelEl.textContent = "[t] tap tempo ";
+    }
+    if (input && document.activeElement !== input) {
+      input.value = _bpm > 0 ? Math.round(_bpm) : "";
+    }
   }
 
   // ---- display filter (grayscale + contrast) ----
@@ -1038,7 +1251,12 @@
   }
 
   function _snapMarker(m, dt) {
-    const radius = 6;
+    // radius widened from 6 → 10 + snap rate from 18 → 30 so markers track
+    // fast-moving features (e.g. chevron arms streaming rightward at ~2.6
+    // sobel-px/frame). steady-state lag is velocity / snap_rate; with the
+    // old values that exceeded the radius and markers lost anchor every
+    // frame, expired, and respawned random.
+    const radius = 10;
     const cx = m.sx | 0, cy = m.sy | 0;
     const x0 = Math.max(1, cx - radius), x1 = Math.min(_mkSw - 2, cx + radius);
     const y0 = Math.max(1, cy - radius), y1 = Math.min(_mkSh - 2, cy + radius);
@@ -1055,7 +1273,7 @@
     }
     if (sumW > 0) {
       const tx = sumX / sumW, ty = sumY / sumW;
-      const k = Math.min(1, dt * 18);
+      const k = Math.min(1, dt * 30);
       m.sx += (tx - m.sx) * k;
       m.sy += (ty - m.sy) * k;
       m.lostTime = 0;
@@ -1066,7 +1284,9 @@
   }
 
   function _updateMarkers(dt, cw, ch, dims) {
-    const target = _markerParams ? (_markerParams.dataPoints | 0) : 0;
+    // count is global now — the panel-globals "data points" slider drives
+    // it across every visualizer instead of a per-page injected slider.
+    const target = _markerParams ? _globalDataPoints : 0;
     if (_mkMag) for (const m of _markers) _snapMarker(m, dt);
     for (let i = _markers.length - 1; i >= 0; i--) {
       const m = _markers[i];
@@ -1168,19 +1388,9 @@
     // { mag: Float32Array, w: int, h: int } or null when not yet computed.
     _markerGetEdgeData = opts.getEdgeData || null;
     _markerParams = opts.params || {};
-    if (_markerParams.dataPoints == null) _markerParams.dataPoints = 0;
-    // auto-inject the data-points slider into #panel (before .panel-globals
-    // if present, otherwise at the end). pages don't need to declare it.
-    const panel = document.getElementById("panel");
-    if (panel && !panel.querySelector('input[data-k="dataPoints"]')) {
-      const label = document.createElement("label");
-      label.innerHTML =
-        '<span class="name">data points</span><span class="val"></span>' +
-        '<input type="range" min="0" max="128" step="1" data-k="dataPoints">';
-      const globals = panel.querySelector(".panel-globals");
-      if (globals) panel.insertBefore(label, globals);
-      else panel.appendChild(label);
-    }
+    // marker count + telemetry pick/shuffle now live in panel-globals — no
+    // per-page slider injection. installMarkers is still required so tickMarkers
+    // knows the page opted in (and to register custom getSource/getEdgeData).
   }
 
   function tickMarkers(dt) {
@@ -2050,28 +2260,8 @@
 
   function installTelemetry(opts) {
     _telemetryParams = (opts && opts.params) || {};
-    const panel = document.getElementById("panel");
-    if (!panel || panel.querySelector(".panel-telemetry")) return;
-    const row = document.createElement("div");
-    row.className = "panel-telemetry";
-    row.innerHTML =
-      '<span class="label">telemetry</span> ' +
-      '<span class="count"></span>' +
-      '<span class="ns-pick" role="button" title="pick widgets">[pick]</span>' +
-      '<span class="ns-shuffle" role="button" title="shuffle order">[s]</span>';
-    row.querySelector(".ns-pick").addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      enterTelemetryPicker();
-    });
-    row.querySelector(".ns-shuffle").addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      shuffleTelemetry();
-    });
-    const globals = panel.querySelector(".panel-globals");
-    if (globals) panel.insertBefore(row, globals);
-    else panel.appendChild(row);
+    // pick/shuffle row lives in panel-globals; this call just registers the
+    // page as opted-in so tickTelemetry actually renders.
     _refreshTelemetryCount();
   }
 
@@ -2103,14 +2293,150 @@
     ctx.restore();
   }
 
+  // ---- haze (shared particle-glow primitives, lifted from 18-chevron) ----
+  // visualizers call hazeAlongLine after stroking a line to add a per-frame
+  // scatter of dim dots that bloom along the stroke under composite="lighter".
+  // drawSoftDot renders a pre-baked radial-gradient sprite at any size for
+  // particle-based pages. both stay no-ops when alpha or samples is 0.
+  // global multiplier scales every helper call's alpha so a single panel
+  // slider tunes haze intensity across the whole site.
+  const HAZE_KEY = "newspeech.haze";
+  let _globalHaze = 1.0;
+  function loadHaze() {
+    try {
+      const v = parseFloat(localStorage.getItem(HAZE_KEY) || "1");
+      if (isFinite(v)) _globalHaze = Math.max(0, Math.min(2, v));
+    } catch (_) {}
+  }
+  function setHaze(v) {
+    _globalHaze = Math.max(0, Math.min(2, +v || 0));
+    try { localStorage.setItem(HAZE_KEY, String(_globalHaze)); } catch (_) {}
+    refreshHazeUI();
+  }
+  function hazeAmount() { return _globalHaze; }
+  function refreshHazeUI() {
+    const panel = document.getElementById("panel");
+    if (!panel) return;
+    const row = panel.querySelector(".panel-haze");
+    if (!row) return;
+    const input = row.querySelector("input");
+    if (input && parseFloat(input.value) !== _globalHaze) input.value = _globalHaze;
+    const el = row.querySelector(".val");
+    if (el) el.textContent = _globalHaze.toFixed(2);
+  }
+
+  const DATA_POINTS_KEY = "newspeech.dataPoints";
+  let _globalDataPoints = 14;
+  function loadDataPoints() {
+    try {
+      const v = parseInt(localStorage.getItem(DATA_POINTS_KEY), 10);
+      if (!isNaN(v) && v >= 0 && v <= 128) _globalDataPoints = v;
+    } catch (_) {}
+  }
+  function setDataPoints(v) {
+    const n = parseInt(v, 10);
+    _globalDataPoints = isNaN(n) ? 0 : Math.max(0, Math.min(128, n));
+    try { localStorage.setItem(DATA_POINTS_KEY, String(_globalDataPoints)); } catch (_) {}
+    refreshDataPointsUI();
+  }
+  function dataPointsAmount() { return _globalDataPoints; }
+  function refreshDataPointsUI() {
+    const panel = document.getElementById("panel");
+    if (!panel) return;
+    const row = panel.querySelector(".panel-data-points");
+    if (!row) return;
+    const input = row.querySelector("input");
+    if (input && parseInt(input.value, 10) !== _globalDataPoints) input.value = _globalDataPoints;
+    const el = row.querySelector(".val");
+    if (el) el.textContent = String(_globalDataPoints);
+  }
+  let _softDotSprite = null;
+  function _ensureSoftDotSprite() {
+    if (_softDotSprite) return _softDotSprite;
+    const size = 64;
+    const off = document.createElement("canvas");
+    off.width = size; off.height = size;
+    const octx = off.getContext("2d");
+    const grad = octx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0,    "rgba(255, 255, 255, 1)");
+    grad.addColorStop(0.18, "rgba(255, 255, 255, 0.78)");
+    grad.addColorStop(0.45, "rgba(255, 255, 255, 0.22)");
+    grad.addColorStop(0.85, "rgba(255, 255, 255, 0.04)");
+    grad.addColorStop(1,    "rgba(255, 255, 255, 0)");
+    octx.fillStyle = grad;
+    octx.fillRect(0, 0, size, size);
+    _softDotSprite = off;
+    return off;
+  }
+  function softDotSprite() { return _ensureSoftDotSprite(); }
+
+  function hazeAlongLine(ctx, x1, y1, x2, y2, opts) {
+    opts = opts || {};
+    const samples = opts.samples != null ? opts.samples : 60;
+    const jitter  = opts.jitter  != null ? opts.jitter  : 10;
+    const baseAlpha = opts.alpha != null ? opts.alpha   : 0.06;
+    const dpr     = opts.dpr     != null ? opts.dpr     : 1;
+    const sizeMul = opts.size    != null ? opts.size    : 1.0;
+    // global haze multiplier applies unless caller opts out via raw:true
+    const alpha = opts.raw ? baseAlpha : baseAlpha * _globalHaze;
+    if (samples <= 0 || alpha <= 0) return;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const nx = -dy / len, ny = dx / len;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+    for (let i = 0; i < samples; i++) {
+      const u = Math.random();
+      // gaussian-ish via sum of three uniforms — concentrates near the line
+      // with a thin tail of strays farther out
+      const jr = (Math.random() + Math.random() + Math.random() - 1.5) * jitter;
+      const ju = (Math.random() - 0.5) * 0.02;
+      const px = x1 + dx * (u + ju) + nx * jr;
+      const py = y1 + dy * (u + ju) + ny * jr;
+      const sz = (0.7 + Math.random() * 1.0) * dpr * sizeMul;
+      ctx.fillRect(px, py, sz, sz);
+    }
+    ctx.restore();
+  }
+
+  function drawSoftDot(ctx, x, y, size, alpha, raw) {
+    const sprite = _ensureSoftDotSprite();
+    const baseA = alpha != null ? alpha : 1;
+    const a = raw ? baseA : baseA * _globalHaze;
+    if (a <= 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = a;
+    ctx.drawImage(sprite, x - size * 0.5, y - size * 0.5, size, size);
+    ctx.restore();
+  }
+
   function intensity() {
-    if (_audioActive) return gain(_audioLevel);
-    const t = performance.now();
-    const sum = 0.5
-      + 0.25 * Math.sin(t / 17000)
-      + 0.18 * Math.sin(t / 31000)
-      + 0.12 * Math.sin(t / 47000);
-    return Math.max(0, Math.min(1, sum + _mouseActivity * _config.intensityMouseWeight));
+    let base;
+    if (_audioActive) {
+      base = gain(_audioLevel);
+    } else {
+      const t = performance.now();
+      const sum = 0.5
+        + 0.25 * Math.sin(t / 17000)
+        + 0.18 * Math.sin(t / 31000)
+        + 0.12 * Math.sin(t / 47000);
+      base = sum + _mouseActivity * _config.intensityMouseWeight;
+    }
+    // global beat sync — when a tempo is set, raise the floor on each beat
+    // with a sharp exp-decay pulse. uses max() so the pulse pokes through
+    // when base is low without smothering peaks when base is already loud.
+    // every visualizer reads intensity() so this propagates the sync without
+    // per-page wiring; pages that want stronger beat reactions can still opt
+    // in via onBeat().
+    if (_bpm > 0) {
+      const pulse = Math.exp(-beatPhase() * 4) * 0.7;
+      if (pulse > base) base = pulse;
+    }
+    return Math.max(0, Math.min(1, base));
   }
 
   function poisson(rateFn, fire) {
@@ -2138,6 +2464,7 @@
   function tickInputs(dt) {
     _mouseActivity = Math.max(0, _mouseActivity - _config.decay * dt);
     if (_audioActive) tickAudio(dt * 1000);
+    tickTempo();
     // clear the HUD overlay once per frame at the top so subsequent
     // tickMarkers/tickTelemetry calls render on a fresh surface.
     if (_hudCanvas && _hudCtx) {
@@ -2242,7 +2569,58 @@
     gop.addEventListener("input", () => setGridOpacity(parseFloat(gop.value)));
     wrap.appendChild(gridOp);
 
+    // global haze multiplier — scales every hazeAlongLine / drawSoftDot
+    // alpha across all visualizers. data-global keeps MIDI slot indexing
+    // skipping it like the other globals.
+    const hazeRow = document.createElement("div");
+    hazeRow.className = "panel-row panel-haze";
+    hazeRow.innerHTML =
+      '<span class="name">haze</span><span class="val"></span>' +
+      '<input type="range" min="0" max="2" step="0.01" data-global="1">';
+    const hazeIn = hazeRow.querySelector("input");
+    hazeIn.value = _globalHaze;
+    hazeIn.addEventListener("input", () => setHaze(parseFloat(hazeIn.value)));
+    wrap.appendChild(hazeRow);
+
+    // global data points — drives the marker count for any page that
+    // opted in via installMarkers. moves the slider out of per-page panels
+    // so the count is shared across every visualizer.
+    const dpRow = document.createElement("div");
+    dpRow.className = "panel-row panel-data-points";
+    dpRow.innerHTML =
+      '<span class="name">data points</span><span class="val"></span>' +
+      '<input type="range" min="0" max="128" step="1" data-global="1">';
+    const dpIn = dpRow.querySelector("input");
+    dpIn.value = _globalDataPoints;
+    dpIn.addEventListener("input", () => setDataPoints(parseInt(dpIn.value, 10)));
+    wrap.appendChild(dpRow);
+
+    // global telemetry pick/shuffle — the enabled set + order are already
+    // global state in localStorage; this just relocates the controls so
+    // they sit alongside the other site-wide knobs.
+    const teleRow = document.createElement("div");
+    teleRow.className = "panel-telemetry";
+    teleRow.innerHTML =
+      '<span class="label">telemetry</span> ' +
+      '<span class="count"></span>' +
+      '<span class="ns-pick" role="button" title="pick widgets">[pick]</span>' +
+      '<span class="ns-shuffle" role="button" title="shuffle order">[s]</span>';
+    teleRow.querySelector(".ns-pick").addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      enterTelemetryPicker();
+    });
+    teleRow.querySelector(".ns-shuffle").addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      shuffleTelemetry();
+    });
+    wrap.appendChild(teleRow);
+
     panel.appendChild(wrap);
+    refreshHazeUI();
+    refreshDataPointsUI();
+    _refreshTelemetryCount();
   }
 
   function installPanel(params) {
@@ -2290,15 +2668,20 @@
       toggleMic();
     } else if (e.key === "m" || e.key === "M") {
       toggleMidiLearn();
+    } else if (e.key === "t" || e.key === "T") {
+      tap();
     }
   });
 
   // load any persisted midi mappings before audio panel is built so initial UI
   // reflects the count.
   loadMidiMap();
+  loadTempo();
   loadGrayscale();
   loadContrast();
   loadGridState();
+  loadHaze();
+  loadDataPoints();
   _loadTelemetry();
 
   // build the audio dialog, apply persisted display-filter state, and
@@ -2323,5 +2706,8 @@
     enableAudio, disableAudio, audioActive, audioLevel, bandLevel, onset,
     installMarkers, tickMarkers,
     installTelemetry, tickTelemetry,
+    tap, setBpm, clearBpm, bpm, beat: beatCount, beatPhase, onBeat,
+    hazeAlongLine, drawSoftDot, softDotSprite, hazeAmount, setHaze,
+    dataPointsAmount, setDataPoints,
   };
 })();

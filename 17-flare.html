@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#050505">
 <title>NEWSPEECH // flare</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<meta name="description" content="newspeech — audio experimentation.">
+<meta name="description" content="newspeech — audio/video experimentation.">
 <meta property="og:title" content="NEWSPEECH // flare">
-<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/17-flare.html">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // flare">
-<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
   * { box-sizing: border-box; }
@@ -69,6 +69,7 @@
 const {
   intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel,
   installMarkers, tickMarkers, installTelemetry, tickTelemetry, onset, audioActive,
+  drawSoftDot,
 } = Newspeech;
 installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
 
@@ -275,6 +276,7 @@ function step(dt) {
 // taper instead of cutting hard. small particles render as 1px rects; chunky
 // ones as small filled circles for a slightly softer dot.
 function drawParticles() {
+  const chunkyThreshold = 1.5 * dpr;
   for (let i = 0; i < particles.length; i++) {
     const p = particles[i];
     const t = p.age / p.life;
@@ -287,6 +289,11 @@ function drawParticles() {
     // particles taper away naturally.
     const alpha = Math.min(1, (1 - t) * 1.6);
     if (alpha <= 0.02) continue;
+    // chunky particles in their first third of life get a soft halo behind
+    // them — the "embers" that catch your eye through the haze.
+    if (p.size > chunkyThreshold && t < 0.35) {
+      drawSoftDot(ctx, p.x, p.y, p.size * 6, alpha * 0.32);
+    }
     ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
     // arc + fill for everything (vs fillRect for the small ones) so canvas
     // AA softens the per-particle pixel edges. slightly more expensive than

@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#050505">
 <title>NEWSPEECH // ridges</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<meta name="description" content="newspeech — audio experimentation.">
+<meta name="description" content="newspeech — audio/video experimentation.">
 <meta property="og:title" content="NEWSPEECH // ridges">
-<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/7-ridges.html">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // ridges">
-<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
   * { box-sizing: border-box; }
@@ -58,7 +58,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers } = Newspeech;
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers, hazeAlongLine } = Newspeech;
 installInputs();
 
 const params = {
@@ -144,6 +144,10 @@ function frame(t) {
   ctx.lineWidth = 1;
   ctx.lineJoin = "round";
 
+  // reused per-line buffer — collected during stroke, then strided over for
+  // the haze pass below. avoids recomputing the wave-sum twice.
+  const pts = new Float32Array((NUM_SAMPLES + 1) * 2);
+
   for (let line = 0; line < numLines; line++) {
     const y0 = yTop + lineGap * line;
     const linePhase = line * 0.43;
@@ -179,10 +183,24 @@ function frame(t) {
 
       const y = y0 + wave - steadyPeak - evPeak;
 
+      pts[s * 2] = x;
+      pts[s * 2 + 1] = y;
       if (s === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
+
+    // haze pass — sparse stride along the ridge so each segment gets its
+    // own short scatter. cheap because we only sample every Nth segment;
+    // visually fills out the line into a soft glowing ridge instead of a
+    // hairline stroke.
+    const stride = 16;
+    for (let s = 0; s < NUM_SAMPLES; s += stride) {
+      hazeAlongLine(ctx,
+        pts[s * 2], pts[s * 2 + 1],
+        pts[(s + stride) * 2], pts[(s + stride) * 2 + 1],
+        { samples: 4, jitter: 5, alpha: 0.07, dpr });
+    }
   }
 }
 

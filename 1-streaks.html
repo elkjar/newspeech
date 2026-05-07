@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#050505">
 <title>NEWSPEECH // streaks</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<meta name="description" content="newspeech — audio experimentation.">
+<meta name="description" content="newspeech — audio/video experimentation.">
 <meta property="og:title" content="NEWSPEECH // streaks">
-<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/1-streaks.html">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // streaks">
-<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
   * { box-sizing: border-box; }
@@ -62,7 +62,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers } = Newspeech;
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers, hazeAlongLine } = Newspeech;
 installInputs();
 
 const params = {
@@ -227,6 +227,10 @@ function drawStreaks(t, dt) {
     if (t > tr.until) { tears.splice(i, 1); continue; }
     ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
     ctx.fillRect(0, tr.y, viewW, tr.h);
+    // haze along the tear so its edge bleeds into a soft halo above + below
+    const ymid = tr.y + tr.h * 0.5;
+    hazeAlongLine(ctx, 0, ymid, viewW, ymid,
+      { samples: 220, jitter: tr.h * 1.4 + 4, alpha: 0.08, dpr });
   }
 }
 

@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#050505">
 <title>NEWSPEECH // stars</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<meta name="description" content="newspeech — audio experimentation.">
+<meta name="description" content="newspeech — audio/video experimentation.">
 <meta property="og:title" content="NEWSPEECH // stars">
-<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/5-stars.html">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // stars">
-<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
   * { box-sizing: border-box; }
@@ -62,7 +62,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers } = Newspeech;
+const { intensity, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers, hazeAlongLine, drawSoftDot } = Newspeech;
 installInputs();
 
 const params = {
@@ -164,6 +164,12 @@ function drawStars(t, dt) {
     }
 
     const a = Math.min(1, 1.05 - s.z * 0.7);
+    // close stars (z<0.5, brightest) get a soft halo behind the glyph so they
+    // bloom out into the field rather than reading as lone characters.
+    if (s.z < 0.5) {
+      const halo = 14 * (1 - s.z);
+      drawSoftDot(ctx, px, py, halo, a * 0.45);
+    }
     ctx.fillStyle = `rgba(255, 255, 255, ${a})`;
     ctx.fillText(ch, px, py);
 
@@ -181,12 +187,16 @@ function drawStars(t, dt) {
     const fh = 1 + Math.random() * 5;
     ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
     ctx.fillRect(0, fy, viewW, fh);
+    hazeAlongLine(ctx, 0, fy + fh * 0.5, viewW, fy + fh * 0.5,
+      { samples: 200, jitter: fh * 2 + 6, alpha: 0.08, dpr });
   }
   if (Math.random() < params.vFlashChance) {
     const fx = Math.random() * viewW;
     const fw = 1 + Math.random() * 4;
     ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
     ctx.fillRect(fx, 0, fw, viewH);
+    hazeAlongLine(ctx, fx + fw * 0.5, 0, fx + fw * 0.5, viewH,
+      { samples: 200, jitter: fw * 2 + 6, alpha: 0.07, dpr });
   }
   if (Math.random() < params.invertChance) {
     ctx.save();

@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#050505">
 <title>NEWSPEECH // swarm</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<meta name="description" content="newspeech — audio experimentation.">
+<meta name="description" content="newspeech — audio/video experimentation.">
 <meta property="og:title" content="NEWSPEECH // swarm">
-<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/9-swarm.html">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // swarm">
-<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
   * { box-sizing: border-box; }
@@ -62,7 +62,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers } = Newspeech;
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers, drawSoftDot } = Newspeech;
 // swarm uses lighter mouse coupling (mouse weight 0.3 vs default 0.4) and
 // slightly slower decay than other 2D pages.
 installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
@@ -210,6 +210,9 @@ function step(dt) {
     const xi = p.x | 0;
     const yi = p.y | 0;
     if (p.bright) {
+      // bright particles get a soft halo behind the 1px core — the halo
+      // sells the "spark" feel, the core keeps the digital crispness
+      drawSoftDot(ctx, xi, yi, 7 * dpr, 0.6);
       ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
       ctx.fillRect(xi, yi, 1, 1);
     } else {

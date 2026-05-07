@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // chevron</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio/video experimentation.">
+<meta property="og:title" content="NEWSPEECH // chevron">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/18-chevron.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // chevron">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">chevron · params · [0] toggle</div>
+  <label>
+    <span class="name">density</span><span class="val"></span>
+    <input type="range" min="4" max="36" step="1" data-k="density">
+  </label>
+  <label>
+    <span class="name">spread</span><span class="val"></span>
+    <input type="range" min="20" max="140" step="1" data-k="spread">
+  </label>
+  <label>
+    <span class="name">angle</span><span class="val"></span>
+    <input type="range" min="10" max="90" step="1" data-k="angle">
+  </label>
+  <label>
+    <span class="name">speed</span><span class="val"></span>
+    <input type="range" min="0.05" max="2.5" step="0.01" data-k="speed">
+  </label>
+  <label>
+    <span class="name">haze</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="haze">
+  </label>
+  <label>
+    <span class="name">grain</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="grain">
+  </label>
+  <label>
+    <span class="name">sparks</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="sparks">
+  </label>
+  <label>
+    <span class="name">audio boost</span><span class="val"></span>
+    <input type="range" min="0" max="2" step="0.05" data-k="audioBoost">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const {
+  intensity, installInputs, tickInputs, bumpActivity, installPanel, onset, bandLevel,
+  bpm, beatPhase, onBeat,
+  installMarkers, tickMarkers, installTelemetry, tickTelemetry,
+  hazeAmount,
+} = Newspeech;
+installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
+
+const params = {
+  density: 16,
+  spread: 64,
+  angle: 35,
+  speed: 0.55,
+  haze: 0.65,
+  grain: 0.6,
+  sparks: 0.55,
+  audioBoost: 1.0,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+let viewW = 0, viewH = 0, dpr = 1, cw = 0, ch = 0;
+let noiseTiles = [];
+let sparkSprite = null;
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  cw = Math.floor(viewW * dpr);
+  ch = Math.floor(viewH * dpr);
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  buildNoiseTiles();
+  buildSparkSprite();
+}
+window.addEventListener("resize", resize);
+
+// pre-rendered soft-dot sprite drawn for every spark via drawImage. radial
+// gradient with feathered falloff — sits on composite="lighter" at draw time
+// so overlapping sparks bloom into each other instead of stacking flat.
+// rendered once at startup; cheap to reuse.
+function buildSparkSprite() {
+  const size = 64;
+  const off = document.createElement("canvas");
+  off.width = size; off.height = size;
+  const octx = off.getContext("2d");
+  const grad = octx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, "rgba(255, 255, 255, 1)");
+  grad.addColorStop(0.18, "rgba(255, 255, 255, 0.78)");
+  grad.addColorStop(0.45, "rgba(255, 255, 255, 0.22)");
+  grad.addColorStop(0.85, "rgba(255, 255, 255, 0.04)");
+  grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+  octx.fillStyle = grad;
+  octx.fillRect(0, 0, size, size);
+  sparkSprite = off;
+}
+
+function buildNoiseTiles() {
+  noiseTiles = [];
+  const tileSize = 256;
+  for (let n = 0; n < 6; n++) {
+    const off = document.createElement("canvas");
+    off.width = tileSize; off.height = tileSize;
+    const octx = off.getContext("2d");
+    const img = octx.createImageData(tileSize, tileSize);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const fine = Math.random();
+      const coarse = (Math.random() + Math.random() + Math.random()) / 3;
+      const v = (fine * 0.7 + coarse * 0.3) * 200;
+      d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 255;
+    }
+    octx.putImageData(img, 0, 0);
+    noiseTiles.push(off);
+  }
+}
+
+function smoothstep(e0, e1, x) {
+  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+
+// streaming chevron pool. each chevron has its own depth `t` advancing 0→1
+// over its lifetime; vertex marches rightward, half-angle widens, line width
+// grows, opacity fades in/out at the bookends. continuous spawn at t=0 with
+// cull at t≥1 produces the impression of moving forward through the structure.
+const chevrons = [];
+let spawnAcc = 0;
+
+function spawnChevron(initialT) {
+  chevrons.push({
+    t: initialT || 0,
+    // small per-chevron angle jitter so the stream isn't a perfectly regular
+    // sequence — irregularity reads as "structure" not "test pattern"
+    jitter: (Math.random() - 0.5) * 0.5,
+    // weight — multiplies line width. random*random biases toward thin (most
+    // chevrons sit ~0.6-1.5×) with a long tail of heavier ones up to ~5×,
+    // matching the "occasional bold edge" feel of the reference.
+    weight: 0.6 + (Math.random() * Math.random()) * 4.8,
+    // speedMul — per-chevron travel rate. uniform spawn + variable speed
+    // means chevrons drift apart and cluster naturally as faster ones catch
+    // up to slower ones, breaking the metronomic spacing of the v1 stream.
+    speedMul: 0.55 + Math.random() * 0.95,
+  });
+}
+
+function prefillChevrons() {
+  chevrons.length = 0;
+  const n = Math.max(2, params.density | 0);
+  for (let i = 0; i < n; i++) spawnChevron(i / n);
+}
+
+function effectiveSpeed(env) {
+  return params.speed * (0.7 + 0.6 * env);
+}
+
+function tickChevrons(dt, env) {
+  const speed = effectiveSpeed(env);
+  // hold steady-state count near `density` — spawn rate = density × speed
+  // (since each chevron lives 1/speed seconds, in flight = rate × life = density)
+  const spawnRate = params.density * speed;
+  spawnAcc += spawnRate * dt;
+  while (spawnAcc >= 1) {
+    spawnChevron(0);
+    spawnAcc -= 1;
+  }
+
+  for (let i = chevrons.length - 1; i >= 0; i--) {
+    const c = chevrons[i];
+    c.t += speed * c.speedMul * dt;
+    if (c.t >= 1) chevrons.splice(i, 1);
+  }
+}
+
+// per-chevron geometry. vertex on the central horizontal axis at x interpolated
+// from leftAnchor to rightAnchor by t; half-angle widens with t so inner (small
+// t, distant) chevrons are pointier and outer (large t, near) are wider —
+// that's what gives the X cross on the left.
+function chevronGeometry(c) {
+  const cx = cw * 0.5;
+  const cy = ch * 0.5;
+  const spreadFrac = params.spread / 100;
+  const halfSpread = cw * spreadFrac * 0.5;
+  const leftAnchor  = cx - halfSpread * 0.85;
+  const rightAnchor = cx + halfSpread;
+
+  const vx = leftAnchor + c.t * (rightAnchor - leftAnchor);
+  const vy = cy;
+  const baseAngleDeg = params.angle;
+  // sweep scales the depth-driven angle widening. clamp at (88 - base) so we
+  // never push past ~vertical — past 90° the arms would flip to point
+  // rightward and the chevron geometry inverts.
+  const angleSweepDeg = Math.min(baseAngleDeg * 1.10, Math.max(4, 88 - baseAngleDeg));
+  const angleDeg = Math.min(88, baseAngleDeg + c.t * angleSweepDeg + c.jitter);
+  const angleRad = angleDeg * Math.PI / 180;
+
+  const dx = -Math.cos(angleRad);
+  const dyU = -Math.sin(angleRad);
+  const dyL =  Math.sin(angleRad);
+
+  const tUL = (dx < 0) ? -vx / dx : Infinity;
+  const tUT = (dyU < 0) ? -vy / dyU : Infinity;
+  const tU = Math.min(tUL, tUT);
+  const ux = vx + dx * tU, uy = vy + dyU * tU;
+
+  const tLL = (dx < 0) ? -vx / dx : Infinity;
+  const tLB = (dyL > 0) ? (ch - vy) / dyL : Infinity;
+  const tL = Math.min(tLL, tLB);
+  const lx = vx + dx * tL, ly = vy + dyL * tL;
+
+  return { vx, vy, ux, uy, lx, ly };
+}
+
+function chevronOpacity(c) {
+  // smooth fade in over first 12% of life, fade out over last 15%. without
+  // these tails new chevrons would pop in at the focal point and old ones
+  // would clip at the right edge.
+  const fadeIn = smoothstep(0, 0.12, c.t);
+  const fadeOut = 1 - smoothstep(0.85, 1, c.t);
+  return Math.min(fadeIn, fadeOut) * 0.95;
+}
+
+// particle haze — per-frame scatter of dim dots along each arm with gaussian
+// perpendicular jitter (sum-of-3 uniforms). drawn on composite="lighter" so
+// dots near the line accumulate into a real glow falloff instead of each
+// fillRect quietly disappearing into source-over alpha. reads as drifting
+// fog rather than a clean stroke bloom.
+function drawHaze(g, opacity, t) {
+  const haze = params.haze;
+  const gHaze = hazeAmount();
+  if (haze <= 0 || gHaze <= 0 || opacity <= 0.02) return;
+
+  const arms = [
+    { x1: g.vx, y1: g.vy, x2: g.ux, y2: g.uy },
+    { x1: g.vx, y1: g.vy, x2: g.lx, y2: g.ly },
+  ];
+
+  const samplesPerArm = Math.floor((150 + 600 * haze) * (0.5 + 0.7 * t));
+  const jitterScale = (8 + 14 * haze) * dpr;
+  // per-particle alpha tuned for visible accumulation under "lighter":
+  // each dot adds a real chunk of brightness, so dense regions near the line
+  // build into a hot core that falls off through gaussian jitter into haze.
+  // depth t weights the alpha so far chevrons feather and near ones burn in.
+  // global haze multiplier composes on top of the per-page slider.
+  const a = (0.18 * opacity * (0.5 + 0.6 * t) * gHaze).toFixed(3);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+
+  for (const arm of arms) {
+    const adx = arm.x2 - arm.x1;
+    const ady = arm.y2 - arm.y1;
+    const len = Math.hypot(adx, ady);
+    if (len < 1) continue;
+    const nx = -ady / len;
+    const ny =  adx / len;
+
+    for (let i = 0; i < samplesPerArm; i++) {
+      const u = Math.random();
+      const jr = (Math.random() + Math.random() + Math.random() - 1.5) * jitterScale;
+      const ju = (Math.random() - 0.5) * 0.02;
+      const px = arm.x1 + adx * (u + ju) + nx * jr;
+      const py = arm.y1 + ady * (u + ju) + ny * jr;
+      const sz = (0.7 + Math.random() * 1.1) * dpr;
+      ctx.fillRect(px, py, sz, sz);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawChevron(c) {
+  const g = chevronGeometry(c);
+  const opacity = chevronOpacity(c);
+  if (opacity <= 0.02) return;
+
+  drawHaze(g, opacity, c.t);
+
+  // crisp pass — softened a touch from full white so the edge feathers into
+  // the haze + grain instead of cutting hard. line weight grows with depth
+  // and is scaled by the chevron's weight so the stream contains a mix of
+  // hairline edges and bold ones.
+  const lineW = (0.5 + 1.3 * c.t) * dpr * c.weight;
+  ctx.lineWidth = lineW;
+  ctx.strokeStyle = `rgba(255, 255, 255, ${(opacity * 0.78).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.moveTo(g.ux, g.uy);
+  ctx.lineTo(g.vx, g.vy);
+  ctx.lineTo(g.lx, g.ly);
+  ctx.stroke();
+}
+
+function drawChevrons() {
+  for (const c of chevrons) drawChevron(c);
+}
+
+function paintGlow(fx, fy, r, a) {
+  if (a <= 0.001 || r <= 0) return;
+  const grad = ctx.createRadialGradient(fx, fy, 0, fx, fy, r);
+  grad.addColorStop(0, `rgba(255, 255, 255, ${a.toFixed(3)})`);
+  grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(fx - r, fy - r, r * 2, r * 2);
+}
+
+// focal glow with motion — primary glow drifts in a slow ellipse around the
+// X anchor while a smaller, hotter secondary spot drifts at a different phase
+// and reacts to the mid band. the two-glow layering keeps the focal area
+// alive without a hard centerpoint, more like a flickering arc-lamp than a
+// fixed bloom.
+function drawFocalGlow(env, lowEnv, midEnv, time) {
+  const cx = cw * 0.5;
+  const cy = ch * 0.5;
+  const spreadFrac = params.spread / 100;
+  const halfSpread = cw * spreadFrac * 0.5;
+  const baseX = cx - halfSpread * 0.85;
+
+  const ts = time * 0.001;
+  const orbit = ch * 0.05;
+
+  // beat pulse — sharp peak at beat onset, exp decay through the beat. when
+  // bpm is unset, this stays 0 and the glow behaves as before.
+  const beatPulse = bpm() > 0 ? Math.exp(-beatPhase() * 4) : 0;
+
+  // primary — large soft glow, slow elliptical drift
+  const px = baseX + Math.sin(ts * 0.7) * orbit + Math.sin(ts * 0.31) * orbit * 0.4;
+  const py = cy    + Math.cos(ts * 0.41) * orbit * 0.7 + Math.sin(ts * 0.23) * orbit * 0.3;
+  const pr = ch * 0.16 * (1 + 0.4 * lowEnv + 0.25 * beatPulse);
+  const pa = 0.025 + 0.05 * env + 0.05 * beatPulse;
+  paintGlow(px, py, pr, pa);
+
+  // secondary — smaller hot spot, different phase, mid-band reactive. wanders
+  // independently of the primary so the focal area pulses asymmetrically.
+  const sx = baseX + Math.sin(ts * 0.91 + 1.7) * orbit * 0.85 + Math.cos(ts * 0.55) * orbit * 0.35;
+  const sy = cy    + Math.cos(ts * 0.63 + 0.8) * orbit * 0.55 + Math.sin(ts * 0.37) * orbit * 0.25;
+  const sr = ch * 0.08 * (1 + 0.5 * midEnv + 0.4 * beatPulse);
+  const sa = 0.04 + 0.08 * env + 0.08 * beatPulse;
+  paintGlow(sx, sy, sr, sa);
+}
+
+// sparks — flow rightward (matches the chevron motion) so they read as part
+// of the same passing-by structure rather than a separate decoration layer.
+const sparks = [];
+const MAX_SPARKS = 800;
+
+function spawnSparks(count) {
+  for (let i = 0; i < count; i++) {
+    if (sparks.length >= MAX_SPARKS) break;
+    const cy = ch * 0.5;
+    sparks.push({
+      x: cw * (0.05 + 0.85 * Math.random()),
+      y: cy + (Math.random() - 0.5) * ch * 0.95,
+      vx: (50 + Math.random() * 110) * dpr * params.speed,
+      size: (1.8 + Math.random() * 4.5) * dpr,
+      life: 0.5 + Math.random() * 1.4,
+      age: 0,
+    });
+  }
+}
+
+function tickSparks(dt) {
+  const baselineRate = 28 * params.sparks;
+  if (Math.random() < baselineRate * dt) spawnSparks(1 + (Math.random() * 2 | 0));
+
+  const boost = params.audioBoost;
+  if (boost > 0) {
+    if (onset("high")) spawnSparks(10 + Math.floor(20 * boost));
+    if (onset("mid"))  spawnSparks(4 + Math.floor(8 * boost));
+    if (onset("low"))  spawnSparks(6 + Math.floor(10 * boost));
+  }
+
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const s = sparks[i];
+    s.age += dt;
+    s.x += s.vx * dt;
+    if (s.age >= s.life || s.x > cw + 20) sparks.splice(i, 1);
+  }
+}
+
+// soft-dot sprite drawn under composite="lighter" — sparks bloom into each
+// other where they overlap, and a single spark already feathers because the
+// sprite is a radial gradient rather than a hard rect. each spark renders at
+// 3-5× its core size so the gradient's outer falloff actually shows up.
+function drawSparks() {
+  if (!sparkSprite) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const s of sparks) {
+    const t = s.age / s.life;
+    const alpha = Math.min(1, (1 - t) * 1.3);
+    if (alpha <= 0.02) continue;
+    const sz = s.size * (3.5 + params.haze * 2.5);
+    ctx.globalAlpha = alpha * 0.85;
+    ctx.drawImage(sparkSprite, s.x - sz * 0.5, s.y - sz * 0.5, sz, sz);
+  }
+  ctx.restore();
+}
+
+function drawNoise() {
+  if (params.grain <= 0 || !noiseTiles.length) return;
+  const idx = (performance.now() / 80 | 0) % noiseTiles.length;
+  const tile = noiseTiles[idx];
+  const scale = 1.5 * dpr;
+  const tw = tile.width * scale;
+  const th = tile.height * scale;
+  const offX = -((Math.random() * tw) | 0);
+  const offY = -((Math.random() * th) | 0);
+  ctx.save();
+  ctx.globalAlpha = params.grain * 0.22;
+  ctx.globalCompositeOperation = "screen";
+  for (let y = offY; y < ch; y += th) {
+    for (let x = offX; x < cw; x += tw) {
+      ctx.drawImage(tile, x, y, tw, th);
+    }
+  }
+  ctx.restore();
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dt = Math.min(0.05, (t - lastT) / 1000);
+  lastT = t;
+  tickInputs(dt);
+
+  const env = intensity();
+  const lowEnv = bandLevel("low");
+  const midEnv = bandLevel("mid");
+
+  ctx.clearRect(0, 0, cw, ch);
+
+  drawFocalGlow(env, lowEnv, midEnv, t);
+
+  tickChevrons(dt, env);
+  drawChevrons();
+
+  tickSparks(dt);
+  drawSparks();
+
+  // markers run on the canvas state right here — before grain — so the sobel
+  // pass anchors to the chevron + spark structure rather than the noise field.
+  tickMarkers(dt);
+
+  drawNoise();
+
+  // telemetry sits on top of everything, on the HUD overlay (its own canvas).
+  tickTelemetry(dt);
+
+  requestAnimationFrame(frame);
+}
+
+resize();
+prefillChevrons();
+requestAnimationFrame(frame);
+
+// bpm sync — when a tempo is set in the global audio dialog (key [t] to tap,
+// or type a bpm), every beat fires a spark burst proportional to the audio
+// boost. callback only fires while bpm is active, so this is a no-op until
+// the user opts in.
+onBeat(() => {
+  spawnSparks(14 + Math.floor(22 * params.audioBoost));
+});
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  spawnSparks(28);
+  bumpActivity();
+});
+
+window.onParamChange = (k) => {
+  // re-seed when density changes substantially so the field doesn't have
+  // to re-fill organically over a few seconds
+  if (k === "density") prefillChevrons();
+};
+
+installMarkers({ params });
+installTelemetry({ params });
+installPanel(params);
+</script>
+</body>
+</html>

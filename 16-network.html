@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#050505">
 <title>NEWSPEECH // network</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<meta name="description" content="newspeech — audio experimentation.">
+<meta name="description" content="newspeech — audio/video experimentation.">
 <meta property="og:title" content="NEWSPEECH // network">
-<meta property="og:description" content="newspeech — audio experimentation.">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/16-network.html">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // network">
-<meta name="twitter:description" content="newspeech — audio experimentation.">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
   * { box-sizing: border-box; }
@@ -70,7 +70,7 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, onset, audioActive } = Newspeech;
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, onset, audioActive, drawSoftDot } = Newspeech;
 installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
 
 const params = {
@@ -283,15 +283,15 @@ function step(dt) {
   const baseR = 1.6 * dpr;
   const glowR = params.glowSize * dpr;
   if (glowR > 0) {
+    // soft-dot sprite halo (composite="lighter") replaces the per-node arc
+    // glow — gives nodes a luminous bloom that overlaps cleanly when nodes
+    // sit close, instead of stacking flat translucent discs.
     for (let oi = 0; oi < order.length; oi++) {
       const p = proj[order[oi]];
       const depthK = 0.55 + 0.45 * (p.depth + 1) * 0.5;
       const r = (baseR + glowR * (1 + p.pulse * 1.4)) * p.persp;
-      const a = (0.10 + 0.18 * p.pulse) * depthK;
-      ctx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
-      ctx.beginPath();
-      ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
-      ctx.fill();
+      const a = (0.20 + 0.30 * p.pulse) * depthK;
+      drawSoftDot(ctx, p.sx, p.sy, r * 4, a);
     }
   }
   for (let oi = 0; oi < order.length; oi++) {
