@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
+import { hydrateTrack } from './hydrate';
+import defaultPreset from './defaultPreset.json';
 
 export type EditMode = 'note' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
@@ -105,63 +107,15 @@ function emptySteps(): Step[] {
   }));
 }
 
-function patternedSteps(
-  onIndices: number[],
-  pitches: Record<number, number> = {},
-  velocity = 1
-): Step[] {
-  return Array.from({ length: MAX_STEPS }, (_, i) => ({
-    on: onIndices.includes(i),
-    velocity,
-    pitch: pitches[i] ?? 0,
-    probability: 100,
-    ratchet: 1,
-    microTiming: 0,
-    gate: 1,
-    tieToNext: false,
-  }));
-}
-
-function defaultTrack(id: string, voice: string, steps: Step[]): Track {
-  return {
-    id,
-    voice,
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    mutation: 0,
-    rowChance: 0,
-    rowRatchet: 0,
-    morph: 0,
-    slotA: null,
-    slotB: null,
-    euclidean: { hits: 0, rotation: 0 },
-    steps,
-  };
-}
-
-const initialTracks: Track[] = [
-  defaultTrack('t1', 'kick', patternedSteps([0, 4, 8, 12], {}, 1)),
-  defaultTrack('t2', 'snare', patternedSteps([4, 12], {}, 0.9)),
-  defaultTrack('t3', 'hat-c', patternedSteps([0, 2, 4, 8, 10, 12], {}, 0.7)),
-  defaultTrack('t4', 'hat-o', patternedSteps([6, 14], {}, 0.6)),
-  defaultTrack(
-    't5',
-    'synth',
-    patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }, 0.8)
-  ),
-  defaultTrack('t6', 'synth', emptySteps()),
-  defaultTrack('t7', 'synth', emptySteps()),
-  defaultTrack('t8', 'synth', emptySteps()),
-];
+const presetTracks = (defaultPreset.tracks as Array<Partial<Track> & { id: string }>).map(
+  hydrateTrack
+);
 
 export const useSequencerStore = create<SequencerState>((set) => ({
-  bpm: 120,
-  rootNote: 60,
-  scale: 'major',
-  tracks: initialTracks,
+  bpm: defaultPreset.bpm,
+  rootNote: defaultPreset.rootNote,
+  scale: defaultPreset.scale as Scale,
+  tracks: presetTracks,
   globalStep: 0,
   playing: false,
   editMode: 'note',

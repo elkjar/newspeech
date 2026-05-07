@@ -1,0 +1,5296 @@
+{
+  "version": 1,
+  "bpm": 107,
+  "rootNote": 63,
+  "scale": "minor",
+  "tracks": [
+    {
+      "id": "t1",
+      "voice": "kick",
+      "mute": false,
+      "solo": false,
+      "length": 14,
+      "lastPitch": 0,
+      "viewPage": 0,
+      "mutation": 0,
+      "rowChance": 0,
+      "rowRatchet": 0,
+      "morph": 0,
+      "slotA": null,
+      "slotB": null,
+      "euclidean": {
+        "hits": 0,
+        "rotation": 0
+      },
+      "steps": [
+        {
+          "on": true,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9748028696086236,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2681681457544913,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.8913863112073395,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.996062834812002,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8771603596569326,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9153415736089923,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.9311164752039155,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.3236644659451753,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.8837624052323825,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.0195077822849696,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.4523201294887298,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9687468332447506,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.0949871463352978,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9133521938764622,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9732739308395907,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.8495047138957184,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2793282972897575,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.340275325888814,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9197282509374625,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1467250535289595,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        }
+      ]
+    },
+    {
+      "id": "t2",
+      "voice": "snare",
+      "mute": false,
+      "solo": false,
+      "length": 9,
+      "lastPitch": 0,
+      "viewPage": 0,
+      "mutation": 0,
+      "rowChance": 0,
+      "rowRatchet": 0,
+      "morph": 0,
+      "slotA": null,
+      "slotB": null,
+      "euclidean": {
+        "hits": 0,
+        "rotation": 0
+      },
+      "steps": [
+        {
+          "on": false,
+          "velocity": 0.8526103992114514,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.193448918670879,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8773152408936278,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.0096908583572546,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8202579923886748,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9315872238619312,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8786989302520287,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.06487147216552,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.9277983867371918,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2148512390151376,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9780142636595206,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9396257194017887,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8165586940638276,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.0946699710170897,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8795804584128268,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9250263101038262,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9036602458100492,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9211904765476222,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8714091486226411,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9884898505867453,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8771999490736526,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9601706169060062,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9099641296715473,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2114634603889103,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9724766434511123,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9524079249898207,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8290671165553415,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.186779456703661,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9298092806829937,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2468944667315336,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9093239605491265,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1467399663463682,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        }
+      ]
+    },
+    {
+      "id": "t3",
+      "voice": "hat-c",
+      "mute": false,
+      "solo": false,
+      "length": 14,
+      "lastPitch": 0,
+      "viewPage": 0,
+      "mutation": 0,
+      "rowChance": 0,
+      "rowRatchet": 0.52,
+      "morph": 0.49999999999999994,
+      "slotA": null,
+      "slotB": null,
+      "euclidean": {
+        "hits": 0,
+        "rotation": 0
+      },
+      "steps": [
+        {
+          "on": true,
+          "velocity": 0.8160230697399387,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.6960319381426394,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.8416691432112093,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.7592315185954297,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.6397867545787533,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.343984290639538,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7822727535735227,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.714620426825434,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7738266508912197,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2513352358036645,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.5279931649772248,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.5588456576984617,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.7014227517721693,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.4676944506299936,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8079910878395149,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1422692243562909,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.5158283826926547,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.510843890756297,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.7056733826127788,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2003817007320867,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.6672409183734935,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.4983610336259787,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7602866296462593,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.446472039772568,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.6617815158186213,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.250347890494242,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6022808173161224,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.5356457445809186,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6029773382899682,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1417980875005231,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.482212517624986,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2968605422343709,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        }
+      ]
+    },
+    {
+      "id": "t4",
+      "voice": "hat-o",
+      "mute": false,
+      "solo": false,
+      "length": 16,
+      "lastPitch": 0,
+      "viewPage": 0,
+      "mutation": 0,
+      "rowChance": 0,
+      "rowRatchet": 0,
+      "morph": 0.1,
+      "slotA": null,
+      "slotB": null,
+      "euclidean": {
+        "hits": 0,
+        "rotation": 0
+      },
+      "steps": [
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        }
+      ]
+    },
+    {
+      "id": "t5",
+      "voice": "synth",
+      "mute": false,
+      "solo": false,
+      "length": 13,
+      "lastPitch": 0,
+      "viewPage": 0,
+      "mutation": 0,
+      "rowChance": 0,
+      "rowRatchet": 0,
+      "morph": 0,
+      "slotA": null,
+      "slotB": null,
+      "euclidean": {
+        "hits": 0,
+        "rotation": 0
+      },
+      "steps": [
+        {
+          "on": false,
+          "velocity": 0.7168604998475641,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9907110709914934,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.8656616698966141,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.7727502794767855,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6408069650009536,
+          "pitch": -4,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.535820257111739,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9181652939666283,
+          "pitch": 7,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.8260215024337076,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6181052819117687,
+          "pitch": -3,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2524701851916387,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6411174139238404,
+          "pitch": 4,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.7985633688992275,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.754003245877483,
+          "pitch": -7,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.7912169385450196,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8856675837484556,
+          "pitch": -4,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 2.212386249497267,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.8980810303876241,
+          "pitch": -3,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 2.1318548070367553,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 7,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.782291485551653,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.4605552238535228,
+          "pitch": 14,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.3442093858754793,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.6550883420129368,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1623937084746683,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.7939186510397801,
+          "pitch": -4,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 2.2121609144965317,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9230254368853852,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.656563482341904,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8394461730608069,
+          "pitch": 1,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.4030184009744908,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.7876208869367135,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.8,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        }
+      ]
+    },
+    {
+      "id": "t6",
+      "voice": "synth",
+      "mute": false,
+      "solo": false,
+      "length": 16,
+      "lastPitch": 0,
+      "viewPage": 0,
+      "mutation": 0,
+      "rowChance": 0,
+      "rowRatchet": 0,
+      "morph": 0,
+      "slotA": null,
+      "slotB": null,
+      "euclidean": {
+        "hits": 0,
+        "rotation": 0
+      },
+      "steps": [
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        }
+      ]
+    },
+    {
+      "id": "t7",
+      "voice": "synth",
+      "mute": false,
+      "solo": false,
+      "length": 16,
+      "lastPitch": 0,
+      "viewPage": 0,
+      "mutation": 0,
+      "rowChance": 0,
+      "rowRatchet": 0,
+      "morph": 0,
+      "slotA": null,
+      "slotB": null,
+      "euclidean": {
+        "hits": 0,
+        "rotation": 0
+      },
+      "steps": [
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        }
+      ]
+    },
+    {
+      "id": "t8",
+      "voice": "synth",
+      "mute": false,
+      "solo": false,
+      "length": 16,
+      "lastPitch": 0,
+      "viewPage": 0,
+      "mutation": 0,
+      "rowChance": 0,
+      "rowRatchet": 0.2,
+      "morph": 0,
+      "slotA": null,
+      "slotB": null,
+      "euclidean": {
+        "hits": 0,
+        "rotation": 0
+      },
+      "steps": [
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1,
+          "tieToNext": false
+        }
+      ]
+    }
+  ]
+}
