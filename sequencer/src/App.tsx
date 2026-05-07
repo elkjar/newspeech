@@ -97,8 +97,8 @@ export function App() {
   }, [bpm]);
 
   return (
-    <div className="min-h-full w-full flex flex-col">
-      <header className="crumb">
+    <div className="relative w-full">
+      <header className="crumb absolute top-0 left-0 right-0 z-10">
         <span className="label">
           <a href="/">newspeech</a>
           <span className="sep"> / </span>sequence
@@ -107,7 +107,7 @@ export function App() {
           click selects · cmd-click toggles · drag/scroll adjusts active mode · shift = velocity · cmd = chance
         </span>
       </header>
-      <main className="flex-1 flex items-center justify-center px-[72px] py-12">
+      <main className="min-h-screen flex items-center justify-center px-[72px] py-12">
         <div className="flex flex-col gap-8 w-[1280px] max-w-full">
           <div className="flex justify-between items-start gap-8">
             <StepInspector />
