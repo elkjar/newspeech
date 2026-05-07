@@ -19,6 +19,7 @@ export interface Track {
   solo: boolean;
   volume: number;
   length: number;
+  lastPitch: number;
   steps: Step[];
 }
 
@@ -76,6 +77,7 @@ const initialTracks: Track[] = [
     solo: false,
     volume: 1,
     length: DEFAULT_LENGTH,
+    lastPitch: 0,
     steps: patternedSteps([0, 4, 8, 12]),
   },
   {
@@ -87,6 +89,7 @@ const initialTracks: Track[] = [
     solo: false,
     volume: 0.9,
     length: DEFAULT_LENGTH,
+    lastPitch: 0,
     steps: patternedSteps([4, 12]),
   },
   {
@@ -98,6 +101,7 @@ const initialTracks: Track[] = [
     solo: false,
     volume: 0.7,
     length: DEFAULT_LENGTH,
+    lastPitch: 0,
     steps: patternedSteps([0, 2, 4, 8, 10, 12]),
   },
   {
@@ -109,6 +113,7 @@ const initialTracks: Track[] = [
     solo: false,
     volume: 0.6,
     length: DEFAULT_LENGTH,
+    lastPitch: 0,
     steps: patternedSteps([6, 14]),
   },
   {
@@ -120,6 +125,7 @@ const initialTracks: Track[] = [
     solo: false,
     volume: 0.8,
     length: DEFAULT_LENGTH,
+    lastPitch: 0,
     steps: patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }),
   },
   {
@@ -131,6 +137,7 @@ const initialTracks: Track[] = [
     solo: false,
     volume: 0.8,
     length: DEFAULT_LENGTH,
+    lastPitch: 0,
     steps: emptySteps(),
   },
   {
@@ -142,6 +149,7 @@ const initialTracks: Track[] = [
     solo: false,
     volume: 0.85,
     length: DEFAULT_LENGTH,
+    lastPitch: 0,
     steps: emptySteps(),
   },
   {
@@ -153,6 +161,7 @@ const initialTracks: Track[] = [
     solo: false,
     volume: 0.7,
     length: DEFAULT_LENGTH,
+    lastPitch: 0,
     steps: emptySteps(),
   },
 ];
@@ -172,7 +181,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => {
         if (t.id !== trackId) return t;
         const steps = t.steps.slice();
-        steps[index] = { ...steps[index], on: !steps[index].on };
+        const wasOn = steps[index].on;
+        const turningOn = !wasOn;
+        steps[index] = {
+          ...steps[index],
+          on: turningOn,
+          pitch: turningOn ? t.lastPitch : steps[index].pitch,
+        };
         return { ...t, steps };
       }),
     })),
@@ -182,7 +197,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         if (t.id !== trackId) return t;
         const steps = t.steps.slice();
         steps[index] = { ...steps[index], pitch };
-        return { ...t, steps };
+        return { ...t, steps, lastPitch: pitch };
       }),
     })),
   setStepVelocity: (trackId, index, velocity) =>
