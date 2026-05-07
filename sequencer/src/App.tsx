@@ -83,9 +83,9 @@ export function App() {
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
           if (track.type === 'melodic') {
-            samplePlayer.trigger(track.voice, t, v, midi, effectiveGate);
+            samplePlayer.trigger(track.voice, t, v, midi, effectiveGate, stepDuration);
           } else {
-            samplePlayer.trigger(track.voice, t, v, undefined, effectiveGate);
+            samplePlayer.trigger(track.voice, t, v, undefined, effectiveGate, stepDuration);
           }
         }
       }

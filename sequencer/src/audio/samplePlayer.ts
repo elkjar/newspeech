@@ -31,7 +31,14 @@ class SamplePlayer {
     );
   }
 
-  trigger(voice: SampleId, when: number, velocity = 1, midiNote?: number, gate = 1) {
+  trigger(
+    voice: SampleId,
+    when: number,
+    velocity = 1,
+    midiNote?: number,
+    gate = 1,
+    stepDuration = 0.125
+  ) {
     const ctx = getAudioContext();
     const out = ctx.destination;
 
@@ -81,7 +88,8 @@ class SamplePlayer {
         synthHatO(when, velocity, out, gate);
         break;
       default:
-        if (midiNote !== undefined) synthMelodic(when, midiNote, velocity, out, gate);
+        if (midiNote !== undefined)
+          synthMelodic(when, midiNote, velocity, out, gate, stepDuration);
     }
   }
 }
