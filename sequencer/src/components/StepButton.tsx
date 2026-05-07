@@ -50,6 +50,10 @@ export function StepButton({
   const ref = useRef<HTMLButtonElement>(null);
   const didDragRef = useRef(false);
 
+  const isSelected = useSequencerStore(
+    (s) => s.selectedStep?.trackId === trackId && s.selectedStep?.index === index
+  );
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -136,12 +140,21 @@ export function StepButton({
     window.addEventListener('mouseup', onUp);
   };
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
     if (didDragRef.current) {
       didDragRef.current = false;
       return;
     }
-    useSequencerStore.getState().toggleStep(trackId, index);
+    const store = useSequencerStore.getState();
+    if (e.metaKey || e.ctrlKey) {
+      store.toggleStep(trackId, index);
+      return;
+    }
+    if (store.selectedStep?.trackId === trackId && store.selectedStep.index === index) {
+      store.setSelectedStep(null);
+    } else {
+      store.setSelectedStep({ trackId, index });
+    }
   };
 
   const noteLabel = isMelodic && on ? midiToName(quantize(rootNote, scale, pitch)) : '';
@@ -149,18 +162,22 @@ export function StepButton({
   const fillOpacity = 0.4 + 0.6 * (probability / 100);
   const fillHeightPct = Math.max(12, velocity * 100);
 
+  const shadows: string[] = [];
+  if (isSelected) shadows.push('inset 0 0 0 2px rgba(255,255,255,0.85)');
+  if (isCurrent) shadows.push('0 0 0 2px #050505', '0 0 0 4px rgb(255,255,255)');
+
   return (
     <button
       ref={ref}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
       aria-label={`step ${index + 1}`}
-      className={[
-        'relative overflow-hidden flex items-end justify-center',
-        'transition-shadow',
-        isCurrent ? 'ring-2 ring-white ring-offset-2 ring-offset-[#050505]' : '',
-      ].join(' ')}
-      style={{ width: size, height: size }}
+      className="relative overflow-hidden flex items-end justify-center transition-shadow"
+      style={{
+        width: size,
+        height: size,
+        boxShadow: shadows.length ? shadows.join(', ') : undefined,
+      }}
     >
       <span className="absolute inset-0 bg-white/5" />
       {on && (
