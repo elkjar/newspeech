@@ -115,16 +115,17 @@ export function Track({ track }: { track: TrackData }) {
         })}
       </div>
 
-      <div className="flex" style={{ gap: `${STEP_GAP}px` }}>
-        {Array.from(
-          { length: Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)) },
-          (_, i) => {
+      <div className="flex">
+        {(() => {
+          const count = Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE));
+          const elements: JSX.Element[] = [];
+          for (let i = 0; i < count; i++) {
             const stepIndex = viewPage * PAGE_SIZE + i;
             const step = track.steps[stepIndex];
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
-            return (
+            elements.push(
               <StepButton
-                key={i}
+                key={`s${i}`}
                 trackId={track.id}
                 index={stepIndex}
                 on={step?.on ?? false}
@@ -135,8 +136,22 @@ export function Track({ track }: { track: TrackData }) {
                 size={STEP_SIZE}
               />
             );
+            if (i < count - 1) {
+              const tied = step?.tieToNext === true;
+              elements.push(
+                <div
+                  key={`g${i}`}
+                  style={{
+                    width: STEP_GAP,
+                    height: STEP_SIZE,
+                    background: tied ? '#fff' : 'transparent',
+                  }}
+                />
+              );
+            }
           }
-        )}
+          return elements;
+        })()}
       </div>
     </div>
   );

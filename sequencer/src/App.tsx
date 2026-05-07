@@ -6,6 +6,33 @@ import { useSequencerStore, type EditMode } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
 import { quantize } from './audio/scale';
+import type { Track } from './state/store';
+
+function isSilencedByTie(track: Track, i: number): boolean {
+  const len = track.length;
+  if (len <= 0) return false;
+  let cur = (i - 1 + len) % len;
+  for (let walked = 0; walked < len; walked++) {
+    const s = track.steps[cur];
+    if (!s?.tieToNext) return false;
+    if (s.on) return true;
+    cur = (cur - 1 + len) % len;
+  }
+  return false;
+}
+
+function tieLength(track: Track, i: number): number {
+  const len = track.length;
+  if (len <= 0) return 1;
+  let count = 1;
+  let cur = i;
+  for (let walked = 0; walked < len; walked++) {
+    if (!track.steps[cur]?.tieToNext) break;
+    count++;
+    cur = (cur + 1) % len;
+  }
+  return count;
+}
 
 const MODES: EditMode[] = ['note', 'velocity', 'chance', 'ratchet', 'timing', 'gate'];
 
@@ -45,18 +72,21 @@ export function App() {
         const localStep = globalStep % track.length;
         const step = track.steps[localStep];
         if (!step?.on) continue;
+        if (isSilencedByTie(track, localStep)) continue;
         if (step.probability < 100 && Math.random() * 100 >= step.probability) continue;
+        const ties = tieLength(track, localStep);
         const v = step.velocity;
         const baseTime = when + step.microTiming * stepDuration;
         const ratchet = Math.max(1, Math.floor(step.ratchet));
         const subDur = stepDuration / ratchet;
+        const effectiveGate = step.gate * ties;
         const midi = track.type === 'melodic' ? quantize(rootNote, scale, step.pitch) : undefined;
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
           if (track.type === 'melodic') {
-            samplePlayer.trigger(track.voice, t, v, midi, step.gate);
+            samplePlayer.trigger(track.voice, t, v, midi, effectiveGate);
           } else {
-            samplePlayer.trigger(track.voice, t, v, undefined, step.gate);
+            samplePlayer.trigger(track.voice, t, v, undefined, effectiveGate);
           }
         }
       }
