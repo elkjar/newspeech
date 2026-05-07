@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { useSequencerStore, type Track as TrackData, PAGE_SIZE, NUM_PAGES } from '../state/store';
 import { StepButton } from './StepButton';
 
@@ -116,42 +117,42 @@ export function Track({ track }: { track: TrackData }) {
       </div>
 
       <div className="flex">
-        {(() => {
-          const count = Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE));
-          const elements: JSX.Element[] = [];
-          for (let i = 0; i < count; i++) {
+        {Array.from(
+          { length: Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)) },
+          (_, i) => {
+            const visibleCount = Math.max(
+              0,
+              Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)
+            );
             const stepIndex = viewPage * PAGE_SIZE + i;
             const step = track.steps[stepIndex];
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
-            elements.push(
-              <StepButton
-                key={`s${i}`}
-                trackId={track.id}
-                index={stepIndex}
-                on={step?.on ?? false}
-                velocity={step?.velocity ?? 1}
-                probability={step?.probability ?? 100}
-                isMelodic={track.type === 'melodic'}
-                isCurrent={isCurrent}
-                size={STEP_SIZE}
-              />
-            );
-            if (i < count - 1) {
-              const tied = step?.tieToNext === true;
-              elements.push(
-                <div
-                  key={`g${i}`}
-                  style={{
-                    width: STEP_GAP,
-                    height: STEP_SIZE,
-                    background: tied ? '#fff' : 'transparent',
-                  }}
+            const tied = step?.tieToNext === true;
+            return (
+              <Fragment key={i}>
+                <StepButton
+                  trackId={track.id}
+                  index={stepIndex}
+                  on={step?.on ?? false}
+                  velocity={step?.velocity ?? 1}
+                  probability={step?.probability ?? 100}
+                  isMelodic={track.type === 'melodic'}
+                  isCurrent={isCurrent}
+                  size={STEP_SIZE}
                 />
-              );
-            }
+                {i < visibleCount - 1 && (
+                  <div
+                    style={{
+                      width: STEP_GAP,
+                      height: STEP_SIZE,
+                      background: tied ? '#fff' : 'transparent',
+                    }}
+                  />
+                )}
+              </Fragment>
+            );
           }
-          return elements;
-        })()}
+        )}
       </div>
     </div>
   );
