@@ -63,7 +63,7 @@ export function Track({ track }: { track: TrackData }) {
         />
       </div>
 
-      <div className="flex gap-1">
+      <div className="flex" style={{ gap: `${STEP_GAP}px` }}>
         {Array.from({ length: NUM_PAGES }, (_, p) => {
           const reachable = p * PAGE_SIZE < track.length;
           const isActive = p === viewPage;
@@ -72,12 +72,13 @@ export function Track({ track }: { track: TrackData }) {
               key={p}
               onClick={() => reachable && setTrackPage(track.id, p)}
               disabled={!reachable}
+              style={{ width: STEP_SIZE, height: STEP_SIZE }}
               className={
                 isActive
-                  ? 'w-3 h-3 bg-white'
+                  ? 'bg-white'
                   : reachable
-                    ? 'w-3 h-3 bg-white/25 hover:bg-white/50 transition-colors'
-                    : 'w-3 h-3 bg-white/[0.05] cursor-not-allowed'
+                    ? 'bg-white/25 hover:bg-white/50 transition-colors'
+                    : 'bg-white/[0.05] cursor-not-allowed'
               }
               title={`page ${p + 1}`}
             />
