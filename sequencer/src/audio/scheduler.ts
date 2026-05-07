@@ -1,6 +1,6 @@
 import { getAudioContext } from './audioContext';
 
-export type StepCallback = (stepIndex: number, when: number) => void;
+export type StepCallback = (stepIndex: number, when: number, stepDuration: number) => void;
 
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD_S = 0.1;
@@ -74,9 +74,10 @@ class Scheduler {
     if (!this.playing) return;
     const ctx = getAudioContext();
     while (this.nextStepTime < ctx.currentTime + SCHEDULE_AHEAD_S) {
-      for (const cb of this.callbacks) cb(this.currentStep, this.nextStepTime);
+      const dur = this.stepDuration();
+      for (const cb of this.callbacks) cb(this.currentStep, this.nextStepTime, dur);
       this.scheduled.push({ index: this.currentStep, when: this.nextStepTime });
-      this.nextStepTime += this.stepDuration();
+      this.nextStepTime += dur;
       this.currentStep += 1;
     }
     const cutoff = ctx.currentTime - HISTORY_S;

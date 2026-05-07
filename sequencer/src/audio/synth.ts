@@ -13,20 +13,21 @@ function getNoiseBuffer(): AudioBuffer {
   return buf;
 }
 
-export function synthKick(when: number, velocity: number, out: AudioNode) {
+export function synthKick(when: number, velocity: number, out: AudioNode, gate = 1) {
   const ctx = getAudioContext();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
+  const decay = 0.25 * gate;
   osc.frequency.setValueAtTime(150, when);
-  osc.frequency.exponentialRampToValueAtTime(40, when + 0.18);
+  osc.frequency.exponentialRampToValueAtTime(40, when + 0.18 * gate);
   gain.gain.setValueAtTime(velocity, when);
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.25);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + decay);
   osc.connect(gain).connect(out);
   osc.start(when);
-  osc.stop(when + 0.3);
+  osc.stop(when + decay + 0.05);
 }
 
-export function synthSnare(when: number, velocity: number, out: AudioNode) {
+export function synthSnare(when: number, velocity: number, out: AudioNode, gate = 1) {
   const ctx = getAudioContext();
 
   const noise = ctx.createBufferSource();
@@ -35,25 +36,27 @@ export function synthSnare(when: number, velocity: number, out: AudioNode) {
   noiseFilter.type = 'highpass';
   noiseFilter.frequency.value = 1500;
   const noiseGain = ctx.createGain();
+  const noiseDecay = 0.18 * gate;
   noiseGain.gain.setValueAtTime(velocity * 0.7, when);
-  noiseGain.gain.exponentialRampToValueAtTime(0.001, when + 0.18);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, when + noiseDecay);
   noise.connect(noiseFilter).connect(noiseGain).connect(out);
   noise.start(when);
-  noise.stop(when + 0.2);
+  noise.stop(when + noiseDecay + 0.02);
 
   const tone = ctx.createOscillator();
   tone.type = 'triangle';
   tone.frequency.setValueAtTime(220, when);
-  tone.frequency.exponentialRampToValueAtTime(140, when + 0.06);
+  tone.frequency.exponentialRampToValueAtTime(140, when + 0.06 * gate);
   const toneGain = ctx.createGain();
+  const toneDecay = 0.1 * gate;
   toneGain.gain.setValueAtTime(velocity * 0.4, when);
-  toneGain.gain.exponentialRampToValueAtTime(0.001, when + 0.1);
+  toneGain.gain.exponentialRampToValueAtTime(0.001, when + toneDecay);
   tone.connect(toneGain).connect(out);
   tone.start(when);
-  tone.stop(when + 0.12);
+  tone.stop(when + toneDecay + 0.02);
 }
 
-export function synthHatC(when: number, velocity: number, out: AudioNode) {
+export function synthHatC(when: number, velocity: number, out: AudioNode, gate = 1) {
   const ctx = getAudioContext();
   const noise = ctx.createBufferSource();
   noise.buffer = getNoiseBuffer();
@@ -61,14 +64,15 @@ export function synthHatC(when: number, velocity: number, out: AudioNode) {
   filter.type = 'highpass';
   filter.frequency.value = 7000;
   const gain = ctx.createGain();
+  const decay = 0.04 * gate;
   gain.gain.setValueAtTime(velocity * 0.5, when);
-  gain.gain.exponentialRampToValueAtTime(0.001, when + 0.04);
+  gain.gain.exponentialRampToValueAtTime(0.001, when + decay);
   noise.connect(filter).connect(gain).connect(out);
   noise.start(when);
-  noise.stop(when + 0.06);
+  noise.stop(when + decay + 0.02);
 }
 
-export function synthHatO(when: number, velocity: number, out: AudioNode) {
+export function synthHatO(when: number, velocity: number, out: AudioNode, gate = 1) {
   const ctx = getAudioContext();
   const noise = ctx.createBufferSource();
   noise.buffer = getNoiseBuffer();
@@ -76,23 +80,31 @@ export function synthHatO(when: number, velocity: number, out: AudioNode) {
   filter.type = 'highpass';
   filter.frequency.value = 5500;
   const gain = ctx.createGain();
+  const decay = 0.6 * gate;
   gain.gain.setValueAtTime(velocity * 0.6, when);
-  gain.gain.exponentialRampToValueAtTime(0.001, when + 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.001, when + decay);
   noise.connect(filter).connect(gain).connect(out);
   noise.start(when);
-  noise.stop(when + 0.65);
+  noise.stop(when + decay + 0.05);
 }
 
-export function synthMelodic(when: number, midi: number, velocity: number, out: AudioNode) {
+export function synthMelodic(
+  when: number,
+  midi: number,
+  velocity: number,
+  out: AudioNode,
+  gate = 1
+) {
   const ctx = getAudioContext();
   const freq = 440 * Math.pow(2, (midi - 69) / 12);
   const osc = ctx.createOscillator();
   osc.type = 'triangle';
   osc.frequency.setValueAtTime(freq, when);
   const gain = ctx.createGain();
+  const decay = 0.4 * gate;
   gain.gain.setValueAtTime(velocity * 0.3, when);
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.4);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + decay);
   osc.connect(gain).connect(out);
   osc.start(when);
-  osc.stop(when + 0.45);
+  osc.stop(when + decay + 0.05);
 }

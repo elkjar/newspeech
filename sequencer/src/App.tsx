@@ -7,7 +7,7 @@ import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
 import { quantize } from './audio/scale';
 
-const MODES: EditMode[] = ['note', 'velocity', 'chance'];
+const MODES: EditMode[] = ['note', 'velocity', 'chance', 'ratchet', 'timing', 'gate'];
 
 function ModeSwitcher() {
   const editMode = useSequencerStore((s) => s.editMode);
@@ -36,7 +36,7 @@ export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
 
   useEffect(() => {
-    return scheduler.onStep((globalStep, when) => {
+    return scheduler.onStep((globalStep, when, stepDuration) => {
       const { tracks, rootNote, scale } = useSequencerStore.getState();
       const anySolo = tracks.some((t) => t.solo);
       for (const track of tracks) {
@@ -47,11 +47,17 @@ export function App() {
         if (!step?.on) continue;
         if (step.probability < 100 && Math.random() * 100 >= step.probability) continue;
         const v = step.velocity;
-        if (track.type === 'melodic') {
-          const midi = quantize(rootNote, scale, step.pitch);
-          samplePlayer.trigger(track.voice, when, v, midi);
-        } else {
-          samplePlayer.trigger(track.voice, when, v);
+        const baseTime = when + step.microTiming * stepDuration;
+        const ratchet = Math.max(1, Math.floor(step.ratchet));
+        const subDur = stepDuration / ratchet;
+        const midi = track.type === 'melodic' ? quantize(rootNote, scale, step.pitch) : undefined;
+        for (let r = 0; r < ratchet; r++) {
+          const t = baseTime + r * subDur;
+          if (track.type === 'melodic') {
+            samplePlayer.trigger(track.voice, t, v, midi, step.gate);
+          } else {
+            samplePlayer.trigger(track.voice, t, v, undefined, step.gate);
+          }
         }
       }
     });
