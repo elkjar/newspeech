@@ -22,12 +22,48 @@ body,
 
 body {
   background: #050505;
-  color: #e8e8e8;
-  font-family: 'zxx-sans', ui-sans-serif, system-ui, sans-serif;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
   margin: 0;
   -webkit-font-smoothing: antialiased;
 }
 
-button {
+button,
+input {
   font-family: inherit;
+}
+
+.crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  flex-wrap: wrap;
+  padding: 72px 72px 0;
+}
+.crumb .label {
+  opacity: 1;
+}
+.crumb .sep {
+  opacity: 0.35;
+}
+.crumb .aux {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 14px;
+}
+.crumb a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+.crumb a:hover {
+  border-bottom-color: rgba(255, 255, 255, 0.7);
 }
