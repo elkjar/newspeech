@@ -10,6 +10,11 @@ function effectiveMode(
   return base;
 }
 
+const HOVER_CAPABLE =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(hover: hover)').matches;
+
 interface StepButtonProps {
   trackId: string;
   index: number;
@@ -143,12 +148,20 @@ export function StepButton({
       store.toggleStep(trackId, index);
       return;
     }
+    if (HOVER_CAPABLE) {
+      store.setSelectedStep({ trackId, index });
+      return;
+    }
     if (store.selectedStep?.trackId === trackId && store.selectedStep.index === index) {
       store.setSelectedStep(null);
     } else {
       store.setSelectedStep({ trackId, index });
     }
   };
+
+  const handleMouseEnter = HOVER_CAPABLE
+    ? () => useSequencerStore.getState().setSelectedStep({ trackId, index })
+    : undefined;
 
   const fillOpacity = 0.4 + 0.6 * (probability / 100);
   const fillHeightPct = Math.max(12, velocity * 100);
@@ -166,6 +179,7 @@ export function StepButton({
     <button
       ref={ref}
       onMouseDown={handleMouseDown}
+      onMouseEnter={handleMouseEnter}
       onClick={handleClick}
       aria-label={`step ${index + 1}`}
       className="relative overflow-hidden flex items-end justify-center transition-shadow"
