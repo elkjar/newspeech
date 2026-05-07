@@ -3,15 +3,9 @@ import { scheduler } from '../audio/scheduler';
 import { ensureAudioRunning } from '../audio/audioContext';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
 
-export function Transport() {
-  const bpm = useSequencerStore((s) => s.bpm);
+export function PlayButton() {
   const playing = useSequencerStore((s) => s.playing);
-  const rootNote = useSequencerStore((s) => s.rootNote);
-  const scale = useSequencerStore((s) => s.scale);
-  const setBpm = useSequencerStore((s) => s.setBpm);
   const setPlaying = useSequencerStore((s) => s.setPlaying);
-  const setRootNote = useSequencerStore((s) => s.setRootNote);
-  const setScale = useSequencerStore((s) => s.setScale);
 
   const togglePlay = async () => {
     if (playing) {
@@ -24,16 +18,28 @@ export function Transport() {
     }
   };
 
+  return (
+    <button
+      onClick={togglePlay}
+      className="px-6 py-3 border border-white/30 hover:border-white uppercase tracking-widest text-xs transition-colors"
+    >
+      {playing ? '■ stop' : '▶ play'}
+    </button>
+  );
+}
+
+export function TransportControls() {
+  const bpm = useSequencerStore((s) => s.bpm);
+  const rootNote = useSequencerStore((s) => s.rootNote);
+  const scale = useSequencerStore((s) => s.scale);
+  const setBpm = useSequencerStore((s) => s.setBpm);
+  const setRootNote = useSequencerStore((s) => s.setRootNote);
+  const setScale = useSequencerStore((s) => s.setScale);
+
   const rootName = NOTE_NAMES[rootNote % 12];
 
   return (
-    <>
-      <button
-        onClick={togglePlay}
-        className="px-6 py-3 border border-white/30 hover:border-white uppercase tracking-widest text-xs transition-colors"
-      >
-        {playing ? '■ stop' : '▶ play'}
-      </button>
+    <div className="flex items-center gap-6 flex-wrap">
       <label className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
         <span>bpm</span>
         <input
@@ -76,6 +82,6 @@ export function Transport() {
           ))}
         </select>
       </label>
-    </>
+    </div>
   );
 }
