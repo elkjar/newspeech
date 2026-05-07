@@ -25,8 +25,12 @@ export interface Track {
   solo: boolean;
   length: number;
   lastPitch: number;
+  viewPage: number;
   steps: Step[];
 }
+
+export const PAGE_SIZE = 16;
+export const NUM_PAGES = 4;
 
 interface SequencerState {
   bpm: number;
@@ -50,6 +54,7 @@ interface SequencerState {
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
   setTrackLength: (trackId: string, length: number) => void;
+  setTrackPage: (trackId: string, page: number) => void;
   setGlobalStep: (step: number) => void;
   setPlaying: (playing: boolean) => void;
 }
@@ -89,6 +94,7 @@ const initialTracks: Track[] = [
     solo: false,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
+    viewPage: 0,
     steps: patternedSteps([0, 4, 8, 12], {}, 1),
   },
   {
@@ -100,6 +106,7 @@ const initialTracks: Track[] = [
     solo: false,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
+    viewPage: 0,
     steps: patternedSteps([4, 12], {}, 0.9),
   },
   {
@@ -111,6 +118,7 @@ const initialTracks: Track[] = [
     solo: false,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
+    viewPage: 0,
     steps: patternedSteps([0, 2, 4, 8, 10, 12], {}, 0.7),
   },
   {
@@ -122,6 +130,7 @@ const initialTracks: Track[] = [
     solo: false,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
+    viewPage: 0,
     steps: patternedSteps([6, 14], {}, 0.6),
   },
   {
@@ -133,6 +142,7 @@ const initialTracks: Track[] = [
     solo: false,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
+    viewPage: 0,
     steps: patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }, 0.8),
   },
   {
@@ -144,6 +154,7 @@ const initialTracks: Track[] = [
     solo: false,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
+    viewPage: 0,
     steps: emptySteps(),
   },
   {
@@ -155,6 +166,7 @@ const initialTracks: Track[] = [
     solo: false,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
+    viewPage: 0,
     steps: emptySteps(),
   },
   {
@@ -166,6 +178,7 @@ const initialTracks: Track[] = [
     solo: false,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
+    viewPage: 0,
     steps: emptySteps(),
   },
 ];
@@ -248,9 +261,22 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     const safe = Number.isFinite(length) ? Math.floor(length) : DEFAULT_LENGTH;
     const clamped = Math.max(1, Math.min(MAX_STEPS, safe));
     set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, length: clamped } : t)),
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const maxPage = Math.max(0, Math.ceil(clamped / PAGE_SIZE) - 1);
+        return { ...t, length: clamped, viewPage: Math.min(t.viewPage, maxPage) };
+      }),
     }));
   },
+  setTrackPage: (trackId, page) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const maxPage = Math.max(0, Math.ceil(t.length / PAGE_SIZE) - 1);
+        const clamped = Math.max(0, Math.min(maxPage, Math.floor(page)));
+        return { ...t, viewPage: clamped };
+      }),
+    })),
   setGlobalStep: (globalStep) => set({ globalStep }),
   setPlaying: (playing) => set({ playing }),
 }));
