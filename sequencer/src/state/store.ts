@@ -18,6 +18,7 @@ export interface Step {
   ratchet: number;
   microTiming: number;
   gate: number;
+  tieToNext: boolean;
 }
 
 export interface EuclideanParams {
@@ -63,6 +64,7 @@ interface SequencerState {
   setStepRatchet: (trackId: string, index: number, ratchet: number) => void;
   setStepMicroTiming: (trackId: string, index: number, microTiming: number) => void;
   setStepGate: (trackId: string, index: number, gate: number) => void;
+  setStepTie: (trackId: string, index: number, tied: boolean) => void;
   setTrackType: (trackId: string, type: TrackType) => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
@@ -85,6 +87,7 @@ function emptySteps(): Step[] {
     ratchet: 1,
     microTiming: 0,
     gate: 1,
+    tieToNext: false,
   }));
 }
 
@@ -101,6 +104,7 @@ function patternedSteps(
     ratchet: 1,
     microTiming: 0,
     gate: 1,
+    tieToNext: false,
   }));
 }
 
@@ -291,6 +295,15 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         if (t.id !== trackId) return t;
         const steps = t.steps.slice();
         steps[index] = { ...steps[index], gate };
+        return { ...t, steps };
+      }),
+    })),
+  setStepTie: (trackId, index, tied) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const steps = t.steps.slice();
+        steps[index] = { ...steps[index], tieToNext: tied };
         return { ...t, steps };
       }),
     })),

@@ -205,6 +205,26 @@ export function StepButton({
       store.toggleStep(trackId, index);
       return;
     }
+    if (e.shiftKey) {
+      const sel = store.selectedStep;
+      if (!sel || sel.trackId !== trackId || sel.index === index) return;
+      const start = Math.min(sel.index, index);
+      const end = Math.max(sel.index, index);
+      const track = store.tracks.find((t) => t.id === trackId);
+      if (!track) return;
+      let allTied = true;
+      for (let i = start; i < end; i++) {
+        if (!track.steps[i]?.tieToNext) {
+          allTied = false;
+          break;
+        }
+      }
+      const next = !allTied;
+      for (let i = start; i < end; i++) {
+        store.setStepTie(trackId, i, next);
+      }
+      return;
+    }
     if (HOVER_CAPABLE) {
       store.setSelectedStep({ trackId, index });
       return;
