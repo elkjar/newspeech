@@ -86,26 +86,27 @@ export function Track({ track }: { track: TrackData }) {
       </div>
 
       <div className="flex" style={{ gap: `${STEP_GAP}px` }}>
-        {Array.from({ length: PAGE_SIZE }, (_, i) => {
-          const stepIndex = viewPage * PAGE_SIZE + i;
-          const step = track.steps[stepIndex];
-          const beyondLength = stepIndex >= track.length;
-          const isCurrent = playing && playingPage === viewPage && stepInPage === i;
-          return (
-            <StepButton
-              key={i}
-              trackId={track.id}
-              index={stepIndex}
-              on={step?.on ?? false}
-              velocity={step?.velocity ?? 1}
-              probability={step?.probability ?? 100}
-              isMelodic={track.type === 'melodic'}
-              isCurrent={isCurrent}
-              disabled={beyondLength}
-              size={STEP_SIZE}
-            />
-          );
-        })}
+        {Array.from(
+          { length: Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)) },
+          (_, i) => {
+            const stepIndex = viewPage * PAGE_SIZE + i;
+            const step = track.steps[stepIndex];
+            const isCurrent = playing && playingPage === viewPage && stepInPage === i;
+            return (
+              <StepButton
+                key={i}
+                trackId={track.id}
+                index={stepIndex}
+                on={step?.on ?? false}
+                velocity={step?.velocity ?? 1}
+                probability={step?.probability ?? 100}
+                isMelodic={track.type === 'melodic'}
+                isCurrent={isCurrent}
+                size={STEP_SIZE}
+              />
+            );
+          }
+        )}
       </div>
     </div>
   );
