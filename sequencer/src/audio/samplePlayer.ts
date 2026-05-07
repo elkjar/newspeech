@@ -1,5 +1,5 @@
 import { getAudioContext } from './audioContext';
-import { synthHatC, synthHatO, synthKick, synthMelodic, synthSnare } from './synth';
+import { synthBass, synthHatC, synthHatO, synthKick, synthMelodic, synthPad, synthSnare } from './synth';
 
 export type SampleId = string;
 
@@ -86,6 +86,14 @@ class SamplePlayer {
         break;
       case 'hat-o':
         synthHatO(when, velocity, out, gate);
+        break;
+      case 'pad':
+        if (midiNote !== undefined)
+          synthPad(when, midiNote, velocity, out, gate, stepDuration);
+        break;
+      case 'bass':
+        if (midiNote !== undefined)
+          synthBass(when, midiNote, velocity, out, gate, stepDuration);
         break;
       default:
         if (midiNote !== undefined)

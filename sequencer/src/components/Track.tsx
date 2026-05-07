@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import {
   useSequencerStore,
   type Track as TrackData,
@@ -7,9 +8,11 @@ import {
 } from '../state/store';
 import { StepButton } from './StepButton';
 import { Knob } from './Knob';
+import { RowPanel } from './RowPanel';
 import { VOICES, isMelodicVoice } from '../audio/voices';
 import { getOverlay } from '../audio/mutationOverlay';
 import { morphStep, stepSeed } from '../audio/morph';
+import { effectiveTieToNext } from '../audio/mutationTie';
 
 const STEP_GAP = 6;
 const STEP_SIZE = 36;
@@ -21,10 +24,9 @@ function originatorIndex(track: TrackData, i: number): number {
   let originatorIdx = i;
   while (cur > 0) {
     const prev = cur - 1;
-    const prevStep = track.steps[prev];
-    if (!prevStep?.tieToNext) break;
+    if (!effectiveTieToNext(track, prev)) break;
     cur = prev;
-    if (prevStep.on) originatorIdx = prev;
+    if (track.steps[prev]?.on) originatorIdx = prev;
   }
   return originatorIdx;
 }
@@ -55,12 +57,13 @@ export function Track({ track }: { track: TrackData }) {
   const setTrackVoice = useSequencerStore((s) => s.setTrackVoice);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
-  const setTrackLength = useSequencerStore((s) => s.setTrackLength);
   const setTrackPage = useSequencerStore((s) => s.setTrackPage);
-  const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
   const clearTrack = useSequencerStore((s) => s.clearTrack);
   const snapTrackSlot = useSequencerStore((s) => s.snapTrackSlot);
   const recallTrackSlot = useSequencerStore((s) => s.recallTrackSlot);
+
+  const [panelOpen, setPanelOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const silenced = track.mute || (anySolo && !track.solo);
   const melodic = isMelodicVoice(track.voice);
@@ -99,36 +102,34 @@ export function Track({ track }: { track: TrackData }) {
             ))}
           </optgroup>
         </select>
-        <input
-          type="number"
-          min={1}
-          max={64}
-          value={track.length}
-          onChange={(e) => setTrackLength(track.id, Number(e.target.value))}
-          style={{ width: STEP_SIZE, height: STEP_SIZE }}
-          className="bg-transparent border border-white/15 text-center text-[14px] tabular-nums focus:outline-none focus:border-white"
-          title="track length"
-        />
-        <input
-          type="number"
-          min={0}
-          max={track.length}
-          value={track.euclidean.hits}
-          onChange={(e) => setTrackEuclidean(track.id, { hits: Number(e.target.value) })}
-          style={{ width: STEP_SIZE, height: STEP_SIZE }}
-          className="bg-transparent border border-white/15 text-center text-[14px] tabular-nums focus:outline-none focus:border-white"
-          title="euclidean hits"
-        />
-        <input
-          type="number"
-          min={0}
-          max={Math.max(0, track.length - 1)}
-          value={track.euclidean.rotation}
-          onChange={(e) => setTrackEuclidean(track.id, { rotation: Number(e.target.value) })}
-          style={{ width: STEP_SIZE, height: STEP_SIZE }}
-          className="bg-transparent border border-white/15 text-center text-[14px] tabular-nums focus:outline-none focus:border-white"
-          title="euclidean rotation"
-        />
+        <div className="relative">
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={() => setPanelOpen((v) => !v)}
+            style={{ width: STEP_SIZE, height: STEP_SIZE }}
+            className={[
+              'bg-transparent border transition-colors flex items-center justify-center',
+              panelOpen ? 'border-white/50' : 'border-white/15 hover:border-white/30',
+            ].join(' ')}
+            title={`length & euclidean (len ${track.length} · hits ${track.euclidean.hits} · rot ${track.euclidean.rotation})`}
+            aria-label="row settings"
+            aria-expanded={panelOpen}
+          >
+            <svg viewBox="0 0 14 14" width="14" height="14">
+              <circle cx="3" cy="7" r="1" fill="white" fillOpacity="0.85" />
+              <circle cx="7" cy="7" r="1" fill="white" fillOpacity="0.85" />
+              <circle cx="11" cy="7" r="1" fill="white" fillOpacity="0.85" />
+            </svg>
+          </button>
+          {panelOpen && (
+            <RowPanel
+              track={track}
+              onClose={() => setPanelOpen(false)}
+              triggerRef={triggerRef}
+            />
+          )}
+        </div>
         <Knob
           value={track.mutation}
           onChange={(v) => useSequencerStore.getState().setTrackMutation(track.id, v)}

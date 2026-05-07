@@ -112,3 +112,79 @@ export function synthMelodic(
   osc.start(when);
   osc.stop(when + noteDuration + 0.02);
 }
+
+export function synthPad(
+  when: number,
+  midi: number,
+  velocity: number,
+  out: AudioNode,
+  gate = 1,
+  stepDuration = 0.125
+) {
+  const ctx = getAudioContext();
+  const freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const sustainDur = Math.max(0.05, gate * stepDuration);
+  const attack = 0.2;
+  const release = 0.6;
+  const peak = velocity * 0.13;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 1800;
+  filter.Q.value = 0.7;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(peak, when + attack);
+  gain.gain.setValueAtTime(peak, when + attack + sustainDur);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + attack + sustainDur + release);
+
+  filter.connect(gain).connect(out);
+
+  const stopTime = when + attack + sustainDur + release + 0.05;
+  for (const detune of [-9, 9]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, when);
+    osc.detune.value = detune;
+    osc.connect(filter);
+    osc.start(when);
+    osc.stop(stopTime);
+  }
+}
+
+export function synthBass(
+  when: number,
+  midi: number,
+  velocity: number,
+  out: AudioNode,
+  gate = 1,
+  stepDuration = 0.125
+) {
+  const ctx = getAudioContext();
+  const targetMidi = midi - 12;
+  const freq = 440 * Math.pow(2, (targetMidi - 69) / 12);
+  const sustainDur = Math.max(0.05, gate * stepDuration);
+  const attack = 0.005;
+  const release = 0.25;
+  const peak = velocity * 0.4;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 600;
+  filter.Q.value = 1.2;
+
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(freq, when);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(peak, when + attack);
+  gain.gain.setValueAtTime(peak, when + attack + sustainDur);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + attack + sustainDur + release);
+
+  osc.connect(filter).connect(gain).connect(out);
+  osc.start(when);
+  osc.stop(when + attack + sustainDur + release + 0.05);
+}

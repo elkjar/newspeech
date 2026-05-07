@@ -6,9 +6,10 @@ import { useSequencerStore, type EditMode, type Track } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
 import { quantize, octaveDegrees, fifthDegrees } from './audio/scale';
-import { isMelodicVoice } from './audio/voices';
+import { isMelodicVoice, voiceChord, voiceMutation } from './audio/voices';
 import { setOverlay } from './audio/mutationOverlay';
 import { morphStep, stepSeed } from './audio/morph';
+import { effectiveTieToNext } from './audio/mutationTie';
 import { togglePlayback } from './audio/transport';
 
 const MODE_KEYS: Record<string, EditMode> = {
@@ -50,9 +51,8 @@ function isSilencedByTie(track: Track, i: number): boolean {
   if (len <= 0 || i <= 0) return false;
   let cur = i - 1;
   while (cur >= 0) {
-    const s = track.steps[cur];
-    if (!s?.tieToNext) return false;
-    if (s.on) return true;
+    if (!effectiveTieToNext(track, cur)) return false;
+    if (track.steps[cur]?.on) return true;
     cur--;
   }
   return false;
@@ -64,7 +64,7 @@ function tieLength(track: Track, i: number): number {
   let count = 1;
   let cur = i;
   while (cur < len - 1) {
-    if (!track.steps[cur]?.tieToNext) break;
+    if (!effectiveTieToNext(track, cur)) break;
     count++;
     cur++;
   }
@@ -94,26 +94,37 @@ export function App() {
         }
         const mut = track.mutation;
         const melodic = isMelodicVoice(track.voice);
+        const profile = voiceMutation(track.voice);
         let on = step.on;
-        if (mut > 0 && Math.random() < mut * 0.25) on = !on;
-        const velJitter = mut > 0 ? (Math.random() - 0.5) * 2 * mut * 0.4 : 0;
+        if (mut > 0) {
+          let flipChance = mut * profile.flipChance;
+          if (!step.on && profile.stepWeights && profile.stepWeights.length > 0) {
+            flipChance *= profile.stepWeights[localStep % profile.stepWeights.length];
+          }
+          if (flipChance > 0 && Math.random() < flipChance) on = !on;
+        }
+        const velJitter =
+          mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.velSpread : 0;
         const v = Math.max(0, Math.min(1, step.velocity + velJitter));
         let pitch = step.pitch;
-        if (melodic && mut > 0 && Math.random() < mut * 0.7) {
+        if (melodic && mut > 0 && Math.random() < mut * profile.pitchJumpProb) {
           const oct = octaveDegrees(scale);
           const fifth = fifthDegrees(scale);
-          const r = Math.random();
+          const w = profile.pitchWeights;
+          const total = w.octave + w.fifth + w.small;
+          const r = Math.random() * total;
           let jump: number;
-          if (r < 0.3) jump = Math.random() < 0.5 ? -oct : oct;
-          else if (r < 0.6) jump = Math.random() < 0.5 ? -fifth : fifth;
+          if (r < w.octave) jump = Math.random() < 0.5 ? -oct : oct;
+          else if (r < w.octave + w.fifth) jump = Math.random() < 0.5 ? -fifth : fifth;
           else {
             const small = [-3, -2, -1, 1, 2, 3];
             jump = small[Math.floor(Math.random() * small.length)];
           }
           pitch = Math.max(-14, Math.min(14, pitch + jump));
         }
-        const gateBias = mut > 0 ? mut * 0.4 : 0;
-        const gateJitter = mut > 0 ? (Math.random() - 0.5) * 2 * mut * 0.8 : 0;
+        const gateBias = mut > 0 ? mut * profile.gateBias : 0;
+        const gateJitter =
+          mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.gateSpread : 0;
         const gateMutated = Math.max(0.1, Math.min(3, step.gate + gateBias + gateJitter));
         setOverlay(track.id, localStep, { on, velocity: v, pitch, gate: gateMutated });
         if (!on) continue;
@@ -128,10 +139,15 @@ export function App() {
         }
         const subDur = stepDuration / ratchet;
         const effectiveGate = gateMutated * ties;
-        const midi = melodic ? quantize(rootNote, scale, pitch) : undefined;
+        const chordIntervals = melodic ? voiceChord(track.voice) : [0];
+        const chordMidi = melodic
+          ? chordIntervals.map((interval) => quantize(rootNote, scale, pitch + interval))
+          : [undefined as number | undefined];
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
-          samplePlayer.trigger(track.voice, t, v, midi, effectiveGate, stepDuration);
+          for (const m of chordMidi) {
+            samplePlayer.trigger(track.voice, t, v, m, effectiveGate, stepDuration);
+          }
         }
       }
     });
@@ -224,7 +240,7 @@ export function App() {
         </span>
       </header>
       <main className="min-h-screen flex items-center justify-center px-10 py-12">
-        <div className="flex flex-col gap-8 w-[1482px] max-w-full">
+        <div className="flex flex-col gap-8 w-[1394px] max-w-full">
           <div className="flex justify-between items-start gap-8">
             <StepInspector />
             <TransportControls />
