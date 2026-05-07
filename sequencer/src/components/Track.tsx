@@ -6,25 +6,46 @@ import {
   NUM_PAGES,
 } from '../state/store';
 import { StepButton } from './StepButton';
+import { Knob } from './Knob';
 import { VOICES, isMelodicVoice } from '../audio/voices';
+import { getOverlay } from '../audio/mutationOverlay';
+import { morphStep, stepSeed } from '../audio/morph';
 
 const STEP_GAP = 6;
 const STEP_SIZE = 36;
 
-function displayStep(track: TrackData, i: number): Step | undefined {
+function originatorIndex(track: TrackData, i: number): number {
   const len = track.length;
-  const self = track.steps[i];
-  if (len <= 0) return self;
-  let originator: Step | undefined = self;
+  if (len <= 0) return i;
   let cur = i;
+  let originatorIdx = i;
   while (cur > 0) {
     const prev = cur - 1;
     const prevStep = track.steps[prev];
     if (!prevStep?.tieToNext) break;
     cur = prev;
-    if (prevStep.on) originator = prevStep;
+    if (prevStep.on) originatorIdx = prev;
   }
-  return originator;
+  return originatorIdx;
+}
+
+function displayStep(track: TrackData, i: number, applyOverlay: boolean): Step | undefined {
+  const idx = originatorIndex(track, i);
+  const authored = track.steps[idx];
+  if (!authored) return authored;
+  let base = authored;
+  if (track.slotA && track.slotB && track.morph > 0) {
+    const a = track.slotA[idx];
+    const b = track.slotB[idx];
+    if (a && b) {
+      base = morphStep(a, b, track.morph, stepSeed(track.id, idx));
+    }
+  }
+  if (applyOverlay) {
+    const ov = getOverlay(track.id, idx);
+    if (ov) return { ...base, on: ov.on, velocity: ov.velocity, pitch: ov.pitch, gate: ov.gate };
+  }
+  return base;
 }
 
 export function Track({ track }: { track: TrackData }) {
@@ -37,6 +58,9 @@ export function Track({ track }: { track: TrackData }) {
   const setTrackLength = useSequencerStore((s) => s.setTrackLength);
   const setTrackPage = useSequencerStore((s) => s.setTrackPage);
   const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
+  const clearTrack = useSequencerStore((s) => s.clearTrack);
+  const snapTrackSlot = useSequencerStore((s) => s.snapTrackSlot);
+  const recallTrackSlot = useSequencerStore((s) => s.recallTrackSlot);
 
   const silenced = track.mute || (anySolo && !track.solo);
   const melodic = isMelodicVoice(track.voice);
@@ -105,18 +129,48 @@ export function Track({ track }: { track: TrackData }) {
           className="bg-transparent border border-white/15 text-center text-[14px] tabular-nums focus:outline-none focus:border-white"
           title="euclidean rotation"
         />
+        <Knob
+          value={track.mutation}
+          onChange={(v) => useSequencerStore.getState().setTrackMutation(track.id, v)}
+          title={`mutation ${Math.round(track.mutation * 100)}%`}
+          size={STEP_SIZE}
+        />
+        <Knob
+          value={track.rowChance}
+          onChange={(v) => useSequencerStore.getState().setTrackRowChance(track.id, v)}
+          title={`row chance ${Math.round(track.rowChance * 100)}%`}
+          size={STEP_SIZE}
+        />
+        <Knob
+          value={track.rowRatchet}
+          onChange={(v) => useSequencerStore.getState().setTrackRowRatchet(track.id, v)}
+          title={`row ratchet ${Math.round(track.rowRatchet * 100)}%`}
+          size={STEP_SIZE}
+        />
+        <Knob
+          value={track.morph}
+          onChange={(v) => useSequencerStore.getState().setTrackMorph(track.id, v)}
+          title={`morph ${Math.round(track.morph * 100)}%`}
+          size={STEP_SIZE}
+        />
       </div>
 
       <div className="flex" style={{ gap: `${STEP_GAP}px` }}>
         <button
-          onClick={() => setTrackMute(track.id, !track.mute)}
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey) {
+              clearTrack(track.id);
+              return;
+            }
+            setTrackMute(track.id, !track.mute);
+          }}
           style={{ width: STEP_SIZE, height: STEP_SIZE }}
           className={
             track.mute
               ? 'bg-white'
               : 'bg-white/5 hover:bg-white/15 transition-colors'
           }
-          title="mute"
+          title="mute (cmd/ctrl-click to clear row)"
         />
         <button
           onClick={() => setTrackSolo(track.id, !track.solo)}
@@ -128,6 +182,40 @@ export function Track({ track }: { track: TrackData }) {
           }
           title="solo"
         />
+        {(['A', 'B'] as const).map((slot) => {
+          const filled = slot === 'A' ? !!track.slotA : !!track.slotB;
+          return (
+            <button
+              key={slot}
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey) {
+                  snapTrackSlot(track.id, slot, true);
+                  return;
+                }
+                if (e.shiftKey) {
+                  snapTrackSlot(track.id, slot);
+                  return;
+                }
+                if (filled) recallTrackSlot(track.id, slot);
+                else snapTrackSlot(track.id, slot);
+              }}
+              style={{ width: STEP_SIZE, height: STEP_SIZE }}
+              className={[
+                'flex items-center justify-center text-[10px] uppercase tracking-widest font-bold transition-colors',
+                filled
+                  ? 'bg-white/20 text-white hover:bg-white/30'
+                  : 'bg-white/5 text-white/40 hover:bg-white/15',
+              ].join(' ')}
+              title={
+                filled
+                  ? `slot ${slot}: click to recall · shift-click to overwrite · cmd-click to clear`
+                  : `save current to slot ${slot}`
+              }
+            >
+              {slot}
+            </button>
+          );
+        })}
       </div>
       </div>
 
@@ -163,8 +251,9 @@ export function Track({ track }: { track: TrackData }) {
           { length: Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)) },
           (_, i) => {
             const stepIndex = viewPage * PAGE_SIZE + i;
-            const display = displayStep(track, stepIndex);
-            const isTiedChain = display !== track.steps[stepIndex];
+            const idx = originatorIndex(track, stepIndex);
+            const isTiedChain = idx !== stepIndex;
+            const display = displayStep(track, stepIndex, playing && track.mutation > 0);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
             return (
               <StepButton
@@ -173,7 +262,7 @@ export function Track({ track }: { track: TrackData }) {
                 index={stepIndex}
                 on={display?.on ?? false}
                 velocity={display?.velocity ?? 1}
-                probability={display?.probability ?? 100}
+                probability={(display?.probability ?? 100) * (1 - track.rowChance)}
                 ratchet={display?.ratchet ?? 1}
                 microTiming={display?.microTiming ?? 0}
                 gate={display?.gate ?? 1}

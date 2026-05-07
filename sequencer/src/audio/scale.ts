@@ -24,3 +24,13 @@ export function midiToName(midi: number): string {
   const name = NOTE_NAMES[((midi % 12) + 12) % 12];
   return `${name}${octave}`;
 }
+
+export function octaveDegrees(scale: Scale): number {
+  return SCALE_INTERVALS[scale].length;
+}
+
+export function fifthDegrees(scale: Scale): number {
+  const intervals = SCALE_INTERVALS[scale];
+  const idx = intervals.indexOf(7);
+  return idx >= 0 ? idx : Math.floor(intervals.length / 2) + 1;
+}

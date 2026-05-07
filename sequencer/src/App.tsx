@@ -5,8 +5,20 @@ import { StepInspector } from './components/StepInspector';
 import { useSequencerStore, type EditMode, type Track } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
-import { quantize } from './audio/scale';
+import { quantize, octaveDegrees, fifthDegrees } from './audio/scale';
 import { isMelodicVoice } from './audio/voices';
+import { setOverlay } from './audio/mutationOverlay';
+import { morphStep, stepSeed } from './audio/morph';
+import { togglePlayback } from './audio/transport';
+
+const MODE_KEYS: Record<string, EditMode> = {
+  n: 'note',
+  v: 'velocity',
+  c: 'chance',
+  r: 'ratchet',
+  t: 'timing',
+  g: 'gate',
+};
 
 const MODES: EditMode[] = ['note', 'velocity', 'chance', 'ratchet', 'timing', 'gate'];
 
@@ -70,18 +82,53 @@ export function App() {
         if (track.mute) continue;
         if (anySolo && !track.solo) continue;
         const localStep = globalStep % track.length;
-        const step = track.steps[localStep];
-        if (!step?.on) continue;
-        if (isSilencedByTie(track, localStep)) continue;
-        if (step.probability < 100 && Math.random() * 100 >= step.probability) continue;
-        const ties = tieLength(track, localStep);
-        const v = step.velocity;
-        const baseTime = when + step.microTiming * stepDuration;
-        const ratchet = Math.max(1, Math.floor(step.ratchet));
-        const subDur = stepDuration / ratchet;
-        const effectiveGate = step.gate * ties;
+        const authoredStep = track.steps[localStep];
+        if (!authoredStep) continue;
+        let step = authoredStep;
+        if (track.slotA && track.slotB && track.morph > 0) {
+          const a = track.slotA[localStep];
+          const b = track.slotB[localStep];
+          if (a && b) {
+            step = morphStep(a, b, track.morph, stepSeed(track.id, localStep));
+          }
+        }
+        const mut = track.mutation;
         const melodic = isMelodicVoice(track.voice);
-        const midi = melodic ? quantize(rootNote, scale, step.pitch) : undefined;
+        let on = step.on;
+        if (mut > 0 && Math.random() < mut * 0.25) on = !on;
+        const velJitter = mut > 0 ? (Math.random() - 0.5) * 2 * mut * 0.4 : 0;
+        const v = Math.max(0, Math.min(1, step.velocity + velJitter));
+        let pitch = step.pitch;
+        if (melodic && mut > 0 && Math.random() < mut * 0.7) {
+          const oct = octaveDegrees(scale);
+          const fifth = fifthDegrees(scale);
+          const r = Math.random();
+          let jump: number;
+          if (r < 0.3) jump = Math.random() < 0.5 ? -oct : oct;
+          else if (r < 0.6) jump = Math.random() < 0.5 ? -fifth : fifth;
+          else {
+            const small = [-3, -2, -1, 1, 2, 3];
+            jump = small[Math.floor(Math.random() * small.length)];
+          }
+          pitch = Math.max(-14, Math.min(14, pitch + jump));
+        }
+        const gateBias = mut > 0 ? mut * 0.4 : 0;
+        const gateJitter = mut > 0 ? (Math.random() - 0.5) * 2 * mut * 0.8 : 0;
+        const gateMutated = Math.max(0.1, Math.min(3, step.gate + gateBias + gateJitter));
+        setOverlay(track.id, localStep, { on, velocity: v, pitch, gate: gateMutated });
+        if (!on) continue;
+        if (isSilencedByTie(track, localStep)) continue;
+        const effectiveProb = step.probability * (1 - track.rowChance);
+        if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) continue;
+        const ties = tieLength(track, localStep);
+        const baseTime = when + step.microTiming * stepDuration;
+        let ratchet = Math.max(1, Math.floor(step.ratchet));
+        if (track.rowRatchet > 0 && Math.random() < track.rowRatchet * 0.5) {
+          ratchet = 2 + Math.floor(Math.random() * 7);
+        }
+        const subDur = stepDuration / ratchet;
+        const effectiveGate = gateMutated * ties;
+        const midi = melodic ? quantize(rootNote, scale, pitch) : undefined;
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
           samplePlayer.trigger(track.voice, t, v, midi, effectiveGate, stepDuration);
@@ -96,9 +143,24 @@ export function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       const tag = (document.activeElement?.tagName || '').toUpperCase();
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        togglePlayback();
+        return;
+      }
+
+      const lower = e.key.toLowerCase();
+      const mode = MODE_KEYS[lower];
+      if (mode) {
+        e.preventDefault();
+        useSequencerStore.getState().setEditMode(mode);
+        return;
+      }
+
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       const store = useSequencerStore.getState();
       const sel = store.selectedStep;
       if (!sel) return;
@@ -107,38 +169,38 @@ export function App() {
       if (!track || !step?.on) return;
       e.preventDefault();
       const dir = e.key === 'ArrowUp' ? 1 : -1;
-      const mode = store.editMode;
-      if (mode === 'velocity') {
+      const editMode = store.editMode;
+      if (editMode === 'velocity') {
         store.setStepVelocity(
           sel.trackId,
           sel.index,
           Math.max(0, Math.min(1, step.velocity + 0.05 * dir))
         );
-      } else if (mode === 'chance') {
+      } else if (editMode === 'chance') {
         store.setStepProbability(
           sel.trackId,
           sel.index,
           Math.max(0, Math.min(100, step.probability + 5 * dir))
         );
-      } else if (mode === 'ratchet') {
+      } else if (editMode === 'ratchet') {
         store.setStepRatchet(
           sel.trackId,
           sel.index,
           Math.max(1, Math.min(8, step.ratchet + dir))
         );
-      } else if (mode === 'timing') {
+      } else if (editMode === 'timing') {
         store.setStepMicroTiming(
           sel.trackId,
           sel.index,
           Math.max(-0.5, Math.min(0.5, step.microTiming + 0.05 * dir))
         );
-      } else if (mode === 'gate') {
+      } else if (editMode === 'gate') {
         store.setStepGate(
           sel.trackId,
           sel.index,
           Math.max(0.1, Math.min(2, step.gate + 0.05 * dir))
         );
-      } else if (mode === 'note' && isMelodicVoice(track.voice)) {
+      } else if (editMode === 'note' && isMelodicVoice(track.voice)) {
         store.setStepPitch(
           sel.trackId,
           sel.index,
@@ -158,11 +220,11 @@ export function App() {
           <span className="sep"> / </span>sequence
         </span>
         <span className="aux">
-          click selects · cmd-click toggles · drag/scroll adjusts active mode · shift = velocity · cmd = chance
+          click selects · cmd-click toggles · drag/scroll adjusts active mode · shift = velocity · cmd = chance · space play/stop · n/v/c/r/t/g switch mode · ↑↓ nudge step
         </span>
       </header>
-      <main className="min-h-screen flex items-center justify-center px-[72px] py-12">
-        <div className="flex flex-col gap-8 w-[1222px] max-w-full">
+      <main className="min-h-screen flex items-center justify-center px-10 py-12">
+        <div className="flex flex-col gap-8 w-[1482px] max-w-full">
           <div className="flex justify-between items-start gap-8">
             <StepInspector />
             <TransportControls />

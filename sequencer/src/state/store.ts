@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
+import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 
 export type EditMode = 'note' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
@@ -33,6 +34,12 @@ export interface Track {
   length: number;
   lastPitch: number;
   viewPage: number;
+  mutation: number;
+  rowChance: number;
+  rowRatchet: number;
+  morph: number;
+  slotA: Step[] | null;
+  slotB: Step[] | null;
   euclidean: EuclideanParams;
   steps: Step[];
 }
@@ -65,6 +72,14 @@ interface SequencerState {
   setStepGate: (trackId: string, index: number, gate: number) => void;
   setStepTie: (trackId: string, index: number, tied: boolean) => void;
   setTrackVoice: (trackId: string, voice: string) => void;
+  setTrackMutation: (trackId: string, mutation: number) => void;
+  setTrackRowChance: (trackId: string, rowChance: number) => void;
+  setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
+  setTrackMorph: (trackId: string, morph: number) => void;
+  snapTrackSlot: (trackId: string, slot: 'A' | 'B', clear?: boolean) => void;
+  recallTrackSlot: (trackId: string, slot: 'A' | 'B') => void;
+  clearTrack: (trackId: string) => void;
+  commitMutationOverlay: () => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
   setTrackLength: (trackId: string, length: number) => void;
@@ -116,6 +131,12 @@ function defaultTrack(id: string, voice: string, steps: Step[]): Track {
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    mutation: 0,
+    rowChance: 0,
+    rowRatchet: 0,
+    morph: 0,
+    slotA: null,
+    slotB: null,
     euclidean: { hits: 0, rotation: 0 },
     steps,
   };
@@ -234,6 +255,69 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, voice } : t)),
     })),
+  setTrackMutation: (trackId, mutation) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(mutation) ? mutation : 0));
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, mutation: clamped } : t)),
+    }));
+  },
+  setTrackRowChance: (trackId, rowChance) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(rowChance) ? rowChance : 0));
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rowChance: clamped } : t)),
+    }));
+  },
+  setTrackRowRatchet: (trackId, rowRatchet) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(rowRatchet) ? rowRatchet : 0));
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rowRatchet: clamped } : t)),
+    }));
+  },
+  setTrackMorph: (trackId, morph) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(morph) ? morph : 0));
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, morph: clamped } : t)),
+    }));
+  },
+  snapTrackSlot: (trackId, slot, clear = false) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const snapshot = clear ? null : t.steps.map((s) => ({ ...s }));
+        return slot === 'A' ? { ...t, slotA: snapshot } : { ...t, slotB: snapshot };
+      }),
+    })),
+  recallTrackSlot: (trackId, slot) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const snap = slot === 'A' ? t.slotA : t.slotB;
+        if (!snap) return t;
+        return { ...t, steps: snap.map((s) => ({ ...s })) };
+      }),
+    })),
+  clearTrack: (trackId) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) =>
+        t.id === trackId
+          ? { ...t, steps: emptySteps(), euclidean: { hits: 0, rotation: 0 }, lastPitch: 0 }
+          : t
+      ),
+    })),
+  commitMutationOverlay: () => {
+    set((state) => ({
+      tracks: state.tracks.map((track) => {
+        if (track.mutation === 0) return track;
+        const steps = track.steps.map((step, i) => {
+          const ov = getOverlay(track.id, i);
+          if (!ov) return step;
+          return { ...step, on: ov.on, velocity: ov.velocity, pitch: ov.pitch, gate: ov.gate };
+        });
+        return { ...track, steps, mutation: 0 };
+      }),
+    }));
+    clearOverlay();
+  },
   setTrackMute: (trackId, mute) =>
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, mute } : t)),
