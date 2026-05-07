@@ -5,7 +5,7 @@ let noiseBuffer: AudioBuffer | null = null;
 function getNoiseBuffer(): AudioBuffer {
   if (noiseBuffer) return noiseBuffer;
   const ctx = getAudioContext();
-  const len = ctx.sampleRate * 0.5;
+  const len = ctx.sampleRate * 1.0;
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
@@ -74,13 +74,13 @@ export function synthHatO(when: number, velocity: number, out: AudioNode) {
   noise.buffer = getNoiseBuffer();
   const filter = ctx.createBiquadFilter();
   filter.type = 'highpass';
-  filter.frequency.value = 6000;
+  filter.frequency.value = 5500;
   const gain = ctx.createGain();
-  gain.gain.setValueAtTime(velocity * 0.45, when);
-  gain.gain.exponentialRampToValueAtTime(0.001, when + 0.3);
+  gain.gain.setValueAtTime(velocity * 0.6, when);
+  gain.gain.exponentialRampToValueAtTime(0.001, when + 0.6);
   noise.connect(filter).connect(gain).connect(out);
   noise.start(when);
-  noise.stop(when + 0.32);
+  noise.stop(when + 0.65);
 }
 
 export function synthMelodic(when: number, midi: number, velocity: number, out: AudioNode) {

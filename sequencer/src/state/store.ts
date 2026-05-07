@@ -83,7 +83,7 @@ const initialTracks: Track[] = [
     mute: false,
     solo: false,
     volume: 0.7,
-    steps: patternedSteps([0, 2, 4, 6, 8, 10, 12, 14]),
+    steps: patternedSteps([0, 2, 4, 8, 10, 12]),
   },
   {
     id: 't4',
