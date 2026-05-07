@@ -16,11 +16,14 @@ interface StepButtonProps {
   size: number;
 }
 
-const VELOCITY_DRAG_RANGE_PX = 100;
 const PITCH_COOLDOWN_MS = 80;
 const PITCH_MIN = -14;
 const PITCH_MAX = 14;
 const PROB_STEP = 5;
+const VEL_STEP = 0.05;
+const DRAG_THRESHOLD_PX = 4;
+const VEL_DRAG_PX_PER_UNIT = 100;
+const PITCH_DRAG_PX_PER_DEGREE = 8;
 
 export function StepButton({
   trackId,
@@ -36,53 +39,85 @@ export function StepButton({
   size,
 }: StepButtonProps) {
   const ref = useRef<HTMLButtonElement>(null);
+  const didDragRef = useRef(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     let lastPitchTime = 0;
     const handleWheel = (e: WheelEvent) => {
-      const { tracks, setStepPitch, setStepProbability } = useSequencerStore.getState();
-      const t = tracks.find((tr) => tr.id === trackId);
+      const store = useSequencerStore.getState();
+      const t = store.tracks.find((tr) => tr.id === trackId);
       if (!t) return;
       const s = t.steps[index];
       if (!s?.on) return;
+      const mode = store.editMode;
 
-      if (e.altKey) {
+      if (mode === 'velocity') {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? -PROB_STEP : PROB_STEP;
-        const next = Math.max(0, Math.min(100, s.probability + delta));
-        if (next !== s.probability) setStepProbability(trackId, index, next);
+        const delta = e.deltaY > 0 ? -VEL_STEP : VEL_STEP;
+        const next = Math.max(0, Math.min(1, s.velocity + delta));
+        if (next !== s.velocity) store.setStepVelocity(trackId, index, next);
         return;
       }
 
-      if (!isMelodic) return;
-      e.preventDefault();
-      const now = performance.now();
-      if (now - lastPitchTime < PITCH_COOLDOWN_MS) return;
-      lastPitchTime = now;
-      const delta = e.deltaY > 0 ? -1 : 1;
-      const next = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.pitch + delta));
-      if (next !== s.pitch) setStepPitch(trackId, index, next);
+      if (mode === 'chance') {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -PROB_STEP : PROB_STEP;
+        const next = Math.max(0, Math.min(100, s.probability + delta));
+        if (next !== s.probability) store.setStepProbability(trackId, index, next);
+        return;
+      }
+
+      if (mode === 'note' && isMelodic) {
+        e.preventDefault();
+        const now = performance.now();
+        if (now - lastPitchTime < PITCH_COOLDOWN_MS) return;
+        lastPitchTime = now;
+        const delta = e.deltaY > 0 ? -1 : 1;
+        const next = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.pitch + delta));
+        if (next !== s.pitch) store.setStepPitch(trackId, index, next);
+      }
     };
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
   }, [trackId, index, isMelodic]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!e.shiftKey) return;
-    const { tracks } = useSequencerStore.getState();
-    const t = tracks.find((tr) => tr.id === trackId);
+    didDragRef.current = false;
+    const store = useSequencerStore.getState();
+    const t = store.tracks.find((tr) => tr.id === trackId);
     if (!t) return;
     const s = t.steps[index];
     if (!s?.on) return;
+    const mode = store.editMode;
+    if (mode === 'note' && !isMelodic) return;
+
     e.preventDefault();
     const startY = e.clientY;
     const startVel = s.velocity;
+    const startPitch = s.pitch;
+    const startProb = s.probability;
+
     const onMove = (ev: MouseEvent) => {
       const dy = startY - ev.clientY;
-      const next = Math.max(0, Math.min(1, startVel + dy / VELOCITY_DRAG_RANGE_PX));
-      useSequencerStore.getState().setStepVelocity(trackId, index, next);
+      if (!didDragRef.current && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+      didDragRef.current = true;
+
+      const live = useSequencerStore.getState();
+      if (mode === 'velocity') {
+        const next = Math.max(0, Math.min(1, startVel + dy / VEL_DRAG_PX_PER_UNIT));
+        live.setStepVelocity(trackId, index, next);
+      } else if (mode === 'chance') {
+        const next = Math.max(0, Math.min(100, startProb + dy));
+        live.setStepProbability(trackId, index, next);
+      } else if (mode === 'note') {
+        const degrees = Math.round(dy / PITCH_DRAG_PX_PER_DEGREE);
+        const next = Math.max(PITCH_MIN, Math.min(PITCH_MAX, startPitch + degrees));
+        if (next !== live.tracks.find((tr) => tr.id === trackId)?.steps[index].pitch) {
+          live.setStepPitch(trackId, index, next);
+        }
+      }
     };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
@@ -92,8 +127,11 @@ export function StepButton({
     window.addEventListener('mouseup', onUp);
   };
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (e.shiftKey) return;
+  const handleClick = () => {
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
     useSequencerStore.getState().toggleStep(trackId, index);
   };
 
