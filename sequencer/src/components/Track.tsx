@@ -28,7 +28,8 @@ export function Track({ track }: { track: TrackData }) {
   const viewPage = track.viewPage;
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center" style={{ gap: STEP_SIZE }}>
+      <div className="flex items-center gap-3">
       <div className="flex items-center gap-2 w-[240px]">
         <span className="w-14 text-xs uppercase tracking-widest opacity-80 truncate">
           {track.name}
@@ -94,9 +95,11 @@ export function Track({ track }: { track: TrackData }) {
           title="solo"
         />
       </div>
+      </div>
 
       <div
-        className={`flex items-center gap-3 transition-opacity ${silenced ? 'opacity-30' : ''}`}
+        className={`flex items-center transition-opacity ${silenced ? 'opacity-30' : ''}`}
+        style={{ gap: STEP_SIZE }}
       >
       <div className="flex" style={{ gap: `${STEP_GAP}px` }}>
         {Array.from({ length: NUM_PAGES }, (_, p) => {
