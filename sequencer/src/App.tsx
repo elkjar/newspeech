@@ -46,7 +46,7 @@ export function App() {
         const step = track.steps[localStep];
         if (!step?.on) continue;
         if (step.probability < 100 && Math.random() * 100 >= step.probability) continue;
-        const v = step.velocity * track.volume;
+        const v = step.velocity;
         if (track.type === 'melodic') {
           const midi = quantize(rootNote, scale, step.pitch);
           samplePlayer.trigger(track.voice, when, v, midi);

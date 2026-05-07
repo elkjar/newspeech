@@ -23,7 +23,6 @@ export interface Track {
   voice: string;
   mute: boolean;
   solo: boolean;
-  volume: number;
   length: number;
   lastPitch: number;
   steps: Step[];
@@ -50,7 +49,6 @@ interface SequencerState {
   setTrackType: (trackId: string, type: TrackType) => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
-  setTrackVolume: (trackId: string, volume: number) => void;
   setTrackLength: (trackId: string, length: number) => void;
   setGlobalStep: (step: number) => void;
   setPlaying: (playing: boolean) => void;
@@ -68,10 +66,14 @@ function emptySteps(): Step[] {
   }));
 }
 
-function patternedSteps(onIndices: number[], pitches: Record<number, number> = {}): Step[] {
+function patternedSteps(
+  onIndices: number[],
+  pitches: Record<number, number> = {},
+  velocity = 1
+): Step[] {
   return Array.from({ length: MAX_STEPS }, (_, i) => ({
     on: onIndices.includes(i),
-    velocity: 1,
+    velocity,
     pitch: pitches[i] ?? 0,
     probability: 100,
   }));
@@ -85,10 +87,9 @@ const initialTracks: Track[] = [
     voice: 'kick',
     mute: false,
     solo: false,
-    volume: 1,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
-    steps: patternedSteps([0, 4, 8, 12]),
+    steps: patternedSteps([0, 4, 8, 12], {}, 1),
   },
   {
     id: 't2',
@@ -97,10 +98,9 @@ const initialTracks: Track[] = [
     voice: 'snare',
     mute: false,
     solo: false,
-    volume: 0.9,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
-    steps: patternedSteps([4, 12]),
+    steps: patternedSteps([4, 12], {}, 0.9),
   },
   {
     id: 't3',
@@ -109,10 +109,9 @@ const initialTracks: Track[] = [
     voice: 'hat-c',
     mute: false,
     solo: false,
-    volume: 0.7,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
-    steps: patternedSteps([0, 2, 4, 8, 10, 12]),
+    steps: patternedSteps([0, 2, 4, 8, 10, 12], {}, 0.7),
   },
   {
     id: 't4',
@@ -121,10 +120,9 @@ const initialTracks: Track[] = [
     voice: 'hat-o',
     mute: false,
     solo: false,
-    volume: 0.6,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
-    steps: patternedSteps([6, 14]),
+    steps: patternedSteps([6, 14], {}, 0.6),
   },
   {
     id: 't5',
@@ -133,10 +131,9 @@ const initialTracks: Track[] = [
     voice: 'synth',
     mute: false,
     solo: false,
-    volume: 0.8,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
-    steps: patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }),
+    steps: patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }, 0.8),
   },
   {
     id: 't6',
@@ -145,7 +142,6 @@ const initialTracks: Track[] = [
     voice: 'synth',
     mute: false,
     solo: false,
-    volume: 0.8,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     steps: emptySteps(),
@@ -157,7 +153,6 @@ const initialTracks: Track[] = [
     voice: 'synth',
     mute: false,
     solo: false,
-    volume: 0.85,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     steps: emptySteps(),
@@ -169,7 +164,6 @@ const initialTracks: Track[] = [
     voice: 'synth',
     mute: false,
     solo: false,
-    volume: 0.7,
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     steps: emptySteps(),
@@ -249,10 +243,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setTrackSolo: (trackId, solo) =>
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, solo } : t)),
-    })),
-  setTrackVolume: (trackId, volume) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, volume } : t)),
     })),
   setTrackLength: (trackId, length) => {
     const safe = Number.isFinite(length) ? Math.floor(length) : DEFAULT_LENGTH;

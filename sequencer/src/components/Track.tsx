@@ -18,7 +18,6 @@ export function Track({ track }: { track: TrackData }) {
   const setTrackType = useSequencerStore((s) => s.setTrackType);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
-  const setTrackVolume = useSequencerStore((s) => s.setTrackVolume);
   const setTrackLength = useSequencerStore((s) => s.setTrackLength);
 
   const pillBase =
@@ -31,7 +30,7 @@ export function Track({ track }: { track: TrackData }) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2 w-[280px]">
+      <div className="flex items-center gap-2 w-[220px]">
         <span className="w-14 text-xs uppercase tracking-widest opacity-80 truncate">
           {track.name}
         </span>
@@ -58,16 +57,6 @@ export function Track({ track }: { track: TrackData }) {
         >
           s
         </button>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={track.volume}
-          onChange={(e) => setTrackVolume(track.id, Number(e.target.value))}
-          className="w-14 accent-white"
-          title="volume"
-        />
         <input
           type="number"
           min={1}
