@@ -18,7 +18,6 @@ export function Track({ track }: { track: TrackData }) {
   const pillBase =
     'w-6 h-6 text-[10px] uppercase border transition-colors flex items-center justify-center';
   const pillIdle = 'border-white/30 hover:border-white/70';
-  const pillActive = 'bg-white text-ink border-white';
 
   const localCurrent = globalStep % track.length;
   const playingPage = Math.floor(localCurrent / PAGE_SIZE);
