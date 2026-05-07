@@ -66,7 +66,6 @@ export function Track({ track }: { track: TrackData }) {
             pitch={step.pitch}
             isMelodic={track.type === 'melodic'}
             isCurrent={playing && currentStep === i}
-            isBeat={i % 4 === 0}
             rootNote={rootNote}
             scale={scale}
           />

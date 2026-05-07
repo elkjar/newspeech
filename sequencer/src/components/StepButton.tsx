@@ -9,7 +9,6 @@ interface StepButtonProps {
   pitch: number;
   isMelodic: boolean;
   isCurrent: boolean;
-  isBeat: boolean;
   rootNote: number;
   scale: Scale;
 }
@@ -21,7 +20,6 @@ export function StepButton({
   pitch,
   isMelodic,
   isCurrent,
-  isBeat,
   rootNote,
   scale,
 }: StepButtonProps) {
@@ -64,7 +62,6 @@ export function StepButton({
         'relative w-10 h-10 transition-colors flex items-end justify-center',
         on ? 'bg-white hover:bg-white/85 text-ink' : 'bg-white/5 hover:bg-white/15',
         isCurrent ? 'ring-2 ring-white ring-offset-2 ring-offset-[#050505]' : '',
-        isBeat ? 'border-l-2 border-white/40' : '',
       ].join(' ')}
     >
       {noteLabel && (
