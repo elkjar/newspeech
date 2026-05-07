@@ -27,7 +27,7 @@ export function Transport() {
   const rootName = NOTE_NAMES[rootNote % 12];
 
   return (
-    <div className="flex items-center gap-8 flex-wrap">
+    <>
       <button
         onClick={togglePlay}
         className="px-6 py-3 border border-white/30 hover:border-white uppercase tracking-widest text-xs transition-colors"
@@ -76,6 +76,6 @@ export function Transport() {
           ))}
         </select>
       </label>
-    </div>
+    </>
   );
 }

@@ -9,32 +9,32 @@ export function StepInspector() {
   const rootNote = useSequencerStore((s) => s.rootNote);
   const scale = useSequencerStore((s) => s.scale);
 
-  if (!selectedStep) {
-    return (
-      <div className={`${PANEL} text-[10px] uppercase tracking-widest text-white/40`}>
-        click a step
-      </div>
-    );
-  }
+  const track = selectedStep
+    ? tracks.find((t) => t.id === selectedStep.trackId) ?? null
+    : null;
+  const step =
+    track && selectedStep ? track.steps[selectedStep.index] ?? null : null;
 
-  const track = tracks.find((t) => t.id === selectedStep.trackId);
-  const step = track?.steps[selectedStep.index];
-  if (!track || !step) {
-    return <div className={`${PANEL} text-white/40`}>—</div>;
+  let big = '—';
+  let velStr = '—';
+  let probStr = '—';
+  let dim = true;
+  if (track && step) {
+    big =
+      track.type === 'melodic'
+        ? midiToName(quantize(rootNote, scale, step.pitch))
+        : track.name.toUpperCase();
+    velStr = step.velocity.toFixed(2);
+    probStr = `${step.probability}%`;
+    dim = !step.on;
   }
-
-  const isMelodic = track.type === 'melodic';
-  const big = isMelodic
-    ? midiToName(quantize(rootNote, scale, step.pitch))
-    : track.name.toUpperCase();
-  const dim = !step.on;
 
   return (
     <div className={`${PANEL} ${dim ? 'opacity-50' : ''}`}>
       <span className="text-2xl tracking-wider text-white">{big}</span>
       <div className="flex flex-col gap-0.5 text-[10px] uppercase tracking-widest leading-tight">
-        <Field label="v" value={step.velocity.toFixed(2)} />
-        <Field label="c" value={`${step.probability}%`} />
+        <Field label="v" value={velStr} />
+        <Field label="c" value={probStr} />
       </div>
     </div>
   );
