@@ -73,9 +73,11 @@ export function App() {
         </span>
       </header>
       <ModeSwitcher />
-      <main className="flex flex-col items-center gap-8 px-[72px] pt-12 pb-20">
-        <Transport />
-        <StepInspector />
+      <main className="flex flex-col items-center gap-10 px-[72px] pt-12 pb-20">
+        <div className="flex items-center gap-8 flex-wrap justify-center">
+          <Transport />
+          <StepInspector />
+        </div>
         <TrackGrid />
       </main>
     </div>
