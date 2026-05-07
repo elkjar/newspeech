@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'zxx-sans';
+  src: url('/fonts/zxx-sans.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'zxx-bold-regular';
+  src: url('/fonts/zxx-bold-regular.woff2') format('woff2');
+  font-display: swap;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #050505;
+  color: #e8e8e8;
+  font-family: 'zxx-sans', ui-sans-serif, system-ui, sans-serif;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}
