@@ -1,9 +1,28 @@
-import { Fragment } from 'react';
-import { useSequencerStore, type Track as TrackData, PAGE_SIZE, NUM_PAGES } from '../state/store';
+import {
+  useSequencerStore,
+  type Track as TrackData,
+  type Step,
+  PAGE_SIZE,
+  NUM_PAGES,
+} from '../state/store';
 import { StepButton } from './StepButton';
 
 const STEP_GAP = 6;
 const STEP_SIZE = 36;
+
+function displayStep(track: TrackData, i: number): Step | undefined {
+  const len = track.length;
+  const self = track.steps[i];
+  if (len <= 0) return self;
+  let cur = (i - 1 + len) % len;
+  for (let walked = 0; walked < len; walked++) {
+    const s = track.steps[cur];
+    if (!s?.tieToNext) return self;
+    if (s.on) return s;
+    cur = (cur - 1 + len) % len;
+  }
+  return self;
+}
 
 export function Track({ track }: { track: TrackData }) {
   const globalStep = useSequencerStore((s) => s.globalStep);
@@ -124,43 +143,28 @@ export function Track({ track }: { track: TrackData }) {
         })}
       </div>
 
-      <div className="flex">
+      <div className="flex" style={{ gap: STEP_GAP }}>
         {Array.from(
           { length: Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)) },
           (_, i) => {
-            const visibleCount = Math.max(
-              0,
-              Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)
-            );
             const stepIndex = viewPage * PAGE_SIZE + i;
-            const step = track.steps[stepIndex];
+            const display = displayStep(track, stepIndex);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
-            const tied = step?.tieToNext === true;
             return (
-              <Fragment key={i}>
-                <StepButton
-                  trackId={track.id}
-                  index={stepIndex}
-                  on={step?.on ?? false}
-                  velocity={step?.velocity ?? 1}
-                  probability={step?.probability ?? 100}
-                  ratchet={step?.ratchet ?? 1}
-                  microTiming={step?.microTiming ?? 0}
-                  gate={step?.gate ?? 1}
-                  isMelodic={track.type === 'melodic'}
-                  isCurrent={isCurrent}
-                  size={STEP_SIZE}
-                />
-                {i < visibleCount - 1 && (
-                  <div
-                    style={{
-                      width: STEP_GAP,
-                      height: STEP_SIZE,
-                      background: tied ? '#fff' : 'transparent',
-                    }}
-                  />
-                )}
-              </Fragment>
+              <StepButton
+                key={i}
+                trackId={track.id}
+                index={stepIndex}
+                on={display?.on ?? false}
+                velocity={display?.velocity ?? 1}
+                probability={display?.probability ?? 100}
+                ratchet={display?.ratchet ?? 1}
+                microTiming={display?.microTiming ?? 0}
+                gate={display?.gate ?? 1}
+                isMelodic={track.type === 'melodic'}
+                isCurrent={isCurrent}
+                size={STEP_SIZE}
+              />
             );
           }
         )}
