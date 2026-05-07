@@ -31,6 +31,10 @@ export function StepButton({
     if (!isMelodic) return;
     const el = ref.current;
     if (!el) return;
+    const COOLDOWN_MS = 80;
+    const PITCH_MIN = -14;
+    const PITCH_MAX = 14;
+    let lastStepTime = 0;
     const handleWheel = (e: WheelEvent) => {
       const { tracks, setStepPitch } = useSequencerStore.getState();
       const t = tracks.find((tr) => tr.id === trackId);
@@ -38,8 +42,12 @@ export function StepButton({
       const s = t.steps[index];
       if (!s?.on) return;
       e.preventDefault();
+      const now = performance.now();
+      if (now - lastStepTime < COOLDOWN_MS) return;
+      lastStepTime = now;
       const delta = e.deltaY > 0 ? -1 : 1;
-      setStepPitch(trackId, index, s.pitch + delta);
+      const next = Math.max(PITCH_MIN, Math.min(PITCH_MAX, s.pitch + delta));
+      if (next !== s.pitch) setStepPitch(trackId, index, next);
     };
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
