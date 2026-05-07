@@ -141,6 +141,9 @@ export function Track({ track }: { track: TrackData }) {
                   on={step?.on ?? false}
                   velocity={step?.velocity ?? 1}
                   probability={step?.probability ?? 100}
+                  ratchet={step?.ratchet ?? 1}
+                  microTiming={step?.microTiming ?? 0}
+                  gate={step?.gate ?? 1}
                   isMelodic={track.type === 'melodic'}
                   isCurrent={isCurrent}
                   size={STEP_SIZE}

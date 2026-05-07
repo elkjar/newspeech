@@ -21,6 +21,9 @@ interface StepButtonProps {
   on: boolean;
   velocity: number;
   probability: number;
+  ratchet: number;
+  microTiming: number;
+  gate: number;
   isMelodic: boolean;
   isCurrent: boolean;
   size: number;
@@ -53,6 +56,9 @@ export function StepButton({
   on,
   velocity,
   probability,
+  ratchet,
+  microTiming,
+  gate,
   isMelodic,
   isCurrent,
   size,
@@ -66,6 +72,7 @@ export function StepButton({
   const isAnchor = useSequencerStore(
     (s) => s.tieAnchor?.trackId === trackId && s.tieAnchor?.index === index
   );
+  const editMode = useSequencerStore((s) => s.editMode);
 
   useEffect(() => {
     const el = ref.current;
@@ -245,8 +252,21 @@ export function StepButton({
     ? () => useSequencerStore.getState().setSelectedStep({ trackId, index })
     : undefined;
 
-  const fillOpacity = 0.4 + 0.6 * (probability / 100);
-  const fillHeightPct = Math.max(12, velocity * 100);
+  let fillOpacity = 0;
+  let label = '';
+  if (on) {
+    if (editMode === 'velocity') fillOpacity = Math.max(0.15, velocity);
+    else if (editMode === 'chance') fillOpacity = Math.max(0.15, probability / 100);
+    else fillOpacity = 1;
+
+    if (editMode === 'ratchet') label = String(ratchet);
+    else if (editMode === 'timing') {
+      const pct = Math.round(microTiming * 100);
+      label = pct === 0 ? '0' : pct > 0 ? `+${pct}%` : `${pct}%`;
+    } else if (editMode === 'gate') {
+      label = `${Math.round(gate * 100)}%`;
+    }
+  }
 
   const shadows: string[] = [];
   if (isCurrent) {
@@ -264,7 +284,7 @@ export function StepButton({
       onMouseEnter={handleMouseEnter}
       onClick={handleClick}
       aria-label={`step ${index + 1}`}
-      className="relative overflow-hidden flex items-end justify-center transition-shadow"
+      className="relative overflow-hidden flex items-center justify-center transition-shadow"
       style={{
         width: size,
         height: size,
@@ -272,14 +292,27 @@ export function StepButton({
       }}
     >
       <span className="absolute inset-0 bg-white/5" />
-      {isAnchor && (
-        <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-white pointer-events-none" />
-      )}
       {on && (
         <span
-          className="absolute left-0 right-0 bottom-0 bg-white pointer-events-none"
-          style={{ height: `${fillHeightPct}%`, opacity: fillOpacity }}
+          className="absolute inset-0 bg-white pointer-events-none"
+          style={{ opacity: fillOpacity }}
         />
+      )}
+      {label && (
+        <span
+          className="relative tabular-nums select-none pointer-events-none font-bold"
+          style={{
+            mixBlendMode: 'difference',
+            color: '#fff',
+            fontSize: size <= 22 ? 8 : 10,
+            lineHeight: 1,
+          }}
+        >
+          {label}
+        </span>
+      )}
+      {isAnchor && (
+        <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-white pointer-events-none" />
       )}
     </button>
   );
