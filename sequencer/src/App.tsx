@@ -22,22 +22,17 @@ export function App() {
 
   return (
     <div className="h-full w-full flex flex-col">
-      <header className="flex items-baseline gap-6 px-8 py-6 border-b border-bone/10">
-        <h1 className="text-2xl tracking-wide">NEWSPEECH // sequence</h1>
-        <a
-          href="/"
-          className="text-xs uppercase tracking-widest opacity-60 hover:opacity-100"
-        >
-          ← home
-        </a>
+      <header className="crumb">
+        <span className="label">
+          <a href="/">newspeech</a>
+          <span className="sep"> / </span>sequence
+        </span>
+        <span className="aux">phase 1 — synth kick on a 16-step grid</span>
       </header>
-      <main className="flex-1 flex flex-col items-center justify-center gap-12 px-8">
+      <main className="flex-1 flex flex-col items-center justify-center gap-12 px-[72px]">
         <Transport />
         <TrackGrid />
       </main>
-      <footer className="px-8 py-4 text-xs uppercase tracking-widest opacity-40">
-        phase 1 — synth kick on a 16-step grid
-      </footer>
     </div>
   );
 }
