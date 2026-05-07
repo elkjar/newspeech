@@ -1200,10 +1200,21 @@
   let _markerConnectors = true;
 
   const _LABEL_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const _SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
   function _randLabel() {
     let s = "";
     for (let i = 0; i < 3; i++) s += _LABEL_CHARS[(Math.random() * _LABEL_CHARS.length) | 0];
     return `[${s}]`;
+  }
+  // partial-char glitch swap matching the visualizers-index link scramble:
+  // unselected positions stay legible, selected positions cycle through the
+  // SCRAMBLE_CHARS glyph pool. mask[i] == true means corrupt position i.
+  function _scrambleString(label, mask) {
+    let s = "";
+    for (let i = 0; i < label.length; i++) {
+      s += mask[i] ? _SCRAMBLE_CHARS[(Math.random() * _SCRAMBLE_CHARS.length) | 0] : label[i];
+    }
+    return s;
   }
 
   function _ensureMarkerBuffers(srcW, srcH) {
@@ -1304,23 +1315,115 @@
     // count is global now — the panel-globals "data points" slider drives
     // it across every visualizer instead of a per-page injected slider.
     const target = _markerParams ? _globalDataPoints : 0;
+    // screen-space mapping computed once at top so spawn collision check,
+    // post-snap separation, and the final position refresh all share it.
+    const scale = Math.max(cw / dims.w, ch / dims.h);
+    const drawW = dims.w * scale, drawH = dims.h * scale;
+    const offX = (cw - drawW) * 0.5, offY = (ch - drawH) * 0.5;
+    const fx = drawW / _mkSw, fy = drawH / _mkSh;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const minDist = 40 * dpr;
+    const minDist2 = minDist * minDist;
+    const minDistSrc = minDist / Math.min(fx, fy);
+    const minDistSrc2 = minDistSrc * minDistSrc;
+
     if (_mkMag) for (const m of _markers) _snapMarker(m, dt);
+
+    // post-snap separation: any pair within minDistSrc gets pushed apart
+    // along the line between them, scaled by overlap depth. mild per-frame
+    // force so snap-to-edge still wins on direction but pairs settle at
+    // ~minDist apart instead of stacking. clamped to source bounds so a
+    // push at the edge can't shove a marker out of the buffer.
+    for (let i = 0; i < _markers.length; i++) {
+      const a = _markers[i];
+      for (let j = i + 1; j < _markers.length; j++) {
+        const b = _markers[j];
+        const dxs = b.sx - a.sx, dys = b.sy - a.sy;
+        const d2 = dxs * dxs + dys * dys;
+        if (d2 >= minDistSrc2) continue;
+        const d = Math.sqrt(d2) || 0.0001;
+        // when nearly coincident the direction is degenerate — randomize so
+        // the pair doesn't sit perfectly stacked frame after frame.
+        const nx = d > 0.001 ? dxs / d : Math.cos(Math.random() * Math.PI * 2);
+        const ny = d > 0.001 ? dys / d : Math.sin(Math.random() * Math.PI * 2);
+        const push = (minDistSrc - d) * 0.5;
+        a.sx -= nx * push; a.sy -= ny * push;
+        b.sx += nx * push; b.sy += ny * push;
+      }
+      a.sx = Math.max(0, Math.min(_mkSw - 1, a.sx));
+      a.sy = Math.max(0, Math.min(_mkSh - 1, a.sy));
+    }
+
     for (let i = _markers.length - 1; i >= 0; i--) {
       const m = _markers[i];
       m.age += dt;
-      if (m.age > m.life) _markers.splice(i, 1);
+      if (m.age > m.life) { _markers.splice(i, 1); continue; }
+      // rare per-marker glitch — corrupts a random subset of label chars
+      // with SCRAMBLE_CHARS glyphs across 2-4 frames at 50-110ms each, then
+      // restores. mirrors the link-scramble effect on the visualizers index
+      // (per-char mask + multi-frame cycle), so the data-point HUD reads in
+      // the same family. probability is per-marker-per-second.
+      if (m.scrambleCycles > 0) {
+        m.scrambleNext -= dt;
+        if (m.scrambleNext <= 0) {
+          m.scrambleCycles--;
+          if (m.scrambleCycles <= 0) {
+            m.scrambleText = null;
+          } else {
+            m.scrambleText = _scrambleString(m.label, m.scrambleMask);
+            m.scrambleNext = 0.05 + Math.random() * 0.06;
+          }
+        }
+      } else if (Math.random() < 0.18 * dt) {
+        const mask = [];
+        let any = false;
+        for (let k = 0; k < m.label.length; k++) {
+          const corrupt = /[a-z0-9]/i.test(m.label[k]) && Math.random() < 0.55;
+          mask.push(corrupt);
+          if (corrupt) any = true;
+        }
+        if (any) {
+          m.scrambleMask = mask;
+          m.scrambleCycles = 2 + ((Math.random() * 3) | 0);
+          m.scrambleNext = 0.05 + Math.random() * 0.06;
+          m.scrambleText = _scrambleString(m.label, mask);
+        }
+      }
     }
     while (_markers.length > target) {
       let oldest = 0;
       for (let i = 1; i < _markers.length; i++) if (_markers[i].age > _markers[oldest].age) oldest = i;
       _markers.splice(oldest, 1);
     }
+    // refresh existing markers' screen positions before the spawn loop so the
+    // spawn-time collision check sees post-snap-and-separation positions.
+    for (const m of _markers) {
+      m.x = offX + (m.sx + 0.5) * fx;
+      m.y = offY + (m.sy + 0.5) * fy;
+    }
     _markerCooldown -= dt;
     while (_markers.length < target && _markerCooldown <= 0) {
-      const p = _pickMarkerEdgePoint();
-      if (!p) break;
+      let pick = null, px = 0, py = 0;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const p = _pickMarkerEdgePoint();
+        if (!p) break;
+        const cx = offX + (p.sx + 0.5) * fx;
+        const cy = offY + (p.sy + 0.5) * fy;
+        let collides = false;
+        for (const m of _markers) {
+          const ddx = m.x - cx, ddy = m.y - cy;
+          if (ddx * ddx + ddy * ddy < minDist2) { collides = true; break; }
+        }
+        if (!collides) { pick = p; px = cx; py = cy; break; }
+      }
+      // either the picker dried up or 8 attempts all collided. break and let
+      // the next tick try again rather than infinite-looping or accepting an
+      // overlap. with very high data-points + sparse edge content the
+      // population may stabilize below target — preferable to stacked dots.
+      if (!pick) break;
       _markers.push({
-        sx: p.sx, sy: p.sy,
+        sx: pick.sx, sy: pick.sy,
+        x: px, y: py,
         label: _randLabel(),
         age: 0,
         life: 5 + Math.random() * 7,
@@ -1328,14 +1431,6 @@
         lostTime: 0,
       });
       _markerCooldown = 0.06;
-    }
-    const scale = Math.max(cw / dims.w, ch / dims.h);
-    const drawW = dims.w * scale, drawH = dims.h * scale;
-    const offX = (cw - drawW) * 0.5, offY = (ch - drawH) * 0.5;
-    const fx = drawW / _mkSw, fy = drawH / _mkSh;
-    for (const m of _markers) {
-      m.x = offX + (m.sx + 0.5) * fx;
-      m.y = offY + (m.sy + 0.5) * fy;
     }
   }
 
@@ -1390,7 +1485,7 @@
       ctx.arc(m.x, m.y, 2 * dpr, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = `rgba(255, 255, 255, ${0.7 * fade})`;
-      ctx.fillText(m.label, m.x + 5 * dpr, m.y + 5 * dpr);
+      ctx.fillText(m.scrambleText || m.label, m.x + 5 * dpr, m.y + 5 * dpr);
     }
     ctx.restore();
   }
