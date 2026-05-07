@@ -63,6 +63,9 @@ export function StepButton({
   const isSelected = useSequencerStore(
     (s) => s.selectedStep?.trackId === trackId && s.selectedStep?.index === index
   );
+  const isAnchor = useSequencerStore(
+    (s) => s.tieAnchor?.trackId === trackId && s.tieAnchor?.index === index
+  );
 
   useEffect(() => {
     const el = ref.current;
@@ -206,10 +209,10 @@ export function StepButton({
       return;
     }
     if (e.shiftKey) {
-      const sel = store.selectedStep;
-      if (!sel || sel.trackId !== trackId || sel.index === index) return;
-      const start = Math.min(sel.index, index);
-      const end = Math.max(sel.index, index);
+      const anchor = store.tieAnchor;
+      if (!anchor || anchor.trackId !== trackId || anchor.index === index) return;
+      const start = Math.min(anchor.index, index);
+      const end = Math.max(anchor.index, index);
       const track = store.tracks.find((t) => t.id === trackId);
       if (!track) return;
       let allTied = true;
@@ -223,8 +226,10 @@ export function StepButton({
       for (let i = start; i < end; i++) {
         store.setStepTie(trackId, i, next);
       }
+      store.setTieAnchor(null);
       return;
     }
+    store.setTieAnchor({ trackId, index });
     if (HOVER_CAPABLE) {
       store.setSelectedStep({ trackId, index });
       return;
@@ -267,6 +272,9 @@ export function StepButton({
       }}
     >
       <span className="absolute inset-0 bg-white/5" />
+      {isAnchor && (
+        <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-white pointer-events-none" />
+      )}
       {on && (
         <span
           className="absolute left-0 right-0 bottom-0 bg-white pointer-events-none"

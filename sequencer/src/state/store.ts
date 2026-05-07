@@ -54,6 +54,8 @@ interface SequencerState {
   setEditMode: (mode: EditMode) => void;
   selectedStep: StepSelection | null;
   setSelectedStep: (sel: StepSelection | null) => void;
+  tieAnchor: StepSelection | null;
+  setTieAnchor: (sel: StepSelection | null) => void;
   setBpm: (bpm: number) => void;
   setRootNote: (midi: number) => void;
   setScale: (scale: Scale) => void;
@@ -226,6 +228,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setEditMode: (editMode) => set({ editMode }),
   selectedStep: null,
   setSelectedStep: (selectedStep) => set({ selectedStep }),
+  tieAnchor: null,
+  setTieAnchor: (tieAnchor) => set({ tieAnchor }),
   setBpm: (bpm) => set({ bpm }),
   setRootNote: (rootNote) => set({ rootNote }),
   setScale: (scale) => set({ scale }),
