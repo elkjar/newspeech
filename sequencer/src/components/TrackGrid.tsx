@@ -1,12 +1,10 @@
 import { useEffect } from 'react';
 import { useSequencerStore } from '../state/store';
 import { scheduler } from '../audio/scheduler';
+import { Track } from './Track';
 
 export function TrackGrid() {
-  const steps = useSequencerStore((s) => s.steps);
-  const currentStep = useSequencerStore((s) => s.currentStep);
-  const playing = useSequencerStore((s) => s.playing);
-  const toggleStep = useSequencerStore((s) => s.toggleStep);
+  const tracks = useSequencerStore((s) => s.tracks);
   const setCurrentStep = useSequencerStore((s) => s.setCurrentStep);
 
   useEffect(() => {
@@ -23,27 +21,10 @@ export function TrackGrid() {
   }, [setCurrentStep]);
 
   return (
-    <div className="flex items-center gap-4">
-      <span className="w-16 text-xs uppercase tracking-widest opacity-60">kick</span>
-      <div className="grid grid-cols-16 gap-1.5">
-        {steps.map((step, i) => {
-          const isCurrent = playing && currentStep === i;
-          const isBeat = i % 4 === 0;
-          return (
-            <button
-              key={i}
-              onClick={() => toggleStep(i)}
-              aria-label={`step ${i + 1}`}
-              className={[
-                'aspect-square w-12 transition-colors',
-                step.on ? 'bg-bone hover:bg-bone/80' : 'bg-bone/5 hover:bg-bone/15',
-                isCurrent ? 'ring-2 ring-bone ring-offset-2 ring-offset-ink' : '',
-                isBeat ? 'border-l-2 border-bone/40' : '',
-              ].join(' ')}
-            />
-          );
-        })}
-      </div>
+    <div className="flex flex-col gap-2">
+      {tracks.map((track) => (
+        <Track key={track.id} track={track} />
+      ))}
     </div>
   );
 }
