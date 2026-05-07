@@ -1,4 +1,5 @@
 import { getAudioContext } from './audioContext';
+import { synthHatC, synthHatO, synthKick, synthMelodic, synthSnare } from './synth';
 
 export type SampleId = string;
 
@@ -30,10 +31,11 @@ class SamplePlayer {
     );
   }
 
-  trigger(id: SampleId, when: number, velocity = 1) {
+  trigger(voice: SampleId, when: number, velocity = 1, midiNote?: number) {
     const ctx = getAudioContext();
+    const out = ctx.destination;
 
-    const group = this.chokeGroups.get(id);
+    const group = this.chokeGroups.get(voice);
     if (group) {
       for (const [vid, src] of this.activeVoices) {
         if (this.chokeGroups.get(vid) === group) {
@@ -47,34 +49,40 @@ class SamplePlayer {
       }
     }
 
-    const buf = this.buffers.get(id);
+    const buf = this.buffers.get(voice);
     if (buf) {
       const src = ctx.createBufferSource();
       src.buffer = buf;
       const gain = ctx.createGain();
       gain.gain.value = velocity;
-      src.connect(gain).connect(ctx.destination);
+      if (midiNote !== undefined) {
+        src.playbackRate.value = Math.pow(2, (midiNote - 60) / 12);
+      }
+      src.connect(gain).connect(out);
       src.start(when);
-      this.activeVoices.set(id, src);
+      this.activeVoices.set(voice, src);
       src.onended = () => {
-        if (this.activeVoices.get(id) === src) this.activeVoices.delete(id);
+        if (this.activeVoices.get(voice) === src) this.activeVoices.delete(voice);
       };
-    } else {
-      this.synthKick(when, velocity);
+      return;
     }
-  }
 
-  private synthKick(when: number, velocity: number) {
-    const ctx = getAudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.setValueAtTime(150, when);
-    osc.frequency.exponentialRampToValueAtTime(40, when + 0.18);
-    gain.gain.setValueAtTime(velocity, when);
-    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.25);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(when);
-    osc.stop(when + 0.3);
+    switch (voice) {
+      case 'kick':
+        synthKick(when, velocity, out);
+        break;
+      case 'snare':
+        synthSnare(when, velocity, out);
+        break;
+      case 'hat-c':
+        synthHatC(when, velocity, out);
+        break;
+      case 'hat-o':
+        synthHatO(when, velocity, out);
+        break;
+      default:
+        if (midiNote !== undefined) synthMelodic(when, midiNote, velocity, out);
+    }
   }
 }
 
