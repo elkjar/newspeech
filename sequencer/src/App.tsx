@@ -108,14 +108,12 @@ export function App() {
         </span>
       </header>
       <main className="min-h-screen flex items-center justify-center px-[72px] py-12">
-        <div className="flex flex-col gap-8 w-[1280px] max-w-full">
+        <div className="flex flex-col gap-8 w-[1230px] max-w-full">
           <div className="flex justify-between items-start gap-8">
             <StepInspector />
             <TransportControls />
           </div>
-          <div className="flex justify-center">
-            <TrackGrid />
-          </div>
+          <TrackGrid />
           <div className="flex justify-between items-center gap-8">
             <PlayButton />
             <ModeSwitcher />
