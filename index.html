@@ -44,9 +44,16 @@
     position: relative;
   }
 
+  /* canvas sized to the visible region (left 80vw) so visualizer content
+     sits entirely outside the bg-mask on the right — no rendered pixels
+     are hidden behind the mask. body bg #050505 matches the mask color so
+     the right 20vw still reads as a single solid panel. */
   #bg {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    width: 80vw;
+    height: 100vh;
     z-index: 0;
     pointer-events: none;
   }
@@ -145,6 +152,7 @@
   -->
 </nav>
 
+<script src="core.js"></script>
 <script>
 // ---- intensity envelope ----
 let mouseActivity = 0; // 0..1, fed by mousemove, decays each frame
@@ -275,7 +283,10 @@ function buildTexture() {
 
 function resize() {
   dpr = Math.max(1, window.devicePixelRatio || 1);
-  viewW = window.innerWidth;
+  // canvas occupies the visible region only (left 80vw); the right 20vw is
+  // body bg behind the bg-mask. drawing helpers that read viewW automatically
+  // confine themselves to the visible region.
+  viewW = window.innerWidth * 0.8;
   viewH = window.innerHeight;
   canvas.width = Math.floor(viewW * dpr);
   canvas.height = Math.floor(viewH * dpr);
@@ -447,38 +458,6 @@ function drawStreaks(t, dt) {
   }
 }
 
-// ---- static (TV snow) ----
-const STATIC_W = 480, STATIC_H = 270;
-let staticCanvas, staticCtx, staticImg;
-function initStatic() {
-  staticCanvas = document.createElement("canvas");
-  staticCanvas.width = STATIC_W;
-  staticCanvas.height = STATIC_H;
-  staticCtx = staticCanvas.getContext("2d");
-  staticImg = staticCtx.createImageData(STATIC_W, STATIC_H);
-  const d = staticImg.data;
-  for (let i = 0; i < d.length; i += 4) { d[i] = d[i+1] = d[i+2] = 255; }
-}
-function drawStatic(t, dt) {
-  if (!staticImg) initStatic();
-  const env = intensity();
-  const density = 0.10 + 0.20 * env;
-  const d = staticImg.data;
-  for (let i = 3; i < d.length; i += 4) {
-    if (Math.random() < density) {
-      const r = Math.random();
-      d[i] = (r * r * 180) | 0; // mostly dim, occasionally bright
-    } else {
-      d[i] = 0;
-    }
-  }
-  staticCtx.putImageData(staticImg, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
-  ctx.drawImage(staticCanvas, 0, 0, viewW, viewH);
-}
-
 // ---- vertical streaks (orthogonal sibling of #1) ----
 let vertTex, vertScrollX = 0;
 function initVertical() {
@@ -513,98 +492,253 @@ function initVertical() {
 // (initVertical / vertTex / vertScrollX above are shared infra used by #4 wave
 // and #5 echo too — they're the vertical-streak source those corruptions sample.)
 
-// ---- slot 3: invert. horizontal streak field with a handful of difference-
-// blended rectangular patches that locally polarity-flip the underlying
-// streaks. patches reroll every ~250–850ms so the corruption walks around.
-let invertBlocks = null;
-let invertRerollAt = 0;
-function initInvert() { invertBlocks = null; invertRerollAt = 0; }
-function rerollInvertBlocks(t) {
-  invertBlocks = [];
-  const num = 4 + ((Math.random() * 8) | 0);
-  for (let i = 0; i < num; i++) {
-    invertBlocks.push({
-      x: ((Math.random() * viewW) | 0) - 80,
-      y: ((Math.random() * viewH) | 0) - 30,
-      w: 100 + ((Math.random() * 360) | 0),
-      h: 40 + ((Math.random() * 200) | 0),
+// ---- network mode: 3D point cloud projection with proximity links. compact
+// port of the standalone 16-network visualizer — drift in body-frame, rotate,
+// project through a focal-length perspective, draw nearest-neighbor links and
+// depth-shaded dots. drawn in CSS-px (canvas already has the dpr transform).
+const NET_FOCAL = 2.6;
+let netNodes = null;
+let netRotY = 0, netRotX = 0;
+function initNetwork() {
+  netNodes = [];
+  const N = 90;
+  for (let i = 0; i < N; i++) {
+    let x, y, z;
+    do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; }
+    while (x * x + y * y + z * z > 1);
+    netNodes.push({
+      x, y, z,
+      vx: (Math.random() - 0.5) * 0.02,
+      vy: (Math.random() - 0.5) * 0.02,
+      vz: (Math.random() - 0.5) * 0.02,
+      pulse: 0,
     });
   }
-  invertRerollAt = t + 250 + Math.random() * 600;
+  netRotY = 0; netRotX = 0;
 }
-function drawInvert(t, dt) {
-  if (!tex.width) return;
-  if (!invertBlocks || t > invertRerollAt) rerollInvertBlocks(t);
-
+function drawNetwork(t, dt) {
+  if (!netNodes) initNetwork();
   const env = intensity();
-  const scroll = scrollSpeed * (0.5 + 0.8 * env);
-  scrollY = (scrollY + scroll * dt) % viewH;
-
-  ctx.fillStyle = "#050505";
+  // soft trail fade so nodes leave brief streaks rather than crisp jumps
+  ctx.fillStyle = "rgba(5, 5, 5, 0.42)";
   ctx.fillRect(0, 0, viewW, viewH);
-  ctx.drawImage(tex, 0, scrollY, viewW, viewH, 0, 0, viewW, viewH);
-
-  // difference-blend with white = local invert
-  ctx.save();
-  ctx.globalCompositeOperation = "difference";
-  ctx.fillStyle = "#ffffff";
-  for (const b of invertBlocks) ctx.fillRect(b.x, b.y, b.w, b.h);
-  ctx.restore();
-}
-
-// ---- slot 4: blocks. tile-grid mosaic of the streak texture. each tile
-// samples a random region with optional vertical/horizontal stretch and a
-// random subset of tiles get difference-blend-inverted. tiles reroll every
-// ~250–950ms so the mosaic walks.
-let blockTiles = null;
-let blockRerollAt = 0;
-function initBlocks() { blockTiles = null; blockRerollAt = 0; }
-function rerollBlocks(t) {
-  blockTiles = [];
-  const cols = 5 + ((Math.random() * 5) | 0);
-  const rows = 4 + ((Math.random() * 4) | 0);
-  const baseW = viewW / cols;
-  const baseH = viewH / rows;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const d = Math.random();
-      let sw = baseW, sh = baseH;
-      if (d < 0.25) sh = baseH * (0.25 + Math.random() * 0.4);   // vertical stretch
-      else if (d < 0.5) sw = baseW * (0.25 + Math.random() * 0.4); // horizontal stretch
-      blockTiles.push({
-        dx: c * baseW,
-        dy: r * baseH,
-        dw: baseW,
-        dh: baseH,
-        sx: Math.random() * Math.max(1, tex.width - sw),
-        sy: Math.random() * Math.max(1, tex.height - sh),
-        sw, sh,
-        inverted: Math.random() < 0.18,
-      });
+  // body-frame drift + radial pull keeps the cloud bounded inside the unit sphere
+  const jitter = 0.04 * (0.4 + 0.9 * env);
+  const damp = Math.pow(0.985, dt * 60);
+  for (const n of netNodes) {
+    n.vx += (Math.random() - 0.5) * jitter * dt;
+    n.vy += (Math.random() - 0.5) * jitter * dt;
+    n.vz += (Math.random() - 0.5) * jitter * dt;
+    n.vx *= damp; n.vy *= damp; n.vz *= damp;
+    n.x += n.vx * dt * 60; n.y += n.vy * dt * 60; n.z += n.vz * dt * 60;
+    const r2 = n.x * n.x + n.y * n.y + n.z * n.z;
+    if (r2 > 1) {
+      const pull = Math.min(0.08, (Math.sqrt(r2) - 1) * 0.5);
+      n.x *= 1 - pull; n.y *= 1 - pull; n.z *= 1 - pull;
+    }
+    n.pulse *= Math.pow(0.18, dt);
+  }
+  // intensity bursts: occasionally pulse a few random nodes (substitutes for
+  // the band-onset pulses that the standalone visualizer uses)
+  if (Math.random() < dt * (0.4 + 1.5 * env)) {
+    const k = (Math.random() * netNodes.length) | 0;
+    netNodes[k].pulse = Math.max(netNodes[k].pulse, 0.7 + Math.random() * 0.3);
+  }
+  netRotY += dt * 0.18 * (0.5 + 0.7 * env);
+  netRotX += dt * 0.06 * (0.5 + 0.5 * env);
+  const cosY = Math.cos(netRotY), sinY = Math.sin(netRotY);
+  const cosX = Math.cos(netRotX), sinX = Math.sin(netRotX);
+  // bg-tuned: scale off Math.max so the cloud spreads across the longer
+  // viewport dim instead of being bound by the shorter one (which left it
+  // confined to the center ~25% on widescreens).
+  const scale = 0.32 * Math.max(viewW, viewH);
+  const cx = viewW * 0.5, cy = viewH * 0.5;
+  const proj = [];
+  for (const n of netNodes) {
+    const rx = n.x * cosY - n.z * sinY;
+    const rz = n.x * sinY + n.z * cosY;
+    const ry2 = n.y * cosX - rz * sinX;
+    const rz2 = n.y * sinX + rz * cosX;
+    const persp = NET_FOCAL / (NET_FOCAL - rz2);
+    proj.push({
+      sx: cx + rx * scale * persp,
+      sy: cy + ry2 * scale * persp,
+      persp, depth: rz2, pulse: n.pulse,
+    });
+  }
+  const linkR = 240 * (1 + 0.3 * env);
+  const linkR2 = linkR * linkR;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < proj.length; i++) {
+    const a = proj[i];
+    for (let j = i + 1; j < proj.length; j++) {
+      const b = proj[j];
+      const dx = b.sx - a.sx, dy = b.sy - a.sy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > linkR2) continue;
+      const k = 1 - Math.sqrt(d2) / linkR;
+      const depthK = 0.5 + 0.5 * (a.depth + b.depth + 2) * 0.25;
+      const alpha = 0.45 * k * depthK;
+      if (alpha < 0.01) continue;
+      ctx.strokeStyle = `rgba(225, 225, 225, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
     }
   }
-  blockRerollAt = t + 250 + Math.random() * 700;
+  for (const p of proj) {
+    const depthK = 0.55 + 0.45 * (p.depth + 1) * 0.5;
+    const r = 1.6 * (1 + p.pulse * 1.6) * p.persp;
+    ctx.fillStyle = `rgba(255, 255, 255, ${(0.95 * depthK).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
-function drawBlocks(t, dt) {
-  if (!tex.width) return;
-  if (!blockTiles || t > blockRerollAt) rerollBlocks(t);
-  ctx.fillStyle = "#050505";
+
+// ---- flare mode: dense particle field streaming from a partially off-canvas
+// dark mass on the right edge. compact port of the standalone 17-flare
+// visualizer — single-tier ambient spawn (skipping the halo/wake split + the
+// dedicated flare bursts), bias most particles to short lives + slow speeds
+// so they pile up at the surface, with a thin tail of fast ones reaching
+// across the field. mass painted on top with a feathered edge.
+let flareParticles = null;
+let flareMassCx = 0, flareMassCy = 0, flareMassR = 0;
+function initFlare() {
+  flareParticles = [];
+  flareMassR = Math.min(viewW, viewH) * 0.42;
+  flareMassCx = viewW + flareMassR * 0.12;
+  flareMassCy = viewH * 0.5;
+}
+function drawFlare(t, dt) {
+  if (!flareParticles) initFlare();
+  const env = intensity();
+  const rate = 1100 * (0.4 + 0.9 * env);
+  const spawnN = Math.min(220, Math.round(rate * dt));
+  for (let k = 0; k < spawnN; k++) {
+    const a = Math.PI * 0.5 + Math.random() * Math.PI; // visible (left) hemisphere
+    const surfR = flareMassR * (1 + Math.random() * 0.04);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const speed = 8 + Math.pow(Math.random(), 3.5) * 210;
+    const lateral = (Math.random() - 0.5) * 42;
+    flareParticles.push({
+      x: flareMassCx + ca * surfR,
+      y: flareMassCy + sa * surfR,
+      vx: ca * speed - sa * lateral,
+      vy: sa * speed + ca * lateral,
+      size: Math.random() < 0.18 ? 2.6 : 1.0,
+      life: 0.5 + Math.random() * 2.5,
+      age: 0,
+    });
+  }
+  let w = 0;
+  const margin = 60;
+  for (let i = 0; i < flareParticles.length; i++) {
+    const p = flareParticles[i];
+    p.age += dt;
+    if (p.age >= p.life) continue;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.x < -margin || p.x > viewW + margin || p.y < -margin || p.y > viewH + margin) continue;
+    if (w !== i) flareParticles[w] = p;
+    w++;
+  }
+  flareParticles.length = w;
+  ctx.fillStyle = "rgba(5, 5, 5, 0.55)";
   ctx.fillRect(0, 0, viewW, viewH);
-  for (const tile of blockTiles) {
-    ctx.drawImage(
-      tex,
-      tile.sx, tile.sy, tile.sw, tile.sh,
-      tile.dx, tile.dy, tile.dw, tile.dh
-    );
+  for (const p of flareParticles) {
+    const tt = p.age / p.life;
+    const alpha = Math.min(1, (1 - tt) * 1.6);
+    if (alpha <= 0.02) continue;
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
   }
-  // invert subset
-  ctx.save();
-  ctx.globalCompositeOperation = "difference";
-  ctx.fillStyle = "#ffffff";
-  for (const tile of blockTiles) {
-    if (tile.inverted) ctx.fillRect(tile.dx, tile.dy, tile.dw, tile.dh);
+  // mass painted on top — feathered radial gradient blends edge into the field
+  const featherStart = flareMassR * 0.96;
+  const grad = ctx.createRadialGradient(flareMassCx, flareMassCy, featherStart, flareMassCx, flareMassCy, flareMassR);
+  grad.addColorStop(0, "rgba(0, 0, 0, 1)");
+  grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(flareMassCx, flareMassCy, flareMassR, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ---- chevron mode: streaming V-shape chevrons advancing through depth.
+// compact port of the standalone 18-chevron visualizer. each chevron has
+// its own progress `t` 0→1 across the frame; vertex sits on the horizontal
+// midline, anchor walks left→right with t, half-angle widens with t so far
+// chevrons read as pointy and near ones as wide. arms ray-cast to the
+// canvas edge so the V always reaches off-screen instead of clipping mid-arm.
+const CHEV_DENSITY = 14;
+const CHEV_BASE_ANGLE = 35;
+let chevronStream = null;
+let chevronSpawnAcc = 0;
+function spawnChev(initialT) {
+  chevronStream.push({
+    t: initialT,
+    jitter: (Math.random() - 0.5) * 6,
+    // long-tail speed: most chevrons sit near 0.6-1.5×, a thin tail reaches ~5×
+    speedMul: 0.6 + Math.pow(Math.random(), 4) * 4.5,
+  });
+}
+function initChevron() {
+  chevronStream = [];
+  for (let i = 0; i < CHEV_DENSITY; i++) spawnChev(i / CHEV_DENSITY);
+  chevronSpawnAcc = 0;
+}
+function drawChevron(t, dt) {
+  if (!chevronStream) initChevron();
+  const env = intensity();
+  const speed = 0.4 * (0.7 + 0.6 * env);
+  // hold steady-state count near CHEV_DENSITY: spawn rate = density × speed
+  // (each chevron lives 1/speed seconds, so in-flight = rate × life)
+  chevronSpawnAcc += CHEV_DENSITY * speed * dt;
+  while (chevronSpawnAcc >= 1) { spawnChev(0); chevronSpawnAcc -= 1; }
+  for (let i = chevronStream.length - 1; i >= 0; i--) {
+    const c = chevronStream[i];
+    c.t += speed * c.speedMul * dt;
+    if (c.t >= 1) chevronStream.splice(i, 1);
   }
-  ctx.restore();
+  // soft trail fade — leaves brief streaks behind moving chevrons
+  ctx.fillStyle = `rgba(5, 5, 5, ${(0.30 - 0.08 * env).toFixed(3)})`;
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  const cx = viewW * 0.5, cy = viewH * 0.5;
+  const halfSpread = viewW * 0.45;
+  const leftAnchor = cx - halfSpread * 0.85;
+  const rightAnchor = cx + halfSpread;
+  const angleSweepDeg = Math.min(CHEV_BASE_ANGLE * 1.10, Math.max(4, 88 - CHEV_BASE_ANGLE));
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+  for (const c of chevronStream) {
+    const fadeIn = Math.max(0, Math.min(1, c.t / 0.12));
+    const fadeOut = Math.max(0, Math.min(1, (1 - c.t) / 0.15));
+    const opacity = Math.min(fadeIn, fadeOut) * 0.92;
+    if (opacity <= 0.02) continue;
+    const vx = leftAnchor + c.t * (rightAnchor - leftAnchor);
+    const vy = cy;
+    const angleDeg = Math.min(88, CHEV_BASE_ANGLE + c.t * angleSweepDeg + c.jitter);
+    const angleRad = angleDeg * Math.PI / 180;
+    const dx = -Math.cos(angleRad);
+    const dyU = -Math.sin(angleRad);
+    const dyL =  Math.sin(angleRad);
+    // ray-cast each arm to whichever canvas edge it hits first
+    const tU = Math.min(dx < 0 ? -vx / dx : Infinity, dyU < 0 ? -vy / dyU : Infinity);
+    const ux = vx + dx * tU, uy = vy + dyU * tU;
+    const tL = Math.min(dx < 0 ? -vx / dx : Infinity, dyL > 0 ? (viewH - vy) / dyL : Infinity);
+    const lx = vx + dx * tL, ly = vy + dyL * tL;
+    ctx.globalAlpha = opacity;
+    ctx.beginPath();
+    ctx.moveTo(ux, uy);
+    ctx.lineTo(vx, vy);
+    ctx.lineTo(lx, ly);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ---- slot 5: ASCII starfield glitch. perspective stars projected from 3-space,
@@ -814,27 +948,47 @@ function drawSwarm(t, dt) {
 // ---- visualizer registry + mode toggle ----
 const MODES = {
   streaks: drawStreaks,
-  static:  drawStatic,
-  invert:  drawInvert,
-  blocks:  drawBlocks,
+  flare:   drawFlare,
+  network: drawNetwork,
+  chevron: drawChevron,
   stars:   drawStars,
   swarm:   drawSwarm,
 };
-const MODE_ORDER = ["streaks", "static", "invert", "blocks", "stars", "swarm"];
+const MODE_ORDER = ["streaks", "flare", "network", "chevron", "stars", "swarm"];
 let currentMode = "streaks";
 function setMode(name) {
   if (!(name in MODES) || name === currentMode) return;
   currentMode = name;
   ctx.clearRect(0, 0, viewW, viewH);
-  if (name === "static")      initStatic();
-  else if (name === "invert") initInvert();
-  else if (name === "blocks") initBlocks();
-  else if (name === "stars")  initStars();
-  else if (name === "swarm")  initSwarm();
+  if (name === "chevron") initChevron();
+  else if (name === "stars")   initStars();
+  else if (name === "swarm")   initSwarm();
+  else if (name === "network") initNetwork();
+  else if (name === "flare")   initFlare();
   for (const btn of document.querySelectorAll("#debug button")) {
     btn.classList.toggle("active", btn.dataset.mode === name);
   }
 }
+
+// ---- telemetry HUD: borrow the visualizer-page widget set as a top-left
+// surveillance overlay. seeded with 2-3 random widgets per page-load using
+// installTelemetry's `enabled` opt so the homepage gets a fresh selection
+// every visit without clobbering the user's persisted picks elsewhere.
+const TELEMETRY_POOL = [
+  "radar", "scope", "bands", "events", "waveform",
+  "profile", "vector", "tunnel", "coords", "xfer", "hex",
+];
+function pickTelemetryOnLoad() {
+  const pool = TELEMETRY_POOL.slice();
+  const count = 2 + ((Math.random() * 2) | 0); // 2 or 3
+  const picked = [];
+  for (let i = 0; i < count && pool.length; i++) {
+    const idx = (Math.random() * pool.length) | 0;
+    picked.push(pool.splice(idx, 1)[0]);
+  }
+  return picked;
+}
+Newspeech.installTelemetry({ params: {}, enabled: pickTelemetryOnLoad() });
 
 let lastT = performance.now();
 function frame(t) {
@@ -846,11 +1000,16 @@ function frame(t) {
 
   MODES[currentMode](t, dt);
 
+  // tickInputs clears the HUD overlay each frame and drives the grain layer;
+  // tickTelemetry then renders the picked widgets onto the cleared HUD.
+  Newspeech.tickInputs(dt);
+  Newspeech.tickTelemetry(dt);
+
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-// pick a random visualizer on each page load (keyboard 1–5 still overrides)
+// pick a random visualizer on each page load (keyboard 1–6 still overrides)
 setMode(MODE_ORDER[(Math.random() * MODE_ORDER.length) | 0]);
 
 // ---- mouse / click bindings ----

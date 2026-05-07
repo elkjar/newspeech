@@ -90,6 +90,16 @@
   #status .k { color: rgba(255, 255, 255, 0.85); }
   #status .head { color: rgba(255, 255, 255, 0.85); margin-bottom: 6px; }
   #status .head .sep { opacity: 0.4; margin: 0 6px; }
+  /* re-enable pointer events on the home link only — #status itself is
+     pointer-events:none so it doesn't block canvas drag/click. */
+  #status .home {
+    color: inherit;
+    text-decoration: none;
+    pointer-events: auto;
+    cursor: pointer;
+    transition: opacity 0.12s linear;
+  }
+  #status .home:hover { opacity: 0.6; }
   /* meter bars use block glyphs — kill letter-spacing locally so they butt against each other */
   #status .meter { display: flex; gap: 16px; margin-bottom: 2px; letter-spacing: 0; }
   #status .meter .seg { color: rgba(255, 255, 255, 0.85); }
@@ -149,7 +159,7 @@
 
 <div id="status">
   <div class="head">
-    <span>NEWSPEECH</span>
+    <a href="/" class="home">NEWSPEECH</a>
     <span class="sep">·</span>
     <span id="trans-track">—</span>
     <span class="sep">·</span>
@@ -253,6 +263,21 @@
 
 <script src="https://unpkg.com/@strudel/repl@latest"></script>
 
+<script src="core.js"></script>
+
+<script>
+// ---- core.js conflicts: live owns "9" (mode 9 = swarm) and "a" (Strudel
+// already runs the audio context; core.js's mic toggle would open a duplicate
+// getUserMedia). intercept those in the capture phase so core.js never sees
+// them. "0" / "t" / "m" pass through (no panel on this page, no-ops).
+window.addEventListener("keydown", (e) => {
+  if (e.target.closest("strudel-editor, input, textarea, [contenteditable]")) return;
+  if (e.key === "9" || e.key === "a" || e.key === "A" || e.key === "m" || e.key === "M") {
+    e.stopImmediatePropagation();
+  }
+}, true);
+</script>
+
 <script>
 // ---- audio analysis: overall + band split + per-band onset detection ----
 let audioLevel = 0;
@@ -317,7 +342,6 @@ function readAudio(dtMs) {
   lowPeak  = Math.max(low,  lowPeak  * PEAK_DECAY);
   midPeak  = Math.max(mid,  midPeak  * PEAK_DECAY);
   highPeak = Math.max(high, highPeak * PEAK_DECAY);
-
 }
 
 // intensity is now purely the smoothed audio level.
@@ -446,118 +470,273 @@ function drawStreaks(t, dt) {
   }
 }
 
-// ---- static ----
-const STATIC_W = 480, STATIC_H = 270;
-let staticCanvas, staticCtx, staticImg;
-function initStatic() {
-  staticCanvas = document.createElement("canvas");
-  staticCanvas.width = STATIC_W;
-  staticCanvas.height = STATIC_H;
-  staticCtx = staticCanvas.getContext("2d");
-  staticImg = staticCtx.createImageData(STATIC_W, STATIC_H);
-  const d = staticImg.data;
-  for (let i = 0; i < d.length; i += 4) { d[i] = d[i+1] = d[i+2] = 255; }
-}
-function drawStatic(t, dt) {
-  if (!staticImg) initStatic();
-  // density tracks overall level — silent = empty, loud = dense
-  const density = audioLevel * 0.8;
-  const brightness = 120 + 135 * highLevel; // hats brighten the snow
-  const d = staticImg.data;
-  for (let i = 3; i < d.length; i += 4) {
-    if (density > 0 && Math.random() < density) {
-      const r = Math.random();
-      d[i] = (r * r * brightness) | 0;
-    } else {
-      d[i] = 0;
-    }
-  }
-  staticCtx.putImageData(staticImg, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
-  ctx.drawImage(staticCanvas, 0, 0, viewW, viewH);
-}
-
-// ---- invert ----
-// reroll on low onset (kick). silent = no inversion blocks.
-let invertBlocks = null;
-function initInvert() { invertBlocks = null; }
-function rerollInvertBlocks() {
-  invertBlocks = [];
-  const num = 3 + ((Math.random() * 8) | 0) + (lowLevel * 6) | 0;
-  for (let i = 0; i < num; i++) {
-    invertBlocks.push({
-      x: ((Math.random() * viewW) | 0) - 80,
-      y: ((Math.random() * viewH) | 0) - 30,
-      w: 100 + ((Math.random() * 360) | 0),
-      h: 40 + ((Math.random() * 200) | 0),
+// ---- network mode: 3D point cloud projection with proximity links. compact
+// port of the standalone 16-network visualizer. low-onset pulses a few nodes
+// (kick splash), mid-onset pulses fewer/softer, high-onset spreads small
+// pulses across more nodes. drawn in CSS-px (canvas already has dpr transform).
+const NET_FOCAL = 2.6;
+let netNodes = null;
+let netRotY = 0, netRotX = 0;
+function initNetwork() {
+  netNodes = [];
+  const N = 90;
+  for (let i = 0; i < N; i++) {
+    let x, y, z;
+    do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; }
+    while (x * x + y * y + z * z > 1);
+    netNodes.push({
+      x, y, z,
+      vx: (Math.random() - 0.5) * 0.02,
+      vy: (Math.random() - 0.5) * 0.02,
+      vz: (Math.random() - 0.5) * 0.02,
+      pulse: 0,
     });
   }
+  netRotY = 0; netRotX = 0;
 }
-function drawInvert(t, dt) {
-  if (!tex.width) return;
-  if (lowOnset) rerollInvertBlocks();
-  if (highOnset && highLevel > 0.4) buildTexture();
-
-  const scroll = scrollSpeed * (0.3 + 2.4 * lowLevel);
-  scrollY = (scrollY + scroll * dt) % viewH;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
-  ctx.drawImage(tex, 0, scrollY, viewW, viewH, 0, 0, viewW, viewH);
-  if (invertBlocks) {
-    ctx.save();
-    ctx.globalCompositeOperation = "difference";
-    ctx.fillStyle = "#ffffff";
-    for (const b of invertBlocks) ctx.fillRect(b.x, b.y, b.w, b.h);
-    ctx.restore();
+function netPulseRandom(strength, count) {
+  const n = Math.min(netNodes.length, count);
+  for (let i = 0; i < n; i++) {
+    const k = (Math.random() * netNodes.length) | 0;
+    netNodes[k].pulse = Math.max(netNodes[k].pulse, strength);
   }
 }
-
-// ---- blocks ----
-// reroll on low or mid onset. invert ratio rides high level.
-let blockTiles = null;
-function initBlocks() { blockTiles = null; }
-function rerollBlocks() {
-  blockTiles = [];
-  const cols = 5 + ((Math.random() * 5) | 0);
-  const rows = 4 + ((Math.random() * 4) | 0);
-  const baseW = viewW / cols;
-  const baseH = viewH / rows;
-  const invertRatio = 0.05 + highLevel * 0.45;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const d = Math.random();
-      let sw = baseW, sh = baseH;
-      if (d < 0.25) sh = baseH * (0.25 + Math.random() * 0.4);
-      else if (d < 0.5) sw = baseW * (0.25 + Math.random() * 0.4);
-      blockTiles.push({
-        dx: c * baseW, dy: r * baseH, dw: baseW, dh: baseH,
-        sx: Math.random() * Math.max(1, tex.width - sw),
-        sy: Math.random() * Math.max(1, tex.height - sh),
-        sw, sh,
-        inverted: Math.random() < invertRatio,
-      });
+function drawNetwork(t, dt) {
+  if (!netNodes) initNetwork();
+  const env = audioLevel;
+  if (lowOnset)  netPulseRandom(1.0, 8);
+  if (midOnset)  netPulseRandom(0.7, 5);
+  if (highOnset) netPulseRandom(0.5, 4);
+  ctx.fillStyle = "rgba(5, 5, 5, 0.42)";
+  ctx.fillRect(0, 0, viewW, viewH);
+  const jitter = 0.04 * (0.4 + 0.9 * env);
+  const damp = Math.pow(0.985, dt * 60);
+  for (const n of netNodes) {
+    n.vx += (Math.random() - 0.5) * jitter * dt;
+    n.vy += (Math.random() - 0.5) * jitter * dt;
+    n.vz += (Math.random() - 0.5) * jitter * dt;
+    n.vx *= damp; n.vy *= damp; n.vz *= damp;
+    n.x += n.vx * dt * 60; n.y += n.vy * dt * 60; n.z += n.vz * dt * 60;
+    const r2 = n.x * n.x + n.y * n.y + n.z * n.z;
+    if (r2 > 1) {
+      const pull = Math.min(0.08, (Math.sqrt(r2) - 1) * 0.5);
+      n.x *= 1 - pull; n.y *= 1 - pull; n.z *= 1 - pull;
+    }
+    n.pulse *= Math.pow(0.18, dt);
+  }
+  netRotY += dt * 0.18 * (0.5 + 0.7 * env);
+  netRotX += dt * 0.06 * (0.5 + 0.5 * env);
+  const cosY = Math.cos(netRotY), sinY = Math.sin(netRotY);
+  const cosX = Math.cos(netRotX), sinX = Math.sin(netRotX);
+  // bg-tuned: scale off Math.max so the cloud spreads across the longer
+  // viewport dim instead of being bound by the shorter one.
+  const scale = 0.32 * Math.max(viewW, viewH);
+  const cx = viewW * 0.5, cy = viewH * 0.5;
+  const proj = [];
+  for (const n of netNodes) {
+    const rx = n.x * cosY - n.z * sinY;
+    const rz = n.x * sinY + n.z * cosY;
+    const ry2 = n.y * cosX - rz * sinX;
+    const rz2 = n.y * sinX + rz * cosX;
+    const persp = NET_FOCAL / (NET_FOCAL - rz2);
+    proj.push({
+      sx: cx + rx * scale * persp,
+      sy: cy + ry2 * scale * persp,
+      persp, depth: rz2, pulse: n.pulse,
+    });
+  }
+  const linkR = 240 * (1 + 0.4 * env);
+  const linkR2 = linkR * linkR;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < proj.length; i++) {
+    const a = proj[i];
+    for (let j = i + 1; j < proj.length; j++) {
+      const b = proj[j];
+      const dx = b.sx - a.sx, dy = b.sy - a.sy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > linkR2) continue;
+      const k = 1 - Math.sqrt(d2) / linkR;
+      const depthK = 0.5 + 0.5 * (a.depth + b.depth + 2) * 0.25;
+      const alpha = 0.45 * k * depthK;
+      if (alpha < 0.01) continue;
+      ctx.strokeStyle = `rgba(225, 225, 225, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
     }
   }
+  for (const p of proj) {
+    const depthK = 0.55 + 0.45 * (p.depth + 1) * 0.5;
+    const r = 1.6 * (1 + p.pulse * 1.6) * p.persp;
+    ctx.fillStyle = `rgba(255, 255, 255, ${(0.95 * depthK).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
-function drawBlocks(t, dt) {
-  if (!tex.width) return;
-  if (lowOnset || midOnset) rerollBlocks();
-  ctx.fillStyle = "#050505";
+
+// ---- flare mode: dense particle field streaming from a partially off-canvas
+// dark mass on the right edge. compact port of standalone 17-flare. ambient
+// rate scales with audioLevel; low-onset fires a wider directed burst (the
+// "kick" reads as a flare); high-onset adds a tight directional ambient burst.
+let flareParticles = null;
+let flareMassCx = 0, flareMassCy = 0, flareMassR = 0;
+function initFlare() {
+  flareParticles = [];
+  flareMassR = Math.min(viewW, viewH) * 0.42;
+  flareMassCx = viewW + flareMassR * 0.12;
+  flareMassCy = viewH * 0.5;
+}
+function flareSpawnAt(angle, speedMin, speedMax, lateralMag, lifeMin, lifeMax, sizeMul) {
+  const surfR = flareMassR * (1 + Math.random() * 0.04);
+  const ca = Math.cos(angle), sa = Math.sin(angle);
+  const speed = speedMin + Math.pow(Math.random(), 3.5) * (speedMax - speedMin);
+  const lateral = (Math.random() - 0.5) * lateralMag;
+  flareParticles.push({
+    x: flareMassCx + ca * surfR,
+    y: flareMassCy + sa * surfR,
+    vx: ca * speed - sa * lateral,
+    vy: sa * speed + ca * lateral,
+    size: (Math.random() < 0.18 ? 2.6 : 1.0) * (sizeMul || 1),
+    life: lifeMin + Math.random() * (lifeMax - lifeMin),
+    age: 0,
+  });
+}
+function drawFlare(t, dt) {
+  if (!flareParticles) initFlare();
+  const env = audioLevel;
+  // ambient field
+  const rate = 1100 * (0.4 + 0.9 * env);
+  const spawnN = Math.min(220, Math.round(rate * dt));
+  for (let k = 0; k < spawnN; k++) {
+    const a = Math.PI * 0.5 + Math.random() * Math.PI;
+    flareSpawnAt(a, 8, 218, 42, 0.5, 3.0, 1);
+  }
+  // low onset → wide directed burst (cone). reads as a kick splash.
+  if (lowOnset) {
+    const a = Math.PI * 0.5 + Math.random() * Math.PI;
+    const spread = 0.9;
+    for (let k = 0; k < 80; k++) {
+      flareSpawnAt(a + (Math.random() - 0.5) * spread, 180, 360, 36, 1.6, 3.2, 1.4);
+    }
+  }
+  // high onset → tight ambient blast across the visible hemisphere
+  if (highOnset) {
+    for (let k = 0; k < 60; k++) {
+      const a = Math.PI * 0.5 + Math.random() * Math.PI;
+      flareSpawnAt(a, 80, 200, 30, 1.0, 2.0, 1);
+    }
+  }
+  // update + cull
+  let w = 0;
+  const margin = 60;
+  const speedMul = 1 + 0.8 * env;
+  for (let i = 0; i < flareParticles.length; i++) {
+    const p = flareParticles[i];
+    p.age += dt;
+    if (p.age >= p.life) continue;
+    p.x += p.vx * dt * speedMul;
+    p.y += p.vy * dt * speedMul;
+    if (p.x < -margin || p.x > viewW + margin || p.y < -margin || p.y > viewH + margin) continue;
+    if (w !== i) flareParticles[w] = p;
+    w++;
+  }
+  flareParticles.length = w;
+  // draw
+  ctx.fillStyle = "rgba(5, 5, 5, 0.55)";
   ctx.fillRect(0, 0, viewW, viewH);
-  if (!blockTiles) return;
-  for (const tile of blockTiles) {
-    ctx.drawImage(tex, tile.sx, tile.sy, tile.sw, tile.sh,
-                       tile.dx, tile.dy, tile.dw, tile.dh);
+  for (const p of flareParticles) {
+    const tt = p.age / p.life;
+    const alpha = Math.min(1, (1 - tt) * 1.6);
+    if (alpha <= 0.02) continue;
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
   }
-  ctx.save();
-  ctx.globalCompositeOperation = "difference";
-  ctx.fillStyle = "#ffffff";
-  for (const tile of blockTiles) {
-    if (tile.inverted) ctx.fillRect(tile.dx, tile.dy, tile.dw, tile.dh);
+  // mass painted on top
+  const featherStart = flareMassR * 0.96;
+  const grad = ctx.createRadialGradient(flareMassCx, flareMassCy, featherStart, flareMassCx, flareMassCy, flareMassR);
+  grad.addColorStop(0, "rgba(0, 0, 0, 1)");
+  grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(flareMassCx, flareMassCy, flareMassR, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ---- chevron mode: streaming V-shape chevrons advancing through depth.
+// compact port of the standalone 18-chevron visualizer. each chevron has
+// its own progress `t` 0→1 across the frame; vertex sits on the horizontal
+// midline, anchor walks left→right with t, half-angle widens with t so far
+// chevrons read as pointy and near ones as wide. arms ray-cast to the
+// canvas edge so the V always reaches off-screen instead of clipping mid-arm.
+// audio: low onsets fire an extra burst (kick adds a fresh chevron); speed
+// rides audioLevel.
+const CHEV_DENSITY = 14;
+const CHEV_BASE_ANGLE = 35;
+let chevronStream = null;
+let chevronSpawnAcc = 0;
+function spawnChev(initialT) {
+  chevronStream.push({
+    t: initialT,
+    jitter: (Math.random() - 0.5) * 6,
+    speedMul: 0.6 + Math.pow(Math.random(), 4) * 4.5,
+  });
+}
+function initChevron() {
+  chevronStream = [];
+  for (let i = 0; i < CHEV_DENSITY; i++) spawnChev(i / CHEV_DENSITY);
+  chevronSpawnAcc = 0;
+}
+function drawChevron(t, dt) {
+  if (!chevronStream) initChevron();
+  const env = audioLevel;
+  const speed = 0.4 * (0.7 + 1.0 * env);
+  chevronSpawnAcc += CHEV_DENSITY * speed * dt;
+  while (chevronSpawnAcc >= 1) { spawnChev(0); chevronSpawnAcc -= 1; }
+  // low onset → kick splash: spawn 3 fresh chevrons at t=0
+  if (lowOnset) for (let k = 0; k < 3; k++) spawnChev(0);
+  for (let i = chevronStream.length - 1; i >= 0; i--) {
+    const c = chevronStream[i];
+    c.t += speed * c.speedMul * dt;
+    if (c.t >= 1) chevronStream.splice(i, 1);
   }
-  ctx.restore();
+  ctx.fillStyle = `rgba(5, 5, 5, ${(0.30 - 0.08 * env).toFixed(3)})`;
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  const cx = viewW * 0.5, cy = viewH * 0.5;
+  const halfSpread = viewW * 0.45;
+  const leftAnchor = cx - halfSpread * 0.85;
+  const rightAnchor = cx + halfSpread;
+  const angleSweepDeg = Math.min(CHEV_BASE_ANGLE * 1.10, Math.max(4, 88 - CHEV_BASE_ANGLE));
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+  for (const c of chevronStream) {
+    const fadeIn = Math.max(0, Math.min(1, c.t / 0.12));
+    const fadeOut = Math.max(0, Math.min(1, (1 - c.t) / 0.15));
+    const opacity = Math.min(fadeIn, fadeOut) * 0.92;
+    if (opacity <= 0.02) continue;
+    const vx = leftAnchor + c.t * (rightAnchor - leftAnchor);
+    const vy = cy;
+    const angleDeg = Math.min(88, CHEV_BASE_ANGLE + c.t * angleSweepDeg + c.jitter);
+    const angleRad = angleDeg * Math.PI / 180;
+    const dx = -Math.cos(angleRad);
+    const dyU = -Math.sin(angleRad);
+    const dyL =  Math.sin(angleRad);
+    const tU = Math.min(dx < 0 ? -vx / dx : Infinity, dyU < 0 ? -vy / dyU : Infinity);
+    const ux = vx + dx * tU, uy = vy + dyU * tU;
+    const tL = Math.min(dx < 0 ? -vx / dx : Infinity, dyL > 0 ? (viewH - vy) / dyL : Infinity);
+    const lx = vx + dx * tL, ly = vy + dyL * tL;
+    ctx.globalAlpha = opacity;
+    ctx.beginPath();
+    ctx.moveTo(ux, uy);
+    ctx.lineTo(vx, vy);
+    ctx.lineTo(lx, ly);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ---- stars ----
@@ -653,256 +832,6 @@ function drawStars(t, dt) {
     ctx.fillRect(0, 0, viewW, viewH);
     ctx.restore();
     starsPolarityFlash = false;
-  }
-}
-
-// ---- grid ----
-// 40x40 grid of 1px square outlines, exponential ambient zoom, moiré from
-// a 41x41 rotated overlay composited via difference, noise-warped vertices,
-// jittered scroll snaps every few seconds, invert flash on bass onset.
-// 2D-canvas implementation of the live-hydra grid — sidesteps having to
-// load Hydra into this page (which would break the existing modes' RAF).
-let gridFlashUntil = 0;
-let gridSnapX = 0, gridSnapY = 0, gridSnapEnd = 0;
-
-function gridNoiseAt(x, y, t) {
-  return 0.5 * (
-    Math.sin(x * 0.010 + t * 0.5) +
-    Math.sin(y * 0.013 + t * 0.7) +
-    Math.sin((x + y) * 0.007 + t * 0.3)
-  );
-}
-function drawGridLines(N, segPerLine, t, useDifference) {
-  const cellW = viewW / N;
-  const cellH = viewH / N;
-  if (useDifference) { ctx.save(); ctx.globalCompositeOperation = "difference"; }
-  ctx.strokeStyle = "rgba(255,255,255,0.95)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= N; i++) {
-    const x = i * cellW;
-    ctx.beginPath();
-    for (let s = 0; s <= segPerLine; s++) {
-      const y = (s / segPerLine) * viewH;
-      const dx = gridNoiseAt(x, y, t) * 1.5;
-      if (s === 0) ctx.moveTo(x + dx, y); else ctx.lineTo(x + dx, y);
-    }
-    ctx.stroke();
-  }
-  for (let j = 0; j <= N; j++) {
-    const y = j * cellH;
-    ctx.beginPath();
-    for (let s = 0; s <= segPerLine; s++) {
-      const x = (s / segPerLine) * viewW;
-      const dy = gridNoiseAt(x + 100, y + 100, t) * 1.5;
-      if (s === 0) ctx.moveTo(x, y + dy); else ctx.lineTo(x, y + dy);
-    }
-    ctx.stroke();
-  }
-  if (useDifference) ctx.restore();
-}
-function drawGrid(t, dt) {
-  if (lowOnset) gridFlashUntil = t + 70;
-  if (t > gridSnapEnd) { gridSnapX = 0; gridSnapY = 0; }
-
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
-
-  const tSec = t / 1000;
-  // exponential ambient zoom (1× → 2× loop ~12.5s) with bass-driven pulldown.
-  const zoom = Math.pow(2, (tSec * 0.08) % 1) * (1 - lowLevel * 0.15);
-
-  ctx.save();
-  ctx.translate(gridSnapX + viewW / 2, gridSnapY + viewH / 2);
-  ctx.scale(zoom, zoom);
-  ctx.translate(-viewW / 2, -viewH / 2);
-
-  drawGridLines(40, 32, tSec, false);
-
-  ctx.save();
-  ctx.translate(viewW / 2, viewH / 2);
-  ctx.rotate(0.07);
-  ctx.translate(-viewW / 2, -viewH / 2);
-  drawGridLines(41, 32, tSec, true);
-  ctx.restore();
-
-  ctx.restore();
-
-  // bass-triggered full-frame invert via difference compositing
-  if (t < gridFlashUntil) {
-    ctx.save();
-    ctx.globalCompositeOperation = "difference";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, viewW, viewH);
-    ctx.restore();
-  }
-}
-// jittered scroll snaps — gated on currentMode so other modes don't pay
-// the random-number cost while inactive.
-setInterval(() => {
-  if (currentMode === "grid" && Math.random() < 0.15) {
-    gridSnapX = (Math.random() - 0.5) * 0.3 * viewW;
-    gridSnapY = (Math.random() - 0.5) * 0.3 * viewH;
-    gridSnapEnd = performance.now() + 100;
-  }
-}, 700);
-
-// ---- ridges ----
-// stack of horizontal multi-frequency wave traces. baseline waviness from
-// summed sines + always-on positive bumps + bass-onset event peaks that
-// rise fast then slow-fall over ~1.5s. top lines fan out further than
-// bottom (depthFactor) so peaks tower visually rather than translating
-// the whole stack.
-const RIDGE_LINES   = 36;
-const RIDGE_TOP     = 0.18;
-const RIDGE_BOT     = 0.92;
-const RIDGE_SAMPLES = 320;
-const ridgePeakEvents = [];
-function spawnRidgePeak() {
-  ridgePeakEvents.push({
-    x: Math.random() * viewW,
-    width: 60 + Math.random() * 220,
-    height: 60 + lowLevel * 200,
-    born: performance.now(),
-    duration: 800 + Math.random() * 1500,
-  });
-}
-function ridgeEventPeakAt(x, t) {
-  let h = 0;
-  for (let i = ridgePeakEvents.length - 1; i >= 0; i--) {
-    const ev = ridgePeakEvents[i];
-    const age = t - ev.born;
-    if (age > ev.duration) { ridgePeakEvents.splice(i, 1); continue; }
-    const dx = x - ev.x;
-    const envelope = Math.exp(-Math.pow(dx / ev.width, 2));
-    const lifeT = age / ev.duration;
-    const lifeEnv = lifeT < 0.15 ? lifeT / 0.15 : 1 - (lifeT - 0.15) / 0.85;
-    h += ev.height * envelope * Math.max(0, lifeEnv);
-  }
-  return h;
-}
-function drawRidges(t, dt) {
-  if (lowOnset) spawnRidgePeak();
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
-
-  const tSec = t / 1000;
-  const yTop = viewH * RIDGE_TOP;
-  const yBot = viewH * RIDGE_BOT;
-  const lineGap = (yBot - yTop) / (RIDGE_LINES - 1);
-
-  ctx.strokeStyle = "rgba(255,255,255,0.92)";
-  ctx.lineWidth = 1;
-  ctx.lineJoin = "round";
-
-  for (let line = 0; line < RIDGE_LINES; line++) {
-    const y0 = yTop + lineGap * line;
-    const linePhase = line * 0.43;
-    const depthFactor = 0.3 + 0.7 * (1 - line / (RIDGE_LINES - 1));
-
-    ctx.beginPath();
-    for (let s = 0; s <= RIDGE_SAMPLES; s++) {
-      const x = (s / RIDGE_SAMPLES) * viewW;
-      const xn = x * 0.0055;
-
-      let wave = 0;
-      wave += Math.sin(xn * 1.0  + tSec * 0.27 + linePhase * 0.7) * 14;
-      wave += Math.sin(xn * 2.3  + tSec * 0.41 + linePhase * 1.2) * 10;
-      wave += Math.sin(xn * 5.7  + tSec * 0.69 + linePhase * 0.4) *  6;
-      wave += Math.sin(xn * 13.1 + tSec * 1.07 + linePhase * 1.5) *  3;
-
-      const bump = Math.max(0,
-        0.6 * Math.sin(xn * 0.5 + tSec * 0.31 + linePhase * 0.2) +
-        0.4 * Math.sin(xn * 0.9 + tSec * 0.19 + linePhase * 0.5)
-      );
-      const steadyPeak = Math.pow(bump, 5) * (30 + audioLevel * 80) * depthFactor;
-      const evPeak     = ridgeEventPeakAt(x, t) * depthFactor;
-
-      const y = y0 + wave - steadyPeak - evPeak;
-      if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
-}
-
-// ---- rings ----
-// concentric rings with multi-frequency angular waves + always-on positive
-// bumps + bass-onset event peaks pulsing outward at random angles. outer
-// rings receive more push than inner so peaks burst outward. circular
-// sibling of ridges. integer θ multipliers in the wave keep the polyline
-// 2π-periodic so each ring closes cleanly.
-const RING_COUNT     = 36;
-const RING_SAMPLES   = 360;
-const RING_INNER     = 50;
-const ringPeakEvents = [];
-
-function spawnRingPeak() {
-  ringPeakEvents.push({
-    theta: Math.random() * Math.PI * 2,
-    angularWidth: 0.1 + Math.random() * 0.4,
-    height: 90 + lowLevel * 300,
-    born: performance.now(),
-    duration: 800 + Math.random() * 1500,
-  });
-}
-function ringEventPeakAt(theta, t) {
-  let h = 0;
-  for (let i = ringPeakEvents.length - 1; i >= 0; i--) {
-    const ev = ringPeakEvents[i];
-    const age = t - ev.born;
-    if (age > ev.duration) { ringPeakEvents.splice(i, 1); continue; }
-    // angular distance with 2π wraparound
-    let dTheta = theta - ev.theta;
-    if (dTheta >  Math.PI) dTheta -= Math.PI * 2;
-    if (dTheta < -Math.PI) dTheta += Math.PI * 2;
-    const envelope = Math.exp(-Math.pow(dTheta / ev.angularWidth, 2));
-    const lifeT = age / ev.duration;
-    const lifeEnv = lifeT < 0.15 ? lifeT / 0.15 : 1 - (lifeT - 0.15) / 0.85;
-    h += ev.height * envelope * Math.max(0, lifeEnv);
-  }
-  return h;
-}
-function drawRings(t, dt) {
-  if (lowOnset) spawnRingPeak();
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, viewW, viewH);
-
-  const tSec = t / 1000;
-  const cx = viewW / 2, cy = viewH / 2;
-  const outerR = Math.min(viewW, viewH) * 0.45;
-  const ringGap = (outerR - RING_INNER) / (RING_COUNT - 1);
-
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
-  ctx.lineWidth = 1;
-  ctx.lineJoin = "round";
-
-  for (let ring = 0; ring < RING_COUNT; ring++) {
-    const r0 = RING_INNER + ringGap * ring;
-    const ringPhase = ring * 0.43;
-    const depthFactor = 0.25 + 0.75 * (ring / (RING_COUNT - 1));
-
-    ctx.beginPath();
-    for (let s = 0; s <= RING_SAMPLES; s++) {
-      const theta = (s / RING_SAMPLES) * Math.PI * 2;
-
-      let wave = 0;
-      wave += Math.sin(theta * 3  + tSec * 0.27 + ringPhase * 0.7) * 15;
-      wave += Math.sin(theta * 5  + tSec * 0.41 + ringPhase * 1.2) * 10.5;
-      wave += Math.sin(theta * 11 + tSec * 0.69 + ringPhase * 0.4) * 6;
-      wave += Math.sin(theta * 19 + tSec * 1.07 + ringPhase * 1.5) * 3;
-
-      const bump = Math.max(0,
-        0.6 * Math.sin(theta * 2 + tSec * 0.31 + ringPhase * 0.2) +
-        0.4 * Math.sin(theta * 3 + tSec * 0.19 + ringPhase * 0.5)
-      );
-      const steadyPeak = Math.pow(bump, 5) * (45 + audioLevel * 180) * depthFactor;
-      const evPeak     = ringEventPeakAt(theta, t) * depthFactor;
-
-      const r = r0 + wave + steadyPeak + evPeak;
-      const x = cx + Math.cos(theta) * r;
-      const y = cy + Math.sin(theta) * r;
-      if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
   }
 }
 
@@ -1011,8 +940,10 @@ function drawSwarm(t, dt) {
 // ---- mode toggle ----
 // rings sits at index 2 (key "3") so it's separated from ridges (key "8"),
 // per the "don't put similar visualizers adjacent" rule.
-const MODES = { streaks: drawStreaks, static: drawStatic, invert: drawInvert, blocks: drawBlocks, stars: drawStars, grid: drawGrid, ridges: drawRidges, rings: drawRings, swarm: drawSwarm };
-const MODE_ORDER = ["streaks", "static", "rings", "invert", "blocks", "stars", "grid", "ridges", "swarm"];
+const MODES = { streaks: drawStreaks, flare: drawFlare, network: drawNetwork, chevron: drawChevron, stars: drawStars, swarm: drawSwarm };
+// keys 1-6 cover all modes. order matches index.html so the homepage and
+// live page share the same rotation vocabulary.
+const MODE_ORDER = ["streaks", "flare", "network", "chevron", "stars", "swarm"];
 let currentMode = MODE_ORDER[(Math.random() * MODE_ORDER.length) | 0];
 // kick-driven auto-cycle is the default; locked when the user picks a mode
 // via number keys, resumed by pressing 0.
@@ -1022,11 +953,11 @@ function setMode(name) {
   if (!(name in MODES) || name === currentMode) return;
   currentMode = name;
   ctx.clearRect(0, 0, viewW, viewH);
-  if (name === "static") initStatic();
-  else if (name === "invert") initInvert();
-  else if (name === "blocks") initBlocks();
+  if (name === "chevron") initChevron();
   else if (name === "stars") initStars();
   else if (name === "swarm") initSwarm();
+  else if (name === "network") initNetwork();
+  else if (name === "flare") initFlare();
 }
 
 // ---- transmission readout: track / tempo / elapsed + band meters + onset pulses ----
@@ -1129,6 +1060,10 @@ function frame(t) {
   }
 
   MODES[currentMode](t, dt);
+  // tickInputs drives the global grain layer (the only core.js feature
+  // active on live — telemetry was intentionally left off; the page is
+  // already dense). harmless if grain is at 0.
+  Newspeech.tickInputs(dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

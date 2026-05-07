@@ -512,10 +512,27 @@
 
   function gain(v) { return Math.min(1, v * _audioGain); }
 
-  function audioActive() { return _audioActive; }
-  function audioLevel()  { return _audioActive ? gain(_audioLevel) : 0; }
-  function bandLevel(b)  { return _audioActive ? gain(_bandLevel[b] || 0) : 0; }
-  function onset(b)      { return _audioActive ? !!_bandOnset[b] : false; }
+  // ---- external audio bridge (used by live.html so its Strudel-tapped
+  // analyser drives core.js telemetry widgets without core.js opening its
+  // own getUserMedia mic). when set, audioLevel/bandLevel/onset short-
+  // circuit to the externally-supplied values and ignore _audioActive.
+  // pass null to clear and revert to the internal mic source.
+  let _externalAudio = null;
+  function setExternalAudio(state) { _externalAudio = state; }
+
+  function audioActive() { return _externalAudio ? true : _audioActive; }
+  function audioLevel()  {
+    if (_externalAudio && _externalAudio.level != null) return Math.min(1, +_externalAudio.level || 0);
+    return _audioActive ? gain(_audioLevel) : 0;
+  }
+  function bandLevel(b)  {
+    if (_externalAudio && _externalAudio[b] != null) return Math.min(1, +_externalAudio[b] || 0);
+    return _audioActive ? gain(_bandLevel[b] || 0) : 0;
+  }
+  function onset(b)      {
+    if (_externalAudio && _externalAudio.onsets) return !!_externalAudio.onsets[b];
+    return _audioActive ? !!_bandOnset[b] : false;
+  }
 
   function updateAudioStatus() {
     const text = `[a] mic ${_audioActive ? "on" : "off"}`;
@@ -2375,6 +2392,25 @@
 
   function installTelemetry(opts) {
     _telemetryParams = (opts && opts.params) || {};
+    // optional `enabled` opt overrides the persisted set for THIS page only
+    // (not written back to localStorage). lets the homepage seed a random
+    // subset on each load without clobbering the user's curated selections
+    // on the visualizer pages.
+    if (opts && Array.isArray(opts.enabled)) {
+      _telemetryEnabled.clear();
+      for (const t of opts.enabled) {
+        if (TELEMETRY_TYPES.indexOf(t) >= 0) _telemetryEnabled.add(t);
+      }
+      // re-partition order so enabled widgets stack first.
+      _telemetryOrder.length = 0;
+      for (const t of opts.enabled) {
+        if (TELEMETRY_TYPES.indexOf(t) >= 0 && _telemetryOrder.indexOf(t) < 0) {
+          _telemetryOrder.push(t);
+        }
+      }
+      for (const t of TELEMETRY_TYPES) if (_telemetryOrder.indexOf(t) < 0) _telemetryOrder.push(t);
+      _telemetrySlots.length = 0;
+    }
     // pick/shuffle row lives in panel-globals; this call just registers the
     // page as opted-in so tickTelemetry actually renders.
     _refreshTelemetryCount();
@@ -2628,7 +2664,9 @@
 
   function intensity() {
     let base;
-    if (_audioActive) {
+    if (_externalAudio && _externalAudio.level != null) {
+      base = Math.min(1, +_externalAudio.level || 0);
+    } else if (_audioActive) {
       base = gain(_audioLevel);
     } else {
       const t = performance.now();
@@ -2933,7 +2971,7 @@
 
   window.Newspeech = {
     intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel,
-    enableAudio, disableAudio, audioActive, audioLevel, bandLevel, onset,
+    enableAudio, disableAudio, audioActive, audioLevel, bandLevel, onset, setExternalAudio,
     installMarkers, tickMarkers,
     installTelemetry, tickTelemetry,
     tap, setBpm, clearBpm, bpm, beat: beatCount, beatPhase, onBeat,
