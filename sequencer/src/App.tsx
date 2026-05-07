@@ -10,14 +10,16 @@ export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
 
   useEffect(() => {
-    return scheduler.onStep((stepIndex, when) => {
+    return scheduler.onStep((globalStep, when) => {
       const { tracks, rootNote, scale } = useSequencerStore.getState();
       const anySolo = tracks.some((t) => t.solo);
       for (const track of tracks) {
         if (track.mute) continue;
         if (anySolo && !track.solo) continue;
-        const step = track.steps[stepIndex];
+        const localStep = globalStep % track.length;
+        const step = track.steps[localStep];
         if (!step?.on) continue;
+        if (step.probability < 100 && Math.random() * 100 >= step.probability) continue;
         const v = step.velocity * track.volume;
         if (track.type === 'melodic') {
           const midi = quantize(rootNote, scale, step.pitch);
@@ -41,7 +43,7 @@ export function App() {
           <span className="sep"> / </span>sequence
         </span>
         <span className="aux">
-          phase 2 — 8 tracks · drum + melodic · scroll a melodic step to change pitch
+          phase 3 — shift-drag for velocity · alt-scroll for probability · scroll for pitch (melodic)
         </span>
       </header>
       <main className="flex flex-col items-center gap-10 px-[72px] pt-12 pb-20">

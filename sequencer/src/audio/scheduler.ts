@@ -17,17 +17,12 @@ class Scheduler {
   private currentStep = 0;
   private bpm = 120;
   private stepsPerBeat = 4;
-  private numSteps = 16;
   private callbacks: StepCallback[] = [];
   private playing = false;
   private scheduled: ScheduledStep[] = [];
 
   setBpm(bpm: number) {
     this.bpm = bpm;
-  }
-
-  setNumSteps(n: number) {
-    this.numSteps = n;
   }
 
   onStep(cb: StepCallback) {
@@ -82,7 +77,7 @@ class Scheduler {
       for (const cb of this.callbacks) cb(this.currentStep, this.nextStepTime);
       this.scheduled.push({ index: this.currentStep, when: this.nextStepTime });
       this.nextStepTime += this.stepDuration();
-      this.currentStep = (this.currentStep + 1) % this.numSteps;
+      this.currentStep += 1;
     }
     const cutoff = ctx.currentTime - HISTORY_S;
     while (this.scheduled.length && this.scheduled[0].when < cutoff) {
