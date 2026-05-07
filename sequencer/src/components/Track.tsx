@@ -15,8 +15,6 @@ function computeStepSize(length: number) {
 export function Track({ track }: { track: TrackData }) {
   const globalStep = useSequencerStore((s) => s.globalStep);
   const playing = useSequencerStore((s) => s.playing);
-  const rootNote = useSequencerStore((s) => s.rootNote);
-  const scale = useSequencerStore((s) => s.scale);
   const setTrackType = useSequencerStore((s) => s.setTrackType);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
@@ -87,13 +85,10 @@ export function Track({ track }: { track: TrackData }) {
             trackId={track.id}
             index={i}
             on={step.on}
-            pitch={step.pitch}
             velocity={step.velocity}
             probability={step.probability}
             isMelodic={track.type === 'melodic'}
             isCurrent={playing && localCurrent === i}
-            rootNote={rootNote}
-            scale={scale}
             size={stepSize}
           />
         ))}

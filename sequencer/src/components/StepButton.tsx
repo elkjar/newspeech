@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { useSequencerStore, type EditMode } from '../state/store';
-import { quantize, midiToName, type Scale } from '../audio/scale';
 
 function effectiveMode(
   e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
@@ -15,13 +14,10 @@ interface StepButtonProps {
   trackId: string;
   index: number;
   on: boolean;
-  pitch: number;
   velocity: number;
   probability: number;
   isMelodic: boolean;
   isCurrent: boolean;
-  rootNote: number;
-  scale: Scale;
   size: number;
 }
 
@@ -38,13 +34,10 @@ export function StepButton({
   trackId,
   index,
   on,
-  pitch,
   velocity,
   probability,
   isMelodic,
   isCurrent,
-  rootNote,
-  scale,
   size,
 }: StepButtonProps) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -157,8 +150,6 @@ export function StepButton({
     }
   };
 
-  const noteLabel = isMelodic && on ? midiToName(quantize(rootNote, scale, pitch)) : '';
-  const showLabel = on && size >= 24;
   const fillOpacity = 0.4 + 0.6 * (probability / 100);
   const fillHeightPct = Math.max(12, velocity * 100);
 
@@ -185,14 +176,6 @@ export function StepButton({
           className="absolute left-0 right-0 bottom-0 bg-white pointer-events-none"
           style={{ height: `${fillHeightPct}%`, opacity: fillOpacity }}
         />
-      )}
-      {showLabel && noteLabel && (
-        <span
-          className="relative text-[9px] leading-none pb-1 tracking-tight tabular-nums select-none pointer-events-none"
-          style={{ mixBlendMode: 'difference', color: '#fff' }}
-        >
-          {noteLabel}
-        </span>
       )}
     </button>
   );

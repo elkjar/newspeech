@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Transport } from './components/Transport';
 import { TrackGrid } from './components/TrackGrid';
+import { StepInspector } from './components/StepInspector';
 import { useSequencerStore, type EditMode } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
@@ -72,8 +73,9 @@ export function App() {
         </span>
       </header>
       <ModeSwitcher />
-      <main className="flex flex-col items-center gap-10 px-[72px] pt-12 pb-20">
+      <main className="flex flex-col items-center gap-8 px-[72px] pt-12 pb-20">
         <Transport />
+        <StepInspector />
         <TrackGrid />
       </main>
     </div>
