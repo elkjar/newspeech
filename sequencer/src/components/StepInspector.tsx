@@ -1,7 +1,24 @@
-import { useSequencerStore } from '../state/store';
+import { useSequencerStore, type Track, type Step } from '../state/store';
 import { midiToName, quantize } from '../audio/scale';
+import { isMelodicVoice, voiceLabel } from '../audio/voices';
 
-const PANEL = 'border border-white/20 px-4 py-2 flex items-center gap-4 w-[320px]';
+const PANEL = 'border border-white/15 px-4 py-2 flex items-center gap-4 w-[320px]';
+
+function displayedStep(track: Track, i: number): Step | undefined {
+  const len = track.length;
+  const self = track.steps[i];
+  if (len <= 0) return self;
+  let originator: Step | undefined = self;
+  let cur = i;
+  while (cur > 0) {
+    const prev = cur - 1;
+    const prevStep = track.steps[prev];
+    if (!prevStep?.tieToNext) break;
+    cur = prev;
+    if (prevStep.on) originator = prevStep;
+  }
+  return originator;
+}
 
 export function StepInspector() {
   const selectedStep = useSequencerStore((s) => s.selectedStep);
@@ -13,7 +30,7 @@ export function StepInspector() {
     ? tracks.find((t) => t.id === selectedStep.trackId) ?? null
     : null;
   const step =
-    track && selectedStep ? track.steps[selectedStep.index] ?? null : null;
+    track && selectedStep ? displayedStep(track, selectedStep.index) ?? null : null;
 
   let big = '—';
   let velStr = '—';
@@ -29,10 +46,9 @@ export function StepInspector() {
   let gateActive = false;
 
   if (track && step) {
-    big =
-      track.type === 'melodic'
-        ? midiToName(quantize(rootNote, scale, step.pitch))
-        : track.name.toUpperCase();
+    big = isMelodicVoice(track.voice)
+      ? midiToName(quantize(rootNote, scale, step.pitch))
+      : voiceLabel(track.voice).toUpperCase();
     velStr = step.velocity.toFixed(2);
     probStr = `${step.probability}%`;
     ratchetStr = `${step.ratchet}`;

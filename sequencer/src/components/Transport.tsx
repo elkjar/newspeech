@@ -21,7 +21,7 @@ export function PlayButton() {
   return (
     <button
       onClick={togglePlay}
-      className="px-6 py-3 border border-white/30 hover:border-white uppercase tracking-widest text-xs transition-colors"
+      className="px-6 py-3 border border-white/15 hover:border-white uppercase tracking-widest text-xs transition-colors"
     >
       {playing ? '■ stop' : '▶ play'}
     </button>
@@ -48,7 +48,7 @@ export function TransportControls() {
           max={240}
           value={bpm}
           onChange={(e) => setBpm(Number(e.target.value))}
-          className="w-20 bg-transparent border border-white/30 px-2 py-1 tabular-nums focus:outline-none focus:border-white"
+          className="w-20 bg-transparent border border-white/15 px-2 py-1 tabular-nums focus:outline-none focus:border-white"
         />
       </label>
       <label className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
@@ -59,7 +59,7 @@ export function TransportControls() {
             const idx = NOTE_NAMES.indexOf(e.target.value);
             if (idx >= 0) setRootNote(60 + idx);
           }}
-          className="bg-transparent border border-white/30 px-2 py-1 focus:outline-none focus:border-white text-white"
+          className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
         >
           {NOTE_NAMES.map((n) => (
             <option key={n} value={n} className="bg-[#050505]">
@@ -73,7 +73,7 @@ export function TransportControls() {
         <select
           value={scale}
           onChange={(e) => setScale(e.target.value as typeof scale)}
-          className="bg-transparent border border-white/30 px-2 py-1 focus:outline-none focus:border-white text-white"
+          className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
         >
           {SCALES.map((s) => (
             <option key={s} value={s} className="bg-[#050505]">

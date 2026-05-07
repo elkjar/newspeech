@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 
-export type TrackType = 'drum' | 'melodic';
 export type EditMode = 'note' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
 export interface StepSelection {
@@ -28,8 +27,6 @@ export interface EuclideanParams {
 
 export interface Track {
   id: string;
-  name: string;
-  type: TrackType;
   voice: string;
   mute: boolean;
   solo: boolean;
@@ -67,7 +64,7 @@ interface SequencerState {
   setStepMicroTiming: (trackId: string, index: number, microTiming: number) => void;
   setStepGate: (trackId: string, index: number, gate: number) => void;
   setStepTie: (trackId: string, index: number, tied: boolean) => void;
-  setTrackType: (trackId: string, type: TrackType) => void;
+  setTrackVoice: (trackId: string, voice: string) => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
   setTrackLength: (trackId: string, length: number) => void;
@@ -110,111 +107,33 @@ function patternedSteps(
   }));
 }
 
+function defaultTrack(id: string, voice: string, steps: Step[]): Track {
+  return {
+    id,
+    voice,
+    mute: false,
+    solo: false,
+    length: DEFAULT_LENGTH,
+    lastPitch: 0,
+    viewPage: 0,
+    euclidean: { hits: 0, rotation: 0 },
+    steps,
+  };
+}
+
 const initialTracks: Track[] = [
-  {
-    id: 't1',
-    name: 'kick',
-    type: 'drum',
-    voice: 'kick',
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    euclidean: { hits: 0, rotation: 0 },
-    steps: patternedSteps([0, 4, 8, 12], {}, 1),
-  },
-  {
-    id: 't2',
-    name: 'snare',
-    type: 'drum',
-    voice: 'snare',
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    euclidean: { hits: 0, rotation: 0 },
-    steps: patternedSteps([4, 12], {}, 0.9),
-  },
-  {
-    id: 't3',
-    name: 'hat-c',
-    type: 'drum',
-    voice: 'hat-c',
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    euclidean: { hits: 0, rotation: 0 },
-    steps: patternedSteps([0, 2, 4, 8, 10, 12], {}, 0.7),
-  },
-  {
-    id: 't4',
-    name: 'hat-o',
-    type: 'drum',
-    voice: 'hat-o',
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    euclidean: { hits: 0, rotation: 0 },
-    steps: patternedSteps([6, 14], {}, 0.6),
-  },
-  {
-    id: 't5',
-    name: 'lead',
-    type: 'melodic',
-    voice: 'synth',
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    euclidean: { hits: 0, rotation: 0 },
-    steps: patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }, 0.8),
-  },
-  {
-    id: 't6',
-    name: 'lead 2',
-    type: 'melodic',
-    voice: 'synth',
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    euclidean: { hits: 0, rotation: 0 },
-    steps: emptySteps(),
-  },
-  {
-    id: 't7',
-    name: 'bass',
-    type: 'melodic',
-    voice: 'synth',
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    euclidean: { hits: 0, rotation: 0 },
-    steps: emptySteps(),
-  },
-  {
-    id: 't8',
-    name: 'pad',
-    type: 'melodic',
-    voice: 'synth',
-    mute: false,
-    solo: false,
-    length: DEFAULT_LENGTH,
-    lastPitch: 0,
-    viewPage: 0,
-    euclidean: { hits: 0, rotation: 0 },
-    steps: emptySteps(),
-  },
+  defaultTrack('t1', 'kick', patternedSteps([0, 4, 8, 12], {}, 1)),
+  defaultTrack('t2', 'snare', patternedSteps([4, 12], {}, 0.9)),
+  defaultTrack('t3', 'hat-c', patternedSteps([0, 2, 4, 8, 10, 12], {}, 0.7)),
+  defaultTrack('t4', 'hat-o', patternedSteps([6, 14], {}, 0.6)),
+  defaultTrack(
+    't5',
+    'synth',
+    patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }, 0.8)
+  ),
+  defaultTrack('t6', 'synth', emptySteps()),
+  defaultTrack('t7', 'synth', emptySteps()),
+  defaultTrack('t8', 'synth', emptySteps()),
 ];
 
 export const useSequencerStore = create<SequencerState>((set) => ({
@@ -311,15 +230,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         return { ...t, steps };
       }),
     })),
-  setTrackType: (trackId, type) =>
+  setTrackVoice: (trackId, voice) =>
     set((state) => ({
-      tracks: state.tracks.map((t) => {
-        if (t.id !== trackId) return t;
-        let voice = t.voice;
-        if (type === 'melodic') voice = 'synth';
-        else if (type === 'drum' && t.voice === 'synth') voice = 'kick';
-        return { ...t, type, voice };
-      }),
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, voice } : t)),
     })),
   setTrackMute: (trackId, mute) =>
     set((state) => ({

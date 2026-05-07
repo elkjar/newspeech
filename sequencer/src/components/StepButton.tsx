@@ -26,6 +26,7 @@ interface StepButtonProps {
   gate: number;
   isMelodic: boolean;
   isCurrent: boolean;
+  isTiedChain: boolean;
   size: number;
 }
 
@@ -61,6 +62,7 @@ export function StepButton({
   gate,
   isMelodic,
   isCurrent,
+  isTiedChain,
   size,
 }: StepButtonProps) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -255,16 +257,20 @@ export function StepButton({
   let fillOpacity = 0;
   let label = '';
   if (on) {
-    if (editMode === 'velocity') fillOpacity = Math.max(0.15, velocity);
-    else if (editMode === 'chance') fillOpacity = Math.max(0.15, probability / 100);
-    else fillOpacity = 1;
+    if (isTiedChain) {
+      fillOpacity = (editMode === 'velocity' ? Math.max(0.15, velocity) : 1) * 0.5;
+    } else {
+      if (editMode === 'velocity') fillOpacity = Math.max(0.15, velocity);
+      else if (editMode === 'chance') fillOpacity = Math.max(0.15, probability / 100);
+      else fillOpacity = 1;
 
-    if (editMode === 'ratchet') label = String(ratchet);
-    else if (editMode === 'timing') {
-      const pct = Math.round(microTiming * 100);
-      label = pct === 0 ? '0' : pct > 0 ? `+${pct}%` : `${pct}%`;
-    } else if (editMode === 'gate') {
-      label = `${Math.round(gate * 100)}%`;
+      if (editMode === 'ratchet') label = String(ratchet);
+      else if (editMode === 'timing') {
+        const pct = Math.round(microTiming * 100);
+        label = pct === 0 ? '0' : pct > 0 ? `+${pct}%` : `${pct}%`;
+      } else if (editMode === 'gate') {
+        label = `${Math.round(gate * 100)}%`;
+      }
     }
   }
 
