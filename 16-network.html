@@ -70,18 +70,18 @@
 
 <script src="core.js"></script>
 <script>
-const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, onset, audioActive, drawSoftDot } = Newspeech;
+const { intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel, installTelemetry, tickTelemetry, installMarkers, tickMarkers, onset, audioActive, drawSoftDot } = Newspeech;
 installInputs({ moveSensitivity: 0.003, decay: 1.0, intensityMouseWeight: 0.3 });
 
 const params = {
   nodeCount: 120,
-  linkRadius: 180,
-  driftSpeed: 1,
-  linkOpacity: 0.45,
-  glowSize: 2.5,
-  audioPulse: 0.6,
-  spread: 0.42,
-  stretch: 1,
+  linkRadius: 100,
+  driftSpeed: 0.65,
+  linkOpacity: 0.80,
+  glowSize: 3.4,
+  audioPulse: 0.29,
+  spread: 0.75,
+  stretch: 1.60,
 };
 
 const canvas = document.getElementById("bg");
@@ -304,6 +304,7 @@ function step(dt) {
     ctx.fill();
   }
 
+  tickMarkers(dt);
   tickTelemetry(dt);
 }
 
@@ -322,9 +323,7 @@ requestAnimationFrame(frame);
 
 window.addEventListener("click", (e) => {
   if (e.target.closest("#panel")) return;
-  // 3D cloud has no fixed screen→body mapping under rotation, so clicks
-  // pulse the whole cloud rather than spawning at a 2D location.
-  for (const n of nodes) n.pulse = 1.0;
+  for (const n of nodes) if (Math.random() < 0.2) n.pulse = 1.0;
   bumpActivity();
 });
 
@@ -332,6 +331,7 @@ window.onParamChange = (k) => {
   if (k === "nodeCount") adjustNodeCount();
 };
 
+installMarkers({ params, connectors: false });
 installTelemetry({ params });
 installPanel(params);
 </script>

@@ -159,6 +159,20 @@
       z-index: 0;
       opacity: var(--ns-grid-opacity, 0);
     }
+    /* film-grain layer sitting above #bg, below the HUD overlay. screen-
+       blends animated noise tiles over whatever the visualizer rendered.
+       redrawn every tickInputs (tile cycles ~12fps + random offset per
+       frame). opacity is a CSS var so the slider doesn't poke the canvas;
+       no filter applied — grain is monochrome and we want it untouched by
+       the grayscale/contrast adjustments to avoid breaking mix-blend-mode. */
+    canvas#bg-grain {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      display: block;
+      z-index: 2;
+      mix-blend-mode: screen;
+      opacity: var(--ns-grain-opacity, 0);
+    }
     canvas#bg { z-index: 1; }
     #panel .panel-globals {
       margin-top: 12px;
@@ -190,7 +204,9 @@
       grid-template-columns: 1fr auto;
       align-items: baseline;
       gap: 2px 10px;
+      margin-bottom: 10px;
     }
+    #panel .panel-row:last-child { margin-bottom: 0; }
     #panel .panel-row .name { opacity: 0.75; }
     #panel .panel-row .val {
       opacity: 0.5;
@@ -1181,6 +1197,7 @@
   let _markerGetSource = null;
   let _markerGetDims = null;
   let _markerGetEdgeData = null;
+  let _markerConnectors = true;
 
   const _LABEL_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
   function _randLabel() {
@@ -1342,25 +1359,27 @@
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
 
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
-    ctx.lineWidth = Math.max(1, dpr * 0.75);
-    ctx.beginPath();
-    for (let i = 0; i < _markers.length; i++) {
-      const a = _markers[i];
-      let bestJ = -1, bestD = Infinity;
-      for (let j = 0; j < _markers.length; j++) {
-        if (j === i) continue;
-        const dx = _markers[j].x - a.x;
-        const dy = _markers[j].y - a.y;
-        const d = dx * dx + dy * dy;
-        if (d < bestD) { bestD = d; bestJ = j; }
+    if (_markerConnectors) {
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+      ctx.lineWidth = Math.max(1, dpr * 0.75);
+      ctx.beginPath();
+      for (let i = 0; i < _markers.length; i++) {
+        const a = _markers[i];
+        let bestJ = -1, bestD = Infinity;
+        for (let j = 0; j < _markers.length; j++) {
+          if (j === i) continue;
+          const dx = _markers[j].x - a.x;
+          const dy = _markers[j].y - a.y;
+          const d = dx * dx + dy * dy;
+          if (d < bestD) { bestD = d; bestJ = j; }
+        }
+        if (bestJ >= 0 && bestD <= maxLineDist2) {
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(_markers[bestJ].x, _markers[bestJ].y);
+        }
       }
-      if (bestJ >= 0 && bestD <= maxLineDist2) {
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(_markers[bestJ].x, _markers[bestJ].y);
-      }
+      ctx.stroke();
     }
-    ctx.stroke();
 
     for (const m of _markers) {
       const tIn = Math.min(1, m.age / m.fadeIn);
@@ -1387,6 +1406,7 @@
     // can hand its buffer over to skip the duplicate readback. should return
     // { mag: Float32Array, w: int, h: int } or null when not yet computed.
     _markerGetEdgeData = opts.getEdgeData || null;
+    _markerConnectors = opts.connectors !== false;
     _markerParams = opts.params || {};
     // marker count + telemetry pick/shuffle now live in panel-globals — no
     // per-page slider injection. installMarkers is still required so tickMarkers
@@ -2325,6 +2345,103 @@
     if (el) el.textContent = _globalHaze.toFixed(2);
   }
 
+  // ---- film grain (global, applied via #bg-grain canvas + screen blend) ----
+  const GRAIN_KEY = "newspeech.grain";
+  let _globalGrain = 0.5;
+  let _grainCanvas = null;
+  let _grainCtx = null;
+  let _noiseTiles = [];
+  function loadGrain() {
+    try {
+      const raw = localStorage.getItem(GRAIN_KEY);
+      if (raw == null) return;
+      const v = parseFloat(raw);
+      if (isFinite(v)) _globalGrain = Math.max(0, Math.min(1, v));
+    } catch (_) {}
+  }
+  function setGrain(v) {
+    _globalGrain = Math.max(0, Math.min(1, +v || 0));
+    try { localStorage.setItem(GRAIN_KEY, String(_globalGrain)); } catch (_) {}
+    applyGrainOpacityVar();
+    refreshGrainUI();
+  }
+  function grainAmount() { return _globalGrain; }
+  function refreshGrainUI() {
+    const panel = document.getElementById("panel");
+    if (!panel) return;
+    const row = panel.querySelector(".panel-grain");
+    if (!row) return;
+    const input = row.querySelector("input");
+    if (input && parseFloat(input.value) !== _globalGrain) input.value = _globalGrain;
+    const el = row.querySelector(".val");
+    if (el) el.textContent = _globalGrain.toFixed(2);
+  }
+  // grain slider 0..1 → effective screen-blend strength 0..0.22 (the same
+  // coefficient the original chevron grain used; keeps slider semantics
+  // intuitive while preserving the look that earned the port.)
+  function applyGrainOpacityVar() {
+    const a = _globalGrain * 0.22;
+    document.documentElement.style.setProperty("--ns-grain-opacity", a.toFixed(3));
+  }
+  function _buildNoiseTiles() {
+    if (_noiseTiles.length) return;
+    const tileSize = 256;
+    for (let n = 0; n < 6; n++) {
+      const off = document.createElement("canvas");
+      off.width = tileSize; off.height = tileSize;
+      const octx = off.getContext("2d");
+      const img = octx.createImageData(tileSize, tileSize);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const fine = Math.random();
+        const coarse = (Math.random() + Math.random() + Math.random()) / 3;
+        const v = (fine * 0.7 + coarse * 0.3) * 200;
+        d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 255;
+      }
+      octx.putImageData(img, 0, 0);
+      _noiseTiles.push(off);
+    }
+  }
+  function _ensureGrainCanvas() {
+    if (!document.body) return;
+    if (!_grainCanvas) {
+      _grainCanvas = document.createElement("canvas");
+      _grainCanvas.id = "bg-grain";
+      document.body.appendChild(_grainCanvas);
+      _grainCtx = _grainCanvas.getContext("2d");
+    }
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const cssW = window.innerWidth;
+    const cssH = window.innerHeight;
+    const w = Math.max(2, Math.floor(cssW * dpr));
+    const h = Math.max(2, Math.floor(cssH * dpr));
+    if (_grainCanvas.width !== w || _grainCanvas.height !== h) {
+      _grainCanvas.width = w;
+      _grainCanvas.height = h;
+      _grainCanvas.style.width = cssW + "px";
+      _grainCanvas.style.height = cssH + "px";
+    }
+  }
+  function _tickGrain() {
+    if (_globalGrain <= 0) return;
+    if (!_grainCtx || !_noiseTiles.length) return;
+    const w = _grainCanvas.width, h = _grainCanvas.height;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const idx = (performance.now() / 80 | 0) % _noiseTiles.length;
+    const tile = _noiseTiles[idx];
+    const scale = 1.5 * dpr;
+    const tw = tile.width * scale;
+    const th = tile.height * scale;
+    const offX = -((Math.random() * tw) | 0);
+    const offY = -((Math.random() * th) | 0);
+    _grainCtx.clearRect(0, 0, w, h);
+    for (let y = offY; y < h; y += th) {
+      for (let x = offX; x < w; x += tw) {
+        _grainCtx.drawImage(tile, x, y, tw, th);
+      }
+    }
+  }
+
   const DATA_POINTS_KEY = "newspeech.dataPoints";
   let _globalDataPoints = 14;
   function loadDataPoints() {
@@ -2473,6 +2590,7 @@
       _hudCtx.clearRect(0, 0, _hudCanvas.width, _hudCanvas.height);
       _hudCtx.restore();
     }
+    _tickGrain();
   }
 
   function bumpActivity(target) {
@@ -2582,6 +2700,18 @@
     hazeIn.addEventListener("input", () => setHaze(parseFloat(hazeIn.value)));
     wrap.appendChild(hazeRow);
 
+    // global film grain — drives the bg-grain canvas's screen-blend strength
+    // across every visualizer. ported up from 18-chevron's local grain control.
+    const grainRow = document.createElement("div");
+    grainRow.className = "panel-row panel-grain";
+    grainRow.innerHTML =
+      '<span class="name">grain</span><span class="val"></span>' +
+      '<input type="range" min="0" max="1" step="0.01" data-global="1">';
+    const grainIn = grainRow.querySelector("input");
+    grainIn.value = _globalGrain;
+    grainIn.addEventListener("input", () => setGrain(parseFloat(grainIn.value)));
+    wrap.appendChild(grainRow);
+
     // global data points — drives the marker count for any page that
     // opted in via installMarkers. moves the slider out of per-page panels
     // so the count is shared across every visualizer.
@@ -2619,6 +2749,7 @@
 
     panel.appendChild(wrap);
     refreshHazeUI();
+    refreshGrainUI();
     refreshDataPointsUI();
     _refreshTelemetryCount();
   }
@@ -2681,6 +2812,7 @@
   loadContrast();
   loadGridState();
   loadHaze();
+  loadGrain();
   loadDataPoints();
   _loadTelemetry();
 
@@ -2692,12 +2824,15 @@
     buildAudioPanel();
     rebuildCanvasFilter();
     applyGridOpacityVar();
+    applyGrainOpacityVar();
     _ensureGridCanvas();
+    _buildNoiseTiles();
+    _ensureGrainCanvas();
   }
-  // bg-grid tracks viewport size — same window resize event each visualizer
-  // already listens to, so by the time this fires the page has begun its
-  // own resize handler. cheap when nothing changed (size compare).
-  window.addEventListener("resize", () => _ensureGridCanvas());
+  // bg-grid + bg-grain track viewport size — same window resize event each
+  // visualizer already listens to, so by the time this fires the page has
+  // begun its own resize handler. cheap when nothing changed (size compare).
+  window.addEventListener("resize", () => { _ensureGridCanvas(); _ensureGrainCanvas(); });
   if (document.body) _coreInit();
   else document.addEventListener("DOMContentLoaded", _coreInit);
 
@@ -2708,6 +2843,7 @@
     installTelemetry, tickTelemetry,
     tap, setBpm, clearBpm, bpm, beat: beatCount, beatPhase, onBeat,
     hazeAlongLine, drawSoftDot, softDotSprite, hazeAmount, setHaze,
+    grainAmount, setGrain,
     dataPointsAmount, setDataPoints,
   };
 })();

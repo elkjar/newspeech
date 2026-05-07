@@ -55,10 +55,6 @@
     <input type="range" min="0" max="1" step="0.01" data-k="haze">
   </label>
   <label>
-    <span class="name">grain</span><span class="val"></span>
-    <input type="range" min="0" max="1" step="0.01" data-k="grain">
-  </label>
-  <label>
     <span class="name">sparks</span><span class="val"></span>
     <input type="range" min="0" max="1" step="0.01" data-k="sparks">
   </label>
@@ -84,7 +80,6 @@ const params = {
   angle: 35,
   speed: 0.55,
   haze: 0.65,
-  grain: 0.6,
   sparks: 0.55,
   audioBoost: 1.0,
 };
@@ -93,7 +88,6 @@ const canvas = document.getElementById("bg");
 const ctx = canvas.getContext("2d");
 
 let viewW = 0, viewH = 0, dpr = 1, cw = 0, ch = 0;
-let noiseTiles = [];
 let sparkSprite = null;
 
 function resize() {
@@ -108,7 +102,6 @@ function resize() {
   canvas.style.height = viewH + "px";
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  buildNoiseTiles();
   buildSparkSprite();
 }
 window.addEventListener("resize", resize);
@@ -131,26 +124,6 @@ function buildSparkSprite() {
   octx.fillStyle = grad;
   octx.fillRect(0, 0, size, size);
   sparkSprite = off;
-}
-
-function buildNoiseTiles() {
-  noiseTiles = [];
-  const tileSize = 256;
-  for (let n = 0; n < 6; n++) {
-    const off = document.createElement("canvas");
-    off.width = tileSize; off.height = tileSize;
-    const octx = off.getContext("2d");
-    const img = octx.createImageData(tileSize, tileSize);
-    const d = img.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const fine = Math.random();
-      const coarse = (Math.random() + Math.random() + Math.random()) / 3;
-      const v = (fine * 0.7 + coarse * 0.3) * 200;
-      d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 255;
-    }
-    octx.putImageData(img, 0, 0);
-    noiseTiles.push(off);
-  }
 }
 
 function smoothstep(e0, e1, x) {
@@ -435,26 +408,6 @@ function drawSparks() {
   ctx.restore();
 }
 
-function drawNoise() {
-  if (params.grain <= 0 || !noiseTiles.length) return;
-  const idx = (performance.now() / 80 | 0) % noiseTiles.length;
-  const tile = noiseTiles[idx];
-  const scale = 1.5 * dpr;
-  const tw = tile.width * scale;
-  const th = tile.height * scale;
-  const offX = -((Math.random() * tw) | 0);
-  const offY = -((Math.random() * th) | 0);
-  ctx.save();
-  ctx.globalAlpha = params.grain * 0.22;
-  ctx.globalCompositeOperation = "screen";
-  for (let y = offY; y < ch; y += th) {
-    for (let x = offX; x < cw; x += tw) {
-      ctx.drawImage(tile, x, y, tw, th);
-    }
-  }
-  ctx.restore();
-}
-
 let lastT = performance.now();
 function frame(t) {
   const dt = Math.min(0.05, (t - lastT) / 1000);
@@ -475,11 +428,9 @@ function frame(t) {
   tickSparks(dt);
   drawSparks();
 
-  // markers run on the canvas state right here — before grain — so the sobel
-  // pass anchors to the chevron + spark structure rather than the noise field.
+  // markers run on the canvas state here — sobel pass anchors to the chevron
+  // + spark structure on bg, untouched by the global grain layer above it.
   tickMarkers(dt);
-
-  drawNoise();
 
   // telemetry sits on top of everything, on the HUD overlay (its own canvas).
   tickTelemetry(dt);
