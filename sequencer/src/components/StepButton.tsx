@@ -24,6 +24,7 @@ interface StepButtonProps {
   isMelodic: boolean;
   isCurrent: boolean;
   size: number;
+  disabled?: boolean;
 }
 
 const PITCH_COOLDOWN_MS = 80;
@@ -44,6 +45,7 @@ export function StepButton({
   isMelodic,
   isCurrent,
   size,
+  disabled = false,
 }: StepButtonProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const didDragRef = useRef(false);
@@ -54,7 +56,7 @@ export function StepButton({
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || disabled) return;
     let lastPitchTime = 0;
     const handleWheel = (e: WheelEvent) => {
       const store = useSequencerStore.getState();
@@ -92,9 +94,10 @@ export function StepButton({
     };
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
-  }, [trackId, index, isMelodic]);
+  }, [trackId, index, isMelodic, disabled]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (disabled) return;
     didDragRef.current = false;
     const store = useSequencerStore.getState();
     const t = store.tracks.find((tr) => tr.id === trackId);
@@ -139,6 +142,7 @@ export function StepButton({
   };
 
   const handleClick = (e: React.MouseEvent) => {
+    if (disabled) return;
     if (didDragRef.current) {
       didDragRef.current = false;
       return;
@@ -159,7 +163,7 @@ export function StepButton({
     }
   };
 
-  const handleMouseEnter = HOVER_CAPABLE
+  const handleMouseEnter = HOVER_CAPABLE && !disabled
     ? () => useSequencerStore.getState().setSelectedStep({ trackId, index })
     : undefined;
 
@@ -189,8 +193,8 @@ export function StepButton({
         boxShadow: shadows.length ? shadows.join(', ') : undefined,
       }}
     >
-      <span className="absolute inset-0 bg-white/5" />
-      {on && (
+      <span className={`absolute inset-0 ${disabled ? 'bg-white/[0.02]' : 'bg-white/5'}`} />
+      {!disabled && on && (
         <span
           className="absolute left-0 right-0 bottom-0 bg-white pointer-events-none"
           style={{ height: `${fillHeightPct}%`, opacity: fillOpacity }}
