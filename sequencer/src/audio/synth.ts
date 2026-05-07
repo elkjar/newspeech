@@ -93,18 +93,22 @@ export function synthMelodic(
   midi: number,
   velocity: number,
   out: AudioNode,
-  gate = 1
+  gate = 1,
+  stepDuration = 0.125
 ) {
   const ctx = getAudioContext();
   const freq = 440 * Math.pow(2, (midi - 69) / 12);
   const osc = ctx.createOscillator();
   osc.type = 'triangle';
   osc.frequency.setValueAtTime(freq, when);
+  const noteDuration = Math.max(0.05, gate * stepDuration);
+  const release = Math.min(0.05, noteDuration * 0.3);
+  const peak = velocity * 0.3;
   const gain = ctx.createGain();
-  const decay = 0.4 * gate;
-  gain.gain.setValueAtTime(velocity * 0.3, when);
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+  gain.gain.setValueAtTime(peak, when);
+  gain.gain.setValueAtTime(peak, when + noteDuration - release);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + noteDuration);
   osc.connect(gain).connect(out);
   osc.start(when);
-  osc.stop(when + decay + 0.05);
+  osc.stop(when + noteDuration + 0.02);
 }
