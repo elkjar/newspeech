@@ -1,7 +1,7 @@
 import { useSequencerStore } from '../state/store';
 import { midiToName, quantize } from '../audio/scale';
 
-const PANEL = 'border border-white/20 px-6 py-4 min-h-[72px] min-w-[420px] flex items-baseline justify-center gap-10';
+const PANEL = 'border border-white/20 px-4 py-2 flex items-center gap-4';
 
 export function StepInspector() {
   const selectedStep = useSequencerStore((s) => s.selectedStep);
@@ -11,8 +11,8 @@ export function StepInspector() {
 
   if (!selectedStep) {
     return (
-      <div className={`${PANEL} text-[11px] uppercase tracking-widest text-white/40`}>
-        click a step to inspect
+      <div className={`${PANEL} text-[10px] uppercase tracking-widest text-white/40`}>
+        click a step
       </div>
     );
   }
@@ -31,16 +31,18 @@ export function StepInspector() {
 
   return (
     <div className={`${PANEL} ${dim ? 'opacity-50' : ''}`}>
-      <span className="text-3xl tracking-wider text-white">{big}</span>
-      <Field label="v" value={step.velocity.toFixed(2)} />
-      <Field label="c" value={`${step.probability}%`} />
+      <span className="text-2xl tracking-wider text-white">{big}</span>
+      <div className="flex flex-col gap-0.5 text-[10px] uppercase tracking-widest leading-tight">
+        <Field label="v" value={step.velocity.toFixed(2)} />
+        <Field label="c" value={`${step.probability}%`} />
+      </div>
     </div>
   );
 }
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <span className="text-[11px] uppercase tracking-widest">
+    <span>
       <span className="text-white/40">{label}:</span>
       <span className="text-white tabular-nums">{value}</span>
     </span>
