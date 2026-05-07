@@ -12,6 +12,7 @@ export function Track({ track }: { track: TrackData }) {
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
   const setTrackLength = useSequencerStore((s) => s.setTrackLength);
   const setTrackPage = useSequencerStore((s) => s.setTrackPage);
+  const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
 
   const pillBase =
     'w-6 h-6 text-[10px] uppercase border transition-colors flex items-center justify-center';
@@ -25,7 +26,7 @@ export function Track({ track }: { track: TrackData }) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2 w-[220px]">
+      <div className="flex items-center gap-2 w-[360px]">
         <span className="w-14 text-xs uppercase tracking-widest opacity-80 truncate">
           {track.name}
         </span>
@@ -58,8 +59,36 @@ export function Track({ track }: { track: TrackData }) {
           max={64}
           value={track.length}
           onChange={(e) => setTrackLength(track.id, Number(e.target.value))}
-          className="w-12 bg-transparent border border-white/30 text-[10px] tabular-nums px-1 py-0.5 focus:outline-none focus:border-white"
+          className="w-10 bg-transparent border border-white/30 text-[10px] tabular-nums px-1 py-0.5 focus:outline-none focus:border-white"
           title="track length"
+        />
+        <span className="text-[9px] uppercase tracking-widest text-white/40 ml-1">eu</span>
+        <input
+          type="number"
+          min={1}
+          max={64}
+          value={track.euclidean.steps}
+          onChange={(e) => setTrackEuclidean(track.id, { steps: Number(e.target.value) })}
+          className="w-10 bg-transparent border border-white/30 text-[10px] tabular-nums px-1 py-0.5 focus:outline-none focus:border-white"
+          title="euclidean steps"
+        />
+        <input
+          type="number"
+          min={0}
+          max={track.euclidean.steps}
+          value={track.euclidean.hits}
+          onChange={(e) => setTrackEuclidean(track.id, { hits: Number(e.target.value) })}
+          className="w-10 bg-transparent border border-white/30 text-[10px] tabular-nums px-1 py-0.5 focus:outline-none focus:border-white"
+          title="euclidean hits"
+        />
+        <input
+          type="number"
+          min={0}
+          max={Math.max(0, track.euclidean.steps - 1)}
+          value={track.euclidean.rotation}
+          onChange={(e) => setTrackEuclidean(track.id, { rotation: Number(e.target.value) })}
+          className="w-10 bg-transparent border border-white/30 text-[10px] tabular-nums px-1 py-0.5 focus:outline-none focus:border-white"
+          title="euclidean rotation"
         />
       </div>
 

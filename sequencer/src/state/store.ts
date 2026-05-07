@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
+import { euclidean } from '../audio/euclidean';
 
 export type TrackType = 'drum' | 'melodic';
 export type EditMode = 'note' | 'velocity' | 'chance';
@@ -16,6 +17,12 @@ export interface Step {
   probability: number;
 }
 
+export interface EuclideanParams {
+  steps: number;
+  hits: number;
+  rotation: number;
+}
+
 export interface Track {
   id: string;
   name: string;
@@ -26,6 +33,7 @@ export interface Track {
   length: number;
   lastPitch: number;
   viewPage: number;
+  euclidean: EuclideanParams;
   steps: Step[];
 }
 
@@ -55,6 +63,7 @@ interface SequencerState {
   setTrackSolo: (trackId: string, solo: boolean) => void;
   setTrackLength: (trackId: string, length: number) => void;
   setTrackPage: (trackId: string, page: number) => void;
+  setTrackEuclidean: (trackId: string, partial: Partial<EuclideanParams>) => void;
   setGlobalStep: (step: number) => void;
   setPlaying: (playing: boolean) => void;
 }
@@ -95,6 +104,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
     steps: patternedSteps([0, 4, 8, 12], {}, 1),
   },
   {
@@ -107,6 +117,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
     steps: patternedSteps([4, 12], {}, 0.9),
   },
   {
@@ -119,6 +130,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
     steps: patternedSteps([0, 2, 4, 8, 10, 12], {}, 0.7),
   },
   {
@@ -131,6 +143,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
     steps: patternedSteps([6, 14], {}, 0.6),
   },
   {
@@ -143,6 +156,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
     steps: patternedSteps([0, 4, 8, 12], { 0: 0, 4: 2, 8: 4, 12: 0 }, 0.8),
   },
   {
@@ -155,6 +169,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
     steps: emptySteps(),
   },
   {
@@ -167,6 +182,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
     steps: emptySteps(),
   },
   {
@@ -179,6 +195,7 @@ const initialTracks: Track[] = [
     length: DEFAULT_LENGTH,
     lastPitch: 0,
     viewPage: 0,
+    euclidean: { steps: DEFAULT_LENGTH, hits: 0, rotation: 0 },
     steps: emptySteps(),
   },
 ];
@@ -275,6 +292,34 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         const maxPage = Math.max(0, Math.ceil(t.length / PAGE_SIZE) - 1);
         const clamped = Math.max(0, Math.min(maxPage, Math.floor(page)));
         return { ...t, viewPage: clamped };
+      }),
+    })),
+  setTrackEuclidean: (trackId, partial) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const merged = { ...t.euclidean, ...partial };
+        const eSteps = Math.max(
+          1,
+          Math.min(MAX_STEPS, Number.isFinite(merged.steps) ? Math.floor(merged.steps) : 1)
+        );
+        const eHits = Math.max(
+          0,
+          Math.min(eSteps, Number.isFinite(merged.hits) ? Math.floor(merged.hits) : 0)
+        );
+        const eRotation =
+          (((Number.isFinite(merged.rotation) ? Math.floor(merged.rotation) : 0) % eSteps) +
+            eSteps) %
+          eSteps;
+        const pattern = euclidean(eSteps, eHits, eRotation);
+        const newSteps = t.steps.map((s, i) =>
+          i < t.length ? { ...s, on: pattern[i % eSteps] ?? false } : s
+        );
+        return {
+          ...t,
+          euclidean: { steps: eSteps, hits: eHits, rotation: eRotation },
+          steps: newSteps,
+        };
       }),
     })),
   setGlobalStep: (globalStep) => set({ globalStep }),
