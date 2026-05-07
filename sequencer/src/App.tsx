@@ -107,13 +107,15 @@ export function App() {
           click selects · cmd-click toggles · drag/scroll adjusts active mode · shift = velocity · cmd = chance
         </span>
       </header>
-      <main className="flex justify-center px-[72px] pt-12 pb-12">
-        <div className="flex flex-col gap-8">
+      <main className="flex-1 flex items-center justify-center px-[72px] py-12">
+        <div className="flex flex-col gap-8 w-[1280px] max-w-full">
           <div className="flex justify-between items-start gap-8">
             <StepInspector />
             <TransportControls />
           </div>
-          <TrackGrid />
+          <div className="flex justify-center">
+            <TrackGrid />
+          </div>
           <div className="flex justify-between items-center gap-8">
             <PlayButton />
             <ModeSwitcher />
