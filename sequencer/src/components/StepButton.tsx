@@ -159,8 +159,6 @@ export function StepButton({
     shadows.push('0 0 0 4px rgb(255,255,255)');
   }
   if (isSelected) {
-    const innerColor = on ? 'rgba(5,5,5,0.85)' : 'rgba(255,255,255,0.85)';
-    shadows.push(`inset 0 0 0 2px ${innerColor}`);
     shadows.push('0 0 14px 3px rgba(255,255,255,0.5)');
   }
 
