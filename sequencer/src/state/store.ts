@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
-import { defaultLFOs, type LFO, type LFODestination } from '../audio/lfo';
+import { type LFO, type LFODestination } from '../audio/lfo';
 import {
   PRESETS,
   INSTRUMENTS as LIBRARY_INSTRUMENTS,
@@ -10,7 +10,7 @@ import {
   type TrackSource,
 } from '../instruments/library';
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
-import { ensureBothSections, hydrateTrack } from './hydrate';
+import { ensureBothSections, hydrateTrack, hydrateLFOs } from './hydrate';
 import defaultPreset from './defaultPreset.json';
 
 export type EditMode = 'note' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
@@ -174,7 +174,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   rootNote: defaultPreset.rootNote,
   scale: defaultPreset.scale as Scale,
   tracks: presetTracks,
-  lfos: defaultLFOs(),
+  lfos: hydrateLFOs((defaultPreset as { lfos?: LFO[] }).lfos),
   selectingLFO: null,
   globalStep: 0,
   playing: false,
