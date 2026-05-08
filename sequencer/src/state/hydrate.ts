@@ -1,4 +1,4 @@
-import type { Track, Step } from './store';
+import type { Track, Step, TrackOutput } from './store';
 import {
   defaultLFOs,
   LFO_RATES,
@@ -61,6 +61,21 @@ export function hydrateLFOs(saved: LFO[] | undefined): LFO[] {
   });
 }
 
+function hydrateOutput(saved: unknown): TrackOutput {
+  if (!saved || typeof saved !== 'object') return { mode: 'internal' };
+  const obj = saved as { mode?: unknown; channel?: unknown; note?: unknown };
+  if (obj.mode !== 'midi') return { mode: 'internal' };
+  const channel =
+    typeof obj.channel === 'number' && obj.channel >= 0 && obj.channel <= 15
+      ? Math.floor(obj.channel)
+      : 9;
+  let note: number | null = null;
+  if (typeof obj.note === 'number' && obj.note >= 0 && obj.note <= 127) {
+    note = Math.floor(obj.note);
+  }
+  return { mode: 'midi', channel, note };
+}
+
 export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
   const length = saved.length ?? 16;
   const stepsRaw = Array.isArray(saved.steps) ? saved.steps : [];
@@ -81,5 +96,6 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     slotB: hydrateSlot(saved.slotB),
     euclidean: saved.euclidean ?? { hits: 0, rotation: 0 },
     steps,
+    output: hydrateOutput((saved as { output?: unknown }).output),
   };
 }

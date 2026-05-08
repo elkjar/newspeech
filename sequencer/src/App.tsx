@@ -6,8 +6,9 @@ import { LFOPanel } from './components/LFOPanel';
 import { useSequencerStore, type EditMode, type Track } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
+import { initMIDIOut, sendMIDINote } from './audio/midiOut';
 import { quantize, octaveDegrees, fifthDegrees } from './audio/scale';
-import { isMelodicVoice, voiceChord, voiceMutation } from './audio/voices';
+import { isMelodicVoice, voiceChord, voiceGMDrumNote, voiceMutation } from './audio/voices';
 import { setOverlay } from './audio/mutationOverlay';
 import { morphStep, stepSeed } from './audio/morph';
 import { effectiveTieToNext } from './audio/mutationTie';
@@ -77,8 +78,12 @@ export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
 
   useEffect(() => {
+    initMIDIOut();
+  }, []);
+
+  useEffect(() => {
     return scheduler.onStep((globalStep, when, stepDuration) => {
-      const { tracks, rootNote, scale, lfos } = useSequencerStore.getState();
+      const { tracks, rootNote, scale, lfos, midiOutDeviceId } = useSequencerStore.getState();
       const anySolo = tracks.some((t) => t.solo);
       for (const track of tracks) {
         if (track.mute) continue;
@@ -149,10 +154,29 @@ export function App() {
         const chordMidi = melodic
           ? chordIntervals.map((interval) => quantize(rootNote, scale, pitch + interval))
           : [undefined as number | undefined];
+        const midiOut = track.output.mode === 'midi' ? track.output : null;
+        const midiNoteDuration = Math.max(0.02, effectiveGate * stepDuration);
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
           for (const m of chordMidi) {
-            samplePlayer.trigger(track.voice, t, v, m, effectiveGate, stepDuration);
+            if (midiOut) {
+              if (!midiOutDeviceId) continue;
+              const fixed = midiOut.note;
+              let outNote: number;
+              if (fixed !== null) outNote = fixed;
+              else if (m !== undefined) outNote = m;
+              else outNote = voiceGMDrumNote(track.voice);
+              sendMIDINote(
+                midiOutDeviceId,
+                midiOut.channel,
+                outNote,
+                v,
+                t,
+                midiNoteDuration
+              );
+            } else {
+              samplePlayer.trigger(track.voice, t, v, m, effectiveGate, stepDuration);
+            }
           }
         }
       }

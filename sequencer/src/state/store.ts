@@ -3,6 +3,7 @@ import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 import { defaultLFOs, type LFO, type LFODestination } from '../audio/lfo';
+import { voiceCategory, voiceGMDrumNote, KIT_PRESETS } from '../audio/voices';
 import { hydrateTrack } from './hydrate';
 import defaultPreset from './defaultPreset.json';
 
@@ -29,6 +30,10 @@ export interface EuclideanParams {
   rotation: number;
 }
 
+export type TrackOutput =
+  | { mode: 'internal' }
+  | { mode: 'midi'; channel: number; note: number | null };
+
 export interface Track {
   id: string;
   voice: string;
@@ -45,6 +50,7 @@ export interface Track {
   slotB: Step[] | null;
   euclidean: EuclideanParams;
   steps: Step[];
+  output: TrackOutput;
 }
 
 export const PAGE_SIZE = 16;
@@ -60,6 +66,10 @@ interface SequencerState {
   globalStep: number;
   playing: boolean;
   editMode: EditMode;
+  midiOutDeviceId: string | null;
+  setMidiOutDeviceId: (id: string | null) => void;
+  setTrackOutput: (trackId: string, output: TrackOutput) => void;
+  applyKitPreset: (presetId: string) => void;
   setEditMode: (mode: EditMode) => void;
   selectedStep: StepSelection | null;
   setSelectedStep: (sel: StepSelection | null) => void;
@@ -128,6 +138,25 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   globalStep: 0,
   playing: false,
   editMode: 'note',
+  midiOutDeviceId: null,
+  setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
+  setTrackOutput: (trackId, output) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, output } : t)),
+    })),
+  applyKitPreset: (presetId) => {
+    const preset = KIT_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    set((state) => ({
+      tracks: state.tracks.map((t, i) => {
+        const newVoice = preset.voiceFor(t.voice, i);
+        const output: TrackOutput = preset.toMidi
+          ? { mode: 'midi', channel: 9, note: voiceGMDrumNote(newVoice) }
+          : { mode: 'internal' };
+        return { ...t, voice: newVoice, output };
+      }),
+    }));
+  },
   setEditMode: (editMode) => set({ editMode }),
   selectedStep: null,
   setSelectedStep: (selectedStep) => set({ selectedStep }),
@@ -244,7 +273,18 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     })),
   setTrackVoice: (trackId, voice) =>
     set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, voice } : t)),
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const cat = voiceCategory(voice);
+        let output: TrackOutput = t.output;
+        if (cat === 'midi') {
+          output = { mode: 'midi', channel: 9, note: voiceGMDrumNote(voice) };
+        } else if (output.mode === 'midi' && voiceCategory(t.voice) === 'midi') {
+          // leaving a midi voice → revert routing to internal so the new voice plays
+          output = { mode: 'internal' };
+        }
+        return { ...t, voice, output };
+      }),
     })),
   setTrackMutation: (trackId, mutation) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(mutation) ? mutation : 0));

@@ -1,8 +1,15 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSequencerStore } from '../state/store';
 import { togglePlayback } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
 import { exportProject, importProject, timestampSlug } from '../state/persist';
+import {
+  getMIDIOutputs,
+  midiOutStatus,
+  onMIDIOutputsChanged,
+  type MIDIOutputInfo,
+} from '../audio/midiOut';
+import { KIT_PRESETS } from '../audio/voices';
 
 function downloadProject() {
   const code = exportProject();
@@ -89,6 +96,80 @@ export function PlayButton() {
   );
 }
 
+function useMIDIOutputs(): MIDIOutputInfo[] {
+  const [list, setList] = useState<MIDIOutputInfo[]>(() => getMIDIOutputs());
+  useEffect(() => {
+    setList(getMIDIOutputs());
+    return onMIDIOutputsChanged(() => setList(getMIDIOutputs()));
+  }, []);
+  return list;
+}
+
+function MIDIControls() {
+  const outputs = useMIDIOutputs();
+  const deviceId = useSequencerStore((s) => s.midiOutDeviceId);
+  const setDeviceId = useSequencerStore((s) => s.setMidiOutDeviceId);
+  const applyKitPreset = useSequencerStore((s) => s.applyKitPreset);
+  const status = midiOutStatus();
+
+  const noOutputs = outputs.length === 0;
+
+  return (
+    <div className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
+      <span>midi</span>
+      <select
+        value={deviceId ?? ''}
+        onChange={(e) => setDeviceId(e.target.value || null)}
+        disabled={status !== 'ready' || noOutputs}
+        className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white max-w-[200px]"
+        title={
+          status === 'unsupported'
+            ? 'web midi not supported in this browser'
+            : status === 'denied'
+              ? 'midi access denied'
+              : noOutputs
+                ? 'no midi outputs detected'
+                : 'midi output device'
+        }
+      >
+        <option value="" className="bg-[#050505]">
+          {status === 'unsupported'
+            ? 'unsupported'
+            : status === 'denied'
+              ? 'denied'
+              : noOutputs
+                ? 'no outputs'
+                : 'none'}
+        </option>
+        {outputs.map((o) => (
+          <option key={o.id} value={o.id} className="bg-[#050505]">
+            {o.name}
+          </option>
+        ))}
+      </select>
+      <select
+        value=""
+        onChange={(e) => {
+          const id = e.target.value;
+          if (id) applyKitPreset(id);
+          e.target.value = '';
+        }}
+        className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
+        title="apply a preset to every row"
+      >
+        <option value="" className="bg-[#050505]">
+          preset
+        </option>
+        {KIT_PRESETS.map((p) => (
+          <option key={p.id} value={p.id} className="bg-[#050505]">
+            {p.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export function TransportControls() {
   const bpm = useSequencerStore((s) => s.bpm);
   const rootNote = useSequencerStore((s) => s.rootNote);
@@ -154,6 +235,7 @@ export function TransportControls() {
           ))}
         </select>
       </label>
+      <MIDIControls />
       <div className="flex items-center gap-2">
         <IconButton title="download .seq" onClick={downloadProject}>
           <DownloadIcon />

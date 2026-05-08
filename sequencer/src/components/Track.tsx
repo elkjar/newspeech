@@ -70,6 +70,8 @@ export function Track({ track }: { track: TrackData }) {
 
   const drumVoices = VOICES.filter((v) => v.category === 'drum');
   const melodicVoices = VOICES.filter((v) => v.category === 'melodic');
+  const gmMidiVoices = VOICES.filter((v) => v.category === 'midi' && v.kit === 'gm');
+  const noirMidiVoices = VOICES.filter((v) => v.category === 'midi' && v.kit === 'blk_noir');
 
   const localCurrent = globalStep % track.length;
   const playingPage = Math.floor(localCurrent / PAGE_SIZE);
@@ -96,6 +98,20 @@ export function Track({ track }: { track: TrackData }) {
           </optgroup>
           <optgroup label="melodic" className="bg-[#050505]">
             {melodicVoices.map((v) => (
+              <option key={v.id} value={v.id} className="bg-[#050505]">
+                {v.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="midi · gm" className="bg-[#050505]">
+            {gmMidiVoices.map((v) => (
+              <option key={v.id} value={v.id} className="bg-[#050505]">
+                {v.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="midi · blk_noir" className="bg-[#050505]">
+            {noirMidiVoices.map((v) => (
               <option key={v.id} value={v.id} className="bg-[#050505]">
                 {v.label}
               </option>

@@ -10,6 +10,7 @@ interface PersistedState {
   scale: Scale;
   tracks: Track[];
   lfos?: LFO[];
+  midiOutDeviceId?: string | null;
 }
 
 const CURRENT_VERSION = 1;
@@ -23,6 +24,7 @@ export function exportProject(): string {
     scale: s.scale,
     tracks: s.tracks,
     lfos: s.lfos,
+    midiOutDeviceId: s.midiOutDeviceId,
   };
   return JSON.stringify(data, null, 2);
 }
@@ -44,6 +46,10 @@ export function importProject(json: string): boolean {
       .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
       .map(hydrateTrack),
     lfos: hydrateLFOs(data.lfos),
+    midiOutDeviceId:
+      typeof data.midiOutDeviceId === 'string' || data.midiOutDeviceId === null
+        ? data.midiOutDeviceId
+        : null,
     selectingLFO: null,
     globalStep: 0,
     selectedStep: null,
