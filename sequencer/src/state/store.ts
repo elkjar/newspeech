@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
+import { defaultLFOs, type LFO, type LFODestination } from '../audio/lfo';
 import { hydrateTrack } from './hydrate';
 import defaultPreset from './defaultPreset.json';
 
@@ -54,6 +55,8 @@ interface SequencerState {
   rootNote: number;
   scale: Scale;
   tracks: Track[];
+  lfos: LFO[];
+  selectingLFO: number | null;
   globalStep: number;
   playing: boolean;
   editMode: EditMode;
@@ -62,6 +65,10 @@ interface SequencerState {
   setSelectedStep: (sel: StepSelection | null) => void;
   tieAnchor: StepSelection | null;
   setTieAnchor: (sel: StepSelection | null) => void;
+  setLFODepth: (id: number, depth: number) => void;
+  toggleLFODestination: (id: number, destination: LFODestination) => void;
+  clearLFODestinations: (id: number) => void;
+  setSelectingLFO: (id: number | null) => void;
   setBpm: (bpm: number) => void;
   setRootNote: (midi: number) => void;
   setScale: (scale: Scale) => void;
@@ -116,6 +123,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   rootNote: defaultPreset.rootNote,
   scale: defaultPreset.scale as Scale,
   tracks: presetTracks,
+  lfos: defaultLFOs(),
+  selectingLFO: null,
   globalStep: 0,
   playing: false,
   editMode: 'note',
@@ -124,6 +133,34 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setSelectedStep: (selectedStep) => set({ selectedStep }),
   tieAnchor: null,
   setTieAnchor: (tieAnchor) => set({ tieAnchor }),
+  setLFODepth: (id, depth) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(depth) ? depth : 0));
+    set((state) => ({
+      lfos: state.lfos.map((l) => (l.id === id ? { ...l, depth: clamped } : l)),
+    }));
+  },
+  toggleLFODestination: (id, destination) =>
+    set((state) => ({
+      lfos: state.lfos.map((l) => {
+        if (l.id !== id) return l;
+        const exists = l.destinations.some(
+          (d) => d.trackId === destination.trackId && d.knob === destination.knob
+        );
+        return {
+          ...l,
+          destinations: exists
+            ? l.destinations.filter(
+                (d) => !(d.trackId === destination.trackId && d.knob === destination.knob)
+              )
+            : [...l.destinations, destination],
+        };
+      }),
+    })),
+  clearLFODestinations: (id) =>
+    set((state) => ({
+      lfos: state.lfos.map((l) => (l.id === id ? { ...l, destinations: [] } : l)),
+    })),
+  setSelectingLFO: (id) => set({ selectingLFO: id }),
   setBpm: (bpm) => set({ bpm }),
   setRootNote: (rootNote) => set({ rootNote }),
   setScale: (scale) => set({ scale }),

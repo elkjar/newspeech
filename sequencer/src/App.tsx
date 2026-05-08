@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { PlayButton, TransportControls } from './components/Transport';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
+import { LFOPanel } from './components/LFOPanel';
 import { useSequencerStore, type EditMode, type Track } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
@@ -10,6 +11,7 @@ import { isMelodicVoice, voiceChord, voiceMutation } from './audio/voices';
 import { setOverlay } from './audio/mutationOverlay';
 import { morphStep, stepSeed } from './audio/morph';
 import { effectiveTieToNext } from './audio/mutationTie';
+import { modulated } from './audio/lfo';
 import { togglePlayback } from './audio/transport';
 
 const MODE_KEYS: Record<string, EditMode> = {
@@ -76,7 +78,7 @@ export function App() {
 
   useEffect(() => {
     return scheduler.onStep((globalStep, when, stepDuration) => {
-      const { tracks, rootNote, scale } = useSequencerStore.getState();
+      const { tracks, rootNote, scale, lfos } = useSequencerStore.getState();
       const anySolo = tracks.some((t) => t.solo);
       for (const track of tracks) {
         if (track.mute) continue;
@@ -84,15 +86,19 @@ export function App() {
         const localStep = globalStep % track.length;
         const authoredStep = track.steps[localStep];
         if (!authoredStep) continue;
+        const trackMut = modulated(track.mutation, lfos, track.id, 'mutation');
+        const trackMorph = modulated(track.morph, lfos, track.id, 'morph');
+        const trackRowChance = modulated(track.rowChance, lfos, track.id, 'rowChance');
+        const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet');
         let step = authoredStep;
-        if (track.slotA && track.slotB && track.morph > 0) {
+        if (track.slotA && track.slotB && trackMorph > 0) {
           const a = track.slotA[localStep];
           const b = track.slotB[localStep];
           if (a && b) {
-            step = morphStep(a, b, track.morph, stepSeed(track.id, localStep));
+            step = morphStep(a, b, trackMorph, stepSeed(track.id, localStep));
           }
         }
-        const mut = track.mutation;
+        const mut = trackMut;
         const melodic = isMelodicVoice(track.voice);
         const profile = voiceMutation(track.voice);
         let on = step.on;
@@ -129,12 +135,12 @@ export function App() {
         setOverlay(track.id, localStep, { on, velocity: v, pitch, gate: gateMutated });
         if (!on) continue;
         if (isSilencedByTie(track, localStep)) continue;
-        const effectiveProb = step.probability * (1 - track.rowChance);
+        const effectiveProb = step.probability * (1 - trackRowChance);
         if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) continue;
         const ties = tieLength(track, localStep);
         const baseTime = when + step.microTiming * stepDuration;
         let ratchet = Math.max(1, Math.floor(step.ratchet));
-        if (track.rowRatchet > 0 && Math.random() < track.rowRatchet * 0.5) {
+        if (trackRowRatchet > 0 && Math.random() < trackRowRatchet * 0.5) {
           ratchet = 2 + Math.floor(Math.random() * 7);
         }
         const subDur = stepDuration / ratchet;
@@ -241,13 +247,16 @@ export function App() {
       </header>
       <main className="min-h-screen flex items-center justify-center px-10 py-12">
         <div className="flex flex-col gap-8 w-[1394px] max-w-full">
-          <div className="flex justify-between items-start gap-8">
+          <div className="flex justify-between items-stretch gap-8">
             <StepInspector />
-            <TransportControls />
+            <LFOPanel />
           </div>
           <TrackGrid />
           <div className="flex justify-between items-center gap-8">
-            <PlayButton />
+            <div className="flex items-center gap-6">
+              <PlayButton />
+              <TransportControls />
+            </div>
             <ModeSwitcher />
           </div>
         </div>

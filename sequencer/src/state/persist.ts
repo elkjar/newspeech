@@ -1,5 +1,6 @@
 import { useSequencerStore, type Track } from './store';
-import { hydrateTrack } from './hydrate';
+import { hydrateTrack, hydrateLFOs } from './hydrate';
+import { type LFO } from '../audio/lfo';
 import type { Scale } from '../audio/scale';
 
 interface PersistedState {
@@ -8,6 +9,7 @@ interface PersistedState {
   rootNote: number;
   scale: Scale;
   tracks: Track[];
+  lfos?: LFO[];
 }
 
 const CURRENT_VERSION = 1;
@@ -20,6 +22,7 @@ export function exportProject(): string {
     rootNote: s.rootNote,
     scale: s.scale,
     tracks: s.tracks,
+    lfos: s.lfos,
   };
   return JSON.stringify(data, null, 2);
 }
@@ -40,6 +43,8 @@ export function importProject(json: string): boolean {
     tracks: (data.tracks as unknown as Array<Partial<Track>>)
       .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
       .map(hydrateTrack),
+    lfos: hydrateLFOs(data.lfos),
+    selectingLFO: null,
     globalStep: 0,
     selectedStep: null,
     tieAnchor: null,

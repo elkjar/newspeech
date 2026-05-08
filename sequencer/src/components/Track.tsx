@@ -7,7 +7,7 @@ import {
   NUM_PAGES,
 } from '../state/store';
 import { StepButton } from './StepButton';
-import { Knob } from './Knob';
+import { TrackKnob } from './TrackKnob';
 import { RowPanel } from './RowPanel';
 import { VOICES, isMelodicVoice } from '../audio/voices';
 import { getOverlay } from '../audio/mutationOverlay';
@@ -130,30 +130,9 @@ export function Track({ track }: { track: TrackData }) {
             />
           )}
         </div>
-        <Knob
-          value={track.mutation}
-          onChange={(v) => useSequencerStore.getState().setTrackMutation(track.id, v)}
-          title={`mutation ${Math.round(track.mutation * 100)}%`}
-          size={STEP_SIZE}
-        />
-        <Knob
-          value={track.rowChance}
-          onChange={(v) => useSequencerStore.getState().setTrackRowChance(track.id, v)}
-          title={`row chance ${Math.round(track.rowChance * 100)}%`}
-          size={STEP_SIZE}
-        />
-        <Knob
-          value={track.rowRatchet}
-          onChange={(v) => useSequencerStore.getState().setTrackRowRatchet(track.id, v)}
-          title={`row ratchet ${Math.round(track.rowRatchet * 100)}%`}
-          size={STEP_SIZE}
-        />
-        <Knob
-          value={track.morph}
-          onChange={(v) => useSequencerStore.getState().setTrackMorph(track.id, v)}
-          title={`morph ${Math.round(track.morph * 100)}%`}
-          size={STEP_SIZE}
-        />
+        {(['mutation', 'rowChance', 'rowRatchet', 'morph'] as const).map((knob) => (
+          <TrackKnob key={knob} track={track} knob={knob} size={STEP_SIZE} />
+        ))}
       </div>
 
       <div className="flex" style={{ gap: `${STEP_GAP}px` }}>

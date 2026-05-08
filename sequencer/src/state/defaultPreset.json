@@ -12,7 +12,7 @@
       "length": 14,
       "lastPitch": 0,
       "viewPage": 0,
-      "mutation": 0,
+      "mutation": 0.1,
       "rowChance": 0,
       "rowRatchet": 0,
       "morph": 0,
@@ -673,7 +673,7 @@
       "length": 9,
       "lastPitch": 0,
       "viewPage": 0,
-      "mutation": 0,
+      "mutation": 0.64,
       "rowChance": 0,
       "rowRatchet": 0,
       "morph": 0,
@@ -1334,10 +1334,10 @@
       "length": 14,
       "lastPitch": 0,
       "viewPage": 0,
-      "mutation": 0,
+      "mutation": 0.61,
       "rowChance": 0,
       "rowRatchet": 0.52,
-      "morph": 0.49999999999999994,
+      "morph": 0.65,
       "slotA": null,
       "slotB": null,
       "euclidean": {
@@ -2656,10 +2656,10 @@
       "length": 13,
       "lastPitch": 0,
       "viewPage": 0,
-      "mutation": 0,
+      "mutation": 0.56,
       "rowChance": 0,
       "rowRatchet": 0,
-      "morph": 0,
+      "morph": 0.05,
       "slotA": null,
       "slotB": null,
       "euclidean": {
@@ -5289,6 +5289,77 @@
           "microTiming": 0,
           "gate": 1,
           "tieToNext": false
+        }
+      ]
+    }
+  ],
+  "lfos": [
+    {
+      "id": 0,
+      "rate": 0.0083,
+      "depth": 0,
+      "destinations": []
+    },
+    {
+      "id": 1,
+      "rate": 0.0125,
+      "depth": 0,
+      "destinations": []
+    },
+    {
+      "id": 2,
+      "rate": 0.0188,
+      "depth": 0,
+      "destinations": []
+    },
+    {
+      "id": 3,
+      "rate": 0.0278,
+      "depth": 0,
+      "destinations": []
+    },
+    {
+      "id": 4,
+      "rate": 0.0417,
+      "depth": 0,
+      "destinations": []
+    },
+    {
+      "id": 5,
+      "rate": 0.0625,
+      "depth": 0,
+      "destinations": []
+    },
+    {
+      "id": 6,
+      "rate": 0.0938,
+      "depth": 0,
+      "destinations": []
+    },
+    {
+      "id": 7,
+      "rate": 0.143,
+      "depth": 0.28,
+      "destinations": [
+        {
+          "trackId": "t5",
+          "knob": "mutation"
+        },
+        {
+          "trackId": "t3",
+          "knob": "morph"
+        },
+        {
+          "trackId": "t3",
+          "knob": "rowRatchet"
+        },
+        {
+          "trackId": "t2",
+          "knob": "rowRatchet"
+        },
+        {
+          "trackId": "t1",
+          "knob": "mutation"
         }
       ]
     }

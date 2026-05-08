@@ -7,6 +7,9 @@ interface KnobProps {
   size?: number;
   step?: number;
   pxPerUnit?: number;
+  onModulationClick?: () => void;
+  modulationLabel?: string;
+  displayValue?: number;
 }
 
 export function Knob({
@@ -16,14 +19,19 @@ export function Knob({
   size = 36,
   step = 0.05,
   pxPerUnit = 100,
+  onModulationClick,
+  modulationLabel,
+  displayValue,
 }: KnobProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   valueRef.current = value;
   onChangeRef.current = onChange;
+  const routing = !!onModulationClick;
 
   useEffect(() => {
+    if (routing) return;
     const el = ref.current;
     if (!el) return;
     const handleWheel = (e: WheelEvent) => {
@@ -35,9 +43,14 @@ export function Knob({
     };
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
-  }, [step]);
+  }, [step, routing]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (routing) {
+      e.preventDefault();
+      onModulationClick?.();
+      return;
+    }
     e.preventDefault();
     const startY = e.clientY;
     const startVal = valueRef.current;
@@ -54,7 +67,8 @@ export function Knob({
     window.addEventListener('mouseup', onUp);
   };
 
-  const angleDeg = -135 + 270 * value;
+  const visual = displayValue ?? value;
+  const angleDeg = -135 + 270 * visual;
   const angleRad = (angleDeg * Math.PI) / 180;
   const cx = size / 2;
   const cy = size / 2;
@@ -80,7 +94,10 @@ export function Knob({
       ref={ref}
       onMouseDown={handleMouseDown}
       style={{ width: size, height: size }}
-      className="group relative bg-transparent flex items-center justify-center cursor-ns-resize"
+      className={[
+        'group relative bg-transparent flex items-center justify-center',
+        routing ? 'cursor-crosshair' : 'cursor-ns-resize',
+      ].join(' ')}
       title={title}
     >
       <svg
@@ -95,11 +112,11 @@ export function Knob({
           r={ringR}
           fill="none"
           stroke="white"
-          strokeOpacity="0.12"
+          strokeOpacity={routing ? '0.4' : '0.12'}
           strokeWidth="1"
-          className="group-hover:[stroke-opacity:0.22] transition-[stroke-opacity]"
+          className={routing ? '' : 'group-hover:[stroke-opacity:0.22] transition-[stroke-opacity]'}
         />
-        {value > 0 && (
+        {visual > 0 && (
           <path
             d={arcPath}
             fill="none"
@@ -119,6 +136,15 @@ export function Knob({
           strokeWidth="1.75"
           strokeLinecap="round"
         />
+        {modulationLabel && (
+          <circle
+            cx={size - 4}
+            cy={4}
+            r="2"
+            fill="white"
+            fillOpacity="0.9"
+          />
+        )}
       </svg>
     </button>
   );

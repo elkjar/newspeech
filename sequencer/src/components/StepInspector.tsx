@@ -2,7 +2,7 @@ import { useSequencerStore, type Track, type Step } from '../state/store';
 import { midiToName, quantize } from '../audio/scale';
 import { isMelodicVoice, voiceLabel } from '../audio/voices';
 
-const PANEL = 'border border-white/15 px-4 py-2 flex items-center gap-4 w-[320px]';
+const PANEL = 'border border-white/15 px-4 flex items-center gap-4 w-[320px] h-24';
 
 function displayedStep(track: Track, i: number): Step | undefined {
   const len = track.length;
