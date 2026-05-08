@@ -3,7 +3,13 @@ import { PlayButton, TransportControls } from './components/Transport';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
-import { useSequencerStore, type EditMode, type Track, type TrackSection } from './state/store';
+import {
+  useSequencerStore,
+  RATE_STRIDE,
+  type EditMode,
+  type Track,
+  type TrackSection,
+} from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
 import { initMIDIOut, sendMIDINote, resolveDeviceId } from './audio/midiOut';
@@ -121,15 +127,19 @@ export function App() {
       for (const track of tracks) {
         if (track.mute) continue;
         if (anySolo && !track.solo) continue;
-        const localStep = globalStep % track.length;
+        const stride = RATE_STRIDE[track.rate];
+        if (globalStep % stride !== 0) continue;
+        const rowStep = Math.floor(globalStep / stride);
+        const localStep = rowStep % track.length;
         const authoredStep = track.steps[localStep];
         if (!authoredStep) continue;
+        const rowStepDuration = stepDuration * stride;
         const trackMut = modulated(track.mutation, lfos, track.id, 'mutation');
         const trackMorph = modulated(track.morph, lfos, track.id, 'morph');
         const trackRowChance = modulated(track.rowChance, lfos, track.id, 'rowChance');
         const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet');
         let step = authoredStep;
-        if (track.slotA && track.slotB && trackMorph > 0) {
+        if (track.slotA && track.slotB) {
           const a = track.slotA[localStep];
           const b = track.slotB[localStep];
           if (a && b) {
@@ -141,7 +151,7 @@ export function App() {
         const melodic = sourceIsMelodic(track.source);
         const profile = sourceMutation(track.source);
         let on = step.on;
-        if (mut > 0) {
+        if (mut > 0 && !track.lockTiming) {
           let flipChance = mut * profile.flipChance;
           if (!step.on && profile.stepWeights && profile.stepWeights.length > 0) {
             flipChance *= profile.stepWeights[localStep % profile.stepWeights.length];
@@ -177,12 +187,12 @@ export function App() {
         const effectiveProb = step.probability * (1 - trackRowChance);
         if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) continue;
         const ties = tieLength(track, localStep);
-        const baseTime = when + step.microTiming * stepDuration;
+        const baseTime = when + step.microTiming * rowStepDuration;
         let ratchet = Math.max(1, Math.floor(step.ratchet));
         if (trackRowRatchet > 0 && Math.random() < trackRowRatchet * 0.5) {
           ratchet = 2 + Math.floor(Math.random() * 7);
         }
-        const subDur = stepDuration / ratchet;
+        const subDur = rowStepDuration / ratchet;
         const effectiveGate = gateMutated * ties;
         const chordIntervals = melodic ? sourceChord(track.source) : [0];
         const chordMidi = melodic
@@ -194,7 +204,7 @@ export function App() {
         const effectiveDeviceId = instrument
           ? resolveDeviceId(instrument.portName, midiOutDeviceId)
           : null;
-        const midiNoteDuration = Math.max(0.02, effectiveGate * stepDuration);
+        const midiNoteDuration = Math.max(0.02, effectiveGate * rowStepDuration);
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
           for (const m of chordMidi) {
@@ -213,7 +223,7 @@ export function App() {
                 midiNoteDuration
               );
             } else if (track.source.kind === 'voice') {
-              samplePlayer.trigger(track.source.id, t, v, m, effectiveGate, stepDuration);
+              samplePlayer.trigger(track.source.id, t, v, m, effectiveGate, rowStepDuration);
             }
           }
         }

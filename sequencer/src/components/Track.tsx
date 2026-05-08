@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import {
   useSequencerStore,
+  RATE_STRIDE,
   type Track as TrackData,
   type Step,
   PAGE_SIZE,
@@ -18,6 +19,8 @@ import {
 import { getOverlay } from '../audio/mutationOverlay';
 import { morphStep, stepSeed } from '../audio/morph';
 import { effectiveTieToNext } from '../audio/mutationTie';
+import { findRouted } from '../audio/lfo';
+import { useLFOValue } from '../hooks/useLFOValue';
 
 const STEP_GAP = 6;
 const STEP_SIZE = 36;
@@ -36,16 +39,21 @@ function originatorIndex(track: TrackData, i: number): number {
   return originatorIdx;
 }
 
-function displayStep(track: TrackData, i: number, applyOverlay: boolean): Step | undefined {
+function displayStep(
+  track: TrackData,
+  i: number,
+  applyOverlay: boolean,
+  morphValue: number
+): Step | undefined {
   const idx = originatorIndex(track, i);
   const authored = track.steps[idx];
   if (!authored) return authored;
   let base = authored;
-  if (track.slotA && track.slotB && track.morph > 0) {
+  if (track.slotA && track.slotB) {
     const a = track.slotA[idx];
     const b = track.slotB[idx];
     if (a && b) {
-      base = morphStep(a, b, track.morph, stepSeed(track.id, idx));
+      base = morphStep(a, b, morphValue, stepSeed(track.id, idx));
     }
   }
   if (applyOverlay) {
@@ -58,7 +66,10 @@ function displayStep(track: TrackData, i: number, applyOverlay: boolean): Step |
 export function Track({ track }: { track: TrackData }) {
   const globalStep = useSequencerStore((s) => s.globalStep);
   const playing = useSequencerStore((s) => s.playing);
+  const lfos = useSequencerStore((s) => s.lfos);
   const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
+  const morphLFOs = findRouted(lfos, track.id, 'morph');
+  const liveMorph = useLFOValue(track.morph, morphLFOs);
   const setTrackSource = useSequencerStore((s) => s.setTrackSource);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
@@ -66,6 +77,7 @@ export function Track({ track }: { track: TrackData }) {
   const clearTrack = useSequencerStore((s) => s.clearTrack);
   const snapTrackSlot = useSequencerStore((s) => s.snapTrackSlot);
   const recallTrackSlot = useSequencerStore((s) => s.recallTrackSlot);
+  const setTrackLockTiming = useSequencerStore((s) => s.setTrackLockTiming);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -99,7 +111,8 @@ export function Track({ track }: { track: TrackData }) {
     }
   };
 
-  const localCurrent = globalStep % track.length;
+  const stride = RATE_STRIDE[track.rate];
+  const localCurrent = Math.floor(globalStep / stride) % track.length;
   const playingPage = Math.floor(localCurrent / PAGE_SIZE);
   const stepInPage = localCurrent % PAGE_SIZE;
   const viewPage = track.viewPage;
@@ -259,7 +272,6 @@ export function Track({ track }: { track: TrackData }) {
 
       <div
         className={`flex items-center transition-opacity ${silenced ? 'opacity-30' : ''}`}
-        style={{ gap: STEP_SIZE }}
       >
       <div className="flex" style={{ gap: `${STEP_GAP}px` }}>
         {Array.from({ length: NUM_PAGES }, (_, p) => {
@@ -284,6 +296,27 @@ export function Track({ track }: { track: TrackData }) {
         })}
       </div>
 
+      <button
+        type="button"
+        onClick={() => setTrackLockTiming(track.id, !track.lockTiming)}
+        style={{ width: STEP_SIZE, height: STEP_SIZE }}
+        className="flex items-center justify-center bg-transparent transition-colors group"
+        title={
+          track.lockTiming
+            ? 'timing locked — mutation only changes notes (click to unlock)'
+            : 'click to lock timing — keeps pattern fixed while mutation evolves notes'
+        }
+        aria-pressed={track.lockTiming}
+      >
+        <span
+          className={
+            track.lockTiming
+              ? 'w-3 h-3 rounded-full bg-white'
+              : 'w-3 h-3 rounded-full border border-white/30 group-hover:border-white/70 transition-colors'
+          }
+        />
+      </button>
+
       <div className="flex" style={{ gap: STEP_GAP }}>
         {Array.from(
           { length: Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)) },
@@ -291,7 +324,7 @@ export function Track({ track }: { track: TrackData }) {
             const stepIndex = viewPage * PAGE_SIZE + i;
             const idx = originatorIndex(track, stepIndex);
             const isTiedChain = idx !== stepIndex;
-            const display = displayStep(track, stepIndex, playing && track.mutation > 0);
+            const display = displayStep(track, stepIndex, playing && track.mutation > 0, liveMorph);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
             return (
               <StepButton

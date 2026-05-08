@@ -1,5 +1,10 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { useSequencerStore, type Track as TrackData } from '../state/store';
+import {
+  useSequencerStore,
+  STEP_RATES,
+  type Track as TrackData,
+  type StepRate,
+} from '../state/store';
 import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 
 const CELL = 36;
@@ -13,6 +18,7 @@ interface RowPanelProps {
 export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const setTrackLength = useSequencerStore((s) => s.setTrackLength);
   const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
+  const setTrackRate = useSequencerStore((s) => s.setTrackRate);
   const setInstrumentField = useSequencerStore((s) => s.setInstrumentField);
   const fireInstrumentProgram = useSequencerStore((s) => s.fireInstrumentProgram);
   const globalDeviceId = useSequencerStore((s) => s.midiOutDeviceId);
@@ -69,6 +75,22 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
         max={Math.max(0, track.length - 1)}
         onChange={(v) => setTrackEuclidean(track.id, { rotation: v })}
       />
+      <label className="flex flex-col items-start gap-1">
+        <span className="text-[9px] uppercase tracking-widest text-white/40">rate</span>
+        <select
+          value={track.rate}
+          onChange={(e) => setTrackRate(track.id, e.target.value as StepRate)}
+          style={{ height: CELL }}
+          className="select-chevron bg-transparent border border-white/15 pl-2 pr-6 text-[12px] tabular-nums focus:outline-none focus:border-white text-white"
+          title="step rate (note duration per row step)"
+        >
+          {STEP_RATES.map((r) => (
+            <option key={r} value={r} className="bg-[#050505]">
+              {r}
+            </option>
+          ))}
+        </select>
+      </label>
       {instrument && (
         <>
           <div className="self-stretch w-px bg-white/15 mx-1" />

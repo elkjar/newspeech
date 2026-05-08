@@ -38,6 +38,19 @@ export interface EuclideanParams {
 
 export type TrackSection = 'drum' | 'melodic';
 
+export type StepRate = '1/4' | '1/8' | '1/16' | '1/32';
+
+export const STEP_RATES: StepRate[] = ['1/4', '1/8', '1/16', '1/32'];
+
+// number of global scheduler ticks per row step. Scheduler runs at 32nds (8/beat),
+// so 1/32 = 1 tick, 1/16 = 2, 1/8 = 4, 1/4 = 8.
+export const RATE_STRIDE: Record<StepRate, number> = {
+  '1/4': 8,
+  '1/8': 4,
+  '1/16': 2,
+  '1/32': 1,
+};
+
 export interface Track {
   id: string;
   source: TrackSource;
@@ -51,6 +64,8 @@ export interface Track {
   rowChance: number;
   rowRatchet: number;
   morph: number;
+  rate: StepRate;
+  lockTiming: boolean;
   slotA: Step[] | null;
   slotB: Step[] | null;
   euclidean: EuclideanParams;
@@ -101,6 +116,8 @@ interface SequencerState {
   setStepGate: (trackId: string, index: number, gate: number) => void;
   setStepTie: (trackId: string, index: number, tied: boolean) => void;
   setTrackMutation: (trackId: string, mutation: number) => void;
+  setTrackRate: (trackId: string, rate: StepRate) => void;
+  setTrackLockTiming: (trackId: string, lock: boolean) => void;
   setTrackRowChance: (trackId: string, rowChance: number) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
   setTrackMorph: (trackId: string, morph: number) => void;
@@ -262,11 +279,18 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         const steps = t.steps.slice();
         const wasOn = steps[index].on;
         const turningOn = !wasOn;
-        steps[index] = {
-          ...steps[index],
-          on: turningOn,
-          pitch: turningOn ? t.lastPitch : steps[index].pitch,
-        };
+        if (turningOn) {
+          steps[index] = { ...steps[index], on: true, pitch: t.lastPitch };
+        } else {
+          // walk forward from this step clearing tieToNext until the chain
+          // breaks, so removing the step also tears down its outgoing tie chain
+          let cur = index;
+          while (cur < t.length && steps[cur].tieToNext) {
+            steps[cur] = { ...steps[cur], tieToNext: false };
+            cur++;
+          }
+          steps[index] = { ...steps[index], on: false };
+        }
         return { ...t, steps };
       }),
     })),
@@ -339,6 +363,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, mutation: clamped } : t)),
     }));
   },
+  setTrackRate: (trackId, rate) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rate } : t)),
+    })),
+  setTrackLockTiming: (trackId, lockTiming) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, lockTiming } : t)),
+    })),
   setTrackRowChance: (trackId, rowChance) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(rowChance) ? rowChance : 0));
     set((state) => ({
@@ -371,7 +403,11 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         if (t.id !== trackId) return t;
         const snap = slot === 'A' ? t.slotA : t.slotB;
         if (!snap) return t;
-        return { ...t, steps: snap.map((s) => ({ ...s })) };
+        return {
+          ...t,
+          steps: snap.map((s) => ({ ...s })),
+          morph: slot === 'A' ? 0 : 1,
+        };
       }),
     })),
   clearTrack: (trackId) =>

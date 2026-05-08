@@ -1,4 +1,5 @@
-import type { Track, Step, TrackSection } from './store';
+import type { Track, Step, TrackSection, StepRate } from './store';
+import { STEP_RATES } from './store';
 import {
   defaultLFOs,
   LFO_RATES,
@@ -101,6 +102,12 @@ function hydrateSource(saved: unknown, legacyVoice: string | undefined): TrackSo
   return { kind: 'voice', id: 'kick' };
 }
 
+function hydrateRate(saved: unknown): StepRate {
+  return typeof saved === 'string' && (STEP_RATES as readonly string[]).includes(saved)
+    ? (saved as StepRate)
+    : '1/16';
+}
+
 export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
   const length = saved.length ?? 16;
   const stepsRaw = Array.isArray(saved.steps) ? saved.steps : [];
@@ -124,6 +131,8 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     rowChance: saved.rowChance ?? 0,
     rowRatchet: saved.rowRatchet ?? 0,
     morph: saved.morph ?? 0,
+    rate: hydrateRate((saved as { rate?: unknown }).rate),
+    lockTiming: typeof saved.lockTiming === 'boolean' ? saved.lockTiming : false,
     slotA: hydrateSlot(saved.slotA),
     slotB: hydrateSlot(saved.slotB),
     euclidean: saved.euclidean ?? { hits: 0, rotation: 0 },
@@ -148,6 +157,8 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     rowChance: 0,
     rowRatchet: 0,
     morph: 0,
+    rate: '1/16',
+    lockTiming: false,
     slotA: null,
     slotB: null,
     euclidean: { hits: 0, rotation: 0 },

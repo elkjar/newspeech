@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
 import { Knob } from './Knob';
-import { applyLFO, findRouted, type LFO, type LFODestKnob } from '../audio/lfo';
-import { getAudioContext } from '../audio/audioContext';
+import { findRouted, type LFODestKnob } from '../audio/lfo';
+import { useLFOValue } from '../hooks/useLFOValue';
 import { useSequencerStore, type Track as TrackData } from '../state/store';
 
 const LABELS: Record<LFODestKnob, string> = {
@@ -40,45 +39,6 @@ function writeKnob(trackId: string, knob: LFODestKnob, value: number): void {
       s.setTrackMorph(trackId, value);
       return;
   }
-}
-
-function useLFOValue(baseValue: number, routed: LFO[]): number {
-  const baseRef = useRef(baseValue);
-  baseRef.current = baseValue;
-  const routedRef = useRef<LFO[]>(routed);
-  routedRef.current = routed;
-
-  const [v, setV] = useState(baseValue);
-
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      const list = routedRef.current;
-      const b = baseRef.current;
-      let next: number;
-      if (list.length === 0) {
-        next = b;
-      } else {
-        const totalDepth = list.reduce((s, l) => s + l.depth, 0);
-        if (totalDepth === 0) {
-          next = b;
-        } else {
-          const t = getAudioContext().currentTime;
-          let summed = 0;
-          for (const l of list) {
-            summed += Math.sin(2 * Math.PI * l.rate * t) * l.depth;
-          }
-          next = applyLFO(b, totalDepth, summed / totalDepth);
-        }
-      }
-      setV(next);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  return v;
 }
 
 export function TrackKnob({

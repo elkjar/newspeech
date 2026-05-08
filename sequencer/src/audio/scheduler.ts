@@ -16,7 +16,9 @@ class Scheduler {
   private nextStepTime = 0;
   private currentStep = 0;
   private bpm = 120;
-  private stepsPerBeat = 4;
+  // 32nd-note resolution. Per-row rate selects how many ticks make up one row step
+  // (see RATE_STRIDE in store.ts). 1/16 rows advance every other tick.
+  private stepsPerBeat = 8;
   private callbacks: StepCallback[] = [];
   private playing = false;
   private scheduled: ScheduledStep[] = [];
