@@ -5,7 +5,7 @@ import { NOTE_NAMES, SCALES } from '../audio/scale';
 import { exportProject, importProject, timestampSlug } from '../state/persist';
 import { midiOutStatus } from '../audio/midiOut';
 import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
-import { KIT_PRESETS } from '../audio/voices';
+import { presetsForTarget } from '../instruments/library';
 
 function downloadProject() {
   const code = exportProject();
@@ -96,8 +96,10 @@ function MIDIControls() {
   const outputs = useMIDIOutputs();
   const deviceId = useSequencerStore((s) => s.midiOutDeviceId);
   const setDeviceId = useSequencerStore((s) => s.setMidiOutDeviceId);
-  const applyKitPreset = useSequencerStore((s) => s.applyKitPreset);
+  const applyPreset = useSequencerStore((s) => s.applyPreset);
+  const viewSection = useSequencerStore((s) => s.viewSection);
   const status = midiOutStatus();
+  const presets = presetsForTarget(viewSection);
 
   const noOutputs = outputs.length === 0;
 
@@ -138,16 +140,16 @@ function MIDIControls() {
         value=""
         onChange={(e) => {
           const id = e.target.value;
-          if (id) applyKitPreset(id);
+          if (id) applyPreset(id);
           e.target.value = '';
         }}
         className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
-        title="apply a preset to every row"
+        title={`apply a preset to the ${viewSection === 'drum' ? 'rhythm' : 'melody'} rows`}
       >
         <option value="" className="bg-[#050505]">
           preset
         </option>
-        {KIT_PRESETS.map((p) => (
+        {presets.map((p) => (
           <option key={p.id} value={p.id} className="bg-[#050505]">
             {p.label}
           </option>

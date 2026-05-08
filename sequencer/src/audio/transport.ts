@@ -12,6 +12,7 @@ export async function togglePlayback(): Promise<void> {
     store.commitMutationOverlay();
   } else {
     await ensureAudioRunning();
+    store.fireAllProgramChanges();
     scheduler.start();
     store.setPlaying(true);
   }

@@ -9,7 +9,12 @@ import {
 import { StepButton } from './StepButton';
 import { TrackKnob } from './TrackKnob';
 import { RowPanel } from './RowPanel';
-import { VOICES, isMelodicVoice } from '../audio/voices';
+import { VOICES } from '../audio/voices';
+import {
+  INSTRUMENTS,
+  sourceIsMelodic,
+  type TrackSource,
+} from '../instruments/library';
 import { getOverlay } from '../audio/mutationOverlay';
 import { morphStep, stepSeed } from '../audio/morph';
 import { effectiveTieToNext } from '../audio/mutationTie';
@@ -54,7 +59,7 @@ export function Track({ track }: { track: TrackData }) {
   const globalStep = useSequencerStore((s) => s.globalStep);
   const playing = useSequencerStore((s) => s.playing);
   const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
-  const setTrackVoice = useSequencerStore((s) => s.setTrackVoice);
+  const setTrackSource = useSequencerStore((s) => s.setTrackSource);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
   const setTrackPage = useSequencerStore((s) => s.setTrackPage);
@@ -66,12 +71,33 @@ export function Track({ track }: { track: TrackData }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const silenced = track.mute || (anySolo && !track.solo);
-  const melodic = isMelodicVoice(track.voice);
+  const melodic = sourceIsMelodic(track.source);
 
-  const drumVoices = VOICES.filter((v) => v.category === 'drum');
-  const melodicVoices = VOICES.filter((v) => v.category === 'melodic');
-  const gmMidiVoices = VOICES.filter((v) => v.category === 'midi' && v.kit === 'gm');
-  const noirMidiVoices = VOICES.filter((v) => v.category === 'midi' && v.kit === 'blk_noir');
+  // dropdown filters internal voices and instruments to the row's section
+  const isDrumSection = track.section === 'drum';
+  const internalVoices = VOICES.filter((v) =>
+    isDrumSection ? v.category === 'drum' : v.category === 'melodic'
+  );
+  const drumInstruments = INSTRUMENTS.filter((i) => i.role === 'drum');
+  const padInstruments = INSTRUMENTS.filter((i) => i.role === 'pad');
+  const leadInstruments = INSTRUMENTS.filter((i) => i.role === 'lead');
+  const bassInstruments = INSTRUMENTS.filter((i) => i.role === 'bass');
+
+  const sourceValue =
+    track.source.kind === 'empty' ? 'empty' : `${track.source.kind}:${track.source.id}`;
+
+  const handleSourceChange = (raw: string) => {
+    if (raw === 'empty') {
+      setTrackSource(track.id, { kind: 'empty' });
+      return;
+    }
+    const [kind, id] = raw.split(':', 2);
+    if (kind === 'voice' && id) {
+      setTrackSource(track.id, { kind: 'voice', id });
+    } else if (kind === 'instrument' && id) {
+      setTrackSource(track.id, { kind: 'instrument', id } satisfies TrackSource);
+    }
+  };
 
   const localCurrent = globalStep % track.length;
   const playingPage = Math.floor(localCurrent / PAGE_SIZE);
@@ -83,40 +109,56 @@ export function Track({ track }: { track: TrackData }) {
       <div className="flex items-center gap-3">
       <div className="flex items-center gap-2">
         <select
-          value={track.voice}
-          onChange={(e) => setTrackVoice(track.id, e.target.value)}
+          value={sourceValue}
+          onChange={(e) => handleSourceChange(e.target.value)}
           style={{ height: STEP_SIZE }}
           className="select-chevron w-[100px] bg-transparent border border-white/15 text-[11px] uppercase tracking-widest text-white pl-3 focus:outline-none focus:border-white"
-          title="voice"
+          title="source"
         >
-          <optgroup label="drum" className="bg-[#050505]">
-            {drumVoices.map((v) => (
-              <option key={v.id} value={v.id} className="bg-[#050505]">
+          <option value="empty" className="bg-[#050505]">—</option>
+          <optgroup label="internal" className="bg-[#050505]">
+            {internalVoices.map((v) => (
+              <option key={v.id} value={`voice:${v.id}`} className="bg-[#050505]">
                 {v.label}
               </option>
             ))}
           </optgroup>
-          <optgroup label="melodic" className="bg-[#050505]">
-            {melodicVoices.map((v) => (
-              <option key={v.id} value={v.id} className="bg-[#050505]">
-                {v.label}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="midi · gm" className="bg-[#050505]">
-            {gmMidiVoices.map((v) => (
-              <option key={v.id} value={v.id} className="bg-[#050505]">
-                {v.label}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="midi · blk_noir" className="bg-[#050505]">
-            {noirMidiVoices.map((v) => (
-              <option key={v.id} value={v.id} className="bg-[#050505]">
-                {v.label}
-              </option>
-            ))}
-          </optgroup>
+          {isDrumSection && drumInstruments.length > 0 && (
+            <optgroup label="drum" className="bg-[#050505]">
+              {drumInstruments.map((i) => (
+                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
+                  {i.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {!isDrumSection && padInstruments.length > 0 && (
+            <optgroup label="pad" className="bg-[#050505]">
+              {padInstruments.map((i) => (
+                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
+                  {i.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {!isDrumSection && leadInstruments.length > 0 && (
+            <optgroup label="lead" className="bg-[#050505]">
+              {leadInstruments.map((i) => (
+                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
+                  {i.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {!isDrumSection && bassInstruments.length > 0 && (
+            <optgroup label="bass" className="bg-[#050505]">
+              {bassInstruments.map((i) => (
+                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
+                  {i.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
         <div className="relative">
           <button

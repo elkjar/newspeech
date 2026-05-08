@@ -1,4 +1,4 @@
-import type { Track, Step, TrackOutput, TrackSection } from './store';
+import type { Track, Step, TrackSection } from './store';
 import {
   defaultLFOs,
   LFO_RATES,
@@ -6,6 +6,7 @@ import {
   type LFODestKnob,
   type LFODestination,
 } from '../audio/lfo';
+import { getInstrument, type TrackSource } from '../instruments/library';
 
 const VALID_KNOBS: LFODestKnob[] = ['mutation', 'morph', 'rowChance', 'rowRatchet'];
 
@@ -61,20 +62,43 @@ export function hydrateLFOs(saved: LFO[] | undefined): LFO[] {
   });
 }
 
-function hydrateOutput(saved: unknown): TrackOutput {
-  if (!saved || typeof saved !== 'object') return { mode: 'internal' };
-  const obj = saved as { mode?: unknown; channel?: unknown; note?: unknown; deviceId?: unknown };
-  if (obj.mode !== 'midi') return { mode: 'internal' };
-  const channel =
-    typeof obj.channel === 'number' && obj.channel >= 0 && obj.channel <= 15
-      ? Math.floor(obj.channel)
-      : 9;
-  let note: number | null = null;
-  if (typeof obj.note === 'number' && obj.note >= 0 && obj.note <= 127) {
-    note = Math.floor(obj.note);
+const INTERNAL_VOICE_IDS = new Set(['kick', 'snare', 'hat-c', 'hat-o', 'synth', 'bass', 'pad']);
+const LEGACY_MIDI_TO_INTERNAL: Record<string, string> = {
+  'midi-kick': 'kick',
+  'midi-snare': 'snare',
+  'midi-rim': 'snare',
+  'midi-clap': 'snare',
+  'midi-hh-c': 'hat-c',
+  'midi-hh-o': 'hat-o',
+  'midi-tom-l': 'synth',
+  'midi-tom-m': 'bass',
+  'midi-tom-h': 'synth',
+  'midi-crash': 'pad',
+  'midi-ride': 'pad',
+};
+
+function hydrateSource(saved: unknown, legacyVoice: string | undefined): TrackSource {
+  if (saved && typeof saved === 'object') {
+    const obj = saved as { kind?: unknown; id?: unknown };
+    if (obj.kind === 'empty') return { kind: 'empty' };
+    if ((obj.kind === 'voice' || obj.kind === 'instrument') && typeof obj.id === 'string') {
+      if (obj.kind === 'voice' && INTERNAL_VOICE_IDS.has(obj.id)) {
+        return { kind: 'voice', id: obj.id };
+      }
+      if (obj.kind === 'instrument' && getInstrument(obj.id)) {
+        return { kind: 'instrument', id: obj.id };
+      }
+    }
   }
-  const deviceId = typeof obj.deviceId === 'string' ? obj.deviceId : null;
-  return { mode: 'midi', channel, note, deviceId };
+  // legacy fallback: migrate from old `voice` field
+  if (typeof legacyVoice === 'string') {
+    if (INTERNAL_VOICE_IDS.has(legacyVoice)) return { kind: 'voice', id: legacyVoice };
+    if (getInstrument(legacyVoice)) return { kind: 'instrument', id: legacyVoice };
+    if (LEGACY_MIDI_TO_INTERNAL[legacyVoice]) {
+      return { kind: 'voice', id: LEGACY_MIDI_TO_INTERNAL[legacyVoice] };
+    }
+  }
+  return { kind: 'voice', id: 'kick' };
 }
 
 export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
@@ -82,9 +106,14 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
   const stepsRaw = Array.isArray(saved.steps) ? saved.steps : [];
   const steps = Array.from({ length: 64 }, (_, i) => hydrateStep(stepsRaw[i] ?? {}));
   const section: TrackSection = saved.section === 'melodic' ? 'melodic' : 'drum';
+  const legacyVoice = (saved as { voice?: unknown }).voice;
+  const source = hydrateSource(
+    (saved as { source?: unknown }).source,
+    typeof legacyVoice === 'string' ? legacyVoice : undefined
+  );
   return {
     id: saved.id,
-    voice: saved.voice ?? 'kick',
+    source,
     section,
     mute: saved.mute ?? false,
     solo: saved.solo ?? false,
@@ -99,7 +128,6 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     slotB: hydrateSlot(saved.slotB),
     euclidean: saved.euclidean ?? { hits: 0, rotation: 0 },
     steps,
-    output: hydrateOutput((saved as { output?: unknown }).output),
   };
 }
 
@@ -109,7 +137,7 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
   const steps = Array.from({ length: 64 }, () => hydrateStep({}));
   return {
     id,
-    voice: EMPTY_MELODIC_VOICES[slot % EMPTY_MELODIC_VOICES.length],
+    source: { kind: 'voice', id: EMPTY_MELODIC_VOICES[slot % EMPTY_MELODIC_VOICES.length] },
     section: 'melodic',
     mute: false,
     solo: false,
@@ -124,7 +152,6 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     slotB: null,
     euclidean: { hits: 0, rotation: 0 },
     steps,
-    output: { mode: 'internal' },
   };
 }
 

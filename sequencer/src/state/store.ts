@@ -3,7 +3,13 @@ import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 import { defaultLFOs, type LFO, type LFODestination } from '../audio/lfo';
-import { voiceCategory, voiceGMDrumNote, KIT_PRESETS } from '../audio/voices';
+import {
+  PRESETS,
+  INSTRUMENTS as LIBRARY_INSTRUMENTS,
+  type Instrument,
+  type TrackSource,
+} from '../instruments/library';
+import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
 import { ensureBothSections, hydrateTrack } from './hydrate';
 import defaultPreset from './defaultPreset.json';
 
@@ -30,15 +36,11 @@ export interface EuclideanParams {
   rotation: number;
 }
 
-export type TrackOutput =
-  | { mode: 'internal' }
-  | { mode: 'midi'; channel: number; note: number | null; deviceId: string | null };
-
 export type TrackSection = 'drum' | 'melodic';
 
 export interface Track {
   id: string;
-  voice: string;
+  source: TrackSource;
   section: TrackSection;
   mute: boolean;
   solo: boolean;
@@ -53,7 +55,6 @@ export interface Track {
   slotB: Step[] | null;
   euclidean: EuclideanParams;
   steps: Step[];
-  output: TrackOutput;
 }
 
 export const PAGE_SIZE = 16;
@@ -71,10 +72,14 @@ interface SequencerState {
   editMode: EditMode;
   midiOutDeviceId: string | null;
   viewSection: TrackSection;
+  instruments: Instrument[];
   setViewSection: (section: TrackSection) => void;
   setMidiOutDeviceId: (id: string | null) => void;
-  setTrackOutput: (trackId: string, output: TrackOutput) => void;
-  applyKitPreset: (presetId: string) => void;
+  setTrackSource: (trackId: string, source: TrackSource) => void;
+  applyPreset: (presetId: string) => void;
+  fireAllProgramChanges: () => void;
+  setInstrumentField: (id: string, patch: Partial<Instrument>) => void;
+  fireInstrumentProgram: (id: string) => void;
   setEditMode: (mode: EditMode) => void;
   selectedStep: StepSelection | null;
   setSelectedStep: (sel: StepSelection | null) => void;
@@ -95,7 +100,6 @@ interface SequencerState {
   setStepMicroTiming: (trackId: string, index: number, microTiming: number) => void;
   setStepGate: (trackId: string, index: number, gate: number) => void;
   setStepTie: (trackId: string, index: number, tied: boolean) => void;
-  setTrackVoice: (trackId: string, voice: string) => void;
   setTrackMutation: (trackId: string, mutation: number) => void;
   setTrackRowChance: (trackId: string, rowChance: number) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
@@ -133,6 +137,21 @@ const presetTracks = ensureBothSections(
   (defaultPreset.tracks as Array<Partial<Track> & { id: string }>).map(hydrateTrack)
 );
 
+function fireProgramChangeFor(inst: Instrument | undefined, fallbackId: string | null): void {
+  if (!inst) return;
+  if (inst.program === null && inst.bankMSB === null && inst.bankLSB === null) return;
+  const deviceId = resolveDeviceId(inst.portName, fallbackId);
+  if (!deviceId) return;
+  sendPatchSelect(deviceId, inst.channel, inst.bankMSB, inst.bankLSB, inst.program);
+}
+
+function fireProgramChange(source: TrackSource): void {
+  if (source.kind !== 'instrument') return;
+  const state = useSequencerStore.getState();
+  const inst = state.instruments.find((i) => i.id === source.id);
+  fireProgramChangeFor(inst, state.midiOutDeviceId);
+}
+
 export const useSequencerStore = create<SequencerState>((set) => ({
   bpm: defaultPreset.bpm,
   rootNote: defaultPreset.rootNote,
@@ -145,31 +164,60 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   editMode: 'note',
   midiOutDeviceId: null,
   viewSection: 'drum',
+  instruments: LIBRARY_INSTRUMENTS.map((i) => ({ ...i })),
   setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
-  setTrackOutput: (trackId, output) =>
+  setTrackSource: (trackId, source) => {
     set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, output } : t)),
-    })),
-  applyKitPreset: (presetId) => {
-    const preset = KIT_PRESETS.find((p) => p.id === presetId);
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, source } : t)),
+    }));
+    fireProgramChange(source);
+  },
+  applyPreset: (presetId) => {
+    const preset = PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
+    let assigned: TrackSource[] = [];
     set((state) => {
       const visible = state.tracks.filter((t) => t.section === state.viewSection);
-      const sectionIndex = new Map(visible.map((t, i) => [t.id, i]));
       return {
         tracks: state.tracks.map((t) => {
-          const idx = sectionIndex.get(t.id);
-          if (idx === undefined) return t;
-          const newVoice = preset.voiceFor(t.voice, idx);
-          const prevDeviceId = t.output.mode === 'midi' ? t.output.deviceId : null;
-          const output: TrackOutput = preset.toMidi
-            ? { mode: 'midi', channel: 9, note: voiceGMDrumNote(newVoice), deviceId: prevDeviceId }
-            : { mode: 'internal' };
-          return { ...t, voice: newVoice, output };
+          const idx = visible.findIndex((v) => v.id === t.id);
+          if (idx < 0) return t;
+          const slot = preset.slots[idx];
+          if (!slot || slot.kind === 'empty') {
+            // empty slot leaves the row untouched, except in an init preset
+            if (preset.id.startsWith('init-')) {
+              return { ...t, source: { kind: 'empty' } };
+            }
+            return t;
+          }
+          const next: TrackSource =
+            slot.kind === 'voice'
+              ? { kind: 'voice', id: slot.id }
+              : { kind: 'instrument', id: slot.id };
+          assigned.push(next);
+          return { ...t, source: next };
         }),
       };
     });
+    for (const s of assigned) fireProgramChange(s);
+  },
+  fireAllProgramChanges: () => {
+    const { tracks } = useSequencerStore.getState();
+    for (const t of tracks) fireProgramChange(t.source);
+  },
+  setInstrumentField: (id, patch) => {
+    set((state) => ({
+      instruments: state.instruments.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+    }));
+    const state = useSequencerStore.getState();
+    const inst = state.instruments.find((i) => i.id === id);
+    fireProgramChangeFor(inst, state.midiOutDeviceId);
+  },
+  fireInstrumentProgram: (id) => {
+    const state = useSequencerStore.getState();
+    const inst = state.instruments.find((i) => i.id === id);
+    fireProgramChangeFor(inst, state.midiOutDeviceId);
   },
   setEditMode: (editMode) => set({ editMode }),
   selectedStep: null,
@@ -283,22 +331,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         const steps = t.steps.slice();
         steps[index] = { ...steps[index], tieToNext: tied };
         return { ...t, steps };
-      }),
-    })),
-  setTrackVoice: (trackId, voice) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) => {
-        if (t.id !== trackId) return t;
-        const cat = voiceCategory(voice);
-        let output: TrackOutput = t.output;
-        const prevDeviceId = t.output.mode === 'midi' ? t.output.deviceId : null;
-        if (cat === 'midi') {
-          output = { mode: 'midi', channel: 9, note: voiceGMDrumNote(voice), deviceId: prevDeviceId };
-        } else if (output.mode === 'midi' && voiceCategory(t.voice) === 'midi') {
-          // leaving a midi voice → revert routing to internal so the new voice plays
-          output = { mode: 'internal' };
-        }
-        return { ...t, voice, output };
       }),
     })),
   setTrackMutation: (trackId, mutation) => {

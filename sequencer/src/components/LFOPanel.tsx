@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useSequencerStore } from '../state/store';
 import { getAudioContext } from '../audio/audioContext';
 import { Knob } from './Knob';
+import { sourceLabel, type TrackSource } from '../instruments/library';
 import type { LFO, LFODestKnob } from '../audio/lfo';
 
 const CELL_W = 120;
@@ -15,12 +16,15 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   rowRatchet: 'ratchet',
 };
 
-function destinationLabel(lfo: LFO, voiceFor: (trackId: string) => string | undefined): string {
+function destinationLabel(
+  lfo: LFO,
+  sourceFor: (trackId: string) => TrackSource | undefined
+): string {
   if (lfo.destinations.length === 0) return '—';
   const first = lfo.destinations[0];
-  const voice = voiceFor(first.trackId);
-  const head = voice
-    ? `${voice} · ${KNOB_LABELS[first.knob]}`
+  const src = sourceFor(first.trackId);
+  const head = src
+    ? `${sourceLabel(src)} · ${KNOB_LABELS[first.knob]}`
     : KNOB_LABELS[first.knob];
   return lfo.destinations.length > 1
     ? `${head} +${lfo.destinations.length - 1}`
@@ -107,7 +111,7 @@ export function LFOPanel() {
   const setSelectingLFO = useSequencerStore((s) => s.setSelectingLFO);
   const setLFODepth = useSequencerStore((s) => s.setLFODepth);
 
-  const voiceFor = (trackId: string) => tracks.find((t) => t.id === trackId)?.voice;
+  const sourceFor = (trackId: string) => tracks.find((t) => t.id === trackId)?.source;
 
   useEffect(() => {
     if (selectingLFO === null) return;
@@ -127,7 +131,7 @@ export function LFOPanel() {
           selected={selectingLFO === lfo.id}
           onSelect={() => setSelectingLFO(selectingLFO === lfo.id ? null : lfo.id)}
           onDepth={(v) => setLFODepth(lfo.id, v)}
-          destLabel={destinationLabel(lfo, voiceFor)}
+          destLabel={destinationLabel(lfo, sourceFor)}
         />
       ))}
     </div>

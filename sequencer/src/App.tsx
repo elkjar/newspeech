@@ -6,9 +6,13 @@ import { LFOPanel } from './components/LFOPanel';
 import { useSequencerStore, type EditMode, type Track, type TrackSection } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
-import { initMIDIOut, sendMIDINote } from './audio/midiOut';
+import { initMIDIOut, sendMIDINote, resolveDeviceId } from './audio/midiOut';
 import { quantize, octaveDegrees, fifthDegrees } from './audio/scale';
-import { isMelodicVoice, voiceChord, voiceGMDrumNote, voiceMutation } from './audio/voices';
+import {
+  sourceChord,
+  sourceIsMelodic,
+  sourceMutation,
+} from './instruments/library';
 import { setOverlay } from './audio/mutationOverlay';
 import { morphStep, stepSeed } from './audio/morph';
 import { effectiveTieToNext } from './audio/mutationTie';
@@ -111,7 +115,8 @@ export function App() {
 
   useEffect(() => {
     return scheduler.onStep((globalStep, when, stepDuration) => {
-      const { tracks, rootNote, scale, lfos, midiOutDeviceId } = useSequencerStore.getState();
+      const { tracks, rootNote, scale, lfos, midiOutDeviceId, instruments } =
+        useSequencerStore.getState();
       const anySolo = tracks.some((t) => t.solo);
       for (const track of tracks) {
         if (track.mute) continue;
@@ -132,8 +137,9 @@ export function App() {
           }
         }
         const mut = trackMut;
-        const melodic = isMelodicVoice(track.voice);
-        const profile = voiceMutation(track.voice);
+        if (track.source.kind === 'empty') continue;
+        const melodic = sourceIsMelodic(track.source);
+        const profile = sourceMutation(track.source);
         let on = step.on;
         if (mut > 0) {
           let flipChance = mut * profile.flipChance;
@@ -178,33 +184,36 @@ export function App() {
         }
         const subDur = stepDuration / ratchet;
         const effectiveGate = gateMutated * ties;
-        const chordIntervals = melodic ? voiceChord(track.voice) : [0];
+        const chordIntervals = melodic ? sourceChord(track.source) : [0];
         const chordMidi = melodic
           ? chordIntervals.map((interval) => quantize(rootNote, scale, pitch + interval))
           : [undefined as number | undefined];
-        const midiOut = track.output.mode === 'midi' ? track.output : null;
-        const effectiveDeviceId = midiOut ? (midiOut.deviceId ?? midiOutDeviceId) : null;
+        const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
+        const instrument =
+          instrumentId !== null ? instruments.find((i) => i.id === instrumentId) ?? null : null;
+        const effectiveDeviceId = instrument
+          ? resolveDeviceId(instrument.portName, midiOutDeviceId)
+          : null;
         const midiNoteDuration = Math.max(0.02, effectiveGate * stepDuration);
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
           for (const m of chordMidi) {
-            if (midiOut) {
+            if (instrument) {
               if (!effectiveDeviceId) continue;
-              const fixed = midiOut.note;
               let outNote: number;
-              if (fixed !== null) outNote = fixed;
+              if (instrument.fixedNote !== null) outNote = instrument.fixedNote;
               else if (m !== undefined) outNote = m;
-              else outNote = voiceGMDrumNote(track.voice);
+              else continue;
               sendMIDINote(
                 effectiveDeviceId,
-                midiOut.channel,
+                instrument.channel,
                 outNote,
                 v,
                 t,
                 midiNoteDuration
               );
-            } else {
-              samplePlayer.trigger(track.voice, t, v, m, effectiveGate, stepDuration);
+            } else if (track.source.kind === 'voice') {
+              samplePlayer.trigger(track.source.id, t, v, m, effectiveGate, stepDuration);
             }
           }
         }
@@ -275,7 +284,7 @@ export function App() {
           sel.index,
           Math.max(0.1, Math.min(2, step.gate + 0.05 * dir))
         );
-      } else if (editMode === 'note' && isMelodicVoice(track.voice)) {
+      } else if (editMode === 'note' && sourceIsMelodic(track.source)) {
         store.setStepPitch(
           sel.trackId,
           sel.index,

@@ -1,6 +1,6 @@
 import { useSequencerStore, type Track, type Step } from '../state/store';
 import { midiToName, quantize } from '../audio/scale';
-import { isMelodicVoice, voiceLabel } from '../audio/voices';
+import { sourceIsMelodic, sourceLabel } from '../instruments/library';
 
 const PANEL = 'border border-white/15 px-4 flex items-center gap-4 w-[320px] h-24';
 
@@ -46,9 +46,9 @@ export function StepInspector() {
   let gateActive = false;
 
   if (track && step) {
-    big = isMelodicVoice(track.voice)
+    big = sourceIsMelodic(track.source)
       ? midiToName(quantize(rootNote, scale, step.pitch))
-      : voiceLabel(track.voice).toUpperCase();
+      : sourceLabel(track.source).toUpperCase();
     velStr = step.velocity.toFixed(2);
     probStr = `${step.probability}%`;
     ratchetStr = `${step.ratchet}`;
