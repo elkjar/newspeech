@@ -6,11 +6,17 @@ import { applyLFO, type LFO } from '../audio/lfo';
 // `modulated()` does in the audio dispatch, but in a React-rendering form so
 // UI surfaces (knobs, step grid, etc.) can show the live modulated value
 // without the store having to push every frame.
-export function useLFOValue(baseValue: number, routed: LFO[]): number {
+export function useLFOValue(
+  baseValue: number,
+  routed: LFO[],
+  rateMul: number = 1
+): number {
   const baseRef = useRef(baseValue);
   baseRef.current = baseValue;
   const routedRef = useRef<LFO[]>(routed);
   routedRef.current = routed;
+  const rateMulRef = useRef(rateMul);
+  rateMulRef.current = rateMul;
 
   const [v, setV] = useState(baseValue);
 
@@ -19,6 +25,7 @@ export function useLFOValue(baseValue: number, routed: LFO[]): number {
     const tick = () => {
       const list = routedRef.current;
       const b = baseRef.current;
+      const rm = rateMulRef.current;
       let next: number;
       if (list.length === 0) {
         next = b;
@@ -30,7 +37,7 @@ export function useLFOValue(baseValue: number, routed: LFO[]): number {
           const t = getAudioContext().currentTime;
           let summed = 0;
           for (const l of list) {
-            summed += Math.sin(2 * Math.PI * l.rate * t) * l.depth;
+            summed += Math.sin(2 * Math.PI * l.rate * rm * t) * l.depth;
           }
           next = applyLFO(b, totalDepth, summed / totalDepth);
         }

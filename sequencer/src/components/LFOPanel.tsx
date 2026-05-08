@@ -37,20 +37,24 @@ function LFOCell({
   onSelect,
   onDepth,
   destLabel,
+  motion,
 }: {
   lfo: LFO;
   selected: boolean;
   onSelect: () => void;
   onDepth: (v: number) => void;
   destLabel: string;
+  motion: number;
 }) {
   const indicatorRef = useRef<SVGCircleElement>(null);
+  const motionRef = useRef(motion);
+  motionRef.current = motion;
 
   useEffect(() => {
     let raf = 0;
     const ctx = getAudioContext();
     const tick = () => {
-      const phase = 2 * Math.PI * lfo.rate * ctx.currentTime;
+      const phase = 2 * Math.PI * lfo.rate * (motionRef.current * 2) * ctx.currentTime;
       const dx = Math.cos(phase) * (PHASE_R - 3);
       const dy = Math.sin(phase) * (PHASE_R - 3);
       const el = indicatorRef.current;
@@ -107,6 +111,7 @@ function LFOCell({
 export function LFOPanel() {
   const lfos = useSequencerStore((s) => s.lfos);
   const tracks = useSequencerStore((s) => s.tracks);
+  const motion = useSequencerStore((s) => s.motion);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const setSelectingLFO = useSequencerStore((s) => s.setSelectingLFO);
   const setLFODepth = useSequencerStore((s) => s.setLFODepth);
@@ -132,6 +137,7 @@ export function LFOPanel() {
           onSelect={() => setSelectingLFO(selectingLFO === lfo.id ? null : lfo.id)}
           onDepth={(v) => setLFODepth(lfo.id, v)}
           destLabel={destinationLabel(lfo, sourceFor)}
+          motion={motion}
         />
       ))}
     </div>

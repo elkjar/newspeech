@@ -73,7 +73,8 @@ export function modulated(
   lfos: LFO[],
   trackId: string,
   knob: LFODestKnob,
-  time?: number
+  time?: number,
+  rateMul: number = 1
 ): number {
   const routed = findRouted(lfos, trackId, knob);
   if (routed.length === 0) return base;
@@ -82,7 +83,7 @@ export function modulated(
   const t = time ?? getAudioContext().currentTime;
   let summed = 0;
   for (const l of routed) {
-    summed += Math.sin(2 * Math.PI * l.rate * t) * l.depth;
+    summed += Math.sin(2 * Math.PI * l.rate * rateMul * t) * l.depth;
   }
   const out = summed / totalDepth;
   return applyLFO(base, totalDepth, out);

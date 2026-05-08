@@ -51,12 +51,13 @@ export function TrackKnob({
   size: number;
 }) {
   const lfos = useSequencerStore((s) => s.lfos);
+  const motion = useSequencerStore((s) => s.motion);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
 
   const value = readKnob(track, knob);
   const routed = findRouted(lfos, track.id, knob);
-  const displayValue = useLFOValue(value, routed);
+  const displayValue = useLFOValue(value, routed, motion * 2);
   const label = LABELS[knob];
 
   const onModulationClick =

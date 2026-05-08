@@ -12,6 +12,16 @@ interface PersistedState {
   lfos?: LFO[];
   midiOutDeviceId?: string | null;
   viewSection?: TrackSection;
+  density?: number;
+  chaos?: number;
+  motion?: number;
+  tension?: number;
+}
+
+function clamp01(v: unknown, fallback = 0.5): number {
+  return typeof v === 'number' && Number.isFinite(v)
+    ? Math.max(0, Math.min(1, v))
+    : fallback;
 }
 
 const CURRENT_VERSION = 1;
@@ -27,6 +37,10 @@ export function exportProject(): string {
     lfos: s.lfos,
     midiOutDeviceId: s.midiOutDeviceId,
     viewSection: s.viewSection,
+    density: s.density,
+    chaos: s.chaos,
+    motion: s.motion,
+    tension: s.tension,
   };
   return JSON.stringify(data, null, 2);
 }
@@ -59,6 +73,10 @@ export function importProject(json: string): boolean {
         ? data.midiOutDeviceId
         : null,
     viewSection,
+    density: clamp01(data.density),
+    chaos: clamp01(data.chaos),
+    motion: clamp01(data.motion),
+    tension: clamp01(data.tension),
     selectingLFO: null,
     globalStep: 0,
     selectedStep: null,

@@ -88,6 +88,14 @@ interface SequencerState {
   midiOutDeviceId: string | null;
   viewSection: TrackSection;
   instruments: Instrument[];
+  density: number;
+  chaos: number;
+  motion: number;
+  tension: number;
+  setDensity: (v: number) => void;
+  setChaos: (v: number) => void;
+  setMotion: (v: number) => void;
+  setTension: (v: number) => void;
   setViewSection: (section: TrackSection) => void;
   setMidiOutDeviceId: (id: string | null) => void;
   setTrackSource: (trackId: string, source: TrackSource) => void;
@@ -154,6 +162,12 @@ const presetTracks = ensureBothSections(
   (defaultPreset.tracks as Array<Partial<Track> & { id: string }>).map(hydrateTrack)
 );
 
+function clamp01(v: unknown, fallback = 0.5): number {
+  return typeof v === 'number' && Number.isFinite(v)
+    ? Math.max(0, Math.min(1, v))
+    : fallback;
+}
+
 function fireProgramChangeFor(inst: Instrument | undefined, fallbackId: string | null): void {
   if (!inst) return;
   if (inst.program === null && inst.bankMSB === null && inst.bankLSB === null) return;
@@ -182,6 +196,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   midiOutDeviceId: null,
   viewSection: 'drum',
   instruments: LIBRARY_INSTRUMENTS.map((i) => ({ ...i })),
+  density: clamp01((defaultPreset as { density?: unknown }).density),
+  chaos: clamp01((defaultPreset as { chaos?: unknown }).chaos),
+  motion: clamp01((defaultPreset as { motion?: unknown }).motion),
+  tension: clamp01((defaultPreset as { tension?: unknown }).tension),
+  setDensity: (v) => set({ density: clamp01(v) }),
+  setChaos: (v) => set({ chaos: clamp01(v) }),
+  setMotion: (v) => set({ motion: clamp01(v) }),
+  setTension: (v) => set({ tension: clamp01(v) }),
   setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
   setTrackSource: (trackId, source) => {

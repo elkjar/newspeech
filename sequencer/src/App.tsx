@@ -3,6 +3,7 @@ import { PlayButton, TransportControls } from './components/Transport';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
+import { MacroStrip } from './components/MacroStrip';
 import {
   useSequencerStore,
   RATE_STRIDE,
@@ -121,8 +122,14 @@ export function App() {
 
   useEffect(() => {
     return scheduler.onStep((globalStep, when, stepDuration) => {
-      const { tracks, rootNote, scale, lfos, midiOutDeviceId, instruments } =
+      const { tracks, rootNote, scale, lfos, midiOutDeviceId, instruments, density, chaos, motion, tension } =
         useSequencerStore.getState();
+      const motionRateMul = motion * 2;
+      const densityMul = density * 2;
+      const chaosMul = chaos * 2;
+      const tBipolar = (tension - 0.5) * 2;
+      const tStableMul = Math.max(0, 1 - tBipolar);
+      const tColorMul = Math.max(0, 1 + tBipolar);
       const anySolo = tracks.some((t) => t.solo);
       for (const track of tracks) {
         if (track.mute) continue;
@@ -134,10 +141,10 @@ export function App() {
         const authoredStep = track.steps[localStep];
         if (!authoredStep) continue;
         const rowStepDuration = stepDuration * stride;
-        const trackMut = modulated(track.mutation, lfos, track.id, 'mutation');
-        const trackMorph = modulated(track.morph, lfos, track.id, 'morph');
-        const trackRowChance = modulated(track.rowChance, lfos, track.id, 'rowChance');
-        const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet');
+        const trackMut = modulated(track.mutation, lfos, track.id, 'mutation', undefined, motionRateMul) * chaosMul;
+        const trackMorph = modulated(track.morph, lfos, track.id, 'morph', undefined, motionRateMul);
+        const trackRowChance = modulated(track.rowChance, lfos, track.id, 'rowChance', undefined, motionRateMul);
+        const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet', undefined, motionRateMul);
         let step = authoredStep;
         if (track.slotA && track.slotB) {
           const a = track.slotA[localStep];
@@ -166,16 +173,21 @@ export function App() {
           const oct = octaveDegrees(scale);
           const fifth = fifthDegrees(scale);
           const w = profile.pitchWeights;
-          const total = w.octave + w.fifth + w.small;
-          const r = Math.random() * total;
-          let jump: number;
-          if (r < w.octave) jump = Math.random() < 0.5 ? -oct : oct;
-          else if (r < w.octave + w.fifth) jump = Math.random() < 0.5 ? -fifth : fifth;
-          else {
-            const small = [-3, -2, -1, 1, 2, 3];
-            jump = small[Math.floor(Math.random() * small.length)];
+          const eOct = w.octave * tStableMul;
+          const eFifth = w.fifth * tStableMul;
+          const eSmall = w.small * tColorMul;
+          const total = eOct + eFifth + eSmall;
+          if (total > 0) {
+            const r = Math.random() * total;
+            let jump: number;
+            if (r < eOct) jump = Math.random() < 0.5 ? -oct : oct;
+            else if (r < eOct + eFifth) jump = Math.random() < 0.5 ? -fifth : fifth;
+            else {
+              const small = [-3, -2, -1, 1, 2, 3];
+              jump = small[Math.floor(Math.random() * small.length)];
+            }
+            pitch = Math.max(-14, Math.min(14, pitch + jump));
           }
-          pitch = Math.max(-14, Math.min(14, pitch + jump));
         }
         const gateBias = mut > 0 ? mut * profile.gateBias : 0;
         const gateJitter =
@@ -184,7 +196,7 @@ export function App() {
         setOverlay(track.id, localStep, { on, velocity: v, pitch, gate: gateMutated });
         if (!on) continue;
         if (isSilencedByTie(track, localStep)) continue;
-        const effectiveProb = step.probability * (1 - trackRowChance);
+        const effectiveProb = step.probability * (1 - trackRowChance) * densityMul;
         if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) continue;
         const ties = tieLength(track, localStep);
         const baseTime = when + step.microTiming * rowStepDuration;
@@ -307,16 +319,18 @@ export function App() {
   }, []);
 
   return (
-    <div className="relative w-full">
-      <header className="crumb absolute top-0 left-0 right-0 z-10">
-        <span className="label">
-          <a href="/">newspeech</a>
-          <span className="sep"> / </span>sequence
-        </span>
-      </header>
-      <main className="min-h-screen flex items-center justify-center px-10 py-12">
-        <div className="flex flex-col gap-8 w-[1394px] max-w-full">
-          <div className="flex justify-between items-stretch gap-8">
+    <div className="relative w-full overflow-x-auto">
+      <main className="min-h-screen grid place-items-center px-10 py-12">
+        <div className="flex flex-col gap-8 w-[1500px] border border-white/15 rounded-[20px] p-10">
+          <div className="flex justify-between items-center gap-8">
+            <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
+              <a href="/" className="hover:opacity-100 transition-opacity">newspeech</a>
+              <span className="opacity-50"> | </span>
+              <span>sequence</span>
+            </span>
+            <MacroStrip />
+          </div>
+          <div className="flex justify-between items-start gap-8">
             <StepInspector />
             <LFOPanel />
           </div>
