@@ -3,6 +3,3 @@
 node_modules/
 dist/
 _site/
-*.tsbuildinfo
-sequencer/vite.config.js
-sequencer/vite.config.d.ts
