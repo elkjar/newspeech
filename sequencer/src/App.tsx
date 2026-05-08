@@ -27,12 +27,12 @@ import { modulated } from './audio/lfo';
 import { togglePlayback } from './audio/transport';
 
 const MODE_KEYS: Record<string, EditMode> = {
-  n: 'note',
-  v: 'velocity',
-  c: 'chance',
-  r: 'ratchet',
-  t: 'timing',
-  g: 'gate',
+  '1': 'note',
+  '2': 'velocity',
+  '3': 'chance',
+  '4': 'ratchet',
+  '5': 'timing',
+  '6': 'gate',
 };
 
 const MODES: EditMode[] = ['note', 'velocity', 'chance', 'ratchet', 'timing', 'gate'];
@@ -319,9 +319,9 @@ export function App() {
   }, []);
 
   return (
-    <div className="relative w-full overflow-x-auto">
-      <main className="min-h-screen grid place-items-center px-10 py-12">
-        <div className="flex flex-col gap-8 w-[1500px] border border-white/15 rounded-[20px] p-10">
+    <div className="relative w-full">
+      <main className="min-h-screen flex items-center justify-center px-10 py-12">
+        <div className="flex flex-col gap-8 border border-white/15 rounded-[20px] p-10">
           <div className="flex justify-between items-center gap-8">
             <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
               <a href="/" className="hover:opacity-100 transition-opacity">newspeech</a>
@@ -336,7 +336,7 @@ export function App() {
           </div>
           <TrackGrid />
           <div className="flex justify-between items-center gap-8">
-            <div className="flex items-center gap-6">
+            <div className="transport flex items-center gap-6">
               <PlayButton />
               <TransportControls />
             </div>

@@ -181,7 +181,7 @@ export function TransportControls() {
   };
 
   return (
-    <div className="flex items-center gap-x-6 gap-y-2 flex-wrap">
+    <div className="globals flex items-center gap-x-6 gap-y-2 flex-wrap w-[550px]">
       <label className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
         <span>bpm</span>
         <input
