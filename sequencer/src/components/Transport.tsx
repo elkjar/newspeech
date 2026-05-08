@@ -1,14 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useSequencerStore } from '../state/store';
 import { togglePlayback } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
 import { exportProject, importProject, timestampSlug } from '../state/persist';
-import {
-  getMIDIOutputs,
-  midiOutStatus,
-  onMIDIOutputsChanged,
-  type MIDIOutputInfo,
-} from '../audio/midiOut';
+import { midiOutStatus } from '../audio/midiOut';
+import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 import { KIT_PRESETS } from '../audio/voices';
 
 function downloadProject() {
@@ -94,15 +90,6 @@ export function PlayButton() {
       {playing ? '■ stop' : '▶ play'}
     </button>
   );
-}
-
-function useMIDIOutputs(): MIDIOutputInfo[] {
-  const [list, setList] = useState<MIDIOutputInfo[]>(() => getMIDIOutputs());
-  useEffect(() => {
-    setList(getMIDIOutputs());
-    return onMIDIOutputsChanged(() => setList(getMIDIOutputs()));
-  }, []);
-  return list;
 }
 
 function MIDIControls() {
@@ -192,7 +179,7 @@ export function TransportControls() {
   };
 
   return (
-    <div className="flex items-center gap-6 flex-wrap">
+    <div className="flex items-center gap-x-6 gap-y-2 flex-wrap">
       <label className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
         <span>bpm</span>
         <input

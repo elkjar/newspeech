@@ -1,4 +1,4 @@
-import type { Track, Step, TrackOutput } from './store';
+import type { Track, Step, TrackOutput, TrackSection } from './store';
 import {
   defaultLFOs,
   LFO_RATES,
@@ -63,7 +63,7 @@ export function hydrateLFOs(saved: LFO[] | undefined): LFO[] {
 
 function hydrateOutput(saved: unknown): TrackOutput {
   if (!saved || typeof saved !== 'object') return { mode: 'internal' };
-  const obj = saved as { mode?: unknown; channel?: unknown; note?: unknown };
+  const obj = saved as { mode?: unknown; channel?: unknown; note?: unknown; deviceId?: unknown };
   if (obj.mode !== 'midi') return { mode: 'internal' };
   const channel =
     typeof obj.channel === 'number' && obj.channel >= 0 && obj.channel <= 15
@@ -73,16 +73,19 @@ function hydrateOutput(saved: unknown): TrackOutput {
   if (typeof obj.note === 'number' && obj.note >= 0 && obj.note <= 127) {
     note = Math.floor(obj.note);
   }
-  return { mode: 'midi', channel, note };
+  const deviceId = typeof obj.deviceId === 'string' ? obj.deviceId : null;
+  return { mode: 'midi', channel, note, deviceId };
 }
 
 export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
   const length = saved.length ?? 16;
   const stepsRaw = Array.isArray(saved.steps) ? saved.steps : [];
   const steps = Array.from({ length: 64 }, (_, i) => hydrateStep(stepsRaw[i] ?? {}));
+  const section: TrackSection = saved.section === 'melodic' ? 'melodic' : 'drum';
   return {
     id: saved.id,
     voice: saved.voice ?? 'kick',
+    section,
     mute: saved.mute ?? false,
     solo: saved.solo ?? false,
     length,
@@ -98,4 +101,48 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     steps,
     output: hydrateOutput((saved as { output?: unknown }).output),
   };
+}
+
+const EMPTY_MELODIC_VOICES = ['bass', 'bass', 'synth', 'synth', 'pad', 'pad', 'synth', 'synth'];
+
+export function emptyMelodicTrack(id: string, slot: number): Track {
+  const steps = Array.from({ length: 64 }, () => hydrateStep({}));
+  return {
+    id,
+    voice: EMPTY_MELODIC_VOICES[slot % EMPTY_MELODIC_VOICES.length],
+    section: 'melodic',
+    mute: false,
+    solo: false,
+    length: 16,
+    lastPitch: 0,
+    viewPage: 0,
+    mutation: 0,
+    rowChance: 0,
+    rowRatchet: 0,
+    morph: 0,
+    slotA: null,
+    slotB: null,
+    euclidean: { hits: 0, rotation: 0 },
+    steps,
+    output: { mode: 'internal' },
+  };
+}
+
+export function ensureBothSections(tracks: Track[]): Track[] {
+  const hasMelodic = tracks.some((t) => t.section === 'melodic');
+  if (hasMelodic) return tracks;
+  const usedIds = new Set(tracks.map((t) => t.id));
+  let counter = tracks.length + 1;
+  const filler: Track[] = [];
+  while (filler.length < 8) {
+    let id = `t${counter}`;
+    while (usedIds.has(id)) {
+      counter++;
+      id = `t${counter}`;
+    }
+    usedIds.add(id);
+    filler.push(emptyMelodicTrack(id, filler.length));
+    counter++;
+  }
+  return [...tracks, ...filler];
 }

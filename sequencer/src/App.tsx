@@ -3,7 +3,7 @@ import { PlayButton, TransportControls } from './components/Transport';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
-import { useSequencerStore, type EditMode, type Track } from './state/store';
+import { useSequencerStore, type EditMode, type Track, type TrackSection } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
 import { initMIDIOut, sendMIDINote } from './audio/midiOut';
@@ -25,6 +25,34 @@ const MODE_KEYS: Record<string, EditMode> = {
 };
 
 const MODES: EditMode[] = ['note', 'velocity', 'chance', 'ratchet', 'timing', 'gate'];
+
+const SECTIONS: { id: TrackSection; label: string }[] = [
+  { id: 'drum', label: 'rhythm' },
+  { id: 'melodic', label: 'melody' },
+];
+
+function SectionToggle() {
+  const viewSection = useSequencerStore((s) => s.viewSection);
+  const setViewSection = useSequencerStore((s) => s.setViewSection);
+  return (
+    <div className="flex gap-2 text-[11px] uppercase tracking-widest">
+      {SECTIONS.map((s) => (
+        <button
+          key={s.id}
+          onClick={() => setViewSection(s.id)}
+          className={[
+            'px-3 py-1.5 border transition-colors',
+            viewSection === s.id
+              ? 'bg-white text-ink border-white'
+              : 'border-white/15 text-white/60 hover:text-white hover:border-white',
+          ].join(' ')}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function ModeSwitcher() {
   const editMode = useSequencerStore((s) => s.editMode);
@@ -155,19 +183,20 @@ export function App() {
           ? chordIntervals.map((interval) => quantize(rootNote, scale, pitch + interval))
           : [undefined as number | undefined];
         const midiOut = track.output.mode === 'midi' ? track.output : null;
+        const effectiveDeviceId = midiOut ? (midiOut.deviceId ?? midiOutDeviceId) : null;
         const midiNoteDuration = Math.max(0.02, effectiveGate * stepDuration);
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
           for (const m of chordMidi) {
             if (midiOut) {
-              if (!midiOutDeviceId) continue;
+              if (!effectiveDeviceId) continue;
               const fixed = midiOut.note;
               let outNote: number;
               if (fixed !== null) outNote = fixed;
               else if (m !== undefined) outNote = m;
               else outNote = voiceGMDrumNote(track.voice);
               sendMIDINote(
-                midiOutDeviceId,
+                effectiveDeviceId,
                 midiOut.channel,
                 outNote,
                 v,
@@ -265,9 +294,6 @@ export function App() {
           <a href="/">newspeech</a>
           <span className="sep"> / </span>sequence
         </span>
-        <span className="aux">
-          click selects · cmd-click toggles · drag/scroll adjusts active mode · shift = velocity · cmd = chance · space play/stop · n/v/c/r/t/g switch mode · ↑↓ nudge step
-        </span>
       </header>
       <main className="min-h-screen flex items-center justify-center px-10 py-12">
         <div className="flex flex-col gap-8 w-[1394px] max-w-full">
@@ -281,7 +307,11 @@ export function App() {
               <PlayButton />
               <TransportControls />
             </div>
-            <ModeSwitcher />
+            <div className="flex items-center gap-4">
+              <SectionToggle />
+              <span className="w-px h-6 bg-white/15" />
+              <ModeSwitcher />
+            </div>
           </div>
         </div>
       </main>

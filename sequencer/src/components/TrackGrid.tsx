@@ -10,6 +10,7 @@ const HOVER_CAPABLE =
 
 export function TrackGrid() {
   const tracks = useSequencerStore((s) => s.tracks);
+  const viewSection = useSequencerStore((s) => s.viewSection);
   const setGlobalStep = useSequencerStore((s) => s.setGlobalStep);
   const setSelectedStep = useSequencerStore((s) => s.setSelectedStep);
 
@@ -28,9 +29,11 @@ export function TrackGrid() {
 
   const handleMouseLeave = HOVER_CAPABLE ? () => setSelectedStep(null) : undefined;
 
+  const visible = tracks.filter((t) => t.section === viewSection);
+
   return (
     <div className="flex flex-col gap-2" onMouseLeave={handleMouseLeave}>
-      {tracks.map((track) => (
+      {visible.map((track) => (
         <Track key={track.id} track={track} />
       ))}
     </div>

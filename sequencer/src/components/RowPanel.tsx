@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { useSequencerStore, type Track as TrackData } from '../state/store';
 import { voiceCategory, voiceGMDrumNote } from '../audio/voices';
-import { midiToName } from '../audio/scale';
+import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 
 const CELL = 36;
 
@@ -15,6 +15,8 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const setTrackLength = useSequencerStore((s) => s.setTrackLength);
   const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
   const setTrackOutput = useSequencerStore((s) => s.setTrackOutput);
+  const globalDeviceId = useSequencerStore((s) => s.midiOutDeviceId);
+  const outputs = useMIDIOutputs();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,7 +41,10 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const isMidi = out.mode === 'midi';
   const channel = out.mode === 'midi' ? out.channel : 9;
   const note = out.mode === 'midi' ? out.note : null;
+  const deviceId = out.mode === 'midi' ? out.deviceId : null;
   const voiceIsMidi = voiceCategory(track.voice) === 'midi';
+  const globalDeviceName =
+    outputs.find((o) => o.id === globalDeviceId)?.name ?? '(global)';
 
   return (
     <div
@@ -79,7 +84,7 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
                 style={{ height: CELL }}
                 className={[
                   'px-2 border text-[10px] uppercase tracking-widest transition-colors',
-                  !isMidi ? 'bg-white text-black border-white' : 'border-white/15 text-white/60 hover:border-white',
+                  !isMidi ? 'bg-white text-ink border-white' : 'border-white/15 text-white/60 hover:border-white',
                 ].join(' ')}
                 title="play internally (sample / synth)"
               >
@@ -92,12 +97,13 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
                     mode: 'midi',
                     channel: 9,
                     note: voiceGMDrumNote(track.voice),
+                    deviceId: null,
                   })
                 }
                 style={{ height: CELL }}
                 className={[
                   'px-2 border text-[10px] uppercase tracking-widest transition-colors -ml-px',
-                  isMidi ? 'bg-white text-black border-white' : 'border-white/15 text-white/60 hover:border-white',
+                  isMidi ? 'bg-white text-ink border-white' : 'border-white/15 text-white/60 hover:border-white',
                 ].join(' ')}
                 title="send midi out"
               >
@@ -110,6 +116,32 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
       {voiceIsMidi && <div className="self-stretch w-px bg-white/15 mx-1" />}
       {isMidi && (
         <>
+          <label className="flex flex-col items-start gap-1">
+            <span className="text-[9px] uppercase tracking-widest text-white/40">midi port</span>
+            <select
+              value={deviceId ?? ''}
+              onChange={(e) =>
+                setTrackOutput(track.id, {
+                  mode: 'midi',
+                  channel,
+                  note,
+                  deviceId: e.target.value || null,
+                })
+              }
+              style={{ height: CELL }}
+              className="select-chevron bg-transparent border border-white/15 pl-2 pr-6 text-[11px] focus:outline-none focus:border-white text-white max-w-[180px]"
+              title="midi output device — default uses the global picker"
+            >
+              <option value="" className="bg-[#050505]">
+                default · {globalDeviceName}
+              </option>
+              {outputs.map((o) => (
+                <option key={o.id} value={o.id} className="bg-[#050505]">
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <Field
             label="ch"
             value={channel + 1}
@@ -120,6 +152,7 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
                 mode: 'midi',
                 channel: Math.max(0, Math.min(15, v - 1)),
                 note,
+                deviceId,
               })
             }
           />
@@ -133,9 +166,9 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
                 mode: 'midi',
                 channel,
                 note: Math.max(0, Math.min(127, v)),
+                deviceId,
               })
             }
-            sub={note !== null ? midiToName(note) : ''}
           />
         </>
       )}
@@ -149,14 +182,12 @@ function Field({
   min,
   max,
   onChange,
-  sub,
 }: {
   label: string;
   value: number;
   min: number;
   max: number;
   onChange: (n: number) => void;
-  sub?: string;
 }) {
   return (
     <label className="flex flex-col items-center gap-1">
@@ -170,9 +201,6 @@ function Field({
         style={{ width: CELL, height: CELL }}
         className="bg-transparent border border-white/15 text-center text-[14px] tabular-nums focus:outline-none focus:border-white"
       />
-      {sub !== undefined && (
-        <span className="text-[9px] uppercase tracking-widest text-white/30 tabular-nums h-3">{sub}</span>
-      )}
     </label>
   );
 }

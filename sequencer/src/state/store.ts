@@ -4,7 +4,7 @@ import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 import { defaultLFOs, type LFO, type LFODestination } from '../audio/lfo';
 import { voiceCategory, voiceGMDrumNote, KIT_PRESETS } from '../audio/voices';
-import { hydrateTrack } from './hydrate';
+import { ensureBothSections, hydrateTrack } from './hydrate';
 import defaultPreset from './defaultPreset.json';
 
 export type EditMode = 'note' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
@@ -32,11 +32,14 @@ export interface EuclideanParams {
 
 export type TrackOutput =
   | { mode: 'internal' }
-  | { mode: 'midi'; channel: number; note: number | null };
+  | { mode: 'midi'; channel: number; note: number | null; deviceId: string | null };
+
+export type TrackSection = 'drum' | 'melodic';
 
 export interface Track {
   id: string;
   voice: string;
+  section: TrackSection;
   mute: boolean;
   solo: boolean;
   length: number;
@@ -67,6 +70,8 @@ interface SequencerState {
   playing: boolean;
   editMode: EditMode;
   midiOutDeviceId: string | null;
+  viewSection: TrackSection;
+  setViewSection: (section: TrackSection) => void;
   setMidiOutDeviceId: (id: string | null) => void;
   setTrackOutput: (trackId: string, output: TrackOutput) => void;
   applyKitPreset: (presetId: string) => void;
@@ -124,8 +129,8 @@ function emptySteps(): Step[] {
   }));
 }
 
-const presetTracks = (defaultPreset.tracks as Array<Partial<Track> & { id: string }>).map(
-  hydrateTrack
+const presetTracks = ensureBothSections(
+  (defaultPreset.tracks as Array<Partial<Track> & { id: string }>).map(hydrateTrack)
 );
 
 export const useSequencerStore = create<SequencerState>((set) => ({
@@ -139,6 +144,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   playing: false,
   editMode: 'note',
   midiOutDeviceId: null,
+  viewSection: 'drum',
+  setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
   setTrackOutput: (trackId, output) =>
     set((state) => ({
@@ -147,15 +154,22 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   applyKitPreset: (presetId) => {
     const preset = KIT_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
-    set((state) => ({
-      tracks: state.tracks.map((t, i) => {
-        const newVoice = preset.voiceFor(t.voice, i);
-        const output: TrackOutput = preset.toMidi
-          ? { mode: 'midi', channel: 9, note: voiceGMDrumNote(newVoice) }
-          : { mode: 'internal' };
-        return { ...t, voice: newVoice, output };
-      }),
-    }));
+    set((state) => {
+      const visible = state.tracks.filter((t) => t.section === state.viewSection);
+      const sectionIndex = new Map(visible.map((t, i) => [t.id, i]));
+      return {
+        tracks: state.tracks.map((t) => {
+          const idx = sectionIndex.get(t.id);
+          if (idx === undefined) return t;
+          const newVoice = preset.voiceFor(t.voice, idx);
+          const prevDeviceId = t.output.mode === 'midi' ? t.output.deviceId : null;
+          const output: TrackOutput = preset.toMidi
+            ? { mode: 'midi', channel: 9, note: voiceGMDrumNote(newVoice), deviceId: prevDeviceId }
+            : { mode: 'internal' };
+          return { ...t, voice: newVoice, output };
+        }),
+      };
+    });
   },
   setEditMode: (editMode) => set({ editMode }),
   selectedStep: null,
@@ -277,8 +291,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         if (t.id !== trackId) return t;
         const cat = voiceCategory(voice);
         let output: TrackOutput = t.output;
+        const prevDeviceId = t.output.mode === 'midi' ? t.output.deviceId : null;
         if (cat === 'midi') {
-          output = { mode: 'midi', channel: 9, note: voiceGMDrumNote(voice) };
+          output = { mode: 'midi', channel: 9, note: voiceGMDrumNote(voice), deviceId: prevDeviceId };
         } else if (output.mode === 'midi' && voiceCategory(t.voice) === 'midi') {
           // leaving a midi voice → revert routing to internal so the new voice plays
           output = { mode: 'internal' };
