@@ -9,7 +9,17 @@ import {
 } from '../audio/lfo';
 import { getInstrument, type TrackSource } from '../instruments/library';
 
-const VALID_KNOBS: LFODestKnob[] = ['mutation', 'morph', 'rowChance', 'rowRatchet'];
+const VALID_KNOBS: LFODestKnob[] = [
+  'mutation',
+  'morph',
+  'rowChance',
+  'rowRatchet',
+  'density',
+  'motion',
+  'drift',
+  'chaos',
+  'tension',
+];
 
 function validDest(d: unknown): LFODestination | null {
   if (!d || typeof d !== 'object') return null;

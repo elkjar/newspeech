@@ -1,6 +1,12 @@
 import { getAudioContext } from './audioContext';
 
-export type LFODestKnob = 'mutation' | 'morph' | 'rowChance' | 'rowRatchet';
+export type LFODestKnobTrack = 'mutation' | 'morph' | 'rowChance' | 'rowRatchet';
+export type LFODestKnobGlobal = 'density' | 'motion' | 'drift' | 'chaos' | 'tension';
+export type LFODestKnob = LFODestKnobTrack | LFODestKnobGlobal;
+
+// Sentinel trackId used in LFODestination when the destination is a global
+// macro rather than a per-track knob. Lets the same routing list cover both.
+export const GLOBAL_TRACK_ID = '__global__';
 
 export interface LFODestination {
   trackId: string;

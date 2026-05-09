@@ -15,6 +15,7 @@ interface PersistedState {
   density?: number;
   chaos?: number;
   motion?: number;
+  drift?: number;
   tension?: number;
 }
 
@@ -40,6 +41,7 @@ export function exportProject(): string {
     density: s.density,
     chaos: s.chaos,
     motion: s.motion,
+    drift: s.drift,
     tension: s.tension,
   };
   return JSON.stringify(data, null, 2);
@@ -75,7 +77,8 @@ export function importProject(json: string): boolean {
     viewSection,
     density: clamp01(data.density),
     chaos: clamp01(data.chaos),
-    motion: clamp01(data.motion),
+    motion: clamp01(data.motion, 0.5),
+    drift: clamp01(data.drift, 1),
     tension: clamp01(data.tension),
     selectingLFO: null,
     globalStep: 0,

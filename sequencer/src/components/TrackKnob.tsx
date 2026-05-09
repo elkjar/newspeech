@@ -1,16 +1,16 @@
 import { Knob } from './Knob';
-import { findRouted, type LFODestKnob } from '../audio/lfo';
+import { findRouted, type LFODestKnobTrack } from '../audio/lfo';
 import { useLFOValue } from '../hooks/useLFOValue';
 import { useSequencerStore, type Track as TrackData } from '../state/store';
 
-const LABELS: Record<LFODestKnob, string> = {
+const LABELS: Record<LFODestKnobTrack, string> = {
   mutation: 'mutation',
   rowChance: 'row chance',
   rowRatchet: 'row ratchet',
   morph: 'morph',
 };
 
-function readKnob(track: TrackData, knob: LFODestKnob): number {
+function readKnob(track: TrackData, knob: LFODestKnobTrack): number {
   switch (knob) {
     case 'mutation':
       return track.mutation;
@@ -23,7 +23,7 @@ function readKnob(track: TrackData, knob: LFODestKnob): number {
   }
 }
 
-function writeKnob(trackId: string, knob: LFODestKnob, value: number): void {
+function writeKnob(trackId: string, knob: LFODestKnobTrack, value: number): void {
   const s = useSequencerStore.getState();
   switch (knob) {
     case 'mutation':
@@ -47,17 +47,16 @@ export function TrackKnob({
   size,
 }: {
   track: TrackData;
-  knob: LFODestKnob;
+  knob: LFODestKnobTrack;
   size: number;
 }) {
   const lfos = useSequencerStore((s) => s.lfos);
-  const motion = useSequencerStore((s) => s.motion);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
 
   const value = readKnob(track, knob);
   const routed = findRouted(lfos, track.id, knob);
-  const displayValue = useLFOValue(value, routed, motion * 2);
+  const displayValue = useLFOValue(value, routed, 1);
   const label = LABELS[knob];
 
   const onModulationClick =

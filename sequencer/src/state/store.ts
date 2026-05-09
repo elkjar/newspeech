@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
-import { type LFO, type LFODestination } from '../audio/lfo';
+import { defaultLFOs, type LFO, type LFODestination } from '../audio/lfo';
 import {
   PRESETS,
   INSTRUMENTS as LIBRARY_INSTRUMENTS,
@@ -91,10 +91,12 @@ interface SequencerState {
   density: number;
   chaos: number;
   motion: number;
+  drift: number;
   tension: number;
   setDensity: (v: number) => void;
   setChaos: (v: number) => void;
   setMotion: (v: number) => void;
+  setDrift: (v: number) => void;
   setTension: (v: number) => void;
   setViewSection: (section: TrackSection) => void;
   setMidiOutDeviceId: (id: string | null) => void;
@@ -198,11 +200,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   instruments: LIBRARY_INSTRUMENTS.map((i) => ({ ...i })),
   density: clamp01((defaultPreset as { density?: unknown }).density),
   chaos: clamp01((defaultPreset as { chaos?: unknown }).chaos),
-  motion: clamp01((defaultPreset as { motion?: unknown }).motion),
+  motion: clamp01((defaultPreset as { motion?: unknown }).motion, 0.5),
+  drift: clamp01((defaultPreset as { drift?: unknown }).drift, 1),
   tension: clamp01((defaultPreset as { tension?: unknown }).tension),
   setDensity: (v) => set({ density: clamp01(v) }),
   setChaos: (v) => set({ chaos: clamp01(v) }),
   setMotion: (v) => set({ motion: clamp01(v) }),
+  setDrift: (v) => set({ drift: clamp01(v) }),
   setTension: (v) => set({ tension: clamp01(v) }),
   setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
@@ -216,6 +220,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     const preset = PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
     let assigned: TrackSource[] = [];
+    const isInit = preset.id.startsWith('init-');
     set((state) => {
       const visible = state.tracks.filter((t) => t.section === state.viewSection);
       return {
@@ -225,8 +230,19 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           const slot = preset.slots[idx];
           if (!slot || slot.kind === 'empty') {
             // empty slot leaves the row untouched, except in an init preset
-            if (preset.id.startsWith('init-')) {
-              return { ...t, source: { kind: 'empty' } };
+            if (isInit) {
+              return {
+                ...t,
+                source: { kind: 'empty' },
+                steps: emptySteps(),
+                slotA: null,
+                slotB: null,
+                lockTiming: false,
+                mutation: 0,
+                morph: 0,
+                rowChance: 0,
+                rowRatchet: 0,
+              };
             }
             return t;
           }
@@ -235,8 +251,24 @@ export const useSequencerStore = create<SequencerState>((set) => ({
               ? { kind: 'voice', id: slot.id }
               : { kind: 'instrument', id: slot.id };
           assigned.push(next);
-          return { ...t, source: next };
+          return isInit
+            ? {
+                ...t,
+                source: next,
+                steps: emptySteps(),
+                slotA: null,
+                slotB: null,
+                lockTiming: false,
+                mutation: 0,
+                morph: 0,
+                rowChance: 0,
+                rowRatchet: 0,
+              }
+            : { ...t, source: next };
         }),
+        // init also nukes all LFO routing + depth (across both sections — LFOs
+        // are global, not section-scoped). Clean slate.
+        lfos: isInit ? defaultLFOs() : state.lfos,
       };
     });
     for (const s of assigned) fireProgramChange(s);

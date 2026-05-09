@@ -67,10 +67,9 @@ export function Track({ track }: { track: TrackData }) {
   const globalStep = useSequencerStore((s) => s.globalStep);
   const playing = useSequencerStore((s) => s.playing);
   const lfos = useSequencerStore((s) => s.lfos);
-  const motion = useSequencerStore((s) => s.motion);
   const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
   const morphLFOs = findRouted(lfos, track.id, 'morph');
-  const liveMorph = useLFOValue(track.morph, morphLFOs, motion * 2);
+  const liveMorph = useLFOValue(track.morph, morphLFOs, 1);
   const setTrackSource = useSequencerStore((s) => s.setTrackSource);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);

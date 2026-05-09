@@ -23,7 +23,8 @@ import {
 import { setOverlay } from './audio/mutationOverlay';
 import { morphStep, stepSeed } from './audio/morph';
 import { effectiveTieToNext } from './audio/mutationTie';
-import { modulated } from './audio/lfo';
+import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
+import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMotion';
 import { togglePlayback } from './audio/transport';
 
 const MODE_KEYS: Record<string, EditMode> = {
@@ -121,15 +122,30 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const harmonic = makeHarmonicMotionState();
     return scheduler.onStep((globalStep, when, stepDuration) => {
-      const { tracks, rootNote, scale, lfos, midiOutDeviceId, instruments, density, chaos, motion, tension } =
+      const { tracks, rootNote, scale, lfos, midiOutDeviceId, instruments, density, chaos, motion, drift, tension } =
         useSequencerStore.getState();
-      const motionRateMul = motion * 2;
-      const densityMul = density * 2;
-      const chaosMul = chaos * 2;
-      const tBipolar = (tension - 0.5) * 2;
+      // Macros may themselves be LFO-modulated. LFOs run at their natural rates
+      // (motion no longer scales them) so we pass rateMul=1 across the board.
+      const modMotion = modulated(motion, lfos, GLOBAL_TRACK_ID, 'motion', undefined, 1);
+      const modDrift = modulated(drift, lfos, GLOBAL_TRACK_ID, 'drift', undefined, 1);
+      const modDensity = modulated(density, lfos, GLOBAL_TRACK_ID, 'density', undefined, 1);
+      const modChaos = modulated(chaos, lfos, GLOBAL_TRACK_ID, 'chaos', undefined, 1);
+      const modTension = modulated(tension, lfos, GLOBAL_TRACK_ID, 'tension', undefined, 1);
+      const DENSITY_FLOOR = 0.19;
+      const densityMul = (DENSITY_FLOOR + modDensity * (1 - DENSITY_FLOOR)) * 2;
+      const chaosMul = modChaos * 2;
+      const tBipolar = (modTension - 0.5) * 2;
       const tStableMul = Math.max(0, 1 - tBipolar);
       const tColorMul = Math.max(0, 1 + tBipolar);
+      const harmonicOffset = tickHarmonicMotion(
+        harmonic,
+        globalStep,
+        modMotion,
+        modDrift,
+        octaveDegrees(scale)
+      );
       const anySolo = tracks.some((t) => t.solo);
       for (const track of tracks) {
         if (track.mute) continue;
@@ -141,10 +157,10 @@ export function App() {
         const authoredStep = track.steps[localStep];
         if (!authoredStep) continue;
         const rowStepDuration = stepDuration * stride;
-        const trackMut = modulated(track.mutation, lfos, track.id, 'mutation', undefined, motionRateMul) * chaosMul;
-        const trackMorph = modulated(track.morph, lfos, track.id, 'morph', undefined, motionRateMul);
-        const trackRowChance = modulated(track.rowChance, lfos, track.id, 'rowChance', undefined, motionRateMul);
-        const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet', undefined, motionRateMul);
+        const trackMut = modulated(track.mutation, lfos, track.id, 'mutation') * chaosMul;
+        const trackMorph = modulated(track.morph, lfos, track.id, 'morph');
+        const trackRowChance = modulated(track.rowChance, lfos, track.id, 'rowChance');
+        const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet');
         let step = authoredStep;
         if (track.slotA && track.slotB) {
           const a = track.slotA[localStep];
@@ -207,8 +223,13 @@ export function App() {
         const subDur = rowStepDuration / ratchet;
         const effectiveGate = gateMutated * ties;
         const chordIntervals = melodic ? sourceChord(track.source) : [0];
+        // Harmonic motion: apply the global scale-degree offset to melodic
+        // tracks before quantize. Drum/empty tracks ignore it.
+        const harmonicShift = melodic ? harmonicOffset : 0;
         const chordMidi = melodic
-          ? chordIntervals.map((interval) => quantize(rootNote, scale, pitch + interval))
+          ? chordIntervals.map((interval) =>
+              quantize(rootNote, scale, pitch + interval + harmonicShift)
+            )
           : [undefined as number | undefined];
         const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
         const instrument =

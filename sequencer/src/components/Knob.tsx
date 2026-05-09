@@ -10,6 +10,7 @@ interface KnobProps {
   onModulationClick?: () => void;
   modulationLabel?: string;
   displayValue?: number;
+  bipolar?: boolean;
 }
 
 export function Knob({
@@ -22,6 +23,7 @@ export function Knob({
   onModulationClick,
   modulationLabel,
   displayValue,
+  bipolar = false,
 }: KnobProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const valueRef = useRef(value);
@@ -80,14 +82,19 @@ export function Knob({
   const tx2 = cx + tickOuter * Math.sin(angleRad);
   const ty2 = cy - tickOuter * Math.cos(angleRad);
 
-  const startDeg = -135;
+  // For bipolar knobs the indicator arc fills from center (0° = straight up)
+  // outward in the direction the knob is turned. Unipolar arcs fill from the
+  // start (-135°, hard left).
+  const startDeg = bipolar ? 0 : -135;
   const startRad = (startDeg * Math.PI) / 180;
   const ax1 = cx + ringR * Math.sin(startRad);
   const ay1 = cy - ringR * Math.cos(startRad);
   const ax2 = cx + ringR * Math.sin(angleRad);
   const ay2 = cy - ringR * Math.cos(angleRad);
-  const largeArc = angleDeg - startDeg > 180 ? 1 : 0;
-  const arcPath = `M ${ax1} ${ay1} A ${ringR} ${ringR} 0 ${largeArc} 1 ${ax2} ${ay2}`;
+  const sweep = angleDeg >= startDeg ? 1 : 0;
+  const largeArc = Math.abs(angleDeg - startDeg) > 180 ? 1 : 0;
+  const arcPath = `M ${ax1} ${ay1} A ${ringR} ${ringR} 0 ${largeArc} ${sweep} ${ax2} ${ay2}`;
+  const drawArc = bipolar ? Math.abs(visual - 0.5) > 0.001 : visual > 0;
 
   return (
     <button
@@ -116,7 +123,7 @@ export function Knob({
           strokeWidth="1"
           className={routing ? '' : 'group-hover:[stroke-opacity:0.22] transition-[stroke-opacity]'}
         />
-        {visual > 0 && (
+        {drawArc && (
           <path
             d={arcPath}
             fill="none"

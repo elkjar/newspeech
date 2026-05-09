@@ -3,7 +3,7 @@ import { useSequencerStore } from '../state/store';
 import { getAudioContext } from '../audio/audioContext';
 import { Knob } from './Knob';
 import { sourceLabel, type TrackSource } from '../instruments/library';
-import type { LFO, LFODestKnob } from '../audio/lfo';
+import { GLOBAL_TRACK_ID, type LFO, type LFODestKnob } from '../audio/lfo';
 
 const CELL_W = 120;
 const CELL_H = 96;
@@ -14,6 +14,11 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   morph: 'morph',
   rowChance: 'chance',
   rowRatchet: 'ratchet',
+  density: 'density',
+  motion: 'motion',
+  drift: 'drift',
+  chaos: 'chaos',
+  tension: 'tension',
 };
 
 function destinationLabel(
@@ -22,10 +27,15 @@ function destinationLabel(
 ): string {
   if (lfo.destinations.length === 0) return '—';
   const first = lfo.destinations[0];
-  const src = sourceFor(first.trackId);
-  const head = src
-    ? `${sourceLabel(src)} · ${KNOB_LABELS[first.knob]}`
-    : KNOB_LABELS[first.knob];
+  const head =
+    first.trackId === GLOBAL_TRACK_ID
+      ? KNOB_LABELS[first.knob]
+      : (() => {
+          const src = sourceFor(first.trackId);
+          return src
+            ? `${sourceLabel(src)} · ${KNOB_LABELS[first.knob]}`
+            : KNOB_LABELS[first.knob];
+        })();
   return lfo.destinations.length > 1
     ? `${head} +${lfo.destinations.length - 1}`
     : head;
@@ -37,24 +47,20 @@ function LFOCell({
   onSelect,
   onDepth,
   destLabel,
-  motion,
 }: {
   lfo: LFO;
   selected: boolean;
   onSelect: () => void;
   onDepth: (v: number) => void;
   destLabel: string;
-  motion: number;
 }) {
   const indicatorRef = useRef<SVGCircleElement>(null);
-  const motionRef = useRef(motion);
-  motionRef.current = motion;
 
   useEffect(() => {
     let raf = 0;
     const ctx = getAudioContext();
     const tick = () => {
-      const phase = 2 * Math.PI * lfo.rate * (motionRef.current * 2) * ctx.currentTime;
+      const phase = 2 * Math.PI * lfo.rate * ctx.currentTime;
       const dx = Math.cos(phase) * (PHASE_R - 3);
       const dy = Math.sin(phase) * (PHASE_R - 3);
       const el = indicatorRef.current;
@@ -111,7 +117,6 @@ function LFOCell({
 export function LFOPanel() {
   const lfos = useSequencerStore((s) => s.lfos);
   const tracks = useSequencerStore((s) => s.tracks);
-  const motion = useSequencerStore((s) => s.motion);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const setSelectingLFO = useSequencerStore((s) => s.setSelectingLFO);
   const setLFODepth = useSequencerStore((s) => s.setLFODepth);
@@ -137,7 +142,6 @@ export function LFOPanel() {
           onSelect={() => setSelectingLFO(selectingLFO === lfo.id ? null : lfo.id)}
           onDepth={(v) => setLFODepth(lfo.id, v)}
           destLabel={destinationLabel(lfo, sourceFor)}
-          motion={motion}
         />
       ))}
     </div>
