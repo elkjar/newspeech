@@ -73,7 +73,22 @@ export function hydrateLFOs(saved: LFO[] | undefined): LFO[] {
   });
 }
 
-const INTERNAL_VOICE_IDS = new Set(['kick', 'snare', 'hat-c', 'hat-o', 'synth', 'bass', 'pad']);
+const INTERNAL_VOICE_IDS = new Set([
+  'kick',
+  'snare',
+  'hat-c',
+  'hat-o',
+  'blk',
+  'cym',
+  'tamb',
+  'hydra-plaits',
+  'bass',
+  'pad',
+]);
+// migrate renamed voice ids when hydrating older `.seq` files
+const VOICE_ID_RENAMES: Record<string, string> = {
+  synth: 'hydra-plaits',
+};
 const LEGACY_MIDI_TO_INTERNAL: Record<string, string> = {
   'midi-kick': 'kick',
   'midi-snare': 'snare',
@@ -81,9 +96,9 @@ const LEGACY_MIDI_TO_INTERNAL: Record<string, string> = {
   'midi-clap': 'snare',
   'midi-hh-c': 'hat-c',
   'midi-hh-o': 'hat-o',
-  'midi-tom-l': 'synth',
+  'midi-tom-l': 'hydra-plaits',
   'midi-tom-m': 'bass',
-  'midi-tom-h': 'synth',
+  'midi-tom-h': 'hydra-plaits',
   'midi-crash': 'pad',
   'midi-ride': 'pad',
 };
@@ -93,8 +108,9 @@ function hydrateSource(saved: unknown, legacyVoice: string | undefined): TrackSo
     const obj = saved as { kind?: unknown; id?: unknown };
     if (obj.kind === 'empty') return { kind: 'empty' };
     if ((obj.kind === 'voice' || obj.kind === 'instrument') && typeof obj.id === 'string') {
-      if (obj.kind === 'voice' && INTERNAL_VOICE_IDS.has(obj.id)) {
-        return { kind: 'voice', id: obj.id };
+      const renamed = VOICE_ID_RENAMES[obj.id] ?? obj.id;
+      if (obj.kind === 'voice' && INTERNAL_VOICE_IDS.has(renamed)) {
+        return { kind: 'voice', id: renamed };
       }
       if (obj.kind === 'instrument' && getInstrument(obj.id)) {
         return { kind: 'instrument', id: obj.id };
@@ -103,10 +119,11 @@ function hydrateSource(saved: unknown, legacyVoice: string | undefined): TrackSo
   }
   // legacy fallback: migrate from old `voice` field
   if (typeof legacyVoice === 'string') {
-    if (INTERNAL_VOICE_IDS.has(legacyVoice)) return { kind: 'voice', id: legacyVoice };
-    if (getInstrument(legacyVoice)) return { kind: 'instrument', id: legacyVoice };
-    if (LEGACY_MIDI_TO_INTERNAL[legacyVoice]) {
-      return { kind: 'voice', id: LEGACY_MIDI_TO_INTERNAL[legacyVoice] };
+    const renamed = VOICE_ID_RENAMES[legacyVoice] ?? legacyVoice;
+    if (INTERNAL_VOICE_IDS.has(renamed)) return { kind: 'voice', id: renamed };
+    if (getInstrument(renamed)) return { kind: 'instrument', id: renamed };
+    if (LEGACY_MIDI_TO_INTERNAL[renamed]) {
+      return { kind: 'voice', id: LEGACY_MIDI_TO_INTERNAL[renamed] };
     }
   }
   return { kind: 'voice', id: 'kick' };
@@ -178,10 +195,23 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     euclidean: saved.euclidean ?? { hits: 0, rotation: 0 },
     steps,
     midi: hydrateMidi((saved as { midi?: unknown }).midi, source),
+    gain:
+      typeof saved.gain === 'number' && Number.isFinite(saved.gain)
+        ? Math.max(0, Math.min(2, saved.gain))
+        : 1,
   };
 }
 
-const EMPTY_MELODIC_VOICES = ['bass', 'bass', 'synth', 'synth', 'pad', 'pad', 'synth', 'synth'];
+const EMPTY_MELODIC_VOICES = [
+  'bass',
+  'bass',
+  'hydra-plaits',
+  'hydra-plaits',
+  'pad',
+  'pad',
+  'hydra-plaits',
+  'hydra-plaits',
+];
 
 export function emptyMelodicTrack(id: string, slot: number): Track {
   const steps = Array.from({ length: 64 }, () => hydrateStep({}));
@@ -205,6 +235,7 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     euclidean: { hits: 0, rotation: 0 },
     steps,
     midi: { ...DEFAULT_TRACK_MIDI },
+    gain: 1,
   };
 }
 

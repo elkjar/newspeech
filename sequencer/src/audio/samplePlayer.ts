@@ -3,14 +3,33 @@ import { synthBass, synthHatC, synthHatO, synthKick, synthMelodic, synthPad, syn
 
 export type SampleId = string;
 
+// A multisampled voice declares one bank per captured root note. A drum-style
+// flat voice declares a single `files` array with no root (pitch-shift skipped).
+export interface SampleVoiceDef {
+  files?: string[];
+  roots?: Array<{ midi: number; files: string[] }>;
+  gain?: number;
+}
+
 export interface SampleManifest {
   name: string;
-  files: Record<SampleId, string>;
+  voices: Record<SampleId, SampleVoiceDef>;
   chokeGroups?: Record<SampleId, string>;
 }
 
+interface SampleBank {
+  root: number | null;
+  bufs: AudioBuffer[];
+}
+
+interface VoiceData {
+  banks: SampleBank[];
+  rrIndex: Map<number, number>;
+  gain: number;
+}
+
 class SamplePlayer {
-  private buffers = new Map<SampleId, AudioBuffer>();
+  private voices = new Map<SampleId, VoiceData>();
   private chokeGroups = new Map<SampleId, string>();
   private activeVoices = new Map<SampleId, AudioBufferSourceNode>();
 
@@ -22,11 +41,35 @@ class SamplePlayer {
       }
     }
     await Promise.all(
-      Object.entries(manifest.files).map(async ([id, file]) => {
-        const res = await fetch(`${baseUrl}/${file}`);
-        const arr = await res.arrayBuffer();
-        const buf = await ctx.decodeAudioData(arr);
-        this.buffers.set(id, buf);
+      Object.entries(manifest.voices).map(async ([id, def]) => {
+        const banks: SampleBank[] = [];
+        if (def.files && def.files.length > 0) {
+          const bufs = await Promise.all(
+            def.files.map((file) => fetchAndDecode(ctx, `${baseUrl}/${file}`))
+          );
+          banks.push({ root: null, bufs });
+        }
+        if (def.roots) {
+          for (const r of def.roots) {
+            if (!r.files || r.files.length === 0) continue;
+            const bufs = await Promise.all(
+              r.files.map((file) => fetchAndDecode(ctx, `${baseUrl}/${file}`))
+            );
+            banks.push({ root: r.midi, bufs });
+          }
+        }
+        if (banks.length === 0) return;
+        // sort banks by root for deterministic nearest-root lookup; null roots first
+        banks.sort((a, b) => {
+          if (a.root === null) return -1;
+          if (b.root === null) return 1;
+          return a.root - b.root;
+        });
+        this.voices.set(id, {
+          banks,
+          rrIndex: new Map(),
+          gain: def.gain ?? 1,
+        });
       })
     );
   }
@@ -56,15 +99,35 @@ class SamplePlayer {
       }
     }
 
-    const buf = this.buffers.get(voice);
-    if (buf) {
+    const data = this.voices.get(voice);
+    if (data && data.banks.length > 0) {
+      // pick the bank: nearest-root if midiNote is defined and there's at least
+      // one rooted bank, otherwise the first bank (covers flat/drum voices).
+      let bankIdx = 0;
+      if (midiNote !== undefined) {
+        let bestDiff = Infinity;
+        for (let i = 0; i < data.banks.length; i++) {
+          const root = data.banks[i].root;
+          if (root === null) continue;
+          const diff = Math.abs(midiNote - root);
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bankIdx = i;
+          }
+        }
+      }
+      const bank = data.banks[bankIdx];
+      const idx = data.rrIndex.get(bankIdx) ?? 0;
+      const buf = bank.bufs[idx % bank.bufs.length];
+      data.rrIndex.set(bankIdx, (idx + 1) % bank.bufs.length);
+
       const src = ctx.createBufferSource();
       src.buffer = buf;
-      const gain = ctx.createGain();
-      gain.gain.value = velocity;
-      if (midiNote !== undefined) {
-        src.playbackRate.value = Math.pow(2, (midiNote - 60) / 12);
+      if (midiNote !== undefined && bank.root !== null) {
+        src.playbackRate.value = Math.pow(2, (midiNote - bank.root) / 12);
       }
+      const gain = ctx.createGain();
+      gain.gain.value = velocity * data.gain;
       src.connect(gain).connect(out);
       src.start(when);
       this.activeVoices.set(voice, src);
@@ -100,6 +163,12 @@ class SamplePlayer {
           synthMelodic(when, midiNote, velocity, out, gate, stepDuration);
     }
   }
+}
+
+async function fetchAndDecode(ctx: AudioContext, url: string): Promise<AudioBuffer> {
+  const res = await fetch(url);
+  const arr = await res.arrayBuffer();
+  return ctx.decodeAudioData(arr);
 }
 
 export const samplePlayer = new SamplePlayer();

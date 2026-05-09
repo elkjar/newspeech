@@ -22,6 +22,7 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
   const setTrackRate = useSequencerStore((s) => s.setTrackRate);
   const setTrackMidi = useSequencerStore((s) => s.setTrackMidi);
+  const setTrackGain = useSequencerStore((s) => s.setTrackGain);
   const fireTrackProgram = useSequencerStore((s) => s.fireTrackProgram);
   const globalDeviceId = useSequencerStore((s) => s.midiOutDeviceId);
   const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
@@ -148,6 +149,12 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
           )}
         </>
       )}
+      <div className="self-stretch w-px bg-white/15 mx-1" />
+      <GainField
+        value={track.gain}
+        disabled={track.source.kind === 'instrument'}
+        onChange={(v) => setTrackGain(track.id, v)}
+      />
     </div>
   );
 }
@@ -211,6 +218,43 @@ function NullableNumField({
         style={{ width: CELL, height: CELL }}
         className="bg-transparent border border-white/15 text-center text-[14px] tabular-nums focus:outline-none focus:border-white placeholder:text-white/25"
       />
+    </label>
+  );
+}
+
+function GainField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: number;
+  disabled: boolean;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <label className="flex flex-col items-start gap-1">
+      <span className="text-[9px] uppercase tracking-widest text-white/40">
+        gain{disabled ? ' (midi)' : ''}
+      </span>
+      <div
+        style={{ height: CELL }}
+        className="flex items-center gap-2 border border-white/15 px-2"
+      >
+        <input
+          type="range"
+          min={0}
+          max={2}
+          step={0.01}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-24 accent-white disabled:opacity-30"
+          title={disabled ? 'midi rows ignore gain (use midi velocity)' : 'sample / internal-synth playback level'}
+        />
+        <span className="text-[12px] tabular-nums text-white/70 w-9 text-right">
+          {value.toFixed(2)}
+        </span>
+      </div>
     </label>
   );
 }

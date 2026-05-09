@@ -123,6 +123,17 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const kits = ['blck_noir', 'hydrasynth_plaits'];
+    for (const kit of kits) {
+      const baseUrl = `${import.meta.env.BASE_URL}samples/${kit}`;
+      fetch(`${baseUrl}/manifest.json`)
+        .then((r) => r.json())
+        .then((manifest) => samplePlayer.loadManifest(baseUrl, manifest))
+        .catch((err) => console.warn(`sample manifest ${kit} load failed:`, err));
+    }
+  }, []);
+
+  useEffect(() => {
     const harmonic = makeHarmonicMotionState();
     return scheduler.onStep((globalStep, when, stepDuration) => {
       const { tracks, rootNote, scale, lfos, midiOutDeviceId, density, chaos, motion, drift, tension, freeze } =
@@ -317,7 +328,14 @@ export function App() {
                 midiNoteDuration
               );
             } else if (track.source.kind === 'voice') {
-              samplePlayer.trigger(track.source.id, t, v, m, effectiveGate, rowStepDuration);
+              samplePlayer.trigger(
+                track.source.id,
+                t,
+                v * track.gain,
+                m,
+                effectiveGate,
+                rowStepDuration
+              );
             }
           }
         }

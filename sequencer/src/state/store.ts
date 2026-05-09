@@ -85,6 +85,8 @@ export interface Track {
   euclidean: EuclideanParams;
   steps: Step[];
   midi: TrackMidi;
+  // sample/internal-synth playback level multiplier; no effect on MIDI velocity
+  gain: number;
 }
 
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
@@ -166,6 +168,7 @@ interface SequencerState {
   setStepGate: (trackId: string, index: number, gate: number) => void;
   setStepTie: (trackId: string, index: number, tied: boolean) => void;
   setTrackMutation: (trackId: string, mutation: number) => void;
+  setTrackGain: (trackId: string, gain: number) => void;
   setTrackRate: (trackId: string, rate: StepRate) => void;
   setTrackLockTiming: (trackId: string, lock: boolean) => void;
   setTrackRowChance: (trackId: string, rowChance: number) => void;
@@ -499,6 +502,12 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     const clamped = Math.max(0, Math.min(1, Number.isFinite(mutation) ? mutation : 0));
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, mutation: clamped } : t)),
+    }));
+  },
+  setTrackGain: (trackId, gain) => {
+    const clamped = Math.max(0, Math.min(2, Number.isFinite(gain) ? gain : 1));
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, gain: clamped } : t)),
     }));
   },
   setTrackRate: (trackId, rate) =>

@@ -2676,7 +2676,7 @@
       "id": "t5",
       "source": {
         "kind": "voice",
-        "id": "synth"
+        "id": "hydra-plaits"
       },
       "section": "drum",
       "mute": false,
@@ -3343,7 +3343,7 @@
       "id": "t6",
       "source": {
         "kind": "voice",
-        "id": "synth"
+        "id": "hydra-plaits"
       },
       "section": "drum",
       "mute": false,
@@ -4010,7 +4010,7 @@
       "id": "t7",
       "source": {
         "kind": "voice",
-        "id": "synth"
+        "id": "hydra-plaits"
       },
       "section": "drum",
       "mute": false,
@@ -4677,7 +4677,7 @@
       "id": "t8",
       "source": {
         "kind": "voice",
-        "id": "synth"
+        "id": "hydra-plaits"
       },
       "section": "drum",
       "mute": false,
@@ -7960,7 +7960,7 @@
       "id": "t11",
       "source": {
         "kind": "voice",
-        "id": "synth"
+        "id": "hydra-plaits"
       },
       "section": "melodic",
       "mute": false,
@@ -8627,7 +8627,7 @@
       "id": "t12",
       "source": {
         "kind": "voice",
-        "id": "synth"
+        "id": "hydra-plaits"
       },
       "section": "melodic",
       "mute": false,
@@ -10628,7 +10628,7 @@
       "id": "t15",
       "source": {
         "kind": "voice",
-        "id": "synth"
+        "id": "hydra-plaits"
       },
       "section": "melodic",
       "mute": false,
@@ -11295,7 +11295,7 @@
       "id": "t16",
       "source": {
         "kind": "voice",
-        "id": "synth"
+        "id": "hydra-plaits"
       },
       "section": "melodic",
       "mute": false,

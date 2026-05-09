@@ -101,7 +101,7 @@ export function Track({ track }: { track: TrackData }) {
 
   // dropdown filters internal voices and instruments to the row's section
   const isDrumSection = track.section === 'drum';
-  const internalVoices = VOICES.filter((v) =>
+  const sampleVoices = VOICES.filter((v) =>
     isDrumSection ? v.category === 'drum' : v.category === 'melodic'
   );
   const drumInstruments = INSTRUMENTS.filter((i) => i.role === 'drum');
@@ -143,8 +143,8 @@ export function Track({ track }: { track: TrackData }) {
           title="source"
         >
           <option value="empty" className="bg-[#050505]">—</option>
-          <optgroup label="internal" className="bg-[#050505]">
-            {internalVoices.map((v) => (
+          <optgroup label="samples" className="bg-[#050505]">
+            {sampleVoices.map((v) => (
               <option key={v.id} value={`voice:${v.id}`} className="bg-[#050505]">
                 {v.label}
               </option>

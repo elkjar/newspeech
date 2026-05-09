@@ -1,0 +1,103 @@
+{
+  "name": "blck_noir",
+  "voices": {
+    "kick": {
+      "files": [
+        "KICK/KICK-1.wav",
+        "KICK/KICK-2.wav",
+        "KICK/KICK-3.wav",
+        "KICK/KICK-4.wav",
+        "KICK/KICK-5.wav",
+        "KICK/KICK-6.wav"
+      ],
+      "gain": 0.7
+    },
+    "snare": {
+      "files": [
+        "SNARE/SNARE-1.wav",
+        "SNARE/SNARE-2.wav",
+        "SNARE/SNARE-3.wav",
+        "SNARE/SNARE-4.wav",
+        "SNARE/SNARE-5.wav",
+        "SNARE/SNARE-6.wav",
+        "SNARE/SNARE-7.wav",
+        "SNARE/SNARE-8.wav"
+      ],
+      "gain": 0.82
+    },
+    "hat-c": {
+      "files": [
+        "OHH/OHH-1.wav",
+        "OHH/OHH-2.wav",
+        "OHH/OHH-3.wav",
+        "OHH/OHH-4.wav",
+        "OHH/OHH-5.wav",
+        "OHH/OHH-6.wav",
+        "OHH/OHH-7.wav",
+        "OHH/OHH-8.wav",
+        "OHH/OHH-9.wav",
+        "OHH/OHH-10.wav"
+      ],
+      "gain": 0.67
+    },
+    "hat-o": {
+      "files": [
+        "CHH/CHH-1.wav",
+        "CHH/CHH-2.wav",
+        "CHH/CHH-3.wav",
+        "CHH/CHH-4.wav",
+        "CHH/CHH-5.wav",
+        "CHH/CHH-6.wav",
+        "CHH/CHH-7.wav",
+        "CHH/CHH-8.wav",
+        "CHH/CHH-9.wav",
+        "CHH/CHH-10.wav"
+      ],
+      "gain": 0.49
+    },
+    "blk": {
+      "files": [
+        "BLK/BLK-1.wav",
+        "BLK/BLK-2.wav",
+        "BLK/BLK-3.wav",
+        "BLK/BLK-4.wav",
+        "BLK/BLK-5.wav",
+        "BLK/BLK-6.wav",
+        "BLK/BLK-7.wav",
+        "BLK/BLK-8.wav",
+        "BLK/BLK-9.wav"
+      ],
+      "gain": 0.43
+    },
+    "cym": {
+      "files": [
+        "CYM/CYM-1.wav",
+        "CYM/CYM-2.wav",
+        "CYM/CYM-3.wav",
+        "CYM/CYM-4.wav",
+        "CYM/CYM-5.wav",
+        "CYM/CYM-6.wav",
+        "CYM/CYM-7.wav",
+        "CYM/CYM-8.wav",
+        "CYM/CYM-9.wav"
+      ],
+      "gain": 0.19
+    },
+    "tamb": {
+      "files": [
+        "TAMB/TAMB-1.wav",
+        "TAMB/TAMB-2.wav",
+        "TAMB/TAMB-3.wav",
+        "TAMB/TAMB-4.wav",
+        "TAMB/TAMB-5.wav",
+        "TAMB/TAMB-6.wav",
+        "TAMB/TAMB-7.wav"
+      ],
+      "gain": 0.59
+    }
+  },
+  "chokeGroups": {
+    "hat-c": "hats",
+    "hat-o": "hats"
+  }
+}
