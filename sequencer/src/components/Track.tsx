@@ -340,12 +340,18 @@ export function Track({ track }: { track: TrackData }) {
             const isTiedChain = idx !== stepIndex;
             const display = displayStep(track, stepIndex, playing && track.mutation > 0, liveMorph);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
-            // Density fill-in: authored-OFF originator that the dispatch gated
-            // ON this cycle. Drives the "twinkle" effect in note/velocity/etc.
-            // views — only lights up the steps that actually fired.
-            const ovForFill = playing ? getOverlay(track.id, idx) : undefined;
-            const firedFill =
-              !!ovForFill && !ovForFill.on && ovForFill.gated && !track.steps[idx]?.on;
+            // "Currently firing this cycle" — drives the binary visual in note
+            // mode for both directions of the density knob: authored ON cells
+            // disappear when thinned out, authored OFF cells light up when
+            // filled in. Gated on `passed` so cells ahead of the playhead keep
+            // showing authored intent; the live outcome only "comes in" as the
+            // playhead reaches each step. Each cycle wrap resets the trail.
+            const passed = !playing || stepIndex <= localCurrent;
+            const ovForCycle = playing && passed ? getOverlay(track.id, idx) : undefined;
+            const cycleFired =
+              playing && passed
+                ? !!ovForCycle?.gated
+                : !!track.steps[idx]?.on;
             return (
               <StepButton
                 key={i}
@@ -374,7 +380,7 @@ export function Track({ track }: { track: TrackData }) {
                 isCurrent={isCurrent}
                 isTiedChain={isTiedChain}
                 size={STEP_SIZE}
-                firedFill={firedFill}
+                cycleFired={cycleFired}
               />
             );
           }

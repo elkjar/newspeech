@@ -18,7 +18,7 @@ import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
 import { ensureBothSections, hydrateTrack, hydrateLFOs } from './hydrate';
 import defaultPreset from './defaultPreset.json';
 
-export type EditMode = 'note' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
+export type EditMode = 'live' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
 export interface StepSelection {
   trackId: string;
@@ -228,7 +228,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   selectingLFO: null,
   globalStep: 0,
   playing: false,
-  editMode: 'note',
+  editMode: 'live',
   midiOutDeviceId: null,
   viewSection: 'drum',
   density: clamp01((defaultPreset as { density?: unknown }).density),

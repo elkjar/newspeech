@@ -28,10 +28,12 @@ interface StepButtonProps {
   isCurrent: boolean;
   isTiedChain: boolean;
   size: number;
-  // True when the step is authored OFF but the density fill-in rolled it on
-  // this cycle. Drives the binary "fired this cycle" visual in note/etc modes;
-  // chance view keeps showing the probability gradient regardless.
-  firedFill: boolean;
+  // True when this step actually fired in the current cycle (overlay.gated).
+  // Drives the binary "currently firing" visual in note view: thinned-out
+  // authored ON cells go dark when not firing; filled-in authored OFF cells
+  // light up when they do. Chance view ignores this and keeps the gradient.
+  // Falls back to authored on/off when the sequencer isn't playing.
+  cycleFired: boolean;
 }
 
 const PITCH_COOLDOWN_MS = 80;
@@ -68,7 +70,7 @@ export function StepButton({
   isCurrent,
   isTiedChain,
   size,
-  firedFill,
+  cycleFired,
 }: StepButtonProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const didDragRef = useRef(false);
@@ -137,7 +139,7 @@ export function StepButton({
         return;
       }
 
-      if (mode === 'note' && isMelodic) {
+      if (mode === 'live' && isMelodic) {
         e.preventDefault();
         const now = performance.now();
         if (now - lastPitchTime < PITCH_COOLDOWN_MS) return;
@@ -159,7 +161,7 @@ export function StepButton({
     const s = t.steps[index];
     if (!s?.on) return;
     const mode = effectiveMode(e, store.editMode);
-    if (mode === 'note' && !isMelodic) return;
+    if (mode === 'live' && !isMelodic) return;
 
     e.preventDefault();
     const startY = e.clientY;
@@ -196,7 +198,7 @@ export function StepButton({
       } else if (mode === 'gate') {
         const next = Math.max(GATE_MIN, Math.min(GATE_MAX, startGate + dy / GATE_DRAG_PX_PER_UNIT));
         live.setStepGate(trackId, index, next);
-      } else if (mode === 'note') {
+      } else if (mode === 'live') {
         const degrees = Math.round(dy / PITCH_DRAG_PX_PER_DEGREE);
         const next = Math.max(PITCH_MIN, Math.min(PITCH_MAX, startPitch + degrees));
         if (next !== live.tracks.find((tr) => tr.id === trackId)?.steps[index].pitch) {
@@ -267,6 +269,7 @@ export function StepButton({
     } else {
       if (editMode === 'velocity') fillOpacity = Math.max(0.15, velocity);
       else if (editMode === 'chance') fillOpacity = Math.max(0.15, probability / 100);
+      else if (editMode === 'live') fillOpacity = cycleFired ? 1 : 0;
       else fillOpacity = 1;
 
       if (editMode === 'ratchet') label = String(ratchet);
@@ -281,7 +284,7 @@ export function StepButton({
     // Chance view shows the fill-in probability gradient regardless of whether
     // the step actually fired this cycle — preserves "see the curve at a glance."
     if (probability > 0) fillOpacity = probability / 100;
-  } else if (firedFill) {
+  } else if (cycleFired) {
     // Note / velocity / etc. views: keep the "authored = bright, OFF = dark"
     // contract by only lighting filled steps when they actually fire this cycle.
     fillOpacity = 1;

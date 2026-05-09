@@ -29,7 +29,7 @@ import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMot
 import { togglePlayback } from './audio/transport';
 
 const MODE_KEYS: Record<string, EditMode> = {
-  '1': 'note',
+  '1': 'live',
   '2': 'velocity',
   '3': 'chance',
   '4': 'ratchet',
@@ -37,7 +37,7 @@ const MODE_KEYS: Record<string, EditMode> = {
   '6': 'gate',
 };
 
-const MODES: EditMode[] = ['note', 'velocity', 'chance', 'ratchet', 'timing', 'gate'];
+const MODES: EditMode[] = ['live', 'velocity', 'chance', 'ratchet', 'timing', 'gate'];
 
 const SECTIONS: { id: TrackSection; label: string }[] = [
   { id: 'drum', label: 'rhythm' },
@@ -388,7 +388,7 @@ export function App() {
           sel.index,
           Math.max(0.1, Math.min(2, step.gate + 0.05 * dir))
         );
-      } else if (editMode === 'note' && sourceIsMelodic(track.source)) {
+      } else if (editMode === 'live' && sourceIsMelodic(track.source)) {
         store.setStepPitch(
           sel.trackId,
           sel.index,
