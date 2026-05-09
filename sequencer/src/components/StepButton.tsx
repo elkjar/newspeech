@@ -28,6 +28,10 @@ interface StepButtonProps {
   isCurrent: boolean;
   isTiedChain: boolean;
   size: number;
+  // True when the step is authored OFF but the density fill-in rolled it on
+  // this cycle. Drives the binary "fired this cycle" visual in note/etc modes;
+  // chance view keeps showing the probability gradient regardless.
+  firedFill: boolean;
 }
 
 const PITCH_COOLDOWN_MS = 80;
@@ -64,6 +68,7 @@ export function StepButton({
   isCurrent,
   isTiedChain,
   size,
+  firedFill,
 }: StepButtonProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const didDragRef = useRef(false);
@@ -272,6 +277,14 @@ export function StepButton({
         label = `${Math.round(gate * 100)}%`;
       }
     }
+  } else if (editMode === 'chance') {
+    // Chance view shows the fill-in probability gradient regardless of whether
+    // the step actually fired this cycle — preserves "see the curve at a glance."
+    if (probability > 0) fillOpacity = probability / 100;
+  } else if (firedFill) {
+    // Note / velocity / etc. views: keep the "authored = bright, OFF = dark"
+    // contract by only lighting filled steps when they actually fire this cycle.
+    fillOpacity = 1;
   }
 
   const shadows: string[] = [];
@@ -298,7 +311,7 @@ export function StepButton({
       }}
     >
       <span className="absolute inset-0 bg-white/5" />
-      {on && (
+      {(on || fillOpacity > 0) && (
         <span
           className="absolute inset-0 bg-white pointer-events-none"
           style={{ opacity: fillOpacity }}

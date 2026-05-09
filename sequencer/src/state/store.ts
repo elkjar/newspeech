@@ -2,7 +2,13 @@ import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
-import { defaultLFOs, type LFO, type LFODestination } from '../audio/lfo';
+import {
+  defaultLFOs,
+  freezeLFOs,
+  unfreezeLFOs,
+  type LFO,
+  type LFODestination,
+} from '../audio/lfo';
 import {
   PRESETS,
   getInstrument,
@@ -124,11 +130,14 @@ interface SequencerState {
   motion: number;
   drift: number;
   tension: number;
+  freeze: boolean;
   setDensity: (v: number) => void;
   setChaos: (v: number) => void;
   setMotion: (v: number) => void;
   setDrift: (v: number) => void;
   setTension: (v: number) => void;
+  setFreeze: (v: boolean) => void;
+  toggleFreeze: () => void;
   setViewSection: (section: TrackSection) => void;
   setMidiOutDeviceId: (id: string | null) => void;
   setTrackSource: (trackId: string, source: TrackSource) => void;
@@ -227,11 +236,23 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   motion: clamp01((defaultPreset as { motion?: unknown }).motion, 0.5),
   drift: clamp01((defaultPreset as { drift?: unknown }).drift, 1),
   tension: clamp01((defaultPreset as { tension?: unknown }).tension),
+  freeze: false,
   setDensity: (v) => set({ density: clamp01(v) }),
   setChaos: (v) => set({ chaos: clamp01(v) }),
   setMotion: (v) => set({ motion: clamp01(v) }),
   setDrift: (v) => set({ drift: clamp01(v) }),
   setTension: (v) => set({ tension: clamp01(v) }),
+  setFreeze: (v) => {
+    if (v) freezeLFOs(useSequencerStore.getState().lfos);
+    else unfreezeLFOs();
+    set({ freeze: v });
+  },
+  toggleFreeze: () => {
+    const next = !useSequencerStore.getState().freeze;
+    if (next) freezeLFOs(useSequencerStore.getState().lfos);
+    else unfreezeLFOs();
+    set({ freeze: next });
+  },
   setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
   setTrackSource: (trackId, source) => {

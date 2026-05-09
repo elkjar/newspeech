@@ -42,6 +42,31 @@ export function lfoOutput(lfo: LFO, time?: number): number {
   return Math.sin(2 * Math.PI * lfo.rate * t);
 }
 
+// Freeze snapshot: when set, modulated() and useLFOValue read these stable
+// bipolar outputs instead of advancing phase. Map key = lfo.id.
+let frozenLFOOutputs: Map<number, number> | null = null;
+
+export function freezeLFOs(lfos: LFO[], time?: number): void {
+  const t = time ?? getAudioContext().currentTime;
+  const snap = new Map<number, number>();
+  for (const l of lfos) {
+    snap.set(l.id, Math.sin(2 * Math.PI * l.rate * t));
+  }
+  frozenLFOOutputs = snap;
+}
+
+export function unfreezeLFOs(): void {
+  frozenLFOOutputs = null;
+}
+
+export function isLFOFrozen(): boolean {
+  return frozenLFOOutputs !== null;
+}
+
+export function getFrozenLFOOutput(lfoId: number): number {
+  return frozenLFOOutputs?.get(lfoId) ?? 0;
+}
+
 // Apply a bipolar LFO output (-1..1) at the given depth on top of base, keeping
 // the swing window inside [0, 1]. When base sits near 0 or 1 the window slides
 // inward so the dial keeps moving continuously instead of pinning at the edge.
@@ -86,10 +111,14 @@ export function modulated(
   if (routed.length === 0) return base;
   const totalDepth = routed.reduce((s, l) => s + l.depth, 0);
   if (totalDepth === 0) return base;
+  const frozen = frozenLFOOutputs;
   const t = time ?? getAudioContext().currentTime;
   let summed = 0;
   for (const l of routed) {
-    summed += Math.sin(2 * Math.PI * l.rate * rateMul * t) * l.depth;
+    const o = frozen
+      ? frozen.get(l.id) ?? 0
+      : Math.sin(2 * Math.PI * l.rate * rateMul * t);
+    summed += o * l.depth;
   }
   const out = summed / totalDepth;
   return applyLFO(base, totalDepth, out);

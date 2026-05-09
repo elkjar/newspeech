@@ -19,7 +19,8 @@ import {
 import { getOverlay } from '../audio/mutationOverlay';
 import { morphStep, stepSeed } from '../audio/morph';
 import { effectiveTieToNext } from '../audio/mutationTie';
-import { findRouted } from '../audio/lfo';
+import { findRouted, GLOBAL_TRACK_ID } from '../audio/lfo';
+import { computeThinMul, computeFillProb } from '../audio/macros';
 import { useLFOValue } from '../hooks/useLFOValue';
 
 const STEP_GAP = 6;
@@ -67,9 +68,22 @@ export function Track({ track }: { track: TrackData }) {
   const globalStep = useSequencerStore((s) => s.globalStep);
   const playing = useSequencerStore((s) => s.playing);
   const lfos = useSequencerStore((s) => s.lfos);
+  const density = useSequencerStore((s) => s.density);
   const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
   const morphLFOs = findRouted(lfos, track.id, 'morph');
   const liveMorph = useLFOValue(track.morph, morphLFOs, 1);
+  // Live density / rowChance values for chance-mode opacity. Mirrors the gate
+  // the dispatch loop uses, so twisting macros fades the grid at the same rate
+  // the audio thins out. Metric-weighted density is computed per step in the
+  // render loop below (downbeat preserved, offbeats fade first).
+  const densityLFOs = findRouted(lfos, GLOBAL_TRACK_ID, 'density');
+  const liveDensity = useLFOValue(density, densityLFOs, 1);
+  const rowChanceLFOs = findRouted(lfos, track.id, 'rowChance');
+  const liveRowChance = useLFOValue(track.rowChance, rowChanceLFOs, 1);
+  // Empty rows shouldn't get density fill-in — keep them silent regardless.
+  const hasAuthoredOn = track.steps
+    .slice(0, track.length)
+    .some((s) => s.on);
   const setTrackSource = useSequencerStore((s) => s.setTrackSource);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
@@ -326,6 +340,12 @@ export function Track({ track }: { track: TrackData }) {
             const isTiedChain = idx !== stepIndex;
             const display = displayStep(track, stepIndex, playing && track.mutation > 0, liveMorph);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
+            // Density fill-in: authored-OFF originator that the dispatch gated
+            // ON this cycle. Drives the "twinkle" effect in note/velocity/etc.
+            // views — only lights up the steps that actually fired.
+            const ovForFill = playing ? getOverlay(track.id, idx) : undefined;
+            const firedFill =
+              !!ovForFill && !ovForFill.on && ovForFill.gated && !track.steps[idx]?.on;
             return (
               <StepButton
                 key={i}
@@ -333,7 +353,20 @@ export function Track({ track }: { track: TrackData }) {
                 index={stepIndex}
                 on={display?.on ?? false}
                 velocity={display?.velocity ?? 1}
-                probability={(display?.probability ?? 100) * (1 - track.rowChance)}
+                probability={
+                  display?.on
+                    ? Math.min(
+                        100,
+                        (display.probability ?? 100) *
+                          (1 - liveRowChance) *
+                          computeThinMul(liveDensity, stepIndex, track.length)
+                      )
+                    : hasAuthoredOn
+                      ? 100 *
+                        (1 - liveRowChance) *
+                        computeFillProb(liveDensity, stepIndex, track.length)
+                      : 0
+                }
                 ratchet={display?.ratchet ?? 1}
                 microTiming={display?.microTiming ?? 0}
                 gate={display?.gate ?? 1}
@@ -341,6 +374,7 @@ export function Track({ track }: { track: TrackData }) {
                 isCurrent={isCurrent}
                 isTiedChain={isTiedChain}
                 size={STEP_SIZE}
+                firedFill={firedFill}
               />
             );
           }

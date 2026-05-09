@@ -20,10 +20,11 @@ import {
   sourceIsMelodic,
   sourceMutation,
 } from './instruments/library';
-import { setOverlay } from './audio/mutationOverlay';
+import { getOverlay, setOverlay } from './audio/mutationOverlay';
 import { morphStep, stepSeed } from './audio/morph';
 import { effectiveTieToNext } from './audio/mutationTie';
 import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
+import { computeThinMul, computeFillProb } from './audio/macros';
 import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMotion';
 import { togglePlayback } from './audio/transport';
 
@@ -124,7 +125,7 @@ export function App() {
   useEffect(() => {
     const harmonic = makeHarmonicMotionState();
     return scheduler.onStep((globalStep, when, stepDuration) => {
-      const { tracks, rootNote, scale, lfos, midiOutDeviceId, density, chaos, motion, drift, tension } =
+      const { tracks, rootNote, scale, lfos, midiOutDeviceId, density, chaos, motion, drift, tension, freeze } =
         useSequencerStore.getState();
       // Macros may themselves be LFO-modulated. LFOs run at their natural rates
       // (motion no longer scales them) so we pass rateMul=1 across the board.
@@ -133,19 +134,22 @@ export function App() {
       const modDensity = modulated(density, lfos, GLOBAL_TRACK_ID, 'density', undefined, 1);
       const modChaos = modulated(chaos, lfos, GLOBAL_TRACK_ID, 'chaos', undefined, 1);
       const modTension = modulated(tension, lfos, GLOBAL_TRACK_ID, 'tension', undefined, 1);
-      const DENSITY_FLOOR = 0.19;
-      const densityMul = (DENSITY_FLOOR + modDensity * (1 - DENSITY_FLOOR)) * 2;
+      // density is bipolar — per-step thin/fill helpers are called inside the gate below.
       const chaosMul = modChaos * 2;
       const tBipolar = (modTension - 0.5) * 2;
       const tStableMul = Math.max(0, 1 - tBipolar);
       const tColorMul = Math.max(0, 1 + tBipolar);
-      const harmonicOffset = tickHarmonicMotion(
-        harmonic,
-        globalStep,
-        modMotion,
-        modDrift,
-        octaveDegrees(scale)
-      );
+      // Hold harmonic offset at its current value during freeze so the captured
+      // mutated cycle keeps the same key-shift it had at freeze moment.
+      const harmonicOffset = freeze
+        ? harmonic.offset
+        : tickHarmonicMotion(
+            harmonic,
+            globalStep,
+            modMotion,
+            modDrift,
+            octaveDegrees(scale)
+          );
       const anySolo = tracks.some((t) => t.solo);
       for (const track of tracks) {
         if (track.mute) continue;
@@ -173,53 +177,112 @@ export function App() {
         if (track.source.kind === 'empty') continue;
         const melodic = sourceIsMelodic(track.source);
         const profile = sourceMutation(track.source);
-        let on = step.on;
-        if (mut > 0 && !track.lockTiming) {
-          let flipChance = mut * profile.flipChance;
-          if (!step.on && profile.stepWeights && profile.stepWeights.length > 0) {
-            flipChance *= profile.stepWeights[localStep % profile.stepWeights.length];
+        // Freeze: replay the most recent overlay (= the previous cycle's mutated
+        // outcome) without rolling new mutation OR new trigger gates, and don't
+        // overwrite the overlay. Falls back to the (post-morph) authored step
+        // on the rare first-cycle case where no overlay entry has been written.
+        let on: boolean;
+        let v: number;
+        let pitch: number;
+        let gateMutated: number;
+        let gated: boolean;
+        let ratchet: number;
+        if (freeze) {
+          const f = getOverlay(track.id, localStep);
+          if (f) {
+            on = f.on;
+            v = f.velocity;
+            pitch = f.pitch;
+            gateMutated = f.gate;
+            gated = f.gated;
+            ratchet = f.ratchet;
+          } else {
+            on = step.on;
+            v = step.velocity;
+            pitch = step.pitch;
+            gateMutated = step.gate;
+            gated = on && !isSilencedByTie(track, localStep);
+            ratchet = Math.max(1, Math.floor(step.ratchet));
           }
-          if (flipChance > 0 && Math.random() < flipChance) on = !on;
-        }
-        const velJitter =
-          mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.velSpread : 0;
-        const v = Math.max(0, Math.min(1, step.velocity + velJitter));
-        let pitch = step.pitch;
-        if (melodic && mut > 0 && Math.random() < mut * profile.pitchJumpProb) {
-          const oct = octaveDegrees(scale);
-          const fifth = fifthDegrees(scale);
-          const w = profile.pitchWeights;
-          const eOct = w.octave * tStableMul;
-          const eFifth = w.fifth * tStableMul;
-          const eSmall = w.small * tColorMul;
-          const total = eOct + eFifth + eSmall;
-          if (total > 0) {
-            const r = Math.random() * total;
-            let jump: number;
-            if (r < eOct) jump = Math.random() < 0.5 ? -oct : oct;
-            else if (r < eOct + eFifth) jump = Math.random() < 0.5 ? -fifth : fifth;
-            else {
-              const small = [-3, -2, -1, 1, 2, 3];
-              jump = small[Math.floor(Math.random() * small.length)];
+        } else {
+          on = step.on;
+          if (mut > 0 && !track.lockTiming) {
+            let flipChance = mut * profile.flipChance;
+            if (!step.on && profile.stepWeights && profile.stepWeights.length > 0) {
+              flipChance *= profile.stepWeights[localStep % profile.stepWeights.length];
             }
-            pitch = Math.max(-14, Math.min(14, pitch + jump));
+            if (flipChance > 0 && Math.random() < flipChance) on = !on;
           }
+          const velJitter =
+            mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.velSpread : 0;
+          v = Math.max(0, Math.min(1, step.velocity + velJitter));
+          pitch = step.pitch;
+          if (melodic && mut > 0 && Math.random() < mut * profile.pitchJumpProb) {
+            const oct = octaveDegrees(scale);
+            const fifth = fifthDegrees(scale);
+            const w = profile.pitchWeights;
+            const eOct = w.octave * tStableMul;
+            const eFifth = w.fifth * tStableMul;
+            const eSmall = w.small * tColorMul;
+            const total = eOct + eFifth + eSmall;
+            if (total > 0) {
+              const r = Math.random() * total;
+              let jump: number;
+              if (r < eOct) jump = Math.random() < 0.5 ? -oct : oct;
+              else if (r < eOct + eFifth) jump = Math.random() < 0.5 ? -fifth : fifth;
+              else {
+                const small = [-3, -2, -1, 1, 2, 3];
+                jump = small[Math.floor(Math.random() * small.length)];
+              }
+              pitch = Math.max(-14, Math.min(14, pitch + jump));
+            }
+          }
+          const gateBias = mut > 0 ? mut * profile.gateBias : 0;
+          const gateJitter =
+            mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.gateSpread : 0;
+          gateMutated = Math.max(0.1, Math.min(3, step.gate + gateBias + gateJitter));
+          // Trigger decisions — captured into the overlay so freeze replays
+          // exactly which steps fired and with how many ratchets.
+          const tied = isSilencedByTie(track, localStep);
+          gated = on && !tied;
+          if (gated) {
+            // Authored-ON path: density < 0.5 thins by metric weight; >= 0.5 leaves alone.
+            const mul = computeThinMul(modDensity, localStep, track.length);
+            const effectiveProb = step.probability * (1 - trackRowChance) * mul;
+            if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) {
+              gated = false;
+            }
+          } else if (!on && !tied) {
+            // Authored-OFF path: density > 0.5 fills offbeats by inverse metric
+            // weight — but only on rows that have at least one authored on step,
+            // so empty rows stay silent regardless of density.
+            const hasAuthoredOn = track.steps
+              .slice(0, track.length)
+              .some((s) => s.on);
+            if (hasAuthoredOn) {
+              const fillProb =
+                computeFillProb(modDensity, localStep, track.length) * (1 - trackRowChance);
+              if (fillProb > 0 && Math.random() < fillProb) {
+                gated = true;
+              }
+            }
+          }
+          ratchet = Math.max(1, Math.floor(step.ratchet));
+          if (gated && trackRowRatchet > 0 && Math.random() < trackRowRatchet * 0.5) {
+            ratchet = 2 + Math.floor(Math.random() * 7);
+          }
+          setOverlay(track.id, localStep, {
+            on,
+            velocity: v,
+            pitch,
+            gate: gateMutated,
+            gated,
+            ratchet,
+          });
         }
-        const gateBias = mut > 0 ? mut * profile.gateBias : 0;
-        const gateJitter =
-          mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.gateSpread : 0;
-        const gateMutated = Math.max(0.1, Math.min(3, step.gate + gateBias + gateJitter));
-        setOverlay(track.id, localStep, { on, velocity: v, pitch, gate: gateMutated });
-        if (!on) continue;
-        if (isSilencedByTie(track, localStep)) continue;
-        const effectiveProb = step.probability * (1 - trackRowChance) * densityMul;
-        if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) continue;
+        if (!gated) continue;
         const ties = tieLength(track, localStep);
         const baseTime = when + step.microTiming * rowStepDuration;
-        let ratchet = Math.max(1, Math.floor(step.ratchet));
-        if (trackRowRatchet > 0 && Math.random() < trackRowRatchet * 0.5) {
-          ratchet = 2 + Math.floor(Math.random() * 7);
-        }
         const subDur = rowStepDuration / ratchet;
         const effectiveGate = gateMutated * ties;
         const chordIntervals = melodic ? sourceChord(track.source) : [0];
