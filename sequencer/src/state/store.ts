@@ -5,8 +5,7 @@ import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 import { defaultLFOs, type LFO, type LFODestination } from '../audio/lfo';
 import {
   PRESETS,
-  INSTRUMENTS as LIBRARY_INSTRUMENTS,
-  type Instrument,
+  getInstrument,
   type TrackSource,
 } from '../instruments/library';
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
@@ -51,6 +50,15 @@ export const RATE_STRIDE: Record<StepRate, number> = {
   '1/32': 1,
 };
 
+export interface TrackMidi {
+  channel: number;
+  portName: string | null;
+  program: number | null;
+  bankMSB: number | null;
+  bankLSB: number | null;
+  note: number | null;
+}
+
 export interface Track {
   id: string;
   source: TrackSource;
@@ -70,6 +78,30 @@ export interface Track {
   slotB: Step[] | null;
   euclidean: EuclideanParams;
   steps: Step[];
+  midi: TrackMidi;
+}
+
+export const DEFAULT_TRACK_MIDI: TrackMidi = {
+  channel: 0,
+  portName: null,
+  program: null,
+  bankMSB: null,
+  bankLSB: null,
+  note: null,
+};
+
+// snapshot factory defaults from an instrument id into a track midi config
+export function snapshotInstrumentMidi(instrumentId: string): TrackMidi {
+  const inst = getInstrument(instrumentId);
+  if (!inst) return { ...DEFAULT_TRACK_MIDI };
+  return {
+    channel: inst.channel,
+    portName: inst.portName,
+    program: inst.program,
+    bankMSB: inst.bankMSB,
+    bankLSB: inst.bankLSB,
+    note: inst.fixedNote,
+  };
 }
 
 export const PAGE_SIZE = 16;
@@ -87,7 +119,6 @@ interface SequencerState {
   editMode: EditMode;
   midiOutDeviceId: string | null;
   viewSection: TrackSection;
-  instruments: Instrument[];
   density: number;
   chaos: number;
   motion: number;
@@ -103,8 +134,8 @@ interface SequencerState {
   setTrackSource: (trackId: string, source: TrackSource) => void;
   applyPreset: (presetId: string) => void;
   fireAllProgramChanges: () => void;
-  setInstrumentField: (id: string, patch: Partial<Instrument>) => void;
-  fireInstrumentProgram: (id: string) => void;
+  setTrackMidi: (trackId: string, patch: Partial<TrackMidi>) => void;
+  fireTrackProgram: (trackId: string) => void;
   setEditMode: (mode: EditMode) => void;
   selectedStep: StepSelection | null;
   setSelectedStep: (sel: StepSelection | null) => void;
@@ -170,19 +201,13 @@ function clamp01(v: unknown, fallback = 0.5): number {
     : fallback;
 }
 
-function fireProgramChangeFor(inst: Instrument | undefined, fallbackId: string | null): void {
-  if (!inst) return;
-  if (inst.program === null && inst.bankMSB === null && inst.bankLSB === null) return;
-  const deviceId = resolveDeviceId(inst.portName, fallbackId);
+function fireTrackProgramChange(track: Track, fallbackId: string | null): void {
+  if (track.source.kind !== 'instrument') return;
+  const { channel, portName, program, bankMSB, bankLSB } = track.midi;
+  if (program === null && bankMSB === null && bankLSB === null) return;
+  const deviceId = resolveDeviceId(portName, fallbackId);
   if (!deviceId) return;
-  sendPatchSelect(deviceId, inst.channel, inst.bankMSB, inst.bankLSB, inst.program);
-}
-
-function fireProgramChange(source: TrackSource): void {
-  if (source.kind !== 'instrument') return;
-  const state = useSequencerStore.getState();
-  const inst = state.instruments.find((i) => i.id === source.id);
-  fireProgramChangeFor(inst, state.midiOutDeviceId);
+  sendPatchSelect(deviceId, channel, bankMSB, bankLSB, program);
 }
 
 export const useSequencerStore = create<SequencerState>((set) => ({
@@ -197,7 +222,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   editMode: 'note',
   midiOutDeviceId: null,
   viewSection: 'drum',
-  instruments: LIBRARY_INSTRUMENTS.map((i) => ({ ...i })),
   density: clamp01((defaultPreset as { density?: unknown }).density),
   chaos: clamp01((defaultPreset as { chaos?: unknown }).chaos),
   motion: clamp01((defaultPreset as { motion?: unknown }).motion, 0.5),
@@ -211,15 +235,34 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
   setTrackSource: (trackId, source) => {
+    let nextTrack: Track | null = null;
     set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, source } : t)),
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        // snapshot factory midi defaults when assigning a different instrument
+        // (or switching from voice/empty to instrument). Same instrument id =
+        // preserve user edits.
+        const sameInstrument =
+          source.kind === 'instrument' &&
+          t.source.kind === 'instrument' &&
+          t.source.id === source.id;
+        const midi =
+          source.kind === 'instrument' && !sameInstrument
+            ? snapshotInstrumentMidi(source.id)
+            : t.midi;
+        nextTrack = { ...t, source, midi };
+        return nextTrack;
+      }),
     }));
-    fireProgramChange(source);
+    if (nextTrack) {
+      const { midiOutDeviceId } = useSequencerStore.getState();
+      fireTrackProgramChange(nextTrack, midiOutDeviceId);
+    }
   },
   applyPreset: (presetId) => {
     const preset = PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
-    let assigned: TrackSource[] = [];
+    const firedTracks: Track[] = [];
     const isInit = preset.id.startsWith('init-');
     set((state) => {
       const visible = state.tracks.filter((t) => t.section === state.viewSection);
@@ -229,7 +272,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           if (idx < 0) return t;
           const slot = preset.slots[idx];
           if (!slot || slot.kind === 'empty') {
-            // empty slot leaves the row untouched, except in an init preset
             if (isInit) {
               return {
                 ...t,
@@ -242,6 +284,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
                 morph: 0,
                 rowChance: 0,
                 rowRatchet: 0,
+                midi: { ...DEFAULT_TRACK_MIDI },
               };
             }
             return t;
@@ -250,8 +293,20 @@ export const useSequencerStore = create<SequencerState>((set) => ({
             slot.kind === 'voice'
               ? { kind: 'voice', id: slot.id }
               : { kind: 'instrument', id: slot.id };
-          assigned.push(next);
-          return isInit
+          // snapshot midi when assigning a different instrument or on init.
+          // Same-id reapply preserves user edits (init still resets).
+          const sameInstrument =
+            !isInit &&
+            next.kind === 'instrument' &&
+            t.source.kind === 'instrument' &&
+            t.source.id === next.id;
+          const midi =
+            next.kind === 'instrument' && !sameInstrument
+              ? snapshotInstrumentMidi(next.id)
+              : isInit
+                ? { ...DEFAULT_TRACK_MIDI }
+                : t.midi;
+          const merged: Track = isInit
             ? {
                 ...t,
                 source: next,
@@ -263,32 +318,40 @@ export const useSequencerStore = create<SequencerState>((set) => ({
                 morph: 0,
                 rowChance: 0,
                 rowRatchet: 0,
+                midi,
               }
-            : { ...t, source: next };
+            : { ...t, source: next, midi };
+          if (next.kind === 'instrument') firedTracks.push(merged);
+          return merged;
         }),
-        // init also nukes all LFO routing + depth (across both sections — LFOs
-        // are global, not section-scoped). Clean slate.
         lfos: isInit ? defaultLFOs() : state.lfos,
       };
     });
-    for (const s of assigned) fireProgramChange(s);
+    const { midiOutDeviceId } = useSequencerStore.getState();
+    for (const t of firedTracks) fireTrackProgramChange(t, midiOutDeviceId);
   },
   fireAllProgramChanges: () => {
-    const { tracks } = useSequencerStore.getState();
-    for (const t of tracks) fireProgramChange(t.source);
+    const { tracks, midiOutDeviceId } = useSequencerStore.getState();
+    for (const t of tracks) fireTrackProgramChange(t, midiOutDeviceId);
   },
-  setInstrumentField: (id, patch) => {
+  setTrackMidi: (trackId, patch) => {
+    let nextTrack: Track | null = null;
     set((state) => ({
-      instruments: state.instruments.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        nextTrack = { ...t, midi: { ...t.midi, ...patch } };
+        return nextTrack;
+      }),
     }));
-    const state = useSequencerStore.getState();
-    const inst = state.instruments.find((i) => i.id === id);
-    fireProgramChangeFor(inst, state.midiOutDeviceId);
+    if (nextTrack) {
+      const { midiOutDeviceId } = useSequencerStore.getState();
+      fireTrackProgramChange(nextTrack, midiOutDeviceId);
+    }
   },
-  fireInstrumentProgram: (id) => {
+  fireTrackProgram: (trackId) => {
     const state = useSequencerStore.getState();
-    const inst = state.instruments.find((i) => i.id === id);
-    fireProgramChangeFor(inst, state.midiOutDeviceId);
+    const track = state.tracks.find((t) => t.id === trackId);
+    if (track) fireTrackProgramChange(track, state.midiOutDeviceId);
   },
   setEditMode: (editMode) => set({ editMode }),
   selectedStep: null,

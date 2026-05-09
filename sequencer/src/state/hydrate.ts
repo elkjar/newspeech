@@ -1,5 +1,5 @@
-import type { Track, Step, TrackSection, StepRate } from './store';
-import { STEP_RATES } from './store';
+import type { Track, Step, TrackSection, StepRate, TrackMidi } from './store';
+import { STEP_RATES, DEFAULT_TRACK_MIDI, snapshotInstrumentMidi } from './store';
 import {
   defaultLFOs,
   LFO_RATES,
@@ -118,6 +118,36 @@ function hydrateRate(saved: unknown): StepRate {
     : '1/16';
 }
 
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function nullableInt(v: unknown, lo: number, hi: number): number | null {
+  if (v === null) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  return clamp(Math.floor(v), lo, hi);
+}
+
+function hydrateMidi(saved: unknown, source: TrackSource): TrackMidi {
+  // seed from instrument factory defaults if source is an instrument
+  const seed: TrackMidi =
+    source.kind === 'instrument' ? snapshotInstrumentMidi(source.id) : { ...DEFAULT_TRACK_MIDI };
+  if (!saved || typeof saved !== 'object') return seed;
+  const m = saved as Partial<TrackMidi>;
+  return {
+    channel:
+      typeof m.channel === 'number' && Number.isFinite(m.channel)
+        ? clamp(Math.floor(m.channel), 0, 15)
+        : seed.channel,
+    portName:
+      typeof m.portName === 'string' ? m.portName : m.portName === null ? null : seed.portName,
+    program: m.program === undefined ? seed.program : nullableInt(m.program, 0, 127),
+    bankMSB: m.bankMSB === undefined ? seed.bankMSB : nullableInt(m.bankMSB, 0, 127),
+    bankLSB: m.bankLSB === undefined ? seed.bankLSB : nullableInt(m.bankLSB, 0, 127),
+    note: m.note === undefined ? seed.note : nullableInt(m.note, 0, 127),
+  };
+}
+
 export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
   const length = saved.length ?? 16;
   const stepsRaw = Array.isArray(saved.steps) ? saved.steps : [];
@@ -147,6 +177,7 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     slotB: hydrateSlot(saved.slotB),
     euclidean: saved.euclidean ?? { hits: 0, rotation: 0 },
     steps,
+    midi: hydrateMidi((saved as { midi?: unknown }).midi, source),
   };
 }
 
@@ -173,6 +204,7 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     slotB: null,
     euclidean: { hits: 0, rotation: 0 },
     steps,
+    midi: { ...DEFAULT_TRACK_MIDI },
   };
 }
 

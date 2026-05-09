@@ -124,7 +124,7 @@ export function App() {
   useEffect(() => {
     const harmonic = makeHarmonicMotionState();
     return scheduler.onStep((globalStep, when, stepDuration) => {
-      const { tracks, rootNote, scale, lfos, midiOutDeviceId, instruments, density, chaos, motion, drift, tension } =
+      const { tracks, rootNote, scale, lfos, midiOutDeviceId, density, chaos, motion, drift, tension } =
         useSequencerStore.getState();
       // Macros may themselves be LFO-modulated. LFOs run at their natural rates
       // (motion no longer scales them) so we pass rateMul=1 across the board.
@@ -231,25 +231,23 @@ export function App() {
               quantize(rootNote, scale, pitch + interval + harmonicShift)
             )
           : [undefined as number | undefined];
-        const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
-        const instrument =
-          instrumentId !== null ? instruments.find((i) => i.id === instrumentId) ?? null : null;
-        const effectiveDeviceId = instrument
-          ? resolveDeviceId(instrument.portName, midiOutDeviceId)
+        const isInstrument = track.source.kind === 'instrument';
+        const effectiveDeviceId = isInstrument
+          ? resolveDeviceId(track.midi.portName, midiOutDeviceId)
           : null;
         const midiNoteDuration = Math.max(0.02, effectiveGate * rowStepDuration);
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
           for (const m of chordMidi) {
-            if (instrument) {
+            if (isInstrument) {
               if (!effectiveDeviceId) continue;
               let outNote: number;
-              if (instrument.fixedNote !== null) outNote = instrument.fixedNote;
+              if (track.midi.note !== null) outNote = track.midi.note;
               else if (m !== undefined) outNote = m;
               else continue;
               sendMIDINote(
                 effectiveDeviceId,
-                instrument.channel,
+                track.midi.channel,
                 outNote,
                 v,
                 t,

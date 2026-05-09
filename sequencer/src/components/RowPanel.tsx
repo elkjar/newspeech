@@ -6,6 +6,8 @@ import {
   type StepRate,
 } from '../state/store';
 import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
+import type { MIDIOutputInfo } from '../audio/midiOut';
+import { getInstrument } from '../instruments/library';
 
 const CELL = 36;
 
@@ -19,13 +21,11 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const setTrackLength = useSequencerStore((s) => s.setTrackLength);
   const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
   const setTrackRate = useSequencerStore((s) => s.setTrackRate);
-  const setInstrumentField = useSequencerStore((s) => s.setInstrumentField);
-  const fireInstrumentProgram = useSequencerStore((s) => s.fireInstrumentProgram);
+  const setTrackMidi = useSequencerStore((s) => s.setTrackMidi);
+  const fireTrackProgram = useSequencerStore((s) => s.fireTrackProgram);
   const globalDeviceId = useSequencerStore((s) => s.midiOutDeviceId);
   const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
-  const instrument = useSequencerStore((s) =>
-    instrumentId ? s.instruments.find((i) => i.id === instrumentId) : undefined
-  );
+  const instrument = instrumentId ? getInstrument(instrumentId) : undefined;
   const outputs = useMIDIOutputs();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -47,7 +47,7 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
     };
   }, [onClose, triggerRef]);
 
-  const globalDeviceName = outputs.find((o) => o.id === globalDeviceId)?.name ?? 'global';
+  const globalDeviceName = outputs.find((o) => o.id === globalDeviceId)?.name ?? null;
 
   return (
     <div
@@ -94,60 +94,51 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
       {instrument && (
         <>
           <div className="self-stretch w-px bg-white/15 mx-1" />
-          <TextField
-            label="port"
-            value={instrument.portName ?? ''}
-            placeholder={globalDeviceName}
-            onChange={(v) => setInstrumentField(instrument.id, { portName: v || null })}
-            width={140}
+          <PortField
+            value={track.midi.portName}
+            outputs={outputs}
+            globalDeviceName={globalDeviceName}
+            onChange={(v) => setTrackMidi(track.id, { portName: v })}
           />
           <NumField
             label="ch"
-            value={instrument.channel + 1}
+            value={track.midi.channel + 1}
             min={1}
             max={16}
             onChange={(v) =>
-              setInstrumentField(instrument.id, {
-                channel: Math.max(0, Math.min(15, v - 1)),
-              })
+              setTrackMidi(track.id, { channel: Math.max(0, Math.min(15, v - 1)) })
             }
           />
           {instrument.role !== 'drum' && (
             <>
               <NullableNumField
                 label="msb"
-                value={instrument.bankMSB}
-                onChange={(v) => setInstrumentField(instrument.id, { bankMSB: v })}
+                value={track.midi.bankMSB}
+                onChange={(v) => setTrackMidi(track.id, { bankMSB: v })}
               />
               <NullableNumField
                 label="lsb"
-                value={instrument.bankLSB}
-                onChange={(v) => setInstrumentField(instrument.id, { bankLSB: v })}
+                value={track.midi.bankLSB}
+                onChange={(v) => setTrackMidi(track.id, { bankLSB: v })}
               />
               <NullableNumField
                 label="pc"
-                value={instrument.program}
-                onChange={(v) => setInstrumentField(instrument.id, { program: v })}
+                value={track.midi.program}
+                onChange={(v) => setTrackMidi(track.id, { program: v })}
               />
             </>
           )}
-          {instrument.role === 'drum' && instrument.fixedNote !== null && (
-            <NumField
+          {instrument.role === 'drum' && (
+            <NullableNumField
               label="note"
-              value={instrument.fixedNote}
-              min={0}
-              max={127}
-              onChange={(v) =>
-                setInstrumentField(instrument.id, {
-                  fixedNote: Math.max(0, Math.min(127, v)),
-                })
-              }
+              value={track.midi.note}
+              onChange={(v) => setTrackMidi(track.id, { note: v })}
             />
           )}
           {instrument.role !== 'drum' && (
             <button
               type="button"
-              onClick={() => fireInstrumentProgram(instrument.id)}
+              onClick={() => fireTrackProgram(track.id)}
               style={{ height: CELL }}
               className="px-2 border border-white/15 hover:border-white text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors"
               title="resend bank-select + program change to the instrument"
@@ -224,30 +215,47 @@ function NullableNumField({
   );
 }
 
-function TextField({
-  label,
+function PortField({
   value,
-  placeholder,
+  outputs,
+  globalDeviceName,
   onChange,
-  width,
 }: {
-  label: string;
-  value: string;
-  placeholder?: string;
-  onChange: (s: string) => void;
-  width: number;
+  value: string | null;
+  outputs: MIDIOutputInfo[];
+  globalDeviceName: string | null;
+  onChange: (next: string | null) => void;
 }) {
+  const matched = value
+    ? outputs.find((o) => o.name.toLowerCase().includes(value.toLowerCase()))
+    : undefined;
+  const selectValue = matched ? matched.name : (value ?? '');
+  const showOffline = value !== null && !matched;
+  const globalLabel = globalDeviceName ? `global · ${globalDeviceName}` : 'global (none set)';
   return (
     <label className="flex flex-col items-start gap-1">
-      <span className="text-[9px] uppercase tracking-widest text-white/40">{label}</span>
-      <input
-        type="text"
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ width, height: CELL }}
-        className="bg-transparent border border-white/15 text-[12px] px-2 focus:outline-none focus:border-white placeholder:text-white/25"
-      />
+      <span className="text-[9px] uppercase tracking-widest text-white/40">port</span>
+      <select
+        value={selectValue}
+        onChange={(e) => onChange(e.target.value || null)}
+        style={{ height: CELL, width: 200 }}
+        className="select-chevron bg-transparent border border-white/15 pl-2 pr-6 text-[12px] focus:outline-none focus:border-white text-white"
+        title="midi output port (defaults to global when blank)"
+      >
+        <option value="" className="bg-[#050505]">
+          {globalLabel}
+        </option>
+        {outputs.map((o) => (
+          <option key={o.id} value={o.name} className="bg-[#050505]">
+            {o.name}
+          </option>
+        ))}
+        {showOffline && (
+          <option value={value!} className="bg-[#050505]">
+            {value} (offline)
+          </option>
+        )}
+      </select>
     </label>
   );
 }

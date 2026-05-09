@@ -41,7 +41,33 @@ export interface Preset {
   slots: PresetSlot[];
 }
 
+const EXT_MIDI_LEAD: Instrument = {
+  id: 'ext-midi-lead',
+  label: 'ext. midi',
+  role: 'lead',
+  channel: 0,
+  portName: null,
+  program: null,
+  bankMSB: null,
+  bankLSB: null,
+  fixedNote: null,
+};
+
+const EXT_MIDI_DRUM: Instrument = {
+  id: 'ext-midi-drum',
+  label: 'ext. midi',
+  role: 'drum',
+  channel: 9,
+  portName: null,
+  program: null,
+  bankMSB: null,
+  bankLSB: null,
+  fixedNote: null,
+};
+
 export const INSTRUMENTS: Instrument[] = [
+  EXT_MIDI_LEAD,
+  EXT_MIDI_DRUM,
   {
     id: 'hydra-plaits',
     label: 'hydrasynth · plaits',
@@ -146,6 +172,18 @@ export const INSTRUMENTS: Instrument[] = [
 ];
 
 export const PRESETS: Preset[] = [
+  {
+    id: 'ext-midi-preset-drum',
+    label: 'ext. midi',
+    target: 'drum',
+    slots: Array.from({ length: 8 }, () => ({ kind: 'instrument' as const, id: EXT_MIDI_DRUM.id })),
+  },
+  {
+    id: 'ext-midi-preset-melodic',
+    label: 'ext. midi',
+    target: 'melodic',
+    slots: Array.from({ length: 8 }, () => ({ kind: 'instrument' as const, id: EXT_MIDI_LEAD.id })),
+  },
   {
     id: 'init-drum',
     label: 'init',
