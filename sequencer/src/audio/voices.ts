@@ -82,6 +82,11 @@ export const VOICES: VoiceDef[] = [
   { id: 'hydra-plaits', label: 'hydra-plaits', category: 'melodic' },
   { id: 'bass', label: 'bass', category: 'melodic', mutationProfile: BASS_MUTATION },
   { id: 'pad', label: 'pad', category: 'melodic', chord: [0, 2, 4], mutationProfile: PAD_MUTATION },
+  { id: 'rhodes-mk1', label: 'rhodes mk1', category: 'melodic' },
+  { id: 'root-grain', label: 'root grain', category: 'melodic' },
+  { id: 'soft-piano', label: 'soft piano', category: 'melodic' },
+  { id: 'tape-piano', label: 'tape piano', category: 'melodic' },
+  { id: 'under-piano', label: 'under piano', category: 'melodic' },
 ];
 
 export function voiceCategory(voiceId: string): VoiceCategory {

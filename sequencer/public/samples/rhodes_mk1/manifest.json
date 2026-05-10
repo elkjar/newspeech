@@ -1,0 +1,88 @@
+{
+  "name": "rhodes_mk1",
+  "voices": {
+    "rhodes-mk1": {
+      "roots": [
+        {
+          "midi": 36,
+          "files": [
+            "Rhodes-Mark-1-036-C2.WAV"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "Rhodes-Mark-1-040-E1.WAV"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "Rhodes-Mark-1-044-Ab1.WAV"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "Rhodes-Mark-1-048-C2.WAV"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "Rhodes-Mark-1-052-E2.WAV"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "Rhodes-Mark-1-056-Ab2.WAV"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "Rhodes-Mark-1-060-C3.WAV"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "Rhodes-Mark-1-064-E3.WAV"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "Rhodes-Mark-1-068-Ab3.WAV"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "Rhodes-Mark-1-072-C4.WAV"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "Rhodes-Mark-1-076-E4.WAV"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "Rhodes-Mark-1-080-Ab4.WAV"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "Rhodes-Mark-1-084-C5.WAV"
+          ]
+        }
+      ],
+      "gain": 0.7
+    }
+  }
+}

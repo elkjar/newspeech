@@ -80,10 +80,28 @@ class SamplePlayer {
     velocity = 1,
     midiNote?: number,
     gate = 1,
-    stepDuration = 0.125
+    stepDuration = 0.125,
+    fxSend = 1
   ) {
     const ctx = getAudioContext();
-    const out = getVoicesBus();
+    // Per-trigger split — `out` is what the voice writes into; it fans into
+    // a wet leg (→ FX bus) and a dry leg (→ destination, bypassing FX).
+    // fxSend snapshots at trigger time; LFO modulation steps per trigger.
+    const out = ctx.createGain();
+    out.gain.value = 1;
+    const clampedSend = Math.max(0, Math.min(1, fxSend));
+    if (clampedSend > 0) {
+      const wet = ctx.createGain();
+      wet.gain.value = clampedSend;
+      out.connect(wet);
+      wet.connect(getVoicesBus());
+    }
+    if (clampedSend < 1) {
+      const dry = ctx.createGain();
+      dry.gain.value = 1 - clampedSend;
+      out.connect(dry);
+      dry.connect(ctx.destination);
+    }
 
     const group = this.chokeGroups.get(voice);
     if (group) {

@@ -124,7 +124,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const kits = ['blck_noir', 'hydrasynth_plaits'];
+    const kits = [
+      'blck_noir',
+      'hydrasynth_plaits',
+      'rhodes_mk1',
+      'root_grain',
+      'soft_piano',
+      'tape_piano',
+      'under_piano',
+    ];
     for (const kit of kits) {
       const baseUrl = `${import.meta.env.BASE_URL}samples/${kit}`;
       fetch(`${baseUrl}/manifest.json`)
@@ -175,7 +183,6 @@ export function App() {
         const rowStepDuration = stepDuration * stride;
         const trackMut = modulated(track.mutation, lfos, track.id, 'mutation') * chaosMul;
         const trackMorph = modulated(track.morph, lfos, track.id, 'morph');
-        const trackRowChance = modulated(track.rowChance, lfos, track.id, 'rowChance');
         const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet');
         let step = authoredStep;
         if (track.slotA && track.slotB) {
@@ -260,7 +267,7 @@ export function App() {
           if (gated) {
             // Authored-ON path: density < 0.5 thins by metric weight; >= 0.5 leaves alone.
             const mul = computeThinMul(modDensity, localStep, track.length);
-            const effectiveProb = step.probability * (1 - trackRowChance) * mul;
+            const effectiveProb = step.probability * mul;
             if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) {
               gated = false;
             }
@@ -272,8 +279,7 @@ export function App() {
               .slice(0, track.length)
               .some((s) => s.on);
             if (hasAuthoredOn) {
-              const fillProb =
-                computeFillProb(modDensity, localStep, track.length) * (1 - trackRowChance);
+              const fillProb = computeFillProb(modDensity, localStep, track.length);
               if (fillProb > 0 && Math.random() < fillProb) {
                 gated = true;
               }
@@ -335,7 +341,8 @@ export function App() {
                 v * track.gain,
                 m,
                 effectiveGate,
-                rowStepDuration
+                rowStepDuration,
+                modulated(track.fxSend, lfos, track.id, 'fxSend')
               );
             }
           }

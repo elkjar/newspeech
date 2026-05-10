@@ -72,14 +72,12 @@ export function Track({ track }: { track: TrackData }) {
   const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
   const morphLFOs = findRouted(lfos, track.id, 'morph');
   const liveMorph = useLFOValue(track.morph, morphLFOs, 1);
-  // Live density / rowChance values for chance-mode opacity. Mirrors the gate
-  // the dispatch loop uses, so twisting macros fades the grid at the same rate
-  // the audio thins out. Metric-weighted density is computed per step in the
-  // render loop below (downbeat preserved, offbeats fade first).
+  // Live density value for chance-mode opacity. Mirrors the gate the dispatch
+  // loop uses, so twisting macros fades the grid at the same rate the audio
+  // thins out. Metric-weighted density is computed per step in the render loop
+  // below (downbeat preserved, offbeats fade first).
   const densityLFOs = findRouted(lfos, GLOBAL_TRACK_ID, 'density');
   const liveDensity = useLFOValue(density, densityLFOs, 1);
-  const rowChanceLFOs = findRouted(lfos, track.id, 'rowChance');
-  const liveRowChance = useLFOValue(track.rowChance, rowChanceLFOs, 1);
   // Empty rows shouldn't get density fill-in — keep them silent regardless.
   const hasAuthoredOn = track.steps
     .slice(0, track.length)
@@ -215,7 +213,7 @@ export function Track({ track }: { track: TrackData }) {
             />
           )}
         </div>
-        {(['mutation', 'rowChance', 'rowRatchet', 'morph'] as const).map((knob) => (
+        {(['mutation', 'fxSend', 'rowRatchet', 'morph'] as const).map((knob) => (
           <TrackKnob key={knob} track={track} knob={knob} size={STEP_SIZE} />
         ))}
       </div>
@@ -364,13 +362,10 @@ export function Track({ track }: { track: TrackData }) {
                     ? Math.min(
                         100,
                         (display.probability ?? 100) *
-                          (1 - liveRowChance) *
                           computeThinMul(liveDensity, stepIndex, track.length)
                       )
                     : hasAuthoredOn
-                      ? 100 *
-                        (1 - liveRowChance) *
-                        computeFillProb(liveDensity, stepIndex, track.length)
+                      ? 100 * computeFillProb(liveDensity, stepIndex, track.length)
                       : 0
                 }
                 ratchet={display?.ratchet ?? 1}

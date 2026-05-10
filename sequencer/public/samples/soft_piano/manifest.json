@@ -1,0 +1,124 @@
+{
+  "name": "soft_piano",
+  "voices": {
+    "soft-piano": {
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "Soft-Piano-024-C0.WAV"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "Soft-Piano-028-E0.WAV"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "Soft-Piano-032-Ab0.WAV"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "Soft-Piano-036-C1.WAV"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "Soft-Piano-040-E1.WAV"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "Soft-Piano-044-Ab1.WAV"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "Soft-Piano-048-C2.WAV"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "Soft-Piano-052-E2.WAV"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "Soft-Piano-056-Ab2.WAV"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "Soft-Piano-060-C3.WAV"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "Soft-Piano-064-E3.WAV"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "Soft-Piano-068-Ab3.WAV"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "Soft-Piano-072-C4.WAV"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "Soft-Piano-076-E4.WAV"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "Soft-Piano-080-Ab4.WAV"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "Soft-Piano-084-C5.WAV"
+          ]
+        },
+        {
+          "midi": 88,
+          "files": [
+            "Soft-Piano-088-E5.WAV"
+          ]
+        },
+        {
+          "midi": 92,
+          "files": [
+            "Soft-Piano-092-Ab5.WAV"
+          ]
+        },
+        {
+          "midi": 96,
+          "files": [
+            "Soft-Piano-096-C6.WAV"
+          ]
+        }
+      ],
+      "gain": 0.7
+    }
+  }
+}

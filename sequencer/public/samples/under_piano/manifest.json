@@ -1,0 +1,106 @@
+{
+  "name": "under_piano",
+  "voices": {
+    "under-piano": {
+      "roots": [
+        {
+          "midi": 36,
+          "files": [
+            "Under-Piano-036-C1.WAV"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "Under-Piano-040-E1.WAV"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "Under-Piano-044-Ab1.WAV"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "Under-Piano-048-C2.WAV"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "Under-Piano-052-E2.WAV"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "Under-Piano-056-Ab2.WAV"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "Under-Piano-060-C3.WAV"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "Under-Piano-064-E3.WAV"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "Under-Piano-068-Ab3.WAV"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "Under-Piano-072-C4.WAV"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "Under-Piano-076-E4.WAV"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "Under-Piano-080-Ab4.WAV"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "Under-Piano-084-C5.WAV"
+          ]
+        },
+        {
+          "midi": 88,
+          "files": [
+            "Under-Piano-088-E5.WAV"
+          ]
+        },
+        {
+          "midi": 92,
+          "files": [
+            "Under-Piano-092-Ab5.WAV"
+          ]
+        },
+        {
+          "midi": 96,
+          "files": [
+            "Under-Piano-096-C6.WAV"
+          ]
+        }
+      ],
+      "gain": 0.7
+    }
+  }
+}

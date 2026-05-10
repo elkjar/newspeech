@@ -79,7 +79,6 @@ export interface Track {
   lastPitch: number;
   viewPage: number;
   mutation: number;
-  rowChance: number;
   rowRatchet: number;
   morph: number;
   rate: StepRate;
@@ -91,6 +90,10 @@ export interface Track {
   midi: TrackMidi;
   // sample/internal-synth playback level multiplier; no effect on MIDI velocity
   gain: number;
+  // contribution into the FX bus (0..1). 0 (default) = signal goes straight
+  // to destination, bypassing tape/glitch/reverb/sat. 1 = full FX chain.
+  // Per-trigger snapshot — LFO modulation steps per trigger, not glides.
+  fxSend: number;
 }
 
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
@@ -181,9 +184,9 @@ interface SequencerState {
   setStepTie: (trackId: string, index: number, tied: boolean) => void;
   setTrackMutation: (trackId: string, mutation: number) => void;
   setTrackGain: (trackId: string, gain: number) => void;
+  setTrackFxSend: (trackId: string, fxSend: number) => void;
   setTrackRate: (trackId: string, rate: StepRate) => void;
   setTrackLockTiming: (trackId: string, lock: boolean) => void;
-  setTrackRowChance: (trackId: string, rowChance: number) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
   setTrackMorph: (trackId: string, morph: number) => void;
   snapTrackSlot: (trackId: string, slot: 'A' | 'B', clear?: boolean) => void;
@@ -346,7 +349,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
                 lockTiming: false,
                 mutation: 0,
                 morph: 0,
-                rowChance: 0,
                 rowRatchet: 0,
                 length: DEFAULT_LENGTH,
                 viewPage: 0,
@@ -382,7 +384,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
                 lockTiming: false,
                 mutation: 0,
                 morph: 0,
-                rowChance: 0,
                 rowRatchet: 0,
                 length: DEFAULT_LENGTH,
                 viewPage: 0,
@@ -554,6 +555,12 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, gain: clamped } : t)),
     }));
   },
+  setTrackFxSend: (trackId, fxSend) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(fxSend) ? fxSend : 0));
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, fxSend: clamped } : t)),
+    }));
+  },
   setTrackRate: (trackId, rate) =>
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rate } : t)),
@@ -562,12 +569,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, lockTiming } : t)),
     })),
-  setTrackRowChance: (trackId, rowChance) => {
-    const clamped = Math.max(0, Math.min(1, Number.isFinite(rowChance) ? rowChance : 0));
-    set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rowChance: clamped } : t)),
-    }));
-  },
   setTrackRowRatchet: (trackId, rowRatchet) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(rowRatchet) ? rowRatchet : 0));
     set((state) => ({

@@ -1,0 +1,106 @@
+{
+  "name": "root_grain",
+  "voices": {
+    "root-grain": {
+      "roots": [
+        {
+          "midi": 36,
+          "files": [
+            "Root-036-C1.WAV"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "Root-040-E1.WAV"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "Root-044-Ab1.WAV"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "Root-048-C2.WAV"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "Root-052-E2.WAV"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "Root-056-Ab2.WAV"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "Root-060-C3.WAV"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "Root-064-E3.WAV"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "Root-068-Ab3.WAV"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "Root-072-C4.WAV"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "Root-076-E4.WAV"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "Root-080-Ab4.WAV"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "Root-084-C5.WAV"
+          ]
+        },
+        {
+          "midi": 88,
+          "files": [
+            "Root-088-E5.WAV"
+          ]
+        },
+        {
+          "midi": 92,
+          "files": [
+            "Root-092-Ab5.WAV"
+          ]
+        },
+        {
+          "midi": 96,
+          "files": [
+            "Root-096-C6.WAV"
+          ]
+        }
+      ],
+      "gain": 0.7
+    }
+  }
+}

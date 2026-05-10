@@ -12,8 +12,8 @@ import { getInstrument, type TrackSource } from '../instruments/library';
 const VALID_KNOBS: LFODestKnob[] = [
   'mutation',
   'morph',
-  'rowChance',
   'rowRatchet',
+  'fxSend',
   'density',
   'motion',
   'drift',
@@ -84,6 +84,11 @@ const INTERNAL_VOICE_IDS = new Set([
   'hydra-plaits',
   'bass',
   'pad',
+  'rhodes-mk1',
+  'root-grain',
+  'soft-piano',
+  'tape-piano',
+  'under-piano',
 ]);
 // migrate renamed voice ids when hydrating older `.seq` files
 const VOICE_ID_RENAMES: Record<string, string> = {
@@ -185,7 +190,6 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     lastPitch: saved.lastPitch ?? 0,
     viewPage: saved.viewPage ?? 0,
     mutation: saved.mutation ?? 0,
-    rowChance: saved.rowChance ?? 0,
     rowRatchet: saved.rowRatchet ?? 0,
     morph: saved.morph ?? 0,
     rate: hydrateRate((saved as { rate?: unknown }).rate),
@@ -199,6 +203,10 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
       typeof saved.gain === 'number' && Number.isFinite(saved.gain)
         ? Math.max(0, Math.min(2, saved.gain))
         : 1,
+    fxSend:
+      typeof saved.fxSend === 'number' && Number.isFinite(saved.fxSend)
+        ? Math.max(0, Math.min(1, saved.fxSend))
+        : 0,
   };
 }
 
@@ -225,7 +233,6 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     lastPitch: 0,
     viewPage: 0,
     mutation: 0,
-    rowChance: 0,
     rowRatchet: 0,
     morph: 0,
     rate: '1/16',
@@ -236,6 +243,7 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     steps,
     midi: { ...DEFAULT_TRACK_MIDI },
     gain: 1,
+    fxSend: 0,
   };
 }
 

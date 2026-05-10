@@ -1,0 +1,106 @@
+{
+  "name": "tape_piano",
+  "voices": {
+    "tape-piano": {
+      "roots": [
+        {
+          "midi": 36,
+          "files": [
+            "Tape-piano-036-C1.WAV"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "Tape-piano-040-E1.WAV"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "Tape-piano-044-Ab1.WAV"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "Tape-piano-048-C2.WAV"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "Tape-piano-052-E2.WAV"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "Tape-piano-056-Ab2.WAV"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "Tape-piano-060-C3.WAV"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "Tape-piano-064-E3.WAV"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "Tape-piano-068-Ab3.WAV"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "Tape-piano-072-C4.WAV"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "Tape-piano-076-E4.WAV"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "Tape-piano-080-Ab4.WAV"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "Tape-piano-084-C5.WAV"
+          ]
+        },
+        {
+          "midi": 88,
+          "files": [
+            "Tape-piano-088-E5.WAV"
+          ]
+        },
+        {
+          "midi": 92,
+          "files": [
+            "Tape-piano-092-Ab5.WAV"
+          ]
+        },
+        {
+          "midi": 96,
+          "files": [
+            "Tape-piano-096-C6.WAV"
+          ]
+        }
+      ],
+      "gain": 0.7
+    }
+  }
+}
