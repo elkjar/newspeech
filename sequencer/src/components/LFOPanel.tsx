@@ -19,6 +19,17 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   drift: 'drift',
   chaos: 'chaos',
   tension: 'tension',
+  tapePosition: 'tape pos',
+  tapeLength: 'tape len',
+  tapeMix: 'tape mix',
+  tapeGrainRate: 'grain rate',
+  tapeGrainMix: 'grain mix',
+  glitchChance: 'glitch ch',
+  glitchMix: 'glitch mix',
+  reverbSize: 'verb size',
+  reverbMix: 'verb mix',
+  preSaturationDrive: 'pre drive',
+  postSaturationDrive: 'post drive',
 };
 
 function destinationLabel(

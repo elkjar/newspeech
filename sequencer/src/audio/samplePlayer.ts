@@ -1,4 +1,4 @@
-import { getAudioContext } from './audioContext';
+import { getAudioContext, getVoicesBus } from './audioContext';
 import { synthBass, synthHatC, synthHatO, synthKick, synthMelodic, synthPad, synthSnare } from './synth';
 
 export type SampleId = string;
@@ -83,7 +83,7 @@ class SamplePlayer {
     stepDuration = 0.125
   ) {
     const ctx = getAudioContext();
-    const out = ctx.destination;
+    const out = getVoicesBus();
 
     const group = this.chokeGroups.get(voice);
     if (group) {

@@ -4,6 +4,7 @@ import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
 import { MacroStrip } from './components/MacroStrip';
+import { FXPanel } from './components/FXPanel';
 import {
   useSequencerStore,
   RATE_STRIDE,
@@ -446,6 +447,7 @@ export function App() {
               <ModeSwitcher />
             </div>
           </div>
+          <FXPanel />
         </div>
       </main>
     </div>

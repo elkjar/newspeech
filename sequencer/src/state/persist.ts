@@ -2,6 +2,10 @@ import { useSequencerStore, type Track, type TrackSection } from './store';
 import { ensureBothSections, hydrateTrack, hydrateLFOs } from './hydrate';
 import { type LFO } from '../audio/lfo';
 import type { Scale } from '../audio/scale';
+import { DEFAULT_TAPE_PARAMS, type TapeParams } from '../audio/tape';
+import { DEFAULT_GLITCH_PARAMS, type GlitchParams } from '../audio/glitch';
+import { DEFAULT_REVERB_PARAMS, type ReverbParams } from '../audio/reverb';
+import { DEFAULT_SATURATION_PARAMS, type SaturationParams } from '../audio/saturation';
 
 interface PersistedState {
   version: number;
@@ -17,6 +21,10 @@ interface PersistedState {
   motion?: number;
   drift?: number;
   tension?: number;
+  tape?: TapeParams;
+  glitch?: GlitchParams;
+  reverb?: ReverbParams;
+  saturation?: SaturationParams;
 }
 
 function clamp01(v: unknown, fallback = 0.5): number {
@@ -43,8 +51,85 @@ export function exportProject(): string {
     motion: s.motion,
     drift: s.drift,
     tension: s.tension,
+    tape: s.tape,
+    glitch: s.glitch,
+    reverb: s.reverb,
+    saturation: s.saturation,
   };
   return JSON.stringify(data, null, 2);
+}
+
+function hydrateTape(v: unknown): TapeParams {
+  const t = (v && typeof v === 'object' ? v : {}) as Partial<TapeParams> & {
+    stretch?: number;
+    geneRate?: number;
+    geneMix?: number;
+  };
+  // Old saves had a single `stretch` field — fall it forward to stretch1.
+  const legacyStretch =
+    typeof t.stretch === 'number' && Number.isFinite(t.stretch)
+      ? Math.max(0, Math.min(1, t.stretch))
+      : null;
+  return {
+    position: clamp01(t.position, DEFAULT_TAPE_PARAMS.position),
+    length: clamp01(t.length, DEFAULT_TAPE_PARAMS.length),
+    reverse:
+      typeof t.reverse === 'boolean' ? t.reverse : DEFAULT_TAPE_PARAMS.reverse,
+    // hold is a performance gesture — never restore from save
+    hold: false,
+    stretch1: clamp01(
+      t.stretch1 ?? legacyStretch ?? undefined,
+      DEFAULT_TAPE_PARAMS.stretch1
+    ),
+    gain1: clamp01(t.gain1, DEFAULT_TAPE_PARAMS.gain1),
+    stretch2: clamp01(t.stretch2, DEFAULT_TAPE_PARAMS.stretch2),
+    gain2: clamp01(t.gain2, DEFAULT_TAPE_PARAMS.gain2),
+    // Old saves used `geneRate` / `geneMix` — fall them forward.
+    grainRate: clamp01(
+      t.grainRate ?? t.geneRate,
+      DEFAULT_TAPE_PARAMS.grainRate
+    ),
+    grainMix: clamp01(
+      t.grainMix ?? t.geneMix,
+      DEFAULT_TAPE_PARAMS.grainMix
+    ),
+    mix: clamp01(t.mix, DEFAULT_TAPE_PARAMS.mix),
+  };
+}
+
+function hydrateGlitch(v: unknown): GlitchParams {
+  const g = (v && typeof v === 'object' ? v : {}) as Partial<GlitchParams>;
+  return {
+    chance: clamp01(g.chance, DEFAULT_GLITCH_PARAMS.chance),
+    mix: clamp01(g.mix, DEFAULT_GLITCH_PARAMS.mix),
+  };
+}
+
+function hydrateReverb(v: unknown): ReverbParams {
+  const r = (v && typeof v === 'object' ? v : {}) as Partial<ReverbParams>;
+  return {
+    size: clamp01(r.size, DEFAULT_REVERB_PARAMS.size),
+    mix: clamp01(r.mix, DEFAULT_REVERB_PARAMS.mix),
+  };
+}
+
+function hydrateSaturation(v: unknown): SaturationParams {
+  const s = (v && typeof v === 'object' ? v : {}) as Partial<SaturationParams> & {
+    drive?: number;
+  };
+  // Old saves had a single `drive` field — fall it forward to postDrive
+  // (which is where the original single-stage saturation sat in the chain).
+  const legacyDrive =
+    typeof s.drive === 'number' && Number.isFinite(s.drive)
+      ? Math.max(0, Math.min(1, s.drive))
+      : null;
+  return {
+    preDrive: clamp01(s.preDrive, DEFAULT_SATURATION_PARAMS.preDrive),
+    postDrive: clamp01(
+      s.postDrive ?? legacyDrive ?? undefined,
+      DEFAULT_SATURATION_PARAMS.postDrive
+    ),
+  };
 }
 
 export function importProject(json: string): boolean {
@@ -80,6 +165,10 @@ export function importProject(json: string): boolean {
     motion: clamp01(data.motion, 0.5),
     drift: clamp01(data.drift, 1),
     tension: clamp01(data.tension),
+    tape: hydrateTape(data.tape),
+    glitch: hydrateGlitch(data.glitch),
+    reverb: hydrateReverb(data.reverb),
+    saturation: hydrateSaturation(data.saturation),
     selectingLFO: null,
     globalStep: 0,
     selectedStep: null,

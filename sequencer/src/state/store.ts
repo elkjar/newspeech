@@ -17,6 +17,10 @@ import {
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
 import { ensureBothSections, hydrateTrack, hydrateLFOs } from './hydrate';
 import defaultPreset from './defaultPreset.json';
+import { DEFAULT_TAPE_PARAMS, setTapeParams as applyTapeParams, type TapeParams } from '../audio/tape';
+import { DEFAULT_GLITCH_PARAMS, setGlitchParams as applyGlitchParams, type GlitchParams } from '../audio/glitch';
+import { DEFAULT_REVERB_PARAMS, setReverbParams as applyReverbParams, type ReverbParams } from '../audio/reverb';
+import { DEFAULT_SATURATION_PARAMS, setSaturationParams as applySaturationParams, type SaturationParams } from '../audio/saturation';
 
 export type EditMode = 'live' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
@@ -133,6 +137,14 @@ interface SequencerState {
   drift: number;
   tension: number;
   freeze: boolean;
+  tape: TapeParams;
+  setTape: (patch: Partial<TapeParams>) => void;
+  glitch: GlitchParams;
+  setGlitch: (patch: Partial<GlitchParams>) => void;
+  reverb: ReverbParams;
+  setReverb: (patch: Partial<ReverbParams>) => void;
+  saturation: SaturationParams;
+  setSaturation: (patch: Partial<SaturationParams>) => void;
   setDensity: (v: number) => void;
   setChaos: (v: number) => void;
   setMotion: (v: number) => void;
@@ -240,6 +252,34 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   drift: clamp01((defaultPreset as { drift?: unknown }).drift, 1),
   tension: clamp01((defaultPreset as { tension?: unknown }).tension),
   freeze: false,
+  tape: { ...DEFAULT_TAPE_PARAMS },
+  setTape: (patch) =>
+    set((state) => {
+      const next = { ...state.tape, ...patch };
+      applyTapeParams(next);
+      return { tape: next };
+    }),
+  glitch: { ...DEFAULT_GLITCH_PARAMS },
+  setGlitch: (patch) =>
+    set((state) => {
+      const next = { ...state.glitch, ...patch };
+      applyGlitchParams(next);
+      return { glitch: next };
+    }),
+  reverb: { ...DEFAULT_REVERB_PARAMS },
+  setReverb: (patch) =>
+    set((state) => {
+      const next = { ...state.reverb, ...patch };
+      applyReverbParams(next);
+      return { reverb: next };
+    }),
+  saturation: { ...DEFAULT_SATURATION_PARAMS },
+  setSaturation: (patch) =>
+    set((state) => {
+      const next = { ...state.saturation, ...patch };
+      applySaturationParams(next);
+      return { saturation: next };
+    }),
   setDensity: (v) => set({ density: clamp01(v) }),
   setChaos: (v) => set({ chaos: clamp01(v) }),
   setMotion: (v) => set({ motion: clamp01(v) }),
@@ -308,6 +348,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
                 morph: 0,
                 rowChance: 0,
                 rowRatchet: 0,
+                length: DEFAULT_LENGTH,
+                viewPage: 0,
                 midi: { ...DEFAULT_TRACK_MIDI },
               };
             }
@@ -342,6 +384,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
                 morph: 0,
                 rowChance: 0,
                 rowRatchet: 0,
+                length: DEFAULT_LENGTH,
+                viewPage: 0,
                 midi,
               }
             : { ...t, source: next, midi };

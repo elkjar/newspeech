@@ -1,7 +1,12 @@
 import { getAudioContext } from './audioContext';
 
 export type LFODestKnobTrack = 'mutation' | 'morph' | 'rowChance' | 'rowRatchet';
-export type LFODestKnobGlobal = 'density' | 'motion' | 'drift' | 'chaos' | 'tension';
+export type LFODestKnobGlobal =
+  | 'density' | 'motion' | 'drift' | 'chaos' | 'tension'
+  | 'tapePosition' | 'tapeLength' | 'tapeMix' | 'tapeGrainRate' | 'tapeGrainMix'
+  | 'glitchChance' | 'glitchMix'
+  | 'reverbSize' | 'reverbMix'
+  | 'preSaturationDrive' | 'postSaturationDrive';
 export type LFODestKnob = LFODestKnobTrack | LFODestKnobGlobal;
 
 // Sentinel trackId used in LFODestination when the destination is a global
