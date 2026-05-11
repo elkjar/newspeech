@@ -1,11 +1,10 @@
 import { useRef } from 'react';
 import { useSequencerStore } from '../state/store';
-import { togglePlayback } from '../audio/transport';
+import { togglePlayback, tapTempo } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
 import { exportProject, importProject, timestampSlug } from '../state/persist';
-import { midiOutStatus } from '../audio/midiOut';
-import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 import { presetsForTarget } from '../instruments/library';
+import { useMidiLearn } from '../hooks/useMidiLearn';
 
 function downloadProject() {
   const code = exportProject();
@@ -20,13 +19,17 @@ function downloadProject() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function IconButton({
+export function IconButton({
   title,
   onClick,
+  disabled,
+  className,
   children,
 }: {
   title: string;
   onClick: () => void;
+  disabled?: boolean;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -35,14 +38,21 @@ function IconButton({
       onClick={onClick}
       title={title}
       aria-label={title}
-      className="border border-white/15 hover:border-white px-2 py-1 inline-flex items-center justify-center text-white transition-colors"
+      disabled={disabled}
+      className={[
+        'border px-2 py-1 inline-flex items-center justify-center transition-colors',
+        disabled
+          ? 'border-white/10 text-white/20 cursor-not-allowed'
+          : 'border-white/15 hover:border-white text-white',
+        className ?? '',
+      ].join(' ')}
     >
       {children}
     </button>
   );
 }
 
-function DownloadIcon() {
+export function DownloadIcon() {
   return (
     <svg
       viewBox="0 0 14 14"
@@ -61,7 +71,7 @@ function DownloadIcon() {
   );
 }
 
-function ImportIcon() {
+export function ImportIcon() {
   return (
     <svg
       viewBox="0 0 14 14"
@@ -82,60 +92,74 @@ function ImportIcon() {
 
 export function PlayButton() {
   const playing = useSequencerStore((s) => s.playing);
+  const learn = useMidiLearn('transport:play');
+  const handleClick = () => {
+    if (learn.onLearnClick) {
+      learn.onLearnClick();
+      return;
+    }
+    void togglePlayback();
+  };
   return (
     <button
-      onClick={() => togglePlayback()}
-      className="px-6 py-3 border border-white/15 hover:border-white uppercase tracking-widest text-xs transition-colors"
+      onClick={handleClick}
+      title={
+        learn.isLearnTarget
+          ? 'transport — learning…'
+          : `${playing ? 'stop' : 'play'}${learn.learning && learn.bindingLabel ? ' · ' + learn.bindingLabel : ''}`
+      }
+      className={[
+        'relative px-6 py-3 border uppercase tracking-widest text-xs transition-colors',
+        learn.isLearnTarget
+          ? 'border-white'
+          : learn.learning && learn.bound
+            ? 'border-white/40'
+            : 'border-white/15 hover:border-white',
+      ].join(' ')}
     >
       {playing ? '■ stop' : '▶ play'}
     </button>
   );
 }
 
-function MIDIControls() {
-  const outputs = useMIDIOutputs();
-  const deviceId = useSequencerStore((s) => s.midiOutDeviceId);
-  const setDeviceId = useSequencerStore((s) => s.setMidiOutDeviceId);
+export function TapTempoButton() {
+  const learn = useMidiLearn('transport:tap-tempo');
+  const handleClick = () => {
+    if (learn.onLearnClick) {
+      learn.onLearnClick();
+      return;
+    }
+    tapTempo();
+  };
+  return (
+    <button
+      onClick={handleClick}
+      title={
+        learn.isLearnTarget
+          ? 'tap tempo — learning…'
+          : `tap tempo${learn.learning && learn.bindingLabel ? ' · ' + learn.bindingLabel : ''}`
+      }
+      className={[
+        'px-3 py-1 text-[11px] uppercase tracking-widest border transition-colors',
+        learn.isLearnTarget
+          ? 'border-white text-white'
+          : learn.learning && learn.bound
+            ? 'border-white/40 text-white/80'
+            : 'border-white/15 text-white/60 hover:text-white hover:border-white',
+      ].join(' ')}
+    >
+      tap
+    </button>
+  );
+}
+
+function PresetControls() {
   const applyPreset = useSequencerStore((s) => s.applyPreset);
   const viewSection = useSequencerStore((s) => s.viewSection);
-  const status = midiOutStatus();
   const presets = presetsForTarget(viewSection);
-
-  const noOutputs = outputs.length === 0;
 
   return (
     <div className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
-      <span>midi</span>
-      <select
-        value={deviceId ?? ''}
-        onChange={(e) => setDeviceId(e.target.value || null)}
-        disabled={status !== 'ready' || noOutputs}
-        className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white max-w-[200px]"
-        title={
-          status === 'unsupported'
-            ? 'web midi not supported in this browser'
-            : status === 'denied'
-              ? 'midi access denied'
-              : noOutputs
-                ? 'no midi outputs detected'
-                : 'midi output device'
-        }
-      >
-        <option value="" className="bg-[#050505]">
-          {status === 'unsupported'
-            ? 'unsupported'
-            : status === 'denied'
-              ? 'denied'
-              : noOutputs
-                ? 'no outputs'
-                : 'none'}
-        </option>
-        {outputs.map((o) => (
-          <option key={o.id} value={o.id} className="bg-[#050505]">
-            {o.name}
-          </option>
-        ))}
-      </select>
       <select
         value=""
         onChange={(e) => {
@@ -192,6 +216,7 @@ export function TransportControls() {
           onChange={(e) => setBpm(Number(e.target.value))}
           className="w-20 bg-transparent border border-white/15 px-2 py-1 tabular-nums focus:outline-none focus:border-white"
         />
+        <TapTempoButton />
       </label>
       <label className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
         <span>root</span>
@@ -224,7 +249,7 @@ export function TransportControls() {
           ))}
         </select>
       </label>
-      <MIDIControls />
+      <PresetControls />
       <div className="flex items-center gap-2">
         <IconButton title="download .seq" onClick={downloadProject}>
           <DownloadIcon />

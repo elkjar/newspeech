@@ -2,6 +2,8 @@ import { Knob } from './Knob';
 import { findRouted, type LFODestKnobTrack } from '../audio/lfo';
 import { useLFOValue } from '../hooks/useLFOValue';
 import { useSequencerStore, type Track as TrackData } from '../state/store';
+import { useMidiLearn } from '../hooks/useMidiLearn';
+import type { MidiTarget, TrackKnobTargetName } from '../midi/midiMap';
 
 const LABELS: Record<LFODestKnobTrack, string> = {
   mutation: 'mutation',
@@ -53,34 +55,59 @@ export function TrackKnob({
   const lfos = useSequencerStore((s) => s.lfos);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
+  // Track index for MIDI target naming. Bindings are positional, not by
+  // trackId, so they survive across .seq files with the same shape.
+  const trackIndex = useSequencerStore((s) =>
+    s.tracks.findIndex((t) => t.id === track.id)
+  );
+  const learnTarget =
+    trackIndex >= 0
+      ? (`track:${trackIndex}:${knob as TrackKnobTargetName}` as MidiTarget)
+      : undefined;
+  const learn = useMidiLearn(learnTarget);
 
   const value = readKnob(track, knob);
   const routed = findRouted(lfos, track.id, knob);
   const displayValue = useLFOValue(value, routed, 1);
   const label = LABELS[knob];
 
+  // Precedence: LFO-selecting mode > MIDI learn mode > normal drag.
   const onModulationClick =
     selectingLFO !== null
       ? () => {
           toggleLFODestination(selectingLFO, { trackId: track.id, knob });
         }
-      : undefined;
+      : learn.onLearnClick;
 
-  const labels = routed.map((l) => `L${l.id + 1}`).join(',');
+  const lfoLabels = routed.map((l) => `L${l.id + 1}`).join(',');
+  const modulationLabel =
+    selectingLFO !== null
+      ? lfoLabels || undefined
+      : learn.learning
+        ? learn.isLearnTarget
+          ? '?'
+          : learn.bound
+            ? learn.bindingLabel
+            : undefined
+        : routed.length > 0
+          ? lfoLabels
+          : undefined;
+
+  const titleParts: string[] = [`${label} ${Math.round(value * 100)}%`];
+  if (routed.length > 0) titleParts.push(lfoLabels);
+  if (learn.learning && learn.bound && learn.bindingLabel)
+    titleParts.push(learn.bindingLabel);
+  if (learn.isLearnTarget) titleParts.push('learning…');
 
   return (
     <Knob
       value={value}
       displayValue={displayValue}
       onChange={(v) => writeKnob(track.id, knob, v)}
-      title={
-        routed.length > 0
-          ? `${label} ${Math.round(value * 100)}% · ${labels}`
-          : `${label} ${Math.round(value * 100)}%`
-      }
+      title={titleParts.join(' · ')}
       size={size}
       onModulationClick={onModulationClick}
-      modulationLabel={routed.length > 0 ? labels : undefined}
+      modulationLabel={modulationLabel}
     />
   );
 }

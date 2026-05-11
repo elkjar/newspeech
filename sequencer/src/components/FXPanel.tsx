@@ -2,6 +2,8 @@ import { useSequencerStore } from '../state/store';
 import { Knob } from './Knob';
 import { findRouted, GLOBAL_TRACK_ID, type LFODestKnobGlobal } from '../audio/lfo';
 import { useLFOValue } from '../hooks/useLFOValue';
+import { useMidiLearn } from '../hooks/useMidiLearn';
+import type { MidiTarget } from '../midi/midiMap';
 
 const KNOB_SIZE = 44;
 
@@ -12,6 +14,7 @@ function LabeledKnob({
   bipolar = false,
   format,
   lfoKnob,
+  midiTarget,
 }: {
   label: string;
   value: number;
@@ -22,6 +25,8 @@ function LabeledKnob({
   // LFO-select toggle a destination assignment, and the visual swings with
   // any routed LFOs. Same pattern as MacroKnob.
   lfoKnob?: LFODestKnobGlobal;
+  // When set, the knob is a MIDI learn target.
+  midiTarget?: MidiTarget;
 }) {
   const display = format ? format(value) : value.toFixed(2);
   // Knob component is unipolar 0..1; for bipolar params we map externally.
@@ -31,18 +36,38 @@ function LabeledKnob({
   const lfos = useSequencerStore((s) => s.lfos);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
+  const learn = useMidiLearn(midiTarget);
 
   const routed = lfoKnob ? findRouted(lfos, GLOBAL_TRACK_ID, lfoKnob) : [];
   const displayValue = useLFOValue(knobValue, routed, 1);
 
+  // Precedence: LFO-selecting mode > MIDI learn mode > normal drag.
   const onModulationClick =
     lfoKnob && selectingLFO !== null
       ? () => {
           toggleLFODestination(selectingLFO, { trackId: GLOBAL_TRACK_ID, knob: lfoKnob });
         }
-      : undefined;
+      : learn.onLearnClick;
 
-  const labels = routed.map((l) => `L${l.id + 1}`).join(',');
+  const lfoLabels = routed.map((l) => `L${l.id + 1}`).join(',');
+  const modulationLabel =
+    selectingLFO !== null
+      ? lfoLabels || undefined
+      : learn.learning
+        ? learn.isLearnTarget
+          ? '?'
+          : learn.bound
+            ? learn.bindingLabel
+            : undefined
+        : routed.length > 0
+          ? lfoLabels
+          : undefined;
+
+  const titleParts: string[] = [label];
+  if (routed.length > 0) titleParts.push(lfoLabels);
+  if (learn.learning && learn.bound && learn.bindingLabel)
+    titleParts.push(learn.bindingLabel);
+  if (learn.isLearnTarget) titleParts.push('learning…');
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -52,9 +77,9 @@ function LabeledKnob({
         displayValue={displayValue}
         onChange={handleKnobChange}
         bipolar={bipolar}
-        title={routed.length > 0 ? `${label} · ${labels}` : label}
+        title={titleParts.join(' · ')}
         onModulationClick={onModulationClick}
-        modulationLabel={routed.length > 0 ? labels : undefined}
+        modulationLabel={modulationLabel}
       />
       <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">
         {label}
@@ -129,6 +154,7 @@ export function FXPanel() {
         value={saturation.preDrive}
         onChange={(v) => setSaturation({ preDrive: v })}
         lfoKnob="preSaturationDrive"
+        midiTarget="fx:saturation.preDrive"
       />
       <StageDivider label="tape" />
       <LabeledKnob
@@ -136,12 +162,14 @@ export function FXPanel() {
         value={tape.position}
         onChange={(v) => setTape({ position: v })}
         lfoKnob="tapePosition"
+        midiTarget="fx:tape.position"
       />
       <LabeledKnob
         label="length"
         value={tape.length}
         onChange={(v) => setTape({ length: v })}
         lfoKnob="tapeLength"
+        midiTarget="fx:tape.length"
       />
       <ToggleButton
         label="reverse"
@@ -158,18 +186,21 @@ export function FXPanel() {
         value={tape.grainRate}
         onChange={(v) => setTape({ grainRate: v })}
         lfoKnob="tapeGrainRate"
+        midiTarget="fx:tape.grainRate"
       />
       <LabeledKnob
         label="grain mix"
         value={tape.grainMix}
         onChange={(v) => setTape({ grainMix: v })}
         lfoKnob="tapeGrainMix"
+        midiTarget="fx:tape.grainMix"
       />
       <LabeledKnob
         label="mix"
         value={tape.mix}
         onChange={(v) => setTape({ mix: v })}
         lfoKnob="tapeMix"
+        midiTarget="fx:tape.mix"
       />
       <StageDivider label="glitch" />
       <LabeledKnob
@@ -177,12 +208,14 @@ export function FXPanel() {
         value={glitch.chance}
         onChange={(v) => setGlitch({ chance: v })}
         lfoKnob="glitchChance"
+        midiTarget="fx:glitch.chance"
       />
       <LabeledKnob
         label="mix"
         value={glitch.mix}
         onChange={(v) => setGlitch({ mix: v })}
         lfoKnob="glitchMix"
+        midiTarget="fx:glitch.mix"
       />
       <StageDivider label="reverb" />
       <LabeledKnob
@@ -190,12 +223,14 @@ export function FXPanel() {
         value={reverb.size}
         onChange={(v) => setReverb({ size: v })}
         lfoKnob="reverbSize"
+        midiTarget="fx:reverb.size"
       />
       <LabeledKnob
         label="mix"
         value={reverb.mix}
         onChange={(v) => setReverb({ mix: v })}
         lfoKnob="reverbMix"
+        midiTarget="fx:reverb.mix"
       />
       <StageDivider label="post" />
       <LabeledKnob
@@ -203,6 +238,7 @@ export function FXPanel() {
         value={saturation.postDrive}
         onChange={(v) => setSaturation({ postDrive: v })}
         lfoKnob="postSaturationDrive"
+        midiTarget="fx:saturation.postDrive"
       />
     </div>
   );

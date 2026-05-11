@@ -5,6 +5,7 @@ import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
 import { MacroStrip } from './components/MacroStrip';
 import { BankPad } from './components/BankPad';
+import { MidiBar } from './components/MidiBar';
 import { FXPanel } from './components/FXPanel';
 import {
   useSequencerStore,
@@ -16,6 +17,9 @@ import {
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
 import { initMIDIOut, sendMIDINote, resolveDeviceId } from './audio/midiOut';
+import { initMIDIIn } from './midi/midiIn';
+import { dispatchMidi } from './midi/midiMap';
+import { loadMidiMapLibrary } from './midi/midiMapLoader';
 import { quantize, octaveDegrees, fifthDegrees } from './audio/scale';
 import {
   sourceChord,
@@ -122,6 +126,12 @@ export function App() {
 
   useEffect(() => {
     initMIDIOut();
+    // Load any saved user mappings FIRST so the active mapping is in
+    // place before MIDI input starts firing.
+    void (async () => {
+      await loadMidiMapLibrary();
+      await initMIDIIn(dispatchMidi);
+    })();
   }, []);
 
   useEffect(() => {
@@ -449,7 +459,8 @@ export function App() {
             <StepInspector />
             <LFOPanel />
           </div>
-          <div className="flex justify-end -my-4">
+          <div className="flex justify-between items-center gap-8 -my-4">
+            <MidiBar />
             <BankPad />
           </div>
           <TrackGrid />

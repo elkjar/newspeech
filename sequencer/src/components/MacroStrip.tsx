@@ -1,20 +1,35 @@
 import { useSequencerStore } from '../state/store';
 import { MacroKnob } from './MacroKnob';
+import { useMidiLearn } from '../hooks/useMidiLearn';
 
 const MACRO_SIZE = 56;
 
 function FreezeButton() {
   const freeze = useSequencerStore((s) => s.freeze);
   const toggleFreeze = useSequencerStore((s) => s.toggleFreeze);
+  const learn = useMidiLearn('transport:freeze');
   const dotSize = MACRO_SIZE * 0.36;
+  const handleClick = () => {
+    if (learn.onLearnClick) {
+      learn.onLearnClick();
+      return;
+    }
+    toggleFreeze();
+  };
+  const titleSuffix =
+    learn.learning && learn.bindingLabel ? ` · ${learn.bindingLabel}` : '';
   return (
     <button
-      onClick={toggleFreeze}
+      onClick={handleClick}
       aria-pressed={freeze}
       aria-label="freeze"
-      title={freeze ? 'freeze · held' : 'freeze · live'}
+      title={
+        learn.isLearnTarget
+          ? 'freeze — learning…'
+          : `${freeze ? 'freeze · held' : 'freeze · live'}${titleSuffix}`
+      }
       style={{ width: MACRO_SIZE, height: MACRO_SIZE }}
-      className="flex items-center justify-center bg-transparent cursor-pointer group"
+      className="relative flex items-center justify-center bg-transparent cursor-pointer group"
     >
       <span
         style={{ width: dotSize, height: dotSize }}
@@ -25,6 +40,14 @@ function FreezeButton() {
             : 'border-white/30 group-hover:border-white',
         ].join(' ')}
       />
+      {learn.learning && (learn.isLearnTarget || learn.bound) && (
+        <span
+          className="absolute inset-2 pointer-events-none border border-white/70 rounded"
+          style={{
+            boxShadow: learn.isLearnTarget ? '0 0 0 1px #fff inset' : undefined,
+          }}
+        />
+      )}
     </button>
   );
 }
@@ -51,6 +74,7 @@ export function MacroStrip() {
         size={MACRO_SIZE}
         label="density"
         bipolar
+        learnTarget="macro:density"
       />
       <span className="w-px self-stretch bg-white/15" />
       <div className="flex items-center gap-3">
@@ -61,6 +85,7 @@ export function MacroStrip() {
           size={MACRO_SIZE}
           label="motion"
           bipolar
+          learnTarget="macro:motion"
         />
         <MacroKnob
           knob="drift"
@@ -68,6 +93,7 @@ export function MacroStrip() {
           onChange={setDrift}
           size={MACRO_SIZE}
           label="drift"
+          learnTarget="macro:drift"
         />
       </div>
       <span className="w-px self-stretch bg-white/15" />
@@ -78,6 +104,7 @@ export function MacroStrip() {
           onChange={setChaos}
           size={MACRO_SIZE}
           label="chaos"
+          learnTarget="macro:chaos"
         />
         <MacroKnob
           knob="tension"
@@ -85,6 +112,7 @@ export function MacroStrip() {
           onChange={setTension}
           size={MACRO_SIZE}
           label="tension"
+          learnTarget="macro:tension"
         />
       </div>
     </div>
