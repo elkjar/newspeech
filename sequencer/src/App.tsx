@@ -616,6 +616,8 @@ export function App() {
               <a href="/" className="hover:opacity-100 transition-opacity">newspeech</a>
               <span className="opacity-50"> | </span>
               <span>sequence</span>
+              <span className="opacity-50"> | </span>
+              <a href="/sequencer-readme.html" className="hover:opacity-100 transition-opacity">readme.txt</a>
             </span>
             <MacroStrip />
           </div>
