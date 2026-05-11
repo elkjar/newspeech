@@ -159,7 +159,7 @@
     <h2>positional roles</h2>
     <p>the first melodic row is the <strong>chord master</strong>. on each step you can pick a chord by degree (I–VII) and extension (triad, 7, 9, 11, sus2, sus4), with optional inversion and spread. when it fires, it publishes that chord to the rest of the melodic rows.</p>
     <p>the second row is the <strong>bass</strong>. it sits two octaves down and plays one chord tone per step — the root by default, but you can author the 3rd, 5th, 7th into specific steps via the inspector.</p>
-    <p>rows three through eight are <strong>motifs</strong> — same chord-tone idea at the chord master's octave. piano lines, counter-melodies, leads.</p>
+    <p>rows three through eight are <strong>open</strong>. set them to follow the chord, drone on the root, walk the scale, or ignore the chord entirely. piano lines, counter-melodies, leads, pads, percussion — whatever the piece needs.</p>
     <p>new melodic rows you add later default to <span class="kbd">ignore</span> — they play their authored steps independently of the chord master. opt them into following via the row panel.</p>
 
     <h2>follow modes</h2>
@@ -167,8 +167,8 @@
     <dl>
       <dt>ignore</dt><dd>independent. step.pitch is a scale-degree offset from the scene root.</dd>
       <dt>chord</dt><dd>step.pitch picks a tone from the chord master's chord. 0 = root, 1 = 3rd, 2 = 5th, 3 = 7th, and so on.</dd>
-      <dt>root</dt><dd>every step plays the chord master's root.</dd>
       <dt>scale</dt><dd>diatonic walk above the chord root, in the scene scale.</dd>
+      <dt>drone</dt><dd>holds the chord master's root every step. authored pitch is ignored.</dd>
     </dl>
 
     <h2>authoring</h2>
