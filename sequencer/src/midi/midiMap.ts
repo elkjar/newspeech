@@ -15,6 +15,7 @@ export type FxKnobTargetName =
   | 'tape.mix'
   | 'tape.grainRate'
   | 'tape.grainMix'
+  | 'tape.hold'
   | 'glitch.chance'
   | 'glitch.mix'
   | 'reverb.size'
@@ -44,6 +45,7 @@ export const FX_KNOB_TARGETS: FxKnobTargetName[] = [
   'tape.mix',
   'tape.grainRate',
   'tape.grainMix',
+  'tape.hold',
   'glitch.chance',
   'glitch.mix',
   'reverb.size',
@@ -155,6 +157,9 @@ function dispatchTarget(target: string, value01: number): void {
       case 'tape.grainMix':
         s.setTape({ grainMix: value01 });
         return;
+      case 'tape.hold':
+        s.setTape({ hold: !s.tape.hold });
+        return;
       case 'glitch.chance':
         s.setGlitch({ chance: value01 });
         return;
@@ -229,6 +234,19 @@ export function isValidTarget(t: string): boolean {
   return false;
 }
 
+// Momentary targets fire on a single button press; firing on release
+// too would land the toggle back where it started. Continuous targets
+// (macros, FX knobs, per-track knobs) consume every CC value.
+const MOMENTARY_PREFIXES = ['bank:queue:', 'transport:'];
+const MOMENTARY_EXACT = new Set<string>(['fx:tape.hold']);
+
+function isMomentary(target: string): boolean {
+  if (MOMENTARY_EXACT.has(target)) return true;
+  return MOMENTARY_PREFIXES.some((p) => target.startsWith(p));
+}
+
+const lastValueByTarget = new Map<string, number>();
+
 export function dispatchMidi(msg: MidiMessage): void {
   // Learn mode: if the hook consumed the message (target was pinned),
   // skip normal dispatch so the twist binds without also moving the
@@ -239,5 +257,15 @@ export function dispatchMidi(msg: MidiMessage): void {
   );
   if (!b) return;
   const value01 = msg.msg === 'cc' ? msg.value / 127 : 1;
+
+  // Rising-edge gate for momentary targets bound to CC buttons. Notes
+  // skip this because Note Off / velocity-0 is filtered upstream in
+  // midiIn — every Note On we see IS already a fresh press.
+  if (isMomentary(b.target) && msg.msg === 'cc') {
+    const last = lastValueByTarget.get(b.target) ?? 0;
+    lastValueByTarget.set(b.target, value01);
+    if (!(last < 0.5 && value01 >= 0.5)) return;
+  }
+
   dispatchTarget(b.target, value01);
 }

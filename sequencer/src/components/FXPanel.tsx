@@ -93,18 +93,35 @@ function ToggleButton({
   label,
   active,
   onToggle,
+  midiTarget,
 }: {
   label: string;
   active: boolean;
   onToggle: () => void;
+  midiTarget?: MidiTarget;
 }) {
+  const learn = useMidiLearn(midiTarget);
+  const handleClick = () => {
+    if (learn.onLearnClick) {
+      learn.onLearnClick();
+      return;
+    }
+    onToggle();
+  };
+  const titleSuffix =
+    learn.learning && learn.bindingLabel ? ` · ${learn.bindingLabel}` : '';
   return (
     <div className="flex flex-col items-center gap-1">
       <button
-        onClick={onToggle}
+        onClick={handleClick}
         aria-pressed={active}
+        title={
+          learn.isLearnTarget
+            ? `${label} — learning…`
+            : `${label}${titleSuffix}`
+        }
         style={{ width: KNOB_SIZE, height: KNOB_SIZE }}
-        className="flex items-center justify-center bg-transparent cursor-pointer group"
+        className="relative flex items-center justify-center bg-transparent cursor-pointer group"
       >
         <span
           style={{ width: KNOB_SIZE * 0.36, height: KNOB_SIZE * 0.36 }}
@@ -115,6 +132,14 @@ function ToggleButton({
               : 'border-white/30 group-hover:border-white',
           ].join(' ')}
         />
+        {learn.learning && (learn.isLearnTarget || learn.bound) && (
+          <span
+            className="absolute inset-2 pointer-events-none border border-white/70 rounded"
+            style={{
+              boxShadow: learn.isLearnTarget ? '0 0 0 1px #fff inset' : undefined,
+            }}
+          />
+        )}
       </button>
       <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">
         {label}
@@ -180,6 +205,7 @@ export function FXPanel() {
         label="hold"
         active={tape.hold}
         onToggle={() => setTape({ hold: !tape.hold })}
+        midiTarget="fx:tape.hold"
       />
       <LabeledKnob
         label="grain rate"
