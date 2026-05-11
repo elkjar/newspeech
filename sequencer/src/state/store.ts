@@ -12,6 +12,7 @@ import {
 import {
   PRESETS,
   getInstrument,
+  sourceIsMelodic,
   type TrackSource,
 } from '../instruments/library';
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
@@ -484,7 +485,18 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           source.kind === 'instrument' && !sameInstrument
             ? snapshotInstrumentMidi(source.id)
             : t.midi;
-        nextTrack = { ...t, source, midi };
+        // Empty → melodic transition resets pitchInterp to 'semitones' (UI
+        // label: "ignore"). Without this, a previously-empty row inherits
+        // whatever follower mode the preset slot was last in (often
+        // chord-tone), which makes "add a new melodic channel" surprising
+        // — the row auto-harmonizes against the chord master without the
+        // user opting in. Resetting to 'semitones' makes new channels
+        // independent by default; users opt into following via the
+        // RowPanel interp dropdown.
+        const addingMelodic =
+          t.source.kind === 'empty' && sourceIsMelodic(source);
+        const pitchInterp = addingMelodic ? 'semitones' : t.pitchInterp;
+        nextTrack = { ...t, source, midi, pitchInterp };
         return nextTrack;
       }),
     }));
