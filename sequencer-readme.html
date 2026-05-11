@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<meta name="robots" content="noindex, nofollow">
+<title>NEWSPEECH // sequencer / readme</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio/video experimentation.">
+<meta property="og:title" content="NEWSPEECH // sequencer / readme">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/sequencer-readme.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // sequencer / readme">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")  format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")  format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")   format("woff2"); font-display: swap; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #fff; }
+  body {
+    min-height: 100vh;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 72px 72px 96px;
+    line-height: 1.55;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    margin-bottom: 64px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.55;
+  }
+  header .label { opacity: 1; }
+  header a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  header a:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
+
+  main { max-width: 720px; }
+
+  h1 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(36px, 5vw, 56px);
+    line-height: 1.05;
+    letter-spacing: 0.01em;
+    margin: 0 0 36px;
+    font-weight: normal;
+  }
+
+  h2 {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin: 56px 0 18px;
+    font-weight: normal;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: 28px;
+  }
+
+  p {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.78);
+    margin: 0 0 14px;
+  }
+
+  ul, dl { margin: 0 0 14px; padding: 0; }
+  ul { list-style: none; }
+  ul li {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.78);
+    padding-left: 18px;
+    position: relative;
+    margin-bottom: 6px;
+  }
+  ul li::before {
+    content: "·";
+    position: absolute;
+    left: 4px;
+    opacity: 0.5;
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px 24px;
+    font-size: 14px;
+  }
+  dt {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: rgba(180, 220, 255, 0.95);
+    letter-spacing: 0.04em;
+  }
+  dd {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  code, .kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    padding: 1px 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  a.inline {
+    color: inherit;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    text-decoration: none;
+  }
+  a.inline:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
+
+  @media (max-width: 720px) {
+    body { padding: 36px 24px 64px; }
+    header { flex-wrap: wrap; gap: 14px 20px; margin-bottom: 40px; }
+    main { max-width: none; }
+    dl { grid-template-columns: 80px 1fr; gap: 6px 16px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="label"><a href="index.html">newspeech</a> / <a href="sequencer/">sequencer</a> / readme.txt</span>
+  </header>
+
+  <main>
+    <h1 data-link>about the sequencer</h1>
+    <p>a step sequencer with a chord-relative harmonic engine. instead of authoring notes one at a time, you set a scene (a root note and a scale), pick chord shapes by degree, and the rest of the band auto-harmonizes against whatever you played last.</p>
+    <p>it's built to play itself, mostly. you set up the relationships, crank the mutation knob, and listen.</p>
+
+    <h2>two sections</h2>
+    <p>drum and melodic, toggled at the bottom of the rack.</p>
+    <p>drum rows trigger one sound per step — kicks, snares, hats, percussion. eight rows.</p>
+    <p>melodic rows play pitched material. eight rows too, but they aren't equal — their behavior depends on where they sit in the stack.</p>
+
+    <h2>positional roles</h2>
+    <p>the first melodic row is the <strong>chord master</strong>. on each step you can pick a chord by degree (I–VII) and extension (triad, 7, 9, 11, sus2, sus4), with optional inversion and spread. when it fires, it publishes that chord to the rest of the melodic rows.</p>
+    <p>the second row is the <strong>bass</strong>. it sits two octaves down and plays one chord tone per step — the root by default, but you can author the 3rd, 5th, 7th into specific steps via the inspector.</p>
+    <p>rows three through eight are <strong>motifs</strong> — same chord-tone idea at the chord master's octave. piano lines, counter-melodies, leads.</p>
+    <p>new melodic rows you add later default to <span class="kbd">ignore</span> — they play their authored steps independently of the chord master. opt them into following via the row panel.</p>
+
+    <h2>follow modes</h2>
+    <p>each non-chord-master melodic row has an <span class="kbd">interp</span> dropdown:</p>
+    <dl>
+      <dt>ignore</dt><dd>independent. step.pitch is a scale-degree offset from the scene root.</dd>
+      <dt>chord</dt><dd>step.pitch picks a tone from the chord master's chord. 0 = root, 1 = 3rd, 2 = 5th, 3 = 7th, and so on.</dd>
+      <dt>root</dt><dd>every step plays the chord master's root.</dd>
+      <dt>scale</dt><dd>diatonic walk above the chord root, in the scene scale.</dd>
+    </dl>
+
+    <h2>authoring</h2>
+    <p>click any step to open the inspector. melodic rows get four chord dropdowns: degree (<span class="kbd">C</span>), extension (<span class="kbd">E</span>), inversion (<span class="kbd">I</span>), spread (<span class="kbd">S</span>). the chord master authors the actual chord per step; other rows can override their row defaults per step too if you want one-off harmonic moments.</p>
+    <p>the scene root and scale live in the transport bar at the bottom. change either mid-play and every chord, every follower row, instantly reharmonizes.</p>
+
+    <h2>the mutation knob</h2>
+    <p>every row has a mutation dial. it introduces controlled randomness within the row's authored material — velocity jitter, pitch jumps within an octave, gate-length wobble, ties flipping on and off.</p>
+    <p>on the chord master, mutation also does harmonic work: drop a tone from the chord, borrow a chord from the parallel mode (major ↔ minor), shuffle inversion, shift the spread. crank it and the band reharmonizes itself in real time.</p>
+
+    <h2>macros + banks</h2>
+    <p>five global macros — <span class="kbd">density</span>, <span class="kbd">chaos</span>, <span class="kbd">motion</span>, <span class="kbd">drift</span>, <span class="kbd">tension</span> — modulate the whole rig at once. five floor-to-ceiling dials for everything.</p>
+    <p>sixteen bank slots let you snap and recall full states, bar-quantized — move between progressions without dropouts.</p>
+
+    <h2>keys</h2>
+    <dl>
+      <dt>space</dt><dd>play / stop</dd>
+      <dt>1 – 6</dt><dd>edit mode: live, velocity, chance, ratchet, timing, gate</dd>
+      <dt>↑ / ↓</dt><dd>bump the selected step's value in the current edit mode</dd>
+    </dl>
+
+    <p style="margin-top: 56px;"><a class="inline" href="sequencer/">↩ back to sequencer</a></p>
+  </main>
+
+<script>
+const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+const LINK_CYCLE_MS = 80;
+const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
+
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum));
+}
+
+function poisson(rateFn, fire) {
+  function step() {
+    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+    const wait = -Math.log(1 - Math.random()) / ratePerMs;
+    setTimeout(() => { fire(); step(); }, wait);
+  }
+  step();
+}
+
+async function setupLinks() {
+  if (document.fonts && document.fonts.load) {
+    await Promise.all(LINK_FONT_CYCLE.map(fam => document.fonts.load(`60px "${fam}"`)));
+  }
+
+  document.querySelectorAll("[data-link]").forEach(link => {
+    const txt = link.textContent;
+    link.textContent = "";
+    const charSpans = [...txt].map(ch => {
+      const s = document.createElement("span");
+      const display = ch === " " ? " " : ch;
+      s.textContent = display;
+      s.dataset.original = display;
+      s.style.textAlign = "center";
+      link.appendChild(s);
+      return s;
+    });
+
+    for (const s of charSpans) {
+      let maxW = s.getBoundingClientRect().width;
+      for (const fam of LINK_FONT_CYCLE) {
+        s.style.fontFamily = `"${fam}", monospace`;
+        const w = s.getBoundingClientRect().width;
+        if (w > maxW) maxW = w;
+      }
+      s.style.fontFamily = "";
+      s.style.width = `${(Math.ceil(maxW * 10) / 10).toFixed(1)}px`;
+    }
+
+    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
+
+    let timer = null;
+    link.addEventListener("mouseenter", () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        for (let i = 0; i < charSpans.length; i++) {
+          idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
+          charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
+        }
+      }, LINK_CYCLE_MS);
+    });
+    link.addEventListener("mouseleave", () => {
+      clearInterval(timer);
+      timer = null;
+      for (const s of charSpans) s.style.fontFamily = "";
+    });
+
+    poisson(
+      () => 0.1 + 0.15 * intensity(),
+      () => {
+        if (link._scrambling) return;
+        const targets = charSpans.filter(s => s.dataset.original.trim() !== "" && Math.random() < 0.55);
+        if (!targets.length) return;
+        link._scrambling = true;
+        let cycles = 2 + ((Math.random() * 3) | 0);
+        function tick() {
+          if (cycles-- <= 0) {
+            for (const s of targets) s.textContent = s.dataset.original;
+            link._scrambling = false;
+            return;
+          }
+          for (const s of targets) {
+            s.textContent = SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+          }
+          setTimeout(tick, 50 + Math.random() * 60);
+        }
+        tick();
+      }
+    );
+  });
+}
+
+setupLinks();
+</script>
+</body>
+</html>
