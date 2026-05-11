@@ -1,5 +1,6 @@
 let ctx: AudioContext | null = null;
 let masterBus: GainNode | null = null;
+let mixBus: GainNode | null = null;
 let voicesBus: GainNode | null = null;
 let voicesPostFX: GainNode | null = null;
 let dryGain: GainNode | null = null;
@@ -11,14 +12,31 @@ export function getAudioContext(): AudioContext {
   return ctx;
 }
 
-// Final bus to destination. Stage 2 + Stage 3 FX inserts will eventually live
-// between the voices/wet mix and destination on this node.
+// Final summing bus, immediately before the master stage. Everything that
+// reaches destination flows through here:
+//   • FX chain output (glitch → reverb → mixBus)
+//   • Per-track dry legs (fxSend < 1 portion → mixBus)
+// The master stage, once initialized, inserts itself between mixBus and
+// destination. Until then, mixBus → destination directly.
+export function getMixBus(): GainNode {
+  if (!mixBus) {
+    const c = getAudioContext();
+    mixBus = c.createGain();
+    mixBus.gain.value = 1;
+    mixBus.connect(c.destination);
+  }
+  return mixBus;
+}
+
+// FX-chain entry bus. Voices + tape sum here; glitch / reverb insert between
+// this and mixBus on init. Despite the legacy name, this is NOT the final
+// output — that's mixBus → master → destination.
 export function getMasterBus(): GainNode {
   if (!masterBus) {
     const c = getAudioContext();
     masterBus = c.createGain();
     masterBus.gain.value = 1;
-    masterBus.connect(c.destination);
+    masterBus.connect(getMixBus());
   }
   return masterBus;
 }

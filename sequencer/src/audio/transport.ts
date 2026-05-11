@@ -27,11 +27,8 @@ export function tapTempo(): void {
 import { initTape, setTapeParams } from './tape';
 import { initGlitch, setGlitchParams } from './glitch';
 import { initReverb, setReverbParams } from './reverb';
-import {
-  initPreSaturation,
-  initPostSaturation,
-  setSaturationParams,
-} from './saturation';
+import { initPreSaturation, setSaturationParams } from './saturation';
+import { initMaster, setMasterParams } from './master';
 import { startFXModulation } from './fxModulation';
 
 export async function togglePlayback(): Promise<void> {
@@ -48,18 +45,19 @@ export async function togglePlayback(): Promise<void> {
     // Order matters: pre-saturation inserts between voicesBus and the
     // post-FX tap so tape captures saturated material → tape connects into
     // masterBus → glitch inserts between masterBus and destination → reverb
-    // inserts between glitch and dest → post-saturation inserts between
-    // reverb and dest.
+    // inserts between glitch and dest → master inserts between reverb and
+    // dest as the final tone-shaping unit.
     await initPreSaturation();
     await initTape();
     await initGlitch();
     await initReverb();
-    await initPostSaturation();
+    await initMaster();
     const fresh = useSequencerStore.getState();
     setTapeParams(fresh.tape);
     setGlitchParams(fresh.glitch);
     setReverbParams(fresh.reverb);
     setSaturationParams(fresh.saturation);
+    setMasterParams(fresh.master);
     // Start the FX modulation loop — from this point on, the worklets
     // receive their values from fxModulation (base + LFO modulation),
     // not from the store setters directly.

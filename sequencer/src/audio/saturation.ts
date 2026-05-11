@@ -1,28 +1,20 @@
-// Saturation stages — soft-clip waveshapers at two points in the chain:
+// Pre-saturation — soft-clip waveshaper between voicesBus and voicesPostFX:
 //
-//   Pre  (before tape):  voicesBus → preShaper → voicesPostFX → ... → dest
-//   Post (chain end):    ... → reverbNode → postShaper → destination
+//   voicesBus → preShaper → voicesPostFX → ... → dest
 //
-// Both use the same tanh curve (transparent at drive=0, crushed at 1) and
-// the same level-compensating post-gain. Pre-drive saturates everything the
-// tape captures plus the dry voices; post-drive cooks the entire wet mix.
-import {
-  getAudioContext,
-  getMasterBus,
-  getVoicesBus,
-  getVoicesPostFX,
-} from './audioContext';
-import { getReverbNode } from './reverb';
-import { getGlitchNode } from './glitch';
+// Tanh curve (transparent at drive=0, crushed at 1) with a level-compensating
+// post-gain. Pre-drive saturates everything the tape captures plus the dry
+// voices — so the captured material reflects pre-drive. The post-chain
+// crusher used to live here too; it's been replaced by the master stage
+// (see `master.ts`), which is a more capable end-of-chain unit.
+import { getAudioContext, getVoicesBus, getVoicesPostFX } from './audioContext';
 
 export interface SaturationParams {
   preDrive: number;
-  postDrive: number;
 }
 
 export const DEFAULT_SATURATION_PARAMS: SaturationParams = {
   preDrive: 0,
-  postDrive: 0,
 };
 
 const PARAM_RAMP = 0.05;
@@ -35,9 +27,7 @@ interface Stage {
 }
 
 let pre: Stage | null = null;
-let post: Stage | null = null;
 let preInitializing: Promise<void> | null = null;
-let postInitializing: Promise<void> | null = null;
 let params: SaturationParams = { ...DEFAULT_SATURATION_PARAMS };
 
 function buildCurve(drive: number): Float32Array<ArrayBuffer> {
@@ -103,30 +93,9 @@ export async function initPreSaturation(): Promise<void> {
   return preInitializing;
 }
 
-// Post saturation — at chain end, after reverb.
-export async function initPostSaturation(): Promise<void> {
-  if (post) return;
-  if (postInitializing) return postInitializing;
-  postInitializing = (async () => {
-    const ctx = getAudioContext();
-    post = createStage(params.postDrive);
-    const upstream: AudioNode =
-      getReverbNode() || getGlitchNode() || getMasterBus();
-    try {
-      upstream.disconnect(ctx.destination);
-    } catch {
-      /* ignore — possibly never connected */
-    }
-    upstream.connect(post.shaper);
-    post.postGain.connect(ctx.destination);
-  })();
-  return postInitializing;
-}
-
 export function setSaturationParams(patch: Partial<SaturationParams>): void {
   params = { ...params, ...patch };
   if (pre) applyDrive(pre, params.preDrive);
-  if (post) applyDrive(post, params.postDrive);
 }
 
 export function getSaturationParams(): SaturationParams {

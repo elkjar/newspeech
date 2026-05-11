@@ -4,7 +4,7 @@
 // Init pulls glitchNode's existing connection to destination and inserts
 // the reverbNode in between. Order matters: tape → glitch → reverb, each
 // re-routing the chain on init.
-import { getAudioContext, getMasterBus } from './audioContext';
+import { getAudioContext, getMasterBus, getMixBus } from './audioContext';
 import { getGlitchNode } from './glitch';
 
 export interface ReverbParams {
@@ -16,7 +16,7 @@ export interface ReverbParams {
 
 export const DEFAULT_REVERB_PARAMS: ReverbParams = {
   size: 0.5,
-  mix: 0,
+  mix: 0.15,
 };
 
 const PARAM_RAMP = 0.05;
@@ -45,18 +45,19 @@ export async function initReverb(): Promise<void> {
       channelCountMode: 'explicit',
     });
 
-    // Insert reverb at the end of the chain. Init order in togglePlayback
-    // is tape → glitch → reverb, so glitchNode is the upstream node to
-    // re-route. Falls back to masterBus if glitch hasn't initialized
-    // (defensive — shouldn't happen in normal flow).
+    // Insert reverb between the upstream FX output and mixBus. Init order
+    // in togglePlayback is tape → glitch → reverb, so glitchNode is the
+    // upstream node to re-route. Falls back to masterBus if glitch hasn't
+    // initialized (defensive — shouldn't happen in normal flow).
+    const mix = getMixBus();
     const upstream: AudioNode = getGlitchNode() || getMasterBus();
     try {
-      upstream.disconnect(ctx.destination);
+      upstream.disconnect(mix);
     } catch {
       /* ignore — possibly never connected */
     }
     upstream.connect(reverbNode);
-    reverbNode.connect(ctx.destination);
+    reverbNode.connect(mix);
 
     initialized = true;
     setReverbParams(params);

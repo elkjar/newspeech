@@ -29,7 +29,14 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   reverbSize: 'verb size',
   reverbMix: 'verb mix',
   preSaturationDrive: 'pre drive',
-  postSaturationDrive: 'post drive',
+  masterInput: 'm input',
+  masterComp: 'm comp',
+  masterDrive: 'm drive',
+  masterBias: 'm bias',
+  masterMix: 'm mix',
+  masterHiCut: 'm hi-cut',
+  masterTrim: 'm trim',
+  masterGateThreshold: 'm gate',
 };
 
 function destinationLabel(

@@ -21,6 +21,7 @@ import { DEFAULT_TAPE_PARAMS, setTapeParams as applyTapeParams, type TapeParams 
 import { DEFAULT_GLITCH_PARAMS, setGlitchParams as applyGlitchParams, type GlitchParams } from '../audio/glitch';
 import { DEFAULT_REVERB_PARAMS, setReverbParams as applyReverbParams, type ReverbParams } from '../audio/reverb';
 import { DEFAULT_SATURATION_PARAMS, setSaturationParams as applySaturationParams, type SaturationParams } from '../audio/saturation';
+import { DEFAULT_MASTER_PARAMS, MASTER_PRESETS, setMasterParams as applyMasterParams, type MasterParams } from '../audio/master';
 
 export type EditMode = 'live' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
@@ -162,6 +163,9 @@ interface SequencerState {
   setReverb: (patch: Partial<ReverbParams>) => void;
   saturation: SaturationParams;
   setSaturation: (patch: Partial<SaturationParams>) => void;
+  master: MasterParams;
+  setMaster: (patch: Partial<MasterParams>) => void;
+  setMasterPreset: (name: string) => void;
   setDensity: (v: number) => void;
   setChaos: (v: number) => void;
   setMotion: (v: number) => void;
@@ -357,6 +361,21 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       const next = { ...state.saturation, ...patch };
       applySaturationParams(next);
       return { saturation: next };
+    }),
+  master: { ...DEFAULT_MASTER_PARAMS },
+  setMaster: (patch) =>
+    set((state) => {
+      const next = { ...state.master, ...patch };
+      applyMasterParams(next);
+      return { master: next };
+    }),
+  setMasterPreset: (name) =>
+    set(() => {
+      const preset = MASTER_PRESETS[name];
+      if (!preset) return {};
+      const next = { ...preset };
+      applyMasterParams(next);
+      return { master: next };
     }),
   setDensity: (v) => set({ density: clamp01(v) }),
   setChaos: (v) => set({ chaos: clamp01(v) }),

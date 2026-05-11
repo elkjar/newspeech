@@ -6,7 +6,8 @@ export type LFODestKnobGlobal =
   | 'tapePosition' | 'tapeLength' | 'tapeMix' | 'tapeGrainRate' | 'tapeGrainMix'
   | 'glitchChance' | 'glitchMix'
   | 'reverbSize' | 'reverbMix'
-  | 'preSaturationDrive' | 'postSaturationDrive';
+  | 'preSaturationDrive'
+  | 'masterInput' | 'masterComp' | 'masterDrive' | 'masterBias' | 'masterMix' | 'masterHiCut' | 'masterTrim' | 'masterGateThreshold';
 export type LFODestKnob = LFODestKnobTrack | LFODestKnobGlobal;
 
 // Sentinel trackId used in LFODestination when the destination is a global

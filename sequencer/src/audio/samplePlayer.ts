@@ -1,4 +1,4 @@
-import { getAudioContext, getVoicesBus } from './audioContext';
+import { getAudioContext, getVoicesBus, getMixBus } from './audioContext';
 import { synthBass, synthHatC, synthHatO, synthKick, synthMelodic, synthPad, synthSnare } from './synth';
 
 export type SampleId = string;
@@ -85,7 +85,9 @@ class SamplePlayer {
   ) {
     const ctx = getAudioContext();
     // Per-trigger split — `out` is what the voice writes into; it fans into
-    // a wet leg (→ FX bus) and a dry leg (→ destination, bypassing FX).
+    // a wet leg (→ FX bus, hits pre-sat / tape / glitch / reverb / master)
+    // and a dry leg (→ mixBus, bypasses pre-sat / tape / glitch / reverb but
+    // STILL hits master). Master is master-of-everything by design.
     // fxSend snapshots at trigger time; LFO modulation steps per trigger.
     const out = ctx.createGain();
     out.gain.value = 1;
@@ -100,7 +102,7 @@ class SamplePlayer {
       const dry = ctx.createGain();
       dry.gain.value = 1 - clampedSend;
       out.connect(dry);
-      dry.connect(ctx.destination);
+      dry.connect(getMixBus());
     }
 
     const group = this.chokeGroups.get(voice);

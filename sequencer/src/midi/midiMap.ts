@@ -21,7 +21,20 @@ export type FxKnobTargetName =
   | 'reverb.size'
   | 'reverb.mix'
   | 'saturation.preDrive'
-  | 'saturation.postDrive';
+  | 'master.input'
+  | 'master.loCut'
+  | 'master.comp'
+  | 'master.compAttack'
+  | 'master.compRelease'
+  | 'master.mode'
+  | 'master.drive'
+  | 'master.bias'
+  | 'master.mix'
+  | 'master.hiCut'
+  | 'master.trim'
+  | 'master.gateEnabled'
+  | 'master.gateThreshold'
+  | 'master.bypass';
 
 export type MidiTarget =
   | `macro:${'density' | 'chaos' | 'motion' | 'drift' | 'tension'}`
@@ -51,7 +64,20 @@ export const FX_KNOB_TARGETS: FxKnobTargetName[] = [
   'reverb.size',
   'reverb.mix',
   'saturation.preDrive',
-  'saturation.postDrive',
+  'master.input',
+  'master.loCut',
+  'master.comp',
+  'master.compAttack',
+  'master.compRelease',
+  'master.mode',
+  'master.drive',
+  'master.bias',
+  'master.mix',
+  'master.hiCut',
+  'master.trim',
+  'master.gateEnabled',
+  'master.gateThreshold',
+  'master.bypass',
 ];
 
 export const TRACK_KNOB_TARGETS: TrackKnobTargetName[] = [
@@ -175,8 +201,50 @@ function dispatchTarget(target: string, value01: number): void {
       case 'saturation.preDrive':
         s.setSaturation({ preDrive: value01 });
         return;
-      case 'saturation.postDrive':
-        s.setSaturation({ postDrive: value01 });
+      case 'master.input':
+        s.setMaster({ input: value01 });
+        return;
+      case 'master.loCut':
+        // Rising-edge momentary (see MOMENTARY_EXACT below) — cycle on press.
+        s.setMaster({ loCut: (s.master.loCut + 1) % 4 });
+        return;
+      case 'master.comp':
+        s.setMaster({ comp: value01 });
+        return;
+      case 'master.compAttack':
+        s.setMaster({ compAttack: (s.master.compAttack + 1) % 6 });
+        return;
+      case 'master.compRelease':
+        s.setMaster({ compRelease: (s.master.compRelease + 1) % 6 });
+        return;
+      case 'master.mode':
+        // Same cycle-on-press pattern as lo-cut. 4 modes.
+        s.setMaster({ mode: (s.master.mode + 1) % 4 });
+        return;
+      case 'master.drive':
+        s.setMaster({ drive: value01 });
+        return;
+      case 'master.bias':
+        // Map 0..1 CC value to the 0..0.2 bias range.
+        s.setMaster({ bias: value01 * 0.2 });
+        return;
+      case 'master.mix':
+        s.setMaster({ mix: value01 });
+        return;
+      case 'master.hiCut':
+        s.setMaster({ hiCut: value01 });
+        return;
+      case 'master.trim':
+        s.setMaster({ trim: value01 });
+        return;
+      case 'master.gateEnabled':
+        s.setMaster({ gateEnabled: !s.master.gateEnabled });
+        return;
+      case 'master.gateThreshold':
+        s.setMaster({ gateThreshold: value01 });
+        return;
+      case 'master.bypass':
+        s.setMaster({ bypass: !s.master.bypass });
         return;
       default:
         return;
@@ -238,7 +306,15 @@ export function isValidTarget(t: string): boolean {
 // too would land the toggle back where it started. Continuous targets
 // (macros, FX knobs, per-track knobs) consume every CC value.
 const MOMENTARY_PREFIXES = ['bank:queue:', 'transport:'];
-const MOMENTARY_EXACT = new Set<string>(['fx:tape.hold']);
+const MOMENTARY_EXACT = new Set<string>([
+  'fx:tape.hold',
+  'fx:master.loCut',
+  'fx:master.compAttack',
+  'fx:master.compRelease',
+  'fx:master.mode',
+  'fx:master.gateEnabled',
+  'fx:master.bypass',
+]);
 
 function isMomentary(target: string): boolean {
   if (MOMENTARY_EXACT.has(target)) return true;

@@ -1,9 +1,22 @@
+import { useEffect, useState } from 'react';
 import { useSequencerStore } from '../state/store';
 import { Knob } from './Knob';
 import { findRouted, GLOBAL_TRACK_ID, type LFODestKnobGlobal } from '../audio/lfo';
 import { useLFOValue } from '../hooks/useLFOValue';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import type { MidiTarget } from '../midi/midiMap';
+import {
+  loCutLabel,
+  modeLabel,
+  compAttackLabel,
+  compReleaseLabel,
+  LO_CUT_POSITIONS,
+  MODE_COUNT,
+  COMP_ATTACK_COUNT,
+  COMP_RELEASE_COUNT,
+  MASTER_PRESET_NAMES,
+  findActivePreset,
+} from '../audio/master';
 
 const KNOB_SIZE = 44;
 
@@ -12,7 +25,6 @@ function LabeledKnob({
   value,
   onChange,
   bipolar = false,
-  format,
   lfoKnob,
   midiTarget,
 }: {
@@ -20,7 +32,6 @@ function LabeledKnob({
   value: number;
   onChange: (v: number) => void;
   bipolar?: boolean;
-  format?: (v: number) => string;
   // When set, the knob participates in the LFO routing system: clicks during
   // LFO-select toggle a destination assignment, and the visual swings with
   // any routed LFOs. Same pattern as MacroKnob.
@@ -28,7 +39,6 @@ function LabeledKnob({
   // When set, the knob is a MIDI learn target.
   midiTarget?: MidiTarget;
 }) {
-  const display = format ? format(value) : value.toFixed(2);
   // Knob component is unipolar 0..1; for bipolar params we map externally.
   const knobValue = bipolar ? (value + 1) / 2 : value;
   const handleKnobChange = (v: number) => onChange(bipolar ? v * 2 - 1 : v);
@@ -84,7 +94,6 @@ function LabeledKnob({
       <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">
         {label}
       </span>
-      <span className="text-[10px] tabular-nums opacity-40">{display}</span>
     </div>
   );
 }
@@ -144,8 +153,62 @@ function ToggleButton({
       <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">
         {label}
       </span>
-      <span className="text-[10px] tabular-nums opacity-40">
-        {active ? 'on' : 'off'}
+    </div>
+  );
+}
+
+function CycleButton({
+  label,
+  value,
+  count,
+  format,
+  onChange,
+  midiTarget,
+}: {
+  label: string;
+  value: number;
+  count: number;
+  format: (v: number) => string;
+  onChange: (v: number) => void;
+  midiTarget?: MidiTarget;
+}) {
+  const learn = useMidiLearn(midiTarget);
+  const display = format(value);
+  const handleClick = () => {
+    if (learn.onLearnClick) {
+      learn.onLearnClick();
+      return;
+    }
+    onChange((value + 1) % count);
+  };
+  const titleSuffix =
+    learn.learning && learn.bindingLabel ? ` · ${learn.bindingLabel}` : '';
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <button
+        onClick={handleClick}
+        title={
+          learn.isLearnTarget
+            ? `${label} — learning…`
+            : `${label}${titleSuffix}`
+        }
+        style={{ width: KNOB_SIZE, height: KNOB_SIZE }}
+        className="relative flex items-center justify-center bg-transparent cursor-pointer group border border-white/30 hover:border-white rounded-full"
+      >
+        <span className="text-[10px] uppercase tracking-[0.1em] opacity-80">
+          {display}
+        </span>
+        {learn.learning && (learn.isLearnTarget || learn.bound) && (
+          <span
+            className="absolute inset-1 pointer-events-none border border-white/70 rounded-full"
+            style={{
+              boxShadow: learn.isLearnTarget ? '0 0 0 1px #fff inset' : undefined,
+            }}
+          />
+        )}
+      </button>
+      <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">
+        {label}
       </span>
     </div>
   );
@@ -161,6 +224,8 @@ function StageDivider({ label }: { label: string }) {
   );
 }
 
+const MASTER_EXPANDED_KEY = 'sequencer.fxPanel.masterExpanded';
+
 export function FXPanel() {
   const tape = useSequencerStore((s) => s.tape);
   const setTape = useSequencerStore((s) => s.setTape);
@@ -170,9 +235,25 @@ export function FXPanel() {
   const setReverb = useSequencerStore((s) => s.setReverb);
   const saturation = useSequencerStore((s) => s.saturation);
   const setSaturation = useSequencerStore((s) => s.setSaturation);
+  const master = useSequencerStore((s) => s.master);
+  const setMaster = useSequencerStore((s) => s.setMaster);
+  const setMasterPreset = useSequencerStore((s) => s.setMasterPreset);
+
+  // Master controls are hidden by default — the section is 14+ knobs and
+  // overwhelms the upstream-FX row otherwise. Audio routing is unaffected
+  // by the toggle; only the UI is collapsed.
+  const [masterExpanded, setMasterExpanded] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(MASTER_EXPANDED_KEY) === 'true';
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(MASTER_EXPANDED_KEY, String(masterExpanded));
+  }, [masterExpanded]);
 
   return (
-    <div className="flex flex-wrap items-start justify-end gap-5 px-4 py-4">
+    <div className="flex flex-col items-stretch gap-6 px-4 py-4">
+      <div className="flex flex-wrap items-start justify-end gap-5">
       <StageDivider label="pre" />
       <LabeledKnob
         label="drive"
@@ -258,14 +339,141 @@ export function FXPanel() {
         lfoKnob="reverbMix"
         midiTarget="fx:reverb.mix"
       />
-      <StageDivider label="post" />
+        <div className="flex flex-col items-stretch gap-2 self-center text-xs uppercase tracking-widest opacity-70">
+          <select
+            value={findActivePreset(master) ?? ''}
+            onChange={(e) => {
+              const name = e.target.value;
+              if (name) setMasterPreset(name);
+            }}
+            className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
+            title="Load a master-section preset"
+          >
+            {findActivePreset(master) === null && (
+              <option value="" disabled className="bg-[#050505]">
+                modified
+              </option>
+            )}
+            {MASTER_PRESET_NAMES.map((name) => (
+              <option key={name} value={name} className="bg-[#050505]">
+                {name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setMasterExpanded(!masterExpanded)}
+            title={masterExpanded ? 'Hide master output' : 'Show master output'}
+            className="opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+          >
+            master {masterExpanded ? '▴' : '▾'}
+          </button>
+        </div>
+      </div>
+      {masterExpanded && (
+      <div className="flex flex-wrap items-start justify-end gap-5">
+      <StageDivider label="master" />
+      <LabeledKnob
+        label="input"
+        value={master.input}
+        onChange={(v) => setMaster({ input: v })}
+        lfoKnob="masterInput"
+        midiTarget="fx:master.input"
+      />
+      <CycleButton
+        label="lo-cut"
+        value={master.loCut}
+        count={LO_CUT_POSITIONS}
+        format={loCutLabel}
+        onChange={(v) => setMaster({ loCut: v })}
+        midiTarget="fx:master.loCut"
+      />
+      <LabeledKnob
+        label="comp"
+        value={master.comp}
+        onChange={(v) => setMaster({ comp: v })}
+        lfoKnob="masterComp"
+        midiTarget="fx:master.comp"
+      />
+      <CycleButton
+        label="atk"
+        value={master.compAttack}
+        count={COMP_ATTACK_COUNT}
+        format={compAttackLabel}
+        onChange={(v) => setMaster({ compAttack: v })}
+        midiTarget="fx:master.compAttack"
+      />
+      <CycleButton
+        label="rel"
+        value={master.compRelease}
+        count={COMP_RELEASE_COUNT}
+        format={compReleaseLabel}
+        onChange={(v) => setMaster({ compRelease: v })}
+        midiTarget="fx:master.compRelease"
+      />
+      <CycleButton
+        label="mode"
+        value={master.mode}
+        count={MODE_COUNT}
+        format={modeLabel}
+        onChange={(v) => setMaster({ mode: v })}
+        midiTarget="fx:master.mode"
+      />
       <LabeledKnob
         label="drive"
-        value={saturation.postDrive}
-        onChange={(v) => setSaturation({ postDrive: v })}
-        lfoKnob="postSaturationDrive"
-        midiTarget="fx:saturation.postDrive"
+        value={master.drive}
+        onChange={(v) => setMaster({ drive: v })}
+        lfoKnob="masterDrive"
+        midiTarget="fx:master.drive"
       />
+      <LabeledKnob
+        label="bias"
+        value={master.bias / 0.2}
+        onChange={(v) => setMaster({ bias: v * 0.2 })}
+        lfoKnob="masterBias"
+        midiTarget="fx:master.bias"
+      />
+      <LabeledKnob
+        label="mix"
+        value={master.mix}
+        onChange={(v) => setMaster({ mix: v })}
+        lfoKnob="masterMix"
+        midiTarget="fx:master.mix"
+      />
+      <LabeledKnob
+        label="hi-cut"
+        value={master.hiCut}
+        onChange={(v) => setMaster({ hiCut: v })}
+        lfoKnob="masterHiCut"
+        midiTarget="fx:master.hiCut"
+      />
+      <LabeledKnob
+        label="trim"
+        value={master.trim}
+        onChange={(v) => setMaster({ trim: v })}
+        lfoKnob="masterTrim"
+        midiTarget="fx:master.trim"
+      />
+      <ToggleButton
+        label="gate"
+        active={master.gateEnabled}
+        onToggle={() => setMaster({ gateEnabled: !master.gateEnabled })}
+        midiTarget="fx:master.gateEnabled"
+      />
+      <LabeledKnob
+        label="gate thr"
+        value={master.gateThreshold}
+        onChange={(v) => setMaster({ gateThreshold: v })}
+        lfoKnob="masterGateThreshold"
+        midiTarget="fx:master.gateThreshold"
+      />
+      <ToggleButton
+        label="bypass"
+        active={master.bypass}
+        onToggle={() => setMaster({ bypass: !master.bypass })}
+        midiTarget="fx:master.bypass"
+      />
+      </div>
+      )}
     </div>
   );
 }

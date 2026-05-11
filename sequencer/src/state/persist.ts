@@ -12,6 +12,7 @@ import { DEFAULT_TAPE_PARAMS, type TapeParams } from '../audio/tape';
 import { DEFAULT_GLITCH_PARAMS, type GlitchParams } from '../audio/glitch';
 import { DEFAULT_REVERB_PARAMS, type ReverbParams } from '../audio/reverb';
 import { DEFAULT_SATURATION_PARAMS, type SaturationParams } from '../audio/saturation';
+import { DEFAULT_MASTER_PARAMS, type MasterParams } from '../audio/master';
 
 interface PersistedState {
   version: number;
@@ -31,6 +32,7 @@ interface PersistedState {
   glitch?: GlitchParams;
   reverb?: ReverbParams;
   saturation?: SaturationParams;
+  master?: MasterParams;
   banks?: (BankSlot | null)[];
   activeBank?: number | null;
 }
@@ -63,6 +65,7 @@ export function exportProject(): string {
     glitch: s.glitch,
     reverb: s.reverb,
     saturation: s.saturation,
+    master: s.master,
     banks: s.banks,
     activeBank: s.activeBank,
   };
@@ -124,21 +127,52 @@ function hydrateReverb(v: unknown): ReverbParams {
 }
 
 function hydrateSaturation(v: unknown): SaturationParams {
-  const s = (v && typeof v === 'object' ? v : {}) as Partial<SaturationParams> & {
-    drive?: number;
-  };
-  // Old saves had a single `drive` field — fall it forward to postDrive
-  // (which is where the original single-stage saturation sat in the chain).
-  const legacyDrive =
-    typeof s.drive === 'number' && Number.isFinite(s.drive)
-      ? Math.max(0, Math.min(1, s.drive))
-      : null;
+  const s = (v && typeof v === 'object' ? v : {}) as Partial<SaturationParams>;
   return {
     preDrive: clamp01(s.preDrive, DEFAULT_SATURATION_PARAMS.preDrive),
-    postDrive: clamp01(
-      s.postDrive ?? legacyDrive ?? undefined,
-      DEFAULT_SATURATION_PARAMS.postDrive
-    ),
+  };
+}
+
+function hydrateMaster(v: unknown): MasterParams {
+  const m = (v && typeof v === 'object' ? v : {}) as Partial<MasterParams>;
+  const loCutRaw =
+    typeof m.loCut === 'number' && Number.isFinite(m.loCut)
+      ? Math.floor(m.loCut)
+      : DEFAULT_MASTER_PARAMS.loCut;
+  const modeRaw =
+    typeof m.mode === 'number' && Number.isFinite(m.mode)
+      ? Math.floor(m.mode)
+      : DEFAULT_MASTER_PARAMS.mode;
+  const compAttackRaw =
+    typeof m.compAttack === 'number' && Number.isFinite(m.compAttack)
+      ? Math.floor(m.compAttack)
+      : DEFAULT_MASTER_PARAMS.compAttack;
+  const compReleaseRaw =
+    typeof m.compRelease === 'number' && Number.isFinite(m.compRelease)
+      ? Math.floor(m.compRelease)
+      : DEFAULT_MASTER_PARAMS.compRelease;
+  const biasClamped =
+    typeof m.bias === 'number' && Number.isFinite(m.bias)
+      ? Math.max(0, Math.min(0.2, m.bias))
+      : DEFAULT_MASTER_PARAMS.bias;
+  return {
+    input: clamp01(m.input, DEFAULT_MASTER_PARAMS.input),
+    loCut: Math.max(0, Math.min(3, loCutRaw)),
+    comp: clamp01(m.comp, DEFAULT_MASTER_PARAMS.comp),
+    compAttack: Math.max(0, Math.min(5, compAttackRaw)),
+    compRelease: Math.max(0, Math.min(5, compReleaseRaw)),
+    mode: Math.max(0, Math.min(3, modeRaw)),
+    drive: clamp01(m.drive, DEFAULT_MASTER_PARAMS.drive),
+    bias: biasClamped,
+    mix: clamp01(m.mix, DEFAULT_MASTER_PARAMS.mix),
+    hiCut: clamp01(m.hiCut, DEFAULT_MASTER_PARAMS.hiCut),
+    trim: clamp01(m.trim, DEFAULT_MASTER_PARAMS.trim),
+    gateEnabled:
+      typeof m.gateEnabled === 'boolean'
+        ? m.gateEnabled
+        : DEFAULT_MASTER_PARAMS.gateEnabled,
+    gateThreshold: clamp01(m.gateThreshold, DEFAULT_MASTER_PARAMS.gateThreshold),
+    bypass: typeof m.bypass === 'boolean' ? m.bypass : DEFAULT_MASTER_PARAMS.bypass,
   };
 }
 
@@ -198,6 +232,7 @@ export function importProject(json: string): boolean {
     glitch: hydrateGlitch(data.glitch),
     reverb: hydrateReverb(data.reverb),
     saturation: hydrateSaturation(data.saturation),
+    master: hydrateMaster(data.master),
     banks,
     activeBank,
     pendingBank: null,

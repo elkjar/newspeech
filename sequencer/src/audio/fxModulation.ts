@@ -13,6 +13,7 @@ import { setTapeParams } from './tape';
 import { setGlitchParams } from './glitch';
 import { setReverbParams } from './reverb';
 import { setSaturationParams } from './saturation';
+import { setMasterParams } from './master';
 import { modulated, GLOBAL_TRACK_ID } from './lfo';
 
 let rafId: number | null = null;
@@ -26,6 +27,7 @@ export function startFXModulation(): void {
     const glitch = state.glitch;
     const reverb = state.reverb;
     const saturation = state.saturation;
+    const master = state.master;
 
     // Tape — push modulated values for every continuous knob; toggles
     // (reverse, hold) and hidden params (stretch1/2, gain1/2) pass through
@@ -56,7 +58,32 @@ export function startFXModulation(): void {
 
     setSaturationParams({
       preDrive: modulated(saturation.preDrive, lfos, GLOBAL_TRACK_ID, 'preSaturationDrive'),
-      postDrive: modulated(saturation.postDrive, lfos, GLOBAL_TRACK_ID, 'postSaturationDrive'),
+    });
+
+    setMasterParams({
+      input: modulated(master.input, lfos, GLOBAL_TRACK_ID, 'masterInput'),
+      comp: modulated(master.comp, lfos, GLOBAL_TRACK_ID, 'masterComp'),
+      drive: modulated(master.drive, lfos, GLOBAL_TRACK_ID, 'masterDrive'),
+      // Bias modulates in 0..1 normalized space then scales — keeps the LFO
+      // depth UI meaningful even though the underlying range is 0..0.2.
+      bias:
+        modulated(master.bias / 0.2, lfos, GLOBAL_TRACK_ID, 'masterBias') * 0.2,
+      mix: modulated(master.mix, lfos, GLOBAL_TRACK_ID, 'masterMix'),
+      hiCut: modulated(master.hiCut, lfos, GLOBAL_TRACK_ID, 'masterHiCut'),
+      trim: modulated(master.trim, lfos, GLOBAL_TRACK_ID, 'masterTrim'),
+      gateThreshold: modulated(
+        master.gateThreshold,
+        lfos,
+        GLOBAL_TRACK_ID,
+        'masterGateThreshold',
+      ),
+      // Discrete / boolean params pass through unchanged — no LFO mod.
+      loCut: master.loCut,
+      compAttack: master.compAttack,
+      compRelease: master.compRelease,
+      mode: master.mode,
+      gateEnabled: master.gateEnabled,
+      bypass: master.bypass,
     });
 
     rafId = window.requestAnimationFrame(tick);

@@ -9,7 +9,7 @@
 // Init pulls masterBus's existing connection to destination and inserts the
 // glitchNode in between. Future Stage 3 (reverb) will do the same against
 // glitchNode → destination.
-import { getAudioContext, getMasterBus } from './audioContext';
+import { getAudioContext, getMasterBus, getMixBus } from './audioContext';
 import { scheduler } from './scheduler';
 
 export interface GlitchParams {
@@ -22,7 +22,7 @@ export interface GlitchParams {
 }
 
 export const DEFAULT_GLITCH_PARAMS: GlitchParams = {
-  chance: 0,
+  chance: 0.14,
   mix: 1,
 };
 
@@ -41,6 +41,7 @@ export async function initGlitch(): Promise<void> {
   initializing = (async () => {
     const ctx = getAudioContext();
     const master = getMasterBus();
+    const mix = getMixBus();
 
     const url = `${import.meta.env.BASE_URL}worklets/glitch-machine.js`;
     await ctx.audioWorklet.addModule(url);
@@ -55,15 +56,15 @@ export async function initGlitch(): Promise<void> {
       channelCountMode: 'explicit',
     });
 
-    // Insert glitch between masterBus and destination. masterBus was
-    // pre-connected to destination by getMasterBus(); we replace that link.
+    // Insert glitch between masterBus and mixBus. masterBus → mixBus was
+    // pre-connected by getMasterBus(); we replace that link.
     try {
-      master.disconnect(ctx.destination);
+      master.disconnect(mix);
     } catch {
-      /* may already be disconnected if Stage 3 inserts later */
+      /* may already be disconnected */
     }
     master.connect(glitchNode);
-    glitchNode.connect(ctx.destination);
+    glitchNode.connect(mix);
 
     // Subscribe to beat boundaries via the scheduler. Scheduler runs at
     // 32nds (stepsPerBeat = 8), so every 8th step is a beat.
