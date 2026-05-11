@@ -4,6 +4,7 @@ import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
 import { MacroStrip } from './components/MacroStrip';
+import { BankPad } from './components/BankPad';
 import { FXPanel } from './components/FXPanel';
 import {
   useSequencerStore,
@@ -145,6 +146,12 @@ export function App() {
   useEffect(() => {
     const harmonic = makeHarmonicMotionState();
     return scheduler.onStep((globalStep, when, stepDuration) => {
+      // Bar boundary at 4/4 32nd resolution = every 32 global steps. A queued
+      // pattern recall commits here, before we read `tracks` for this tick,
+      // so the swap is atomic from the dispatch's point of view.
+      if (globalStep % 32 === 0) {
+        useSequencerStore.getState().commitPendingBank();
+      }
       const { tracks, rootNote, scale, lfos, midiOutDeviceId, density, chaos, motion, drift, tension, freeze } =
         useSequencerStore.getState();
       // Macros may themselves be LFO-modulated. LFOs run at their natural rates
@@ -441,6 +448,9 @@ export function App() {
           <div className="flex justify-between items-start gap-8">
             <StepInspector />
             <LFOPanel />
+          </div>
+          <div className="flex justify-end -my-4">
+            <BankPad />
           </div>
           <TrackGrid />
           <div className="flex justify-between items-center gap-8">

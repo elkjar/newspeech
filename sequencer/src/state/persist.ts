@@ -1,5 +1,11 @@
-import { useSequencerStore, type Track, type TrackSection } from './store';
-import { ensureBothSections, hydrateTrack, hydrateLFOs } from './hydrate';
+import {
+  useSequencerStore,
+  BANK_SLOT_COUNT,
+  type Track,
+  type TrackSection,
+  type BankSlot,
+} from './store';
+import { ensureBothSections, hydrateTrack, hydrateLFOs, hydrateBanks } from './hydrate';
 import { type LFO } from '../audio/lfo';
 import type { Scale } from '../audio/scale';
 import { DEFAULT_TAPE_PARAMS, type TapeParams } from '../audio/tape';
@@ -25,6 +31,8 @@ interface PersistedState {
   glitch?: GlitchParams;
   reverb?: ReverbParams;
   saturation?: SaturationParams;
+  banks?: (BankSlot | null)[];
+  activeBank?: number | null;
 }
 
 function clamp01(v: unknown, fallback = 0.5): number {
@@ -55,6 +63,8 @@ export function exportProject(): string {
     glitch: s.glitch,
     reverb: s.reverb,
     saturation: s.saturation,
+    banks: s.banks,
+    activeBank: s.activeBank,
   };
   return JSON.stringify(data, null, 2);
 }
@@ -149,6 +159,25 @@ export function importProject(json: string): boolean {
   const viewSection: TrackSection =
     data.viewSection === 'melodic' ? 'melodic' : 'drum';
 
+  const density = clamp01(data.density);
+  const chaos = clamp01(data.chaos);
+  const motion = clamp01(data.motion, 0.5);
+  const drift = clamp01(data.drift, 1);
+  const tension = clamp01(data.tension);
+
+  const banks = hydrateBanks(data.banks, () => ({
+    tracks,
+    macros: { density, chaos, motion, drift, tension },
+  }));
+  const requestedActive =
+    typeof data.activeBank === 'number' && Number.isFinite(data.activeBank)
+      ? Math.floor(data.activeBank)
+      : 0;
+  const activeBank =
+    requestedActive >= 0 && requestedActive < BANK_SLOT_COUNT
+      ? requestedActive
+      : 0;
+
   useSequencerStore.setState({
     bpm: typeof data.bpm === 'number' ? data.bpm : 120,
     rootNote: typeof data.rootNote === 'number' ? data.rootNote : 60,
@@ -160,15 +189,18 @@ export function importProject(json: string): boolean {
         ? data.midiOutDeviceId
         : null,
     viewSection,
-    density: clamp01(data.density),
-    chaos: clamp01(data.chaos),
-    motion: clamp01(data.motion, 0.5),
-    drift: clamp01(data.drift, 1),
-    tension: clamp01(data.tension),
+    density,
+    chaos,
+    motion,
+    drift,
+    tension,
     tape: hydrateTape(data.tape),
     glitch: hydrateGlitch(data.glitch),
     reverb: hydrateReverb(data.reverb),
     saturation: hydrateSaturation(data.saturation),
+    banks,
+    activeBank,
+    pendingBank: null,
     selectingLFO: null,
     globalStep: 0,
     selectedStep: null,

@@ -1,5 +1,18 @@
-import type { Track, Step, TrackSection, StepRate, TrackMidi } from './store';
-import { STEP_RATES, DEFAULT_TRACK_MIDI, snapshotInstrumentMidi } from './store';
+import type {
+  Track,
+  Step,
+  TrackSection,
+  StepRate,
+  TrackMidi,
+  BankSlot,
+  BankMacros,
+} from './store';
+import {
+  STEP_RATES,
+  DEFAULT_TRACK_MIDI,
+  BANK_SLOT_COUNT,
+  snapshotInstrumentMidi,
+} from './store';
 import {
   defaultLFOs,
   LFO_RATES,
@@ -245,6 +258,60 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     gain: 1,
     fxSend: 0,
   };
+}
+
+function clamp01(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v)
+    ? Math.max(0, Math.min(1, v))
+    : fallback;
+}
+
+function hydrateBankMacros(saved: unknown, fallback: BankMacros): BankMacros {
+  const m = (saved && typeof saved === 'object' ? saved : {}) as Partial<BankMacros>;
+  return {
+    density: clamp01(m.density, fallback.density),
+    chaos: clamp01(m.chaos, fallback.chaos),
+    motion: clamp01(m.motion, fallback.motion),
+    drift: clamp01(m.drift, fallback.drift),
+    tension: clamp01(m.tension, fallback.tension),
+  };
+}
+
+function hydrateBankSlot(
+  saved: unknown,
+  fallbackMacros: BankMacros
+): BankSlot | null {
+  if (!saved || typeof saved !== 'object') return null;
+  const obj = saved as { tracks?: unknown; macros?: unknown };
+  if (!Array.isArray(obj.tracks)) return null;
+  const tracks = (obj.tracks as Array<Partial<Track>>)
+    .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
+    .map(hydrateTrack);
+  if (tracks.length === 0) return null;
+  return {
+    tracks,
+    macros: hydrateBankMacros(obj.macros, fallbackMacros),
+  };
+}
+
+// Old .seq files have no banks field. Seed slot 0 from the loaded project
+// (via `seedFromProject`) so the boot rule — slot 0 is always filled/active —
+// also holds after loading legacy saves.
+export function hydrateBanks(
+  saved: unknown,
+  seedFromProject: () => { tracks: Track[]; macros: BankMacros }
+): (BankSlot | null)[] {
+  const result: (BankSlot | null)[] = Array(BANK_SLOT_COUNT).fill(null);
+  if (!Array.isArray(saved)) {
+    const seed = seedFromProject();
+    result[0] = { tracks: seed.tracks, macros: seed.macros };
+    return result;
+  }
+  const fallbackMacros = seedFromProject().macros;
+  for (let i = 0; i < BANK_SLOT_COUNT; i++) {
+    result[i] = hydrateBankSlot(saved[i], fallbackMacros);
+  }
+  return result;
 }
 
 export function ensureBothSections(tracks: Track[]): Track[] {

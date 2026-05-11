@@ -121,6 +121,20 @@ export function snapshotInstrumentMidi(instrumentId: string): TrackMidi {
 
 export const PAGE_SIZE = 16;
 export const NUM_PAGES = 4;
+export const BANK_SLOT_COUNT = 16;
+
+export interface BankMacros {
+  density: number;
+  chaos: number;
+  motion: number;
+  drift: number;
+  tension: number;
+}
+
+export interface BankSlot {
+  tracks: Track[];
+  macros: BankMacros;
+}
 
 interface SequencerState {
   bpm: number;
@@ -200,6 +214,13 @@ interface SequencerState {
   setTrackEuclidean: (trackId: string, partial: Partial<EuclideanParams>) => void;
   setGlobalStep: (step: number) => void;
   setPlaying: (playing: boolean) => void;
+  banks: (BankSlot | null)[];
+  activeBank: number | null;
+  pendingBank: number | null;
+  snapBank: (i: number) => void;
+  queueBank: (i: number) => void;
+  clearBank: (i: number) => void;
+  commitPendingBank: () => void;
 }
 
 export const MAX_STEPS = 64;
@@ -218,6 +239,43 @@ function emptySteps(): Step[] {
   }));
 }
 
+function cloneSteps(steps: Step[] | null): Step[] | null {
+  if (!steps) return null;
+  return steps.map((s) => ({ ...s }));
+}
+
+export function cloneTrack(t: Track): Track {
+  return {
+    ...t,
+    source: { ...t.source } as TrackSource,
+    midi: { ...t.midi },
+    euclidean: { ...t.euclidean },
+    steps: t.steps.map((s) => ({ ...s })),
+    slotA: cloneSteps(t.slotA),
+    slotB: cloneSteps(t.slotB),
+  };
+}
+
+function snapshotBank(state: {
+  tracks: Track[];
+  density: number;
+  chaos: number;
+  motion: number;
+  drift: number;
+  tension: number;
+}): BankSlot {
+  return {
+    tracks: state.tracks.map(cloneTrack),
+    macros: {
+      density: state.density,
+      chaos: state.chaos,
+      motion: state.motion,
+      drift: state.drift,
+      tension: state.tension,
+    },
+  };
+}
+
 const presetTracks = ensureBothSections(
   (defaultPreset.tracks as Array<Partial<Track> & { id: string }>).map(hydrateTrack)
 );
@@ -227,6 +285,20 @@ function clamp01(v: unknown, fallback = 0.5): number {
     ? Math.max(0, Math.min(1, v))
     : fallback;
 }
+
+const initialMacros: BankMacros = {
+  density: clamp01((defaultPreset as { density?: unknown }).density),
+  chaos: clamp01((defaultPreset as { chaos?: unknown }).chaos),
+  motion: clamp01((defaultPreset as { motion?: unknown }).motion, 0.5),
+  drift: clamp01((defaultPreset as { drift?: unknown }).drift, 1),
+  tension: clamp01((defaultPreset as { tension?: unknown }).tension),
+};
+
+const initialBanks: (BankSlot | null)[] = Array(BANK_SLOT_COUNT).fill(null);
+initialBanks[0] = {
+  tracks: presetTracks.map(cloneTrack),
+  macros: { ...initialMacros },
+};
 
 function fireTrackProgramChange(track: Track, fallbackId: string | null): void {
   if (track.source.kind !== 'instrument') return;
@@ -249,11 +321,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   editMode: 'live',
   midiOutDeviceId: null,
   viewSection: 'drum',
-  density: clamp01((defaultPreset as { density?: unknown }).density),
-  chaos: clamp01((defaultPreset as { chaos?: unknown }).chaos),
-  motion: clamp01((defaultPreset as { motion?: unknown }).motion, 0.5),
-  drift: clamp01((defaultPreset as { drift?: unknown }).drift, 1),
-  tension: clamp01((defaultPreset as { tension?: unknown }).tension),
+  density: initialMacros.density,
+  chaos: initialMacros.chaos,
+  motion: initialMacros.motion,
+  drift: initialMacros.drift,
+  tension: initialMacros.tension,
+  banks: initialBanks,
+  activeBank: 0,
+  pendingBank: null,
   freeze: false,
   tape: { ...DEFAULT_TAPE_PARAMS },
   setTape: (patch) =>
@@ -687,5 +762,82 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       }),
     })),
   setGlobalStep: (globalStep) => set({ globalStep }),
-  setPlaying: (playing) => set({ playing }),
+  setPlaying: (playing) =>
+    set((state) => ({
+      playing,
+      // queued bank swaps only make sense while transport is running.
+      // Dropping pending on stop avoids a stale queue firing on next play.
+      pendingBank: playing ? state.pendingBank : null,
+    })),
+  snapBank: (i) => {
+    if (i < 0 || i >= BANK_SLOT_COUNT) return;
+    set((state) => {
+      const next = state.banks.slice();
+      next[i] = snapshotBank(state);
+      return { banks: next };
+    });
+  },
+  queueBank: (i) => {
+    if (i < 0 || i >= BANK_SLOT_COUNT) return;
+    const state = useSequencerStore.getState();
+    const slot = state.banks[i];
+    if (!slot) return;
+    if (i === state.activeBank) return;
+    if (!state.playing) {
+      applyBankSlot(set, i, slot);
+      return;
+    }
+    set({ pendingBank: i });
+  },
+  clearBank: (i) => {
+    if (i < 0 || i >= BANK_SLOT_COUNT) return;
+    set((state) => {
+      const next = state.banks.slice();
+      next[i] = null;
+      return {
+        banks: next,
+        pendingBank: state.pendingBank === i ? null : state.pendingBank,
+      };
+    });
+  },
+  commitPendingBank: () => {
+    const state = useSequencerStore.getState();
+    const i = state.pendingBank;
+    if (i === null) return;
+    const slot = state.banks[i];
+    if (!slot) {
+      set({ pendingBank: null });
+      return;
+    }
+    applyBankSlot(set, i, slot);
+  },
 }));
+
+function applyBankSlot(
+  set: (
+    partial:
+      | Partial<SequencerState>
+      | ((state: SequencerState) => Partial<SequencerState>)
+  ) => void,
+  i: number,
+  slot: BankSlot
+): void {
+  // Atomic swap: tracks + macros + activeBank + pendingBank + freeze all land
+  // in one set() so the scheduler's onStep callback can never read mid-swap.
+  set({
+    tracks: slot.tracks.map(cloneTrack),
+    density: slot.macros.density,
+    chaos: slot.macros.chaos,
+    motion: slot.macros.motion,
+    drift: slot.macros.drift,
+    tension: slot.macros.tension,
+    activeBank: i,
+    pendingBank: null,
+    freeze: false,
+  });
+  // Mutation overlay is keyed by trackId+index and would otherwise apply the
+  // previous pattern's mutated outcomes to the new pattern's steps. Freeze
+  // captures the same overlay — drop it for the same reason.
+  clearOverlay();
+  unfreezeLFOs();
+}
