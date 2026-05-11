@@ -6,11 +6,13 @@ import type {
   TrackMidi,
   BankSlot,
   BankMacros,
+  PitchInterp,
 } from './store';
 import {
   STEP_RATES,
   DEFAULT_TRACK_MIDI,
   BANK_SLOT_COUNT,
+  PITCH_INTERPS,
   snapshotInstrumentMidi,
 } from './store';
 import {
@@ -21,10 +23,14 @@ import {
   type LFODestination,
 } from '../audio/lfo';
 import { getInstrument, type TrackSource } from '../instruments/library';
+import {
+  DEFAULT_CHORD_VOICING,
+  CHORD_MASTER_DEFAULT,
+  parseChordVoicing,
+} from '../audio/chords';
 
 const VALID_KNOBS: LFODestKnob[] = [
   'mutation',
-  'morph',
   'rowRatchet',
   'fxSend',
   'density',
@@ -45,6 +51,7 @@ function validDest(d: unknown): LFODestination | null {
 }
 
 export function hydrateStep(saved: Partial<Step>): Step {
+  const chord = parseChordVoicing((saved as { chordVoicing?: unknown }).chordVoicing);
   return {
     on: saved.on ?? false,
     velocity: saved.velocity ?? 1,
@@ -54,12 +61,8 @@ export function hydrateStep(saved: Partial<Step>): Step {
     microTiming: saved.microTiming ?? 0,
     gate: saved.gate ?? 1,
     tieToNext: saved.tieToNext ?? false,
+    ...(chord ? { chordVoicing: chord } : {}),
   };
-}
-
-export function hydrateSlot(slot: Step[] | null | undefined): Step[] | null {
-  if (!Array.isArray(slot)) return null;
-  return Array.from({ length: 64 }, (_, i) => hydrateStep(slot[i] ?? {}));
 }
 
 export function hydrateLFOs(saved: LFO[] | undefined): LFO[] {
@@ -96,16 +99,19 @@ const INTERNAL_VOICE_IDS = new Set([
   'tamb',
   'hydra-plaits',
   'bass',
-  'pad',
   'rhodes-mk1',
   'root-grain',
   'soft-piano',
   'tape-piano',
   'under-piano',
 ]);
-// migrate renamed voice ids when hydrating older `.seq` files
+// migrate renamed voice ids when hydrating older `.seq` files. `pad` was
+// retired 2026-05-11 when the chord-master role became positional (row 1)
+// rather than voice-locked — any saved track that used `pad` now plays via
+// rhodes-mk1, which has proper multi-sampled pitch zones.
 const VOICE_ID_RENAMES: Record<string, string> = {
   synth: 'hydra-plaits',
+  pad: 'rhodes-mk1',
 };
 const LEGACY_MIDI_TO_INTERNAL: Record<string, string> = {
   'midi-kick': 'kick',
@@ -117,8 +123,8 @@ const LEGACY_MIDI_TO_INTERNAL: Record<string, string> = {
   'midi-tom-l': 'hydra-plaits',
   'midi-tom-m': 'bass',
   'midi-tom-h': 'hydra-plaits',
-  'midi-crash': 'pad',
-  'midi-ride': 'pad',
+  'midi-crash': 'rhodes-mk1',
+  'midi-ride': 'rhodes-mk1',
 };
 
 function hydrateSource(saved: unknown, legacyVoice: string | undefined): TrackSource {
@@ -151,6 +157,25 @@ function hydrateRate(saved: unknown): StepRate {
   return typeof saved === 'string' && (STEP_RATES as readonly string[]).includes(saved)
     ? (saved as StepRate)
     : '1/16';
+}
+
+// Stage 4 introduced `defaultChordVoicing` on Track. Older `.seq` files don't
+// have the field — `parseChordVoicing` returns null. We hand back null here so
+// the post-hydration step (`applyPositionalRoleDefaults`) can decide whether
+// to fill in `{maj}` for row 1 or `{none}` elsewhere based on track ordering.
+function hydrateDefaultChordVoicing(saved: unknown) {
+  return parseChordVoicing(saved);
+}
+
+function hydratePitchInterp(saved: unknown): PitchInterp | null {
+  return typeof saved === 'string' && (PITCH_INTERPS as readonly string[]).includes(saved)
+    ? (saved as PitchInterp)
+    : null;
+}
+
+function hydrateOctave(saved: unknown): number | null {
+  if (typeof saved !== 'number' || !Number.isFinite(saved)) return null;
+  return Math.max(-4, Math.min(4, Math.round(saved)));
 }
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -204,11 +229,8 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     viewPage: saved.viewPage ?? 0,
     mutation: saved.mutation ?? 0,
     rowRatchet: saved.rowRatchet ?? 0,
-    morph: saved.morph ?? 0,
     rate: hydrateRate((saved as { rate?: unknown }).rate),
     lockTiming: typeof saved.lockTiming === 'boolean' ? saved.lockTiming : false,
-    slotA: hydrateSlot(saved.slotA),
-    slotB: hydrateSlot(saved.slotB),
     euclidean: saved.euclidean ?? { hits: 0, rotation: 0 },
     steps,
     midi: hydrateMidi((saved as { midi?: unknown }).midi, source),
@@ -220,22 +242,83 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
       typeof saved.fxSend === 'number' && Number.isFinite(saved.fxSend)
         ? Math.max(0, Math.min(1, saved.fxSend))
         : 0,
+    defaultChordVoicing:
+      hydrateDefaultChordVoicing(
+        (saved as { defaultChordVoicing?: unknown }).defaultChordVoicing
+      ) ?? { ...DEFAULT_CHORD_VOICING },
+    pitchInterp:
+      hydratePitchInterp((saved as { pitchInterp?: unknown }).pitchInterp) ?? 'semitones',
+    octave: hydrateOctave((saved as { octave?: unknown }).octave) ?? 0,
   };
 }
 
+// Walk hydrated tracks in array order, filling in position-based role
+// defaults for any fields the raw save didn't carry. Three fields, one pass:
+//   - `defaultChordVoicing`: first melodic track (slot 0) → `{maj}`, others
+//     stay `{none}`. Row 1 = chord master regardless of voice.
+//   - `pitchInterp`: slot 0 → 'semitones' (chord-master, field ignored);
+//     slot 1 → 'chord-tone' (bass; step.pitch becomes a chord-tone index for
+//     bass walks). slots 2+ → 'chord-tone' (motif).
+//   - `octave`: slot 1 → -2 (drops bass two octaves below the chord master's
+//     range). slots 0 and 2+ stay at 0.
+// We compare against the raw saved data so explicit user choices survive a
+// re-load — the position default only fires when the field was absent.
+export function applyPositionalRoleDefaults(
+  hydrated: Track[],
+  rawSaved: Array<Partial<Track> & {
+    defaultChordVoicing?: unknown;
+    pitchInterp?: unknown;
+    octave?: unknown;
+  }>
+): Track[] {
+  let melodicSlot = -1;
+  return hydrated.map((track, i) => {
+    if (track.section !== 'melodic') return track;
+    melodicSlot++;
+    const raw = rawSaved[i];
+    const rawHadChord = !!raw && raw.defaultChordVoicing !== undefined;
+    const rawHadInterp = !!raw && raw.pitchInterp !== undefined;
+    const rawHadOctave = !!raw && raw.octave !== undefined;
+    let next = track;
+    if (melodicSlot === 0 && !rawHadChord) {
+      next = { ...next, defaultChordVoicing: { ...CHORD_MASTER_DEFAULT } };
+    }
+    if (!rawHadInterp) {
+      const interp: PitchInterp = melodicSlot === 0 ? 'semitones' : 'chord-tone';
+      next = { ...next, pitchInterp: interp };
+    }
+    if (!rawHadOctave) {
+      next = { ...next, octave: melodicSlot === 1 ? -2 : 0 };
+    }
+    return next;
+  });
+}
+
+// Slot 0 lands the chord-master role (per `applyPositionalChordDefaults`),
+// so the first melodic voice should be one that handles chord assembly
+// cleanly. rhodes-mk1 is the current best-sampled lead.
 const EMPTY_MELODIC_VOICES = [
+  'rhodes-mk1',
   'bass',
-  'bass',
   'hydra-plaits',
   'hydra-plaits',
-  'pad',
-  'pad',
-  'hydra-plaits',
+  'soft-piano',
+  'tape-piano',
+  'under-piano',
   'hydra-plaits',
 ];
 
 export function emptyMelodicTrack(id: string, slot: number): Track {
   const steps = Array.from({ length: 64 }, () => hydrateStep({}));
+  // Position-based role defaults. Slot 0 is the chord master (audible
+  // I-triad default voicing, `semitones` interp since the field is ignored
+  // for chord-master). Slot 1 is the bass — chord-tone interp with octave
+  // -2 so it plays chord tones in bass range; user authors walks via
+  // step.pitch (0=root, 1=3rd, 2=5th, -1=octave-up-5th-down, etc.).
+  // Slots 2+ are motifs in chord-tone mode at the chord-master's octave.
+  const defaultChordVoicing = slot === 0 ? { ...CHORD_MASTER_DEFAULT } : { ...DEFAULT_CHORD_VOICING };
+  const pitchInterp: PitchInterp = slot === 0 ? 'semitones' : 'chord-tone';
+  const octave = slot === 1 ? -2 : 0;
   return {
     id,
     source: { kind: 'voice', id: EMPTY_MELODIC_VOICES[slot % EMPTY_MELODIC_VOICES.length] },
@@ -247,16 +330,16 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     viewPage: 0,
     mutation: 0,
     rowRatchet: 0,
-    morph: 0,
     rate: '1/16',
     lockTiming: false,
-    slotA: null,
-    slotB: null,
     euclidean: { hits: 0, rotation: 0 },
     steps,
     midi: { ...DEFAULT_TRACK_MIDI },
     gain: 1,
     fxSend: 0,
+    defaultChordVoicing,
+    pitchInterp,
+    octave,
   };
 }
 

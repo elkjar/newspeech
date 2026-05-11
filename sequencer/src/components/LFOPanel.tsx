@@ -11,7 +11,6 @@ const PHASE_R = 18;
 
 const KNOB_LABELS: Record<LFODestKnob, string> = {
   mutation: 'mut',
-  morph: 'morph',
   rowRatchet: 'ratchet',
   fxSend: 'fx send',
   density: 'density',

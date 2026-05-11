@@ -17,7 +17,6 @@ import {
   type TrackSource,
 } from '../instruments/library';
 import { getOverlay } from '../audio/mutationOverlay';
-import { morphStep, stepSeed } from '../audio/morph';
 import { effectiveTieToNext } from '../audio/mutationTie';
 import { findRouted, GLOBAL_TRACK_ID } from '../audio/lfo';
 import { computeThinMul, computeFillProb } from '../audio/macros';
@@ -43,25 +42,16 @@ function originatorIndex(track: TrackData, i: number): number {
 function displayStep(
   track: TrackData,
   i: number,
-  applyOverlay: boolean,
-  morphValue: number
+  applyOverlay: boolean
 ): Step | undefined {
   const idx = originatorIndex(track, i);
   const authored = track.steps[idx];
   if (!authored) return authored;
-  let base = authored;
-  if (track.slotA && track.slotB) {
-    const a = track.slotA[idx];
-    const b = track.slotB[idx];
-    if (a && b) {
-      base = morphStep(a, b, morphValue, stepSeed(track.id, idx));
-    }
-  }
   if (applyOverlay) {
     const ov = getOverlay(track.id, idx);
-    if (ov) return { ...base, on: ov.on, velocity: ov.velocity, pitch: ov.pitch, gate: ov.gate };
+    if (ov) return { ...authored, on: ov.on, velocity: ov.velocity, pitch: ov.pitch, gate: ov.gate };
   }
-  return base;
+  return authored;
 }
 
 export function Track({ track }: { track: TrackData }) {
@@ -70,8 +60,6 @@ export function Track({ track }: { track: TrackData }) {
   const lfos = useSequencerStore((s) => s.lfos);
   const density = useSequencerStore((s) => s.density);
   const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
-  const morphLFOs = findRouted(lfos, track.id, 'morph');
-  const liveMorph = useLFOValue(track.morph, morphLFOs, 1);
   // Live density value for chance-mode opacity. Mirrors the gate the dispatch
   // loop uses, so twisting macros fades the grid at the same rate the audio
   // thins out. Metric-weighted density is computed per step in the render loop
@@ -87,8 +75,6 @@ export function Track({ track }: { track: TrackData }) {
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
   const setTrackPage = useSequencerStore((s) => s.setTrackPage);
   const clearTrack = useSequencerStore((s) => s.clearTrack);
-  const snapTrackSlot = useSequencerStore((s) => s.snapTrackSlot);
-  const recallTrackSlot = useSequencerStore((s) => s.recallTrackSlot);
   const setTrackLockTiming = useSequencerStore((s) => s.setTrackLockTiming);
 
   const [panelOpen, setPanelOpen] = useState(false);
@@ -103,7 +89,6 @@ export function Track({ track }: { track: TrackData }) {
     isDrumSection ? v.category === 'drum' : v.category === 'melodic'
   );
   const drumInstruments = INSTRUMENTS.filter((i) => i.role === 'drum');
-  const padInstruments = INSTRUMENTS.filter((i) => i.role === 'pad');
   const leadInstruments = INSTRUMENTS.filter((i) => i.role === 'lead');
   const bassInstruments = INSTRUMENTS.filter((i) => i.role === 'bass');
 
@@ -137,7 +122,7 @@ export function Track({ track }: { track: TrackData }) {
           value={sourceValue}
           onChange={(e) => handleSourceChange(e.target.value)}
           style={{ height: STEP_SIZE }}
-          className="select-chevron w-[100px] bg-transparent border border-white/15 text-[11px] uppercase tracking-widest text-white pl-3 focus:outline-none focus:border-white"
+          className="select-chevron w-[202px] bg-transparent border border-white/15 text-[11px] uppercase tracking-widest text-white pl-3 focus:outline-none focus:border-white"
           title="source"
         >
           <option value="empty" className="bg-[#050505]">—</option>
@@ -151,15 +136,6 @@ export function Track({ track }: { track: TrackData }) {
           {isDrumSection && drumInstruments.length > 0 && (
             <optgroup label="drum" className="bg-[#050505]">
               {drumInstruments.map((i) => (
-                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
-                  {i.label}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {!isDrumSection && padInstruments.length > 0 && (
-            <optgroup label="pad" className="bg-[#050505]">
-              {padInstruments.map((i) => (
                 <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
                   {i.label}
                 </option>
@@ -213,7 +189,7 @@ export function Track({ track }: { track: TrackData }) {
             />
           )}
         </div>
-        {(['mutation', 'fxSend', 'rowRatchet', 'morph'] as const).map((knob) => (
+        {(['mutation', 'fxSend', 'rowRatchet'] as const).map((knob) => (
           <TrackKnob key={knob} track={track} knob={knob} size={STEP_SIZE} />
         ))}
       </div>
@@ -245,40 +221,6 @@ export function Track({ track }: { track: TrackData }) {
           }
           title="solo"
         />
-        {(['A', 'B'] as const).map((slot) => {
-          const filled = slot === 'A' ? !!track.slotA : !!track.slotB;
-          return (
-            <button
-              key={slot}
-              onClick={(e) => {
-                if (e.metaKey || e.ctrlKey) {
-                  snapTrackSlot(track.id, slot, true);
-                  return;
-                }
-                if (e.shiftKey) {
-                  snapTrackSlot(track.id, slot);
-                  return;
-                }
-                if (filled) recallTrackSlot(track.id, slot);
-                else snapTrackSlot(track.id, slot);
-              }}
-              style={{ width: STEP_SIZE, height: STEP_SIZE }}
-              className={[
-                'flex items-center justify-center text-[10px] uppercase tracking-widest font-bold transition-colors',
-                filled
-                  ? 'bg-white/20 text-white hover:bg-white/30'
-                  : 'bg-white/5 text-white/40 hover:bg-white/15',
-              ].join(' ')}
-              title={
-                filled
-                  ? `slot ${slot}: click to recall · shift-click to overwrite · cmd-click to clear`
-                  : `save current to slot ${slot}`
-              }
-            >
-              {slot}
-            </button>
-          );
-        })}
       </div>
       </div>
 
@@ -336,7 +278,7 @@ export function Track({ track }: { track: TrackData }) {
             const stepIndex = viewPage * PAGE_SIZE + i;
             const idx = originatorIndex(track, stepIndex);
             const isTiedChain = idx !== stepIndex;
-            const display = displayStep(track, stepIndex, playing && track.mutation > 0, liveMorph);
+            const display = displayStep(track, stepIndex, playing && track.mutation > 0);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
             // "Currently firing this cycle" — drives the binary visual in note
             // mode for both directions of the density knob: authored ON cells

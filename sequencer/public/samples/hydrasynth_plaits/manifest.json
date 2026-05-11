@@ -20,7 +20,7 @@
           "files": ["hp-C5-1.wav", "hp-C5-2.wav", "hp-C5-3.wav", "hp-C5-4.wav"]
         }
       ],
-      "gain": 0.7
+      "gain": 0.55
     }
   }
 }

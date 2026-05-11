@@ -3,15 +3,13 @@ import {
   KICK_MUTATION,
   HAT_O_MUTATION,
   BASS_MUTATION,
-  PAD_MUTATION,
   voiceLabel,
   voiceMutation,
-  voiceChord,
   isMelodicVoice,
   type MutationProfile,
 } from '../audio/voices';
 
-export type InstrumentRole = 'drum' | 'bass' | 'lead' | 'pad';
+export type InstrumentRole = 'drum' | 'bass' | 'lead';
 
 export interface Instrument {
   id: string;
@@ -24,7 +22,6 @@ export interface Instrument {
   bankLSB: number | null;
   fixedNote: number | null;
   mutationProfile?: MutationProfile;
-  chord?: number[];
 }
 
 export type PresetSlot =
@@ -207,7 +204,7 @@ export const PRESETS: Preset[] = [
       { kind: 'voice', id: 'hat-o' },
       { kind: 'voice', id: 'hydra-plaits' },
       { kind: 'voice', id: 'bass' },
-      { kind: 'voice', id: 'pad' },
+      { kind: 'voice', id: 'rhodes-mk1' },
       { kind: 'voice', id: 'hydra-plaits' },
     ],
   },
@@ -216,13 +213,13 @@ export const PRESETS: Preset[] = [
     label: 'internal synths',
     target: 'melodic',
     slots: [
+      { kind: 'voice', id: 'rhodes-mk1' },
       { kind: 'voice', id: 'bass' },
-      { kind: 'voice', id: 'bass' },
       { kind: 'voice', id: 'hydra-plaits' },
       { kind: 'voice', id: 'hydra-plaits' },
-      { kind: 'voice', id: 'pad' },
-      { kind: 'voice', id: 'pad' },
-      { kind: 'voice', id: 'hydra-plaits' },
+      { kind: 'voice', id: 'soft-piano' },
+      { kind: 'voice', id: 'tape-piano' },
+      { kind: 'voice', id: 'under-piano' },
       { kind: 'voice', id: 'hydra-plaits' },
     ],
   },
@@ -252,8 +249,6 @@ export function instrumentMutation(id: string): MutationProfile {
   if (inst?.mutationProfile) return inst.mutationProfile;
   if (!inst) return DEFAULT_MUTATION;
   switch (inst.role) {
-    case 'pad':
-      return PAD_MUTATION;
     case 'bass':
       return BASS_MUTATION;
     case 'lead':
@@ -267,13 +262,6 @@ export function instrumentIsMelodic(id: string): boolean {
   const inst = getInstrument(id);
   if (!inst) return false;
   return inst.role !== 'drum';
-}
-
-export function instrumentChord(id: string): number[] {
-  const inst = getInstrument(id);
-  if (inst?.chord) return inst.chord;
-  if (inst?.role === 'pad') return [0, 2, 4];
-  return [0];
 }
 
 export function instrumentsForRole(role: InstrumentRole): Instrument[] {
@@ -305,10 +293,4 @@ export function sourceIsMelodic(source: TrackSource): boolean {
   if (source.kind === 'voice') return isMelodicVoice(source.id);
   if (source.kind === 'instrument') return instrumentIsMelodic(source.id);
   return false;
-}
-
-export function sourceChord(source: TrackSource): number[] {
-  if (source.kind === 'voice') return voiceChord(source.id);
-  if (source.kind === 'instrument') return instrumentChord(source.id);
-  return [0];
 }

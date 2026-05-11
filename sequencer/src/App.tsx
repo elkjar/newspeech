@@ -20,14 +20,20 @@ import { initMIDIOut, sendMIDINote, resolveDeviceId } from './audio/midiOut';
 import { initMIDIIn } from './midi/midiIn';
 import { dispatchMidi } from './midi/midiMap';
 import { loadMidiMapLibrary } from './midi/midiMapLoader';
-import { quantize, octaveDegrees, fifthDegrees } from './audio/scale';
+import { octaveDegrees, fifthDegrees, quantize, scaleDegreeOf } from './audio/scale';
 import {
-  sourceChord,
   sourceIsMelodic,
   sourceMutation,
 } from './instruments/library';
-import { getOverlay, setOverlay } from './audio/mutationOverlay';
-import { morphStep, stepSeed } from './audio/morph';
+import {
+  resolveChord,
+  dropChordTone,
+  shuffleInversion,
+  shiftSpread,
+  borrowChord,
+} from './audio/chords';
+import { getChordContext, setChordContext, chordToneMidi } from './audio/chordContext';
+import { getOverlay, setOverlay, attachChordToOverlay } from './audio/mutationOverlay';
 import { effectiveTieToNext } from './audio/mutationTie';
 import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
 import { computeThinMul, computeFillProb } from './audio/macros';
@@ -188,9 +194,22 @@ export function App() {
             octaveDegrees(scale)
           );
       const anySolo = tracks.some((t) => t.solo);
+      // Melodic-section row index drives role assignment: slot 0 = chord
+      // master, slot 1 = bass (default root-follow), slots 2+ = motifs
+      // (default chord-tone). Counter is per-section; drum tracks don't
+      // increment it.
+      let melodicSlot = -1;
       for (const track of tracks) {
-        if (track.mute) continue;
-        if (anySolo && !track.solo) continue;
+        let isChordMaster = false;
+        if (track.section === 'melodic') {
+          melodicSlot++;
+          isChordMaster = melodicSlot === 0;
+        }
+        // Row 0 mute split: keep running dispatch so chord context still
+        // updates (the "pull pad out of the mix, leave harmonic skeleton
+        // intact" performance gesture). Audio trigger is skipped later.
+        if (track.mute && !isChordMaster) continue;
+        if (anySolo && !track.solo && !isChordMaster) continue;
         const stride = RATE_STRIDE[track.rate];
         if (globalStep % stride !== 0) continue;
         const rowStep = Math.floor(globalStep / stride);
@@ -199,24 +218,16 @@ export function App() {
         if (!authoredStep) continue;
         const rowStepDuration = stepDuration * stride;
         const trackMut = modulated(track.mutation, lfos, track.id, 'mutation') * chaosMul;
-        const trackMorph = modulated(track.morph, lfos, track.id, 'morph');
         const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet');
-        let step = authoredStep;
-        if (track.slotA && track.slotB) {
-          const a = track.slotA[localStep];
-          const b = track.slotB[localStep];
-          if (a && b) {
-            step = morphStep(a, b, trackMorph, stepSeed(track.id, localStep));
-          }
-        }
+        const step = authoredStep;
         const mut = trackMut;
         if (track.source.kind === 'empty') continue;
         const melodic = sourceIsMelodic(track.source);
         const profile = sourceMutation(track.source);
         // Freeze: replay the most recent overlay (= the previous cycle's mutated
         // outcome) without rolling new mutation OR new trigger gates, and don't
-        // overwrite the overlay. Falls back to the (post-morph) authored step
-        // on the rare first-cycle case where no overlay entry has been written.
+        // overwrite the overlay. Falls back to the authored step on the rare
+        // first-cycle case where no overlay entry has been written.
         let on: boolean;
         let v: number;
         let pitch: number;
@@ -254,11 +265,28 @@ export function App() {
           v = Math.max(0, Math.min(1, step.velocity + velJitter));
           pitch = step.pitch;
           if (melodic && mut > 0 && Math.random() < mut * profile.pitchJumpProb) {
-            const oct = octaveDegrees(scale);
-            const fifth = fifthDegrees(scale);
+            // Pitch-jump units depend on how the follower interprets `pitch`.
+            // In chord-tone mode (`pitch` indexes the published chord's
+            // intervals), an "octave" is intervals.length — adding the
+            // chord-tone count lands on the same tone one octave up. The
+            // scale's octaveDegrees (= 7 in major) would land 2-3 octaves
+            // away and several chord-tones over, producing ear-piercing
+            // jumps. The scale "fifth" concept also doesn't map to a chord
+            // tone, so chord-tone mode folds the fifth weight into octave
+            // and trims small jumps to ±1, ±2 (chord-tone steps within an
+            // octave). Other modes (chord master, semitones, scale-tone,
+            // root-follow) keep the scale-degree behavior.
+            const isChordToneMode = !isChordMaster && track.pitchInterp === 'chord-tone';
+            const ctxLen = isChordToneMode
+              ? Math.max(1, getChordContext().intervals.length)
+              : 0;
+            const oct = isChordToneMode ? ctxLen : octaveDegrees(scale);
+            const fifth = isChordToneMode ? 0 : fifthDegrees(scale);
             const w = profile.pitchWeights;
-            const eOct = w.octave * tStableMul;
-            const eFifth = w.fifth * tStableMul;
+            const eOct = isChordToneMode
+              ? (w.octave + w.fifth) * tStableMul
+              : w.octave * tStableMul;
+            const eFifth = isChordToneMode ? 0 : w.fifth * tStableMul;
             const eSmall = w.small * tColorMul;
             const total = eOct + eFifth + eSmall;
             if (total > 0) {
@@ -267,10 +295,13 @@ export function App() {
               if (r < eOct) jump = Math.random() < 0.5 ? -oct : oct;
               else if (r < eOct + eFifth) jump = Math.random() < 0.5 ? -fifth : fifth;
               else {
-                const small = [-3, -2, -1, 1, 2, 3];
+                const small = isChordToneMode
+                  ? [-2, -1, 1, 2]
+                  : [-3, -2, -1, 1, 2, 3];
                 jump = small[Math.floor(Math.random() * small.length)];
               }
-              pitch = Math.max(-14, Math.min(14, pitch + jump));
+              const clampMax = isChordToneMode ? ctxLen : 14;
+              pitch = Math.max(-clampMax, Math.min(clampMax, pitch + jump));
             }
           }
           const gateBias = mut > 0 ? mut * profile.gateBias : 0;
@@ -320,48 +351,181 @@ export function App() {
         const baseTime = when + step.microTiming * rowStepDuration;
         const subDur = rowStepDuration / ratchet;
         const effectiveGate = gateMutated * ties;
-        const chordIntervals = melodic ? sourceChord(track.source) : [0];
         // Harmonic motion: apply the global scale-degree offset to melodic
         // tracks before quantize. Drum/empty tracks ignore it.
         const harmonicShift = melodic ? harmonicOffset : 0;
-        const chordMidi = melodic
-          ? chordIntervals.map((interval) =>
-              quantize(rootNote, scale, pitch + interval + harmonicShift)
-            )
-          : [undefined as number | undefined];
+        // Role-based note resolution. Three paths depending on melodic slot
+        // and the track's pitchInterp:
+        //   - Chord master (slot 0): resolves its own voicing into a full
+        //     chord (degree + extension + inversion + spread) AND publishes
+        //     the result to the global chord context so followers can read it
+        //     on subsequent ticks. Same-tick followers see this update because
+        //     drum tracks come first in the iteration and slot 0 melodic is
+        //     processed before slots 1+.
+        //   - Followers in 'root-follow': single-note play of the chord
+        //     context's root. step.pitch ignored.
+        //   - Followers in 'chord-tone': single-note play of a chord-tone
+        //     selected by step.pitch (index into the chord-master's intervals
+        //     with octave wrap). harmonicShift is already baked into the
+        //     chord context via the chord master's resolveChord call.
+        //   - Followers in 'semitones': independent of the chord context —
+        //     fall back to the Stage 4 behavior of resolving the track's own
+        //     voicing against the scene scale. Useful for tracks that should
+        //     stay rhythmic/melodic without auto-harmonizing.
+        const stepVoicing = step.chordVoicing ?? track.defaultChordVoicing;
+        let rootMidi: number | undefined;
+        let voiceIntervals: number[] = [0];
+        if (melodic) {
+          if (isChordMaster) {
+            // Stage 7: chord-aware mutation primitives. When mutation is up
+            // AND the step has a real chord (degree > 0), roll for a per-
+            // trigger harmonic mutation and uniformly pick one of four:
+            // dropChordTone / borrowChord / shuffleInversion / shiftSpread.
+            // The latter three change harmonic identity → published to the
+            // chord context so followers walk the mutated chord.
+            // dropChordTone is density-only on the chord master's audible
+            // voicing; followers keep seeing the full chord. Under freeze,
+            // we restore the previous cycle's mutated chord from the overlay
+            // instead of re-rolling.
+            let chordRoot: number;
+            let chordIntervals: number[];
+            let audibleIntervals: number[];
+            let publishedVoicing = stepVoicing;
+            const frozenChord = freeze
+              ? getOverlay(track.id, localStep)?.chord
+              : undefined;
+            if (frozenChord) {
+              chordRoot = frozenChord.root;
+              chordIntervals = frozenChord.intervals;
+              audibleIntervals = frozenChord.intervals;
+              publishedVoicing = frozenChord.voicing;
+            } else {
+              const authored = resolveChord(
+                rootNote,
+                scale,
+                stepVoicing,
+                pitch + harmonicShift
+              );
+              let chord = authored;
+              let droppedIntervals: number[] | null = null;
+              if (
+                !freeze &&
+                mut > 0 &&
+                stepVoicing.degree > 0 &&
+                profile.chordMutationChance > 0 &&
+                Math.random() < mut * profile.chordMutationChance
+              ) {
+                const pick = Math.floor(Math.random() * 4);
+                if (pick === 0) {
+                  droppedIntervals = dropChordTone(authored.intervals);
+                } else if (pick === 1) {
+                  const borrowed = borrowChord(
+                    rootNote,
+                    scale,
+                    stepVoicing,
+                    pitch + harmonicShift
+                  );
+                  if (borrowed) chord = borrowed;
+                } else if (pick === 2) {
+                  const v = shuffleInversion(stepVoicing);
+                  chord = resolveChord(rootNote, scale, v, pitch + harmonicShift);
+                  publishedVoicing = v;
+                } else {
+                  const v = shiftSpread(stepVoicing);
+                  chord = resolveChord(rootNote, scale, v, pitch + harmonicShift);
+                  publishedVoicing = v;
+                }
+              }
+              chordRoot = chord.root;
+              chordIntervals = chord.intervals;
+              audibleIntervals = droppedIntervals ?? chord.intervals;
+            }
+            rootMidi = chordRoot;
+            voiceIntervals = track.source.kind === 'voice' ? audibleIntervals : [0];
+            if (stepVoicing.degree > 0) {
+              setChordContext({
+                root: chordRoot,
+                intervals: chordIntervals,
+                voicing: publishedVoicing,
+              });
+            }
+            if (!freeze) {
+              attachChordToOverlay(track.id, localStep, {
+                root: chordRoot,
+                intervals: audibleIntervals,
+                voicing: publishedVoicing,
+              });
+            }
+          } else if (track.pitchInterp === 'root-follow') {
+            rootMidi = getChordContext().root;
+            voiceIntervals = [0];
+          } else if (track.pitchInterp === 'chord-tone') {
+            rootMidi = chordToneMidi(getChordContext(), pitch);
+            voiceIntervals = [0];
+          } else if (track.pitchInterp === 'scale-tone') {
+            // Scale-tone: step.pitch is a scale-degree offset above the
+            // current chord root, using the scene scale. Walks stay
+            // diatonic to the scene but the anchor moves with the chord.
+            // harmonicShift baked into chordContext.root already; don't
+            // double-apply.
+            const ctx = getChordContext();
+            const baseDegree = scaleDegreeOf(ctx.root, rootNote, scale);
+            rootMidi =
+              baseDegree !== null
+                ? quantize(rootNote, scale, baseDegree + pitch)
+                : quantize(ctx.root, scale, pitch);
+            voiceIntervals = [0];
+          } else {
+            // 'semitones' — independent, no chord-context follow.
+            const chord = resolveChord(rootNote, scale, stepVoicing, pitch + harmonicShift);
+            rootMidi = chord.root;
+            voiceIntervals = track.source.kind === 'voice' ? chord.intervals : [0];
+          }
+          // Per-track octave shift: lets bass sit two octaves below the chord
+          // master without per-step authoring, lets motifs sit above or below
+          // chord master's range, etc. Applied after role resolution so every
+          // path (chord master, follower modes) benefits.
+          if (rootMidi !== undefined && track.octave !== 0) {
+            rootMidi += track.octave * 12;
+          }
+        }
         const isInstrument = track.source.kind === 'instrument';
         const effectiveDeviceId = isInstrument
           ? resolveDeviceId(track.midi.portName, midiOutDeviceId)
           : null;
         const midiNoteDuration = Math.max(0.02, effectiveGate * rowStepDuration);
+        // Row 0 mute split tail: chord context has been updated above (if the
+        // step had a chord), but no audio fires. Same for any chord-master
+        // that's deselected during a solo.
+        if (track.mute) continue;
+        if (anySolo && !track.solo) continue;
         for (let r = 0; r < ratchet; r++) {
           const t = baseTime + r * subDur;
-          for (const m of chordMidi) {
-            if (isInstrument) {
-              if (!effectiveDeviceId) continue;
-              let outNote: number;
-              if (track.midi.note !== null) outNote = track.midi.note;
-              else if (m !== undefined) outNote = m;
-              else continue;
-              sendMIDINote(
-                effectiveDeviceId,
-                track.midi.channel,
-                outNote,
-                v,
-                t,
-                midiNoteDuration
-              );
-            } else if (track.source.kind === 'voice') {
-              samplePlayer.trigger(
-                track.source.id,
-                t,
-                v * track.gain,
-                m,
-                effectiveGate,
-                rowStepDuration,
-                modulated(track.fxSend, lfos, track.id, 'fxSend')
-              );
-            }
+          if (isInstrument) {
+            if (!effectiveDeviceId) continue;
+            let outNote: number;
+            if (track.midi.note !== null) outNote = track.midi.note;
+            else if (rootMidi !== undefined) outNote = rootMidi;
+            else continue;
+            sendMIDINote(
+              effectiveDeviceId,
+              track.midi.channel,
+              outNote,
+              v,
+              t,
+              midiNoteDuration
+            );
+          } else if (track.source.kind === 'voice') {
+            samplePlayer.trigger(
+              track.source.id,
+              t,
+              v * track.gain,
+              rootMidi,
+              effectiveGate,
+              rowStepDuration,
+              modulated(track.fxSend, lfos, track.id, 'fxSend'),
+              voiceIntervals
+            );
           }
         }
       }

@@ -8,7 +8,7 @@ import type { MidiMessage } from './midiIn';
 // Track knob targets carry a positional index (0..15) into `tracks[]`,
 // not a track id, so bindings survive across `.seq` files as long as
 // the slot at that position has a similar role.
-export type TrackKnobTargetName = 'mutation' | 'morph' | 'rowRatchet' | 'fxSend';
+export type TrackKnobTargetName = 'mutation' | 'rowRatchet' | 'fxSend';
 export type FxKnobTargetName =
   | 'tape.position'
   | 'tape.length'
@@ -82,7 +82,6 @@ export const FX_KNOB_TARGETS: FxKnobTargetName[] = [
 
 export const TRACK_KNOB_TARGETS: TrackKnobTargetName[] = [
   'mutation',
-  'morph',
   'rowRatchet',
   'fxSend',
 ];
@@ -150,9 +149,6 @@ function dispatchTarget(target: string, value01: number): void {
     switch (knob) {
       case 'mutation':
         s.setTrackMutation(track.id, value01);
-        return;
-      case 'morph':
-        s.setTrackMorph(track.id, value01);
         return;
       case 'rowRatchet':
         s.setTrackRowRatchet(track.id, value01);

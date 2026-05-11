@@ -2,12 +2,29 @@ import { useEffect, useRef, type RefObject } from 'react';
 import {
   useSequencerStore,
   STEP_RATES,
+  DRUM_STEP_RATES,
+  PITCH_INTERPS,
   type Track as TrackData,
   type StepRate,
+  type PitchInterp,
 } from '../state/store';
 import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 import type { MIDIOutputInfo } from '../audio/midiOut';
-import { getInstrument } from '../instruments/library';
+import { getInstrument, sourceIsMelodic } from '../instruments/library';
+import {
+  CHORD_DEGREES,
+  CHORD_EXTENSIONS,
+  CHORD_INVERSIONS,
+  CHORD_SPREADS,
+  DEGREE_LABELS,
+  EXTENSION_LABELS,
+  SPREAD_LABELS,
+  type ChordDegree,
+  type ChordExtension,
+  type ChordInversion,
+  type ChordSpread,
+  type ChordVoicing,
+} from '../audio/chords';
 
 const CELL = 36;
 
@@ -23,11 +40,16 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const setTrackRate = useSequencerStore((s) => s.setTrackRate);
   const setTrackMidi = useSequencerStore((s) => s.setTrackMidi);
   const setTrackGain = useSequencerStore((s) => s.setTrackGain);
+  const setTrackDefaultChordVoicing = useSequencerStore((s) => s.setTrackDefaultChordVoicing);
+  const setTrackPitchInterp = useSequencerStore((s) => s.setTrackPitchInterp);
+  const setTrackOctave = useSequencerStore((s) => s.setTrackOctave);
   const fireTrackProgram = useSequencerStore((s) => s.fireTrackProgram);
   const globalDeviceId = useSequencerStore((s) => s.midiOutDeviceId);
   const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
   const instrument = instrumentId ? getInstrument(instrumentId) : undefined;
   const outputs = useMIDIOutputs();
+  const isMelodic = sourceIsMelodic(track.source);
+  const availableRates = track.section === 'melodic' ? STEP_RATES : DRUM_STEP_RATES;
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,13 +107,33 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
           className="select-chevron bg-transparent border border-white/15 pl-2 pr-6 text-[12px] tabular-nums focus:outline-none focus:border-white text-white"
           title="step rate (note duration per row step)"
         >
-          {STEP_RATES.map((r) => (
+          {availableRates.map((r) => (
             <option key={r} value={r} className="bg-[#050505]">
               {r}
             </option>
           ))}
         </select>
       </label>
+      {isMelodic && (
+        <>
+          <div className="self-stretch w-px bg-white/15 mx-1" />
+          <ChordVoicingFields
+            voicing={track.defaultChordVoicing}
+            onChange={(next) => setTrackDefaultChordVoicing(track.id, next)}
+          />
+          <PitchInterpField
+            value={track.pitchInterp}
+            onChange={(v) => setTrackPitchInterp(track.id, v)}
+          />
+          <NumField
+            label="oct"
+            value={track.octave}
+            min={-4}
+            max={4}
+            onChange={(v) => setTrackOctave(track.id, v)}
+          />
+        </>
+      )}
       {instrument && (
         <>
           <div className="self-stretch w-px bg-white/15 mx-1" />
@@ -218,6 +260,144 @@ function NullableNumField({
         style={{ width: CELL, height: CELL }}
         className="bg-transparent border border-white/15 text-center text-[14px] tabular-nums focus:outline-none focus:border-white placeholder:text-white/25"
       />
+    </label>
+  );
+}
+
+// Per-track default chord voicing — applied by dispatch when a step has no
+// chordVoicing plock. Single-letter labels (C / E / I / S) keep the row panel
+// horizontally compact since this is a 4-control block. NDLR-style: C is the
+// scale degree, E is the extension stacked on the degree, I and S are texture
+// controls. Disabled when degree=0 (no chord) — single-note steps don't need
+// inversion or spread.
+const hasChord = (v: ChordVoicing): boolean => v.degree > 0;
+
+function ChordVoicingFields({
+  voicing,
+  onChange,
+}: {
+  voicing: ChordVoicing;
+  onChange: (next: ChordVoicing) => void;
+}) {
+  return (
+    <>
+      <VoicingSelect
+        label="C"
+        value={String(voicing.degree)}
+        options={CHORD_DEGREES.map(String)}
+        format={(v) => DEGREE_LABELS[Number(v) as ChordDegree]}
+        onChange={(v) => onChange({ ...voicing, degree: Number(v) as ChordDegree })}
+        title="chord — scale degree (— = single note)"
+      />
+      <VoicingSelect
+        label="E"
+        value={voicing.extension}
+        options={CHORD_EXTENSIONS}
+        format={(v) => EXTENSION_LABELS[v as ChordExtension]}
+        onChange={(v) => onChange({ ...voicing, extension: v as ChordExtension })}
+        disabled={!hasChord(voicing)}
+        title="extension — triad / 7 / 9 / 11 / sus2 / sus4"
+      />
+      <VoicingSelect
+        label="I"
+        value={String(voicing.inversion)}
+        options={CHORD_INVERSIONS.map(String)}
+        format={(v) => v}
+        onChange={(v) => onChange({ ...voicing, inversion: Number(v) as ChordInversion })}
+        disabled={!hasChord(voicing)}
+        title="inversion"
+      />
+      <VoicingSelect
+        label="S"
+        value={voicing.spread}
+        options={CHORD_SPREADS}
+        format={(v) => SPREAD_LABELS[v as ChordSpread]}
+        onChange={(v) => onChange({ ...voicing, spread: v as ChordSpread })}
+        disabled={!hasChord(voicing)}
+        title="spread — close / open / wide"
+      />
+    </>
+  );
+}
+
+// How `step.pitch` is interpreted on this track. Defaults are position-based
+// (chord master = semitones, bass + motifs = chord-tone) but user-overridable.
+// Labels describe behavior:
+//   ignore = semitones  — track is independent, doesn't follow chord master.
+//   chord  = chord-tone — step.pitch is an index into chord master's chord
+//                         tones (R, 3, 5, 7, 9, 11). Big leaps, harmony-glued.
+//   scale  = scale-tone — step.pitch is a scale-degree offset above the
+//                         chord master's current root. Diatonic stepwise walks.
+//   drone  = root-follow — always plays chord master's root, pitch ignored.
+const INTERP_LABELS: Record<PitchInterp, string> = {
+  semitones: 'ignore',
+  'chord-tone': 'chord',
+  'scale-tone': 'scale',
+  'root-follow': 'drone',
+};
+
+function PitchInterpField({
+  value,
+  onChange,
+}: {
+  value: PitchInterp;
+  onChange: (v: PitchInterp) => void;
+}) {
+  return (
+    <label
+      className="flex flex-col items-start gap-1"
+      title="pitch interp — how step.pitch reads on this track"
+    >
+      <span className="text-[9px] uppercase tracking-widest text-white/40">interp</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as PitchInterp)}
+        style={{ height: CELL }}
+        className="select-chevron bg-transparent border border-white/15 pl-2 pr-6 text-[12px] focus:outline-none focus:border-white text-white"
+      >
+        {PITCH_INTERPS.map((p) => (
+          <option key={p} value={p} className="bg-[#050505]">
+            {INTERP_LABELS[p]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function VoicingSelect({
+  label,
+  value,
+  options,
+  format,
+  onChange,
+  disabled,
+  title,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  format: (v: string) => string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <label className="flex flex-col items-start gap-1" title={title}>
+      <span className="text-[9px] uppercase tracking-widest text-white/40">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        style={{ height: CELL }}
+        className="select-chevron bg-transparent border border-white/15 pl-2 pr-6 text-[12px] focus:outline-none focus:border-white text-white disabled:opacity-30"
+      >
+        {options.map((opt) => (
+          <option key={opt} value={opt} className="bg-[#050505]">
+            {format(opt)}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

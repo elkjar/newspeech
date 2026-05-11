@@ -15,13 +15,22 @@ import {
   type TrackSource,
 } from '../instruments/library';
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
-import { ensureBothSections, hydrateTrack, hydrateLFOs } from './hydrate';
+import { ensureBothSections, hydrateTrack, hydrateLFOs, applyPositionalRoleDefaults, hydrateBanks } from './hydrate';
+import {
+  hydrateTape as hydrateTapeFromPreset,
+  hydrateGlitch as hydrateGlitchFromPreset,
+  hydrateReverb as hydrateReverbFromPreset,
+  hydrateSaturation as hydrateSaturationFromPreset,
+  hydrateMaster as hydrateMasterFromPreset,
+} from './persist';
 import defaultPreset from './defaultPreset.json';
-import { DEFAULT_TAPE_PARAMS, setTapeParams as applyTapeParams, type TapeParams } from '../audio/tape';
-import { DEFAULT_GLITCH_PARAMS, setGlitchParams as applyGlitchParams, type GlitchParams } from '../audio/glitch';
-import { DEFAULT_REVERB_PARAMS, setReverbParams as applyReverbParams, type ReverbParams } from '../audio/reverb';
-import { DEFAULT_SATURATION_PARAMS, setSaturationParams as applySaturationParams, type SaturationParams } from '../audio/saturation';
-import { DEFAULT_MASTER_PARAMS, MASTER_PRESETS, setMasterParams as applyMasterParams, type MasterParams } from '../audio/master';
+import { setTapeParams as applyTapeParams, type TapeParams } from '../audio/tape';
+import { setGlitchParams as applyGlitchParams, type GlitchParams } from '../audio/glitch';
+import { setReverbParams as applyReverbParams, type ReverbParams } from '../audio/reverb';
+import { setSaturationParams as applySaturationParams, type SaturationParams } from '../audio/saturation';
+import { MASTER_PRESETS, setMasterParams as applyMasterParams, type MasterParams } from '../audio/master';
+import type { ChordVoicing } from '../audio/chords';
+import { resetChordContext } from '../audio/chordContext';
 
 export type EditMode = 'live' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
@@ -39,6 +48,11 @@ export interface Step {
   microTiming: number;
   gate: number;
   tieToNext: boolean;
+  // Optional per-step chord-voicing plock. When undefined, dispatch falls
+  // back to the track's `defaultChordVoicing`. The first per-step parameter
+  // that's a sparse override rather than a direct field — kept as a clean
+  // pattern for any future plocks.
+  chordVoicing?: ChordVoicing;
 }
 
 export interface EuclideanParams {
@@ -48,13 +62,39 @@ export interface EuclideanParams {
 
 export type TrackSection = 'drum' | 'melodic';
 
-export type StepRate = '1/4' | '1/8' | '1/16' | '1/32';
+// How `step.pitch` is interpreted at dispatch on melodic tracks. Four modes:
+//   - 'semitones' (UI: ignore) — independent. step.pitch is a scale-degree
+//     offset against the scene tonic. Track doesn't follow the chord master.
+//   - 'chord-tone' (UI: chord) — follower. step.pitch is an INDEX into the
+//     chord master's current chord tones (root / 3rd / 5th / 7th / 9th /
+//     11th depending on extension). Big leaps that lock to harmony.
+//   - 'scale-tone' (UI: scale) — follower. step.pitch is a scale-degree
+//     offset from the chord master's CURRENT root, using the scene scale.
+//     Stepwise diatonic walks that move with the chord.
+//   - 'root-follow' (UI: drone) — follower. step.pitch ignored, always
+//     plays the chord master's current root.
+// Row 0 (chord master) ignores its own pitchInterp at dispatch — uses its
+// chord voicing for the whole trigger.
+export type PitchInterp = 'semitones' | 'chord-tone' | 'scale-tone' | 'root-follow';
 
-export const STEP_RATES: StepRate[] = ['1/4', '1/8', '1/16', '1/32'];
+export const PITCH_INTERPS: PitchInterp[] = ['semitones', 'chord-tone', 'scale-tone', 'root-follow'];
 
-// number of global scheduler ticks per row step. Scheduler runs at 32nds (8/beat),
-// so 1/32 = 1 tick, 1/16 = 2, 1/8 = 4, 1/4 = 8.
+export type StepRate = '2/1' | '1/1' | '1/2' | '1/4' | '1/8' | '1/16' | '1/32';
+
+// Full rate set, longest-first to match dropdown order. Melodic rows expose
+// all entries; drum rows are gated to DRUM_STEP_RATES via the row-panel UI to
+// keep the drum workflow within familiar bounds.
+export const STEP_RATES: StepRate[] = ['2/1', '1/1', '1/2', '1/4', '1/8', '1/16', '1/32'];
+export const DRUM_STEP_RATES: StepRate[] = ['1/4', '1/8', '1/16', '1/32'];
+
+// number of global scheduler ticks per row step. Scheduler runs at 32nds
+// (8/beat = 32/bar in 4/4), so:
+//   1/32 = 1, 1/16 = 2, 1/8 = 4, 1/4 = 8, 1/2 = 16, 1/1 = 32 (one bar), 2/1 = 64 (two bars).
+// A 16-step row at 2/1 = 32 bars per cycle.
 export const RATE_STRIDE: Record<StepRate, number> = {
+  '2/1': 64,
+  '1/1': 32,
+  '1/2': 16,
   '1/4': 8,
   '1/8': 4,
   '1/16': 2,
@@ -81,11 +121,8 @@ export interface Track {
   viewPage: number;
   mutation: number;
   rowRatchet: number;
-  morph: number;
   rate: StepRate;
   lockTiming: boolean;
-  slotA: Step[] | null;
-  slotB: Step[] | null;
   euclidean: EuclideanParams;
   steps: Step[];
   midi: TrackMidi;
@@ -95,6 +132,20 @@ export interface Track {
   // to destination, bypassing tape/glitch/reverb/sat. 1 = full FX chain.
   // Per-trigger snapshot — LFO modulation steps per trigger, not glides.
   fxSend: number;
+  // Track-level default chord voicing — applied by dispatch when a step has
+  // no chordVoicing plock. Position-locked behavior (row 1 = chord master)
+  // lands in Stage 5; Stage 4 just persists the field so per-step plocks
+  // have something to fall back to.
+  defaultChordVoicing: ChordVoicing;
+  // How `step.pitch` is read on this track. Defaults are positional but
+  // user-overridable via the row panel. Ignored for drum tracks and for the
+  // chord master row (its own voicing drives the trigger).
+  pitchInterp: PitchInterp;
+  // Per-track octave offset in octave units (integer, semitones = octave*12).
+  // Default 0 for most rows; bass row 1 defaults to -2 so the chord context's
+  // root lands in bass range rather than chord-master range. Applied to every
+  // melodic trigger after the role-based note resolution.
+  octave: number;
 }
 
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
@@ -200,15 +251,16 @@ interface SequencerState {
   setStepMicroTiming: (trackId: string, index: number, microTiming: number) => void;
   setStepGate: (trackId: string, index: number, gate: number) => void;
   setStepTie: (trackId: string, index: number, tied: boolean) => void;
+  setStepChordVoicing: (trackId: string, index: number, voicing: ChordVoicing | undefined) => void;
+  setTrackDefaultChordVoicing: (trackId: string, voicing: ChordVoicing) => void;
+  setTrackPitchInterp: (trackId: string, pitchInterp: PitchInterp) => void;
+  setTrackOctave: (trackId: string, octave: number) => void;
   setTrackMutation: (trackId: string, mutation: number) => void;
   setTrackGain: (trackId: string, gain: number) => void;
   setTrackFxSend: (trackId: string, fxSend: number) => void;
   setTrackRate: (trackId: string, rate: StepRate) => void;
   setTrackLockTiming: (trackId: string, lock: boolean) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
-  setTrackMorph: (trackId: string, morph: number) => void;
-  snapTrackSlot: (trackId: string, slot: 'A' | 'B', clear?: boolean) => void;
-  recallTrackSlot: (trackId: string, slot: 'A' | 'B') => void;
   clearTrack: (trackId: string) => void;
   commitMutationOverlay: () => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
@@ -243,20 +295,17 @@ function emptySteps(): Step[] {
   }));
 }
 
-function cloneSteps(steps: Step[] | null): Step[] | null {
-  if (!steps) return null;
-  return steps.map((s) => ({ ...s }));
-}
-
 export function cloneTrack(t: Track): Track {
   return {
     ...t,
     source: { ...t.source } as TrackSource,
     midi: { ...t.midi },
     euclidean: { ...t.euclidean },
-    steps: t.steps.map((s) => ({ ...s })),
-    slotA: cloneSteps(t.slotA),
-    slotB: cloneSteps(t.slotB),
+    defaultChordVoicing: { ...t.defaultChordVoicing },
+    steps: t.steps.map((s) => ({
+      ...s,
+      chordVoicing: s.chordVoicing ? { ...s.chordVoicing } : undefined,
+    })),
   };
 }
 
@@ -280,9 +329,16 @@ function snapshotBank(state: {
   };
 }
 
-const presetTracks = ensureBothSections(
-  (defaultPreset.tracks as Array<Partial<Track> & { id: string }>).map(hydrateTrack)
+const rawPresetTracks = defaultPreset.tracks as Array<Partial<Track> & { id: string }>;
+const presetTracks = applyPositionalRoleDefaults(
+  ensureBothSections(rawPresetTracks.map(hydrateTrack)),
+  rawPresetTracks
 );
+// Seed the chord context against the preset's scene root + scale so the very
+// first follower-row trigger (before the chord master has played a step)
+// harmonizes against the preset's intended key rather than the chord-context
+// module's hardcoded C-major fallback.
+resetChordContext(defaultPreset.rootNote, defaultPreset.scale as Scale);
 
 function clamp01(v: unknown, fallback = 0.5): number {
   return typeof v === 'number' && Number.isFinite(v)
@@ -298,11 +354,28 @@ const initialMacros: BankMacros = {
   tension: clamp01((defaultPreset as { tension?: unknown }).tension),
 };
 
-const initialBanks: (BankSlot | null)[] = Array(BANK_SLOT_COUNT).fill(null);
-initialBanks[0] = {
-  tracks: presetTracks.map(cloneTrack),
-  macros: { ...initialMacros },
-};
+// Hydrate banks from the preset when provided. Fallback seeder runs when
+// the preset has no `banks` field — preserves the legacy single-slot init.
+const initialBanks: (BankSlot | null)[] = hydrateBanks(
+  (defaultPreset as { banks?: unknown }).banks,
+  () => ({
+    tracks: presetTracks.map(cloneTrack),
+    macros: { ...initialMacros },
+  })
+);
+
+// Validate activeBank: must be a populated slot, else fall back to the first
+// populated slot (or 0 if none).
+const rawActiveBank = (defaultPreset as { activeBank?: unknown }).activeBank;
+const requestedActive =
+  typeof rawActiveBank === 'number' && Number.isFinite(rawActiveBank)
+    ? Math.max(0, Math.min(BANK_SLOT_COUNT - 1, Math.floor(rawActiveBank)))
+    : 0;
+const initialActiveBank = initialBanks[requestedActive]
+  ? requestedActive
+  : initialBanks.findIndex((b) => b !== null) >= 0
+    ? initialBanks.findIndex((b) => b !== null)
+    : 0;
 
 function fireTrackProgramChange(track: Track, fallbackId: string | null): void {
   if (track.source.kind !== 'instrument') return;
@@ -331,38 +404,38 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   drift: initialMacros.drift,
   tension: initialMacros.tension,
   banks: initialBanks,
-  activeBank: 0,
+  activeBank: initialActiveBank,
   pendingBank: null,
   freeze: false,
-  tape: { ...DEFAULT_TAPE_PARAMS },
+  tape: hydrateTapeFromPreset((defaultPreset as { tape?: unknown }).tape),
   setTape: (patch) =>
     set((state) => {
       const next = { ...state.tape, ...patch };
       applyTapeParams(next);
       return { tape: next };
     }),
-  glitch: { ...DEFAULT_GLITCH_PARAMS },
+  glitch: hydrateGlitchFromPreset((defaultPreset as { glitch?: unknown }).glitch),
   setGlitch: (patch) =>
     set((state) => {
       const next = { ...state.glitch, ...patch };
       applyGlitchParams(next);
       return { glitch: next };
     }),
-  reverb: { ...DEFAULT_REVERB_PARAMS },
+  reverb: hydrateReverbFromPreset((defaultPreset as { reverb?: unknown }).reverb),
   setReverb: (patch) =>
     set((state) => {
       const next = { ...state.reverb, ...patch };
       applyReverbParams(next);
       return { reverb: next };
     }),
-  saturation: { ...DEFAULT_SATURATION_PARAMS },
+  saturation: hydrateSaturationFromPreset((defaultPreset as { saturation?: unknown }).saturation),
   setSaturation: (patch) =>
     set((state) => {
       const next = { ...state.saturation, ...patch };
       applySaturationParams(next);
       return { saturation: next };
     }),
-  master: { ...DEFAULT_MASTER_PARAMS },
+  master: hydrateMasterFromPreset((defaultPreset as { master?: unknown }).master),
   setMaster: (patch) =>
     set((state) => {
       const next = { ...state.master, ...patch };
@@ -438,11 +511,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
                 ...t,
                 source: { kind: 'empty' },
                 steps: emptySteps(),
-                slotA: null,
-                slotB: null,
                 lockTiming: false,
                 mutation: 0,
-                morph: 0,
                 rowRatchet: 0,
                 length: DEFAULT_LENGTH,
                 viewPage: 0,
@@ -473,11 +543,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
                 ...t,
                 source: next,
                 steps: emptySteps(),
-                slotA: null,
-                slotB: null,
                 lockTiming: false,
                 mutation: 0,
-                morph: 0,
                 rowRatchet: 0,
                 length: DEFAULT_LENGTH,
                 viewPage: 0,
@@ -637,6 +704,34 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         return { ...t, steps };
       }),
     })),
+  setStepChordVoicing: (trackId, index, voicing) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const steps = t.steps.slice();
+        const cur = steps[index];
+        // undefined → strip the plock; otherwise overwrite the existing voicing.
+        const { chordVoicing: _omit, ...rest } = cur;
+        steps[index] = voicing === undefined ? rest : { ...rest, chordVoicing: voicing };
+        return { ...t, steps };
+      }),
+    })),
+  setTrackDefaultChordVoicing: (trackId, voicing) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) =>
+        t.id === trackId ? { ...t, defaultChordVoicing: voicing } : t
+      ),
+    })),
+  setTrackPitchInterp: (trackId, pitchInterp) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, pitchInterp } : t)),
+    })),
+  setTrackOctave: (trackId, octave) => {
+    const clamped = Math.max(-4, Math.min(4, Math.round(octave)));
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, octave: clamped } : t)),
+    }));
+  },
   setTrackMutation: (trackId, mutation) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(mutation) ? mutation : 0));
     set((state) => ({
@@ -669,33 +764,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rowRatchet: clamped } : t)),
     }));
   },
-  setTrackMorph: (trackId, morph) => {
-    const clamped = Math.max(0, Math.min(1, Number.isFinite(morph) ? morph : 0));
-    set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, morph: clamped } : t)),
-    }));
-  },
-  snapTrackSlot: (trackId, slot, clear = false) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) => {
-        if (t.id !== trackId) return t;
-        const snapshot = clear ? null : t.steps.map((s) => ({ ...s }));
-        return slot === 'A' ? { ...t, slotA: snapshot } : { ...t, slotB: snapshot };
-      }),
-    })),
-  recallTrackSlot: (trackId, slot) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) => {
-        if (t.id !== trackId) return t;
-        const snap = slot === 'A' ? t.slotA : t.slotB;
-        if (!snap) return t;
-        return {
-          ...t,
-          steps: snap.map((s) => ({ ...s })),
-          morph: slot === 'A' ? 0 : 1,
-        };
-      }),
-    })),
   clearTrack: (trackId) =>
     set((state) => ({
       tracks: state.tracks.map((t) =>

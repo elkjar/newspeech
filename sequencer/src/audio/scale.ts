@@ -29,6 +29,22 @@ export function octaveDegrees(scale: Scale): number {
   return SCALE_INTERVALS[scale].length;
 }
 
+// Find the scale-degree index of `midi` relative to `sceneTonic`. Returns
+// null if `midi` doesn't land on a scale tone (rare — chord roots produced
+// by `resolveChord` always quantize to the scene scale, so a non-null result
+// is the expected case at dispatch). The returned index is octave-aware:
+// values past one octave above tonic return `scaleLength + remainder`, etc.
+export function scaleDegreeOf(midi: number, sceneTonic: number, scale: Scale): number | null {
+  const intervals = SCALE_INTERVALS[scale];
+  const len = intervals.length;
+  const semitoneDelta = midi - sceneTonic;
+  const fullOctaves = Math.floor(semitoneDelta / 12);
+  const remainder = ((semitoneDelta % 12) + 12) % 12;
+  const idx = intervals.indexOf(remainder);
+  if (idx === -1) return null;
+  return idx + fullOctaves * len;
+}
+
 export function fifthDegrees(scale: Scale): number {
   const intervals = SCALE_INTERVALS[scale];
   const idx = intervals.indexOf(7);

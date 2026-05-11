@@ -5,7 +5,13 @@ import {
   type TrackSection,
   type BankSlot,
 } from './store';
-import { ensureBothSections, hydrateTrack, hydrateLFOs, hydrateBanks } from './hydrate';
+import {
+  ensureBothSections,
+  hydrateTrack,
+  hydrateLFOs,
+  hydrateBanks,
+  applyPositionalRoleDefaults,
+} from './hydrate';
 import { type LFO } from '../audio/lfo';
 import type { Scale } from '../audio/scale';
 import { DEFAULT_TAPE_PARAMS, type TapeParams } from '../audio/tape';
@@ -13,6 +19,7 @@ import { DEFAULT_GLITCH_PARAMS, type GlitchParams } from '../audio/glitch';
 import { DEFAULT_REVERB_PARAMS, type ReverbParams } from '../audio/reverb';
 import { DEFAULT_SATURATION_PARAMS, type SaturationParams } from '../audio/saturation';
 import { DEFAULT_MASTER_PARAMS, type MasterParams } from '../audio/master';
+import { resetChordContext } from '../audio/chordContext';
 
 interface PersistedState {
   version: number;
@@ -43,7 +50,15 @@ function clamp01(v: unknown, fallback = 0.5): number {
     : fallback;
 }
 
-const CURRENT_VERSION = 1;
+// v3 (2026-05-11): ChordVoicing schema swapped to scale-degree-driven model
+// `{degree, extension, inversion, spread}` — the old `{type, inversion, spread}`
+// shape is rejected by `parseChordVoicing` so v2 plocks load as undefined and
+// the position-based defaulting fills in `{degree: 1, triad}` for the first
+// melodic row and `{degree: 0}` (single note) for everything else. Users with
+// v2 chord plocks lose them at load time — migration is destructive by design,
+// since chord type alone doesn't carry the scale degree info needed to
+// reconstruct the user's intent for the new scale-relative model.
+const CURRENT_VERSION = 3;
 
 export function exportProject(): string {
   const s = useSequencerStore.getState();
@@ -72,7 +87,7 @@ export function exportProject(): string {
   return JSON.stringify(data, null, 2);
 }
 
-function hydrateTape(v: unknown): TapeParams {
+export function hydrateTape(v: unknown): TapeParams {
   const t = (v && typeof v === 'object' ? v : {}) as Partial<TapeParams> & {
     stretch?: number;
     geneRate?: number;
@@ -110,7 +125,7 @@ function hydrateTape(v: unknown): TapeParams {
   };
 }
 
-function hydrateGlitch(v: unknown): GlitchParams {
+export function hydrateGlitch(v: unknown): GlitchParams {
   const g = (v && typeof v === 'object' ? v : {}) as Partial<GlitchParams>;
   return {
     chance: clamp01(g.chance, DEFAULT_GLITCH_PARAMS.chance),
@@ -118,7 +133,7 @@ function hydrateGlitch(v: unknown): GlitchParams {
   };
 }
 
-function hydrateReverb(v: unknown): ReverbParams {
+export function hydrateReverb(v: unknown): ReverbParams {
   const r = (v && typeof v === 'object' ? v : {}) as Partial<ReverbParams>;
   return {
     size: clamp01(r.size, DEFAULT_REVERB_PARAMS.size),
@@ -126,14 +141,14 @@ function hydrateReverb(v: unknown): ReverbParams {
   };
 }
 
-function hydrateSaturation(v: unknown): SaturationParams {
+export function hydrateSaturation(v: unknown): SaturationParams {
   const s = (v && typeof v === 'object' ? v : {}) as Partial<SaturationParams>;
   return {
     preDrive: clamp01(s.preDrive, DEFAULT_SATURATION_PARAMS.preDrive),
   };
 }
 
-function hydrateMaster(v: unknown): MasterParams {
+export function hydrateMaster(v: unknown): MasterParams {
   const m = (v && typeof v === 'object' ? v : {}) as Partial<MasterParams>;
   const loCutRaw =
     typeof m.loCut === 'number' && Number.isFinite(m.loCut)
@@ -185,11 +200,13 @@ export function importProject(json: string): boolean {
   }
   if (!data || typeof data !== 'object' || !Array.isArray(data.tracks)) return false;
 
-  const tracks = ensureBothSections(
-    (data.tracks as unknown as Array<Partial<Track>>)
-      .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
-      .map(hydrateTrack)
+  const rawTracks = (data.tracks as unknown as Array<Partial<Track>>)
+    .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string');
+  const hydratedTracks = applyPositionalRoleDefaults(
+    ensureBothSections(rawTracks.map(hydrateTrack)),
+    rawTracks
   );
+  const tracks = hydratedTracks;
   const viewSection: TrackSection =
     data.viewSection === 'melodic' ? 'melodic' : 'drum';
 
@@ -241,6 +258,13 @@ export function importProject(json: string): boolean {
     selectedStep: null,
     tieAnchor: null,
   });
+  // Re-seed the chord context so followers (root-follow / chord-tone tracks)
+  // have a sensible starting harmony before the chord master plays its first
+  // step on the loaded project's scale.
+  resetChordContext(
+    typeof data.rootNote === 'number' ? data.rootNote : 60,
+    data.scale ?? 'major'
+  );
   return true;
 }
 

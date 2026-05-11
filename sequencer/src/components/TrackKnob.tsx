@@ -8,7 +8,6 @@ import type { MidiTarget, TrackKnobTargetName } from '../midi/midiMap';
 const LABELS: Record<LFODestKnobTrack, string> = {
   mutation: 'mutation',
   rowRatchet: 'row ratchet',
-  morph: 'morph',
   fxSend: 'fx send',
 };
 
@@ -18,8 +17,6 @@ function readKnob(track: TrackData, knob: LFODestKnobTrack): number {
       return track.mutation;
     case 'rowRatchet':
       return track.rowRatchet;
-    case 'morph':
-      return track.morph;
     case 'fxSend':
       return track.fxSend;
   }
@@ -33,9 +30,6 @@ function writeKnob(trackId: string, knob: LFODestKnobTrack, value: number): void
       return;
     case 'rowRatchet':
       s.setTrackRowRatchet(trackId, value);
-      return;
-    case 'morph':
-      s.setTrackMorph(trackId, value);
       return;
     case 'fxSend':
       s.setTrackFxSend(trackId, value);
