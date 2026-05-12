@@ -22,6 +22,7 @@
 <meta name="twitter:title" content="NEWSPEECH // samples">
 <meta name="twitter:description" content="newspeech — sample library. CC BY-SA 4.0.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
   @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")  format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2") format("woff2"); font-display: swap; }
@@ -114,6 +115,26 @@
 
   /* a chevron in the prefix indicates open/closed for dirs */
   .row.dir .marker { display: inline-block; width: 1ch; opacity: 0.6; }
+
+  /* pack-level zip download — sits to the right of the dir name. visually
+     parallels the per-file .dl link inside the preview block. */
+  .pack-dl {
+    margin-left: auto;
+    padding-left: 32px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    padding-bottom: 1px;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .pack-dl:hover { opacity: 1; border-bottom-color: rgba(255, 255, 255, 0.9); }
+  .pack-dl[aria-busy="true"] { opacity: 0.85; cursor: progress; border-bottom-color: transparent; }
+  .pack-dl[aria-disabled="true"] { opacity: 0.3; cursor: not-allowed; border-bottom-color: transparent; }
 
   .preview {
     padding: 14px 0 22px 0;
@@ -344,9 +365,16 @@ function renderNode(node, parentLast, isLast, parentPath) {
     dir.dataset.depth = String(parentLast.length);
     if (startHidden) dir.style.display = "none";
     const fileCount = countFiles(node);
+    // pack-level rows (depth 1: cat/pack) get a "↓ zip" action on the right.
+    // category-level (depth 0) and voice-level (depth 2) rows don't.
+    const isPackLevel = parentLast.length === 1;
+    const packDl = isPackLevel
+      ? `<span class="pack-dl" role="button" tabindex="0" data-pack-path="${path}" data-pack-name="${node.name}">↓ zip</span>`
+      : "";
     dir.innerHTML =
       `<span class="prefix">${prefix}<span class="marker">▸</span> </span>` +
-      `<span class="name" data-count="${fileCount} ${fileCount === 1 ? 'file' : 'files'}">${node.name}/</span>`;
+      `<span class="name" data-count="${fileCount} ${fileCount === 1 ? 'file' : 'files'}">${node.name}/</span>` +
+      packDl;
     tree.appendChild(dir);
 
     // recurse into children
@@ -684,9 +712,99 @@ function drawAndTick(state) {
 }
 
 // =========================================================================
+// pack-level zip download — client-side via JSZip. fetches every leaf under
+// the pack's subtree + its manifest.json, zips them with paths relative to
+// the pack root, and saves as newspeech-<pack>.zip. blocked while in flight
+// to prevent duplicate fires.
+// =========================================================================
+function collectPackLeaves(packNode) {
+  const leaves = [];
+  function walk(n) {
+    if (n.children) n.children.forEach(walk);
+    else if (n.url) leaves.push(n);
+  }
+  walk(packNode);
+  return leaves;
+}
+
+async function zipPack(btn, packPath, packName) {
+  if (typeof window.JSZip !== "function") {
+    console.warn("zipPack: JSZip not loaded");
+    return;
+  }
+  if (btn.getAttribute("aria-busy") === "true") return;
+  const packNode = NODE_BY_PATH.get(packPath);
+  if (!packNode) return;
+  const leaves = collectPackLeaves(packNode);
+  if (!leaves.length) return;
+
+  // baseUrl is the URL prefix shared by every leaf in this pack; strip it
+  // to get the relative path inside the zip.
+  const baseUrl = `${SAMPLE_BASE}/${packPath}`;
+  const origLabel = btn.textContent;
+  btn.setAttribute("aria-busy", "true");
+  btn.textContent = `0 / ${leaves.length}`;
+
+  const zip = new window.JSZip();
+  let done = 0;
+  let failed = 0;
+
+  // pull manifest.json too so the zip is a self-contained pack
+  try {
+    const m = await fetch(`${baseUrl}/manifest.json`);
+    if (m.ok) zip.file("manifest.json", await m.arrayBuffer());
+  } catch (err) {
+    console.warn(`zipPack: manifest.json fetch failed for ${packPath}`, err);
+  }
+
+  // serial fetches keep the progress label readable + avoid hammering a single
+  // origin. these are static assets so parallelism wouldn't speed them up much.
+  for (const leaf of leaves) {
+    try {
+      const r = await fetch(leaf.url);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      const buf = await r.arrayBuffer();
+      const rel = leaf.url.startsWith(baseUrl + "/")
+        ? leaf.url.slice(baseUrl.length + 1)
+        : leaf.url.split("/").pop();
+      zip.file(rel, buf);
+    } catch (err) {
+      console.warn(`zipPack: failed to fetch ${leaf.url}`, err);
+      failed++;
+    }
+    done++;
+    btn.textContent = `${done} / ${leaves.length}`;
+  }
+
+  btn.textContent = "zipping…";
+  try {
+    const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `newspeech-${packName}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    console.warn(`zipPack: zip generation failed for ${packPath}`, err);
+  }
+
+  btn.removeAttribute("aria-busy");
+  btn.textContent = failed ? `↓ zip (${failed} missing)` : origLabel;
+}
+
+// =========================================================================
 // click delegation
 // =========================================================================
 tree.addEventListener("click", (e) => {
+  const dl = e.target.closest(".pack-dl");
+  if (dl) {
+    e.stopPropagation();
+    zipPack(dl, dl.dataset.packPath, dl.dataset.packName);
+    return;
+  }
   const row = e.target.closest(".row");
   if (!row) return;
   if (row.classList.contains("dir")) {
