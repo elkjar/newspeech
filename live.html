@@ -1281,11 +1281,73 @@ patchSelect.addEventListener("change", () => {
 
   const m = location.hash.match(/^#code=(.+)$/);
   if (m) {
-    try { el.editor.setCode(decodeCode(m[1])); return; } catch (e) {}
+    try { el.editor.setCode(decodeCode(m[1])); }
+    catch (e) { el.editor.setCode(PATCHES[0].code); patchSelect.value = "0"; }
+  } else {
+    el.editor.setCode(PATCHES[0].code);
+    patchSelect.value = "0";
   }
-  el.editor.setCode(PATCHES[0].code);
-  patchSelect.value = "0";
+
+  // register the newspeech sample packs into the strudel global scope, so
+  // patterns can use s("kick"), s("rhodes-mk1").note("c3"), etc. fire-and-
+  // forget — failure logs and never blocks editor usage.
+  registerNewspeechSamples().catch((err) => console.warn("samples register failed:", err));
 })();
+
+// ---- newspeech sample registration ------------------------------------
+// fetches each pack's manifest.json from the same location samples.html and
+// the sequencer use, then calls strudel's global `samples()` to make the
+// pack's voices addressable by their voice id. drum voices register as flat
+// file lists (s("kick"), s("kick:3")). pitched voices register as midi-keyed
+// maps so .note(...) selects the nearest root automatically.
+const NEWSPEECH_PACK_CATEGORIES = {
+  drums:       ["blck_noir"],
+  instruments: ["hydrasynth_plaits", "mini-moog", "rhodes_mk1", "root_grain", "soft_piano", "tape_piano", "under_piano"],
+  pads:        ["encounter", "pulsed", "sinewaves-at-the-scope"],
+};
+const NEWSPEECH_SAMPLE_BASE = "sequencer/samples";
+
+async function registerNewspeechSamples() {
+  // wait for strudel's global `samples` to be exposed by the repl bundle
+  let tries = 0;
+  while (typeof window.samples !== "function" && tries < 80) {
+    await new Promise(r => setTimeout(r, 100));
+    tries++;
+  }
+  if (typeof window.samples !== "function") {
+    console.warn("samples register: window.samples never appeared");
+    return;
+  }
+  const map = {};
+  for (const [cat, packs] of Object.entries(NEWSPEECH_PACK_CATEGORIES)) {
+    for (const pack of packs) {
+      const baseUrl = `${NEWSPEECH_SAMPLE_BASE}/${cat}/${pack}`;
+      let manifest;
+      try {
+        const r = await fetch(`${baseUrl}/manifest.json`);
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        manifest = await r.json();
+      } catch (err) {
+        console.warn(`samples register: ${cat}/${pack} manifest failed`, err);
+        continue;
+      }
+      for (const [voiceId, voice] of Object.entries(manifest.voices ?? {})) {
+        if (Array.isArray(voice.files)) {
+          // drum-style: addressable via s("voiceId") / s("voiceId:n")
+          map[voiceId] = voice.files.map((rel) => `${baseUrl}/${rel}`);
+        } else if (Array.isArray(voice.roots)) {
+          // pitched: midi-keyed map → .note(...) picks the nearest root
+          const byMidi = {};
+          for (const root of voice.roots) {
+            byMidi[root.midi] = root.files.map((rel) => `${baseUrl}/${rel}`);
+          }
+          map[voiceId] = byMidi;
+        }
+      }
+    }
+  }
+  await window.samples(map);
+}
 </script>
 </body>
 </html>

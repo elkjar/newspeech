@@ -144,24 +144,24 @@ export function App() {
 
   useEffect(() => {
     const kits = [
-      'blck_noir',
-      'hydrasynth_plaits',
-      'rhodes_mk1',
-      'root_grain',
-      'soft_piano',
-      'tape_piano',
-      'under_piano',
-      'sinewaves-at-the-scope',
-      'encounter',
-      'mini-moog',
-      'pulsed',
+      'drums/blck_noir',
+      'pads/encounter',
+      'pads/pulsed',
+      'pads/sinewaves-at-the-scope',
+      'instruments/hydrasynth_plaits',
+      'instruments/mini-moog',
+      'instruments/rhodes_mk1',
+      'instruments/root_grain',
+      'instruments/soft_piano',
+      'instruments/tape_piano',
+      'instruments/under_piano',
     ];
-    for (const kit of kits) {
-      const baseUrl = `${import.meta.env.BASE_URL}samples/${kit}`;
+    for (const kitPath of kits) {
+      const baseUrl = `${import.meta.env.BASE_URL}samples/${kitPath}`;
       fetch(`${baseUrl}/manifest.json`)
         .then((r) => r.json())
         .then((manifest) => samplePlayer.loadManifest(baseUrl, manifest))
-        .catch((err) => console.warn(`sample manifest ${kit} load failed:`, err));
+        .catch((err) => console.warn(`sample manifest ${kitPath} load failed:`, err));
     }
   }, []);
 
