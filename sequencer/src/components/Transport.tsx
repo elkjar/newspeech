@@ -1,10 +1,11 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useSequencerStore } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
 import { exportProject, importProject, timestampSlug } from '../state/persist';
 import { presetsForTarget } from '../instruments/library';
 import { useMidiLearn } from '../hooks/useMidiLearn';
+import { ConfirmDialog } from './ConfirmDialog';
 
 function downloadProject() {
   const code = exportProject();
@@ -155,8 +156,10 @@ export function TapTempoButton() {
 
 function PresetControls() {
   const applyPreset = useSequencerStore((s) => s.applyPreset);
+  const initProject = useSequencerStore((s) => s.initProject);
   const viewSection = useSequencerStore((s) => s.viewSection);
   const presets = presetsForTarget(viewSection);
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <div className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
@@ -179,6 +182,26 @@ function PresetControls() {
           </option>
         ))}
       </select>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        title="reset all tracks, LFOs, and macros to a blank state (keeps bpm, root, scale, master FX, and saved banks)"
+        className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors"
+      >
+        init
+      </button>
+      {confirming && (
+        <ConfirmDialog
+          title="init project"
+          body="reset all tracks, LFOs, and macros to a blank state? bpm, root, scale, master FX, and saved banks are preserved."
+          confirmLabel="reset"
+          onConfirm={() => {
+            initProject();
+            setConfirming(false);
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
     </div>
   );
 }

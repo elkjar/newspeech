@@ -18,7 +18,7 @@ import {
   type TrackSource,
 } from '../instruments/library';
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
-import { ensureBothSections, hydrateTrack, hydrateLFOs, applyPositionalRoleDefaults, hydrateBanks } from './hydrate';
+import { ensureBothSections, hydrateTrack, hydrateLFOs, applyPositionalRoleDefaults, hydrateBanks, blankTrack } from './hydrate';
 import {
   hydrateTape as hydrateTapeFromPreset,
   hydrateGlitch as hydrateGlitchFromPreset,
@@ -242,6 +242,7 @@ interface SequencerState {
   setMidiOutDeviceId: (id: string | null) => void;
   setTrackSource: (trackId: string, source: TrackSource) => void;
   applyPreset: (presetId: string) => void;
+  initProject: () => void;
   fireAllProgramChanges: () => void;
   setTrackMidi: (trackId: string, patch: Partial<TrackMidi>) => void;
   fireTrackProgram: (trackId: string) => void;
@@ -525,7 +526,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     const preset = PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
     const firedTracks: Track[] = [];
-    const isInit = preset.id.startsWith('init-');
     set((state) => {
       const visible = state.tracks.filter((t) => t.section === state.viewSection);
       return {
@@ -533,60 +533,40 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           const idx = visible.findIndex((v) => v.id === t.id);
           if (idx < 0) return t;
           const slot = preset.slots[idx];
-          if (!slot || slot.kind === 'empty') {
-            if (isInit) {
-              return {
-                ...t,
-                source: { kind: 'empty' },
-                steps: emptySteps(),
-                lockTiming: false,
-                mutation: 0,
-                rowRatchet: 0,
-                length: DEFAULT_LENGTH,
-                viewPage: 0,
-                midi: { ...DEFAULT_TRACK_MIDI },
-              };
-            }
-            return t;
-          }
+          if (!slot || slot.kind === 'empty') return t;
           const next: TrackSource =
             slot.kind === 'voice'
               ? { kind: 'voice', id: slot.id }
               : { kind: 'instrument', id: slot.id };
-          // snapshot midi when assigning a different instrument or on init.
-          // Same-id reapply preserves user edits (init still resets).
+          // snapshot midi when assigning a different instrument; same-id
+          // reapply preserves user edits.
           const sameInstrument =
-            !isInit &&
             next.kind === 'instrument' &&
             t.source.kind === 'instrument' &&
             t.source.id === next.id;
           const midi =
             next.kind === 'instrument' && !sameInstrument
               ? snapshotInstrumentMidi(next.id)
-              : isInit
-                ? { ...DEFAULT_TRACK_MIDI }
-                : t.midi;
-          const merged: Track = isInit
-            ? {
-                ...t,
-                source: next,
-                steps: emptySteps(),
-                lockTiming: false,
-                mutation: 0,
-                rowRatchet: 0,
-                length: DEFAULT_LENGTH,
-                viewPage: 0,
-                midi,
-              }
-            : { ...t, source: next, midi };
+              : t.midi;
+          const merged: Track = { ...t, source: next, midi };
           if (next.kind === 'instrument') firedTracks.push(merged);
           return merged;
         }),
-        lfos: isInit ? defaultLFOs() : state.lfos,
       };
     });
     const { midiOutDeviceId } = useSequencerStore.getState();
     for (const t of firedTracks) fireTrackProgramChange(t, midiOutDeviceId);
+  },
+  initProject: () => {
+    set((state) => ({
+      tracks: state.tracks.map(blankTrack),
+      lfos: defaultLFOs(),
+      density: 0.5,
+      chaos: 0.5,
+      motion: 0.5,
+      drift: 1,
+      tension: 0.5,
+    }));
   },
   fireAllProgramChanges: () => {
     const { tracks, midiOutDeviceId } = useSequencerStore.getState();

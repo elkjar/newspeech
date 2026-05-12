@@ -328,6 +328,38 @@ const EMPTY_MELODIC_VOICES = [
   'hydra-plaits',
 ];
 
+// Reset a track to its factory-blank field set, preserving identity (id +
+// section). Source becomes `empty`, every per-row param returns to its hydrate
+// default. Used by the global `initProject` action; centralized here so any
+// future "clear all" path stays in sync with `hydrateTrack`'s defaults.
+export function blankTrack(t: Track): Track {
+  return {
+    id: t.id,
+    section: t.section,
+    source: { kind: 'empty' },
+    steps: Array.from({ length: 64 }, () => hydrateStep({})),
+    mute: false,
+    solo: false,
+    length: 16,
+    lastPitch: 0,
+    viewPage: 0,
+    mutation: 0,
+    rowRatchet: 0,
+    rate: '1/16',
+    lockTiming: false,
+    euclidean: { hits: 0, rotation: 0 },
+    midi: { ...DEFAULT_TRACK_MIDI },
+    gain: 1,
+    fxSend: 0,
+    pan: 0.5,
+    filterCutoff: 1,
+    filterResonance: 0,
+    defaultChordVoicing: { ...DEFAULT_CHORD_VOICING },
+    pitchInterp: 'semitones',
+    octave: 0,
+  };
+}
+
 export function emptyMelodicTrack(id: string, slot: number): Track {
   const steps = Array.from({ length: 64 }, () => hydrateStep({}));
   // Position-based role defaults. Slot 0 is the chord master (audible

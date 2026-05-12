@@ -182,18 +182,6 @@ export const PRESETS: Preset[] = [
     slots: Array.from({ length: 8 }, () => ({ kind: 'instrument' as const, id: EXT_MIDI_LEAD.id })),
   },
   {
-    id: 'init-drum',
-    label: 'init',
-    target: 'drum',
-    slots: Array.from({ length: 8 }, () => ({ kind: 'empty' })),
-  },
-  {
-    id: 'init-melodic',
-    label: 'init',
-    target: 'melodic',
-    slots: Array.from({ length: 8 }, () => ({ kind: 'empty' })),
-  },
-  {
     id: 'internal-drum',
     label: 'internal synths',
     target: 'drum',
