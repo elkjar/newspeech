@@ -25,25 +25,27 @@ const PANEL = 'border border-white/15 px-4 py-3 w-[320px] min-h-24 flex flex-col
 // the misleading note name from `midiToName(quantize(...))`. Indices past
 // the current chord's tone count wrap with an octave-shift suffix.
 const TONE_NAMES = ['R', '3', '5', '7', '9', '11'];
-function chordToneLabel(pitchIndex: number, toneCount: number): string {
-  if (toneCount <= 0) return String(pitchIndex);
+// Returned as [tone, octaveSuffix] so the inspector can render the tone
+// prominently and the octave shift as a subordinate annotation. Suffix is
+// empty when octaveShift === 0.
+function chordToneLabel(pitchIndex: number, toneCount: number): [string, string] {
+  if (toneCount <= 0) return [String(pitchIndex), ''];
   const octaveShift = Math.floor(pitchIndex / toneCount);
   const idx = ((pitchIndex % toneCount) + toneCount) % toneCount;
   const base = TONE_NAMES[idx] ?? `T${idx}`;
-  if (octaveShift === 0) return base;
-  return `${base}${octaveShift > 0 ? '+' : '−'}${Math.abs(octaveShift)}`;
+  if (octaveShift === 0) return [base, ''];
+  return [base, `${octaveShift > 0 ? '+' : '−'}${Math.abs(octaveShift)}`];
 }
 
 // Scale-degree label for scale-mode tracks. 1-indexed (musician convention):
-// pitch=0 → "1" (chord root), pitch=6 → "7" (one degree below octave),
-// pitch=7 → "1+1" (octave up), pitch=-1 → "7-1" (octave down).
-function scaleToneLabel(pitchIndex: number, scaleLength: number): string {
-  if (scaleLength <= 0) return String(pitchIndex);
+// pitch=0 → ["1", ""], pitch=6 → ["7", ""], pitch=7 → ["1", "+1"], pitch=-1 → ["7", "−1"].
+function scaleToneLabel(pitchIndex: number, scaleLength: number): [string, string] {
+  if (scaleLength <= 0) return [String(pitchIndex), ''];
   const octaveShift = Math.floor(pitchIndex / scaleLength);
   const idx = ((pitchIndex % scaleLength) + scaleLength) % scaleLength;
   const base = String(idx + 1);
-  if (octaveShift === 0) return base;
-  return `${base}${octaveShift > 0 ? '+' : '−'}${Math.abs(octaveShift)}`;
+  if (octaveShift === 0) return [base, ''];
+  return [base, `${octaveShift > 0 ? '+' : '−'}${Math.abs(octaveShift)}`];
 }
 
 function displayedStep(track: Track, i: number): Step | undefined {
@@ -82,6 +84,7 @@ export function StepInspector() {
     track && activeSelection ? displayedStep(track, activeSelection.index) ?? null : null;
 
   let big = '—';
+  let bigOctave = '';
   let velStr = '—';
   let probStr = '—';
   let ratchetStr = '—';
@@ -109,9 +112,9 @@ export function StepInspector() {
         big = DEGREE_LABELS[voicing.degree];
       } else if (track.pitchInterp === 'chord-tone') {
         const toneCount = getChordContext().intervals.length;
-        big = chordToneLabel(step.pitch, toneCount);
+        [big, bigOctave] = chordToneLabel(step.pitch, toneCount);
       } else if (track.pitchInterp === 'scale-tone') {
-        big = scaleToneLabel(step.pitch, octaveDegrees(scale));
+        [big, bigOctave] = scaleToneLabel(step.pitch, octaveDegrees(scale));
       } else if (track.pitchInterp === 'root-follow') {
         big = 'R';
       } else {
@@ -133,7 +136,20 @@ export function StepInspector() {
     gateActive = step.gate !== 1;
   }
 
-  const showChord = track !== null && step !== null && sourceIsMelodic(track.source);
+  // Chord picker is meaningful only where dispatch actually reads
+  // `step.chordVoicing`: the chord master (first melodic row, always uses
+  // voicing) and `semitones`-mode followers. Other follower modes
+  // (chord-tone / root-follow / scale-tone) derive harmony from the chord
+  // master's published chord context and ignore the per-step override, so
+  // showing the picker there would let users set a degree the dispatch
+  // throws away.
+  const isChordMaster =
+    track !== null && tracks.find((t) => t.section === 'melodic')?.id === track.id;
+  const showChord =
+    track !== null &&
+    step !== null &&
+    sourceIsMelodic(track.source) &&
+    (isChordMaster || track.pitchInterp === 'semitones');
   const effectiveVoicing: ChordVoicing =
     step?.chordVoicing ?? track?.defaultChordVoicing ?? DEFAULT_CHORD_VOICING;
   const isPlocked = !!step?.chordVoicing;
@@ -151,7 +167,14 @@ export function StepInspector() {
   return (
     <div className={`${PANEL} ${dim ? 'opacity-50' : ''}`}>
       <div className="flex items-center gap-4">
-        <span className="text-2xl tracking-wider text-white inline-block min-w-[88px]">{big}</span>
+        <span className="text-2xl tracking-wider text-white inline-block min-w-[88px]">
+          {big}
+          {bigOctave && (
+            <span className="ml-1 text-xs tracking-widest text-white/40 align-top">
+              {bigOctave}
+            </span>
+          )}
+        </span>
         <div className="flex flex-col gap-0.5 text-[10px] uppercase tracking-widest leading-tight">
           <div className="flex gap-3">
             <Field label="v" value={velStr} active={velActive} />

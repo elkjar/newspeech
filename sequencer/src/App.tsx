@@ -33,6 +33,7 @@ import {
   shuffleInversion,
   shiftSpread,
   borrowChord,
+  type ChordDegree,
 } from './audio/chords';
 import { getChordContext, setChordContext, chordToneMidi } from './audio/chordContext';
 import { getOverlay, setOverlay, attachChordToOverlay } from './audio/mutationOverlay';
@@ -649,11 +650,34 @@ export function App() {
           Math.max(0.1, Math.min(2, step.gate + 0.05 * dir))
         );
       } else if (editMode === 'live' && sourceIsMelodic(track.source)) {
-        store.setStepPitch(
-          sel.trackId,
-          sel.index,
-          Math.max(-14, Math.min(14, step.pitch + dir))
-        );
+        // Walk the chord degree when this step is actually playing a chord
+        // at dispatch: chord master (always reads voicing) OR a 'semitones'
+        // follower whose effective voicing has degree > 0 (an authored chord
+        // override). Other follower modes (chord-tone / root-follow /
+        // scale-tone) ignore stepVoicing at dispatch, so walking degree
+        // there would be silent — fall through to pitch instead.
+        // Extension/inversion/spread stay mouse-only in the inspector.
+        const isChordMaster =
+          store.tracks.find((t) => t.section === 'melodic')?.id === track.id;
+        const voicing = step.chordVoicing ?? track.defaultChordVoicing;
+        const walkDegree =
+          isChordMaster ||
+          (track.pitchInterp === 'semitones' && voicing.degree > 0);
+        if (walkDegree) {
+          const nextDegree = Math.max(0, Math.min(7, voicing.degree + dir)) as ChordDegree;
+          if (nextDegree !== voicing.degree) {
+            store.setStepChordVoicing(sel.trackId, sel.index, {
+              ...voicing,
+              degree: nextDegree,
+            });
+          }
+        } else {
+          store.setStepPitch(
+            sel.trackId,
+            sel.index,
+            Math.max(-14, Math.min(14, step.pitch + dir))
+          );
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);

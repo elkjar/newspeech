@@ -566,6 +566,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       motion: 0.5,
       drift: 1,
       tension: 0.5,
+      banks: Array.from({ length: BANK_SLOT_COUNT }, () => null),
+      activeBank: 0,
+      pendingBank: null,
     }));
   },
   fireAllProgramChanges: () => {

@@ -193,7 +193,7 @@ function PresetControls() {
       {confirming && (
         <ConfirmDialog
           title="init project"
-          body="reset all tracks, LFOs, and macros to a blank state? bpm, root, scale, master FX, and saved banks are preserved."
+          body="reset all tracks, LFOs, macros, and saved patterns to a blank state? bpm, root, scale, and master FX are preserved."
           confirmLabel="reset"
           onConfirm={() => {
             initProject();
