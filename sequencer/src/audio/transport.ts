@@ -45,9 +45,9 @@ export async function togglePlayback(): Promise<void> {
     // is resumed. Idempotent; subsequent play presses are no-ops.
     // Order matters: pre-saturation inserts between voicesBus and the
     // post-FX tap so tape captures saturated material → tape connects into
-    // masterBus → glitch inserts between masterBus and destination → reverb
-    // inserts between glitch and dest → master inserts between reverb and
-    // dest as the final tone-shaping unit.
+    // fxBus → glitch inserts between fxBus and mixBus → reverb inserts
+    // between glitch and mixBus → master inserts between mixBus and dest
+    // as the final tone-shaping unit.
     await initPreSaturation();
     await initTape();
     await initGlitch();

@@ -1,5 +1,5 @@
 let ctx: AudioContext | null = null;
-let masterBus: GainNode | null = null;
+let fxBus: GainNode | null = null;
 let mixBus: GainNode | null = null;
 let voicesBus: GainNode | null = null;
 let voicesPostFX: GainNode | null = null;
@@ -29,26 +29,26 @@ export function getMixBus(): GainNode {
 }
 
 // FX-chain entry bus. Voices + tape sum here; glitch / reverb insert between
-// this and mixBus on init. Despite the legacy name, this is NOT the final
-// output — that's mixBus → master → destination.
-export function getMasterBus(): GainNode {
-  if (!masterBus) {
+// this and mixBus on init. NOT the final output — that's mixBus → master →
+// destination.
+export function getFxBus(): GainNode {
+  if (!fxBus) {
     const c = getAudioContext();
-    masterBus = c.createGain();
-    masterBus.gain.value = 1;
-    masterBus.connect(getMixBus());
+    fxBus = c.createGain();
+    fxBus.gain.value = 1;
+    fxBus.connect(getMixBus());
   }
-  return masterBus;
+  return fxBus;
 }
 
-// Dry-path attenuator between voicesBus and masterBus. Tape's mix knob
+// Dry-path attenuator between voicesBus and fxBus. Tape's mix knob
 // crossfades this against the wet (tape) gain — at mix=1 we hear only the bed.
 export function getDryGain(): GainNode {
   if (!dryGain) {
     const c = getAudioContext();
     dryGain = c.createGain();
     dryGain.gain.value = 1;
-    dryGain.connect(getMasterBus());
+    dryGain.connect(getFxBus());
   }
   return dryGain;
 }

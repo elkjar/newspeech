@@ -5,8 +5,8 @@
 // full gain so turning mix up gives the layered bed immediately.
 //
 // Signal flow:
-//   voicesPostFX ──► dryGain ──► masterBus ──► destination
-//        │                          ▲
+//   voicesPostFX ──► dryGain ──► fxBus ──► (rest of chain)
+//        │                         ▲
 //        └──► tapeMachine ──► tapeHighpass ──► tapeMix (wet)
 //
 //   voicesPostFX is voicesBus's downstream after pre-saturation; tape taps
@@ -23,7 +23,7 @@
 import {
   getAudioContext,
   getDryGain,
-  getMasterBus,
+  getFxBus,
   getVoicesPostFX,
 } from './audioContext';
 
@@ -100,7 +100,7 @@ export async function initTape(): Promise<void> {
   initializing = (async () => {
     const ctx = getAudioContext();
     const voices = getVoicesPostFX();
-    const master = getMasterBus();
+    const fx = getFxBus();
     dryGainRef = getDryGain();
 
     const url = `${import.meta.env.BASE_URL}worklets/tape-machine.js`;
@@ -129,7 +129,7 @@ export async function initTape(): Promise<void> {
     tapeMix.gain.value = 0;
     tapeMachine.connect(tapeHighpass);
     tapeHighpass.connect(tapeMix);
-    tapeMix.connect(master);
+    tapeMix.connect(fx);
 
     initialized = true;
     setTapeParams(params);

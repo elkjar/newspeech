@@ -1,15 +1,15 @@
-// Stage 2 glitch unit (v0) — clocked stutter inserted between masterBus and
-// destination. Beat-synced: each beat we roll `chance` against random; on
-// hit, post a "fire" message to the worklet, which captures recent input
-// and stutters it for ~quarter-beat.
+// Stage 2 glitch unit (v0) — clocked stutter inserted between fxBus and
+// mixBus. Beat-synced: each beat we roll `chance` against random; on hit,
+// post a "fire" message to the worklet, which captures recent input and
+// stutters it for ~quarter-beat.
 //
 // Signal flow:
-//   masterBus ──► glitchNode ──► destination
+//   fxBus ──► glitchNode ──► mixBus
 //
-// Init pulls masterBus's existing connection to destination and inserts the
-// glitchNode in between. Future Stage 3 (reverb) will do the same against
-// glitchNode → destination.
-import { getAudioContext, getMasterBus, getMixBus } from './audioContext';
+// Init pulls fxBus's existing connection to mixBus and inserts the
+// glitchNode in between. Stage 3 (reverb) does the same against
+// glitchNode → mixBus.
+import { getAudioContext, getFxBus, getMixBus } from './audioContext';
 import { scheduler } from './scheduler';
 
 export interface GlitchParams {
@@ -40,7 +40,7 @@ export async function initGlitch(): Promise<void> {
 
   initializing = (async () => {
     const ctx = getAudioContext();
-    const master = getMasterBus();
+    const fx = getFxBus();
     const mix = getMixBus();
 
     const url = `${import.meta.env.BASE_URL}worklets/glitch-machine.js`;
@@ -56,14 +56,14 @@ export async function initGlitch(): Promise<void> {
       channelCountMode: 'explicit',
     });
 
-    // Insert glitch between masterBus and mixBus. masterBus → mixBus was
-    // pre-connected by getMasterBus(); we replace that link.
+    // Insert glitch between fxBus and mixBus. fxBus → mixBus was
+    // pre-connected by getFxBus(); we replace that link.
     try {
-      master.disconnect(mix);
+      fx.disconnect(mix);
     } catch {
       /* may already be disconnected */
     }
-    master.connect(glitchNode);
+    fx.connect(glitchNode);
     glitchNode.connect(mix);
 
     // Subscribe to beat boundaries via the scheduler. Scheduler runs at
