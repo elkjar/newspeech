@@ -133,6 +133,10 @@ export interface Track {
   // to destination, bypassing tape/glitch/reverb/sat. 1 = full FX chain.
   // Per-trigger snapshot — LFO modulation steps per trigger, not glides.
   fxSend: number;
+  // stereo placement (0..1, 0.5 = center). Mapped to [-1,+1] at the audio
+  // boundary in samplePlayer. Internal voices/synths only — instrument MIDI
+  // rows ignore this (same scope as `gain`).
+  pan: number;
   // Track-level default chord voicing — applied by dispatch when a step has
   // no chordVoicing plock. Position-locked behavior (row 1 = chord master)
   // lands in Stage 5; Stage 4 just persists the field so per-step plocks
@@ -259,6 +263,7 @@ interface SequencerState {
   setTrackMutation: (trackId: string, mutation: number) => void;
   setTrackGain: (trackId: string, gain: number) => void;
   setTrackFxSend: (trackId: string, fxSend: number) => void;
+  setTrackPan: (trackId: string, pan: number) => void;
   setTrackRate: (trackId: string, rate: StepRate) => void;
   setTrackLockTiming: (trackId: string, lock: boolean) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
@@ -760,6 +765,12 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     const clamped = Math.max(0, Math.min(1, Number.isFinite(fxSend) ? fxSend : 0));
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, fxSend: clamped } : t)),
+    }));
+  },
+  setTrackPan: (trackId, pan) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(pan) ? pan : 0.5));
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, pan: clamped } : t)),
     }));
   },
   setTrackRate: (trackId, rate) =>

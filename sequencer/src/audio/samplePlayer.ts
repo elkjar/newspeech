@@ -95,7 +95,8 @@ class SamplePlayer {
     gate = 1,
     stepDuration = 0.125,
     fxSend = 1,
-    chordIntervals?: number[]
+    chordIntervals?: number[],
+    pan = 0.5
   ) {
     const ctx = getAudioContext();
     // Per-trigger split — `out` is what the voice writes into; it fans into
@@ -107,17 +108,30 @@ class SamplePlayer {
     // same send level by design.
     const out = ctx.createGain();
     out.gain.value = 1;
+    // Per-track stereo placement. `pan` is 0..1 (0.5 = center) in state space
+    // so it composes cleanly with the LFO pipeline; we map to [-1,+1] here.
+    // Snapshots at trigger time, same convention as fxSend. Skipped at center
+    // so the existing per-tone chord-spread panner is the only spatial node
+    // when this row sits centered.
+    const clampedPan = Math.max(0, Math.min(1, pan));
+    let busHead: AudioNode = out;
+    if (clampedPan !== 0.5) {
+      const trackPanner = ctx.createStereoPanner();
+      trackPanner.pan.value = (clampedPan - 0.5) * 2;
+      out.connect(trackPanner);
+      busHead = trackPanner;
+    }
     const clampedSend = Math.max(0, Math.min(1, fxSend));
     if (clampedSend > 0) {
       const wet = ctx.createGain();
       wet.gain.value = clampedSend;
-      out.connect(wet);
+      busHead.connect(wet);
       wet.connect(getVoicesBus());
     }
     if (clampedSend < 1) {
       const dry = ctx.createGain();
       dry.gain.value = 1 - clampedSend;
-      out.connect(dry);
+      busHead.connect(dry);
       dry.connect(getMixBus());
     }
 

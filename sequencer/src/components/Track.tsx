@@ -189,7 +189,7 @@ export function Track({ track }: { track: TrackData }) {
             />
           )}
         </div>
-        {(['mutation', 'fxSend', 'rowRatchet'] as const).map((knob) => (
+        {(['gain', 'pan', 'fxSend', 'mutation', 'rowRatchet'] as const).map((knob) => (
           <TrackKnob key={knob} track={track} knob={knob} size={STEP_SIZE} />
         ))}
       </div>

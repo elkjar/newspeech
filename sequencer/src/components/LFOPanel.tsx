@@ -13,6 +13,8 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   mutation: 'mut',
   rowRatchet: 'ratchet',
   fxSend: 'fx send',
+  pan: 'pan',
+  gain: 'gain',
   density: 'density',
   motion: 'motion',
   drift: 'drift',

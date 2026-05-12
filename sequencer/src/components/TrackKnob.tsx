@@ -9,8 +9,13 @@ const LABELS: Record<LFODestKnobTrack, string> = {
   mutation: 'mutation',
   rowRatchet: 'row ratchet',
   fxSend: 'fx send',
+  pan: 'pan',
+  gain: 'gain',
 };
 
+// Knobs operate in 0..1 space (LFO pipeline, MIDI dispatch). Gain stores
+// 0..2 because unity should be near the center of the dial — we map at the
+// read/write boundary so the rest of the system sees the standard range.
 function readKnob(track: TrackData, knob: LFODestKnobTrack): number {
   switch (knob) {
     case 'mutation':
@@ -19,6 +24,10 @@ function readKnob(track: TrackData, knob: LFODestKnobTrack): number {
       return track.rowRatchet;
     case 'fxSend':
       return track.fxSend;
+    case 'pan':
+      return track.pan;
+    case 'gain':
+      return track.gain / 2;
   }
 }
 
@@ -34,7 +43,31 @@ function writeKnob(trackId: string, knob: LFODestKnobTrack, value: number): void
     case 'fxSend':
       s.setTrackFxSend(trackId, value);
       return;
+    case 'pan':
+      s.setTrackPan(trackId, value);
+      return;
+    case 'gain':
+      s.setTrackGain(trackId, value * 2);
+      return;
   }
+}
+
+// Pan reads as `L45 / C / R45` rather than `50%` — bipolar value space
+// is the natural mental model even though we store it as 0..1 internally.
+// Gain shows the underlying 0..2 multiplier (`unity` at 1.00) since that's
+// the value designers actually think in.
+function formatKnobValue(knob: LFODestKnobTrack, value: number): string {
+  if (knob === 'pan') {
+    const bipolar = Math.round((value - 0.5) * 200);
+    if (bipolar === 0) return 'C';
+    return bipolar < 0 ? `L${-bipolar}` : `R${bipolar}`;
+  }
+  if (knob === 'gain') {
+    const mul = value * 2;
+    if (Math.abs(mul - 1) < 0.005) return 'unity';
+    return `${mul.toFixed(2)}x`;
+  }
+  return `${Math.round(value * 100)}%`;
 }
 
 export function TrackKnob({
@@ -87,7 +120,7 @@ export function TrackKnob({
           ? lfoLabels
           : undefined;
 
-  const titleParts: string[] = [`${label} ${Math.round(value * 100)}%`];
+  const titleParts: string[] = [`${label} ${formatKnobValue(knob, value)}`];
   if (routed.length > 0) titleParts.push(lfoLabels);
   if (learn.learning && learn.bound && learn.bindingLabel)
     titleParts.push(learn.bindingLabel);
@@ -102,6 +135,7 @@ export function TrackKnob({
       size={size}
       onModulationClick={onModulationClick}
       modulationLabel={modulationLabel}
+      bipolar={knob === 'pan' || knob === 'gain'}
     />
   );
 }

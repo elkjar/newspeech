@@ -33,6 +33,8 @@ const VALID_KNOBS: LFODestKnob[] = [
   'mutation',
   'rowRatchet',
   'fxSend',
+  'pan',
+  'gain',
   'density',
   'motion',
   'drift',
@@ -242,6 +244,10 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
       typeof saved.fxSend === 'number' && Number.isFinite(saved.fxSend)
         ? Math.max(0, Math.min(1, saved.fxSend))
         : 0,
+    pan:
+      typeof saved.pan === 'number' && Number.isFinite(saved.pan)
+        ? Math.max(0, Math.min(1, saved.pan))
+        : 0.5,
     defaultChordVoicing:
       hydrateDefaultChordVoicing(
         (saved as { defaultChordVoicing?: unknown }).defaultChordVoicing
@@ -337,6 +343,7 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     midi: { ...DEFAULT_TRACK_MIDI },
     gain: 1,
     fxSend: 0,
+    pan: 0.5,
     defaultChordVoicing,
     pitchInterp,
     octave,

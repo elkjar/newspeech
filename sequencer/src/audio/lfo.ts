@@ -1,6 +1,6 @@
 import { getAudioContext } from './audioContext';
 
-export type LFODestKnobTrack = 'mutation' | 'rowRatchet' | 'fxSend';
+export type LFODestKnobTrack = 'mutation' | 'rowRatchet' | 'fxSend' | 'pan' | 'gain';
 export type LFODestKnobGlobal =
   | 'density' | 'motion' | 'drift' | 'chaos' | 'tension'
   | 'tapePosition' | 'tapeLength' | 'tapeMix' | 'tapeGrainRate' | 'tapeGrainMix'

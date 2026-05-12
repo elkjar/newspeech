@@ -516,15 +516,20 @@ export function App() {
               midiNoteDuration
             );
           } else if (track.source.kind === 'voice') {
+            // Gain stores 0..2 with unity at the dial center, but the LFO
+            // pipeline clamps inside 0..1. Halve before modulating, restore
+            // after — keeps swing symmetric around the knob's center.
+            const modGain = modulated(track.gain / 2, lfos, track.id, 'gain') * 2;
             samplePlayer.trigger(
               track.source.id,
               t,
-              v * track.gain,
+              v * modGain,
               rootMidi,
               effectiveGate,
               rowStepDuration,
               modulated(track.fxSend, lfos, track.id, 'fxSend'),
-              voiceIntervals
+              voiceIntervals,
+              modulated(track.pan, lfos, track.id, 'pan')
             );
           }
         }
