@@ -41,14 +41,13 @@ function originatorIndex(track: TrackData, i: number): number {
 
 function displayStep(
   track: TrackData,
-  i: number,
+  originIdx: number,
   applyOverlay: boolean
 ): Step | undefined {
-  const idx = originatorIndex(track, i);
-  const authored = track.steps[idx];
+  const authored = track.steps[originIdx];
   if (!authored) return authored;
   if (applyOverlay) {
-    const ov = getOverlay(track.id, idx);
+    const ov = getOverlay(track.id, originIdx);
     if (ov) return { ...authored, on: ov.on, velocity: ov.velocity, pitch: ov.pitch, gate: ov.gate };
   }
   return authored;
@@ -277,9 +276,9 @@ export function Track({ track }: { track: TrackData }) {
           { length: Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)) },
           (_, i) => {
             const stepIndex = viewPage * PAGE_SIZE + i;
-            const idx = originatorIndex(track, stepIndex);
+            const idx = isDrumVoice ? stepIndex : originatorIndex(track, stepIndex);
             const isTiedChain = !isDrumVoice && idx !== stepIndex;
-            const display = displayStep(track, stepIndex, playing && track.mutation > 0);
+            const display = displayStep(track, idx, playing && track.mutation > 0);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
             // "Currently firing this cycle" — drives the binary visual in note
             // mode for both directions of the density knob: authored ON cells
@@ -317,6 +316,7 @@ export function Track({ track }: { track: TrackData }) {
                 isMelodic={melodic}
                 isCurrent={isCurrent}
                 isTiedChain={isTiedChain}
+                tieEnabled={!isDrumVoice}
                 size={STEP_SIZE}
                 cycleFired={cycleFired}
               />

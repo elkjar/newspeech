@@ -27,6 +27,10 @@ interface StepButtonProps {
   isMelodic: boolean;
   isCurrent: boolean;
   isTiedChain: boolean;
+  // When false, tie affordances are suppressed: shift+click does nothing,
+  // and the tie-anchor pin square is hidden. Used on drum rows backed by
+  // sample voices where tie carries no audible weight.
+  tieEnabled: boolean;
   size: number;
   // True when this step actually fired in the current cycle (overlay.gated).
   // Drives the binary "currently firing" visual in note view: thinned-out
@@ -69,6 +73,7 @@ export function StepButton({
   isMelodic,
   isCurrent,
   isTiedChain,
+  tieEnabled,
   size,
   cycleFired,
 }: StepButtonProps) {
@@ -225,15 +230,11 @@ export function StepButton({
       return;
     }
     if (e.shiftKey) {
+      if (!tieEnabled) return;
       const anchor = store.tieAnchor;
       if (!anchor || anchor.trackId !== trackId || anchor.index === index) return;
       const track = store.tracks.find((t) => t.id === trackId);
       if (!track) return;
-      // Tie is inert on drum rows backed by sample voices — the sample plays
-      // its own envelope regardless of gate length, and "skip the next hit"
-      // is already what toggling the step off does. Suppress the gesture so
-      // it's not authoring data that has no audible effect.
-      if (track.section === 'drum' && track.source.kind === 'voice') return;
       const start = Math.min(anchor.index, index);
       const end = Math.max(anchor.index, index);
       let allTied = true;
@@ -338,7 +339,7 @@ export function StepButton({
           {label}
         </span>
       )}
-      {isAnchor && (
+      {isAnchor && tieEnabled && (
         <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-white pointer-events-none" />
       )}
     </button>
