@@ -15,6 +15,8 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   fxSend: 'fx send',
   pan: 'pan',
   gain: 'gain',
+  filterCutoff: 'cutoff',
+  filterResonance: 'res',
   density: 'density',
   motion: 'motion',
   drift: 'drift',

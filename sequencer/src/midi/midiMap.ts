@@ -8,7 +8,14 @@ import type { MidiMessage } from './midiIn';
 // Track knob targets carry a positional index (0..15) into `tracks[]`,
 // not a track id, so bindings survive across `.seq` files as long as
 // the slot at that position has a similar role.
-export type TrackKnobTargetName = 'mutation' | 'rowRatchet' | 'fxSend' | 'pan' | 'gain';
+export type TrackKnobTargetName =
+  | 'mutation'
+  | 'rowRatchet'
+  | 'fxSend'
+  | 'pan'
+  | 'gain'
+  | 'filterCutoff'
+  | 'filterResonance';
 export type FxKnobTargetName =
   | 'tape.position'
   | 'tape.length'
@@ -86,6 +93,8 @@ export const TRACK_KNOB_TARGETS: TrackKnobTargetName[] = [
   'fxSend',
   'pan',
   'gain',
+  'filterCutoff',
+  'filterResonance',
 ];
 
 // learnHook is set by the mapping store at boot. Bridges the
@@ -164,6 +173,12 @@ function dispatchTarget(target: string, value01: number): void {
       case 'gain':
         // CC value is 0..1; gain stores 0..2 with unity at the dial center.
         s.setTrackGain(track.id, value01 * 2);
+        return;
+      case 'filterCutoff':
+        s.setTrackFilterCutoff(track.id, value01);
+        return;
+      case 'filterResonance':
+        s.setTrackFilterResonance(track.id, value01);
         return;
       default:
         return;

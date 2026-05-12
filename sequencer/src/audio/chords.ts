@@ -171,6 +171,32 @@ export function dropChordTone(intervals: number[]): number[] {
   return intervals.filter((_, i) => i !== dropIdx);
 }
 
+// Drop one non-root tone with a bias toward UPPER tones. Used by pad-type
+// dispatch in samplePlayer so the sparser triggers keep the bass anchor
+// and lose tops more often (perceptually: chord thins from the top down,
+// not random gaps in the middle).
+//   upperBias = 0 → uniform across non-bass candidates (same as dropChordTone)
+//   upperBias = 1 → always pick the topmost tone
+// Power-law weights: w_k = ((k+1) / candidates) ^ (1 + bias * 3) so bias=0
+// is linear and bias=1 leans hard on the top.
+export function dropChordToneWeighted(intervals: number[], upperBias: number): number[] {
+  if (intervals.length <= 1) return intervals;
+  const candidates = intervals.length - 1;
+  const weights: number[] = [];
+  for (let k = 0; k < candidates; k++) {
+    const norm = (k + 1) / candidates;
+    weights.push(Math.pow(norm, 1 + upperBias * 3));
+  }
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  let pickIdx = candidates - 1;
+  for (let k = 0; k < candidates; k++) {
+    r -= weights[k];
+    if (r <= 0) { pickIdx = k; break; }
+  }
+  return intervals.filter((_, i) => i !== pickIdx + 1);
+}
+
 // Pick a different inversion than authored. No-op for FIXED_SHAPE
 // extensions (those with < 2 chord tones — only sus voicings dodge this
 // because they're 3-tone). Triads / 7 / 9 / 11 / sus2 / sus4 all qualify.

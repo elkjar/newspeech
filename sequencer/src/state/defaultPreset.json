@@ -3,8 +3,6 @@
   "bpm": 107,
   "rootNote": 63,
   "scale": "minor",
-  "viewSection": "melodic",
-  "midiOutDeviceId": null,
   "tracks": [
     {
       "id": "t1",
@@ -678,6 +676,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -1358,7 +1359,10 @@
         "note": null
       },
       "gain": 0.24,
-      "fxSend": 0.6300000000000001,
+      "fxSend": 0.22000000000000014,
+      "pan": 0.5,
+      "filterCutoff": 0.8700000000000001,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -2039,6 +2043,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -2719,6 +2726,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -3399,6 +3409,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -3411,7 +3424,8 @@
     {
       "id": "t6",
       "source": {
-        "kind": "empty"
+        "kind": "voice",
+        "id": "blk"
       },
       "section": "drum",
       "mute": false,
@@ -3420,7 +3434,7 @@
       "lastPitch": 0,
       "viewPage": 0,
       "mutation": 0,
-      "rowRatchet": 0,
+      "rowRatchet": 0.41,
       "rate": "1/16",
       "lockTiming": false,
       "euclidean": {
@@ -3430,12 +3444,12 @@
       "steps": [
         {
           "on": false,
-          "velocity": 1,
+          "velocity": 0.7171423680043065,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 0.9269132556633104,
           "tieToNext": false
         },
         {
@@ -3445,7 +3459,27 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.823156215121922,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7979254192168186,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.7661606369706837,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.055296810567701,
           "tieToNext": false
         },
         {
@@ -3455,7 +3489,57 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 0.7371726254217696,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7743036144407166,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.3831169527874816,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.8556544550993455,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9608871817523856,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7557333397620197,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9846057932791112,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.905192964574506,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.6438581129306853,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9378839635329331,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.5770653245501505,
           "tieToNext": false
         },
         {
@@ -3465,7 +3549,7 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.4492113407920348,
           "tieToNext": false
         },
         {
@@ -3475,7 +3559,7 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.8134481687141495,
           "tieToNext": false
         },
         {
@@ -3485,7 +3569,17 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 0.846801576102183,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.7223470342441848,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.145034663425105,
           "tieToNext": false
         },
         {
@@ -3495,7 +3589,7 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.5209484753286304,
           "tieToNext": false
         },
         {
@@ -3505,87 +3599,7 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
+          "gate": 0.877189494614425,
           "tieToNext": false
         },
         {
@@ -4079,6 +4093,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 0.61,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -4759,6 +4776,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -5439,6 +5459,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -5460,7 +5483,7 @@
       "length": 16,
       "lastPitch": 0,
       "viewPage": 0,
-      "mutation": 0.3,
+      "mutation": 0,
       "rowRatchet": 0,
       "rate": "1/4",
       "lockTiming": true,
@@ -5471,52 +5494,52 @@
       "steps": [
         {
           "on": true,
+          "velocity": 0.9476725585342644,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.436661662044308,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.8380926534940941,
+          "pitch": -2,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.351341530448135,
+          "tieToNext": true
+        },
+        {
+          "on": false,
           "velocity": 1,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.1637139406052506,
+          "gate": 1.3061119659382185,
           "tieToNext": true
         },
         {
           "on": false,
-          "velocity": 0.9127002618676116,
+          "velocity": 0.9831419421811496,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.084401999717358,
-          "tieToNext": true
-        },
-        {
-          "on": false,
-          "velocity": 0.9842390865139843,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1.224155149668969,
-          "tieToNext": true
-        },
-        {
-          "on": false,
-          "velocity": 0.9249432148936494,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1.1952070095132397,
+          "gate": 1.4605845855443058,
           "tieToNext": false
         },
         {
           "on": true,
-          "velocity": 0.9328048620946403,
+          "velocity": 0.8778637163759369,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 6.938893903907228e-17,
-          "gate": 1.1373265843965241,
+          "gate": 1.4558795362322752,
           "tieToNext": true,
           "chordVoicing": {
             "degree": 4,
@@ -5528,41 +5551,41 @@
         {
           "on": false,
           "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1.1102023792833227,
-          "tieToNext": true
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1.235286821017106,
-          "tieToNext": true
-        },
-        {
-          "on": false,
-          "velocity": 1,
           "pitch": -4,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.0740375712244716,
+          "gate": 1.122398512736594,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.9654643308520459,
+          "pitch": 4,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.397360605701758,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.9419387036258544,
+          "pitch": -4,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.4006873324795457,
           "tieToNext": false
         },
         {
           "on": true,
-          "velocity": 0.9074842388479835,
+          "velocity": 0.8770399271865496,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": -0.030000000000000027,
-          "gate": 1.1180138723912492,
+          "gate": 1.1637840685988488,
           "tieToNext": true,
           "chordVoicing": {
             "degree": 5,
@@ -5573,42 +5596,42 @@
         },
         {
           "on": false,
-          "velocity": 0.9547972745832609,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1.0093667135802944,
-          "tieToNext": true
-        },
-        {
-          "on": false,
-          "velocity": 0.982047986957808,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 0.995429730409951,
-          "tieToNext": true
-        },
-        {
-          "on": false,
-          "velocity": 0.9597365819837572,
-          "pitch": -7,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1.1840608933617374,
-          "tieToNext": false
-        },
-        {
-          "on": true,
           "velocity": 1,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9430324486013331,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.8984031571789401,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.34674026680135,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.9411492619401187,
+          "pitch": -7,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2957351742175207,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.9377063625817755,
+          "pitch": -7,
+          "probability": 100,
+          "ratchet": 1,
           "microTiming": -6.938893903907228e-17,
-          "gate": 0.9900492315791517,
+          "gate": 0.9610828455870395,
           "tieToNext": true,
           "chordVoicing": {
             "degree": 7,
@@ -5619,22 +5642,12 @@
         },
         {
           "on": false,
-          "velocity": 1,
+          "velocity": 0.8865150807148942,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.2680129333040255,
-          "tieToNext": true
-        },
-        {
-          "on": false,
-          "velocity": 0.9165409156832142,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1.1545643881136738,
+          "gate": 1.171686252439624,
           "tieToNext": true
         },
         {
@@ -5644,7 +5657,17 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 0.9712378748937237,
+          "gate": 1.3321088049221124,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.8876145050926538,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1106958586324454,
           "tieToNext": false
         },
         {
@@ -6138,6 +6161,9 @@
       },
       "gain": 1,
       "fxSend": 1,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 1,
         "extension": "triad",
@@ -6157,25 +6183,115 @@
       "mute": false,
       "solo": false,
       "length": 16,
-      "lastPitch": 0,
+      "lastPitch": 2,
       "viewPage": 0,
       "mutation": 0,
-      "rowRatchet": 0.05,
+      "rowRatchet": 0,
       "rate": "1/16",
-      "lockTiming": false,
+      "lockTiming": true,
       "euclidean": {
         "hits": 0,
         "rotation": 0
       },
       "steps": [
         {
+          "on": true,
+          "velocity": 1,
+          "pitch": 2,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.3381535444584836,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.8512613064781434,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9585144010091529,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.904584858737379,
+          "pitch": 3,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.2342487951689998,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.8723510040498685,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.4502630212643066,
+          "tieToNext": true
+        },
+        {
           "on": false,
           "velocity": 1,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.3340031143519253,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1277353901693756,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1067886392811888,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.8159919889414633,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.3213841047419783,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": -3,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.191719119616074,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 1,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.5644318270188287,
           "tieToNext": false
         },
         {
@@ -6185,8 +6301,48 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.3701381508195154,
           "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7728392182713927,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.0653331476478949,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.7924837591019089,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.450867198117849,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": -1,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.25262165757215,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 1,
+          "pitch": 2,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9046944342766932,
+          "tieToNext": true
         },
         {
           "on": false,
@@ -6195,137 +6351,7 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
+          "gate": 1.4426213827225127,
           "tieToNext": false
         },
         {
@@ -6817,8 +6843,11 @@
         "bankLSB": null,
         "note": null
       },
-      "gain": 1,
+      "gain": 0.62,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 0.53,
+      "filterResonance": 0.22000000000000003,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -6840,7 +6869,7 @@
       "length": 16,
       "lastPitch": -1,
       "viewPage": 0,
-      "mutation": 0.37,
+      "mutation": 0,
       "rowRatchet": 0,
       "rate": "1/16",
       "lockTiming": true,
@@ -6851,12 +6880,12 @@
       "steps": [
         {
           "on": true,
-          "velocity": 0.6227049282224265,
-          "pitch": -5,
+          "velocity": 0.6982084588606363,
+          "pitch": -12,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.190804409935664,
+          "gate": 1.402247661048968,
           "tieToNext": false
         },
         {
@@ -6866,97 +6895,97 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 0.5384603389026499,
+          "gate": 0.9238298815747705,
           "tieToNext": false
         },
         {
           "on": true,
-          "velocity": 1,
-          "pitch": 2,
+          "velocity": 0.9722947949679277,
+          "pitch": -5,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.132283481609477,
+          "gate": 1.0472483528895282,
           "tieToNext": false
         },
         {
           "on": false,
-          "velocity": 1,
+          "velocity": 0.9557640791786729,
           "pitch": -8,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.4849348670777434,
+          "gate": 1.504375155054809,
           "tieToNext": false
         },
         {
           "on": false,
-          "velocity": 0.9351295308850774,
+          "velocity": 1,
           "pitch": -4,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.6138628719299803,
+          "gate": 1.725211585907347,
           "tieToNext": false
         },
         {
           "on": false,
-          "velocity": 0.45794489426987667,
-          "pitch": -4,
+          "velocity": 0.33383671357119993,
+          "pitch": -8,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.292358633533404,
+          "gate": 1.6885085743861759,
           "tieToNext": false
         },
         {
           "on": true,
-          "velocity": 0.6060898058299158,
+          "velocity": 0.6240440531713777,
           "pitch": 7,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 2.4385074793994965,
+          "gate": 2.8060555507710836,
           "tieToNext": false
         },
         {
           "on": true,
-          "velocity": 1,
+          "velocity": 0.8723664200683112,
           "pitch": -7,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.3353607123328053,
+          "gate": 1.5187115267834288,
           "tieToNext": false
         },
         {
           "on": true,
-          "velocity": 1,
+          "velocity": 0.9845594339256555,
           "pitch": -2,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.715920879834846,
+          "gate": 2.1076992236090573,
           "tieToNext": false
         },
         {
           "on": false,
-          "velocity": 1,
+          "velocity": 0.9646007479189058,
           "pitch": -8,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.385806496925218,
+          "gate": 1.7297907816039038,
           "tieToNext": false
         },
         {
           "on": false,
-          "velocity": 1,
-          "pitch": -11,
+          "velocity": 0.8608590425108099,
+          "pitch": -4,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.4635957771212729,
+          "gate": 1.4572771441718162,
           "tieToNext": false
         },
         {
@@ -6966,17 +6995,17 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 2.4361086202220785,
+          "gate": 2.4132553442768008,
           "tieToNext": false
         },
         {
           "on": true,
-          "velocity": 0.5544196235208385,
+          "velocity": 0.46656650725027493,
           "pitch": -2,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.5819501905387776,
+          "gate": 1.4562467061860072,
           "tieToNext": false
         },
         {
@@ -6986,27 +7015,27 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.3615400046637554,
+          "gate": 1.3589428988222938,
           "tieToNext": false
         },
         {
           "on": false,
-          "velocity": 0.6645180793759583,
-          "pitch": -8,
+          "velocity": 0.5939626524524233,
+          "pitch": -1,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.8675202057509004,
+          "gate": 2.1102490311873225,
           "tieToNext": false
         },
         {
           "on": false,
-          "velocity": 0.7563173521480462,
+          "velocity": 0.707217377174454,
           "pitch": 7,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1.5639238903757995,
+          "gate": 1.7260655486467023,
           "tieToNext": false
         },
         {
@@ -7500,6 +7529,9 @@
       },
       "gain": 1,
       "fxSend": 1,
+      "pan": 0.25,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -8180,6 +8212,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -8192,7 +8227,8 @@
     {
       "id": "t13",
       "source": {
-        "kind": "empty"
+        "kind": "voice",
+        "id": "rhodes-mk1"
       },
       "section": "melodic",
       "mute": false,
@@ -8210,13 +8246,79 @@
       },
       "steps": [
         {
+          "on": true,
+          "velocity": 1,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1979964876501747,
+          "tieToNext": true,
+          "chordVoicing": {
+            "degree": 1,
+            "extension": "7",
+            "inversion": 0,
+            "spread": "close"
+          }
+        },
+        {
+          "on": false,
+          "velocity": 0.9816303800225803,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.113904361922545,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.9261426108761971,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9967081022290794,
+          "tieToNext": true
+        },
+        {
           "on": false,
           "velocity": 1,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.218533253332854,
+          "tieToNext": true
+        },
+        {
+          "on": false,
+          "velocity": 0.9270437037295701,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1785912570480013,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9950863317180529,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 0.9356904319858064,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.978012391306738,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.0986313833287507,
           "tieToNext": false
         },
         {
@@ -8226,7 +8328,7 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.1817380065795107,
           "tieToNext": false
         },
         {
@@ -8236,7 +8338,57 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.0690163934945485,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9627336472136221,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.0405443678769846,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.9409448184502783,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.0931978196828651,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 0.980751499500835,
+          "pitch": 0,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1976762017612201,
+          "tieToNext": false
+        },
+        {
+          "on": false,
+          "velocity": 1,
+          "pitch": 2,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.1766999166346432,
+          "tieToNext": false
+        },
+        {
+          "on": true,
+          "velocity": 0.9964031934007964,
+          "pitch": 3,
+          "probability": 100,
+          "ratchet": 1,
+          "microTiming": 0,
+          "gate": 1.012705062587015,
           "tieToNext": false
         },
         {
@@ -8246,127 +8398,17 @@
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
+          "gate": 1.0083280613040286,
           "tieToNext": false
         },
         {
-          "on": false,
+          "on": true,
           "velocity": 1,
           "pitch": 0,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
-          "tieToNext": false
-        },
-        {
-          "on": false,
-          "velocity": 1,
-          "pitch": 0,
-          "probability": 100,
-          "ratchet": 1,
-          "microTiming": 0,
-          "gate": 1,
+          "gate": 1.17790865277457,
           "tieToNext": false
         },
         {
@@ -8859,7 +8901,10 @@
         "note": null
       },
       "gain": 1,
-      "fxSend": 0,
+      "fxSend": 0.53,
+      "pan": 0.8,
+      "filterCutoff": 0.44,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -8879,7 +8924,7 @@
       "mute": false,
       "solo": false,
       "length": 16,
-      "lastPitch": 4,
+      "lastPitch": 11,
       "viewPage": 0,
       "mutation": 0,
       "rowRatchet": 0,
@@ -8891,9 +8936,9 @@
       },
       "steps": [
         {
-          "on": false,
+          "on": true,
           "velocity": 1,
-          "pitch": 4,
+          "pitch": 11,
           "probability": 100,
           "ratchet": 1,
           "microTiming": 0,
@@ -9539,8 +9584,11 @@
         "bankLSB": null,
         "note": null
       },
-      "gain": 1,
-      "fxSend": 0,
+      "gain": 0.74,
+      "fxSend": 0.44,
+      "pan": 0.81,
+      "filterCutoff": 0.39,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -10221,6 +10269,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -10901,6 +10952,9 @@
       },
       "gain": 1,
       "fxSend": 0,
+      "pan": 0.5,
+      "filterCutoff": 1,
+      "filterResonance": 0,
       "defaultChordVoicing": {
         "degree": 0,
         "extension": "triad",
@@ -10915,8 +10969,13 @@
     {
       "id": 0,
       "rate": 0.0083,
-      "depth": 0,
-      "destinations": []
+      "depth": 0.5800000000000001,
+      "destinations": [
+        {
+          "trackId": "t6",
+          "knob": "pan"
+        }
+      ]
     },
     {
       "id": 1,
@@ -10927,20 +10986,39 @@
     {
       "id": 2,
       "rate": 0.0188,
-      "depth": 0,
-      "destinations": []
+      "depth": 0.03999999999999998,
+      "destinations": [
+        {
+          "trackId": "t6",
+          "knob": "filterCutoff"
+        }
+      ]
     },
     {
       "id": 3,
       "rate": 0.0278,
-      "depth": 0,
-      "destinations": []
+      "depth": 0.08,
+      "destinations": [
+        {
+          "trackId": "t10",
+          "knob": "filterCutoff"
+        }
+      ]
     },
     {
       "id": 4,
       "rate": 0.0417,
-      "depth": 0,
-      "destinations": []
+      "depth": 0.21,
+      "destinations": [
+        {
+          "trackId": "t11",
+          "knob": "pan"
+        },
+        {
+          "trackId": "t14",
+          "knob": "pan"
+        }
+      ]
     },
     {
       "id": 5,
@@ -10957,18 +11035,49 @@
     {
       "id": 7,
       "rate": 0.143,
-      "depth": 0,
-      "destinations": []
+      "depth": 0.84,
+      "destinations": [
+        {
+          "trackId": "t6",
+          "knob": "pan"
+        }
+      ]
     }
   ],
+  "midiOutDeviceId": null,
+  "viewSection": "melodic",
   "density": 0,
   "chaos": 0.5,
   "motion": 0.5,
   "drift": 1,
   "tension": 0.5,
+  "tape": {
+    "position": 0.3,
+    "length": 0.7,
+    "reverse": true,
+    "hold": false,
+    "stretch1": 0.5,
+    "gain1": 0.41,
+    "stretch2": 0.25,
+    "gain2": 0.8,
+    "grainRate": 0.24,
+    "grainMix": 0.27,
+    "mix": 0.4
+  },
+  "glitch": {
+    "chance": 0.19,
+    "mix": 0.66
+  },
+  "reverb": {
+    "size": 0.5,
+    "mix": 0.15
+  },
+  "saturation": {
+    "preDrive": 0.13
+  },
   "master": {
     "input": 0.5700000000000001,
-    "loCut": 1,
+    "loCut": 0,
     "comp": 0.6500000000000001,
     "compAttack": 4,
     "compRelease": 5,
@@ -10981,30 +11090,6 @@
     "gateEnabled": false,
     "gateThreshold": 0.8,
     "bypass": false
-  },
-  "saturation": {
-    "preDrive": 0
-  },
-  "tape": {
-    "position": 0.3,
-    "length": 0.7,
-    "reverse": true,
-    "hold": false,
-    "stretch1": 0.5,
-    "gain1": 0.41,
-    "stretch2": 0.25,
-    "gain2": 0.8,
-    "grainRate": 0.23,
-    "grainMix": 0.27,
-    "mix": 0.21000000000000005
-  },
-  "glitch": {
-    "chance": 0,
-    "mix": 1
-  },
-  "reverb": {
-    "size": 0.5,
-    "mix": 0.15
   },
   "banks": [
     {
@@ -11681,6 +11766,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -12362,6 +12450,9 @@
           },
           "gain": 0.24,
           "fxSend": 0.6300000000000001,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -13042,6 +13133,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -13722,6 +13816,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -14402,6 +14499,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -15082,6 +15182,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -15762,6 +15865,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -16442,6 +16548,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -17141,6 +17250,9 @@
           },
           "gain": 1,
           "fxSend": 1,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 1,
             "extension": "triad",
@@ -17822,6 +17934,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -18503,6 +18618,9 @@
           },
           "gain": 1,
           "fxSend": 1,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -19183,6 +19301,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -19863,6 +19984,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -20544,6 +20668,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -21224,6 +21351,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -21904,6 +22034,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -22598,6 +22731,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -23278,6 +23414,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -23958,6 +24097,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -24638,6 +24780,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -25318,6 +25463,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -25998,6 +26146,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -26678,6 +26829,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -27358,6 +27512,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -28057,6 +28214,9 @@
           },
           "gain": 1,
           "fxSend": 1,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 1,
             "extension": "triad",
@@ -28738,6 +28898,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -29419,6 +29582,9 @@
           },
           "gain": 1,
           "fxSend": 1,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -30099,6 +30265,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -30779,6 +30948,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -31459,6 +31631,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -32139,6 +32314,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",
@@ -32819,6 +32997,9 @@
           },
           "gain": 1,
           "fxSend": 0,
+          "pan": 0.5,
+          "filterCutoff": 1,
+          "filterResonance": 0,
           "defaultChordVoicing": {
             "degree": 0,
             "extension": "triad",

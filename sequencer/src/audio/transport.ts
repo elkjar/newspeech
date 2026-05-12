@@ -29,6 +29,7 @@ import { initGlitch, setGlitchParams } from './glitch';
 import { initReverb, setReverbParams } from './reverb';
 import { initPreSaturation, setSaturationParams } from './saturation';
 import { initMaster, setMasterParams } from './master';
+import { initTrackFilter } from './trackFilter';
 import { startFXModulation } from './fxModulation';
 
 export async function togglePlayback(): Promise<void> {
@@ -52,6 +53,11 @@ export async function togglePlayback(): Promise<void> {
     await initGlitch();
     await initReverb();
     await initMaster();
+    // Track filters load their worklet last — they tap voicesBus/mixBus and
+    // don't insert into the global chain, so order relative to the linear
+    // FX stages doesn't matter. Must run before scheduler.start() so the
+    // first trigger can lazy-create its per-track filter graph.
+    await initTrackFilter();
     const fresh = useSequencerStore.getState();
     setTapeParams(fresh.tape);
     setGlitchParams(fresh.glitch);

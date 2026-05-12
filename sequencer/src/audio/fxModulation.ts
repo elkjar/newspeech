@@ -14,6 +14,7 @@ import { setGlitchParams } from './glitch';
 import { setReverbParams } from './reverb';
 import { setSaturationParams } from './saturation';
 import { setMasterParams } from './master';
+import { applyTrackFilterParams } from './trackFilter';
 import { modulated, GLOBAL_TRACK_ID } from './lfo';
 
 let rafId: number | null = null;
@@ -85,6 +86,19 @@ export function startFXModulation(): void {
       gateEnabled: master.gateEnabled,
       bypass: master.bypass,
     });
+
+    // Per-track filter graphs — cutoff + resonance + fxSend wet/dry. All
+    // continuous, all LFO-modulatable. The graph is lazy-created on first
+    // trigger from each track, so applyTrackFilterParams is a no-op for
+    // tracks that haven't triggered yet (graph map miss). Once initialized,
+    // continuous params update via setTargetAtTime ramps in trackFilter.ts.
+    for (const track of state.tracks) {
+      applyTrackFilterParams(track.id, {
+        cutoff: modulated(track.filterCutoff, lfos, track.id, 'filterCutoff'),
+        resonance: modulated(track.filterResonance, lfos, track.id, 'filterResonance'),
+        fxSend: modulated(track.fxSend, lfos, track.id, 'fxSend'),
+      });
+    }
 
     rafId = window.requestAnimationFrame(tick);
   };

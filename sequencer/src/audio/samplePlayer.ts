@@ -1,6 +1,47 @@
-import { getAudioContext, getVoicesBus, getMixBus } from './audioContext';
+import { getAudioContext, getMixBus } from './audioContext';
+import { getTrackFilter } from './trackFilter';
+import { dropChordToneWeighted } from './chords';
 import { synthBass, synthHatC, synthHatO, synthKick, synthMelodic, synthSnare } from './synth';
-import { voiceEnvelope, voiceGain, voiceLoop } from './voices';
+import {
+  isPadVoice,
+  voiceEnvelope,
+  voiceGain,
+  voiceLoop,
+  voiceOctaveOffset,
+  voicePadConfig,
+} from './voices';
+import type { PadConfig } from './voices';
+
+// Slice-2 pad pan motion. Per-tone slow LFO sweeps the panner around its
+// base (positional-spread) value over the full audible lifetime of the tone.
+// Continuous-time phase math (`phase0 + 2π·rate·when`) makes consecutive
+// triggers feel like the same free-running oscillator rather than re-seeding
+// at every spawn — without it, motion locks to the trigger grid.
+const PAD_PAN_SAMPLES_PER_CYCLE = 60;
+function schedulePadPanCurve(
+  panParam: AudioParam,
+  basePan: number,
+  rate: number,
+  phase0: number,
+  depth: number,
+  when: number,
+  duration: number
+): void {
+  if (duration <= 0 || rate <= 0) {
+    panParam.value = Math.max(-1, Math.min(1, basePan));
+    return;
+  }
+  const phaseAtWhen = phase0 + 2 * Math.PI * rate * when;
+  const numSamples = Math.max(64, Math.ceil(duration * rate * PAD_PAN_SAMPLES_PER_CYCLE));
+  const curve = new Float32Array(numSamples);
+  for (let s = 0; s < numSamples; s++) {
+    const tFromStart = (s / (numSamples - 1)) * duration;
+    const phase = phaseAtWhen + 2 * Math.PI * rate * tFromStart;
+    const target = basePan + depth * Math.sin(phase);
+    curve[s] = Math.max(-1, Math.min(1, target));
+  }
+  panParam.setValueCurveAtTime(curve, when, duration);
+}
 
 export type SampleId = string;
 
@@ -94,25 +135,29 @@ class SamplePlayer {
     midiNote?: number,
     gate = 1,
     stepDuration = 0.125,
-    fxSend = 1,
     chordIntervals?: number[],
-    pan = 0.5
+    pan = 0.5,
+    trackId?: string
   ) {
     const ctx = getAudioContext();
-    // Per-trigger split — `out` is what the voice writes into; it fans into
-    // a wet leg (→ FX bus, hits pre-sat / tape / glitch / reverb / master)
-    // and a dry leg (→ mixBus, bypasses pre-sat / tape / glitch / reverb but
-    // STILL hits master). Master is master-of-everything by design.
-    // fxSend snapshots at trigger time; LFO modulation steps per trigger.
-    // Shared across every chord tone in this trigger — they all see the
-    // same send level by design.
+    // Per-trigger `out` is the voice's write target. Routing downstream of
+    // `out` lives in two places:
+    //   • Per-trigger: optional per-track-pan StereoPanner (snapshot at trigger).
+    //   • Per-track persistent (trackFilter.ts): ladder filter + wet/dry split.
+    //
+    // Wet/dry MOVED out of this function 2026-05-11 along with the ladder
+    // filter — keeping them per-trigger but feeding from a persistent
+    // filterOut would leak GainNodes (filterOut keeps every per-trigger
+    // wet/dry reachable forever). fxSend is now continuously LFO-modulatable
+    // via the per-track filter graph; previously snapshot per trigger. The
+    // fxSend parameter was dropped from this signature entirely — the store
+    // value is the canonical source, read by fxModulation.ts each RAF tick.
     const out = ctx.createGain();
     out.gain.value = 1;
     // Per-track stereo placement. `pan` is 0..1 (0.5 = center) in state space
     // so it composes cleanly with the LFO pipeline; we map to [-1,+1] here.
-    // Snapshots at trigger time, same convention as fxSend. Skipped at center
-    // so the existing per-tone chord-spread panner is the only spatial node
-    // when this row sits centered.
+    // Snapshots at trigger time. Skipped at center so the existing per-tone
+    // chord-spread panner is the only spatial node when this row sits centered.
     const clampedPan = Math.max(0, Math.min(1, pan));
     let busHead: AudioNode = out;
     if (clampedPan !== 0.5) {
@@ -121,18 +166,16 @@ class SamplePlayer {
       out.connect(trackPanner);
       busHead = trackPanner;
     }
-    const clampedSend = Math.max(0, Math.min(1, fxSend));
-    if (clampedSend > 0) {
-      const wet = ctx.createGain();
-      wet.gain.value = clampedSend;
-      busHead.connect(wet);
-      wet.connect(getVoicesBus());
-    }
-    if (clampedSend < 1) {
-      const dry = ctx.createGain();
-      dry.gain.value = 1 - clampedSend;
-      busHead.connect(dry);
-      dry.connect(getMixBus());
+    // Hand off to the per-track filter graph (created lazily on first call
+    // per trackId). The graph owns the ladder worklet + wet/dry split +
+    // connections to voicesBus / mixBus. The trigger's only job downstream
+    // of busHead is to plug into the right per-track filterIn.
+    // Fallback to direct-to-mixBus if no trackId provided (shouldn't happen
+    // in normal flow — App.tsx passes track.id at every call site).
+    if (trackId) {
+      busHead.connect(getTrackFilter(trackId));
+    } else {
+      busHead.connect(getMixBus());
     }
 
     const group = this.chokeGroups.get(voice);
@@ -149,7 +192,26 @@ class SamplePlayer {
       }
     }
 
-    const intervals = chordIntervals && chordIntervals.length > 0 ? chordIntervals : [0];
+    // Per-voice natural-register shift. Applied to the caller's requested
+    // midiNote before chord-tone expansion + bank lookup. Composes with
+    // per-track `octave` (which the caller already folded into midiNote).
+    const octaveShift = voiceOctaveOffset(voice) * 12;
+    const baseMidi = midiNote !== undefined ? midiNote + octaveShift : undefined;
+
+    let intervals = chordIntervals && chordIntervals.length > 0 ? chordIntervals : [0];
+    // Pad-type voices always get a per-tone panner with an LFO sweep, even
+    // for single-note triggers. The LFO config is read once per trigger and
+    // distributed by tone index (rates + phaseOffsets arrays index mod len).
+    const isPad = isPadVoice(voice);
+    const padCfg: PadConfig | undefined = isPad ? voicePadConfig(voice) : undefined;
+    // Pad-type per-trigger tone dropout. Runs AFTER chord context has been
+    // published by App.tsx so followers still see the full chord — only the
+    // pad's audible output thins. Weighted toward upper tones (preserves
+    // bass anchor). N is recomputed AFTER the drop so chord-gain comp +
+    // useJitter reflect the actually-played count.
+    if (isPad && padCfg && intervals.length > 1 && Math.random() < padCfg.dropoutChance) {
+      intervals = dropChordToneWeighted(intervals, padCfg.dropoutUpperBias);
+    }
     const N = intervals.length;
     const useJitter = N > 1;
     // Per-voice gain trim (VoiceDef.gain). Applies to BOTH sample and synth
@@ -169,17 +231,41 @@ class SamplePlayer {
 
     for (let i = 0; i < N; i++) {
       const interval = intervals[i];
-      const targetMidi = midiNote !== undefined ? midiNote + interval : undefined;
+      const targetMidi = baseMidi !== undefined ? baseMidi + interval : undefined;
       const isLast = i === N - 1;
 
       // Index-based positional stereo spread. Bass tone (i=0) anchors one
       // side, top tone (i=N-1) the other, middle tones distribute between.
       // Symmetric around center; ±0.45 deterministic spread + ±0.05 random
-      // jitter keeps it tasteful but obviously spread (no panned-hard-left).
-      // Single-note triggers (N=1) bypass the panner entirely (mono-centered).
-      const pan = useJitter
-        ? (i / (N - 1) - 0.5) * 0.9 + (Math.random() - 0.5) * 0.1
+      // jitter keeps it tasteful but obviously spread. Pad-type voices ALWAYS
+      // get a panner (even single notes) so the LFO motion stays consistent
+      // across mono/chord triggers — base pan defaults to 0 in the N=1 pad
+      // case so the LFO sweep is symmetric around center.
+      let pan: number | null;
+      if (useJitter) {
+        pan = (i / (N - 1) - 0.5) * 0.9 + (Math.random() - 0.5) * 0.1;
+      } else if (isPad) {
+        pan = 0;
+      } else {
+        pan = null;
+      }
+      // Per-tone LFO config — looked up by tone index mod array length so
+      // pad voices with more than 6 chord tones still tile rates/phases.
+      const padLfo = isPad && padCfg && pan !== null
+        ? {
+            rate: padCfg.panLfoRatesHz[i % padCfg.panLfoRatesHz.length],
+            phase0: padCfg.panLfoPhaseOffsetsRad[i % padCfg.panLfoPhaseOffsetsRad.length],
+            depth: padCfg.panLfoDepth,
+          }
         : null;
+      // Per-tone gate stagger — pad voices only. Each chord tone gets its
+      // own random gate multiplier in [min, max] so the chord blooms /
+      // wilts rather than triggering as a perfect block. Skewed slightly
+      // toward >1 by default (0.85..1.15) so the bloom feels like the
+      // chord settling in rather than truncating.
+      const toneGate = isPad && padCfg
+        ? gate * (padCfg.gateStagger.min + Math.random() * (padCfg.gateStagger.max - padCfg.gateStagger.min))
+        : gate;
       const toneVelocity = velocity * chordGainComp * voiceGainTrim;
 
       if (hasSamples && data) {
@@ -190,10 +276,11 @@ class SamplePlayer {
           when,
           toneVelocity,
           targetMidi,
-          gate,
+          toneGate,
           stepDuration,
           useJitter,
-          pan
+          pan,
+          padLfo
         );
         if (src && isLast) {
           // last-write-wins choke tracking; kept for parity with prior behavior.
@@ -208,30 +295,48 @@ class SamplePlayer {
         let synthOut: AudioNode = out;
         if (pan !== null) {
           const panner = ctx.createStereoPanner();
-          panner.pan.value = pan;
+          if (padLfo) {
+            // Synth voices don't expose their release tail, so cover a
+            // generous window past the gate. Curve outliving the source is
+            // harmless — panner gets garbage collected with the source.
+            const env = voiceEnvelope(voice);
+            const releaseTail = env ? env.release : 1.0;
+            const lfoDuration = toneGate * stepDuration + releaseTail + 0.1;
+            schedulePadPanCurve(
+              panner.pan,
+              pan,
+              padLfo.rate,
+              padLfo.phase0,
+              padLfo.depth,
+              when,
+              lfoDuration
+            );
+          } else {
+            panner.pan.value = pan;
+          }
           panner.connect(out);
           synthOut = panner;
         }
         switch (voice) {
           case 'kick':
-            synthKick(when, toneVelocity, synthOut, gate);
+            synthKick(when, toneVelocity, synthOut, toneGate);
             break;
           case 'snare':
-            synthSnare(when, toneVelocity, synthOut, gate);
+            synthSnare(when, toneVelocity, synthOut, toneGate);
             break;
           case 'hat-c':
-            synthHatC(when, toneVelocity, synthOut, gate);
+            synthHatC(when, toneVelocity, synthOut, toneGate);
             break;
           case 'hat-o':
-            synthHatO(when, toneVelocity, synthOut, gate);
+            synthHatO(when, toneVelocity, synthOut, toneGate);
             break;
           case 'bass':
             if (targetMidi !== undefined)
-              synthBass(when, targetMidi, toneVelocity, synthOut, gate, stepDuration);
+              synthBass(when, targetMidi, toneVelocity, synthOut, toneGate, stepDuration);
             break;
           default:
             if (targetMidi !== undefined)
-              synthMelodic(when, targetMidi, toneVelocity, synthOut, gate, stepDuration);
+              synthMelodic(when, targetMidi, toneVelocity, synthOut, toneGate, stepDuration);
         }
       }
     }
@@ -247,7 +352,8 @@ class SamplePlayer {
     gate: number,
     stepDuration: number,
     useJitter: boolean,
-    pan: number | null
+    pan: number | null,
+    padLfo: { rate: number; phase0: number; depth: number } | null = null
   ): AudioBufferSourceNode | null {
     const ctx = getAudioContext();
 
@@ -338,10 +444,27 @@ class SamplePlayer {
     // positional spread (bass anchors one side, top tone the other) with a
     // small random jitter folded in. Single-note triggers pass `pan = null`
     // and skip the panner entirely (mono-centered, same as pre-spread).
+    // Pad voices pass a non-null `pan` AND a `padLfo` config — panner gets a
+    // sine-curve sweep around the base scheduled for the full audible window.
     let tail: AudioNode = gain;
     if (pan !== null) {
       const panner = ctx.createStereoPanner();
-      panner.pan.value = Math.max(-1, Math.min(1, pan));
+      if (padLfo) {
+        const lfoDuration = endTime !== null
+          ? endTime - when
+          : gate * stepDuration + 4.0;
+        schedulePadPanCurve(
+          panner.pan,
+          pan,
+          padLfo.rate,
+          padLfo.phase0,
+          padLfo.depth,
+          when,
+          lfoDuration
+        );
+      } else {
+        panner.pan.value = Math.max(-1, Math.min(1, pan));
+      }
       gain.connect(panner);
       tail = panner;
     }

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
+import { resetPadDrift } from '../audio/padState';
+import { resetTrackFilters } from '../audio/trackFilter';
 import {
   defaultLFOs,
   freezeLFOs,
@@ -151,6 +153,13 @@ export interface Track {
   // root lands in bass range rather than chord-master range. Applied to every
   // melodic trigger after the role-based note resolution.
   octave: number;
+  // Per-track Moog-style ladder filter (slice 1: cutoff + resonance). Both in
+  // 0..1 store space. Cutoff log-maps to ~50..18000 Hz at the audio boundary;
+  // 1.0 = fully open, transparent at default. Resonance 0..1 scales to feedback
+  // gain 0..4 inside the worklet (self-oscillates at high values). Internal
+  // voices only, same scope as gain/pan/fxSend.
+  filterCutoff: number;
+  filterResonance: number;
 }
 
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
@@ -264,6 +273,8 @@ interface SequencerState {
   setTrackGain: (trackId: string, gain: number) => void;
   setTrackFxSend: (trackId: string, fxSend: number) => void;
   setTrackPan: (trackId: string, pan: number) => void;
+  setTrackFilterCutoff: (trackId: string, cutoff: number) => void;
+  setTrackFilterResonance: (trackId: string, resonance: number) => void;
   setTrackRate: (trackId: string, rate: StepRate) => void;
   setTrackLockTiming: (trackId: string, lock: boolean) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
@@ -773,6 +784,22 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, pan: clamped } : t)),
     }));
   },
+  setTrackFilterCutoff: (trackId, cutoff) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(cutoff) ? cutoff : 1));
+    set((state) => ({
+      tracks: state.tracks.map((t) =>
+        t.id === trackId ? { ...t, filterCutoff: clamped } : t
+      ),
+    }));
+  },
+  setTrackFilterResonance: (trackId, resonance) => {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(resonance) ? resonance : 0));
+    set((state) => ({
+      tracks: state.tracks.map((t) =>
+        t.id === trackId ? { ...t, filterResonance: clamped } : t
+      ),
+    }));
+  },
   setTrackRate: (trackId, rate) =>
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rate } : t)),
@@ -950,4 +977,13 @@ function applyBankSlot(
   // captures the same overlay — drop it for the same reason.
   clearOverlay();
   unfreezeLFOs();
+  // Pad voicing-drift counters are keyed by trackId. Reset so a swapped-in
+  // pattern's drift cadence starts fresh rather than mid-cycle from the
+  // previous pattern's trigger count.
+  resetPadDrift();
+  // Per-track filter graphs are keyed by trackId and would otherwise keep
+  // ringing the previous pattern's filter state (high-res self-oscillation
+  // tail, etc.) into the new pattern. Disconnect + clear so each pattern
+  // recall starts with a fresh filter.
+  resetTrackFilters();
 }

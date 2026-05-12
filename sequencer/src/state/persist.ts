@@ -20,6 +20,8 @@ import { DEFAULT_REVERB_PARAMS, type ReverbParams } from '../audio/reverb';
 import { DEFAULT_SATURATION_PARAMS, type SaturationParams } from '../audio/saturation';
 import { DEFAULT_MASTER_PARAMS, type MasterParams } from '../audio/master';
 import { resetChordContext } from '../audio/chordContext';
+import { resetPadDrift } from '../audio/padState';
+import { resetTrackFilters } from '../audio/trackFilter';
 
 interface PersistedState {
   version: number;
@@ -265,6 +267,13 @@ export function importProject(json: string): boolean {
     typeof data.rootNote === 'number' ? data.rootNote : 60,
     data.scale ?? 'major'
   );
+  // Pad voicing-drift counters keyed by trackId — the loaded project may
+  // reuse track ids but the drift cadence shouldn't carry across loads.
+  resetPadDrift();
+  // Per-track filter graphs keyed by trackId — same reasoning. Disconnect +
+  // clear so the loaded project starts with fresh filters rather than
+  // inheriting cutoff/resonance/ring from the prior session's audio graph.
+  resetTrackFilters();
   return true;
 }
 

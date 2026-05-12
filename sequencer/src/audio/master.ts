@@ -76,6 +76,14 @@ const MODE_NAMES: readonly string[] = ['boost', 'tube', 'fuzz', 'square'] as con
 const COMP_ATTACK_MS: readonly number[] = [0.1, 0.3, 1, 3, 10, 30] as const;
 const COMP_RELEASE_MS: readonly number[] = [30, 100, 300, 1000, 3000, 10000] as const;
 const PARAM_RAMP = 0.05;
+// Always-on tonal EQ at the master tail. Gentle low-mid scoop carves the
+// "boxiness" zone around 450 Hz so the bus reads cleaner without sounding
+// EQ'd. Wide Q so the dip is felt across the low-mids (~200..1000 Hz) rather
+// than as a notch. Not user-configurable — structural identity, same shape
+// as `dcBlock`.
+const TAIL_EQ_HZ = 450;
+const TAIL_EQ_Q = 0.7;
+const TAIL_EQ_GAIN_DB = -1;
 
 let initialized = false;
 let initializing: Promise<void> | null = null;
@@ -94,6 +102,7 @@ let distSum: GainNode | null = null;         // sum point after dist mix
 let hiCut: BiquadFilterNode | null = null;
 let gate: AudioWorkletNode | null = null;
 let trim: GainNode | null = null;            // output trim
+let tailEq: BiquadFilterNode | null = null;  // final-tail tonal EQ (always on, peaking)
 let wetMix: GainNode | null = null;          // bypass crossfade — wet side
 let dryMix: GainNode | null = null;          // bypass crossfade — dry side
 let outNode: GainNode | null = null;
@@ -240,6 +249,12 @@ export async function initMaster(): Promise<void> {
     trim = ctx.createGain();
     trim.gain.value = trimGainLinear(params.trim);
 
+    tailEq = ctx.createBiquadFilter();
+    tailEq.type = 'peaking';
+    tailEq.frequency.value = TAIL_EQ_HZ;
+    tailEq.Q.value = TAIL_EQ_Q;
+    tailEq.gain.value = TAIL_EQ_GAIN_DB;
+
     wetMix = ctx.createGain();
     wetMix.gain.value = params.bypass ? 0 : 1;
 
@@ -253,11 +268,15 @@ export async function initMaster(): Promise<void> {
     //   inputNode → inputGain → dcBlock → loCut → compressor → [split]
     //     ├─► preEmphasis → distortion → deEmphasis → distWetGain ─┐
     //     └─► distDryGain ─────────────────────────────────────────┴─► distSum
-    //   distSum → hiCut → trim → gate → wetMix → outNode
+    //   distSum → hiCut → trim → gate → tailEq → wetMix → outNode
     //
     // Gate is post-trim so its threshold (-30..0 dB) is referenced to the
     // actual output level — matches what the ear hears rather than the
     // pre-trim hot signal.
+    //
+    // tailEq sits AFTER gate and BEFORE wetMix so full-unit bypass cleanly
+    // skips it (the dry tap routes inputNode → dryMix → outNode, around
+    // everything). Always-on peaking cut at 450 Hz.
     inputNode.connect(inputGain);
     inputGain.connect(dcBlock);
     dcBlock.connect(loCut);
@@ -275,7 +294,8 @@ export async function initMaster(): Promise<void> {
     distSum.connect(hiCut);
     hiCut.connect(trim);
     trim.connect(gate);
-    gate.connect(wetMix);
+    gate.connect(tailEq);
+    tailEq.connect(wetMix);
     wetMix.connect(outNode);
 
     // Dry bypass

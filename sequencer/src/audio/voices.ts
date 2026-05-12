@@ -61,6 +61,23 @@ export const BASS_MUTATION: MutationProfile = {
   chordMutationChance: 0,
 };
 
+// Pads sustain rather than flip rhythmically, never jump pitch (harmony comes
+// from the published chord context, not mutation rolls), bias toward longer
+// gates (more overlap → voicing-crossfade-via-long-release), and love chord-
+// aware mutations (drop / borrow / shuffle / shift). Consulted only when the
+// pad-type voice is on the chord-master row; non-master rows just see the
+// rhythmic-mutation fields.
+export const PAD_MUTATION: MutationProfile = {
+  flipChance: 0.1,
+  velSpread: 0.25,
+  pitchJumpProb: 0,
+  pitchWeights: { octave: 0, fifth: 0, small: 0 },
+  gateBias: 0.7,
+  gateSpread: 0.3,
+  tieFlipChance: 0.05,
+  chordMutationChance: 0.55,
+};
+
 export interface VoiceEnvelope {
   attack: number;            // seconds; min 0.001 enforced at trigger time
   decay?: number;            // seconds; omitted = no decay phase, sustain stays at peak
@@ -73,10 +90,45 @@ export interface VoiceLoop {
   end: number;               // seconds into the buffer
 }
 
+// Open union — pad is the first category. Tagging a voice with `type: 'pad'`
+// opts it into pad-type dispatch (custom mutations + built-in per-tone pan
+// motion). All pad behaviour is keyed off this tag via `isPadVoice(id)`.
+export type VoiceType = 'pad';
+
+export interface PadConfig {
+  // Auto-shuffle inversion or spread every N chord-master triggers (independent
+  // of mutation knob rolls). 0 disables.
+  voicingDriftEveryNTriggers: number;
+  // Probability a drift event fires when the trigger-count cadence hits; below
+  // 1 smooths the timing so it doesn't feel strictly metronomic.
+  voicingDriftChance: number;
+  voicingDriftAxis: 'inversion' | 'spread' | 'either';
+
+  // Per-trigger chance a non-bass chord tone is dropped at dispatch (audible
+  // only — followers still see the full chord via the published context).
+  dropoutChance: number;
+  // Weighting toward upper tones; 0 uniform, 1 always-top, soft-power between.
+  dropoutUpperBias: number;
+
+  // Each tone's gate is multiplied by random in [min, max]. Slight skew toward
+  // >1 lets chord tones bloom rather than truncate.
+  gateStagger: { min: number; max: number };
+
+  // Independent slow LFO per tone. Rates and phase offsets indexed by tone
+  // position mod length — prime-spaced so the field never re-aligns.
+  panLfoRatesHz: number[];
+  panLfoPhaseOffsetsRad: number[];
+  // Max sweep from each tone's base (positional spread) pan position.
+  panLfoDepth: number;
+}
+
 export interface VoiceDef {
   id: string;
   label: string;
   category: VoiceCategory;
+  // Optional category tag; 'pad' opts the voice into pad dispatch in
+  // samplePlayer and the chord-master voicing-drift hook in App.tsx.
+  type?: VoiceType;
   mutationProfile?: MutationProfile;
   envelope?: VoiceEnvelope;  // opt-in ADSR shaping in samplePlayer; absent = play sample as-is
   loop?: VoiceLoop;          // opt-in looping; absent = source plays to end naturally
@@ -86,7 +138,29 @@ export interface VoiceDef {
   // perceived loudness parity across voices so chord assembly and master
   // bus aren't pushed into limiting by a hot voice. Absent = 1.0.
   gain?: number;
+  // Per-voice natural-register shift, applied to the requested midiNote at
+  // trigger time (integer octaves, semitones internally = octaveOffset * 12).
+  // Composes additively with per-track `octave`. Used to anchor pad voices
+  // in their intended low register without forcing per-track octave authoring.
+  octaveOffset?: number;
+  // Pad-specific tuning; required-in-spirit when type === 'pad'.
+  padConfig?: PadConfig;
 }
+
+// Defaults aimed at "obviously moving, obviously pad" per visible-defaults
+// rule. The user tunes per-voice once they listen; centralized so first pad
+// voice has a sensible starting point.
+export const DEFAULT_PAD_CONFIG: PadConfig = {
+  voicingDriftEveryNTriggers: 4,
+  voicingDriftChance: 0.8,
+  voicingDriftAxis: 'either',
+  dropoutChance: 0.45,
+  dropoutUpperBias: 0.7,
+  gateStagger: { min: 0.85, max: 1.15 },
+  panLfoRatesHz: [0.07, 0.11, 0.13, 0.17, 0.19, 0.23],
+  panLfoPhaseOffsetsRad: [0, 1.7, 3.1, 4.6, 5.9, 2.3],
+  panLfoDepth: 0.45,
+};
 
 export const VOICES: VoiceDef[] = [
   { id: 'kick', label: 'kick', category: 'drum', mutationProfile: KICK_MUTATION },
@@ -108,6 +182,37 @@ export const VOICES: VoiceDef[] = [
   { id: 'soft-piano', label: 'soft piano', category: 'melodic' },
   { id: 'tape-piano', label: 'tape piano', category: 'melodic' },
   { id: 'under-piano', label: 'under piano', category: 'melodic' },
+  { id: 'mini-moog', label: 'mini moog', category: 'melodic' },
+  {
+    id: 'sinewaves-scope',
+    label: 'sinewaves',
+    category: 'melodic',
+    type: 'pad',
+    mutationProfile: PAD_MUTATION,
+    envelope: { attack: 0.4, sustain: 1.0, release: 2.2 },
+    octaveOffset: -2,
+    padConfig: DEFAULT_PAD_CONFIG,
+  },
+  {
+    id: 'encounter',
+    label: 'encounter',
+    category: 'melodic',
+    type: 'pad',
+    mutationProfile: PAD_MUTATION,
+    envelope: { attack: 0.4, sustain: 1.0, release: 2.2 },
+    octaveOffset: -2,
+    padConfig: DEFAULT_PAD_CONFIG,
+  },
+  {
+    id: 'pulsed',
+    label: 'pulsed',
+    category: 'melodic',
+    type: 'pad',
+    mutationProfile: PAD_MUTATION,
+    envelope: { attack: 0.4, sustain: 1.0, release: 2.2 },
+    octaveOffset: -2,
+    padConfig: DEFAULT_PAD_CONFIG,
+  },
 ];
 
 export function voiceCategory(voiceId: string): VoiceCategory {
@@ -136,4 +241,20 @@ export function voiceLoop(voiceId: string): VoiceLoop | undefined {
 
 export function voiceGain(voiceId: string): number {
   return VOICES.find((v) => v.id === voiceId)?.gain ?? 1;
+}
+
+export function voiceOctaveOffset(voiceId: string): number {
+  return VOICES.find((v) => v.id === voiceId)?.octaveOffset ?? 0;
+}
+
+export function voiceType(voiceId: string): VoiceType | undefined {
+  return VOICES.find((v) => v.id === voiceId)?.type;
+}
+
+export function voicePadConfig(voiceId: string): PadConfig | undefined {
+  return VOICES.find((v) => v.id === voiceId)?.padConfig;
+}
+
+export function isPadVoice(voiceId: string): boolean {
+  return voiceType(voiceId) === 'pad';
 }

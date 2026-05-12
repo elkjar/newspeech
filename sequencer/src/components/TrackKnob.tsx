@@ -11,6 +11,8 @@ const LABELS: Record<LFODestKnobTrack, string> = {
   fxSend: 'fx send',
   pan: 'pan',
   gain: 'gain',
+  filterCutoff: 'cutoff',
+  filterResonance: 'res',
 };
 
 // Knobs operate in 0..1 space (LFO pipeline, MIDI dispatch). Gain stores
@@ -28,6 +30,10 @@ function readKnob(track: TrackData, knob: LFODestKnobTrack): number {
       return track.pan;
     case 'gain':
       return track.gain / 2;
+    case 'filterCutoff':
+      return track.filterCutoff;
+    case 'filterResonance':
+      return track.filterResonance;
   }
 }
 
@@ -48,6 +54,12 @@ function writeKnob(trackId: string, knob: LFODestKnobTrack, value: number): void
       return;
     case 'gain':
       s.setTrackGain(trackId, value * 2);
+      return;
+    case 'filterCutoff':
+      s.setTrackFilterCutoff(trackId, value);
+      return;
+    case 'filterResonance':
+      s.setTrackFilterResonance(trackId, value);
       return;
   }
 }

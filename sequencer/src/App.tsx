@@ -25,6 +25,8 @@ import {
   sourceIsMelodic,
   sourceMutation,
 } from './instruments/library';
+import { isPadVoice, voicePadConfig } from './audio/voices';
+import { tickPadDrift } from './audio/padState';
 import {
   resolveChord,
   dropChordTone,
@@ -149,6 +151,10 @@ export function App() {
       'soft_piano',
       'tape_piano',
       'under_piano',
+      'sinewaves-at-the-scope',
+      'encounter',
+      'mini-moog',
+      'pulsed',
     ];
     for (const kit of kits) {
       const baseUrl = `${import.meta.env.BASE_URL}samples/${kit}`;
@@ -415,7 +421,13 @@ export function App() {
                 profile.chordMutationChance > 0 &&
                 Math.random() < mut * profile.chordMutationChance
               ) {
-                const pick = Math.floor(Math.random() * 4);
+                // Pad-type voices skip borrowChord (introduces atonal parallel-
+                // mode notes that don't compose well with long-release tail
+                // stacking — drop / shuffle / shift stay in-scene-scale).
+                const isPad =
+                  track.source.kind === 'voice' && isPadVoice(track.source.id);
+                const picks = isPad ? [0, 2, 3] : [0, 1, 2, 3];
+                const pick = picks[Math.floor(Math.random() * picks.length)];
                 if (pick === 0) {
                   droppedIntervals = dropChordTone(authored.intervals);
                 } else if (pick === 1) {
@@ -434,6 +446,39 @@ export function App() {
                   const v = shiftSpread(stepVoicing);
                   chord = resolveChord(rootNote, scale, v, pitch + harmonicShift);
                   publishedVoicing = v;
+                }
+              }
+              // Pad-type voicing drift — fires every N chord-master triggers
+              // independently of the mutation roll above. Re-resolves the
+              // chord with a shuffled inversion or shifted spread on top of
+              // whatever publishedVoicing currently holds (which may already
+              // be a mutated voicing). When it fires it wipes any pending
+              // drop from the mutation roll — drift output wins.
+              if (
+                !freeze &&
+                track.source.kind === 'voice' &&
+                isPadVoice(track.source.id) &&
+                stepVoicing.degree > 0
+              ) {
+                const padCfg = voicePadConfig(track.source.id);
+                if (padCfg && padCfg.voicingDriftEveryNTriggers > 0) {
+                  const count = tickPadDrift(track.id);
+                  if (
+                    count % padCfg.voicingDriftEveryNTriggers === 0 &&
+                    Math.random() < padCfg.voicingDriftChance
+                  ) {
+                    let v = publishedVoicing;
+                    if (padCfg.voicingDriftAxis === 'inversion') {
+                      v = shuffleInversion(v);
+                    } else if (padCfg.voicingDriftAxis === 'spread') {
+                      v = shiftSpread(v);
+                    } else {
+                      v = Math.random() < 0.5 ? shuffleInversion(v) : shiftSpread(v);
+                    }
+                    chord = resolveChord(rootNote, scale, v, pitch + harmonicShift);
+                    droppedIntervals = null;
+                    publishedVoicing = v;
+                  }
                 }
               }
               chordRoot = chord.root;
@@ -520,6 +565,9 @@ export function App() {
             // pipeline clamps inside 0..1. Halve before modulating, restore
             // after — keeps swing symmetric around the knob's center.
             const modGain = modulated(track.gain / 2, lfos, track.id, 'gain') * 2;
+            // fxSend dropped from this call — it's now driven continuously
+            // by fxModulation.ts through the per-track filter graph's wet/dry
+            // GainNodes. Same story for filter cutoff/resonance.
             samplePlayer.trigger(
               track.source.id,
               t,
@@ -527,9 +575,9 @@ export function App() {
               rootMidi,
               effectiveGate,
               rowStepDuration,
-              modulated(track.fxSend, lfos, track.id, 'fxSend'),
               voiceIntervals,
-              modulated(track.pan, lfos, track.id, 'pan')
+              modulated(track.pan, lfos, track.id, 'pan'),
+              track.id
             );
           }
         }

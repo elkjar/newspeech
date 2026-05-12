@@ -122,7 +122,7 @@ export function Track({ track }: { track: TrackData }) {
           value={sourceValue}
           onChange={(e) => handleSourceChange(e.target.value)}
           style={{ height: STEP_SIZE }}
-          className="select-chevron w-[202px] bg-transparent border border-white/15 text-[11px] uppercase tracking-widest text-white pl-3 focus:outline-none focus:border-white"
+          className="select-chevron w-[114px] bg-transparent border border-white/15 text-[11px] uppercase tracking-widest text-white pl-3 focus:outline-none focus:border-white"
           title="source"
         >
           <option value="empty" className="bg-[#050505]">—</option>
@@ -189,7 +189,7 @@ export function Track({ track }: { track: TrackData }) {
             />
           )}
         </div>
-        {(['gain', 'pan', 'fxSend', 'mutation', 'rowRatchet'] as const).map((knob) => (
+        {(['gain', 'pan', 'filterCutoff', 'filterResonance', 'fxSend', 'mutation', 'rowRatchet'] as const).map((knob) => (
           <TrackKnob key={knob} track={track} knob={knob} size={STEP_SIZE} />
         ))}
       </div>

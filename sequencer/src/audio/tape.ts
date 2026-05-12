@@ -7,12 +7,19 @@
 // Signal flow:
 //   voicesPostFX ──► dryGain ──► masterBus ──► destination
 //        │                          ▲
-//        └──► tapeMachine ──► tapeMix (wet)
+//        └──► tapeMachine ──► tapeHighpass ──► tapeMix (wet)
 //
 //   voicesPostFX is voicesBus's downstream after pre-saturation; tape taps
 //   it (instead of voicesBus) so captured material reflects pre-drive.
 //   dryGain.gain = 1 - mix
 //   tapeMix.gain = mix
+//
+// Always-on 300 Hz highpass sits on the tape wet output. Bass voices keep
+// their full range on the dry path; the tape bed + grains never compete with
+// or muddy the low end. Placed AFTER the worklet so the filter catches both
+// directly-recorded bass AND content shifted into the low range by the
+// octave-down stretch layer (stretch2 = 0.25 = 0.5× = an octave-down
+// companion that would otherwise pull mid content into the bass band).
 import {
   getAudioContext,
   getDryGain,
@@ -63,10 +70,16 @@ const TAPE_LENGTH_SECONDS = 8;
 const PARAM_RAMP = 0.05;
 // grain layer ceiling — worklet sums bed + grain, so unbounded grainMix can clip
 const GRAIN_MIX_MAX = 0.65;
+// Fixed wet-path highpass. 300 Hz, 12 dB/oct (Butterworth Q ≈ 0.707, flat
+// passband). Always on — not user-configurable. Carving low end out of the
+// bed is a deliberate identity choice for the tape unit.
+const TAPE_HIGHPASS_HZ = 300;
+const TAPE_HIGHPASS_Q = 0.707;
 
 let initialized = false;
 let initializing: Promise<void> | null = null;
 let tapeMachine: AudioWorkletNode | null = null;
+let tapeHighpass: BiquadFilterNode | null = null;
 let tapeMix: GainNode | null = null;
 let dryGainRef: GainNode | null = null;
 let params: TapeParams = { ...DEFAULT_TAPE_PARAMS };
@@ -107,9 +120,15 @@ export async function initTape(): Promise<void> {
 
     voices.connect(tapeMachine);
 
+    tapeHighpass = ctx.createBiquadFilter();
+    tapeHighpass.type = 'highpass';
+    tapeHighpass.frequency.value = TAPE_HIGHPASS_HZ;
+    tapeHighpass.Q.value = TAPE_HIGHPASS_Q;
+
     tapeMix = ctx.createGain();
     tapeMix.gain.value = 0;
-    tapeMachine.connect(tapeMix);
+    tapeMachine.connect(tapeHighpass);
+    tapeHighpass.connect(tapeMix);
     tapeMix.connect(master);
 
     initialized = true;

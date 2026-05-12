@@ -35,6 +35,8 @@ const VALID_KNOBS: LFODestKnob[] = [
   'fxSend',
   'pan',
   'gain',
+  'filterCutoff',
+  'filterResonance',
   'density',
   'motion',
   'drift',
@@ -106,6 +108,10 @@ const INTERNAL_VOICE_IDS = new Set([
   'soft-piano',
   'tape-piano',
   'under-piano',
+  'sinewaves-scope',
+  'encounter',
+  'mini-moog',
+  'pulsed',
 ]);
 // migrate renamed voice ids when hydrating older `.seq` files. `pad` was
 // retired 2026-05-11 when the chord-master role became positional (row 1)
@@ -248,6 +254,14 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
       typeof saved.pan === 'number' && Number.isFinite(saved.pan)
         ? Math.max(0, Math.min(1, saved.pan))
         : 0.5,
+    filterCutoff:
+      typeof saved.filterCutoff === 'number' && Number.isFinite(saved.filterCutoff)
+        ? Math.max(0, Math.min(1, saved.filterCutoff))
+        : 1,
+    filterResonance:
+      typeof saved.filterResonance === 'number' && Number.isFinite(saved.filterResonance)
+        ? Math.max(0, Math.min(1, saved.filterResonance))
+        : 0,
     defaultChordVoicing:
       hydrateDefaultChordVoicing(
         (saved as { defaultChordVoicing?: unknown }).defaultChordVoicing
@@ -344,6 +358,8 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     gain: 1,
     fxSend: 0,
     pan: 0.5,
+    filterCutoff: 1,
+    filterResonance: 0,
     defaultChordVoicing,
     pitchInterp,
     octave,
