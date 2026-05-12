@@ -113,6 +113,7 @@ export function Track({ track }: { track: TrackData }) {
   const playingPage = Math.floor(localCurrent / PAGE_SIZE);
   const stepInPage = localCurrent % PAGE_SIZE;
   const viewPage = track.viewPage;
+  const isDrumVoice = track.section === 'drum' && track.source.kind === 'voice';
 
   return (
     <div className="flex items-center" style={{ gap: STEP_SIZE }}>
@@ -277,7 +278,7 @@ export function Track({ track }: { track: TrackData }) {
           (_, i) => {
             const stepIndex = viewPage * PAGE_SIZE + i;
             const idx = originatorIndex(track, stepIndex);
-            const isTiedChain = idx !== stepIndex;
+            const isTiedChain = !isDrumVoice && idx !== stepIndex;
             const display = displayStep(track, stepIndex, playing && track.mutation > 0);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
             // "Currently firing this cycle" — drives the binary visual in note

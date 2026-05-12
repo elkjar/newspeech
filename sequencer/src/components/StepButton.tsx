@@ -227,10 +227,15 @@ export function StepButton({
     if (e.shiftKey) {
       const anchor = store.tieAnchor;
       if (!anchor || anchor.trackId !== trackId || anchor.index === index) return;
-      const start = Math.min(anchor.index, index);
-      const end = Math.max(anchor.index, index);
       const track = store.tracks.find((t) => t.id === trackId);
       if (!track) return;
+      // Tie is inert on drum rows backed by sample voices — the sample plays
+      // its own envelope regardless of gate length, and "skip the next hit"
+      // is already what toggling the step off does. Suppress the gesture so
+      // it's not authoring data that has no audible effect.
+      if (track.section === 'drum' && track.source.kind === 'voice') return;
+      const start = Math.min(anchor.index, index);
+      const end = Math.max(anchor.index, index);
       let allTied = true;
       for (let i = start; i < end; i++) {
         if (!track.steps[i]?.tieToNext) {
