@@ -1,13 +1,13 @@
 // Reverb — Faust-compiled Griesinger/Dattorro plate (Clouds-flavoured),
 // shared source-of-truth with the GlitchFX VST/AU at vst/glitch/dsp/reverb.dsp.
-// Compiled to WASM by `npm run build-faust`; runtime instantiates the
-// emitted `reverb-module.wasm` + `reverb-meta.json` via @grame/faustwasm
-// (no libfaust at runtime).
+// Compiled to WASM + a self-contained AudioWorkletProcessor JS by
+// `npm run build-faust`. Loaded here like any plain worklet: addModule()
+// then `new AudioWorkletNode(ctx, 'reverb', ...)`. No @grame/faustwasm in
+// the runtime bundle (it's a build-time-only dep).
 //
 // Insertion order in the FX chain is unchanged: tape → glitch → reverb →
 // mixBus. initReverb() reroutes glitchNode (or fxBus as a fallback) through
 // the new node.
-import { FaustMonoDspGenerator } from '@grame/faustwasm';
 import { getAudioContext, getFxBus, getMixBus } from './audioContext';
 import { getGlitchNode } from './glitch';
 
@@ -55,23 +55,34 @@ export async function initReverb(): Promise<void> {
     const ctx = getAudioContext();
 
     const base = import.meta.env.BASE_URL;
-    const [wasmRes, metaRes] = await Promise.all([
-      fetch(`${base}worklets/faust/reverb-module.wasm`),
-      fetch(`${base}worklets/faust/reverb-meta.json`),
-    ]);
+    const processorUrl = `${base}worklets/faust/reverb-processor.js`;
+    const wasmUrl = `${base}worklets/faust/reverb-module.wasm`;
+    const metaUrl = `${base}worklets/faust/reverb-meta.json`;
+
+    await ctx.audioWorklet.addModule(processorUrl);
+
+    const [wasmRes, metaRes] = await Promise.all([fetch(wasmUrl), fetch(metaUrl)]);
     const [dspModule, dspMetaJson] = await Promise.all([
       WebAssembly.compileStreaming(wasmRes),
       metaRes.text(),
     ]);
 
-    const generator = new FaustMonoDspGenerator();
-    const node = await generator.createNode(
-      ctx,
-      'reverb',
-      { module: dspModule, json: dspMetaJson, soundfiles: {} },
-    );
-    if (!node) throw new Error('Failed to create Faust reverb node');
-    reverbNode = node as unknown as AudioWorkletNode;
+    // Faust's worklet processor reads `factory` out of processorOptions in
+    // its constructor and synchronously instantiates the WASM. JSON metadata
+    // is passed as a string; soundfiles map is empty for this DSP.
+    const factory = { module: dspModule, json: dspMetaJson, soundfiles: {} };
+    const meta = JSON.parse(dspMetaJson) as { inputs: number; outputs: number };
+    const sampleSize = 4;
+
+    reverbNode = new AudioWorkletNode(ctx, 'reverb', {
+      numberOfInputs: meta.inputs > 0 ? 1 : 0,
+      numberOfOutputs: meta.outputs > 0 ? 1 : 0,
+      channelCount: Math.max(1, meta.inputs),
+      outputChannelCount: [meta.outputs],
+      channelCountMode: 'explicit',
+      channelInterpretation: 'speakers',
+      processorOptions: { name: 'reverb', factory, sampleSize },
+    });
 
     // Insert reverb between the upstream FX output and mixBus. Init order
     // in togglePlayback is tape → glitch → reverb, so glitchNode is the
