@@ -37,11 +37,11 @@ tape = environment {
   mix       = hslider("tape mix",  1.0,  0,    1, 0.001);
   position  = hslider("position",  0.3,  0,    1, 0.001);
   length_   = hslider("length",    0.5,  0,    1, 0.001);
-  reverse   = hslider("reverse",   1,    0,    1, 1);
-  stretch1  = hslider("stretch1",  1.0,  0.25, 4, 0.001);
-  gain1     = hslider("gain1",     1.0,  0,    1, 0.001);
-  stretch2  = hslider("stretch2",  0.5,  0.25, 4, 0.001);
-  gain2     = hslider("gain2",     1.0,  0,    1, 0.001);
+  reverse   = hslider("reverse[hidden:1]",   1,    0,    1, 1);
+  stretch1  = hslider("stretch1[hidden:1]",  1.0,  0.25, 4, 0.001);
+  gain1     = hslider("gain1[hidden:1]",     1.0,  0,    1, 0.001);
+  stretch2  = hslider("stretch2[hidden:1]",  0.5,  0.25, 4, 0.001);
+  gain2     = hslider("gain2[hidden:1]",     1.0,  0,    1, 0.001);
   grainRate = hslider("grainRate", 0.3,  0,    1, 0.001);
   grainMix  = hslider("grainMix",  1.0,  0,    1, 0.001);
   hold      = checkbox("hold");
@@ -175,7 +175,7 @@ glitch = environment {
 
   mix    = hslider("glitch mix", 1.0, 0,  1,   0.001);
   chance = hslider("chance",     0.4, 0,  1,   0.001);
-  bpm    = hslider("bpm",    120, 60, 240, 0.1);
+  bpm    = hslider("bpm[hidden:1]", 120, 60, 240, 0.1);
 
   samplesPerBeat = 60.0 / bpm * ma.SR;
   beatPhase      = (+(1.0) : %(samplesPerBeat)) ~ _;

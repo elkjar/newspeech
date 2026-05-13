@@ -75,6 +75,50 @@ sed -i.bak \
 rm -f "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp.bak"
 grep -q "new GlitchEditor" "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp" || { echo "ERROR: editor patch did not apply"; exit 1; }
 
+# --- 2b. Patch FaustPluginProcessor.cpp to drive Glitch/bpm from the
+#         host transport. Injects a host-BPM read above the fDSP->compute
+#         call inside the templated process<FloatType>() method. When no
+#         playhead / position / BPM is available, the write is skipped and
+#         the zone's last value (JUCE param or default) keeps driving.
+echo "▸ Patching FaustPluginProcessor.cpp with host-tempo override…"
+sed -i.bak \
+  -e '/    \/\/ MIDI timestamp is expressed in frames/i\
+    // Host-tempo override: drive Glitch/bpm from session BPM each block.\
+    if (auto* playHead = getPlayHead()) {\
+        if (auto pos = playHead->getPosition()) {\
+            if (auto hostBpm = pos->getBpm()) {\
+                fStateUI.setParamValue("Glitch/bpm", FAUSTFLOAT(*hostBpm));\
+            }\
+        }\
+    }
+' \
+  "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp"
+rm -f "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp.bak"
+grep -q "Host-tempo override" "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp" || { echo "ERROR: host-tempo patch did not apply"; exit 1; }
+
+# --- 2c. Patch JuceParameterUI to respect [hidden:1] metadata on zones.
+#         Faust's stock JuceParameterUI registers every slider/button as an
+#         AU AudioParameter unconditionally. Its sibling JuceGUI inherits
+#         both `GUI` and `MetaDataUI`, so it has `isHidden()` and can
+#         filter; JuceParameterUI inherits only `GUI`, so the `declare()`
+#         calls from Faust drop on the floor and every zone becomes an AU
+#         param.
+#         Two-part patch:
+#           (i)  mix `MetaDataUI` into JuceParameterUI's inheritance list,
+#                routing metadata declares to MetaDataUI::declare() which
+#                populates fHiddenSet.
+#           (ii) prepend `if (isHidden(zone)) return;` to each of the 7
+#                `fProcessor->addParameter(new ...)` lines.
+echo "▸ Patching JuceParameterUI to filter hidden zones from AU params…"
+sed -i.bak \
+  -e 's|class JuceParameterUI : public GUI, public PathBuilder|class JuceParameterUI : public GUI, public MetaDataUI, public PathBuilder|' \
+  -e 's|fProcessor->addParameter(new |if (isHidden(zone)) return; fProcessor->addParameter(new |g' \
+  "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp"
+rm -f "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp.bak"
+grep -q "class JuceParameterUI : public GUI, public MetaDataUI, public PathBuilder" "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp" || { echo "ERROR: JuceParameterUI inheritance patch did not apply"; exit 1; }
+HIDDEN_GUARD_COUNT="$(grep -c "if (isHidden(zone)) return; fProcessor->addParameter" "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp")"
+[ "$HIDDEN_GUARD_COUNT" -ge 7 ] || { echo "ERROR: JuceParameterUI hidden-guard patch found $HIDDEN_GUARD_COUNT sites, expected ≥7"; exit 1; }
+
 # --- 3. Regenerate xcodeproj from .jucer.
 echo "▸ Projucer --resave…"
 "$PROJUCER" --resave "$JUCE_PROJECT_DIR/combined.jucer" --fix-missing-dependencies >/dev/null
