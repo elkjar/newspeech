@@ -140,6 +140,8 @@ export function hydrateReverb(v: unknown): ReverbParams {
   return {
     size: clamp01(r.size, DEFAULT_REVERB_PARAMS.size),
     mix: clamp01(r.mix, DEFAULT_REVERB_PARAMS.mix),
+    diffusion: clamp01(r.diffusion, DEFAULT_REVERB_PARAMS.diffusion),
+    damping: clamp01(r.damping, DEFAULT_REVERB_PARAMS.damping),
   };
 }
 

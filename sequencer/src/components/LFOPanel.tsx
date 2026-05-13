@@ -31,6 +31,8 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   glitchMix: 'glitch mix',
   reverbSize: 'verb size',
   reverbMix: 'verb mix',
+  reverbDiffusion: 'verb diff',
+  reverbDamping: 'verb damp',
   preSaturationDrive: 'pre drive',
   masterInput: 'm input',
   masterComp: 'm comp',

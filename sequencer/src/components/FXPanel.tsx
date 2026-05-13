@@ -339,6 +339,20 @@ export function FXPanel() {
         lfoKnob="reverbMix"
         midiTarget="fx:reverb.mix"
       />
+      <LabeledKnob
+        label="diff"
+        value={reverb.diffusion}
+        onChange={(v) => setReverb({ diffusion: v })}
+        lfoKnob="reverbDiffusion"
+        midiTarget="fx:reverb.diffusion"
+      />
+      <LabeledKnob
+        label="damp"
+        value={reverb.damping}
+        onChange={(v) => setReverb({ damping: v })}
+        lfoKnob="reverbDamping"
+        midiTarget="fx:reverb.damping"
+      />
         <div className="flex flex-col items-stretch gap-2 self-center text-xs uppercase tracking-widest opacity-70">
           <select
             value={findActivePreset(master) ?? ''}

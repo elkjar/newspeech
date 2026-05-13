@@ -12,7 +12,7 @@ export type LFODestKnobGlobal =
   | 'density' | 'motion' | 'drift' | 'chaos' | 'tension'
   | 'tapePosition' | 'tapeLength' | 'tapeMix' | 'tapeGrainRate' | 'tapeGrainMix'
   | 'glitchChance' | 'glitchMix'
-  | 'reverbSize' | 'reverbMix'
+  | 'reverbSize' | 'reverbMix' | 'reverbDiffusion' | 'reverbDamping'
   | 'preSaturationDrive'
   | 'masterInput' | 'masterComp' | 'masterDrive' | 'masterBias' | 'masterMix' | 'masterHiCut' | 'masterTrim' | 'masterGateThreshold';
 export type LFODestKnob = LFODestKnobTrack | LFODestKnobGlobal;

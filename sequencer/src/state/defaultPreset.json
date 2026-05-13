@@ -11070,7 +11070,9 @@
   },
   "reverb": {
     "size": 0.5,
-    "mix": 0.15
+    "mix": 0.15,
+    "diffusion": 0.735,
+    "damping": 0.4
   },
   "saturation": {
     "preDrive": 0.13

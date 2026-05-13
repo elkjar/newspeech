@@ -55,6 +55,8 @@ export function startFXModulation(): void {
     setReverbParams({
       size: modulated(reverb.size, lfos, GLOBAL_TRACK_ID, 'reverbSize'),
       mix: modulated(reverb.mix, lfos, GLOBAL_TRACK_ID, 'reverbMix'),
+      diffusion: modulated(reverb.diffusion, lfos, GLOBAL_TRACK_ID, 'reverbDiffusion'),
+      damping: modulated(reverb.damping, lfos, GLOBAL_TRACK_ID, 'reverbDamping'),
     });
 
     setSaturationParams({

@@ -27,6 +27,8 @@ export type FxKnobTargetName =
   | 'glitch.mix'
   | 'reverb.size'
   | 'reverb.mix'
+  | 'reverb.diffusion'
+  | 'reverb.damping'
   | 'saturation.preDrive'
   | 'master.input'
   | 'master.loCut'
@@ -70,6 +72,8 @@ export const FX_KNOB_TARGETS: FxKnobTargetName[] = [
   'glitch.mix',
   'reverb.size',
   'reverb.mix',
+  'reverb.diffusion',
+  'reverb.damping',
   'saturation.preDrive',
   'master.input',
   'master.loCut',
@@ -217,6 +221,12 @@ function dispatchTarget(target: string, value01: number): void {
         return;
       case 'reverb.mix':
         s.setReverb({ mix: value01 });
+        return;
+      case 'reverb.diffusion':
+        s.setReverb({ diffusion: value01 });
+        return;
+      case 'reverb.damping':
+        s.setReverb({ damping: value01 });
         return;
       case 'saturation.preDrive':
         s.setSaturation({ preDrive: value01 });
