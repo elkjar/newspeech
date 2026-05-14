@@ -7,6 +7,7 @@ import { MacroStrip } from './components/MacroStrip';
 import { BankPad } from './components/BankPad';
 import { MidiBar } from './components/MidiBar';
 import { FXPanel } from './components/FXPanel';
+import { Scope } from './components/Scope';
 import {
   useSequencerStore,
   RATE_STRIDE,
@@ -699,7 +700,10 @@ export function App() {
             <MacroStrip />
           </div>
           <div className="flex justify-between items-start gap-8">
-            <StepInspector />
+            <div className="flex flex-row items-start gap-3">
+              <Scope />
+              <StepInspector />
+            </div>
             <LFOPanel />
           </div>
           <div className="flex justify-between items-center gap-8 -my-4">
