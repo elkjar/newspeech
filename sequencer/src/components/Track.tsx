@@ -127,7 +127,7 @@ export function Track({ track }: { track: TrackData }) {
     !(track.section === 'drum' && track.source.kind === 'voice');
 
   return (
-    <div className="flex items-center justify-between" style={{ gap: STEP_SIZE }}>
+    <div className="flex items-center" style={{ gap: STEP_SIZE }}>
       <div className="flex items-center gap-3">
       <div className="flex items-center gap-2">
         <select
