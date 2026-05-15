@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="St8R9w" name="Saturator" projectType="audioplug" version="1.0.0"
+              bundleIdentifier="com.newspeech.audiounit.Saturator" includeBinaryInAppConfig="1"
+              buildVST="0" buildVST3="1" buildAU="1" buildAUv3="1" buildRTAS="0"
+              buildAAX="0" buildStandalone="1" pluginName="SATURATOR" pluginDesc="SATURATOR"
+              pluginManufacturer="NEWSPEECH" pluginManufacturerCode="Nwsp"
+              pluginCode="Sfx1" pluginChannelConfigs="" pluginIsSynth="0" pluginWantsMidiIn="0"
+              pluginProducesMidiOut="0" pluginIsMidiEffectPlugin="0" pluginEditorRequiresKeys="0"
+              pluginAUExportPrefix="SaturatorAU" pluginRTASCategory="" aaxIdentifier="com.grame.saturator"
+              pluginAAXCategory="2" pluginFormats="buildAU,buildAUv3,buildVST3,buildStandalone"
+              displaySplashScreen="1" jucerFormatVersion="1" enableIAA="0"
+              pluginCharacteristicsValue="">
+  <MAINGROUP id="SaTrMg" name="Saturator">
+    <GROUP id="{4FA9C992-8B6B-AF3A-7F94-93639D26F535}" name="Source">
+      <FILE id="SaTrPr" name="FaustPluginProcessor.cpp" compile="1" resource="0"
+            file="FaustPluginProcessor.cpp"/>
+      <FILE id="StCol1" name="NewspeechColors.h"        compile="0" resource="0" file="Source/NewspeechColors.h"/>
+      <FILE id="StLaf1" name="NewspeechLookAndFeel.h"   compile="0" resource="0" file="Source/NewspeechLookAndFeel.h"/>
+      <FILE id="StLaf2" name="NewspeechLookAndFeel.cpp" compile="1" resource="0" file="Source/NewspeechLookAndFeel.cpp"/>
+      <FILE id="StKnb1" name="NewspeechKnob.h"          compile="0" resource="0" file="Source/NewspeechKnob.h"/>
+      <FILE id="StKnb2" name="NewspeechKnob.cpp"        compile="1" resource="0" file="Source/NewspeechKnob.cpp"/>
+      <FILE id="StTgl1" name="NewspeechToggle.h"        compile="0" resource="0" file="Source/NewspeechToggle.h"/>
+      <FILE id="StTgl2" name="NewspeechToggle.cpp"      compile="1" resource="0" file="Source/NewspeechToggle.cpp"/>
+      <FILE id="StPnl1" name="NewspeechSectionPanel.h"  compile="0" resource="0" file="Source/NewspeechSectionPanel.h"/>
+      <FILE id="StPnl2" name="NewspeechSectionPanel.cpp" compile="1" resource="0" file="Source/NewspeechSectionPanel.cpp"/>
+      <FILE id="StEdt1" name="SaturatorEditor.h"        compile="0" resource="0" file="Source/SaturatorEditor.h"/>
+      <FILE id="StEdt2" name="SaturatorEditor.cpp"      compile="1" resource="0" file="Source/SaturatorEditor.cpp"/>
+      <FILE id="StImg1" name="micrographic.png"         compile="0" resource="1" file="assets/micrographic.png"/>
+    </GROUP>
+  </MAINGROUP>
+  <EXPORTFORMATS>
+    <XCODE_MAC targetFolder="Builds/MacOSX" extraCompilerFlags="-I /usr/local/include/ -DNVOICES=NUM_VOICES -DFAUSTFLOAT=float"
+               extraDefs="">
+      <CONFIGURATIONS>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="Saturator"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="Saturator"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_utils" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_opengl" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_basics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_osc" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="../../../../../../../../JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_MAC>
+  </EXPORTFORMATS>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_opengl" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_osc" showAllCode="1" useLocalCopy="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_QUICKTIME="disabled" JUCE_VST3_CAN_REPLACE_VST2="0"/>
+  <LIVE_SETTINGS>
+    <WINDOWS/>
+  </LIVE_SETTINGS>
+</JUCERPROJECT>
