@@ -48,12 +48,15 @@ class Scheduler {
     return audible;
   }
 
-  start() {
+  // firstStepTime: optional explicit audioContext-time for tick 0. Used by the
+  // count-in path to push the first pattern step out one bar after the click
+  // cues. Defaults to currentTime + 50ms (the regular play lookahead).
+  start(firstStepTime?: number) {
     if (this.playing) return;
     const ctx = getAudioContext();
     this.playing = true;
     this.currentStep = 0;
-    this.nextStepTime = ctx.currentTime + 0.05;
+    this.nextStepTime = firstStepTime ?? ctx.currentTime + 0.05;
     this.scheduled = [];
     this.tick();
   }

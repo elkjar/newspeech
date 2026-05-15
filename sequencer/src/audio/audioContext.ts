@@ -79,6 +79,63 @@ export function getVoicesPostFX(): GainNode {
   return voicesPostFX;
 }
 
+// Three parallel passive buses tracking recorder taps, all pre-trackfilter /
+// pre-FX / pre-master. samplesBus is the full sample sum (rhythm + melody);
+// rhythmBus and melodyBus are the per-section feeds that drive stems output.
+// rhythm/melody both connect into samples so a single connect at the trigger
+// site populates both the section bus and the combined sum.
+//
+// clickBus carries count-in clicks. Routed so clicks land in EVERY captured
+// path: into mixBus for audible playback / master-tap recording, into
+// samplesBus for raw single-WAV recording, and directly into the stem
+// worklets (wired in recorder.ts) for stems WAVs. The dedicated bus avoids
+// the "click appears 2x in samples" problem that would happen if clicks
+// connected to both rhythmBus and melodyBus (both feed samples).
+let samplesBus: GainNode | null = null;
+let rhythmBus: GainNode | null = null;
+let melodyBus: GainNode | null = null;
+let clickBus: GainNode | null = null;
+
+export function getSamplesBus(): GainNode {
+  if (!samplesBus) {
+    const c = getAudioContext();
+    samplesBus = c.createGain();
+    samplesBus.gain.value = 1;
+  }
+  return samplesBus;
+}
+
+export function getRhythmBus(): GainNode {
+  if (!rhythmBus) {
+    const c = getAudioContext();
+    rhythmBus = c.createGain();
+    rhythmBus.gain.value = 1;
+    rhythmBus.connect(getSamplesBus());
+  }
+  return rhythmBus;
+}
+
+export function getMelodyBus(): GainNode {
+  if (!melodyBus) {
+    const c = getAudioContext();
+    melodyBus = c.createGain();
+    melodyBus.gain.value = 1;
+    melodyBus.connect(getSamplesBus());
+  }
+  return melodyBus;
+}
+
+export function getClickBus(): GainNode {
+  if (!clickBus) {
+    const c = getAudioContext();
+    clickBus = c.createGain();
+    clickBus.gain.value = 1;
+    clickBus.connect(getMixBus());
+    clickBus.connect(getSamplesBus());
+  }
+  return clickBus;
+}
+
 export async function ensureAudioRunning(): Promise<AudioContext> {
   const c = getAudioContext();
   if (c.state === 'suspended') {

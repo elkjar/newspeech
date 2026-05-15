@@ -425,6 +425,15 @@ export function getMasterParams(): MasterParams {
   return params;
 }
 
+// Tap point for downstream consumers (the recorder, future broadcasters).
+// Connects `target` to the master's final output node — after every tone-
+// shaping stage and the bypass crossfade — so the tap captures exactly what
+// reaches `ctx.destination`. No-op if master hasn't initialized yet; caller
+// should `await initMaster()` first.
+export function tapMasterOutput(target: AudioNode): void {
+  if (outNode) outNode.connect(target);
+}
+
 // Label helpers for the FX panel — keep formatting alongside the math.
 export function inputDbLabel(v: number): string {
   const db = -12 + Math.max(0, Math.min(1, v)) * 30;

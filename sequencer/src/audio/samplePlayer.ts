@@ -1,4 +1,5 @@
-import { getAudioContext, getMixBus } from './audioContext';
+import { getAudioContext, getMixBus, getSamplesBus, getRhythmBus, getMelodyBus } from './audioContext';
+import type { TrackSection } from '../state/store';
 import { getTrackFilter } from './trackFilter';
 import { dropChordToneWeighted } from './chords';
 import { synthBass, synthHatC, synthHatO, synthKick, synthMelodic, synthSnare } from './synth';
@@ -143,7 +144,8 @@ class SamplePlayer {
     chordIntervals?: number[],
     pan = 0.5,
     trackId?: string,
-    monophonic = false
+    monophonic = false,
+    section?: TrackSection
   ) {
     const ctx = getAudioContext();
     // Per-trigger `out` is the voice's write target. Routing downstream of
@@ -183,6 +185,16 @@ class SamplePlayer {
     } else {
       busHead.connect(getMixBus());
     }
+    // Parallel raw-record tap, sectioned for stems output. busHead has
+    // per-trigger gain + per-track pan baked in but no track filter, no FX,
+    // no master — "voice as the user tuned it, minus production coloring."
+    // rhythmBus / melodyBus feed samplesBus internally, so this single
+    // connect populates both the per-section stem path and the combined
+    // raw-sum path. None of these buses connect to destination — they're
+    // recording-only taps.
+    if (section === 'drum') busHead.connect(getRhythmBus());
+    else if (section === 'melodic') busHead.connect(getMelodyBus());
+    else busHead.connect(getSamplesBus());
 
     const group = this.chokeGroups.get(voice);
     if (group) {

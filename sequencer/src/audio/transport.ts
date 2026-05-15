@@ -31,6 +31,9 @@ import { initPreSaturation, setSaturationParams } from './saturation';
 import { initMaster, setMasterParams } from './master';
 import { initTrackFilter } from './trackFilter';
 import { startFXModulation } from './fxModulation';
+import { initRecorder, subscribeRecorder } from './recorder';
+import { scheduleClickIn } from './clickIn';
+import { getAudioContext } from './audioContext';
 
 export async function togglePlayback(): Promise<void> {
   const store = useSequencerStore.getState();
@@ -58,6 +61,11 @@ export async function togglePlayback(): Promise<void> {
     // FX stages doesn't matter. Must run before scheduler.start() so the
     // first trigger can lazy-create its per-track filter graph.
     await initTrackFilter();
+    // Recorder taps master output. Init after master so the tap point
+    // exists; subscribe once so the (armed && playing) state edge drives
+    // start/stop. Both are idempotent — subsequent play presses are no-ops.
+    await initRecorder();
+    subscribeRecorder();
     const fresh = useSequencerStore.getState();
     setTapeParams(fresh.tape);
     setGlitchParams(fresh.glitch);
@@ -69,7 +77,17 @@ export async function togglePlayback(): Promise<void> {
     // not from the store setters directly.
     startFXModulation();
     store.fireAllProgramChanges();
-    scheduler.start();
+    // Count-in: one bar of clicks before the first scheduler step. The
+    // scheduler's first tick is pushed by `scheduleClickIn`'s returned
+    // pattern-start time. Recorder (if armed) starts at `setPlaying(true)`
+    // and captures the clicks too — DAW alignment cue lives in the WAV.
+    const ctx = getAudioContext();
+    const lookahead = 0.05;
+    let firstStepTime = ctx.currentTime + lookahead;
+    if (store.clickIn) {
+      firstStepTime = scheduleClickIn(firstStepTime, store.bpm);
+    }
+    scheduler.start(firstStepTime);
     store.setPlaying(true);
   }
 }

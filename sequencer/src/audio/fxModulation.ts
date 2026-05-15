@@ -1,9 +1,15 @@
-// FX modulation loop — RAF-driven canonical path from store + LFOs to the
-// FX worklets. Reads each FX param's BASE value from the store, applies any
-// LFO-routed modulation via `modulated()`, and pushes the result into the
-// per-FX `setFooParams`. The store setters (`setTape` / `setGlitch` /
-// `setReverb`) only update state; the worklets receive their values from
-// here.
+// Store → worklet bridge. RAF-driven canonical path from the Zustand state
+// + LFO routings to every FX worklet (tape, glitch, reverb, pre-saturation,
+// master) and every per-track filter graph. Reads each param's BASE value
+// from the store, applies any LFO modulation via `modulated()`, and pushes
+// the result via `setFooParams`. The store setters (`setTape` / `setGlitch`
+// / etc.) are pure state writes — this loop is the ONLY path between state
+// and the audio graph for these params.
+//
+// Lifecycle: started in `transport.ts` on first play (after `initX()` has
+// instantiated the worklets and `setXParams(fresh.x)` has seeded them with
+// the current store state). Never stopped — runs for the page lifetime so
+// FX state stays in sync whether transport is playing or paused.
 //
 // Latency: one RAF frame (~16ms) between knob set and worklet response.
 // Imperceptible for these params, and the cost of having a single canonical

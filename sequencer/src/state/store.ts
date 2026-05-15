@@ -28,11 +28,11 @@ import {
   hydrateSceneGraph,
 } from './persist';
 import defaultPreset from './defaultPreset.json';
-import { setTapeParams as applyTapeParams, type TapeParams } from '../audio/tape';
-import { setGlitchParams as applyGlitchParams, type GlitchParams } from '../audio/glitch';
-import { setReverbParams as applyReverbParams, type ReverbParams } from '../audio/reverb';
-import { setSaturationParams as applySaturationParams, type SaturationParams } from '../audio/saturation';
-import { MASTER_PRESETS, setMasterParams as applyMasterParams, type MasterParams } from '../audio/master';
+import type { TapeParams } from '../audio/tape';
+import type { GlitchParams } from '../audio/glitch';
+import type { ReverbParams } from '../audio/reverb';
+import type { SaturationParams } from '../audio/saturation';
+import { MASTER_PRESETS, type MasterParams } from '../audio/master';
 import type { ChordVoicing } from '../audio/chords';
 import { resetChordContext } from '../audio/chordContext';
 
@@ -266,6 +266,35 @@ interface SequencerState {
   drift: number;
   tension: number;
   freeze: boolean;
+  // Recorder arm state. The audio recorder (`audio/recorder.ts`) subscribes
+  // to the store and records when `armed && playing`. Auto-disarms when a
+  // take finalizes — one explicit arm per take.
+  armed: boolean;
+  setArmed: (v: boolean) => void;
+  toggleArmed: () => void;
+  // Count-in toggle. When true, `togglePlayback` schedules one bar of
+  // quarter-note clicks before the scheduler's first step. Session-only;
+  // not persisted to .seq.
+  clickIn: boolean;
+  setClickIn: (v: boolean) => void;
+  toggleClickIn: () => void;
+  // Recorder tap-point toggle. When false: recorder taps master output
+  // (what the user hears, all FX baked in). When true: recorder taps
+  // voicesBus pre-everything — raw sample audio with no master / tape /
+  // glitch / reverb / saturation processing. The audible output is
+  // unaffected either way; this only swaps where the WAV's data comes
+  // from. Useful for DAW workflows where you want the sequencer's
+  // character live but a clean source to process in the DAW.
+  recordRaw: boolean;
+  setRecordRaw: (v: boolean) => void;
+  toggleRecordRaw: () => void;
+  // Stems toggle. When true, a take produces two WAVs (rhythm + melody)
+  // instead of one combined. Forces sample-bus tap territory; `recordRaw`
+  // becomes a no-op while stems is on. Count-in clicks land in both stems
+  // for DAW alignment.
+  stems: boolean;
+  setStems: (v: boolean) => void;
+  toggleStems: () => void;
   tape: TapeParams;
   setTape: (patch: Partial<TapeParams>) => void;
   glitch: GlitchParams;
@@ -561,51 +590,47 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   activeBank: initialActiveBank,
   pendingBank: null,
   freeze: false,
+  armed: false,
+  setArmed: (v) => set({ armed: v }),
+  toggleArmed: () => set((s) => ({ armed: !s.armed })),
+  clickIn: false,
+  setClickIn: (v) => set({ clickIn: v }),
+  toggleClickIn: () => set((s) => ({ clickIn: !s.clickIn })),
+  recordRaw: false,
+  setRecordRaw: (v) => set({ recordRaw: v }),
+  toggleRecordRaw: () => set((s) => ({ recordRaw: !s.recordRaw })),
+  stems: false,
+  setStems: (v) => set({ stems: v }),
+  toggleStems: () => set((s) => ({ stems: !s.stems })),
   sceneGraph: hydrateSceneGraph((defaultPreset as { sceneGraph?: unknown }).sceneGraph),
   conductorBarsRemaining: 0,
   conductorTargetBars: 0,
+  // FX param setters are pure state writes. The canonical store→worklet
+  // bridge lives in `audio/fxModulation.ts` (RAF loop, started at first
+  // play); it reads these slices each frame, applies LFO modulation, and
+  // pushes resolved values to the worklets. Pre-first-play: knob moves
+  // update store only — worklets get the current state at play time
+  // via the explicit setXParams calls in `audio/transport.ts`.
   tape: hydrateTapeFromPreset((defaultPreset as { tape?: unknown }).tape),
   setTape: (patch) =>
-    set((state) => {
-      const next = { ...state.tape, ...patch };
-      applyTapeParams(next);
-      return { tape: next };
-    }),
+    set((state) => ({ tape: { ...state.tape, ...patch } })),
   glitch: hydrateGlitchFromPreset((defaultPreset as { glitch?: unknown }).glitch),
   setGlitch: (patch) =>
-    set((state) => {
-      const next = { ...state.glitch, ...patch };
-      applyGlitchParams(next);
-      return { glitch: next };
-    }),
+    set((state) => ({ glitch: { ...state.glitch, ...patch } })),
   reverb: hydrateReverbFromPreset((defaultPreset as { reverb?: unknown }).reverb),
   setReverb: (patch) =>
-    set((state) => {
-      const next = { ...state.reverb, ...patch };
-      applyReverbParams(next);
-      return { reverb: next };
-    }),
+    set((state) => ({ reverb: { ...state.reverb, ...patch } })),
   saturation: hydrateSaturationFromPreset((defaultPreset as { saturation?: unknown }).saturation),
   setSaturation: (patch) =>
-    set((state) => {
-      const next = { ...state.saturation, ...patch };
-      applySaturationParams(next);
-      return { saturation: next };
-    }),
+    set((state) => ({ saturation: { ...state.saturation, ...patch } })),
   master: hydrateMasterFromPreset((defaultPreset as { master?: unknown }).master),
   setMaster: (patch) =>
-    set((state) => {
-      const next = { ...state.master, ...patch };
-      applyMasterParams(next);
-      return { master: next };
-    }),
+    set((state) => ({ master: { ...state.master, ...patch } })),
   setMasterPreset: (name) =>
     set(() => {
       const preset = MASTER_PRESETS[name];
       if (!preset) return {};
-      const next = { ...preset };
-      applyMasterParams(next);
-      return { master: next };
+      return { master: { ...preset } };
     }),
   setDensity: (v) => set({ density: clamp01(v) }),
   setChaos: (v) => set({ chaos: clamp01(v) }),

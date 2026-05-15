@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { PlayButton, TransportControls } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, RawRecordButton, StemsButton, TransportControls } from './components/Transport';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
@@ -11,9 +11,7 @@ import { FXPanel } from './components/FXPanel';
 import { Scope } from './components/Scope';
 import {
   useSequencerStore,
-  RATE_STRIDE,
   type EditMode,
-  type Track,
   type TrackSection,
 } from './state/store';
 import { scheduler } from './audio/scheduler';
@@ -22,26 +20,14 @@ import { initMIDIOut, sendMIDINote, resolveDeviceId } from './audio/midiOut';
 import { initMIDIIn } from './midi/midiIn';
 import { dispatchMidi } from './midi/midiMap';
 import { loadMidiMapLibrary } from './midi/midiMapLoader';
-import { octaveDegrees, fifthDegrees, quantize, scaleDegreeOf } from './audio/scale';
-import {
-  sourceIsMelodic,
-  sourceMutation,
-} from './instruments/library';
-import { isPadVoice, voicePadConfig } from './audio/voices';
+import { octaveDegrees } from './audio/scale';
+import { sourceIsMelodic } from './instruments/library';
 import { tickPadDrift } from './audio/padState';
-import {
-  resolveChord,
-  dropChordTone,
-  shuffleInversion,
-  shiftSpread,
-  borrowChord,
-  type ChordDegree,
-} from './audio/chords';
-import { getChordContext, setChordContext, chordToneMidi } from './audio/chordContext';
+import type { ChordDegree } from './audio/chords';
+import { getChordContext, setChordContext } from './audio/chordContext';
 import { getOverlay, setOverlay, attachChordToOverlay } from './audio/mutationOverlay';
-import { effectiveTieToNext } from './audio/mutationTie';
+import { runTick } from './engine/tick';
 import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
-import { computeThinMul, computeFillProb } from './audio/macros';
 import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMotion';
 import { togglePlayback } from './audio/transport';
 import {
@@ -113,31 +99,6 @@ function ModeSwitcher() {
   );
 }
 
-function isSilencedByTie(track: Track, i: number): boolean {
-  const len = track.length;
-  if (len <= 0 || i <= 0) return false;
-  let cur = i - 1;
-  while (cur >= 0) {
-    if (!effectiveTieToNext(track, cur)) return false;
-    if (track.steps[cur]?.on) return true;
-    cur--;
-  }
-  return false;
-}
-
-function tieLength(track: Track, i: number): number {
-  const len = track.length;
-  if (len <= 0) return 1;
-  let count = 1;
-  let cur = i;
-  while (cur < len - 1) {
-    if (!effectiveTieToNext(track, cur)) break;
-    count++;
-    cur++;
-  }
-  return count;
-}
-
 export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
 
@@ -204,462 +165,77 @@ export function App() {
         useSequencerStore.getState().commitPendingBank(globalStep);
         conductorTickBar(globalStep);
       }
-      const { tracks, rootNote, scale, lfos, midiOutDeviceId, density, chaos, motion, drift, tension, freeze, sceneStartStep } =
-        useSequencerStore.getState();
-      // Scene-relative step position — every bank swap resets sceneStartStep
-      // so each scene's tracks start at their own step 0 regardless of where
-      // globalStep happens to be. Critical for polyrhythmic content where
-      // length-13 / length-11 / etc tracks would otherwise pick up mid-cycle
-      // at swap moments.
-      const sceneStep = globalStep - sceneStartStep;
-      // Bar-downbeat tick: globalStep modulo 32 (one bar at 32nd resolution)
-      // relative to scene start. Mutation and density-thinning are wrapped
-      // to spare authored-ON hits at bar downbeats — without this, mutate
-      // can flip the kick / chord master / bass step 0 OFF, which strips
-      // the rhythmic AND harmonic anchor every transition (chord master not
-      // firing means the bass — reading chordContext — plays the previous
-      // bank's root through the new scene's first bar). Protection applies
-      // to bar-aligned AND polyrhythmic tracks because the check is on the
-      // bar's downbeat tick, not the track's localStep 0.
-      const isBarDownbeatTick = sceneStep % 32 === 0;
-      // Macros may themselves be LFO-modulated. LFOs run at their natural rates
-      // (motion no longer scales them) so we pass rateMul=1 across the board.
-      const modMotion = modulated(motion, lfos, GLOBAL_TRACK_ID, 'motion', undefined, 1);
-      const modDrift = modulated(drift, lfos, GLOBAL_TRACK_ID, 'drift', undefined, 1);
-      const modDensity = modulated(density, lfos, GLOBAL_TRACK_ID, 'density', undefined, 1);
-      const modChaos = modulated(chaos, lfos, GLOBAL_TRACK_ID, 'chaos', undefined, 1);
-      const modTension = modulated(tension, lfos, GLOBAL_TRACK_ID, 'tension', undefined, 1);
-      // density is bipolar — per-step thin/fill helpers are called inside the gate below.
-      const chaosMul = modChaos * 2;
-      const tBipolar = (modTension - 0.5) * 2;
-      const tStableMul = Math.max(0, 1 - tBipolar);
-      const tColorMul = Math.max(0, 1 + tBipolar);
-      // Hold harmonic offset at its current value during freeze so the captured
-      // mutated cycle keeps the same key-shift it had at freeze moment.
-      const harmonicOffset = freeze
+      const state = useSequencerStore.getState();
+      // Harmonic motion is a cross-tick state machine — owned by the
+      // dispatcher, not the engine. Engine consumes the resolved offset.
+      // Freeze pins the offset at its current value so a captured cycle
+      // keeps the same key-shift it had at freeze moment.
+      const modMotion = modulated(state.motion, state.lfos, GLOBAL_TRACK_ID, 'motion', undefined, 1);
+      const modDrift = modulated(state.drift, state.lfos, GLOBAL_TRACK_ID, 'drift', undefined, 1);
+      const harmonicOffset = state.freeze
         ? harmonic.offset
         : tickHarmonicMotion(
             harmonic,
             globalStep,
             modMotion,
             modDrift,
-            octaveDegrees(scale)
+            octaveDegrees(state.scale),
           );
-      const anySolo = tracks.some((t) => t.solo);
-      // Melodic-section row index drives role assignment: slot 0 = chord
-      // master, slot 1 = bass (default root-follow), slots 2+ = motifs
-      // (default chord-tone). Counter is per-section; drum tracks don't
-      // increment it.
-      let melodicSlot = -1;
-      for (const track of tracks) {
-        let isChordMaster = false;
-        let isBass = false;
-        if (track.section === 'melodic') {
-          melodicSlot++;
-          isChordMaster = melodicSlot === 0;
-          isBass = melodicSlot === 1;
-        }
-        // Harmonic-anchor lock: chord master + bass are the harmonic
-        // skeleton. They skip mutation flips AND density thinning entirely
-        // so authored chord changes and bass hits play as written. Motifs
-        // (slot 2+) still mutate/thin freely. Without this, even bar-
-        // downbeat protection isn't enough — the chord master fires chord
-        // changes at non-downbeat positions (e.g. step 8 of a 16-step row
-        // for a 2-chord progression), and density thinning could drop
-        // those.
-        const harmonicAnchor = isChordMaster || isBass;
-        // Row 0 mute split: keep running dispatch so chord context still
-        // updates (the "pull pad out of the mix, leave harmonic skeleton
-        // intact" performance gesture). Audio trigger is skipped later.
-        if (track.mute && !isChordMaster) continue;
-        if (anySolo && !track.solo && !isChordMaster) continue;
-        const stride = RATE_STRIDE[track.rate];
-        if (sceneStep % stride !== 0) continue;
-        const rowStep = Math.floor(sceneStep / stride);
-        const localStep = rowStep % track.length;
-        const authoredStep = track.steps[localStep];
-        if (!authoredStep) continue;
-        const rowStepDuration = stepDuration * stride;
-        const trackMut = modulated(track.mutation, lfos, track.id, 'mutation') * chaosMul;
-        const trackRowRatchet = modulated(track.rowRatchet, lfos, track.id, 'rowRatchet');
-        const step = authoredStep;
-        const mut = trackMut;
-        if (track.source.kind === 'empty') continue;
-        const melodic = sourceIsMelodic(track.source);
-        const profile = sourceMutation(track.source);
-        // Freeze: replay the most recent overlay (= the previous cycle's mutated
-        // outcome) without rolling new mutation OR new trigger gates, and don't
-        // overwrite the overlay. Falls back to the authored step on the rare
-        // first-cycle case where no overlay entry has been written.
-        let on: boolean;
-        let v: number;
-        let pitch: number;
-        let gateMutated: number;
-        let gated: boolean;
-        let ratchet: number;
-        if (freeze) {
-          const f = getOverlay(track.id, localStep);
-          if (f) {
-            on = f.on;
-            v = f.velocity;
-            pitch = f.pitch;
-            gateMutated = f.gate;
-            gated = f.gated;
-            ratchet = f.ratchet;
-          } else {
-            on = step.on;
-            v = step.velocity;
-            pitch = step.pitch;
-            gateMutated = step.gate;
-            gated = on && !isSilencedByTie(track, localStep);
-            ratchet = Math.max(1, Math.floor(step.ratchet));
+      const events = runTick(
+        {
+          tracks: state.tracks,
+          rootNote: state.rootNote,
+          scale: state.scale,
+          lfos: state.lfos,
+          density: state.density,
+          chaos: state.chaos,
+          tension: state.tension,
+          freeze: state.freeze,
+          sceneStartStep: state.sceneStartStep,
+          globalStep,
+          when,
+          stepDuration,
+          harmonicOffset,
+          chordContext: getChordContext(),
+        },
+        {
+          readOverlay: getOverlay,
+          consumePadDrift: tickPadDrift,
+        },
+      );
+      for (const ev of events) {
+        switch (ev.kind) {
+          case 'overlay':
+            setOverlay(ev.trackId, ev.localStep, ev.value);
+            break;
+          case 'chordContext':
+            setChordContext(ev.chord);
+            break;
+          case 'overlayChord':
+            attachChordToOverlay(ev.trackId, ev.localStep, ev.chord);
+            break;
+          case 'midi': {
+            const deviceId = resolveDeviceId(ev.portName, state.midiOutDeviceId);
+            if (deviceId) {
+              sendMIDINote(deviceId, ev.channel, ev.note, ev.velocity, ev.when, ev.durationS);
+            }
+            break;
           }
-        } else {
-          on = step.on;
-          if (mut > 0 && !track.lockTiming && !harmonicAnchor) {
-            let flipChance = mut * profile.flipChance;
-            if (!step.on && profile.stepWeights && profile.stepWeights.length > 0) {
-              flipChance *= profile.stepWeights[localStep % profile.stepWeights.length];
-            }
-            if (flipChance > 0 && Math.random() < flipChance) {
-              // Don't flip authored-ON hits OFF at bar downbeats. Protects
-              // drum / motif downbeats from being silently dropped each
-              // bar. (Chord master + bass already short-circuit above via
-              // harmonicAnchor — they never reach this branch.)
-              if (!(isBarDownbeatTick && step.on)) {
-                on = !on;
-              }
-            }
-          }
-          const velJitter =
-            mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.velSpread : 0;
-          v = Math.max(0, Math.min(1, step.velocity + velJitter));
-          pitch = step.pitch;
-          if (melodic && mut > 0 && Math.random() < mut * profile.pitchJumpProb) {
-            // Pitch-jump units depend on how the follower interprets `pitch`.
-            // In chord-tone mode (`pitch` indexes the published chord's
-            // intervals), an "octave" is intervals.length — adding the
-            // chord-tone count lands on the same tone one octave up. The
-            // scale's octaveDegrees (= 7 in major) would land 2-3 octaves
-            // away and several chord-tones over, producing ear-piercing
-            // jumps. The scale "fifth" concept also doesn't map to a chord
-            // tone, so chord-tone mode folds the fifth weight into octave
-            // and trims small jumps to ±1, ±2 (chord-tone steps within an
-            // octave). Other modes (chord master, semitones, scale-tone,
-            // root-follow) keep the scale-degree behavior.
-            const isChordToneMode = !isChordMaster && track.pitchInterp === 'chord-tone';
-            const ctxLen = isChordToneMode
-              ? Math.max(1, getChordContext().intervals.length)
-              : 0;
-            const oct = isChordToneMode ? ctxLen : octaveDegrees(scale);
-            const fifth = isChordToneMode ? 0 : fifthDegrees(scale);
-            const w = profile.pitchWeights;
-            const eOct = isChordToneMode
-              ? (w.octave + w.fifth) * tStableMul
-              : w.octave * tStableMul;
-            const eFifth = isChordToneMode ? 0 : w.fifth * tStableMul;
-            const eSmall = w.small * tColorMul;
-            const total = eOct + eFifth + eSmall;
-            if (total > 0) {
-              const r = Math.random() * total;
-              let jump: number;
-              if (r < eOct) jump = Math.random() < 0.5 ? -oct : oct;
-              else if (r < eOct + eFifth) jump = Math.random() < 0.5 ? -fifth : fifth;
-              else {
-                const small = isChordToneMode
-                  ? [-2, -1, 1, 2]
-                  : [-3, -2, -1, 1, 2, 3];
-                jump = small[Math.floor(Math.random() * small.length)];
-              }
-              const clampMax = isChordToneMode ? ctxLen : 14;
-              pitch = Math.max(-clampMax, Math.min(clampMax, pitch + jump));
-            }
-          }
-          const gateBias = mut > 0 ? mut * profile.gateBias : 0;
-          const gateJitter =
-            mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.gateSpread : 0;
-          gateMutated = Math.max(0.1, Math.min(3, step.gate + gateBias + gateJitter));
-          // Trigger decisions — captured into the overlay so freeze replays
-          // exactly which steps fired and with how many ratchets.
-          const tied = isSilencedByTie(track, localStep);
-          gated = on && !tied;
-          if (gated) {
-            // Authored-ON path: density < 0.5 thins by metric weight; >= 0.5 leaves alone.
-            // Two exemptions: bar downbeat ticks (keeps the rhythmic anchor
-            // reliable for any track) and harmonic anchor tracks (chord
-            // master + bass never thin — they're the harmonic skeleton).
-            if (!isBarDownbeatTick && !harmonicAnchor) {
-              const mul = computeThinMul(modDensity, localStep, track.length);
-              const effectiveProb = step.probability * mul;
-              if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) {
-                gated = false;
-              }
-            }
-          } else if (!on && !tied && !harmonicAnchor) {
-            // Authored-OFF path: density > 0.5 fills offbeats by inverse metric
-            // weight — but only on rows that have at least one authored on step,
-            // so empty rows stay silent regardless of density. Harmonic anchors
-            // (chord master + bass) opt out — adding unauthored chord triggers
-            // or bass hits at random positions clashes with the authored
-            // progression.
-            const hasAuthoredOn = track.steps
-              .slice(0, track.length)
-              .some((s) => s.on);
-            if (hasAuthoredOn) {
-              const fillProb = computeFillProb(modDensity, localStep, track.length);
-              if (fillProb > 0 && Math.random() < fillProb) {
-                gated = true;
-              }
-            }
-          }
-          ratchet = Math.max(1, Math.floor(step.ratchet));
-          if (gated && trackRowRatchet > 0 && Math.random() < trackRowRatchet * 0.5) {
-            ratchet = 2 + Math.floor(Math.random() * 7);
-          }
-          setOverlay(track.id, localStep, {
-            on,
-            velocity: v,
-            pitch,
-            gate: gateMutated,
-            gated,
-            ratchet,
-          });
-        }
-        if (!gated) continue;
-        const ties = tieLength(track, localStep);
-        const baseTime = when + step.microTiming * rowStepDuration;
-        const subDur = rowStepDuration / ratchet;
-        const effectiveGate = gateMutated * ties;
-        // Harmonic motion: apply the global scale-degree offset to melodic
-        // tracks before quantize. Drum/empty tracks ignore it.
-        const harmonicShift = melodic ? harmonicOffset : 0;
-        // Role-based note resolution. Three paths depending on melodic slot
-        // and the track's pitchInterp:
-        //   - Chord master (slot 0): resolves its own voicing into a full
-        //     chord (degree + extension + inversion + spread) AND publishes
-        //     the result to the global chord context so followers can read it
-        //     on subsequent ticks. Same-tick followers see this update because
-        //     drum tracks come first in the iteration and slot 0 melodic is
-        //     processed before slots 1+.
-        //   - Followers in 'root-follow': single-note play of the chord
-        //     context's root. step.pitch ignored.
-        //   - Followers in 'chord-tone': single-note play of a chord-tone
-        //     selected by step.pitch (index into the chord-master's intervals
-        //     with octave wrap). harmonicShift is already baked into the
-        //     chord context via the chord master's resolveChord call.
-        //   - Followers in 'semitones': independent of the chord context —
-        //     fall back to the Stage 4 behavior of resolving the track's own
-        //     voicing against the scene scale. Useful for tracks that should
-        //     stay rhythmic/melodic without auto-harmonizing.
-        const stepVoicing = step.chordVoicing ?? track.defaultChordVoicing;
-        let rootMidi: number | undefined;
-        let voiceIntervals: number[] = [0];
-        if (melodic) {
-          if (isChordMaster) {
-            // Stage 7: chord-aware mutation primitives. When mutation is up
-            // AND the step has a real chord (degree > 0), roll for a per-
-            // trigger harmonic mutation and uniformly pick one of four:
-            // dropChordTone / borrowChord / shuffleInversion / shiftSpread.
-            // The latter three change harmonic identity → published to the
-            // chord context so followers walk the mutated chord.
-            // dropChordTone is density-only on the chord master's audible
-            // voicing; followers keep seeing the full chord. Under freeze,
-            // we restore the previous cycle's mutated chord from the overlay
-            // instead of re-rolling.
-            let chordRoot: number;
-            let chordIntervals: number[];
-            let audibleIntervals: number[];
-            let publishedVoicing = stepVoicing;
-            const frozenChord = freeze
-              ? getOverlay(track.id, localStep)?.chord
-              : undefined;
-            if (frozenChord) {
-              chordRoot = frozenChord.root;
-              chordIntervals = frozenChord.intervals;
-              audibleIntervals = frozenChord.intervals;
-              publishedVoicing = frozenChord.voicing;
-            } else {
-              const authored = resolveChord(
-                rootNote,
-                scale,
-                stepVoicing,
-                pitch + harmonicShift
-              );
-              let chord = authored;
-              let droppedIntervals: number[] | null = null;
-              if (
-                !freeze &&
-                mut > 0 &&
-                stepVoicing.degree > 0 &&
-                profile.chordMutationChance > 0 &&
-                Math.random() < mut * profile.chordMutationChance
-              ) {
-                // Pad-type voices skip borrowChord (introduces atonal parallel-
-                // mode notes that don't compose well with long-release tail
-                // stacking — drop / shuffle / shift stay in-scene-scale).
-                const isPad =
-                  track.source.kind === 'voice' && isPadVoice(track.source.id);
-                const picks = isPad ? [0, 2, 3] : [0, 1, 2, 3];
-                const pick = picks[Math.floor(Math.random() * picks.length)];
-                if (pick === 0) {
-                  droppedIntervals = dropChordTone(authored.intervals);
-                } else if (pick === 1) {
-                  const borrowed = borrowChord(
-                    rootNote,
-                    scale,
-                    stepVoicing,
-                    pitch + harmonicShift
-                  );
-                  if (borrowed) chord = borrowed;
-                } else if (pick === 2) {
-                  const v = shuffleInversion(stepVoicing);
-                  chord = resolveChord(rootNote, scale, v, pitch + harmonicShift);
-                  publishedVoicing = v;
-                } else {
-                  const v = shiftSpread(stepVoicing);
-                  chord = resolveChord(rootNote, scale, v, pitch + harmonicShift);
-                  publishedVoicing = v;
-                }
-              }
-              // Pad-type voicing drift — fires every N chord-master triggers
-              // independently of the mutation roll above. Re-resolves the
-              // chord with a shuffled inversion or shifted spread on top of
-              // whatever publishedVoicing currently holds (which may already
-              // be a mutated voicing). When it fires it wipes any pending
-              // drop from the mutation roll — drift output wins.
-              if (
-                !freeze &&
-                track.source.kind === 'voice' &&
-                isPadVoice(track.source.id) &&
-                stepVoicing.degree > 0
-              ) {
-                const padCfg = voicePadConfig(track.source.id);
-                if (padCfg && padCfg.voicingDriftEveryNTriggers > 0) {
-                  const count = tickPadDrift(track.id);
-                  if (
-                    count % padCfg.voicingDriftEveryNTriggers === 0 &&
-                    Math.random() < padCfg.voicingDriftChance
-                  ) {
-                    let v = publishedVoicing;
-                    if (padCfg.voicingDriftAxis === 'inversion') {
-                      v = shuffleInversion(v);
-                    } else if (padCfg.voicingDriftAxis === 'spread') {
-                      v = shiftSpread(v);
-                    } else {
-                      v = Math.random() < 0.5 ? shuffleInversion(v) : shiftSpread(v);
-                    }
-                    chord = resolveChord(rootNote, scale, v, pitch + harmonicShift);
-                    droppedIntervals = null;
-                    publishedVoicing = v;
-                  }
-                }
-              }
-              chordRoot = chord.root;
-              chordIntervals = chord.intervals;
-              audibleIntervals = droppedIntervals ?? chord.intervals;
-            }
-            rootMidi = chordRoot;
-            voiceIntervals = track.source.kind === 'voice' ? audibleIntervals : [0];
-            if (stepVoicing.degree > 0) {
-              setChordContext({
-                root: chordRoot,
-                intervals: chordIntervals,
-                voicing: publishedVoicing,
-              });
-            }
-            if (!freeze) {
-              attachChordToOverlay(track.id, localStep, {
-                root: chordRoot,
-                intervals: audibleIntervals,
-                voicing: publishedVoicing,
-              });
-            }
-          } else if (track.pitchInterp === 'root-follow') {
-            rootMidi = getChordContext().root;
-            voiceIntervals = [0];
-          } else if (track.pitchInterp === 'chord-tone') {
-            rootMidi = chordToneMidi(getChordContext(), pitch);
-            voiceIntervals = [0];
-          } else if (track.pitchInterp === 'scale-tone') {
-            // Scale-tone: step.pitch is a scale-degree offset above the
-            // current chord root, using the scene scale. Walks stay
-            // diatonic to the scene but the anchor moves with the chord.
-            // harmonicShift baked into chordContext.root already; don't
-            // double-apply.
-            const ctx = getChordContext();
-            const baseDegree = scaleDegreeOf(ctx.root, rootNote, scale);
-            rootMidi =
-              baseDegree !== null
-                ? quantize(rootNote, scale, baseDegree + pitch)
-                : quantize(ctx.root, scale, pitch);
-            voiceIntervals = [0];
-          } else {
-            // 'semitones' — independent, no chord-context follow.
-            const chord = resolveChord(rootNote, scale, stepVoicing, pitch + harmonicShift);
-            rootMidi = chord.root;
-            voiceIntervals = track.source.kind === 'voice' ? chord.intervals : [0];
-          }
-          // Per-track octave shift: lets bass sit two octaves below the chord
-          // master without per-step authoring, lets motifs sit above or below
-          // chord master's range, etc. Applied after role resolution so every
-          // path (chord master, follower modes) benefits.
-          if (rootMidi !== undefined && track.octave !== 0) {
-            rootMidi += track.octave * 12;
-          }
-        }
-        const isInstrument = track.source.kind === 'instrument';
-        const effectiveDeviceId = isInstrument
-          ? resolveDeviceId(track.midi.portName, midiOutDeviceId)
-          : null;
-        const midiNoteDuration = Math.max(0.02, effectiveGate * rowStepDuration);
-        // Row 0 mute split tail: chord context has been updated above (if the
-        // step had a chord), but no audio fires. Same for any chord-master
-        // that's deselected during a solo.
-        if (track.mute) continue;
-        if (anySolo && !track.solo) continue;
-        for (let r = 0; r < ratchet; r++) {
-          const t = baseTime + r * subDur;
-          if (isInstrument) {
-            if (!effectiveDeviceId) continue;
-            let outNote: number;
-            if (track.midi.note !== null) outNote = track.midi.note;
-            else if (rootMidi !== undefined) outNote = rootMidi;
-            else continue;
-            sendMIDINote(
-              effectiveDeviceId,
-              track.midi.channel,
-              outNote,
-              v,
-              t,
-              midiNoteDuration
-            );
-          } else if (track.source.kind === 'voice') {
-            // Gain stores 0..2 with unity at the dial center, but the LFO
-            // pipeline clamps inside 0..1. Halve before modulating, restore
-            // after — keeps swing symmetric around the knob's center.
-            const modGain = modulated(track.gain / 2, lfos, track.id, 'gain') * 2;
-            // fxSend dropped from this call — it's now driven continuously
-            // by fxModulation.ts through the per-track filter graph's wet/dry
-            // GainNodes. Same story for filter cutoff/resonance.
+          case 'sample':
             samplePlayer.trigger(
-              track.source.id,
-              t,
-              v * modGain,
-              rootMidi,
-              effectiveGate,
-              rowStepDuration,
-              voiceIntervals,
-              modulated(track.pan, lfos, track.id, 'pan'),
-              track.id,
-              // Bass-by-position (melodic slot 1) is always monophonic
-              // regardless of saved track state — manually-authored bass
-              // tracks loaded from .seq files / defaultPreset.json don't
-              // have monophonic=true on them, but the convention should
-              // hold. Composer-generated tracks already set monophonic via
-              // populateBass; this `|| isBass` covers the user-authored path.
-              track.monophonic || isBass
+              ev.voice,
+              ev.when,
+              ev.velocity,
+              ev.midi,
+              ev.gate,
+              ev.stepDuration,
+              ev.voiceIntervals,
+              ev.pan,
+              ev.trackId,
+              ev.monophonic,
+              ev.section,
             );
-          }
+            break;
         }
       }
     });
@@ -784,18 +360,22 @@ export function App() {
             </div>
             <LFOPanel />
           </div>
-          <div className="flex justify-between items-center gap-8 -my-4">
-            <MidiBar />
-            <div className="flex items-center gap-8">
-              <ConductorPanel />
-              <BankPad />
-            </div>
+          <div className="flex justify-end items-center gap-8 -my-4">
+            <ConductorPanel />
+            <BankPad />
           </div>
           <TrackGrid />
           <div className="flex justify-between items-center gap-8">
-            <div className="transport flex items-center gap-6">
-              <PlayButton />
+            <div className="transport flex flex-col items-start gap-3">
+              <div className="flex items-center gap-3">
+                <PlayButton />
+                <RecordButton />
+                <CountInButton />
+                <RawRecordButton />
+                <StemsButton />
+              </div>
               <TransportControls />
+              <MidiBar />
             </div>
             <div className="flex items-center gap-4">
               <SectionToggle />

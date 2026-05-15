@@ -123,6 +123,119 @@ export function PlayButton() {
   );
 }
 
+// StemsButton — toggles split-stem recording. On = take produces two WAVs
+// (rhythm + melody). Forces sample-bus tap territory, so the `raw` toggle
+// is implicit-on while this is active. Count-in clicks land in both stems.
+export function StemsButton() {
+  const stems = useSequencerStore((s) => s.stems);
+  const toggleStems = useSequencerStore((s) => s.toggleStems);
+  return (
+    <button
+      onClick={toggleStems}
+      title={
+        stems
+          ? 'stems on — take exports rhythm + melody as separate WAVs (clicks land in both for alignment)'
+          : 'stems off — take exports a single combined WAV'
+      }
+      className={[
+        'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
+        stems ? 'text-white' : 'text-white/40 hover:text-white',
+      ].join(' ')}
+    >
+      {stems ? '●' : '○'} stems
+    </button>
+  );
+}
+
+// RawRecordButton — toggles the recorder's tap point. Off (default) =
+// recorder captures master output (what the user hears). On = recorder
+// captures voicesBus pre-FX (raw samples, no master / tape / glitch /
+// reverb / saturation processing). Audible output is identical either
+// way — this only swaps where the WAV's data comes from. For DAW
+// workflows where the user wants the sequencer's character live but a
+// clean source to process downstream.
+export function RawRecordButton() {
+  const recordRaw = useSequencerStore((s) => s.recordRaw);
+  const toggleRecordRaw = useSequencerStore((s) => s.toggleRecordRaw);
+  return (
+    <button
+      onClick={toggleRecordRaw}
+      title={
+        recordRaw
+          ? 'recording the raw sample bus — master + FX bypassed in the WAV (you still hear the full mix)'
+          : 'recording the full mix — master + FX baked into the WAV'
+      }
+      className={[
+        'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
+        recordRaw ? 'text-white' : 'text-white/40 hover:text-white',
+      ].join(' ')}
+    >
+      {recordRaw ? '●' : '○'} raw
+    </button>
+  );
+}
+
+// CountInButton — toggles the one-bar count-in cued before the first
+// pattern step on the next play press. Visually a labeled circle, not a
+// full button — sits next to PlayButton/RecordButton as a modifier rather
+// than a primary action.
+export function CountInButton() {
+  const clickIn = useSequencerStore((s) => s.clickIn);
+  const toggleClickIn = useSequencerStore((s) => s.toggleClickIn);
+  return (
+    <button
+      onClick={toggleClickIn}
+      title={
+        clickIn
+          ? 'count-in on — one bar of clicks before each play'
+          : 'count-in off — play starts the pattern immediately'
+      }
+      className={[
+        'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
+        clickIn ? 'text-white' : 'text-white/40 hover:text-white',
+      ].join(' ')}
+    >
+      {clickIn ? '●' : '○'} count
+    </button>
+  );
+}
+
+// RecordButton — three visual states driven by (armed, playing):
+//   idle  (!armed)            — dim border, hollow circle, "rec"
+//   armed (armed, !playing)   — bright border, hollow circle, ready
+//   recording (armed, playing) — inverted (white bg), filled circle
+// The recorder module owns the actual capture lifecycle; this is purely a
+// state-toggling control surface.
+export function RecordButton() {
+  const armed = useSequencerStore((s) => s.armed);
+  const playing = useSequencerStore((s) => s.playing);
+  const toggleArmed = useSequencerStore((s) => s.toggleArmed);
+  const recording = armed && playing;
+
+  const title = recording
+    ? 'recording — click to stop and save the take'
+    : armed
+      ? 'armed — recording starts on next play'
+      : 'arm recorder';
+
+  return (
+    <button
+      onClick={toggleArmed}
+      title={title}
+      className={[
+        'relative px-6 py-3 border uppercase tracking-widest text-xs transition-colors',
+        recording
+          ? 'bg-white text-ink border-white'
+          : armed
+            ? 'border-white text-white'
+            : 'border-white/15 text-white/60 hover:border-white hover:text-white',
+      ].join(' ')}
+    >
+      {recording ? '● rec' : '○ rec'}
+    </button>
+  );
+}
+
 export function TapTempoButton() {
   const learn = useMidiLearn('transport:tap-tempo');
   const handleClick = () => {
@@ -141,7 +254,7 @@ export function TapTempoButton() {
           : `tap tempo${learn.learning && learn.bindingLabel ? ' · ' + learn.bindingLabel : ''}`
       }
       className={[
-        'px-3 py-1 text-[11px] uppercase tracking-widest border transition-colors',
+        'px-2 text-[11px] uppercase tracking-widest border transition-colors inline-flex items-center justify-center h-[28px]',
         learn.isLearnTarget
           ? 'border-white text-white'
           : learn.learning && learn.bound
@@ -162,31 +275,34 @@ function PresetControls() {
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <div className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
-      <select
-        value=""
-        onChange={(e) => {
-          const id = e.target.value;
-          if (id) applyPreset(id);
-          e.target.value = '';
-        }}
-        className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
-        title={`apply a preset to the ${viewSection === 'drum' ? 'rhythm' : 'melody'} rows`}
-      >
-        <option value="" className="bg-[#050505]">
-          preset
-        </option>
-        {presets.map((p) => (
-          <option key={p.id} value={p.id} className="bg-[#050505]">
-            {p.label}
+    <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
+      <label className="flex items-center gap-2">
+        <span className="opacity-55">preset</span>
+        <select
+          value=""
+          onChange={(e) => {
+            const id = e.target.value;
+            if (id) applyPreset(id);
+            e.target.value = '';
+          }}
+          className="select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white h-[28px]"
+          title={`apply a preset to the ${viewSection === 'drum' ? 'rhythm' : 'melody'} rows`}
+        >
+          <option value="" className="bg-[#050505]">
+            select..
           </option>
-        ))}
-      </select>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id} className="bg-[#050505]">
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <button
         type="button"
         onClick={() => setConfirming(true)}
         title="reset all tracks, LFOs, and macros to a blank state (keeps bpm, root, scale, master FX, and saved banks)"
-        className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors"
+        className="px-2 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors inline-flex items-center justify-center h-[28px]"
       >
         init
       </button>
@@ -228,28 +344,28 @@ export function TransportControls() {
   };
 
   return (
-    <div className="globals flex items-center gap-x-6 gap-y-2 flex-wrap w-[550px]">
-      <label className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
-        <span>bpm</span>
+    <div className="globals flex items-center gap-4 flex-wrap w-[550px]">
+      <label className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
+        <span className="opacity-55">bpm</span>
         <input
           type="number"
           min={40}
           max={240}
           value={bpm}
           onChange={(e) => setBpm(Number(e.target.value))}
-          className="w-20 bg-transparent border border-white/15 px-2 py-1 tabular-nums focus:outline-none focus:border-white"
+          className="w-20 bg-transparent border border-white/15 px-2 tabular-nums text-[11px] focus:outline-none focus:border-white h-[28px]"
         />
         <TapTempoButton />
       </label>
-      <label className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
-        <span>root</span>
+      <label className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
+        <span className="opacity-55">root</span>
         <select
           value={rootName}
           onChange={(e) => {
             const idx = NOTE_NAMES.indexOf(e.target.value);
             if (idx >= 0) setRootNote(60 + idx);
           }}
-          className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
+          className="select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white h-[28px]"
         >
           {NOTE_NAMES.map((n) => (
             <option key={n} value={n} className="bg-[#050505]">
@@ -258,12 +374,12 @@ export function TransportControls() {
           ))}
         </select>
       </label>
-      <label className="flex items-center gap-3 text-xs uppercase tracking-widest opacity-70">
-        <span>scale</span>
+      <label className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
+        <span className="opacity-55">scale</span>
         <select
           value={scale}
           onChange={(e) => setScale(e.target.value as typeof scale)}
-          className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
+          className="select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white h-[28px]"
         >
           {SCALES.map((s) => (
             <option key={s} value={s} className="bg-[#050505]">
@@ -274,10 +390,10 @@ export function TransportControls() {
       </label>
       <PresetControls />
       <div className="flex items-center gap-2">
-        <IconButton title="download .seq" onClick={downloadProject}>
+        <IconButton title="download .seq" onClick={downloadProject} className="h-[28px]">
           <DownloadIcon />
         </IconButton>
-        <IconButton title="import .seq" onClick={() => fileInputRef.current?.click()}>
+        <IconButton title="import .seq" onClick={() => fileInputRef.current?.click()} className="h-[28px]">
           <ImportIcon />
         </IconButton>
         <input
