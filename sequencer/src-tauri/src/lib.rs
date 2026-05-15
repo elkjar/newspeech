@@ -118,6 +118,8 @@ pub fn run() {
       recording::recording_cancel,
       projectfs::save_text_file,
       projectfs::read_text_file,
+      projectfs::get_recordings_dir,
+      projectfs::reveal_in_finder,
       midi::midi_list_ports,
       midi::midi_subscribe_input,
       midi::midi_unsubscribe_all_inputs,

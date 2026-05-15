@@ -72,8 +72,14 @@ pub fn recording_start(
     registry: State<RecordingRegistry>,
     filename: String,
     sample_rate: u32,
+    dir: Option<String>,
 ) -> Result<RecordingStartResult, String> {
-    let dir = recordings_dir(&app)?;
+    // JS-supplied dir wins; fallback to the default ~/Documents/
+    // newspeech-recordings/ if not configured.
+    let dir = match dir.as_deref().filter(|s| !s.is_empty()) {
+        Some(p) => PathBuf::from(p),
+        None => recordings_dir(&app)?,
+    };
     create_dir_all(&dir).map_err(|e| format!("create_dir_all: {e}"))?;
     let path = dir.join(&filename);
 

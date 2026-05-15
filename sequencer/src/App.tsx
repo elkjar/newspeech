@@ -1,13 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { PlayButton, RecordButton, CountInButton, RawRecordButton, StemsButton, AudioOutSelector, TransportControls, InitButton } from './components/Transport';
 import { initAudioOutputs } from './audio/audioOutput';
+import { SettingsDialog } from './components/SettingsDialog';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
 import { MacroStrip } from './components/MacroStrip';
 import { BankPad } from './components/BankPad';
 import { ConductorPanel } from './components/ConductorPanel';
-import { MidiBar } from './components/MidiBar';
 import { FXPanel } from './components/FXPanel';
 import { Scope } from './components/Scope';
 import {
@@ -105,6 +105,7 @@ function ModeSwitcher() {
 
 export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (NATIVE) document.body.classList.add('tauri-native');
@@ -361,26 +362,39 @@ export function App() {
               : 'flex flex-col gap-8 border border-white/15 rounded-[20px] p-10'
           }
         >
-          {!NATIVE && (
-            <div className="flex justify-between items-center gap-8">
+          <div className="flex justify-between items-center gap-8">
+            <div className="flex items-center gap-2">
               <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
-                <a href="/" className="hover:opacity-100 transition-opacity">newspeech</a>
-                <span className="opacity-50"> | </span>
-                <span>sequence</span>
-                <span className="opacity-50"> | </span>
-                <a href="/sequencer-readme.html" className="hover:opacity-100 transition-opacity">readme.txt</a>
+                {NATIVE ? (
+                  <>newspeech <span className="opacity-50">|</span> sequence</>
+                ) : (
+                  <>
+                    <a href="/" className="hover:opacity-100 transition-opacity">newspeech</a>
+                    <span className="opacity-50"> | </span>
+                    <span>sequence</span>
+                    <span className="opacity-50"> | </span>
+                    <a href="/sequencer-readme.html" className="hover:opacity-100 transition-opacity">readme.txt</a>
+                  </>
+                )}
               </span>
-              <MacroStrip />
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                title="settings"
+                aria-label="settings"
+                style={{ width: 20, height: 20 }}
+                className="bg-transparent border border-white/15 hover:border-white/50 transition-colors inline-flex items-center justify-center"
+              >
+                <svg viewBox="0 0 14 14" width="12" height="12">
+                  <circle cx="3" cy="7" r="1" fill="white" fillOpacity="0.6" />
+                  <circle cx="7" cy="7" r="1" fill="white" fillOpacity="0.6" />
+                  <circle cx="11" cy="7" r="1" fill="white" fillOpacity="0.6" />
+                </svg>
+              </button>
             </div>
-          )}
-          {NATIVE && (
-            <div className="flex justify-between items-center gap-8">
-              <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
-                newspeech <span className="opacity-50">|</span> sequence
-              </span>
-              <MacroStrip />
-            </div>
-          )}
+            <MacroStrip />
+          </div>
+          <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <div className="flex justify-between items-start gap-8">
             <div className="flex flex-row items-start gap-3">
               <Scope />
@@ -413,7 +427,6 @@ export function App() {
               </div>
             </div>
             <TransportControls />
-            <MidiBar />
           </div>
           <FXPanel />
         </div>

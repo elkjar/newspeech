@@ -790,7 +790,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       lfos: state.lfos.map((l) => (l.id === id ? { ...l, destinations: [] } : l)),
     })),
   setSelectingLFO: (id) => set({ selectingLFO: id }),
-  setBpm: (bpm) => set({ bpm }),
+  setBpm: (bpm) => {
+    const clamped = Math.max(40, Math.min(240, Number.isFinite(bpm) ? bpm : 120));
+    set({ bpm: clamped });
+  },
   setRootNote: (rootNote) => set({ rootNote }),
   setScale: (scale) => set({ scale }),
   toggleStep: (trackId, index) =>

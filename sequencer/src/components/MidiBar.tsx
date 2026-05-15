@@ -335,23 +335,20 @@ function MidiInputCluster() {
 }
 
 export function MidiBar() {
+  const labelCls = 'text-[11px] uppercase tracking-widest opacity-55 w-[64px] shrink-0';
   return (
-    <div className="flex items-center gap-4 flex-wrap">
-      <span className="text-[11px] uppercase tracking-widest opacity-55">
-        midi
-      </span>
+    <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <span className="text-[11px] uppercase tracking-widest opacity-55">
-          in
-        </span>
+        <span className={labelCls}>in</span>
         <MidiInDeviceSelector />
       </div>
-      <MidiInputCluster />
       <div className="flex items-center gap-2">
-        <span className="text-[11px] uppercase tracking-widest opacity-55">
-          out
-        </span>
+        <span className={labelCls}>out</span>
         <MidiOutSelector />
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={labelCls}>mapping</span>
+        <MidiInputCluster />
       </div>
     </div>
   );
