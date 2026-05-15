@@ -149,7 +149,9 @@ function flushTauriPending(instance: RecorderInstance): void {
   // Chain on tauriDrain so writes hit the file in order even if multiple
   // flushes are inflight when the next quantum arrives.
   instance.tauriDrain = instance.tauriDrain
-    .then(() => invoke('recording_write_chunk', { filename, bytes }))
+    .then(async () => {
+      await invoke('recording_write_chunk', { filename, bytes });
+    })
     .catch((err) => {
       console.error('[recorder] write_chunk failed:', err);
     });

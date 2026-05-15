@@ -166,7 +166,11 @@ export const useUserInstrumentsStore = create<UserInstrumentsState>((set, get) =
 
   importLibraryOrInstrumentFromJson: (json) => {
     try {
-      const parsed = JSON.parse(json) as Partial<UserLibraryFile & UserInstrumentFile>;
+      const parsed = JSON.parse(json) as {
+        schema?: string;
+        instruments?: Instrument[];
+        instrument?: Instrument;
+      };
       const existing = get().userInstruments;
       if (parsed.schema === 'newspeech.midilibrary') {
         const arr = Array.isArray(parsed.instruments) ? parsed.instruments : [];
