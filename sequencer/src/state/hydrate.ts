@@ -5,6 +5,7 @@ import type {
   StepRate,
   TrackMidi,
   BankSlot,
+  BankKind,
   BankMacros,
   PitchInterp,
 } from './store';
@@ -269,6 +270,7 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
     pitchInterp:
       hydratePitchInterp((saved as { pitchInterp?: unknown }).pitchInterp) ?? 'semitones',
     octave: hydrateOctave((saved as { octave?: unknown }).octave) ?? 0,
+    monophonic: typeof saved.monophonic === 'boolean' ? saved.monophonic : false,
   };
 }
 
@@ -357,6 +359,7 @@ export function blankTrack(t: Track): Track {
     defaultChordVoicing: { ...DEFAULT_CHORD_VOICING },
     pitchInterp: 'semitones',
     octave: 0,
+    monophonic: false,
   };
 }
 
@@ -395,6 +398,9 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     defaultChordVoicing,
     pitchInterp,
     octave,
+    // Slot 1 (bass-by-convention) defaults to monophonic; everything else
+    // is polyphonic. User can flip per-track later via UI when that lands.
+    monophonic: slot === 1,
   };
 }
 
@@ -415,12 +421,29 @@ function hydrateBankMacros(saved: unknown, fallback: BankMacros): BankMacros {
   };
 }
 
+// Slot position default for the kind field — slots 14, 15 (= the last two
+// pads) default to 'transition' so the pad-row convention holds without
+// requiring an explicit save-as-transition gesture. Mirrors TRANSITION_SLOT_START
+// in store.ts; duplicated here to avoid the import cycle through store→hydrate.
+const TRANSITION_SLOT_START = 14;
+
+function defaultKindForSlot(i: number): BankKind {
+  return i >= TRANSITION_SLOT_START ? 'transition' : 'scene';
+}
+
+function hydrateBankKind(saved: unknown, slotIndex: number): BankKind {
+  if (saved === 'scene' || saved === 'transition') return saved;
+  // Old .seq files have no kind field — fall back to slot-position default.
+  return defaultKindForSlot(slotIndex);
+}
+
 function hydrateBankSlot(
   saved: unknown,
-  fallbackMacros: BankMacros
+  fallbackMacros: BankMacros,
+  slotIndex: number
 ): BankSlot | null {
   if (!saved || typeof saved !== 'object') return null;
-  const obj = saved as { tracks?: unknown; macros?: unknown };
+  const obj = saved as { tracks?: unknown; macros?: unknown; kind?: unknown };
   if (!Array.isArray(obj.tracks)) return null;
   const tracks = (obj.tracks as Array<Partial<Track>>)
     .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
@@ -429,6 +452,7 @@ function hydrateBankSlot(
   return {
     tracks,
     macros: hydrateBankMacros(obj.macros, fallbackMacros),
+    kind: hydrateBankKind(obj.kind, slotIndex),
   };
 }
 
@@ -442,12 +466,12 @@ export function hydrateBanks(
   const result: (BankSlot | null)[] = Array(BANK_SLOT_COUNT).fill(null);
   if (!Array.isArray(saved)) {
     const seed = seedFromProject();
-    result[0] = { tracks: seed.tracks, macros: seed.macros };
+    result[0] = { tracks: seed.tracks, macros: seed.macros, kind: 'scene' };
     return result;
   }
   const fallbackMacros = seedFromProject().macros;
   for (let i = 0; i < BANK_SLOT_COUNT; i++) {
-    result[i] = hydrateBankSlot(saved[i], fallbackMacros);
+    result[i] = hydrateBankSlot(saved[i], fallbackMacros, i);
   }
   return result;
 }

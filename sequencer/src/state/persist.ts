@@ -1,9 +1,11 @@
 import {
   useSequencerStore,
   BANK_SLOT_COUNT,
+  DEFAULT_SCENE_GRAPH,
   type Track,
   type TrackSection,
   type BankSlot,
+  type SceneGraphConfig,
 } from './store';
 import {
   ensureBothSections,
@@ -44,6 +46,7 @@ interface PersistedState {
   master?: MasterParams;
   banks?: (BankSlot | null)[];
   activeBank?: number | null;
+  sceneGraph?: SceneGraphConfig;
 }
 
 function clamp01(v: unknown, fallback = 0.5): number {
@@ -85,6 +88,7 @@ export function exportProject(): string {
     master: s.master,
     banks: s.banks,
     activeBank: s.activeBank,
+    sceneGraph: s.sceneGraph,
   };
   return JSON.stringify(data, null, 2);
 }
@@ -149,6 +153,32 @@ export function hydrateSaturation(v: unknown): SaturationParams {
   const s = (v && typeof v === 'object' ? v : {}) as Partial<SaturationParams>;
   return {
     preDrive: clamp01(s.preDrive, DEFAULT_SATURATION_PARAMS.preDrive),
+  };
+}
+
+// Conductor config. Dwell bars clamped 1..256 — enough range to span
+// "shimmer for a couple bars" through "settle for several minutes at 120
+// bpm". transitionBars clamped 0..32 (0 = atomic snap, anything past 32
+// is musically eccentric).
+export function hydrateSceneGraph(v: unknown): SceneGraphConfig {
+  const sg = (v && typeof v === 'object' ? v : {}) as Partial<SceneGraphConfig>;
+  const minRaw =
+    typeof sg.minBars === 'number' && Number.isFinite(sg.minBars)
+      ? Math.max(1, Math.min(256, Math.floor(sg.minBars)))
+      : DEFAULT_SCENE_GRAPH.minBars;
+  const maxRaw =
+    typeof sg.maxBars === 'number' && Number.isFinite(sg.maxBars)
+      ? Math.max(1, Math.min(256, Math.floor(sg.maxBars)))
+      : DEFAULT_SCENE_GRAPH.maxBars;
+  const transRaw =
+    typeof sg.transitionBars === 'number' && Number.isFinite(sg.transitionBars)
+      ? Math.max(0, Math.min(32, Math.floor(sg.transitionBars)))
+      : DEFAULT_SCENE_GRAPH.transitionBars;
+  return {
+    enabled: typeof sg.enabled === 'boolean' ? sg.enabled : DEFAULT_SCENE_GRAPH.enabled,
+    minBars: Math.min(minRaw, maxRaw),
+    maxBars: Math.max(minRaw, maxRaw),
+    transitionBars: transRaw,
   };
 }
 
@@ -259,8 +289,12 @@ export function importProject(json: string): boolean {
     pendingBank: null,
     selectingLFO: null,
     globalStep: 0,
+    sceneStartStep: 0,
     selectedStep: null,
     tieAnchor: null,
+    sceneGraph: hydrateSceneGraph(data.sceneGraph),
+    conductorBarsRemaining: 0,
+    conductorTargetBars: 0,
   });
   // Re-seed the chord context so followers (root-follow / chord-tone tracks)
   // have a sensible starting harmony before the chord master plays its first

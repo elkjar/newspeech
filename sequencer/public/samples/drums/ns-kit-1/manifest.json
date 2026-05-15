@@ -1,0 +1,114 @@
+{
+  "name": "ns-kit-1",
+  "voices": {
+    "ns1-kick": {
+      "files": [
+        "KICK/KICK_0_bip.wav",
+        "KICK/KICK_1_bip.wav",
+        "KICK/KICK_2_bip.wav",
+        "KICK/KICK_3_bip.wav",
+        "KICK/KICK_4_bip.wav",
+        "KICK/KICK_5_bip.wav",
+        "KICK/KICK_6_bip.wav"
+      ],
+      "gain": 0.7
+    },
+    "ns1-snare": {
+      "files": [
+        "SNARE/SNARE_0_bip.wav",
+        "SNARE/SNARE_1_bip.wav",
+        "SNARE/SNARE_2_bip.wav",
+        "SNARE/SNARE_3_bip.wav",
+        "SNARE/SNARE_4_bip.wav",
+        "SNARE/SNARE_5_bip.wav",
+        "SNARE/SNARE_6_bip.wav",
+        "SNARE/SNARE_7_bip.wav",
+        "SNARE/SNARE_8_bip.wav",
+        "SNARE/SNARE_9_bip.wav",
+        "SNARE/SNARE_10_bip.wav",
+        "SNARE/SNARE_11_bip.wav"
+      ],
+      "gain": 0.8
+    },
+    "ns1-hat-c": {
+      "files": [
+        "HHC/HH-CLOSE_0_bip.wav",
+        "HHC/HH-CLOSE_1_bip.wav",
+        "HHC/HH-CLOSE_2_bip.wav",
+        "HHC/HH-CLOSE_3_bip.wav",
+        "HHC/HH-CLOSE_4_bip.wav",
+        "HHC/HH-CLOSE_5_bip.wav",
+        "HHC/HH-CLOSE_6_bip.wav",
+        "HHC/HH-CLOSE_7_bip.wav",
+        "HHC/HH-CLOSE_8_bip.wav"
+      ],
+      "gain": 0.6
+    },
+    "ns1-hat-o": {
+      "files": [
+        "HHO/HH-MED_0_bip.wav",
+        "HHO/HH-MED_1_bip.wav",
+        "HHO/HH-MED_2_bip.wav",
+        "HHO/HH-MED_3_bip.wav",
+        "HHO/HH-OPEN_0_bip.wav",
+        "HHO/HH-OPEN_1_bip.wav",
+        "HHO/HH-OPEN_2_bip.wav",
+        "HHO/HH-OPEN_3_bip.wav"
+      ],
+      "gain": 0.55
+    },
+    "ns1-cym": {
+      "files": [
+        "CRASH/CRASH16_0_bip.wav",
+        "CRASH/CRASH16_1_bip.wav",
+        "CRASH/CRASH16_2_bip.wav",
+        "CRASH/CRASH16_3_bip.wav",
+        "CRASH/CRASH18_0_bip.wav",
+        "CRASH/CRASH18_1_bip.wav",
+        "CRASH/CRASH18_2_bip.wav",
+        "CRASH/CRASH18_3_bip.wav",
+        "CRASH/CRASH18_4_bip.wav",
+        "CRASH/CRASH18_5_bip.wav"
+      ],
+      "gain": 0.3
+    },
+    "ns1-ride": {
+      "files": [
+        "RIDE/RIDE_0_bip.wav",
+        "RIDE/RIDE_1_bip.wav",
+        "RIDE/BELL_0_bip.wav",
+        "RIDE/BELL_1_bip.wav"
+      ],
+      "gain": 0.5
+    },
+    "ns1-floortom": {
+      "files": [
+        "FLOORTOM/TOM-FLR_0_bip.wav",
+        "FLOORTOM/TOM-FLR_1_bip.wav",
+        "FLOORTOM/TOM-FLR_2_bip.wav"
+      ],
+      "gain": 0.65
+    },
+    "ns1-racktom": {
+      "files": [
+        "RACKTOM2/TOM-RACK_2_4_bip.wav",
+        "RACKTOM2/TOM-RACK_2_5_bip.wav",
+        "RACKTOM2/TOM-RACK_2_6_bip.wav"
+      ],
+      "gain": 0.65
+    },
+    "ns1-rimshot": {
+      "files": [
+        "RIMSHOT/RIMSHOT_0_bip.wav",
+        "RIMSHOT/RIMSHOT_1_bip.wav",
+        "RIMSHOT/RIMSHOT_2_bip.wav",
+        "RIMSHOT/RIMSHOT_3_bip.wav"
+      ],
+      "gain": 0.75
+    }
+  },
+  "chokeGroups": {
+    "ns1-hat-c": "ns1-hats",
+    "ns1-hat-o": "ns1-hats"
+  }
+}

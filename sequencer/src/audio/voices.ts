@@ -122,6 +122,21 @@ export interface PadConfig {
   panLfoDepth: number;
 }
 
+// Per-track audio-mix defaults applied when this voice is assigned to a
+// track. Separate from VoiceDef.gain (which is a per-TRIGGER velocity trim
+// stacking on manifest gain) — these write into track.filterCutoff / .fxSend
+// / .gain / etc. Applied by the compose populate functions on initial
+// assignment AND by setTrackSource when a user manually picks the voice.
+// Only specified fields override; unspecified fields keep role / empty
+// defaults so each voice contributes only the knobs it has opinions about.
+export interface VoiceTrackDefaults {
+  filterCutoff?: number;
+  filterResonance?: number;
+  fxSend?: number;
+  gain?: number;
+  pan?: number;
+}
+
 export interface VoiceDef {
   id: string;
   label: string;
@@ -145,6 +160,8 @@ export interface VoiceDef {
   octaveOffset?: number;
   // Pad-specific tuning; required-in-spirit when type === 'pad'.
   padConfig?: PadConfig;
+  // Per-track mix defaults applied on voice assignment (compose + manual).
+  trackDefaults?: VoiceTrackDefaults;
 }
 
 // Defaults aimed at "obviously moving, obviously pad" per visible-defaults
@@ -170,19 +187,51 @@ export const VOICES: VoiceDef[] = [
   { id: 'blk', label: 'blk', category: 'drum', mutationProfile: DRUM_MUTATION },
   { id: 'cym', label: 'cym', category: 'drum', mutationProfile: DRUM_MUTATION },
   { id: 'tamb', label: 'tamb', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'hydra-plaits', label: 'hydra-plaits', category: 'melodic' },
-  { id: 'bass', label: 'bass', category: 'melodic', mutationProfile: BASS_MUTATION, gain: 0.67 },
+  // ns-kit-1 voices — distinct sample bank. Namespaced with `ns1-` so they
+  // coexist with blck_noir's voices rather than overwriting them in the
+  // sample-player map. All available in the drum source-picker; conductor
+  // only auto-picks bare-named voices by default, so these stay as
+  // user-driven alternatives (until a kit-aware palette lands).
+  { id: 'ns1-kick', label: 'ns1 kick', category: 'drum', mutationProfile: KICK_MUTATION },
+  { id: 'ns1-snare', label: 'ns1 snare', category: 'drum', mutationProfile: DRUM_MUTATION },
+  { id: 'ns1-hat-c', label: 'ns1 hat-c', category: 'drum', mutationProfile: DRUM_MUTATION },
+  { id: 'ns1-hat-o', label: 'ns1 hat-o', category: 'drum', mutationProfile: HAT_O_MUTATION },
+  { id: 'ns1-cym', label: 'ns1 cym', category: 'drum', mutationProfile: DRUM_MUTATION },
+  { id: 'ns1-ride', label: 'ns1 ride', category: 'drum', mutationProfile: DRUM_MUTATION },
+  { id: 'ns1-floortom', label: 'ns1 floortom', category: 'drum', mutationProfile: DRUM_MUTATION },
+  { id: 'ns1-racktom', label: 'ns1 racktom', category: 'drum', mutationProfile: DRUM_MUTATION },
+  { id: 'ns1-rimshot', label: 'ns1 rimshot', category: 'drum', mutationProfile: DRUM_MUTATION },
+  {
+    id: 'hydra-plaits',
+    label: 'hydra-plaits',
+    category: 'melodic',
+    trackDefaults: { filterCutoff: 0.74, fxSend: 1.0, gain: 0.52 },
+  },
+  {
+    id: 'bass',
+    label: 'bass',
+    category: 'melodic',
+    mutationProfile: BASS_MUTATION,
+    gain: 0.67,
+    trackDefaults: { gain: 0.52 },
+  },
   {
     id: 'rhodes-mk1',
     label: 'rhodes mk1',
     category: 'melodic',
     envelope: { attack: 0.005, sustain: 1.0, release: 0.35 },
+    trackDefaults: { filterCutoff: 0.52, fxSend: 1.0, gain: 0.76 },
   },
   { id: 'root-grain', label: 'root grain', category: 'melodic' },
   { id: 'soft-piano', label: 'soft piano', category: 'melodic' },
   { id: 'tape-piano', label: 'tape piano', category: 'melodic' },
   { id: 'under-piano', label: 'under piano', category: 'melodic' },
-  { id: 'mini-moog', label: 'mini moog', category: 'melodic' },
+  {
+    id: 'mini-moog',
+    label: 'mini moog',
+    category: 'melodic',
+    trackDefaults: { gain: 0.44 },
+  },
   {
     id: 'sinewaves-scope',
     label: 'sinewaves',
@@ -253,6 +302,10 @@ export function voiceType(voiceId: string): VoiceType | undefined {
 
 export function voicePadConfig(voiceId: string): PadConfig | undefined {
   return VOICES.find((v) => v.id === voiceId)?.padConfig;
+}
+
+export function voiceTrackDefaults(voiceId: string): VoiceTrackDefaults | undefined {
+  return VOICES.find((v) => v.id === voiceId)?.trackDefaults;
 }
 
 export function isPadVoice(voiceId: string): boolean {

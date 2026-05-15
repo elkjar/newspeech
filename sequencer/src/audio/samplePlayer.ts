@@ -71,6 +71,11 @@ interface VoiceData {
 }
 
 interface ActiveChordEntry {
+  // Track that triggered this source. Used for monophonic-choke matching —
+  // monophonic is a per-TRACK property (set on Track.monophonic) so the same
+  // voice can play monophonically as bass and polyphonically as motif when
+  // it's assigned to two tracks with different monophonic flags.
+  trackId: string | undefined;
   src: AudioBufferSourceNode;
   gain: GainNode;
 }
@@ -137,7 +142,8 @@ class SamplePlayer {
     stepDuration = 0.125,
     chordIntervals?: number[],
     pan = 0.5,
-    trackId?: string
+    trackId?: string,
+    monophonic = false
   ) {
     const ctx = getAudioContext();
     // Per-trigger `out` is the voice's write target. Routing downstream of
@@ -189,6 +195,30 @@ class SamplePlayer {
           }
           this.activeVoices.delete(vid);
         }
+      }
+    }
+
+    // Monophonic track — stop all previous active sources of THIS track
+    // before triggering a new one. Per-track (not per-voice) so the same
+    // voice can play monophonically as bass (Track.monophonic=true) and
+    // polyphonically as motif/flavor (Track.monophonic=false) when assigned
+    // to two different tracks. Soft release via STEAL_RELEASE avoids clicks.
+    if (monophonic && trackId !== undefined) {
+      const toStop: ActiveChordEntry[] = [];
+      for (const entry of this.activeChordVoices) {
+        if (entry.trackId === trackId) toStop.push(entry);
+      }
+      for (const entry of toStop) {
+        try {
+          const releaseEnd = when + STEAL_RELEASE;
+          entry.gain.gain.cancelScheduledValues(when);
+          entry.gain.gain.setValueAtTime(entry.gain.gain.value, when);
+          entry.gain.gain.linearRampToValueAtTime(0, releaseEnd);
+          entry.src.stop(releaseEnd + 0.005);
+        } catch {
+          /* already stopped */
+        }
+        this.activeChordVoices.delete(entry);
       }
     }
 
@@ -280,7 +310,8 @@ class SamplePlayer {
           stepDuration,
           useJitter,
           pan,
-          padLfo
+          padLfo,
+          trackId
         );
         if (src && isLast) {
           // last-write-wins choke tracking; kept for parity with prior behavior.
@@ -353,7 +384,8 @@ class SamplePlayer {
     stepDuration: number,
     useJitter: boolean,
     pan: number | null,
-    padLfo: { rate: number; phase0: number; depth: number } | null = null
+    padLfo: { rate: number; phase0: number; depth: number } | null = null,
+    trackId: string | undefined = undefined
   ): AudioBufferSourceNode | null {
     const ctx = getAudioContext();
 
@@ -481,7 +513,7 @@ class SamplePlayer {
     }
 
     this.maybeStealOldest(when);
-    const entry: ActiveChordEntry = { src, gain };
+    const entry: ActiveChordEntry = { trackId, src, gain };
     this.activeChordVoices.add(entry);
     src.onended = () => {
       this.activeChordVoices.delete(entry);

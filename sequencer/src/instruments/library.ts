@@ -226,6 +226,21 @@ export const PRESETS: Preset[] = [
       { kind: 'empty' },
     ],
   },
+  {
+    id: 'ns-kit-1',
+    label: 'ns kit 1',
+    target: 'drum',
+    slots: [
+      { kind: 'voice', id: 'ns1-kick' },
+      { kind: 'voice', id: 'ns1-snare' },
+      { kind: 'voice', id: 'ns1-hat-c' },
+      { kind: 'voice', id: 'ns1-hat-o' },
+      { kind: 'voice', id: 'ns1-cym' },
+      { kind: 'voice', id: 'ns1-ride' },
+      { kind: 'voice', id: 'ns1-floortom' },
+      { kind: 'voice', id: 'ns1-racktom' },
+    ],
+  },
 ];
 
 export function getInstrument(id: string): Instrument | undefined {

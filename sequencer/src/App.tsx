@@ -5,6 +5,7 @@ import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
 import { MacroStrip } from './components/MacroStrip';
 import { BankPad } from './components/BankPad';
+import { ConductorPanel } from './components/ConductorPanel';
 import { MidiBar } from './components/MidiBar';
 import { FXPanel } from './components/FXPanel';
 import { Scope } from './components/Scope';
@@ -43,6 +44,12 @@ import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
 import { computeThinMul, computeFillProb } from './audio/macros';
 import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMotion';
 import { togglePlayback } from './audio/transport';
+import {
+  initConductor,
+  tickBar as conductorTickBar,
+  beforeBarCommit as conductorBeforeBarCommit,
+} from './conductor/conductor';
+import { autoSeedBanks } from './conductor/generator';
 
 const MODE_KEYS: Record<string, EditMode> = {
   '1': 'live',
@@ -136,6 +143,12 @@ export function App() {
 
   useEffect(() => {
     initMIDIOut();
+    initConductor();
+    // Auto-seed banks on every load — wipes scene banks and fills slots
+    // 0-9 with one of each recipe in song-arc order. User's track voices
+    // (band identity) persist via persist.ts and seed banks inherit those
+    // via activeVoice() in compose moves.
+    autoSeedBanks();
     // Load any saved user mappings FIRST so the active mapping is in
     // place before MIDI input starts firing.
     void (async () => {
@@ -147,6 +160,11 @@ export function App() {
   useEffect(() => {
     const kits = [
       'drums/blck_noir',
+      // ns-kit-1 namespaces its voices with `ns1-` prefix so it coexists
+      // with blck_noir in the sample-player map (no overwrite). Both kits
+      // appear in the drum source-picker; conductor auto-picks blck_noir
+      // for compose moves until a kit-aware palette is introduced.
+      'drums/ns-kit-1',
       'pads/encounter',
       'pads/pulsed',
       'pads/sinewaves-at-the-scope',
@@ -172,12 +190,38 @@ export function App() {
     return scheduler.onStep((globalStep, when, stepDuration) => {
       // Bar boundary at 4/4 32nd resolution = every 32 global steps. A queued
       // pattern recall commits here, before we read `tracks` for this tick,
-      // so the swap is atomic from the dispatch's point of view.
+      // so the swap is atomic from the dispatch's point of view. Conductor
+      // ordering: beforeBarCommit snapshots current macros as lerp source
+      // BEFORE commit overwrites them; tickBar runs AFTER commit so it sees
+      // the just-swapped activeBank as the lerp target.
       if (globalStep % 32 === 0) {
-        useSequencerStore.getState().commitPendingBank();
+        conductorBeforeBarCommit();
+        // Pass the scheduler's globalStep so applyBankSlot's sceneStartStep
+        // matches the SCHEDULED step (not the lagging audible step in the
+        // store). Without this, sceneStep = scheduled - audible-stale ≠ 0,
+        // and chord master / bass step 0 land at non-zero localStep — the
+        // "dropping beat 1" symptom.
+        useSequencerStore.getState().commitPendingBank(globalStep);
+        conductorTickBar(globalStep);
       }
-      const { tracks, rootNote, scale, lfos, midiOutDeviceId, density, chaos, motion, drift, tension, freeze } =
+      const { tracks, rootNote, scale, lfos, midiOutDeviceId, density, chaos, motion, drift, tension, freeze, sceneStartStep } =
         useSequencerStore.getState();
+      // Scene-relative step position — every bank swap resets sceneStartStep
+      // so each scene's tracks start at their own step 0 regardless of where
+      // globalStep happens to be. Critical for polyrhythmic content where
+      // length-13 / length-11 / etc tracks would otherwise pick up mid-cycle
+      // at swap moments.
+      const sceneStep = globalStep - sceneStartStep;
+      // Bar-downbeat tick: globalStep modulo 32 (one bar at 32nd resolution)
+      // relative to scene start. Mutation and density-thinning are wrapped
+      // to spare authored-ON hits at bar downbeats — without this, mutate
+      // can flip the kick / chord master / bass step 0 OFF, which strips
+      // the rhythmic AND harmonic anchor every transition (chord master not
+      // firing means the bass — reading chordContext — plays the previous
+      // bank's root through the new scene's first bar). Protection applies
+      // to bar-aligned AND polyrhythmic tracks because the check is on the
+      // bar's downbeat tick, not the track's localStep 0.
+      const isBarDownbeatTick = sceneStep % 32 === 0;
       // Macros may themselves be LFO-modulated. LFOs run at their natural rates
       // (motion no longer scales them) so we pass rateMul=1 across the board.
       const modMotion = modulated(motion, lfos, GLOBAL_TRACK_ID, 'motion', undefined, 1);
@@ -209,18 +253,29 @@ export function App() {
       let melodicSlot = -1;
       for (const track of tracks) {
         let isChordMaster = false;
+        let isBass = false;
         if (track.section === 'melodic') {
           melodicSlot++;
           isChordMaster = melodicSlot === 0;
+          isBass = melodicSlot === 1;
         }
+        // Harmonic-anchor lock: chord master + bass are the harmonic
+        // skeleton. They skip mutation flips AND density thinning entirely
+        // so authored chord changes and bass hits play as written. Motifs
+        // (slot 2+) still mutate/thin freely. Without this, even bar-
+        // downbeat protection isn't enough — the chord master fires chord
+        // changes at non-downbeat positions (e.g. step 8 of a 16-step row
+        // for a 2-chord progression), and density thinning could drop
+        // those.
+        const harmonicAnchor = isChordMaster || isBass;
         // Row 0 mute split: keep running dispatch so chord context still
         // updates (the "pull pad out of the mix, leave harmonic skeleton
         // intact" performance gesture). Audio trigger is skipped later.
         if (track.mute && !isChordMaster) continue;
         if (anySolo && !track.solo && !isChordMaster) continue;
         const stride = RATE_STRIDE[track.rate];
-        if (globalStep % stride !== 0) continue;
-        const rowStep = Math.floor(globalStep / stride);
+        if (sceneStep % stride !== 0) continue;
+        const rowStep = Math.floor(sceneStep / stride);
         const localStep = rowStep % track.length;
         const authoredStep = track.steps[localStep];
         if (!authoredStep) continue;
@@ -261,12 +316,20 @@ export function App() {
           }
         } else {
           on = step.on;
-          if (mut > 0 && !track.lockTiming) {
+          if (mut > 0 && !track.lockTiming && !harmonicAnchor) {
             let flipChance = mut * profile.flipChance;
             if (!step.on && profile.stepWeights && profile.stepWeights.length > 0) {
               flipChance *= profile.stepWeights[localStep % profile.stepWeights.length];
             }
-            if (flipChance > 0 && Math.random() < flipChance) on = !on;
+            if (flipChance > 0 && Math.random() < flipChance) {
+              // Don't flip authored-ON hits OFF at bar downbeats. Protects
+              // drum / motif downbeats from being silently dropped each
+              // bar. (Chord master + bass already short-circuit above via
+              // harmonicAnchor — they never reach this branch.)
+              if (!(isBarDownbeatTick && step.on)) {
+                on = !on;
+              }
+            }
           }
           const velJitter =
             mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.velSpread : 0;
@@ -322,15 +385,23 @@ export function App() {
           gated = on && !tied;
           if (gated) {
             // Authored-ON path: density < 0.5 thins by metric weight; >= 0.5 leaves alone.
-            const mul = computeThinMul(modDensity, localStep, track.length);
-            const effectiveProb = step.probability * mul;
-            if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) {
-              gated = false;
+            // Two exemptions: bar downbeat ticks (keeps the rhythmic anchor
+            // reliable for any track) and harmonic anchor tracks (chord
+            // master + bass never thin — they're the harmonic skeleton).
+            if (!isBarDownbeatTick && !harmonicAnchor) {
+              const mul = computeThinMul(modDensity, localStep, track.length);
+              const effectiveProb = step.probability * mul;
+              if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) {
+                gated = false;
+              }
             }
-          } else if (!on && !tied) {
+          } else if (!on && !tied && !harmonicAnchor) {
             // Authored-OFF path: density > 0.5 fills offbeats by inverse metric
             // weight — but only on rows that have at least one authored on step,
-            // so empty rows stay silent regardless of density.
+            // so empty rows stay silent regardless of density. Harmonic anchors
+            // (chord master + bass) opt out — adding unauthored chord triggers
+            // or bass hits at random positions clashes with the authored
+            // progression.
             const hasAuthoredOn = track.steps
               .slice(0, track.length)
               .some((s) => s.on);
@@ -579,7 +650,14 @@ export function App() {
               rowStepDuration,
               voiceIntervals,
               modulated(track.pan, lfos, track.id, 'pan'),
-              track.id
+              track.id,
+              // Bass-by-position (melodic slot 1) is always monophonic
+              // regardless of saved track state — manually-authored bass
+              // tracks loaded from .seq files / defaultPreset.json don't
+              // have monophonic=true on them, but the convention should
+              // hold. Composer-generated tracks already set monophonic via
+              // populateBass; this `|| isBass` covers the user-authored path.
+              track.monophonic || isBass
             );
           }
         }
@@ -708,7 +786,10 @@ export function App() {
           </div>
           <div className="flex justify-between items-center gap-8 -my-4">
             <MidiBar />
-            <BankPad />
+            <div className="flex items-center gap-8">
+              <ConductorPanel />
+              <BankPad />
+            </div>
           </div>
           <TrackGrid />
           <div className="flex justify-between items-center gap-8">

@@ -3,7 +3,6 @@ import type { Scale } from '../audio/scale';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 import { resetPadDrift } from '../audio/padState';
-import { resetTrackFilters } from '../audio/trackFilter';
 import {
   defaultLFOs,
   freezeLFOs,
@@ -18,6 +17,7 @@ import {
   type TrackSource,
 } from '../instruments/library';
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
+import { voiceTrackDefaults } from '../audio/voices';
 import { ensureBothSections, hydrateTrack, hydrateLFOs, applyPositionalRoleDefaults, hydrateBanks, blankTrack } from './hydrate';
 import {
   hydrateTape as hydrateTapeFromPreset,
@@ -25,6 +25,7 @@ import {
   hydrateReverb as hydrateReverbFromPreset,
   hydrateSaturation as hydrateSaturationFromPreset,
   hydrateMaster as hydrateMasterFromPreset,
+  hydrateSceneGraph,
 } from './persist';
 import defaultPreset from './defaultPreset.json';
 import { setTapeParams as applyTapeParams, type TapeParams } from '../audio/tape';
@@ -160,6 +161,12 @@ export interface Track {
   // voices only, same scope as gain/pan/fxSend.
   filterCutoff: number;
   filterResonance: number;
+  // When true, retriggering this track chokes its previous active sample
+  // sources (soft 20ms release). Useful for bass/lead roles where a long
+  // sample tail layering on top of a new trigger sounds wrong. Off by
+  // default. Composer sets it true on bass tracks via populateBass; pad /
+  // motif / drum tracks leave it false so triggers layer naturally.
+  monophonic: boolean;
 }
 
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
@@ -197,10 +204,43 @@ export interface BankMacros {
   tension: number;
 }
 
+// Bank kind — scene banks are full-length musical sections (dwell governed
+// by the conductor's global min/max); transition banks are 1–2 bar inserts
+// (drum-mute turnarounds, breakdowns, etc.) that the conductor exits fast.
+// Last two pad slots (14, 15) default to 'transition' on new snapshots;
+// kind is the authority once set so a user can still snap a scene to those
+// slots if they want.
+export type BankKind = 'scene' | 'transition';
+
 export interface BankSlot {
   tracks: Track[];
   macros: BankMacros;
+  kind: BankKind;
+  // The compose recipe that generated this bank — used by the conductor for
+  // per-recipe dwell ranges and same-recipe avoidance. Optional: user-saved
+  // banks (snapBank) don't have a recipe, in which case the conductor falls
+  // back to its global dwell range and any pick is valid.
+  recipe?: string;
 }
+
+// Conductor scene-graph config. v0 is single-global-dwell + uniform-random
+// walk across populated banks (excluding current) — per-bank durations and
+// weighted transitions arrive in the next pass. transitionBars lerps the 5
+// global macros from the previous bank's effective values to the new bank's
+// saved values over N bars at the start of each scene; 0 = atomic snap.
+export interface SceneGraphConfig {
+  enabled: boolean;
+  minBars: number;
+  maxBars: number;
+  transitionBars: number;
+}
+
+export const DEFAULT_SCENE_GRAPH: SceneGraphConfig = {
+  enabled: false,
+  minBars: 8,
+  maxBars: 24,
+  transitionBars: 4,
+};
 
 interface SequencerState {
   bpm: number;
@@ -210,6 +250,12 @@ interface SequencerState {
   lfos: LFO[];
   selectingLFO: number | null;
   globalStep: number;
+  // Phase reference for per-track step math. Reset to current globalStep on
+  // every bank swap so each scene's tracks start at their own step 0 — needed
+  // for polyrhythmic content where length-N tracks would otherwise pick up
+  // mid-cycle at swap moments (the math is `globalStep % length`, which only
+  // lands on 0 at bar boundaries for length 16).
+  sceneStartStep: number;
   playing: boolean;
   editMode: EditMode;
   midiOutDeviceId: string | null;
@@ -294,7 +340,23 @@ interface SequencerState {
   snapBank: (i: number) => void;
   queueBank: (i: number) => void;
   clearBank: (i: number) => void;
-  commitPendingBank: () => void;
+  // atGlobalStep is the scheduler's currentStep at swap time. Caller passes
+  // the scheduler globalStep parameter rather than letting the store read
+  // its own (potentially-lagging audible-step) globalStep — the dispatch's
+  // sceneStep math is keyed off the SCHEDULED step, not the audible step.
+  commitPendingBank: (atGlobalStep: number) => void;
+  // Conductor — persisted config + transient display state. Display fields
+  // (`conductorBarsRemaining`, `conductorTargetBars`) are written by the
+  // conductor module each bar; not part of saved state.
+  sceneGraph: SceneGraphConfig;
+  conductorBarsRemaining: number;
+  conductorTargetBars: number;
+  setSceneGraphEnabled: (enabled: boolean) => void;
+  setSceneGraphMinBars: (bars: number) => void;
+  setSceneGraphMaxBars: (bars: number) => void;
+  setSceneGraphTransitionBars: (bars: number) => void;
+  setConductorDisplay: (remaining: number, target: number) => void;
+  setMacros: (m: Partial<BankMacros>) => void;
 }
 
 export const MAX_STEPS = 64;
@@ -313,6 +375,70 @@ function emptySteps(): Step[] {
   }));
 }
 
+// Apply a partial update to active tracks AND every saved bank's tracks
+// for the matching trackId. Used by GLOBAL per-track knobs (gain / fxSend
+// / pan / filterCutoff / filterResonance / octave) so user-adjusted mix
+// settings persist across bank swaps. Pattern fields (steps / length /
+// mutation / etc) deliberately do NOT use this — those stay per-bank so
+// each pattern can have its own rhythmic state.
+function propagateTrackUpdate(
+  state: SequencerState,
+  trackId: string,
+  updates: Partial<Track>,
+): { tracks: Track[]; banks: (BankSlot | null)[] } {
+  return {
+    tracks: state.tracks.map((t) =>
+      t.id === trackId ? { ...t, ...updates } : t
+    ),
+    banks: state.banks.map((bank) => {
+      if (!bank) return bank;
+      if (!bank.tracks.some((t) => t.id === trackId)) return bank;
+      return {
+        ...bank,
+        tracks: bank.tracks.map((t) =>
+          t.id === trackId ? { ...t, ...updates } : t
+        ),
+      };
+    }),
+  };
+}
+
+// Voice-update logic shared between active-track and bank-snapshot updates
+// inside setTrackSource. Each per-bank track gets evaluated independently —
+// addingMelodic / sameInstrument / sameVoice checks compare against THAT
+// bank's prior source, so banks already on the new voice keep their custom
+// edits (sameVoice short-circuits the trackDefaults wipe) while banks on a
+// different voice receive the fresh defaults.
+function updateTrackVoice(t: Track, source: TrackSource): Track {
+  const sameInstrument =
+    source.kind === 'instrument' &&
+    t.source.kind === 'instrument' &&
+    t.source.id === source.id;
+  const midi =
+    source.kind === 'instrument' && !sameInstrument
+      ? snapshotInstrumentMidi(source.id)
+      : t.midi;
+  // Empty → melodic transition resets pitchInterp to 'semitones' (UI
+  // label: "ignore"). Without this, a previously-empty row inherits
+  // whatever follower mode the preset slot was last in (often
+  // chord-tone), which makes "add a new melodic channel" surprising.
+  const addingMelodic = t.source.kind === 'empty' && sourceIsMelodic(source);
+  const pitchInterp = addingMelodic ? 'semitones' : t.pitchInterp;
+  // Voice-specific track-mix defaults (cutoff / fxSend / gain / etc).
+  // Applied only when switching TO a different voice — same-voice
+  // re-selection preserves user edits. Mirrors the sameInstrument
+  // midi-reset logic above.
+  const sameVoice =
+    source.kind === 'voice' &&
+    t.source.kind === 'voice' &&
+    t.source.id === source.id;
+  const voiceDefs =
+    source.kind === 'voice' && !sameVoice
+      ? voiceTrackDefaults(source.id)
+      : undefined;
+  return { ...t, source, midi, pitchInterp, ...(voiceDefs ?? {}) };
+}
+
 export function cloneTrack(t: Track): Track {
   return {
     ...t,
@@ -327,14 +453,22 @@ export function cloneTrack(t: Track): Track {
   };
 }
 
-function snapshotBank(state: {
-  tracks: Track[];
-  density: number;
-  chaos: number;
-  motion: number;
-  drift: number;
-  tension: number;
-}): BankSlot {
+// Pad-slot indices 14 and 15 are the last two on the 1×16 pad row. Newly
+// snapped banks at those slots default to 'transition' kind so the user's
+// "transition pattern" convention requires no extra UI gesture.
+export const TRANSITION_SLOT_START = 14;
+
+function snapshotBank(
+  state: {
+    tracks: Track[];
+    density: number;
+    chaos: number;
+    motion: number;
+    drift: number;
+    tension: number;
+  },
+  slotIndex: number
+): BankSlot {
   return {
     tracks: state.tracks.map(cloneTrack),
     macros: {
@@ -344,6 +478,7 @@ function snapshotBank(state: {
       drift: state.drift,
       tension: state.tension,
     },
+    kind: slotIndex >= TRANSITION_SLOT_START ? 'transition' : 'scene',
   };
 }
 
@@ -412,6 +547,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   lfos: hydrateLFOs((defaultPreset as { lfos?: LFO[] }).lfos),
   selectingLFO: null,
   globalStep: 0,
+  sceneStartStep: 0,
   playing: false,
   editMode: 'live',
   midiOutDeviceId: null,
@@ -425,6 +561,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   activeBank: initialActiveBank,
   pendingBank: null,
   freeze: false,
+  sceneGraph: hydrateSceneGraph((defaultPreset as { sceneGraph?: unknown }).sceneGraph),
+  conductorBarsRemaining: 0,
+  conductorTargetBars: 0,
   tape: hydrateTapeFromPreset((defaultPreset as { tape?: unknown }).tape),
   setTape: (patch) =>
     set((state) => {
@@ -487,36 +626,31 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
   setTrackSource: (trackId, source) => {
+    // Voice changes propagate band-wide: active tracks AND every saved bank
+    // get the same voice update applied to the matching trackId. Voice =
+    // band identity (source + midi + pitchInterp + voice trackDefaults).
+    // Pattern state (steps / length / mutation / etc.) stays per-bank since
+    // that's "what the band is playing right now," not "who the band is."
     let nextTrack: Track | null = null;
-    set((state) => ({
-      tracks: state.tracks.map((t) => {
+    set((state) => {
+      const newTracks = state.tracks.map((t) => {
         if (t.id !== trackId) return t;
-        // snapshot factory midi defaults when assigning a different instrument
-        // (or switching from voice/empty to instrument). Same instrument id =
-        // preserve user edits.
-        const sameInstrument =
-          source.kind === 'instrument' &&
-          t.source.kind === 'instrument' &&
-          t.source.id === source.id;
-        const midi =
-          source.kind === 'instrument' && !sameInstrument
-            ? snapshotInstrumentMidi(source.id)
-            : t.midi;
-        // Empty → melodic transition resets pitchInterp to 'semitones' (UI
-        // label: "ignore"). Without this, a previously-empty row inherits
-        // whatever follower mode the preset slot was last in (often
-        // chord-tone), which makes "add a new melodic channel" surprising
-        // — the row auto-harmonizes against the chord master without the
-        // user opting in. Resetting to 'semitones' makes new channels
-        // independent by default; users opt into following via the
-        // RowPanel interp dropdown.
-        const addingMelodic =
-          t.source.kind === 'empty' && sourceIsMelodic(source);
-        const pitchInterp = addingMelodic ? 'semitones' : t.pitchInterp;
-        nextTrack = { ...t, source, midi, pitchInterp };
+        nextTrack = updateTrackVoice(t, source);
         return nextTrack;
-      }),
-    }));
+      });
+      const newBanks = state.banks.map((bank) => {
+        if (!bank) return bank;
+        const bankHasTrack = bank.tracks.some((t) => t.id === trackId);
+        if (!bankHasTrack) return bank;
+        return {
+          ...bank,
+          tracks: bank.tracks.map((t) =>
+            t.id === trackId ? updateTrackVoice(t, source) : t
+          ),
+        };
+      });
+      return { tracks: newTracks, banks: newBanks };
+    });
     if (nextTrack) {
       const { midiOutDeviceId } = useSequencerStore.getState();
       fireTrackProgramChange(nextTrack, midiOutDeviceId);
@@ -569,6 +703,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       banks: Array.from({ length: BANK_SLOT_COUNT }, () => null),
       activeBank: 0,
       pendingBank: null,
+      sceneStartStep: 0,
+      sceneGraph: { ...DEFAULT_SCENE_GRAPH },
+      conductorBarsRemaining: 0,
+      conductorTargetBars: 0,
     }));
   },
   fireAllProgramChanges: () => {
@@ -739,9 +877,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     })),
   setTrackOctave: (trackId, octave) => {
     const clamped = Math.max(-4, Math.min(4, Math.round(octave)));
-    set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, octave: clamped } : t)),
-    }));
+    set((state) => propagateTrackUpdate(state, trackId, { octave: clamped }));
   },
   setTrackMutation: (trackId, mutation) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(mutation) ? mutation : 0));
@@ -751,37 +887,23 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   },
   setTrackGain: (trackId, gain) => {
     const clamped = Math.max(0, Math.min(2, Number.isFinite(gain) ? gain : 1));
-    set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, gain: clamped } : t)),
-    }));
+    set((state) => propagateTrackUpdate(state, trackId, { gain: clamped }));
   },
   setTrackFxSend: (trackId, fxSend) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(fxSend) ? fxSend : 0));
-    set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, fxSend: clamped } : t)),
-    }));
+    set((state) => propagateTrackUpdate(state, trackId, { fxSend: clamped }));
   },
   setTrackPan: (trackId, pan) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(pan) ? pan : 0.5));
-    set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, pan: clamped } : t)),
-    }));
+    set((state) => propagateTrackUpdate(state, trackId, { pan: clamped }));
   },
   setTrackFilterCutoff: (trackId, cutoff) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(cutoff) ? cutoff : 1));
-    set((state) => ({
-      tracks: state.tracks.map((t) =>
-        t.id === trackId ? { ...t, filterCutoff: clamped } : t
-      ),
-    }));
+    set((state) => propagateTrackUpdate(state, trackId, { filterCutoff: clamped }));
   },
   setTrackFilterResonance: (trackId, resonance) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(resonance) ? resonance : 0));
-    set((state) => ({
-      tracks: state.tracks.map((t) =>
-        t.id === trackId ? { ...t, filterResonance: clamped } : t
-      ),
-    }));
+    set((state) => propagateTrackUpdate(state, trackId, { filterResonance: clamped }));
   },
   setTrackRate: (trackId, rate) =>
     set((state) => ({
@@ -888,12 +1010,21 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       // queued bank swaps only make sense while transport is running.
       // Dropping pending on stop avoids a stale queue firing on next play.
       pendingBank: playing ? state.pendingBank : null,
+      // On stop, reset the phase counters. The scheduler resets its own
+      // currentStep to 0 on both stop and start (see scheduler.ts), but the
+      // store's globalStep stops updating after stop and holds whatever
+      // value it had. Without this reset, a bank swap while stopped captures
+      // a stale globalStep as sceneStartStep, and the next play (scheduler
+      // at currentStep=0) computes a negative sceneStep → negative localStep
+      // → dispatch silently skips every step. Visible symptom: pattern
+      // doesn't play after stop+bank-swap.
+      ...(playing ? {} : { globalStep: 0, sceneStartStep: 0 }),
     })),
   snapBank: (i) => {
     if (i < 0 || i >= BANK_SLOT_COUNT) return;
     set((state) => {
       const next = state.banks.slice();
-      next[i] = snapshotBank(state);
+      next[i] = snapshotBank(state, i);
       return { banks: next };
     });
   },
@@ -904,7 +1035,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     if (!slot) return;
     if (i === state.activeBank) return;
     if (!state.playing) {
-      applyBankSlot(set, i, slot);
+      // Stopped path: globalStep is 0 after setPlaying(false) reset, so
+      // sceneStartStep also lands at 0. Next play tick: sceneStep = 0.
+      applyBankSlot(set, i, slot, state.globalStep);
       return;
     }
     set({ pendingBank: i });
@@ -920,7 +1053,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       };
     });
   },
-  commitPendingBank: () => {
+  commitPendingBank: (atGlobalStep) => {
     const state = useSequencerStore.getState();
     const i = state.pendingBank;
     if (i === null) return;
@@ -929,7 +1062,44 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       set({ pendingBank: null });
       return;
     }
-    applyBankSlot(set, i, slot);
+    applyBankSlot(set, i, slot, atGlobalStep);
+  },
+  setSceneGraphEnabled: (enabled) =>
+    set((state) => ({ sceneGraph: { ...state.sceneGraph, enabled } })),
+  setSceneGraphMinBars: (bars) =>
+    set((state) => {
+      const next = Math.max(1, Math.min(256, Math.floor(Number.isFinite(bars) ? bars : 1)));
+      // Clamp max upward if user drags min past it — keeps the range valid
+      // without forcing a separate "invalid" UI state.
+      const max = Math.max(state.sceneGraph.maxBars, next);
+      return { sceneGraph: { ...state.sceneGraph, minBars: next, maxBars: max } };
+    }),
+  setSceneGraphMaxBars: (bars) =>
+    set((state) => {
+      const next = Math.max(1, Math.min(256, Math.floor(Number.isFinite(bars) ? bars : 1)));
+      const min = Math.min(state.sceneGraph.minBars, next);
+      return { sceneGraph: { ...state.sceneGraph, minBars: min, maxBars: next } };
+    }),
+  setSceneGraphTransitionBars: (bars) =>
+    set((state) => {
+      const next = Math.max(0, Math.min(32, Math.floor(Number.isFinite(bars) ? bars : 0)));
+      return { sceneGraph: { ...state.sceneGraph, transitionBars: next } };
+    }),
+  setConductorDisplay: (remaining, target) =>
+    set({ conductorBarsRemaining: remaining, conductorTargetBars: target }),
+  // Batched partial macro write — single set() so subscribers fire once
+  // regardless of how many fields the caller updates. Used by the conductor's
+  // per-bar lerp (writes 4 — density excluded) and density drift (writes 1).
+  // Manual UI knobs keep using the individual setDensity/setMotion/etc.
+  // setters; this is conductor-side machinery.
+  setMacros: (m) => {
+    const next: Partial<Pick<SequencerState, 'density' | 'chaos' | 'motion' | 'drift' | 'tension'>> = {};
+    if (m.density !== undefined) next.density = clamp01(m.density);
+    if (m.chaos !== undefined) next.chaos = clamp01(m.chaos);
+    if (m.motion !== undefined) next.motion = clamp01(m.motion, 0.5);
+    if (m.drift !== undefined) next.drift = clamp01(m.drift, 1);
+    if (m.tension !== undefined) next.tension = clamp01(m.tension);
+    set(next);
   },
 }));
 
@@ -940,12 +1110,43 @@ function applyBankSlot(
       | ((state: SequencerState) => Partial<SequencerState>)
   ) => void,
   i: number,
-  slot: BankSlot
+  slot: BankSlot,
+  atGlobalStep: number
 ): void {
-  // Atomic swap: tracks + macros + activeBank + pendingBank + freeze all land
-  // in one set() so the scheduler's onStep callback can never read mid-swap.
+  // Atomic swap: tracks + macros + activeBank + pendingBank + freeze + the
+  // scene phase reference all land in one set() so the scheduler's onStep
+  // callback can never read mid-swap. sceneStartStep = scheduler's current
+  // globalStep (passed in by caller, NOT read from store — the store's
+  // globalStep is the AUDIBLE step which lags the scheduled step by the
+  // lookahead). Each scene's tracks then start at their own step 0 from
+  // this moment — necessary for polyrhythmic content (length 11/13/etc)
+  // which otherwise picks up mid-cycle at swap moments.
+  //
+  // Global-knob preservation: per-track mix knobs (gain / fxSend / pan /
+  // filterCutoff / filterResonance / octave) carry forward from the current
+  // active tracks onto the swap target. The bank's stored values for those
+  // fields are ignored — knobs are band-global identity, not per-pattern
+  // state. Pattern fields (steps / length / mutation / rowRatchet / rate /
+  // lockTiming / euclidean) come from the bank as before.
+  const currentTracks = useSequencerStore.getState().tracks;
+  const globalsById = new Map<string, Partial<Track>>();
+  for (const t of currentTracks) {
+    globalsById.set(t.id, {
+      gain: t.gain,
+      fxSend: t.fxSend,
+      pan: t.pan,
+      filterCutoff: t.filterCutoff,
+      filterResonance: t.filterResonance,
+      octave: t.octave,
+    });
+  }
+  const mergedTracks = slot.tracks.map((bankTrack) => {
+    const cloned = cloneTrack(bankTrack);
+    const globals = globalsById.get(cloned.id);
+    return globals ? { ...cloned, ...globals } : cloned;
+  });
   set({
-    tracks: slot.tracks.map(cloneTrack),
+    tracks: mergedTracks,
     density: slot.macros.density,
     chaos: slot.macros.chaos,
     motion: slot.macros.motion,
@@ -954,6 +1155,7 @@ function applyBankSlot(
     activeBank: i,
     pendingBank: null,
     freeze: false,
+    sceneStartStep: atGlobalStep,
   });
   // Mutation overlay is keyed by trackId+index and would otherwise apply the
   // previous pattern's mutated outcomes to the new pattern's steps. Freeze
@@ -964,9 +1166,10 @@ function applyBankSlot(
   // pattern's drift cadence starts fresh rather than mid-cycle from the
   // previous pattern's trigger count.
   resetPadDrift();
-  // Per-track filter graphs are keyed by trackId and would otherwise keep
-  // ringing the previous pattern's filter state (high-res self-oscillation
-  // tail, etc.) into the new pattern. Disconnect + clear so each pattern
-  // recall starts with a fresh filter.
-  resetTrackFilters();
+  // Per-track filter graphs intentionally KEEP across bank swaps. trackIds
+  // are stable (compose / variant preserve t.id), and fxModulation's RAF
+  // loop slews cutoff/resonance/fxSend to the new bank's per-track values
+  // via setTargetAtTime — so a disconnect here would only buy us cutting
+  // off in-flight sample tails for tracks that survive the swap. Project
+  // import (persist.ts) DOES reset filters because trackIds change there.
 }

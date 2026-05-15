@@ -56,6 +56,7 @@ function displayStep(
 
 export function Track({ track }: { track: TrackData }) {
   const globalStep = useSequencerStore((s) => s.globalStep);
+  const sceneStartStep = useSequencerStore((s) => s.sceneStartStep);
   const playing = useSequencerStore((s) => s.playing);
   const lfos = useSequencerStore((s) => s.lfos);
   const density = useSequencerStore((s) => s.density);
@@ -109,7 +110,11 @@ export function Track({ track }: { track: TrackData }) {
   };
 
   const stride = RATE_STRIDE[track.rate];
-  const localCurrent = Math.floor(globalStep / stride) % track.length;
+  // Scene-relative step position so the visible playhead matches the audible
+  // step (dispatch in App.tsx uses the same offset). Without this, polyrhythmic
+  // tracks show playheads at offset positions after a bank swap because the
+  // raw globalStep modulo math doesn't reset on scene change.
+  const localCurrent = Math.floor((globalStep - sceneStartStep) / stride) % track.length;
   const playingPage = Math.floor(localCurrent / PAGE_SIZE);
   const stepInPage = localCurrent % PAGE_SIZE;
   const viewPage = track.viewPage;

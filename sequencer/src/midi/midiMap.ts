@@ -52,7 +52,8 @@ export type MidiTarget =
   | `fx:${FxKnobTargetName}`
   | 'transport:play'
   | 'transport:freeze'
-  | 'transport:tap-tempo';
+  | 'transport:tap-tempo'
+  | 'transport:conductor';
 
 export interface MidiBinding {
   ch: number;
@@ -293,6 +294,10 @@ function dispatchTarget(target: string, value01: number): void {
     tapTempo();
     return;
   }
+  if (target === 'transport:conductor') {
+    s.setSceneGraphEnabled(!s.sceneGraph.enabled);
+    return;
+  }
 }
 
 // True iff a string is a recognised target shape (used for validation
@@ -301,7 +306,8 @@ export function isValidTarget(t: string): boolean {
   if (
     t === 'transport:play' ||
     t === 'transport:freeze' ||
-    t === 'transport:tap-tempo'
+    t === 'transport:tap-tempo' ||
+    t === 'transport:conductor'
   ) {
     return true;
   }
