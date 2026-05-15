@@ -34,7 +34,7 @@ tape = environment {
   GRAIN_FADE_S         = 0.05;
   GRAIN_EVENTS_PER_SEC = 16;
 
-  mix       = hslider("tape mix",  1.0,  0,    1, 0.001);
+  mix       = hslider("tape mix",  0.53, 0,    1, 0.001);
   position  = hslider("position",  0.3,  0,    1, 0.001);
   length_   = hslider("length",    0.5,  0,    1, 0.001);
   reverse   = hslider("reverse[hidden:1]",   1,    0,    1, 1);
@@ -42,18 +42,28 @@ tape = environment {
   gain1     = hslider("gain1[hidden:1]",     1.0,  0,    1, 0.001);
   stretch2  = hslider("stretch2[hidden:1]",  0.5,  0.25, 4, 0.001);
   gain2     = hslider("gain2[hidden:1]",     1.0,  0,    1, 0.001);
-  grainRate = hslider("grainRate", 0.3,  0,    1, 0.001);
-  grainMix  = hslider("grainMix",  1.0,  0,    1, 0.001);
+  grainRate = hslider("grainRate", 0.39, 0,    1, 0.001);
+  grainMix  = hslider("grainMix",  0.54, 0,    1, 0.001);
   hold      = checkbox("hold");
 
   SAFETY_SAMP   = SAFETY_S * ma.SR;
   MIN_WINDOW    = MIN_WINDOW_S * ma.SR;
   MAX_LOOKBACK  = (BUF_S - SAFETY_S - 1) * ma.SR;
 
-  windowSize = max(MIN_WINDOW, MAX_LOOKBACK * length_);
-  windowMin  = SAFETY_SAMP + (MAX_LOOKBACK - windowSize) * position;
-  windowMax  = windowMin + windowSize;
-  xfadeSamp  = XFADE_S * ma.SR;
+  // Raw target bounds — used for first-sample rb injection (existing init
+  // pattern: setting rb to a valid in-window value at t=0 prevents the
+  // ~33k-sample startup bounce). The smoothed versions below drive the
+  // steady-state wrap so knob-step clicks get masked. Mirrors the sequencer
+  // worklet's `smoothedWindowMin/Max` approach (tape-machine.js).
+  windowSizeRaw = max(MIN_WINDOW, MAX_LOOKBACK * length_);
+  windowMinRaw  = SAFETY_SAMP + (MAX_LOOKBACK - windowSizeRaw) * position;
+  windowMaxRaw  = windowMinRaw + windowSizeRaw;
+
+  SMOOTH_POLE = ba.tau2pole(0.1);  // 100ms time constant, matches JS feel
+  windowMin   = windowMinRaw : si.smooth(SMOOTH_POLE);
+  windowMax   = windowMaxRaw : si.smooth(SMOOTH_POLE);
+  windowSize  = windowMax - windowMin;
+  xfadeSamp   = XFADE_S * ma.SR;
 
   wrap(x) = ba.if(x > windowMax, x - windowSize,
                   ba.if(x < windowMin, x + windowSize, x));
@@ -62,7 +72,7 @@ tape = environment {
   adv(s) = (1 - s) * (1 - reverse) + (1 + s) * reverse - hold;
 
   firstSample = 1 - 1';
-  rbHead(s) = (adv(s) + windowMin * firstSample) : (+ : wrap) ~ _;
+  rbHead(s) = (adv(s) + windowMinRaw * firstSample) : (+ : wrap) ~ _;
 
   layerSample(in, s) = primary * fadeGain + ghost * (1.0 - fadeGain)
   with {
@@ -173,8 +183,8 @@ glitch = environment {
   RING_MAX  = 96000;
   NUM_MODES = 8;
 
-  mix    = hslider("glitch mix", 1.0, 0,  1,   0.001);
-  chance = hslider("chance",     0.4, 0,  1,   0.001);
+  mix    = hslider("glitch mix", 0.63, 0,  1,   0.001);
+  chance = hslider("chance",     0.16, 0,  1,   0.001);
   bpm    = hslider("bpm[hidden:1]", 120, 60, 240, 0.1);
 
   samplesPerBeat = 60.0 / bpm * ma.SR;
@@ -256,9 +266,9 @@ reverb = environment {
   nsamples(n) = int(n * ma.SR / SR_REF);
   fsamples(n) = n * ma.SR / SR_REF;
 
-  size      = hslider("size",       0.7,   0, 1,    0.001);
-  mix       = hslider("reverb mix", 0.4,   0, 1,    0.001);
-  diffusion = hslider("diffusion",  0.625, 0, 0.85, 0.001);
+  size      = hslider("size",       0.77,  0, 1,    0.001);
+  mix       = hslider("reverb mix", 0.37,  0, 1,    0.001);
+  diffusion = hslider("diffusion",  0.63,  0, 0.85, 0.001);
   damping   = hslider("damping",    0.4,   0, 1,    0.001);
 
   krt     = 0.3 + size * 0.62;
@@ -320,7 +330,7 @@ reverb = environment {
 // transient energy through the tape + glitch + reverb stages.
 // =============================================================================
 output = environment {
-  gain = hslider("gain", 1.0, 0.0, 4.0, 0.001);
+  gain = hslider("gain", 1.24, 0.0, 4.0, 0.001);
   process(L, R) = L * gain, R * gain;
 };
 

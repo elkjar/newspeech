@@ -10,7 +10,6 @@
 //
 // Simplifications from web (still to fill in):
 //   - Hold/freeze not yet implemented (always writes input to buffer)
-//   - Smoothing of window bounds skipped (move position/length sliders slowly)
 //
 // See sequencer/public/worklets/tape-machine.js for the reference DSP.
 
@@ -65,10 +64,20 @@ SAFETY_SAMP   = SAFETY_S * ma.SR;
 MIN_WINDOW    = MIN_WINDOW_S * ma.SR;
 MAX_LOOKBACK  = (BUF_S - SAFETY_S - 1) * ma.SR;
 
-windowSize = max(MIN_WINDOW, MAX_LOOKBACK * length_);
-windowMin  = SAFETY_SAMP + (MAX_LOOKBACK - windowSize) * position;
-windowMax  = windowMin + windowSize;
-xfadeSamp  = XFADE_S * ma.SR;
+// Raw target bounds — used for first-sample rb injection (existing init
+// pattern: setting rb to a valid in-window value at t=0 prevents the
+// ~33k-sample startup bounce). The smoothed versions below drive the
+// steady-state wrap so knob-step clicks get masked. Mirrors the sequencer
+// worklet's `smoothedWindowMin/Max` approach (tape-machine.js).
+windowSizeRaw = max(MIN_WINDOW, MAX_LOOKBACK * length_);
+windowMinRaw  = SAFETY_SAMP + (MAX_LOOKBACK - windowSizeRaw) * position;
+windowMaxRaw  = windowMinRaw + windowSizeRaw;
+
+SMOOTH_POLE = ba.tau2pole(0.1);  // 100ms time constant, matches JS feel
+windowMin   = windowMinRaw : si.smooth(SMOOTH_POLE);
+windowMax   = windowMaxRaw : si.smooth(SMOOTH_POLE);
+windowSize  = windowMax - windowMin;
+xfadeSamp   = XFADE_S * ma.SR;
 
 // ===== Single-step wrap to window bounds =====
 // Handles drift of at most one windowSize per step (sufficient for any
@@ -101,7 +110,7 @@ adv(s) = (1 - s) * (1 - reverse) + (1 + s) * reverse - hold;
 // producing a brief audible artifact before reverse playback kicks in
 // properly.
 firstSample = 1 - 1';
-rbHead(s) = (adv(s) + windowMin * firstSample) : (+ : wrap) ~ _;
+rbHead(s) = (adv(s) + windowMinRaw * firstSample) : (+ : wrap) ~ _;
 
 // ===== Read interpolated from buffer at rb samples ago, with ghost crossfade =====
 // At each wrap event (rb jumps by ~windowSize), a ghost head snapshots the

@@ -1,0 +1,35 @@
+# vst/glitch/dist/.signing-config — sourced by sign-and-notarize.sh
+#
+# Copy this file to `.signing-config` (gitignored) and fill in the
+# values from your Apple Developer account. Lines starting with `#`
+# are comments. Quote values that contain spaces.
+#
+# Where to find each value:
+#
+#   APPLE_TEAM_ID      — developer.apple.com → Membership Details →
+#                        Team ID (10-char alphanumeric).
+#
+#   APPLE_DEV_ID_NAME  — full common-name of your Developer ID
+#                        Application cert as it appears in Keychain
+#                        Access. Form: "Developer ID Application:
+#                        <Your Name> (<TEAM_ID>)". Run
+#                        `security find-identity -v -p codesigning`
+#                        to list installed identities.
+#
+#   APPLE_ID           — your Apple ID email. The same one paying the
+#                        $99/yr Developer Program fee.
+#
+#   APPLE_APP_PWD      — an app-specific password, NOT your real Apple ID
+#                        password. Create at appleid.apple.com →
+#                        Sign-in & Security → App-Specific Passwords →
+#                        "+". Label it "notarytool" so you remember
+#                        what it's for. notarytool uses this to
+#                        authenticate without requiring 2FA each run.
+#
+# Once filled in, `SIGN=1 ./build.sh` will exercise the full
+# sign + notarize + staple pipeline.
+
+APPLE_TEAM_ID="XXXXXXXXXX"
+APPLE_DEV_ID_NAME="Developer ID Application: Your Name (XXXXXXXXXX)"
+APPLE_ID="you@example.com"
+APPLE_APP_PWD="xxxx-xxxx-xxxx-xxxx"
