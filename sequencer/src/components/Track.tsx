@@ -127,7 +127,7 @@ export function Track({ track }: { track: TrackData }) {
     !(track.section === 'drum' && track.source.kind === 'voice');
 
   return (
-    <div className="flex items-center" style={{ gap: STEP_SIZE }}>
+    <div className="flex items-center justify-between" style={{ gap: STEP_SIZE }}>
       <div className="flex items-center gap-3">
       <div className="flex items-center gap-2">
         <select
@@ -283,7 +283,19 @@ export function Track({ track }: { track: TrackData }) {
         />
       </button>
 
-      <div className="flex" style={{ gap: STEP_GAP }}>
+      <div
+        className="flex"
+        style={{
+          gap: STEP_GAP,
+          // Reserve the full-page width (16 steps + 15 gaps) regardless of
+          // how many step buttons actually render. Without this fixed
+          // width, shorter rows produce a narrower step section and the
+          // outer justify-between shifts step column 1 across rows. The
+          // BankPad row's right edge stays aligned with the step section's
+          // right edge as a result.
+          width: PAGE_SIZE * STEP_SIZE + (PAGE_SIZE - 1) * STEP_GAP,
+        }}
+      >
         {Array.from(
           { length: Math.max(0, Math.min(PAGE_SIZE, track.length - viewPage * PAGE_SIZE)) },
           (_, i) => {
