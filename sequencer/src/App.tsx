@@ -350,7 +350,7 @@ export function App() {
       <main
         className={
           NATIVE
-            ? 'min-h-screen flex items-start justify-center px-4 py-4'
+            ? 'min-h-screen flex items-center justify-center px-4 py-4'
             : 'min-h-screen flex items-center justify-center px-10 py-12'
         }
       >
