@@ -3,13 +3,18 @@ import {
   KICK_MUTATION,
   HAT_O_MUTATION,
   BASS_MUTATION,
+  PAD_MUTATION,
   voiceLabel,
   voiceMutation,
   isMelodicVoice,
   type MutationProfile,
 } from '../audio/voices';
+import {
+  getUserInstrument,
+  getUserInstrumentsForRole,
+} from './userInstrumentsStore';
 
-export type InstrumentRole = 'drum' | 'bass' | 'lead';
+export type InstrumentRole = 'drum' | 'bass' | 'lead' | 'pad';
 
 export interface Instrument {
   id: string;
@@ -38,55 +43,7 @@ export interface Preset {
   slots: PresetSlot[];
 }
 
-const EXT_MIDI_LEAD: Instrument = {
-  id: 'ext-midi-lead',
-  label: 'ext. midi',
-  role: 'lead',
-  channel: 0,
-  portName: null,
-  program: null,
-  bankMSB: null,
-  bankLSB: null,
-  fixedNote: null,
-};
-
-const EXT_MIDI_DRUM: Instrument = {
-  id: 'ext-midi-drum',
-  label: 'ext. midi',
-  role: 'drum',
-  channel: 9,
-  portName: null,
-  program: null,
-  bankMSB: null,
-  bankLSB: null,
-  fixedNote: null,
-};
-
 export const INSTRUMENTS: Instrument[] = [
-  EXT_MIDI_LEAD,
-  EXT_MIDI_DRUM,
-  {
-    id: 'hydra-plaits',
-    label: 'hydrasynth · plaits',
-    role: 'lead',
-    channel: 4,
-    portName: 'micro lite port 2',
-    program: 12,
-    bankMSB: 0,
-    bankLSB: 0,
-    fixedNote: null,
-  },
-  {
-    id: 'hydra-piano-soft',
-    label: 'hydrasynth · piano soft',
-    role: 'lead',
-    channel: 4,
-    portName: 'micro lite port 2',
-    program: 2,
-    bankMSB: 0,
-    bankLSB: 0,
-    fixedNote: null,
-  },
   {
     id: 'noir-kick',
     label: 'noir kick',
@@ -170,18 +127,6 @@ export const INSTRUMENTS: Instrument[] = [
 
 export const PRESETS: Preset[] = [
   {
-    id: 'ext-midi-preset-drum',
-    label: 'ext. midi',
-    target: 'drum',
-    slots: Array.from({ length: 8 }, () => ({ kind: 'instrument' as const, id: EXT_MIDI_DRUM.id })),
-  },
-  {
-    id: 'ext-midi-preset-melodic',
-    label: 'ext. midi',
-    target: 'melodic',
-    slots: Array.from({ length: 8 }, () => ({ kind: 'instrument' as const, id: EXT_MIDI_LEAD.id })),
-  },
-  {
     id: 'internal-drum',
     label: 'internal synths',
     target: 'drum',
@@ -244,7 +189,11 @@ export const PRESETS: Preset[] = [
 ];
 
 export function getInstrument(id: string): Instrument | undefined {
-  return INSTRUMENTS.find((i) => i.id === id);
+  const bundled = INSTRUMENTS.find((i) => i.id === id);
+  if (bundled) return bundled;
+  // Lazy import to avoid a cycle — userInstrumentsStore lives in the same
+  // module folder and we only need a non-React getter.
+  return getUserInstrument(id);
 }
 
 export function instrumentMutation(id: string): MutationProfile {
@@ -254,6 +203,8 @@ export function instrumentMutation(id: string): MutationProfile {
   switch (inst.role) {
     case 'bass':
       return BASS_MUTATION;
+    case 'pad':
+      return PAD_MUTATION;
     case 'lead':
     case 'drum':
     default:
@@ -268,7 +219,10 @@ export function instrumentIsMelodic(id: string): boolean {
 }
 
 export function instrumentsForRole(role: InstrumentRole): Instrument[] {
-  return INSTRUMENTS.filter((i) => i.role === role);
+  return [
+    ...INSTRUMENTS.filter((i) => i.role === role),
+    ...getUserInstrumentsForRole(role),
+  ];
 }
 
 export function presetsForTarget(target: PresetTarget): Preset[] {

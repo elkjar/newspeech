@@ -6,18 +6,60 @@ import { exportProject, importProject, timestampSlug } from '../state/persist';
 import { presetsForTarget } from '../instruments/library';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import { ConfirmDialog } from './ConfirmDialog';
+import { invoke, isTauri } from '@tauri-apps/api/core';
+import {
+  getActiveAudioOutputId,
+  isSetSinkIdSupported,
+  requestDeviceLabels,
+  setActiveAudioOutput,
+} from '../audio/audioOutput';
+import { useAudioOutputs } from '../hooks/useAudioOutputs';
 
-function downloadProject() {
+const SEQ_FILTER = [{ name: 'newspeech sequence', extensions: ['seq'] }];
+
+async function saveProject() {
   const code = exportProject();
+  const defaultName = `newspeech-${timestampSlug()}.seq`;
+  if (isTauri()) {
+    const { save } = await import('@tauri-apps/plugin-dialog');
+    const { documentDir, join } = await import('@tauri-apps/api/path');
+    let defaultPath: string | undefined;
+    try {
+      defaultPath = await join(await documentDir(), defaultName);
+    } catch {
+      defaultPath = defaultName;
+    }
+    const picked = await save({ defaultPath, filters: SEQ_FILTER });
+    if (!picked) return;
+    try {
+      await invoke('save_text_file', { path: picked, contents: code });
+    } catch (err) {
+      console.error('[project] save failed:', err);
+    }
+    return;
+  }
   const blob = new Blob([code], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `newspeech-${timestampSlug()}.seq`;
+  a.download = defaultName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function openProjectViaDialog(): Promise<void> {
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const picked = await open({ multiple: false, filters: SEQ_FILTER });
+  if (!picked || typeof picked !== 'string') return;
+  try {
+    const text = await invoke<string>('read_text_file', { path: picked });
+    const ok = importProject(text);
+    if (!ok) console.warn('[project] failed to import sequence file');
+  } catch (err) {
+    console.error('[project] open failed:', err);
+  }
 }
 
 export function IconButton({
@@ -144,6 +186,72 @@ export function StemsButton() {
     >
       {stems ? '●' : '○'} stems
     </button>
+  );
+}
+
+// AudioOutSelector — picks which physical output device gets the
+// sequencer's audio. Backed by AudioContext.setSinkId (Safari 17+,
+// Chromium 110+). Device labels are gated by media-permission state —
+// browser/WKWebView returns empty labels until getUserMedia has been
+// granted once. Selecting the "request names" sentinel triggers the
+// permission prompt; from then on labels populate normally.
+const REQUEST_LABELS_SENTINEL = '__request-labels__';
+export function AudioOutSelector() {
+  const outputs = useAudioOutputs();
+  const [active, setActive] = useState<string | null>(() => getActiveAudioOutputId());
+  const supported = isSetSinkIdSupported();
+  // De-dupe the hardcoded "default" option from enumerateDevices output
+  // (the OS often reports a device literally named "default" which would
+  // otherwise duplicate the empty-value first option).
+  const extra = outputs.filter((o) => o.deviceId !== 'default' && o.deviceId !== '');
+  // Show the reveal-names button whenever extra devices exist but labels
+  // are missing, AND whenever we only see "default" (which is the symptom
+  // of media permission not yet granted in WKWebView).
+  const labelsLookEmpty =
+    extra.length === 0 || extra.some((o) => /^output \d+$/.test(o.label));
+  if (!supported) {
+    return (
+      <span
+        className="px-2 text-[11px] uppercase tracking-widest text-white/30 inline-flex items-center h-[28px]"
+        title="setSinkId not supported by this browser/webview"
+      >
+        out: system
+      </span>
+    );
+  }
+  return (
+    <select
+      value={active ?? ''}
+      onChange={async (e) => {
+        const v = e.target.value;
+        if (v === REQUEST_LABELS_SENTINEL) {
+          await requestDeviceLabels();
+          return;
+        }
+        try {
+          await setActiveAudioOutput(v);
+          setActive(v);
+        } catch (err) {
+          console.warn('[audioOut] setSinkId failed:', err);
+        }
+      }}
+      className="select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[180px] h-[28px]"
+      title="audio output device"
+    >
+      <option value="" className="bg-[#050505]">
+        default
+      </option>
+      {extra.map((o) => (
+        <option key={o.deviceId} value={o.deviceId} className="bg-[#050505]">
+          {o.label}
+        </option>
+      ))}
+      {labelsLookEmpty && (
+        <option value={REQUEST_LABELS_SENTINEL} className="bg-[#050505]">
+          + reveal device names
+        </option>
+      )}
+    </select>
   );
 }
 
@@ -390,10 +498,20 @@ export function TransportControls() {
       </label>
       <PresetControls />
       <div className="flex items-center gap-2">
-        <IconButton title="download .seq" onClick={downloadProject} className="h-[28px]">
+        <IconButton title="save .seq" onClick={() => void saveProject()} className="h-[28px]">
           <DownloadIcon />
         </IconButton>
-        <IconButton title="import .seq" onClick={() => fileInputRef.current?.click()} className="h-[28px]">
+        <IconButton
+          title="open .seq"
+          onClick={() => {
+            if (isTauri()) {
+              void openProjectViaDialog();
+            } else {
+              fileInputRef.current?.click();
+            }
+          }}
+          className="h-[28px]"
+        >
           <ImportIcon />
         </IconButton>
         <input

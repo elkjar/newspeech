@@ -1,16 +1,42 @@
-// Web MIDI input — port enumeration, hot-plug, message parsing.
-// All messages funnel through a single callback so the dispatcher in
-// midiMap.ts can be the only consumer.
+// MIDI input — port enumeration + message parsing. Two backends:
+//   - Browser: navigator.requestMIDIAccess (Web MIDI API).
+//   - Tauri:   invoke into the midir-backed Rust bridge; messages arrive
+//              via the `midi://message` Tauri event. WKWebView doesn't
+//              expose Web MIDI so the in-app shell goes native.
+// Both paths funnel through the same `listener` callback so midiMap.ts
+// stays unchanged.
+
+import { invoke, isTauri } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 export type MidiMessage =
   | { ch: number; msg: 'cc'; num: number; value: number }
   | { ch: number; msg: 'note'; num: number; value: number };
 
+const TAURI = isTauri();
+
 let access: MIDIAccess | null = null;
 let listener: ((msg: MidiMessage) => void) | null = null;
 let portListener: ((name: string) => void) | null = null;
 
-function parseMessage(data: Uint8Array): MidiMessage | null {
+// Tauri-mode state.
+let tauriUnlisten: UnlistenFn | null = null;
+let tauriInputNames: string[] = [];
+let tauriPoll: number | null = null;
+const inputsChangedListeners = new Set<() => void>();
+
+export function onMIDIInputsChanged(cb: () => void): () => void {
+  inputsChangedListeners.add(cb);
+  return () => {
+    inputsChangedListeners.delete(cb);
+  };
+}
+
+function notifyInputsChanged(): void {
+  for (const cb of inputsChangedListeners) cb();
+}
+
+function parseMessage(data: Uint8Array | number[]): MidiMessage | null {
   if (data.length < 2) return null;
   const status = data[0];
   const ch = status & 0x0f;
@@ -22,8 +48,6 @@ function parseMessage(data: Uint8Array): MidiMessage | null {
   if (type === 0x90 && data.length >= 3 && data[2] > 0) {
     return { ch, msg: 'note', num: data[1], value: data[2] };
   }
-  // Note Off (0x80) and Note On with velocity 0 are ignored for v1 —
-  // momentary actions are post-v1.
   return null;
 }
 
@@ -36,12 +60,71 @@ function wireInput(input: MIDIInput): void {
   };
 }
 
+interface MidiPorts {
+  inputs: string[];
+  outputs: string[];
+}
+
+async function refreshTauriInputs(): Promise<void> {
+  try {
+    const ports = await invoke<MidiPorts>('midi_list_ports');
+    const next = ports.inputs;
+    // Subscribe to any newly-connected port (Rust no-ops if already subscribed).
+    for (const name of next) {
+      if (!tauriInputNames.includes(name)) {
+        try {
+          await invoke('midi_subscribe_input', { portName: name });
+          if (portListener) portListener(name);
+        } catch (err) {
+          console.warn(`[midiIn] subscribe ${name} failed:`, err);
+        }
+      }
+    }
+    const changed =
+      next.length !== tauriInputNames.length ||
+      next.some((n, i) => n !== tauriInputNames[i]);
+    if (changed) {
+      tauriInputNames = next;
+      notifyInputsChanged();
+    }
+  } catch (err) {
+    console.warn('[midiIn] refresh inputs failed:', err);
+  }
+}
+
+async function initTauri(): Promise<boolean> {
+  try {
+    await refreshTauriInputs();
+    if (tauriUnlisten) tauriUnlisten();
+    tauriUnlisten = await listen<{ port: string; bytes: number[] }>(
+      'midi://message',
+      (event) => {
+        if (!listener) return;
+        const msg = parseMessage(event.payload.bytes);
+        if (msg) listener(msg);
+      }
+    );
+    if (tauriPoll === null) {
+      // Hot-plug discovery — midir has no port-change event stream so we
+      // poll. Match the output-side cadence (3 s).
+      tauriPoll = window.setInterval(() => {
+        void refreshTauriInputs();
+      }, 3000);
+    }
+    return true;
+  } catch (err) {
+    console.error('[midiIn] Tauri init failed:', err);
+    return false;
+  }
+}
+
 export async function initMIDIIn(
   onMessage: (msg: MidiMessage) => void,
   onPortConnected?: (name: string) => void
 ): Promise<boolean> {
   listener = onMessage;
   portListener = onPortConnected ?? null;
+  if (TAURI) return initTauri();
   const nav = navigator as Navigator & {
     requestMIDIAccess?: (opts?: { sysex?: boolean }) => Promise<MIDIAccess>;
   };
@@ -55,17 +138,22 @@ export async function initMIDIIn(
     wireInput(input);
     if (portListener && input.name) portListener(input.name);
   }
+  notifyInputsChanged();
   access.onstatechange = (e) => {
     const port = (e as MIDIConnectionEvent).port;
-    if (!port || port.type !== 'input' || port.state !== 'connected') return;
-    const input = port as MIDIInput;
-    wireInput(input);
-    if (portListener && input.name) portListener(input.name);
+    if (!port || port.type !== 'input') return;
+    if (port.state === 'connected') {
+      const input = port as MIDIInput;
+      wireInput(input);
+      if (portListener && input.name) portListener(input.name);
+    }
+    notifyInputsChanged();
   };
   return true;
 }
 
 export function getConnectedInputNames(): string[] {
+  if (TAURI) return tauriInputNames.slice();
   if (!access) return [];
   const names: string[] = [];
   for (const input of access.inputs.values()) {

@@ -4,12 +4,51 @@ let mixBus: GainNode | null = null;
 let voicesBus: GainNode | null = null;
 let voicesPostFX: GainNode | null = null;
 let dryGain: GainNode | null = null;
+let outputRouter: GainNode | null = null;
+let destGain: GainNode | null = null;
+let routingStreamDest: MediaStreamAudioDestinationNode | null = null;
 
 export function getAudioContext(): AudioContext {
   if (!ctx) {
     ctx = new AudioContext();
   }
   return ctx;
+}
+
+// Final fan-out before destination. Everything that USED to connect to
+// ctx.destination now connects here. It fans the signal into:
+//   • destGain → ctx.destination (the speaker path; gain crossfaded
+//     to mute when an alternate sink is active)
+//   • routingStreamDest (a MediaStreamDestination; an offscreen <audio>
+//     element pipes it to a specific device via setSinkId for output-
+//     routing without WebKit's AudioContext.setSinkId)
+// Always live in both directions; audioOutput.ts toggles destGain only.
+export function getOutputRouter(): GainNode {
+  if (!outputRouter) {
+    const c = getAudioContext();
+    outputRouter = c.createGain();
+    outputRouter.gain.value = 1;
+
+    destGain = c.createGain();
+    destGain.gain.value = 1;
+    outputRouter.connect(destGain);
+    destGain.connect(c.destination);
+
+    routingStreamDest = c.createMediaStreamDestination();
+    outputRouter.connect(routingStreamDest);
+  }
+  return outputRouter;
+}
+
+export function setOutputDestinationMute(muted: boolean): void {
+  // Force-init the chain on first call.
+  getOutputRouter();
+  if (destGain) destGain.gain.value = muted ? 0 : 1;
+}
+
+export function getRoutingStream(): MediaStream {
+  getOutputRouter();
+  return routingStreamDest!.stream;
 }
 
 // Final summing bus, immediately before the master stage. Everything that
@@ -23,10 +62,15 @@ export function getMixBus(): GainNode {
     const c = getAudioContext();
     mixBus = c.createGain();
     mixBus.gain.value = 1;
-    mixBus.connect(c.destination);
+    mixBus.connect(getOutputRouter());
   }
   return mixBus;
 }
+
+// Tap point AFTER the output router — primarily for the recorder's
+// processed-master tap. Currently identical to the router itself; declared
+// here to keep recorder code agnostic about routing topology.
+// (Reserved for future use; current code taps master.outNode directly.)
 
 // FX-chain entry bus. Voices + tape sum here; glitch / reverb insert between
 // this and mixBus on init. NOT the final output — that's mixBus → master →

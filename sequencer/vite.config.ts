@@ -6,8 +6,16 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const isTauri = !!process.env.TAURI_ENV_PLATFORM;
+
 export default defineConfig({
-  base: '/sequencer/',
+  base: isTauri ? './' : '/sequencer/',
+  clearScreen: false,
+  server: {
+    strictPort: true,
+    port: isTauri ? 1420 : 5173,
+    host: isTauri ? '127.0.0.1' : undefined,
+  },
   plugins: [
     react(),
     {

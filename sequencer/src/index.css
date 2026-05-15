@@ -20,6 +20,18 @@ body,
   height: 100%;
 }
 
+/* In the Tauri shell, the window is locked to the sequencer's exact
+   dimensions — there's nothing to scroll horizontally to. Lock LR
+   scroll/overscroll so accidental two-finger swipes don't trigger any
+   horizontal pan or webview back-navigation gesture. */
+body.tauri-native {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+body.tauri-native #root {
+  overflow-x: hidden;
+}
+
 body {
   background: #050505;
   color: #fff;

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { PlayButton, RecordButton, CountInButton, RawRecordButton, StemsButton, TransportControls } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, RawRecordButton, StemsButton, AudioOutSelector, TransportControls } from './components/Transport';
+import { initAudioOutputs } from './audio/audioOutput';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
@@ -36,6 +37,9 @@ import {
   beforeBarCommit as conductorBeforeBarCommit,
 } from './conductor/conductor';
 import { autoSeedBanks } from './conductor/generator';
+import { isTauri } from '@tauri-apps/api/core';
+
+const NATIVE = isTauri();
 
 const MODE_KEYS: Record<string, EditMode> = {
   '1': 'live',
@@ -103,8 +107,10 @@ export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
 
   useEffect(() => {
+    if (NATIVE) document.body.classList.add('tauri-native');
     initMIDIOut();
     initConductor();
+    void initAudioOutputs();
     // Auto-seed banks on every load — wipes scene banks and fills slots
     // 0-9 with one of each recipe in song-arc order. User's track voices
     // (band identity) persist via persist.ts and seed banks inherit those
@@ -341,18 +347,40 @@ export function App() {
 
   return (
     <div className="relative w-full">
-      <main className="min-h-screen flex items-center justify-center px-10 py-12">
-        <div className="flex flex-col gap-8 border border-white/15 rounded-[20px] p-10">
-          <div className="flex justify-between items-center gap-8">
-            <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
-              <a href="/" className="hover:opacity-100 transition-opacity">newspeech</a>
-              <span className="opacity-50"> | </span>
-              <span>sequence</span>
-              <span className="opacity-50"> | </span>
-              <a href="/sequencer-readme.html" className="hover:opacity-100 transition-opacity">readme.txt</a>
-            </span>
-            <MacroStrip />
-          </div>
+      <main
+        className={
+          NATIVE
+            ? 'min-h-screen flex items-start justify-center px-4 py-4'
+            : 'min-h-screen flex items-center justify-center px-10 py-12'
+        }
+      >
+        <div
+          className={
+            NATIVE
+              ? 'flex flex-col gap-6'
+              : 'flex flex-col gap-8 border border-white/15 rounded-[20px] p-10'
+          }
+        >
+          {!NATIVE && (
+            <div className="flex justify-between items-center gap-8">
+              <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
+                <a href="/" className="hover:opacity-100 transition-opacity">newspeech</a>
+                <span className="opacity-50"> | </span>
+                <span>sequence</span>
+                <span className="opacity-50"> | </span>
+                <a href="/sequencer-readme.html" className="hover:opacity-100 transition-opacity">readme.txt</a>
+              </span>
+              <MacroStrip />
+            </div>
+          )}
+          {NATIVE && (
+            <div className="flex justify-between items-center gap-8">
+              <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
+                newspeech <span className="opacity-50">|</span> sequence
+              </span>
+              <MacroStrip />
+            </div>
+          )}
           <div className="flex justify-between items-start gap-8">
             <div className="flex flex-row items-start gap-3">
               <Scope />
@@ -365,23 +393,24 @@ export function App() {
             <BankPad />
           </div>
           <TrackGrid />
-          <div className="flex justify-between items-center gap-8">
-            <div className="transport flex flex-col items-start gap-3">
+          <div className="transport flex flex-col items-stretch gap-3">
+            <div className="flex items-center justify-between gap-8">
               <div className="flex items-center gap-3">
                 <PlayButton />
                 <RecordButton />
                 <CountInButton />
                 <RawRecordButton />
                 <StemsButton />
+                <AudioOutSelector />
               </div>
-              <TransportControls />
-              <MidiBar />
+              <div className="flex items-center gap-4">
+                <SectionToggle />
+                <span className="w-px h-6 bg-white/15" />
+                <ModeSwitcher />
+              </div>
             </div>
-            <div className="flex items-center gap-4">
-              <SectionToggle />
-              <span className="w-px h-6 bg-white/15" />
-              <ModeSwitcher />
-            </div>
+            <TransportControls />
+            <MidiBar />
           </div>
           <FXPanel />
         </div>

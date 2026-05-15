@@ -14,8 +14,12 @@ import { VOICES } from '../audio/voices';
 import {
   INSTRUMENTS,
   sourceIsMelodic,
+  type Instrument,
+  type InstrumentRole,
   type TrackSource,
 } from '../instruments/library';
+import { useUserInstrumentsStore } from '../instruments/userInstrumentsStore';
+import { NewInstrumentDialog } from './NewInstrumentDialog';
 import { getOverlay } from '../audio/mutationOverlay';
 import { effectiveTieToNext } from '../audio/mutationTie';
 import { findRouted, GLOBAL_TRACK_ID } from '../audio/lfo';
@@ -89,9 +93,18 @@ export function Track({ track }: { track: TrackData }) {
   const sampleVoices = VOICES.filter((v) =>
     isDrumSection ? v.category === 'drum' : v.category === 'melodic'
   );
-  const drumInstruments = INSTRUMENTS.filter((i) => i.role === 'drum');
-  const leadInstruments = INSTRUMENTS.filter((i) => i.role === 'lead');
-  const bassInstruments = INSTRUMENTS.filter((i) => i.role === 'bass');
+  const userInstruments = useUserInstrumentsStore((s) => s.userInstruments);
+  const collectInstruments = (role: InstrumentRole): Instrument[] => [
+    ...INSTRUMENTS.filter((i) => i.role === role),
+    ...Object.values(userInstruments).filter((i) => i.role === role),
+  ];
+  const drumInstruments = collectInstruments('drum');
+  const leadInstruments = collectInstruments('lead');
+  const bassInstruments = collectInstruments('bass');
+  const padInstruments = collectInstruments('pad');
+
+  const [newInstrumentDefaultRole, setNewInstrumentDefaultRole] =
+    useState<InstrumentRole | null>(null);
 
   const sourceValue =
     track.source.kind === 'empty' ? 'empty' : `${track.source.kind}:${track.source.id}`;
@@ -99,6 +112,11 @@ export function Track({ track }: { track: TrackData }) {
   const handleSourceChange = (raw: string) => {
     if (raw === 'empty') {
       setTrackSource(track.id, { kind: 'empty' });
+      return;
+    }
+    if (raw.startsWith('new-instrument:')) {
+      const role = raw.split(':', 2)[1] as InstrumentRole;
+      setNewInstrumentDefaultRole(role);
       return;
     }
     const [kind, id] = raw.split(':', 2);
@@ -145,34 +163,64 @@ export function Track({ track }: { track: TrackData }) {
               </option>
             ))}
           </optgroup>
-          {isDrumSection && drumInstruments.length > 0 && (
+          {isDrumSection && (
             <optgroup label="drum" className="bg-[#050505]">
               {drumInstruments.map((i) => (
                 <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
                   {i.label}
                 </option>
               ))}
+              <option value="new-instrument:drum" className="bg-[#050505]">
+                + new instrument
+              </option>
             </optgroup>
           )}
-          {!isDrumSection && leadInstruments.length > 0 && (
+          {!isDrumSection && (
             <optgroup label="lead" className="bg-[#050505]">
               {leadInstruments.map((i) => (
                 <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
                   {i.label}
                 </option>
               ))}
+              <option value="new-instrument:lead" className="bg-[#050505]">
+                + new instrument
+              </option>
             </optgroup>
           )}
-          {!isDrumSection && bassInstruments.length > 0 && (
+          {!isDrumSection && (
             <optgroup label="bass" className="bg-[#050505]">
               {bassInstruments.map((i) => (
                 <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
                   {i.label}
                 </option>
               ))}
+              <option value="new-instrument:bass" className="bg-[#050505]">
+                + new instrument
+              </option>
+            </optgroup>
+          )}
+          {!isDrumSection && (
+            <optgroup label="pad" className="bg-[#050505]">
+              {padInstruments.map((i) => (
+                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
+                  {i.label}
+                </option>
+              ))}
+              <option value="new-instrument:pad" className="bg-[#050505]">
+                + new instrument
+              </option>
             </optgroup>
           )}
         </select>
+        <NewInstrumentDialog
+          open={newInstrumentDefaultRole !== null}
+          defaultRole={newInstrumentDefaultRole ?? 'lead'}
+          onCancel={() => setNewInstrumentDefaultRole(null)}
+          onCreated={(inst) => {
+            setTrackSource(track.id, { kind: 'instrument', id: inst.id });
+            setNewInstrumentDefaultRole(null);
+          }}
+        />
         <div className="relative">
           <button
             ref={triggerRef}

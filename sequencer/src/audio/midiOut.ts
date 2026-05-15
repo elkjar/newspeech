@@ -1,4 +1,5 @@
 import { getAudioContext } from './audioContext';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 
 export interface MIDIOutputInfo {
   id: string;
@@ -7,17 +8,22 @@ export interface MIDIOutputInfo {
 
 type Status = 'unsupported' | 'idle' | 'requesting' | 'ready' | 'denied';
 
+const TAURI = isTauri();
+
 let access: MIDIAccess | null = null;
 let outputs: MIDIOutputInfo[] = [];
-let status: Status =
-  typeof navigator !== 'undefined' &&
-  typeof (navigator as Navigator & { requestMIDIAccess?: unknown }).requestMIDIAccess === 'function'
+let status: Status = TAURI
+  ? 'idle'
+  : typeof navigator !== 'undefined' &&
+      typeof (navigator as Navigator & { requestMIDIAccess?: unknown }).requestMIDIAccess === 'function'
     ? 'idle'
     : 'unsupported';
 const listeners = new Set<() => void>();
 
 function refreshOutputs() {
-  if (!access) {
+  if (TAURI) {
+    // outputs list is mutated directly in the Tauri refresher
+  } else if (!access) {
     outputs = [];
   } else {
     const next: MIDIOutputInfo[] = [];
@@ -29,10 +35,46 @@ function refreshOutputs() {
   for (const cb of listeners) cb();
 }
 
+interface MidiPorts {
+  inputs: string[];
+  outputs: string[];
+}
+
+let tauriPoll: number | null = null;
+
+async function refreshTauriOutputs(): Promise<void> {
+  try {
+    const ports = await invoke<MidiPorts>('midi_list_ports');
+    // Port name doubles as id in Tauri mode — names are stable across replug.
+    const next: MIDIOutputInfo[] = ports.outputs.map((n) => ({ id: n, name: n }));
+    const changed =
+      next.length !== outputs.length ||
+      next.some((o, i) => o.id !== outputs[i]?.id);
+    if (changed) {
+      outputs = next;
+      for (const cb of listeners) cb();
+    }
+  } catch (err) {
+    console.warn('[midiOut] refresh failed:', err);
+  }
+}
+
 export async function initMIDIOut(): Promise<boolean> {
   if (status === 'unsupported' || status === 'denied') return false;
   if (status === 'ready') return true;
   status = 'requesting';
+  if (TAURI) {
+    await refreshTauriOutputs();
+    status = 'ready';
+    if (tauriPoll === null) {
+      // Hot-plug discovery — midir has no event stream so we poll. 3 s is
+      // unobtrusive and replug is rare during a session.
+      tauriPoll = window.setInterval(() => {
+        void refreshTauriOutputs();
+      }, 3000);
+    }
+    return true;
+  }
   try {
     access = await (
       navigator as Navigator & { requestMIDIAccess: () => Promise<MIDIAccess> }
@@ -76,6 +118,21 @@ function audioToPerfMs(audioTime: number): number {
   return performance.now() + (audioTime - ctx.currentTime) * 1000;
 }
 
+function tauriSend(portName: string, bytes: number[]) {
+  invoke('midi_send', { portName, bytes }).catch((err) => {
+    console.warn(`[midiOut] send to ${portName} failed:`, err);
+  });
+}
+
+function scheduleTauri(portName: string, bytes: number[], whenPerfMs: number) {
+  const delay = Math.max(0, whenPerfMs - performance.now());
+  if (delay <= 0) {
+    tauriSend(portName, bytes);
+  } else {
+    window.setTimeout(() => tauriSend(portName, bytes), delay);
+  }
+}
+
 export function sendMIDINote(
   deviceId: string,
   channel: number,
@@ -84,24 +141,33 @@ export function sendMIDINote(
   when: number,
   durationS: number
 ) {
-  if (!access) return;
-  const out = access.outputs.get(deviceId);
-  if (!out) return;
   const ch = ((channel | 0) & 0x0f);
   const n = Math.max(0, Math.min(127, note | 0));
   const v = Math.max(1, Math.min(127, Math.round(velocity * 127)));
   const onMs = audioToPerfMs(when);
   const offMs = audioToPerfMs(when + Math.max(0.02, durationS));
+  if (TAURI) {
+    scheduleTauri(deviceId, [NOTE_ON | ch, n, v], onMs);
+    scheduleTauri(deviceId, [NOTE_OFF | ch, n, 0], offMs);
+    return;
+  }
+  if (!access) return;
+  const out = access.outputs.get(deviceId);
+  if (!out) return;
   out.send([NOTE_ON | ch, n, v], onMs);
   out.send([NOTE_OFF | ch, n, 0], offMs);
 }
 
 export function sendMIDIProgram(deviceId: string, channel: number, program: number) {
+  const ch = ((channel | 0) & 0x0f);
+  const p = Math.max(0, Math.min(127, program | 0));
+  if (TAURI) {
+    tauriSend(deviceId, [PROGRAM_CHANGE | ch, p]);
+    return;
+  }
   if (!access) return;
   const out = access.outputs.get(deviceId);
   if (!out) return;
-  const ch = ((channel | 0) & 0x0f);
-  const p = Math.max(0, Math.min(127, program | 0));
   out.send([PROGRAM_CHANGE | ch, p]);
 }
 
@@ -112,18 +178,23 @@ export function sendPatchSelect(
   bankLSB: number | null,
   program: number | null
 ) {
-  if (!access) return;
-  const out = access.outputs.get(deviceId);
-  if (!out) return;
   const ch = ((channel | 0) & 0x0f);
+  const send = (bytes: number[]) => {
+    if (TAURI) {
+      tauriSend(deviceId, bytes);
+    } else if (access) {
+      const out = access.outputs.get(deviceId);
+      if (out) out.send(bytes);
+    }
+  };
   if (bankMSB !== null) {
-    out.send([CONTROL_CHANGE | ch, CC_BANK_MSB, Math.max(0, Math.min(127, bankMSB | 0))]);
+    send([CONTROL_CHANGE | ch, CC_BANK_MSB, Math.max(0, Math.min(127, bankMSB | 0))]);
   }
   if (bankLSB !== null) {
-    out.send([CONTROL_CHANGE | ch, CC_BANK_LSB, Math.max(0, Math.min(127, bankLSB | 0))]);
+    send([CONTROL_CHANGE | ch, CC_BANK_LSB, Math.max(0, Math.min(127, bankLSB | 0))]);
   }
   if (program !== null) {
-    out.send([PROGRAM_CHANGE | ch, Math.max(0, Math.min(127, program | 0))]);
+    send([PROGRAM_CHANGE | ch, Math.max(0, Math.min(127, program | 0))]);
   }
 }
 
@@ -137,6 +208,10 @@ export function resolveDeviceId(portName: string | null, fallbackId: string | nu
 }
 
 export function midiPanic() {
+  if (TAURI) {
+    invoke('midi_panic').catch((err) => console.warn('[midiOut] panic failed:', err));
+    return;
+  }
   if (!access) return;
   access.outputs.forEach((out) => {
     for (let ch = 0; ch < 16; ch++) {

@@ -1,7 +1,6 @@
 // Web audio recorder. Three parallel AudioWorklet instances tap different
 // points of the audio graph; which ones record on a given take depends on
-// the `stems` toggle. All capture float32 PCM, build 16-bit PCM stereo WAVs
-// on stop, and trigger browser downloads.
+// the `stems` toggle. All capture float32 PCM.
 //
 // Tap layout:
 //   - combined: dual input (processedTap from master output + rawTap from
@@ -16,9 +15,14 @@
 // toggle doesn't break the finalize step. The mode you start in is the mode
 // you finish in.
 //
-// Web RAM limit: each active worklet buffers float32 frames until stop.
-// Stems doubles RAM (two buffers in flight), so the ~20-min single-take
-// ceiling drops to ~10-min for stems. Tauri streamed-to-disk lifts both.
+// Write path branches on runtime:
+//   - Browser: chunks accumulate in JS arrays; on stop a WAV is built in
+//     RAM and downloaded via anchor click. RAM ceiling ~20 min single /
+//     ~10 min stems before the float32 backlog tips browsers over.
+//   - Tauri: chunks are batched (~250 ms) into int16 stereo interleaved
+//     byte payloads and streamed via invoke('recording_write_chunk') to a
+//     Rust-side BufWriter. On stop the WAV header is patched. No RAM
+//     ceiling — only disk.
 
 import {
   getAudioContext,
@@ -29,16 +33,27 @@ import {
 } from './audioContext';
 import { tapMasterOutput } from './master';
 import { useSequencerStore, type BankSlot } from '../state/store';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 
 const WORKLET_NAME = 'recorder-processor';
 const TAP_RAMP_S = 0.02;
 const TAIL_CAPTURE_MS = 250;
+const TAURI_BATCH_QUANTA = 96; // ~256 ms at 48 kHz, 128-sample quanta
+
+const TAURI = isTauri();
 
 interface RecorderInstance {
   worklet: AudioWorkletNode;
   chunksL: Float32Array[];
   chunksR: Float32Array[];
   recording: boolean;
+  filename: string;
+  // Tauri streaming state — null in browser mode.
+  tauriFilename: string | null;
+  tauriPendingL: Float32Array[];
+  tauriPendingR: Float32Array[];
+  tauriPendingFrames: number;
+  tauriDrain: Promise<void>;
 }
 
 let combined: RecorderInstance | null = null;
@@ -67,14 +82,63 @@ function buildInstance(ctx: AudioContext): RecorderInstance {
     chunksL: [],
     chunksR: [],
     recording: false,
+    filename: '',
+    tauriFilename: null,
+    tauriPendingL: [],
+    tauriPendingR: [],
+    tauriPendingFrames: 0,
+    tauriDrain: Promise.resolve(),
   };
   worklet.port.onmessage = (e) => {
     if (!instance.recording) return;
     const { left, right } = e.data;
-    if (left) instance.chunksL.push(left);
-    if (right) instance.chunksR.push(right);
+    if (!left) return;
+    if (instance.tauriFilename) {
+      instance.tauriPendingL.push(left);
+      if (right) instance.tauriPendingR.push(right);
+      instance.tauriPendingFrames += left.length;
+      if (instance.tauriPendingFrames >= TAURI_BATCH_QUANTA * 128) {
+        flushTauriPending(instance);
+      }
+    } else {
+      instance.chunksL.push(left);
+      if (right) instance.chunksR.push(right);
+    }
   };
   return instance;
+}
+
+function floatStereoToInt16Bytes(left: Float32Array, right: Float32Array): Uint8Array {
+  const frames = Math.min(left.length, right.length);
+  const bytes = new Uint8Array(frames * 4);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < frames; i++) {
+    const l = Math.max(-1, Math.min(1, left[i]));
+    const r = Math.max(-1, Math.min(1, right[i]));
+    view.setInt16(i * 4, l < 0 ? l * 0x8000 : l * 0x7fff, true);
+    view.setInt16(i * 4 + 2, r < 0 ? r * 0x8000 : r * 0x7fff, true);
+  }
+  return bytes;
+}
+
+function flushTauriPending(instance: RecorderInstance): void {
+  const filename = instance.tauriFilename;
+  if (!filename) return;
+  if (instance.tauriPendingFrames === 0) return;
+  const left = concatChunks(instance.tauriPendingL);
+  const right =
+    instance.tauriPendingR.length > 0 ? concatChunks(instance.tauriPendingR) : left;
+  instance.tauriPendingL = [];
+  instance.tauriPendingR = [];
+  instance.tauriPendingFrames = 0;
+  const bytes = floatStereoToInt16Bytes(left, right);
+  // Chain on tauriDrain so writes hit the file in order even if multiple
+  // flushes are inflight when the next quantum arrives.
+  instance.tauriDrain = instance.tauriDrain
+    .then(() => invoke('recording_write_chunk', { filename, bytes }))
+    .catch((err) => {
+      console.error('[recorder] write_chunk failed:', err);
+    });
 }
 
 export async function initRecorder(): Promise<void> {
@@ -117,29 +181,82 @@ export function isRecording(): boolean {
   return !!(combined?.recording || rhythm?.recording || melody?.recording);
 }
 
-function startInstance(instance: RecorderInstance): void {
+async function startInstance(instance: RecorderInstance, filename: string): Promise<void> {
   instance.chunksL = [];
   instance.chunksR = [];
+  instance.tauriPendingL = [];
+  instance.tauriPendingR = [];
+  instance.tauriPendingFrames = 0;
+  instance.tauriDrain = Promise.resolve();
+  instance.filename = filename;
+  if (TAURI) {
+    instance.tauriFilename = filename;
+    try {
+      await invoke('recording_start', {
+        filename,
+        sampleRate: captureSampleRate,
+      });
+    } catch (err) {
+      console.error('[recorder] recording_start failed:', err);
+      instance.tauriFilename = null;
+      return;
+    }
+  }
   instance.recording = true;
   instance.worklet.port.postMessage({ cmd: 'start' });
 }
 
 interface FinalizedTake {
-  wav: Blob;
+  wav: Blob | null;
+  path: string | null;
   durationS: number;
+  filename: string;
 }
 
-function stopInstance(instance: RecorderInstance): FinalizedTake | null {
+async function stopInstance(instance: RecorderInstance): Promise<FinalizedTake | null> {
   if (!instance.recording) return null;
   instance.recording = false;
   instance.worklet.port.postMessage({ cmd: 'stop' });
+  const filename = instance.filename;
+
+  if (instance.tauriFilename) {
+    // Flush remaining buffered samples + await all inflight writes before
+    // patching the header.
+    flushTauriPending(instance);
+    await instance.tauriDrain;
+    const activeName = instance.tauriFilename;
+    instance.tauriFilename = null;
+    try {
+      const result = await invoke<{
+        path: string;
+        duration_s: number;
+        data_bytes: number;
+      }>('recording_finalize', { filename: activeName });
+      if (result.data_bytes === 0) return null;
+      return {
+        wav: null,
+        path: result.path,
+        durationS: result.duration_s,
+        filename,
+      };
+    } catch (err) {
+      console.error('[recorder] recording_finalize failed:', err);
+      return null;
+    }
+  }
+
   const left = concatChunks(instance.chunksL);
   const right = concatChunks(instance.chunksR);
   instance.chunksL = [];
   instance.chunksR = [];
   if (left.length === 0) return null;
   const wav = buildWav(left, right, captureSampleRate);
-  return { wav, durationS: left.length / captureSampleRate };
+  return {
+    wav,
+    path: null,
+    durationS: left.length / captureSampleRate,
+    filename,
+  };
 }
 
 export function subscribeRecorder(): void {
@@ -167,34 +284,48 @@ export function subscribeRecorder(): void {
       // Snapshot the mode at take start. A mid-take stems toggle won't
       // re-route in flight — what you armed is what you finalize.
       currentTakeMode = state.stems ? 'stems' : 'combined';
+      const base = buildFilenameBase(state);
       if (currentTakeMode === 'stems') {
-        if (rhythm) startInstance(rhythm);
-        if (melody) startInstance(melody);
+        if (rhythm) void startInstance(rhythm, `${base}_rhythm.wav`);
+        if (melody) void startInstance(melody, `${base}_melody.wav`);
       } else if (combined) {
-        startInstance(combined);
+        void startInstance(combined, `${base}.wav`);
       }
     } else {
-      const base = buildFilenameBase(state);
       const mode = currentTakeMode;
       pendingFinalize = window.setTimeout(() => {
         pendingFinalize = null;
-        if (mode === 'stems') {
-          if (rhythm) {
-            const r = stopInstance(rhythm);
-            if (r) downloadWav(r.wav, `${base}_rhythm.wav`);
-          }
-          if (melody) {
-            const m = stopInstance(melody);
-            if (m) downloadWav(m.wav, `${base}_melody.wav`);
-          }
-        } else if (combined) {
-          const c = stopInstance(combined);
-          if (c) downloadWav(c.wav, `${base}.wav`);
-        }
-        useSequencerStore.getState().setArmed(false);
+        void finalizeTake(mode);
       }, TAIL_CAPTURE_MS);
     }
   });
+}
+
+async function finalizeTake(mode: TakeMode): Promise<void> {
+  try {
+    if (mode === 'stems') {
+      const tasks: Promise<FinalizedTake | null>[] = [];
+      if (rhythm && rhythm.recording) tasks.push(stopInstance(rhythm));
+      if (melody && melody.recording) tasks.push(stopInstance(melody));
+      const results = await Promise.all(tasks);
+      for (const take of results) {
+        if (take) deliverTake(take);
+      }
+    } else if (combined && combined.recording) {
+      const take = await stopInstance(combined);
+      if (take) deliverTake(take);
+    }
+  } finally {
+    useSequencerStore.getState().setArmed(false);
+  }
+}
+
+function deliverTake(take: FinalizedTake): void {
+  if (take.wav) {
+    downloadWav(take.wav, take.filename);
+  } else if (take.path) {
+    console.info(`[recorder] saved ${take.filename} (${take.durationS.toFixed(2)}s) → ${take.path}`);
+  }
 }
 
 function concatChunks(chunks: Float32Array[]): Float32Array {

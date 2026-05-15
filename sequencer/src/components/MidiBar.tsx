@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMidiMapStore } from '../midi/midiMapStore';
 import { useSequencerStore } from '../state/store';
 import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
+import { useMIDIInputs } from '../hooks/useMIDIInputs';
 import { midiOutStatus } from '../audio/midiOut';
 import { IconButton, DownloadIcon, ImportIcon } from './Transport';
 
@@ -232,6 +233,42 @@ function MidiInSelector() {
   );
 }
 
+function MidiInDeviceSelector() {
+  const inputs = useMIDIInputs();
+  const empty = inputs.length === 0;
+  // Display-only — every connected input is auto-subscribed. The select is
+  // here so the user can see which controllers are talking; the chosen
+  // value doesn't gate anything yet (per-port routing is a v2 follow-up).
+  return (
+    <select
+      value=""
+      onChange={(e) => {
+        // No-op: changing the visible option is purely informational.
+        e.preventDefault();
+      }}
+      className={`select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[180px] ${ROW_HEIGHT}`}
+      title={
+        empty
+          ? 'no midi inputs detected'
+          : `${inputs.length} input${inputs.length === 1 ? '' : 's'} listening: ${inputs.join(', ')}`
+      }
+    >
+      <option value="" className="bg-[#050505]">
+        {empty
+          ? 'no inputs'
+          : inputs.length === 1
+            ? inputs[0]
+            : `${inputs.length} inputs`}
+      </option>
+      {inputs.map((name) => (
+        <option key={name} value={name} className="bg-[#050505]">
+          {name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function MidiOutSelector() {
   const outputs = useMIDIOutputs();
   const deviceId = useSequencerStore((s) => s.midiOutDeviceId);
@@ -303,6 +340,12 @@ export function MidiBar() {
       <span className="text-[11px] uppercase tracking-widest opacity-55">
         midi
       </span>
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] uppercase tracking-widest opacity-55">
+          in
+        </span>
+        <MidiInDeviceSelector />
+      </div>
       <MidiInputCluster />
       <div className="flex items-center gap-2">
         <span className="text-[11px] uppercase tracking-widest opacity-55">

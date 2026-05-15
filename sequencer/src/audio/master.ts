@@ -12,7 +12,7 @@
 //          so it doubles as a chopper effect, not just noise suppression.
 // Drift LFO, oversampling, stereo mismatch are deferred to Slice 5.
 
-import { getAudioContext, getMixBus } from './audioContext';
+import { getAudioContext, getMixBus, getOutputRouter } from './audioContext';
 
 export interface MasterParams {
   // 0..1 → −12..+18 dB
@@ -327,15 +327,18 @@ export async function initMaster(): Promise<void> {
     if (gateEnP) gateEnP.setValueAtTime(params.gateEnabled ? 1 : 0, t);
     if (gateThrP) gateThrP.setValueAtTime(gateThresholdDb(params.gateThreshold), t);
 
-    // Splice between mixBus and destination.
+    // Splice between mixBus and the output router. Pre-master, mixBus
+    // connects directly into the router; master inserts itself in front
+    // and re-routes the final hop through outNode.
+    const router = getOutputRouter();
     const mix = getMixBus();
     try {
-      mix.disconnect(ctx.destination);
+      mix.disconnect(router);
     } catch {
-      // ignore — possibly never connected directly to destination
+      // ignore — possibly never connected directly to router
     }
     mix.connect(inputNode);
-    outNode.connect(ctx.destination);
+    outNode.connect(router);
 
     initialized = true;
   })();
