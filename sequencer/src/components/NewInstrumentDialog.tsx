@@ -20,8 +20,11 @@ import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 type NewInstrumentDialogProps = {
   open: boolean;
   defaultRole: InstrumentRole;
+  // When provided, dialog opens in edit mode: pre-fills the form, save
+  // updates the existing record by id instead of creating a new one.
+  existing?: Instrument | null;
   onCancel: () => void;
-  onCreated: (created: Instrument) => void;
+  onCreated: (saved: Instrument) => void;
 };
 
 function parseOptInt(s: string): number | null {
@@ -34,11 +37,14 @@ function parseOptInt(s: string): number | null {
 export function NewInstrumentDialog({
   open,
   defaultRole,
+  existing,
   onCancel,
   onCreated,
 }: NewInstrumentDialogProps) {
   const userInstruments = useUserInstrumentsStore((s) => s.userInstruments);
   const addInstrument = useUserInstrumentsStore((s) => s.addInstrument);
+  const updateInstrument = useUserInstrumentsStore((s) => s.updateInstrument);
+  const editing = existing ?? null;
 
   const [name, setName] = useState('');
   const [role, setRole] = useState<InstrumentRole>(defaultRole);
@@ -50,9 +56,19 @@ export function NewInstrumentDialog({
   const [fixedNote, setFixedNote] = useState('');
 
   useEffect(() => {
-    if (open) {
-      // Reset on open. defaultRole flows from the row the user opened it
-      // from so it lands sensibly without an extra click.
+    if (!open) return;
+    if (editing) {
+      setName(editing.label);
+      setRole(editing.role);
+      setPortName(editing.portName ?? '');
+      setChannelOneBased(String((editing.channel | 0) + 1));
+      setBankMSB(editing.bankMSB === null ? '' : String(editing.bankMSB));
+      setBankLSB(editing.bankLSB === null ? '' : String(editing.bankLSB));
+      setProgram(editing.program === null ? '' : String(editing.program));
+      setFixedNote(editing.fixedNote === null ? '' : String(editing.fixedNote));
+    } else {
+      // defaultRole flows from the row the user opened it from so it lands
+      // sensibly without an extra click.
       setName('');
       setRole(defaultRole);
       setPortName('');
@@ -62,7 +78,7 @@ export function NewInstrumentDialog({
       setProgram('');
       setFixedNote('');
     }
-  }, [open, defaultRole]);
+  }, [open, defaultRole, editing]);
 
   const trimmedName = name.trim();
   const canSave = useMemo(() => trimmedName.length > 0, [trimmedName]);
@@ -90,8 +106,23 @@ export function NewInstrumentDialog({
 
   const handleSave = () => {
     if (!canSave) return;
-    const id = generateInstrumentId(trimmedName, userInstruments);
     const channel0 = Math.max(0, Math.min(15, (parseOptInt(channelOneBased) ?? 1) - 1));
+    if (editing) {
+      const patch: Partial<Instrument> = {
+        label: trimmedName,
+        role,
+        channel: channel0,
+        portName: portName.trim() ? portName.trim() : null,
+        program: parseOptInt(program),
+        bankMSB: parseOptInt(bankMSB),
+        bankLSB: parseOptInt(bankLSB),
+        fixedNote: role === 'drum' ? parseOptInt(fixedNote) : null,
+      };
+      updateInstrument(editing.id, patch);
+      onCreated({ ...editing, ...patch } as Instrument);
+      return;
+    }
+    const id = generateInstrumentId(trimmedName, userInstruments);
     const inst: Instrument = {
       id,
       label: trimmedName,
@@ -137,7 +168,9 @@ export function NewInstrumentDialog({
         className="w-[540px] p-6 bg-[#0a0a0a] border border-white/15 text-white/90 text-xs uppercase tracking-widest"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-white text-sm mb-4">new midi instrument</div>
+        <div className="text-white text-sm mb-4">
+          {editing ? 'edit midi instrument' : 'new midi instrument'}
+        </div>
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 normal-case tracking-normal text-[12px]">
           <Field

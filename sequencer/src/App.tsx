@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { PlayButton, RecordButton, CountInButton, RawRecordButton, StemsButton, AudioOutSelector, TransportControls } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, RawRecordButton, StemsButton, AudioOutSelector, TransportControls, InitButton } from './components/Transport';
 import { initAudioOutputs } from './audio/audioOutput';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
@@ -388,9 +388,12 @@ export function App() {
             </div>
             <LFOPanel />
           </div>
-          <div className="flex justify-end items-center gap-8 -my-4">
-            <ConductorPanel />
-            <BankPad />
+          <div className="flex justify-between items-center gap-8 -my-4">
+            <InitButton />
+            <div className="flex items-center gap-8">
+              <ConductorPanel />
+              <BankPad />
+            </div>
           </div>
           <TrackGrid />
           <div className="transport flex flex-col items-stretch gap-3">

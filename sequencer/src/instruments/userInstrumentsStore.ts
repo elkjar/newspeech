@@ -15,6 +15,12 @@ export interface UserInstrumentFile {
   instrument: Instrument;
 }
 
+export interface UserLibraryFile {
+  schema: 'newspeech.midilibrary';
+  version: 1;
+  instruments: Instrument[];
+}
+
 interface UserInstrumentsState {
   userInstruments: Record<string, Instrument>;
   addInstrument: (i: Instrument) => void;
@@ -22,6 +28,10 @@ interface UserInstrumentsState {
   removeInstrument: (id: string) => void;
   importInstrumentFromJson: (json: string) => { ok: boolean; error?: string };
   exportInstrument: (id: string) => { filename: string; json: string } | null;
+  exportLibrary: () => { filename: string; json: string } | null;
+  importLibraryOrInstrumentFromJson: (
+    json: string
+  ) => { ok: boolean; error?: string; imported?: number };
 }
 
 function persist(map: Record<string, Instrument>): void {
@@ -133,6 +143,57 @@ export const useUserInstrumentsStore = create<UserInstrumentsState>((set, get) =
       filename: `${inst.id}.midiinstrument`,
       json: JSON.stringify(payload, null, 2),
     };
+  },
+
+  exportLibrary: () => {
+    const all = Object.values(get().userInstruments);
+    if (all.length === 0) return null;
+    const payload: UserLibraryFile = {
+      schema: 'newspeech.midilibrary',
+      version: 1,
+      instruments: all,
+    };
+    const ts = new Date()
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/T/, '_')
+      .slice(0, 15);
+    return {
+      filename: `newspeech-instruments-${ts}.midilibrary`,
+      json: JSON.stringify(payload, null, 2),
+    };
+  },
+
+  importLibraryOrInstrumentFromJson: (json) => {
+    try {
+      const parsed = JSON.parse(json) as Partial<UserLibraryFile & UserInstrumentFile>;
+      const existing = get().userInstruments;
+      if (parsed.schema === 'newspeech.midilibrary') {
+        const arr = Array.isArray(parsed.instruments) ? parsed.instruments : [];
+        let imported = 0;
+        let map = { ...existing };
+        for (const raw of arr) {
+          if (!raw || typeof raw.id !== 'string') continue;
+          let inst = raw as Instrument;
+          if (map[inst.id]) {
+            const newId = generateInstrumentId(inst.label ?? inst.id, map);
+            inst = { ...inst, id: newId };
+          }
+          map = { ...map, [inst.id]: inst };
+          imported++;
+        }
+        persist(map);
+        set({ userInstruments: map });
+        return { ok: true, imported };
+      }
+      if (parsed.schema === 'newspeech.midiinstrument') {
+        const result = get().importInstrumentFromJson(json);
+        return { ...result, imported: result.ok ? 1 : 0 };
+      }
+      return { ok: false, error: 'unrecognized file schema' };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
   },
 }));
 

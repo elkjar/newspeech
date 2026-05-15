@@ -6,6 +6,7 @@ import { exportProject, importProject, timestampSlug } from '../state/persist';
 import { presetsForTarget } from '../instruments/library';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import { ConfirmDialog } from './ConfirmDialog';
+import { InstrumentLibraryDialog } from './InstrumentLibraryDialog';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
   getActiveAudioOutputId,
@@ -375,12 +376,39 @@ export function TapTempoButton() {
   );
 }
 
+export function InitButton() {
+  const initProject = useSequencerStore((s) => s.initProject);
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        title="reset all tracks, LFOs, and macros to a blank state (keeps bpm, root, scale, master FX, and saved banks)"
+        className="px-2 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors inline-flex items-center justify-center h-[28px]"
+      >
+        init
+      </button>
+      {confirming && (
+        <ConfirmDialog
+          title="init project"
+          body="reset all tracks, LFOs, macros, and saved patterns to a blank state? bpm, root, scale, and master FX are preserved."
+          confirmLabel="reset"
+          onConfirm={() => {
+            initProject();
+            setConfirming(false);
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+    </>
+  );
+}
+
 function PresetControls() {
   const applyPreset = useSequencerStore((s) => s.applyPreset);
-  const initProject = useSequencerStore((s) => s.initProject);
   const viewSection = useSequencerStore((s) => s.viewSection);
   const presets = presetsForTarget(viewSection);
-  const [confirming, setConfirming] = useState(false);
 
   return (
     <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
@@ -406,27 +434,24 @@ function PresetControls() {
           ))}
         </select>
       </label>
+    </div>
+  );
+}
+
+function InstrumentLibraryButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
       <button
         type="button"
-        onClick={() => setConfirming(true)}
-        title="reset all tracks, LFOs, and macros to a blank state (keeps bpm, root, scale, master FX, and saved banks)"
+        onClick={() => setOpen(true)}
+        title="manage user MIDI instruments — edit, delete, export, import"
         className="px-2 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors inline-flex items-center justify-center h-[28px]"
       >
-        init
+        instruments
       </button>
-      {confirming && (
-        <ConfirmDialog
-          title="init project"
-          body="reset all tracks, LFOs, macros, and saved patterns to a blank state? bpm, root, scale, and master FX are preserved."
-          confirmLabel="reset"
-          onConfirm={() => {
-            initProject();
-            setConfirming(false);
-          }}
-          onCancel={() => setConfirming(false)}
-        />
-      )}
-    </div>
+      <InstrumentLibraryDialog open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 
@@ -514,6 +539,7 @@ export function TransportControls() {
         >
           <ImportIcon />
         </IconButton>
+        <InstrumentLibraryButton />
         <input
           ref={fileInputRef}
           type="file"
