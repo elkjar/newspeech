@@ -6177,7 +6177,7 @@
       "id": "t10",
       "source": {
         "kind": "voice",
-        "id": "bass"
+        "id": "mini-moog"
       },
       "section": "melodic",
       "mute": false,
@@ -17268,7 +17268,7 @@
           "id": "t10",
           "source": {
             "kind": "voice",
-            "id": "bass"
+            "id": "mini-moog"
           },
           "section": "melodic",
           "mute": false,
@@ -28232,7 +28232,7 @@
           "id": "t10",
           "source": {
             "kind": "voice",
-            "id": "bass"
+            "id": "mini-moog"
           },
           "section": "melodic",
           "mute": false,

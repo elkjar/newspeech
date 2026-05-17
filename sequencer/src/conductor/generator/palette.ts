@@ -19,7 +19,7 @@ const CHORD_MASTER_VOICES = [
 // Track.monophonic = true on bass tracks (set by populateBass) handles the
 // retrigger choke for long-sustain voices like mini-moog when used as bass.
 // The same voice stays polyphonic when picked for motif/flavor roles.
-const BASS_VOICES = ['bass', 'mini-moog'];
+const BASS_VOICES = ['mini-moog'];
 
 const MOTIF_VOICES = [
   'rhodes-mk1',

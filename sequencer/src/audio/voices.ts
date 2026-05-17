@@ -179,21 +179,13 @@ export const DEFAULT_PAD_CONFIG: PadConfig = {
   panLfoDepth: 0.45,
 };
 
-// Static (non-sample) voices. Only `bass` lives here — it's a pure synth
-// voice with no associated sample folder, routed to `case 'bass'` in
-// samplePlayer.trigger(). Every other voice is sample-backed and lives in
-// a public/samples/**/manifest.json file, surfaced via manifestRegistry.
-// Adding a new sample-backed voice = drop the folder; no edit here required.
-const STATIC_VOICES: VoiceDef[] = [
-  {
-    id: 'bass',
-    label: 'bass',
-    category: 'melodic',
-    mutationProfile: BASS_MUTATION,
-    gain: 0.67,
-    trackDefaults: { gain: 0.52 },
-  },
-];
+// Static (non-sample) voices. Empty now — every voice is sample-backed and
+// surfaced via manifestRegistry. Adding a new voice = drop a folder under
+// public/samples/ or the user samples dir. Slot retained as the merge point
+// in case a future pure-synth voice needs to live alongside sample voices.
+// (`BASS_MUTATION` below is still exported for the MIDI bass-role instrument
+// mutation lookup in instruments/library.ts.)
+const STATIC_VOICES: VoiceDef[] = [];
 
 // Cached merged voice list, invalidated when the manifestRegistry changes.
 // The cache exists because `runTick` and `samplePlayer.trigger` call the

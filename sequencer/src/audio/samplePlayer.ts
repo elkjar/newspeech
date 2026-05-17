@@ -2,7 +2,7 @@ import { getAudioContext, getMixBus, getSamplesBus, getRhythmBus, getMelodyBus }
 import type { TrackSection } from '../state/store';
 import { getTrackFilter } from './trackFilter';
 import { dropChordToneWeighted } from './chords';
-import { synthBass, synthHatC, synthHatO, synthKick, synthMelodic, synthSnare } from './synth';
+import { synthHatC, synthHatO, synthKick, synthMelodic, synthSnare } from './synth';
 import {
   isPadVoice,
   voiceEnvelope,
@@ -376,10 +376,6 @@ class SamplePlayer {
             break;
           case 'hat-o':
             synthHatO(when, toneVelocity, synthOut, toneGate);
-            break;
-          case 'bass':
-            if (targetMidi !== undefined)
-              synthBass(when, targetMidi, toneVelocity, synthOut, toneGate, stepDuration);
             break;
           default:
             if (targetMidi !== undefined)

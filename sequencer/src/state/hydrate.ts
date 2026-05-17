@@ -343,7 +343,7 @@ export function applyPositionalRoleDefaults(
 // cleanly. rhodes-mk1 is the current best-sampled lead.
 const EMPTY_MELODIC_VOICES = [
   'rhodes-mk1',
-  'bass',
+  'mini-moog',
   'hydra-plaits',
   'hydra-plaits',
   'soft-piano',
