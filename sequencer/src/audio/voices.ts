@@ -179,34 +179,12 @@ export const DEFAULT_PAD_CONFIG: PadConfig = {
   panLfoDepth: 0.45,
 };
 
-export const VOICES: VoiceDef[] = [
-  { id: 'kick', label: 'kick', category: 'drum', mutationProfile: KICK_MUTATION },
-  { id: 'snare', label: 'snare', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'hat-c', label: 'hat-c', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'hat-o', label: 'hat-o', category: 'drum', mutationProfile: HAT_O_MUTATION },
-  { id: 'blk', label: 'blk', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'cym', label: 'cym', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'tamb', label: 'tamb', category: 'drum', mutationProfile: DRUM_MUTATION },
-  // ns-kit-1 voices — distinct sample bank. Namespaced with `ns1-` so they
-  // coexist with blck_noir's voices rather than overwriting them in the
-  // sample-player map. All available in the drum source-picker; conductor
-  // only auto-picks bare-named voices by default, so these stay as
-  // user-driven alternatives (until a kit-aware palette lands).
-  { id: 'ns1-kick', label: 'ns1 kick', category: 'drum', mutationProfile: KICK_MUTATION },
-  { id: 'ns1-snare', label: 'ns1 snare', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'ns1-hat-c', label: 'ns1 hat-c', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'ns1-hat-o', label: 'ns1 hat-o', category: 'drum', mutationProfile: HAT_O_MUTATION },
-  { id: 'ns1-cym', label: 'ns1 cym', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'ns1-ride', label: 'ns1 ride', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'ns1-floortom', label: 'ns1 floortom', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'ns1-racktom', label: 'ns1 racktom', category: 'drum', mutationProfile: DRUM_MUTATION },
-  { id: 'ns1-rimshot', label: 'ns1 rimshot', category: 'drum', mutationProfile: DRUM_MUTATION },
-  {
-    id: 'hydra-plaits',
-    label: 'hydra-plaits',
-    category: 'melodic',
-    trackDefaults: { filterCutoff: 0.74, fxSend: 1.0, gain: 0.52 },
-  },
+// Static (non-sample) voices. Only `bass` lives here — it's a pure synth
+// voice with no associated sample folder, routed to `case 'bass'` in
+// samplePlayer.trigger(). Every other voice is sample-backed and lives in
+// a public/samples/**/manifest.json file, surfaced via manifestRegistry.
+// Adding a new sample-backed voice = drop the folder; no edit here required.
+const STATIC_VOICES: VoiceDef[] = [
   {
     id: 'bass',
     label: 'bass',
@@ -215,64 +193,53 @@ export const VOICES: VoiceDef[] = [
     gain: 0.67,
     trackDefaults: { gain: 0.52 },
   },
-  {
-    id: 'rhodes-mk1',
-    label: 'rhodes mk1',
-    category: 'melodic',
-    envelope: { attack: 0.005, sustain: 1.0, release: 0.35 },
-    trackDefaults: { filterCutoff: 0.52, fxSend: 1.0, gain: 0.76 },
-  },
-  { id: 'root-grain', label: 'root grain', category: 'melodic' },
-  { id: 'soft-piano', label: 'soft piano', category: 'melodic' },
-  { id: 'tape-piano', label: 'tape piano', category: 'melodic' },
-  { id: 'under-piano', label: 'under piano', category: 'melodic' },
-  { id: 'broken', label: 'broken', category: 'melodic' },
-  { id: 'dark-omen', label: 'dark omen', category: 'melodic' },
-  { id: 'dreams', label: 'dreams', category: 'melodic' },
-  { id: 'grind', label: 'grind', category: 'melodic' },
-  { id: 'haunted', label: 'haunted', category: 'melodic' },
-  { id: 'invasion', label: 'invasion', category: 'melodic' },
-  { id: 'sample-and-hold', label: 'sample and hold', category: 'melodic' },
-  {
-    id: 'mini-moog',
-    label: 'mini moog',
-    category: 'melodic',
-    trackDefaults: { gain: 0.44 },
-  },
-  {
-    id: 'sinewaves-scope',
-    label: 'sinewaves',
-    category: 'melodic',
-    type: 'pad',
-    mutationProfile: PAD_MUTATION,
-    envelope: { attack: 0.4, sustain: 1.0, release: 2.2 },
-    octaveOffset: -2,
-    padConfig: DEFAULT_PAD_CONFIG,
-  },
-  {
-    id: 'encounter',
-    label: 'encounter',
-    category: 'melodic',
-    type: 'pad',
-    mutationProfile: PAD_MUTATION,
-    envelope: { attack: 0.4, sustain: 1.0, release: 2.2 },
-    octaveOffset: -2,
-    padConfig: DEFAULT_PAD_CONFIG,
-  },
-  {
-    id: 'pulsed',
-    label: 'pulsed',
-    category: 'melodic',
-    type: 'pad',
-    mutationProfile: PAD_MUTATION,
-    envelope: { attack: 0.4, sustain: 1.0, release: 2.2 },
-    octaveOffset: -2,
-    padConfig: DEFAULT_PAD_CONFIG,
-  },
 ];
 
+// Cached merged voice list, invalidated when the manifestRegistry changes.
+// The cache exists because `runTick` and `samplePlayer.trigger` call the
+// `voiceX(id)` helpers in tight inner loops; rebuilding the list per call
+// (~40 entries, but per-step × per-track × per-frame) would show up.
+//
+// The import from manifestRegistry is circular — manifestRegistry imports
+// types and mutation constants from this file. Both modules are safe under
+// the cycle because neither reads the cross-module binding at module-init
+// time: this file only calls `deriveSampleVoices` / `subscribe` inside
+// function bodies (executed after both modules finish initializing), and
+// manifestRegistry only reads its imports from voices.ts inside its own
+// function bodies.
+import {
+  deriveSampleVoices,
+  subscribe as subscribeRegistry,
+} from '../instruments/manifestRegistry';
+
+let voicesCache: VoiceDef[] | null = null;
+let registrySubscribed = false;
+
+function getCachedVoices(): VoiceDef[] {
+  if (!registrySubscribed) {
+    registrySubscribed = true;
+    subscribeRegistry(() => {
+      voicesCache = null;
+    });
+  }
+  if (voicesCache === null) {
+    voicesCache = [...STATIC_VOICES, ...deriveSampleVoices()];
+  }
+  return voicesCache;
+}
+
+/**
+ * Returns the current merged voice list (static + registry-derived).
+ * Reflects any kits registered up to the call time; updates when new kits
+ * are registered via the manifestRegistry subscription. Always non-empty
+ * (STATIC_VOICES guarantees at least `bass`).
+ */
+export function getVoices(): VoiceDef[] {
+  return getCachedVoices();
+}
+
 export function voiceCategory(voiceId: string): VoiceCategory {
-  return VOICES.find((v) => v.id === voiceId)?.category ?? 'melodic';
+  return getCachedVoices().find((v) => v.id === voiceId)?.category ?? 'melodic';
 }
 
 export function isMelodicVoice(voiceId: string): boolean {
@@ -280,39 +247,39 @@ export function isMelodicVoice(voiceId: string): boolean {
 }
 
 export function voiceLabel(voiceId: string): string {
-  return VOICES.find((v) => v.id === voiceId)?.label ?? voiceId;
+  return getCachedVoices().find((v) => v.id === voiceId)?.label ?? voiceId;
 }
 
 export function voiceMutation(voiceId: string): MutationProfile {
-  return VOICES.find((v) => v.id === voiceId)?.mutationProfile ?? DEFAULT_MUTATION;
+  return getCachedVoices().find((v) => v.id === voiceId)?.mutationProfile ?? DEFAULT_MUTATION;
 }
 
 export function voiceEnvelope(voiceId: string): VoiceEnvelope | undefined {
-  return VOICES.find((v) => v.id === voiceId)?.envelope;
+  return getCachedVoices().find((v) => v.id === voiceId)?.envelope;
 }
 
 export function voiceLoop(voiceId: string): VoiceLoop | undefined {
-  return VOICES.find((v) => v.id === voiceId)?.loop;
+  return getCachedVoices().find((v) => v.id === voiceId)?.loop;
 }
 
 export function voiceGain(voiceId: string): number {
-  return VOICES.find((v) => v.id === voiceId)?.gain ?? 1;
+  return getCachedVoices().find((v) => v.id === voiceId)?.gain ?? 1;
 }
 
 export function voiceOctaveOffset(voiceId: string): number {
-  return VOICES.find((v) => v.id === voiceId)?.octaveOffset ?? 0;
+  return getCachedVoices().find((v) => v.id === voiceId)?.octaveOffset ?? 0;
 }
 
 export function voiceType(voiceId: string): VoiceType | undefined {
-  return VOICES.find((v) => v.id === voiceId)?.type;
+  return getCachedVoices().find((v) => v.id === voiceId)?.type;
 }
 
 export function voicePadConfig(voiceId: string): PadConfig | undefined {
-  return VOICES.find((v) => v.id === voiceId)?.padConfig;
+  return getCachedVoices().find((v) => v.id === voiceId)?.padConfig;
 }
 
 export function voiceTrackDefaults(voiceId: string): VoiceTrackDefaults | undefined {
-  return VOICES.find((v) => v.id === voiceId)?.trackDefaults;
+  return getCachedVoices().find((v) => v.id === voiceId)?.trackDefaults;
 }
 
 export function isPadVoice(voiceId: string): boolean {

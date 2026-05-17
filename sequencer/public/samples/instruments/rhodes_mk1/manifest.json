@@ -2,6 +2,17 @@
   "name": "rhodes_mk1",
   "voices": {
     "rhodes-mk1": {
+      "label": "rhodes mk1",
+      "envelope": {
+        "attack": 0.005,
+        "sustain": 1,
+        "release": 0.35
+      },
+      "trackDefaults": {
+        "filterCutoff": 0.52,
+        "fxSend": 1,
+        "gain": 0.76
+      },
       "roots": [
         {
           "midi": 36,

@@ -2,25 +2,106 @@
   "name": "dreams",
   "voices": {
     "dreams": {
+      "label": "dreams",
       "gain": 0.7,
       "roots": [
-    { "midi": 24, "files": ["dreams-C1.wav"] },
-    { "midi": 28, "files": ["dreams-E1.wav"] },
-    { "midi": 32, "files": ["dreams-Gs1.wav"] },
-    { "midi": 36, "files": ["dreams-C2.wav"] },
-    { "midi": 40, "files": ["dreams-E2.wav"] },
-    { "midi": 44, "files": ["dreams-Gs2.wav"] },
-    { "midi": 48, "files": ["dreams-C3.wav"] },
-    { "midi": 52, "files": ["dreams-E3.wav"] },
-    { "midi": 56, "files": ["dreams-Gs3.wav"] },
-    { "midi": 60, "files": ["dreams-C4.wav"] },
-    { "midi": 64, "files": ["dreams-E4.wav"] },
-    { "midi": 68, "files": ["dreams-Gs4.wav"] },
-    { "midi": 72, "files": ["dreams-C5.wav"] },
-    { "midi": 76, "files": ["dreams-E5.wav"] },
-    { "midi": 80, "files": ["dreams-Gs5.wav"] },
-    { "midi": 84, "files": ["dreams-C6.wav"] }
-    ]
+        {
+          "midi": 24,
+          "files": [
+            "dreams-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "dreams-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "dreams-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "dreams-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "dreams-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "dreams-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "dreams-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "dreams-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "dreams-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "dreams-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "dreams-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "dreams-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "dreams-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "dreams-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "dreams-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "dreams-C6.wav"
+          ]
+        }
+      ]
     }
   }
 }

@@ -94,6 +94,16 @@ export function hydrateLFOs(saved: LFO[] | undefined): LFO[] {
   });
 }
 
+// Legacy-fallback voice-ID set. Only consulted for `.seq` files that use the
+// pre-typed `legacyVoice` field (no explicit kind discriminator) — for those
+// we have to guess whether an ID is an internal voice or a user instrument,
+// and this set is the "internal voice" half of that guess. Newer files
+// always carry `kind: 'voice'` and skip this check.
+//
+// Frozen at its 2026-05-17 content — manifestRegistry is the authoritative
+// list for sample-backed voices. Adding a new sample voice does NOT require
+// extending this set; old `.seq` files won't reference voices that didn't
+// exist when they were saved.
 const INTERNAL_VOICE_IDS = new Set([
   'kick',
   'snare',
@@ -149,7 +159,12 @@ function hydrateSource(saved: unknown, legacyVoice: string | undefined): TrackSo
     if (obj.kind === 'empty') return { kind: 'empty' };
     if ((obj.kind === 'voice' || obj.kind === 'instrument') && typeof obj.id === 'string') {
       const renamed = VOICE_ID_RENAMES[obj.id] ?? obj.id;
-      if (obj.kind === 'voice' && INTERNAL_VOICE_IDS.has(renamed)) {
+      // Explicit kind: 'voice' → trust the ID. The manifestRegistry loads
+      // asynchronously after hydrate runs, so an INTERNAL_VOICE_IDS check
+      // would reject sample-backed voices that haven't registered yet. If
+      // the voice never registers (renamed / removed), samplePlayer falls
+      // through to synthMelodic at trigger time — no hard error.
+      if (obj.kind === 'voice') {
         return { kind: 'voice', id: renamed };
       }
       if (obj.kind === 'instrument' && getInstrument(obj.id)) {

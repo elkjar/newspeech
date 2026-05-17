@@ -10,7 +10,7 @@ import {
 import { StepButton } from './StepButton';
 import { TrackKnob } from './TrackKnob';
 import { RowPanel } from './RowPanel';
-import { VOICES } from '../audio/voices';
+import { useRegistryVoices } from '../instruments/useRegistryVoices';
 import {
   INSTRUMENTS,
   sourceIsMelodic,
@@ -90,7 +90,8 @@ export function Track({ track }: { track: TrackData }) {
 
   // dropdown filters internal voices and instruments to the row's section
   const isDrumSection = track.section === 'drum';
-  const sampleVoices = VOICES.filter((v) =>
+  const allVoices = useRegistryVoices();
+  const sampleVoices = allVoices.filter((v) =>
     isDrumSection ? v.category === 'drum' : v.category === 'melodic'
   );
   const userInstruments = useUserInstrumentsStore((s) => s.userInstruments);

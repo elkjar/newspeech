@@ -2,6 +2,7 @@
   "name": "root_grain",
   "voices": {
     "root-grain": {
+      "label": "root grain",
       "roots": [
         {
           "midi": 36,

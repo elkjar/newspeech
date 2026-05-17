@@ -2,25 +2,106 @@
   "name": "broken",
   "voices": {
     "broken": {
+      "label": "broken",
       "gain": 0.7,
       "roots": [
-    { "midi": 24, "files": ["broken-C1.wav"] },
-    { "midi": 28, "files": ["broken-E1.wav"] },
-    { "midi": 32, "files": ["broken-Gs1.wav"] },
-    { "midi": 36, "files": ["broken-C2.wav"] },
-    { "midi": 40, "files": ["broken-E2.wav"] },
-    { "midi": 44, "files": ["broken-Gs2.wav"] },
-    { "midi": 48, "files": ["broken-C3.wav"] },
-    { "midi": 52, "files": ["broken-E3.wav"] },
-    { "midi": 56, "files": ["broken-Gs3.wav"] },
-    { "midi": 60, "files": ["broken-C4.wav"] },
-    { "midi": 64, "files": ["broken-E4.wav"] },
-    { "midi": 68, "files": ["broken-Gs4.wav"] },
-    { "midi": 72, "files": ["broken-C5.wav"] },
-    { "midi": 76, "files": ["broken-E5.wav"] },
-    { "midi": 80, "files": ["broken-Gs5.wav"] },
-    { "midi": 84, "files": ["broken-C6.wav"] }
-    ]
+        {
+          "midi": 24,
+          "files": [
+            "broken-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "broken-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "broken-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "broken-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "broken-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "broken-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "broken-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "broken-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "broken-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "broken-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "broken-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "broken-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "broken-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "broken-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "broken-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "broken-C6.wav"
+          ]
+        }
+      ]
     }
   }
 }

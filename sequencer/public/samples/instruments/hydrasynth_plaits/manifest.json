@@ -2,22 +2,46 @@
   "name": "hydrasynth_plaits",
   "voices": {
     "hydra-plaits": {
+      "label": "hydra-plaits",
+      "trackDefaults": {
+        "filterCutoff": 0.74,
+        "fxSend": 1,
+        "gain": 0.52
+      },
       "roots": [
         {
           "midi": 52,
-          "files": ["hp-E3-1.wav", "hp-E3-2.wav", "hp-E3-3.wav"]
+          "files": [
+            "hp-E3-1.wav",
+            "hp-E3-2.wav",
+            "hp-E3-3.wav"
+          ]
         },
         {
           "midi": 57,
-          "files": ["hp-A3-1.wav", "hp-A3-2.wav", "hp-A3-3.wav"]
+          "files": [
+            "hp-A3-1.wav",
+            "hp-A3-2.wav",
+            "hp-A3-3.wav"
+          ]
         },
         {
           "midi": 60,
-          "files": ["hp-C4-1.wav", "hp-C4-2.wav", "hp-C4-3.wav", "hp-C4-4.wav"]
+          "files": [
+            "hp-C4-1.wav",
+            "hp-C4-2.wav",
+            "hp-C4-3.wav",
+            "hp-C4-4.wav"
+          ]
         },
         {
           "midi": 72,
-          "files": ["hp-C5-1.wav", "hp-C5-2.wav", "hp-C5-3.wav", "hp-C5-4.wav"]
+          "files": [
+            "hp-C5-1.wav",
+            "hp-C5-2.wav",
+            "hp-C5-3.wav",
+            "hp-C5-4.wav"
+          ]
         }
       ],
       "gain": 0.55

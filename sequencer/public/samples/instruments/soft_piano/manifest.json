@@ -2,6 +2,7 @@
   "name": "soft_piano",
   "voices": {
     "soft-piano": {
+      "label": "soft piano",
       "roots": [
         {
           "midi": 24,

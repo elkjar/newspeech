@@ -2,25 +2,106 @@
   "name": "haunted",
   "voices": {
     "haunted": {
+      "label": "haunted",
       "gain": 0.7,
       "roots": [
-    { "midi": 24, "files": ["haunted-C1.wav"] },
-    { "midi": 28, "files": ["haunted-E1.wav"] },
-    { "midi": 32, "files": ["haunted-Gs1.wav"] },
-    { "midi": 36, "files": ["haunted-C2.wav"] },
-    { "midi": 40, "files": ["haunted-E2.wav"] },
-    { "midi": 44, "files": ["haunted-Gs2.wav"] },
-    { "midi": 48, "files": ["haunted-C3.wav"] },
-    { "midi": 52, "files": ["haunted-E3.wav"] },
-    { "midi": 56, "files": ["haunted-Gs3.wav"] },
-    { "midi": 60, "files": ["haunted-C4.wav"] },
-    { "midi": 64, "files": ["haunted-E4.wav"] },
-    { "midi": 68, "files": ["haunted-Gs4.wav"] },
-    { "midi": 72, "files": ["haunted-C5.wav"] },
-    { "midi": 76, "files": ["haunted-E5.wav"] },
-    { "midi": 80, "files": ["haunted-Gs5.wav"] },
-    { "midi": 84, "files": ["haunted-C6.wav"] }
-    ]
+        {
+          "midi": 24,
+          "files": [
+            "haunted-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "haunted-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "haunted-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "haunted-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "haunted-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "haunted-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "haunted-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "haunted-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "haunted-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "haunted-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "haunted-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "haunted-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "haunted-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "haunted-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "haunted-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "haunted-C6.wav"
+          ]
+        }
+      ]
     }
   }
 }

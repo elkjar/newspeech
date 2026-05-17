@@ -23,6 +23,7 @@ import { dispatchMidi } from './midi/midiMap';
 import { loadMidiMapLibrary } from './midi/midiMapLoader';
 import { octaveDegrees } from './audio/scale';
 import { sourceIsMelodic } from './instruments/library';
+import { registerKit, type SampleKitEntry, type ExtendedSampleManifest } from './instruments/manifestRegistry';
 import { tickPadDrift } from './audio/padState';
 import type { ChordDegree } from './audio/chords';
 import { getChordContext, setChordContext } from './audio/chordContext';
@@ -126,38 +127,34 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const kits = [
-      'drums/blck_noir',
-      // ns-kit-1 namespaces its voices with `ns1-` prefix so it coexists
-      // with blck_noir in the sample-player map (no overwrite). Both kits
-      // appear in the drum source-picker; conductor auto-picks blck_noir
-      // for compose moves until a kit-aware palette is introduced.
-      'drums/ns-kit-1',
-      'pads/encounter',
-      'pads/pulsed',
-      'pads/sinewaves-at-the-scope',
-      'instruments/hydrasynth_plaits',
-      'instruments/mini-moog',
-      'instruments/rhodes_mk1',
-      'instruments/root_grain',
-      'instruments/soft_piano',
-      'instruments/tape_piano',
-      'instruments/under_piano',
-      'instruments/broken',
-      'instruments/dark-omen',
-      'instruments/dreams',
-      'instruments/grind',
-      'instruments/haunted',
-      'instruments/invasion',
-      'instruments/sample-and-hold',
-    ];
-    for (const kitPath of kits) {
-      const baseUrl = `${import.meta.env.BASE_URL}samples/${kitPath}`;
-      fetch(`${baseUrl}/manifest.json`)
-        .then((r) => r.json())
-        .then((manifest) => samplePlayer.loadManifest(baseUrl, manifest))
-        .catch((err) => console.warn(`sample manifest ${kitPath} load failed:`, err));
-    }
+    // Sample kits are discovered via samples/index.json (emitted by the
+    // vite samplesIndex plugin at build time; served live in dev). Each
+    // manifest is loaded into samplePlayer for the audio path AND into
+    // manifestRegistry for the VoiceDef-derivation path. Replaces the
+    // previously hardcoded `kits = [...]` array + the per-voice entries
+    // duplicated across voices.ts and hydrate.ts.
+    const indexUrl = `${import.meta.env.BASE_URL}samples/index.json`;
+    void (async () => {
+      try {
+        const res = await fetch(indexUrl);
+        const index = (await res.json()) as SampleKitEntry[];
+        await Promise.all(
+          index.map(async (entry) => {
+            const baseUrl = `${import.meta.env.BASE_URL}samples/${entry.kitPath}`;
+            try {
+              const manifestRes = await fetch(`${baseUrl}/manifest.json`);
+              const manifest = (await manifestRes.json()) as ExtendedSampleManifest;
+              registerKit(entry.kitPath, baseUrl, manifest);
+              await samplePlayer.loadManifest(baseUrl, manifest);
+            } catch (err) {
+              console.warn(`sample manifest ${entry.kitPath} load failed:`, err);
+            }
+          }),
+        );
+      } catch (err) {
+        console.warn('samples index load failed:', err);
+      }
+    })();
   }, []);
 
   useEffect(() => {

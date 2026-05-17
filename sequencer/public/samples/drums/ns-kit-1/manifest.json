@@ -2,6 +2,8 @@
   "name": "ns-kit-1",
   "voices": {
     "ns1-kick": {
+      "label": "ns1 kick",
+      "mutationProfile": "kick",
       "files": [
         "KICK/KICK_0_bip.wav",
         "KICK/KICK_1_bip.wav",
@@ -14,6 +16,8 @@
       "gain": 0.7
     },
     "ns1-snare": {
+      "label": "ns1 snare",
+      "mutationProfile": "drum",
       "files": [
         "SNARE/SNARE_0_bip.wav",
         "SNARE/SNARE_1_bip.wav",
@@ -31,6 +35,8 @@
       "gain": 0.8
     },
     "ns1-hat-c": {
+      "label": "ns1 hat-c",
+      "mutationProfile": "drum",
       "files": [
         "HHC/HH-CLOSE_0_bip.wav",
         "HHC/HH-CLOSE_1_bip.wav",
@@ -45,6 +51,8 @@
       "gain": 0.6
     },
     "ns1-hat-o": {
+      "label": "ns1 hat-o",
+      "mutationProfile": "hat-o",
       "files": [
         "HHO/HH-MED_0_bip.wav",
         "HHO/HH-MED_1_bip.wav",
@@ -58,6 +66,8 @@
       "gain": 0.55
     },
     "ns1-cym": {
+      "label": "ns1 cym",
+      "mutationProfile": "drum",
       "files": [
         "CRASH/CRASH16_0_bip.wav",
         "CRASH/CRASH16_1_bip.wav",
@@ -73,6 +83,8 @@
       "gain": 0.3
     },
     "ns1-ride": {
+      "label": "ns1 ride",
+      "mutationProfile": "drum",
       "files": [
         "RIDE/RIDE_0_bip.wav",
         "RIDE/RIDE_1_bip.wav",
@@ -82,6 +94,8 @@
       "gain": 0.5
     },
     "ns1-floortom": {
+      "label": "ns1 floortom",
+      "mutationProfile": "drum",
       "files": [
         "FLOORTOM/TOM-FLR_0_bip.wav",
         "FLOORTOM/TOM-FLR_1_bip.wav",
@@ -90,6 +104,8 @@
       "gain": 0.65
     },
     "ns1-racktom": {
+      "label": "ns1 racktom",
+      "mutationProfile": "drum",
       "files": [
         "RACKTOM2/TOM-RACK_2_4_bip.wav",
         "RACKTOM2/TOM-RACK_2_5_bip.wav",
@@ -98,6 +114,8 @@
       "gain": 0.65
     },
     "ns1-rimshot": {
+      "label": "ns1 rimshot",
+      "mutationProfile": "drum",
       "files": [
         "RIMSHOT/RIMSHOT_0_bip.wav",
         "RIMSHOT/RIMSHOT_1_bip.wav",

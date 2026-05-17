@@ -2,6 +2,7 @@
   "name": "under_piano",
   "voices": {
     "under-piano": {
+      "label": "under piano",
       "roots": [
         {
           "midi": 36,

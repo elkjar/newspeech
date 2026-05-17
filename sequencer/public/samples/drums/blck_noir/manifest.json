@@ -2,6 +2,8 @@
   "name": "blck_noir",
   "voices": {
     "kick": {
+      "label": "kick",
+      "mutationProfile": "kick",
       "files": [
         "KICK/KICK-1.wav",
         "KICK/KICK-2.wav",
@@ -13,6 +15,8 @@
       "gain": 0.7
     },
     "snare": {
+      "label": "snare",
+      "mutationProfile": "drum",
       "files": [
         "SNARE/SNARE-1.wav",
         "SNARE/SNARE-2.wav",
@@ -26,6 +30,8 @@
       "gain": 0.82
     },
     "hat-c": {
+      "label": "hat-c",
+      "mutationProfile": "drum",
       "files": [
         "OHH/OHH-1.wav",
         "OHH/OHH-2.wav",
@@ -41,6 +47,8 @@
       "gain": 0.67
     },
     "hat-o": {
+      "label": "hat-o",
+      "mutationProfile": "hat-o",
       "files": [
         "CHH/CHH-1.wav",
         "CHH/CHH-2.wav",
@@ -56,6 +64,8 @@
       "gain": 0.49
     },
     "blk": {
+      "label": "blk",
+      "mutationProfile": "drum",
       "files": [
         "BLK/BLK-1.wav",
         "BLK/BLK-2.wav",
@@ -70,6 +80,8 @@
       "gain": 0.43
     },
     "cym": {
+      "label": "cym",
+      "mutationProfile": "drum",
       "files": [
         "CYM/CYM-1.wav",
         "CYM/CYM-2.wav",
@@ -84,6 +96,8 @@
       "gain": 0.19
     },
     "tamb": {
+      "label": "tamb",
+      "mutationProfile": "drum",
       "files": [
         "TAMB/TAMB-1.wav",
         "TAMB/TAMB-2.wav",

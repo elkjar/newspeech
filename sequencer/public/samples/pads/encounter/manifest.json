@@ -2,29 +2,142 @@
   "name": "encounter",
   "voices": {
     "encounter": {
+      "label": "encounter",
+      "type": "pad",
+      "envelope": {
+        "attack": 0.4,
+        "sustain": 1,
+        "release": 2.2
+      },
+      "octaveOffset": -2,
       "gain": 0.55,
       "roots": [
-        { "midi": 24, "files": ["encounter_C1.wav"] },
-        { "midi": 27, "files": ["encounter_Ds1.wav"] },
-        { "midi": 30, "files": ["encounter_Fs1.wav"] },
-        { "midi": 33, "files": ["encounter_A1.wav"] },
-        { "midi": 36, "files": ["encounter_C2.wav"] },
-        { "midi": 39, "files": ["encounter_Ds2.wav"] },
-        { "midi": 42, "files": ["encounter_Fs2.wav"] },
-        { "midi": 45, "files": ["encounter_A2.wav"] },
-        { "midi": 48, "files": ["encounter_C3.wav"] },
-        { "midi": 51, "files": ["encounter_Ds3.wav"] },
-        { "midi": 54, "files": ["encounter_Fs3.wav"] },
-        { "midi": 57, "files": ["encounter_A3.wav"] },
-        { "midi": 60, "files": ["encounter_C4.wav"] },
-        { "midi": 63, "files": ["encounter_Ds4.wav"] },
-        { "midi": 66, "files": ["encounter_Fs4.wav"] },
-        { "midi": 69, "files": ["encounter_A4.wav"] },
-        { "midi": 72, "files": ["encounter_C5.wav"] },
-        { "midi": 75, "files": ["encounter_Ds5.wav"] },
-        { "midi": 78, "files": ["encounter_Fs5.wav"] },
-        { "midi": 81, "files": ["encounter_A5.wav"] },
-        { "midi": 84, "files": ["encounter_C6.wav"] }
+        {
+          "midi": 24,
+          "files": [
+            "encounter_C1.wav"
+          ]
+        },
+        {
+          "midi": 27,
+          "files": [
+            "encounter_Ds1.wav"
+          ]
+        },
+        {
+          "midi": 30,
+          "files": [
+            "encounter_Fs1.wav"
+          ]
+        },
+        {
+          "midi": 33,
+          "files": [
+            "encounter_A1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "encounter_C2.wav"
+          ]
+        },
+        {
+          "midi": 39,
+          "files": [
+            "encounter_Ds2.wav"
+          ]
+        },
+        {
+          "midi": 42,
+          "files": [
+            "encounter_Fs2.wav"
+          ]
+        },
+        {
+          "midi": 45,
+          "files": [
+            "encounter_A2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "encounter_C3.wav"
+          ]
+        },
+        {
+          "midi": 51,
+          "files": [
+            "encounter_Ds3.wav"
+          ]
+        },
+        {
+          "midi": 54,
+          "files": [
+            "encounter_Fs3.wav"
+          ]
+        },
+        {
+          "midi": 57,
+          "files": [
+            "encounter_A3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "encounter_C4.wav"
+          ]
+        },
+        {
+          "midi": 63,
+          "files": [
+            "encounter_Ds4.wav"
+          ]
+        },
+        {
+          "midi": 66,
+          "files": [
+            "encounter_Fs4.wav"
+          ]
+        },
+        {
+          "midi": 69,
+          "files": [
+            "encounter_A4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "encounter_C5.wav"
+          ]
+        },
+        {
+          "midi": 75,
+          "files": [
+            "encounter_Ds5.wav"
+          ]
+        },
+        {
+          "midi": 78,
+          "files": [
+            "encounter_Fs5.wav"
+          ]
+        },
+        {
+          "midi": 81,
+          "files": [
+            "encounter_A5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "encounter_C6.wav"
+          ]
+        }
       ]
     }
   }

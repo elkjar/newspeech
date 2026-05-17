@@ -2,6 +2,7 @@
   "name": "tape_piano",
   "voices": {
     "tape-piano": {
+      "label": "tape piano",
       "roots": [
         {
           "midi": 36,
