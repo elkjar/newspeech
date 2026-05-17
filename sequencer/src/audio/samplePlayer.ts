@@ -93,8 +93,16 @@ class SamplePlayer {
   private activeVoices = new Map<SampleId, AudioBufferSourceNode>();
   private activeChordVoices = new Set<ActiveChordEntry>();
 
-  async loadManifest(baseUrl: string, manifest: SampleManifest) {
-    const ctx = getAudioContext();
+  // Loader for kit WAV files. Bundled samples pass URLs via the
+  // url-fetcher (default); user-directory samples in the Tauri build use
+  // an invoke-bytes fetcher that reads files via the read_audio_file Rust
+  // command (sidesteps the asset-protocol scope dance — same consent model
+  // as save_text_file: user picks dir via native dialog, app reads from it).
+  async loadManifest(
+    baseUrl: string,
+    manifest: SampleManifest,
+    fetcher: (file: string, baseUrl: string) => Promise<AudioBuffer> = defaultUrlFetcher,
+  ) {
     if (manifest.chokeGroups) {
       for (const [id, group] of Object.entries(manifest.chokeGroups)) {
         this.chokeGroups.set(id, group);
@@ -104,17 +112,13 @@ class SamplePlayer {
       Object.entries(manifest.voices).map(async ([id, def]) => {
         const banks: SampleBank[] = [];
         if (def.files && def.files.length > 0) {
-          const bufs = await Promise.all(
-            def.files.map((file) => fetchAndDecode(ctx, `${baseUrl}/${file}`))
-          );
+          const bufs = await Promise.all(def.files.map((file) => fetcher(file, baseUrl)));
           banks.push({ root: null, bufs });
         }
         if (def.roots) {
           for (const r of def.roots) {
             if (!r.files || r.files.length === 0) continue;
-            const bufs = await Promise.all(
-              r.files.map((file) => fetchAndDecode(ctx, `${baseUrl}/${file}`))
-            );
+            const bufs = await Promise.all(r.files.map((file) => fetcher(file, baseUrl)));
             banks.push({ root: r.midi, bufs });
           }
         }
@@ -561,6 +565,10 @@ async function fetchAndDecode(ctx: AudioContext, url: string): Promise<AudioBuff
   const res = await fetch(url);
   const arr = await res.arrayBuffer();
   return ctx.decodeAudioData(arr);
+}
+
+async function defaultUrlFetcher(file: string, baseUrl: string): Promise<AudioBuffer> {
+  return fetchAndDecode(getAudioContext(), `${baseUrl}/${file}`);
 }
 
 export const samplePlayer = new SamplePlayer();

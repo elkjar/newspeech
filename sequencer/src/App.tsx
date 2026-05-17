@@ -24,6 +24,7 @@ import { loadMidiMapLibrary } from './midi/midiMapLoader';
 import { octaveDegrees } from './audio/scale';
 import { sourceIsMelodic } from './instruments/library';
 import { registerKit, type SampleKitEntry, type ExtendedSampleManifest } from './instruments/manifestRegistry';
+import { scanAndLoadUserSamples } from './instruments/userSamplesDir';
 import { tickPadDrift } from './audio/padState';
 import type { ChordDegree } from './audio/chords';
 import { getChordContext, setChordContext } from './audio/chordContext';
@@ -153,6 +154,16 @@ export function App() {
         );
       } catch (err) {
         console.warn('samples index load failed:', err);
+      }
+      // After bundled samples register, fold in any kits from the user
+      // samples dir. Tauri-only — no-op on web. Awaited so they appear in
+      // the source pickers without a second refresh.
+      const userResult = await scanAndLoadUserSamples();
+      if (userResult.loaded > 0) {
+        console.info(`[user samples] loaded ${userResult.loaded} kit(s)`);
+      }
+      if (userResult.errors.length > 0) {
+        for (const e of userResult.errors) console.warn('[user samples]', e);
       }
     })();
   }, []);

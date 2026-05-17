@@ -1,6 +1,7 @@
 mod midi;
 mod projectfs;
 mod recording;
+mod samples;
 
 #[cfg(target_os = "macos")]
 mod media_permission {
@@ -125,6 +126,9 @@ pub fn run() {
       midi::midi_unsubscribe_all_inputs,
       midi::midi_send,
       midi::midi_panic,
+      samples::list_sample_kits,
+      samples::get_user_samples_dir,
+      samples::read_audio_file,
     ])
     .setup(|app| {
       #[cfg(target_os = "macos")]

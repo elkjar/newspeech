@@ -5,6 +5,12 @@ import {
   getConfiguredRecordingsDir,
   setConfiguredRecordingsDir,
 } from '../audio/recorder';
+import {
+  getConfiguredUserSamplesDir,
+  setConfiguredUserSamplesDir,
+  resolveUserSamplesDir,
+  scanAndLoadUserSamples,
+} from '../instruments/userSamplesDir';
 import { MidiBar } from './MidiBar';
 import { ProjectFileControls } from './Transport';
 import { InstrumentLibraryPane } from './InstrumentLibraryPane';
@@ -25,6 +31,10 @@ export function SettingsDialog({
 }) {
   const [recordingsDir, setRecordingsDir] = useState<string | null>(null);
   const [isCustomRecordingsDir, setIsCustomRecordingsDir] = useState(false);
+  const [userSamplesDir, setUserSamplesDir] = useState<string | null>(null);
+  const [isCustomUserSamplesDir, setIsCustomUserSamplesDir] = useState(false);
+  const [rescanStatus, setRescanStatus] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [view, setView] = useState<'main' | 'instruments'>('main');
 
   // Reset to main view whenever the dialog closes so reopening always
@@ -50,9 +60,20 @@ export function SettingsDialog({
     }
   };
 
+  const refreshUserSamplesDir = async () => {
+    if (!NATIVE) return;
+    const override = getConfiguredUserSamplesDir();
+    setIsCustomUserSamplesDir(!!override);
+    const dir = await resolveUserSamplesDir();
+    setUserSamplesDir(dir);
+  };
+
   useEffect(() => {
     if (!open) return;
-    if (NATIVE) void refreshRecordingsDir();
+    if (NATIVE) {
+      void refreshRecordingsDir();
+      void refreshUserSamplesDir();
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
@@ -99,6 +120,63 @@ export function SettingsDialog({
     await refreshRecordingsDir();
   };
 
+  const revealUserSamples = async () => {
+    if (!userSamplesDir) return;
+    try {
+      await invoke('reveal_in_finder', { path: userSamplesDir });
+    } catch (err) {
+      console.warn('[settings] reveal_in_finder failed:', err);
+    }
+  };
+
+  const changeUserSamples = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: userSamplesDir ?? undefined,
+      });
+      if (picked && typeof picked === 'string') {
+        setConfiguredUserSamplesDir(picked);
+        await refreshUserSamplesDir();
+        await runRescan();
+      }
+    } catch (err) {
+      console.warn('[settings] change user samples dir failed:', err);
+    }
+  };
+
+  const resetUserSamples = async () => {
+    setConfiguredUserSamplesDir(null);
+    await refreshUserSamplesDir();
+    await runRescan();
+  };
+
+  const runRescan = async () => {
+    if (!NATIVE) return;
+    setScanning(true);
+    setRescanStatus('scanning…');
+    try {
+      const result = await scanAndLoadUserSamples();
+      if (result.errors.length > 0) {
+        setRescanStatus(
+          `loaded ${result.loaded}, ${result.errors.length} failed — see console`,
+        );
+        for (const err of result.errors) console.warn('[user samples]', err);
+      } else if (result.skipped > 0) {
+        setRescanStatus('no user samples dir configured');
+      } else {
+        setRescanStatus(`loaded ${result.loaded} ${result.loaded === 1 ? 'kit' : 'kits'}`);
+      }
+    } catch (err) {
+      console.warn('[settings] rescan failed:', err);
+      setRescanStatus(`error — see console`);
+    } finally {
+      setScanning(false);
+    }
+  };
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[6px]"
@@ -143,6 +221,27 @@ export function SettingsDialog({
                       : []),
                   ]}
                 />
+              </Section>
+            )}
+
+            {NATIVE && (
+              <Section label="user samples">
+                <SettingRow
+                  label="folder"
+                  description="drop sample packs in {drums,instruments,pads}/<name>/ with a manifest.json — click rescan to pick them up"
+                  value={userSamplesDir ?? '…'}
+                  actions={[
+                    { label: 'open in finder', onClick: revealUserSamples, disabled: !userSamplesDir },
+                    { label: 'change…', onClick: changeUserSamples },
+                    { label: scanning ? 'scanning…' : 'rescan', onClick: runRescan, disabled: scanning || !userSamplesDir },
+                    ...(isCustomUserSamplesDir
+                      ? [{ label: 'reset', onClick: resetUserSamples }]
+                      : []),
+                  ]}
+                />
+                {rescanStatus && (
+                  <div className="text-white/50 text-[11px]">{rescanStatus}</div>
+                )}
               </Section>
             )}
 
