@@ -15,18 +15,29 @@ const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 // a refresh, no rebuild required.
 function samplesIndex(): Plugin {
   const samplesDir = path.resolve(__dirname, 'public/samples');
+  // Mirrors the Rust scanner's CATEGORIES list (src-tauri/src/samples.rs).
+  // Drum is the only category that maps to drum-section gating; the rest
+  // are melodic. The picker further subcategorizes melodic kits by parent
+  // folder for the UI.
+  const CATEGORIES: Array<[string, 'drum' | 'melodic']> = [
+    ['drums', 'drum'],
+    ['instruments', 'melodic'],
+    ['pads', 'melodic'],
+    ['bass', 'melodic'],
+    ['textures', 'melodic'],
+  ];
   function scanIndex(): Array<{ kitPath: string; category: 'drum' | 'melodic' }> {
     const entries: Array<{ kitPath: string; category: 'drum' | 'melodic' }> = [];
-    for (const category of ['drums', 'instruments', 'pads']) {
-      const categoryDir = path.join(samplesDir, category);
+    for (const [folder, cat] of CATEGORIES) {
+      const categoryDir = path.join(samplesDir, folder);
       if (!fs.existsSync(categoryDir)) continue;
       for (const kit of fs.readdirSync(categoryDir)) {
         const kitDir = path.join(categoryDir, kit);
         if (!fs.statSync(kitDir).isDirectory()) continue;
         if (!fs.existsSync(path.join(kitDir, 'manifest.json'))) continue;
         entries.push({
-          kitPath: `${category}/${kit}`,
-          category: category === 'drums' ? 'drum' : 'melodic',
+          kitPath: `${folder}/${kit}`,
+          category: cat,
         });
       }
     }

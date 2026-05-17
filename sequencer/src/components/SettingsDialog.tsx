@@ -14,6 +14,7 @@ import {
 import { MidiBar } from './MidiBar';
 import { ProjectFileControls } from './Transport';
 import { InstrumentLibraryPane } from './InstrumentLibraryPane';
+import { SampleLibraryPane } from './SampleLibraryPane';
 
 const NATIVE = isTauri();
 
@@ -35,7 +36,7 @@ export function SettingsDialog({
   const [isCustomUserSamplesDir, setIsCustomUserSamplesDir] = useState(false);
   const [rescanStatus, setRescanStatus] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [view, setView] = useState<'main' | 'instruments'>('main');
+  const [view, setView] = useState<'main' | 'instruments' | 'samples'>('main');
 
   // Reset to main view whenever the dialog closes so reopening always
   // lands on the top-level sections.
@@ -201,7 +202,7 @@ export function SettingsDialog({
             </button>
           )}
           <span className="text-white text-sm">
-            {view === 'main' ? 'settings' : 'instruments'}
+            {view === 'main' ? 'settings' : view === 'instruments' ? 'midi instruments' : 'sample instruments'}
           </span>
         </div>
 
@@ -228,7 +229,7 @@ export function SettingsDialog({
               <Section label="user samples">
                 <SettingRow
                   label="folder"
-                  description="drop sample packs in {drums,instruments,pads}/<name>/ with a manifest.json — click rescan to pick them up"
+                  description="drop sample packs /type/<name>/sample-<note>.wav"
                   value={userSamplesDir ?? '…'}
                   actions={[
                     { label: 'open in finder', onClick: revealUserSamples, disabled: !userSamplesDir },
@@ -259,15 +260,27 @@ export function SettingsDialog({
                 onClick={() => setView('instruments')}
                 className="flex items-center justify-between w-full px-3 py-2 border border-white/15 hover:border-white text-white/70 hover:text-white transition-colors text-[12px] normal-case tracking-normal"
               >
-                <span>manage instrument library</span>
+                <span>manage midi instruments</span>
+                <span className="text-white/40">→</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('samples')}
+                className="flex items-center justify-between w-full px-3 py-2 border border-white/15 hover:border-white text-white/70 hover:text-white transition-colors text-[12px] normal-case tracking-normal"
+              >
+                <span>manage sample instruments</span>
                 <span className="text-white/40">→</span>
               </button>
             </Section>
 
           </div>
-        ) : (
+        ) : view === 'instruments' ? (
           <div className="flex-1 overflow-y-auto -mx-2 px-2">
             <InstrumentLibraryPane />
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto -mx-2 px-2">
+            <SampleLibraryPane />
           </div>
         )}
 

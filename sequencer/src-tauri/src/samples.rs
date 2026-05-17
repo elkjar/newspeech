@@ -25,10 +25,18 @@ pub struct SampleKitEntry {
     pub absolute_dir: String, // filesystem path to the kit folder
 }
 
-const CATEGORIES: [(&str, &str); 3] = [
+// Category folders the scanner recognizes. The second field is the
+// VoiceCategory the frontend uses to gate which TRACK SECTION the voice
+// can land on (drum-section rows only see drum voices; melodic rows see
+// the rest). The frontend's PICKER groups by the FOLDER NAME itself
+// (`instruments` / `pads` / `textures` / `bass`) — that subcategory is
+// inferred from the kit path on the JS side.
+const CATEGORIES: [(&str, &str); 5] = [
     ("drums", "drum"),
     ("instruments", "melodic"),
     ("pads", "melodic"),
+    ("bass", "melodic"),
+    ("textures", "melodic"),
 ];
 
 #[tauri::command]
@@ -280,11 +288,12 @@ pub fn get_user_samples_dir(app: AppHandle) -> Result<String, String> {
         .map_err(|e| format!("document_dir: {e}"))?;
     let dir = docs.join("Sequence").join("samples");
     let _ = fs::create_dir_all(&dir);
-    // Pre-seed the three category subdirs so the user has the right layout
-    // visible the first time they open the folder in Finder.
-    let _ = fs::create_dir_all(dir.join("drums"));
-    let _ = fs::create_dir_all(dir.join("instruments"));
-    let _ = fs::create_dir_all(dir.join("pads"));
+    // Pre-seed the category subdirs so the user has the right layout
+    // visible the first time they open the folder in Finder. Mirrors
+    // the CATEGORIES list above — keep in sync.
+    for (folder, _) in CATEGORIES {
+        let _ = fs::create_dir_all(dir.join(folder));
+    }
     Ok(dir.to_string_lossy().to_string())
 }
 
@@ -300,4 +309,47 @@ pub fn read_audio_file(path: String) -> Result<Vec<u8>, String> {
         return Err(format!("not a file: {path}"));
     }
     fs::read(&p).map_err(|e| format!("read {path}: {e}"))
+}
+
+// Moves a user-sample-kit directory to the Trash (not permanent delete).
+// Uses AppleScript via osascript so the kit lands in Finder's Trash with
+// undo available — important guard against accidental loss of bespoke
+// sample packs. macOS-only for now; Linux/Windows fallbacks are out of
+// scope until those platforms ship.
+//
+// Caller is responsible for restricting this to *user* kit paths — the
+// command itself doesn't enforce a scope.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn trash_sample_kit(path: String) -> Result<(), String> {
+    use std::process::Command;
+    let p = PathBuf::from(&path);
+    if !p.is_dir() {
+        return Err(format!("not a directory: {path}"));
+    }
+    // POSIX-file form of the path so Finder accepts it; quoting via the
+    // AppleScript literal-string form. Single quotes in the path itself
+    // would break this — sample-pack folder names shouldn't contain them.
+    if path.contains('"') {
+        return Err("path contains a quote character; refusing".to_string());
+    }
+    let script = format!(
+        "tell application \"Finder\" to delete (POSIX file \"{}\")",
+        path
+    );
+    let status = Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .status()
+        .map_err(|e| format!("osascript: {e}"))?;
+    if !status.success() {
+        return Err(format!("osascript exited with status {}", status));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn trash_sample_kit(_path: String) -> Result<(), String> {
+    Err("trash_sample_kit not implemented on this platform".to_string())
 }

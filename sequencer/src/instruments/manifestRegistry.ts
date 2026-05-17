@@ -64,6 +64,12 @@ export interface ManifestVoiceMeta {
   type?: VoiceType;                // 'pad' opts into pad dispatch
   padConfig?: PadConfig;           // optional override; type='pad' without this falls back to DEFAULT_PAD_CONFIG
   trackDefaults?: VoiceTrackDefaults;
+  // Picker categories the voice should appear in (`instruments` / `pads`
+  // / `bass` / `textures`). Absent = single category inferred from the
+  // parent folder + the flat-voice rule. Set this to surface a voice in
+  // more than one category — e.g. a mono synth that's usable as both a
+  // melodic lead and a bass voice.
+  pickerCategories?: string[];
 }
 
 export type ManifestVoice = SampleVoiceDef & ManifestVoiceMeta;
@@ -78,21 +84,39 @@ export interface SampleKitEntry {
   category: VoiceCategory;         // inferred from kit path's parent folder
 }
 
-interface RegisteredKit {
+export interface RegisteredKit {
   kitPath: string;
   baseUrl: string;                 // resolved URL the samplePlayer used to load files
   category: VoiceCategory;
   manifest: ExtendedSampleManifest;
+  // Where the kit came from. Bundled kits live under public/samples/ and
+  // ship with the app; user kits come from the user samples directory and
+  // are registered with kit paths prefixed `user/` (see userSamplesDir.ts).
+  source: 'bundled' | 'user';
 }
 
 const kits = new Map<string, RegisteredKit>();
 const listeners = new Set<() => void>();
+// Cached snapshot array. `useSyncExternalStore` requires getSnapshot() to
+// return a stable reference between calls when data hasn't changed — without
+// caching, `Array.from(kits.values())` would tear off a new array on every
+// render and infinite-loop the consumer hook. Invalidated whenever
+// registerKit / clearKits mutates the underlying Map.
+let kitsSnapshot: readonly RegisteredKit[] | null = null;
+
+function notifyListeners(): void {
+  kitsSnapshot = null;
+  for (const listener of listeners) listener();
+}
 
 function inferCategoryFromKitPath(kitPath: string): VoiceCategory {
-  // Kit paths are "{drums|instruments|pads}/{voice-folder}". Drums are drums;
-  // everything else (instruments, pads, future categories) is melodic. The
-  // pad-specific dispatch is keyed off VoiceDef.type === 'pad', not category.
-  return kitPath.startsWith('drums/') ? 'drum' : 'melodic';
+  // Kit paths: "drums/<name>" (bundled) or "user/drums/<name>" (user dir).
+  // Strip the optional `user/` prefix, then check the leading segment.
+  // Drums are drums; everything else (instruments, pads, future categories)
+  // is melodic. Pad-specific dispatch is keyed off VoiceDef.type === 'pad',
+  // not category.
+  const trimmed = kitPath.startsWith('user/') ? kitPath.slice('user/'.length) : kitPath;
+  return trimmed.startsWith('drums/') ? 'drum' : 'melodic';
 }
 
 export function registerKit(
@@ -101,13 +125,14 @@ export function registerKit(
   manifest: ExtendedSampleManifest,
 ): void {
   const category = inferCategoryFromKitPath(kitPath);
-  kits.set(kitPath, { kitPath, baseUrl, category, manifest });
-  for (const listener of listeners) listener();
+  const source: 'bundled' | 'user' = kitPath.startsWith('user/') ? 'user' : 'bundled';
+  kits.set(kitPath, { kitPath, baseUrl, category, manifest, source });
+  notifyListeners();
 }
 
 export function clearKits(): void {
   kits.clear();
-  for (const listener of listeners) listener();
+  notifyListeners();
 }
 
 export function subscribe(listener: () => void): () => void {
@@ -118,7 +143,10 @@ export function subscribe(listener: () => void): () => void {
 }
 
 export function getRegisteredKits(): readonly RegisteredKit[] {
-  return Array.from(kits.values());
+  if (kitsSnapshot === null) {
+    kitsSnapshot = Array.from(kits.values());
+  }
+  return kitsSnapshot;
 }
 
 // Builds VoiceDef[] from all registered manifests. Called by voices.ts so the

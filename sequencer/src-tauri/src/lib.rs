@@ -129,6 +129,7 @@ pub fn run() {
       samples::list_sample_kits,
       samples::get_user_samples_dir,
       samples::read_audio_file,
+      samples::trash_sample_kit,
     ])
     .setup(|app| {
       #[cfg(target_os = "macos")]

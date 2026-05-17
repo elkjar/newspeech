@@ -10,16 +10,14 @@ import {
 import { StepButton } from './StepButton';
 import { TrackKnob } from './TrackKnob';
 import { RowPanel } from './RowPanel';
-import { useRegistryVoices } from '../instruments/useRegistryVoices';
 import {
-  INSTRUMENTS,
   sourceIsMelodic,
-  type Instrument,
+  sourceLabel,
   type InstrumentRole,
   type TrackSource,
 } from '../instruments/library';
-import { useUserInstrumentsStore } from '../instruments/userInstrumentsStore';
 import { NewInstrumentDialog } from './NewInstrumentDialog';
+import { VoicePickerDialog } from './VoicePickerDialog';
 import { getOverlay } from '../audio/mutationOverlay';
 import { effectiveTieToNext } from '../audio/mutationTie';
 import { findRouted, GLOBAL_TRACK_ID } from '../audio/lfo';
@@ -88,44 +86,18 @@ export function Track({ track }: { track: TrackData }) {
   const silenced = track.mute || (anySolo && !track.solo);
   const melodic = sourceIsMelodic(track.source);
 
-  // dropdown filters internal voices and instruments to the row's section
-  const isDrumSection = track.section === 'drum';
-  const allVoices = useRegistryVoices();
-  const sampleVoices = allVoices.filter((v) =>
-    isDrumSection ? v.category === 'drum' : v.category === 'melodic'
-  );
-  const userInstruments = useUserInstrumentsStore((s) => s.userInstruments);
-  const collectInstruments = (role: InstrumentRole): Instrument[] => [
-    ...INSTRUMENTS.filter((i) => i.role === role),
-    ...Object.values(userInstruments).filter((i) => i.role === role),
-  ];
-  const drumInstruments = collectInstruments('drum');
-  const leadInstruments = collectInstruments('lead');
-  const bassInstruments = collectInstruments('bass');
-  const padInstruments = collectInstruments('pad');
-
   const [newInstrumentDefaultRole, setNewInstrumentDefaultRole] =
     useState<InstrumentRole | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  const sourceValue =
-    track.source.kind === 'empty' ? 'empty' : `${track.source.kind}:${track.source.id}`;
+  const handlePickerSelect = (next: TrackSource) => {
+    setTrackSource(track.id, next);
+    setPickerOpen(false);
+  };
 
-  const handleSourceChange = (raw: string) => {
-    if (raw === 'empty') {
-      setTrackSource(track.id, { kind: 'empty' });
-      return;
-    }
-    if (raw.startsWith('new-instrument:')) {
-      const role = raw.split(':', 2)[1] as InstrumentRole;
-      setNewInstrumentDefaultRole(role);
-      return;
-    }
-    const [kind, id] = raw.split(':', 2);
-    if (kind === 'voice' && id) {
-      setTrackSource(track.id, { kind: 'voice', id });
-    } else if (kind === 'instrument' && id) {
-      setTrackSource(track.id, { kind: 'instrument', id } satisfies TrackSource);
-    }
+  const handlePickerNewInstrument = (role: InstrumentRole) => {
+    setPickerOpen(false);
+    setNewInstrumentDefaultRole(role);
   };
 
   const stride = RATE_STRIDE[track.rate];
@@ -149,70 +121,27 @@ export function Track({ track }: { track: TrackData }) {
     <div className="flex items-center justify-between" style={{ gap: STEP_SIZE }}>
       <div className="flex items-center gap-3">
       <div className="flex items-center gap-2">
-        <select
-          value={sourceValue}
-          onChange={(e) => handleSourceChange(e.target.value)}
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
           style={{ height: STEP_SIZE }}
-          className="select-chevron w-[114px] bg-transparent border border-white/15 text-[11px] uppercase tracking-widest text-white pl-3 focus:outline-none focus:border-white"
-          title="source"
+          className="w-[114px] bg-transparent border border-white/15 text-[11px] uppercase tracking-widest text-white px-3 text-left truncate hover:border-white focus:outline-none focus:border-white transition-colors"
+          title={
+            track.source.kind === 'empty'
+              ? 'pick a source — voice or midi instrument'
+              : `source: ${sourceLabel(track.source)} (click to change)`
+          }
         >
-          <option value="empty" className="bg-[#050505]">—</option>
-          <optgroup label="samples" className="bg-[#050505]">
-            {sampleVoices.map((v) => (
-              <option key={v.id} value={`voice:${v.id}`} className="bg-[#050505]">
-                {v.label}
-              </option>
-            ))}
-          </optgroup>
-          {isDrumSection && (
-            <optgroup label="drum" className="bg-[#050505]">
-              {drumInstruments.map((i) => (
-                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
-                  {i.label}
-                </option>
-              ))}
-              <option value="new-instrument:drum" className="bg-[#050505]">
-                + new instrument
-              </option>
-            </optgroup>
-          )}
-          {!isDrumSection && (
-            <optgroup label="lead" className="bg-[#050505]">
-              {leadInstruments.map((i) => (
-                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
-                  {i.label}
-                </option>
-              ))}
-              <option value="new-instrument:lead" className="bg-[#050505]">
-                + new instrument
-              </option>
-            </optgroup>
-          )}
-          {!isDrumSection && (
-            <optgroup label="bass" className="bg-[#050505]">
-              {bassInstruments.map((i) => (
-                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
-                  {i.label}
-                </option>
-              ))}
-              <option value="new-instrument:bass" className="bg-[#050505]">
-                + new instrument
-              </option>
-            </optgroup>
-          )}
-          {!isDrumSection && (
-            <optgroup label="pad" className="bg-[#050505]">
-              {padInstruments.map((i) => (
-                <option key={i.id} value={`instrument:${i.id}`} className="bg-[#050505]">
-                  {i.label}
-                </option>
-              ))}
-              <option value="new-instrument:pad" className="bg-[#050505]">
-                + new instrument
-              </option>
-            </optgroup>
-          )}
-        </select>
+          {track.source.kind === 'empty' ? '—' : sourceLabel(track.source)}
+        </button>
+        <VoicePickerDialog
+          open={pickerOpen}
+          section={track.section}
+          source={track.source}
+          onPick={handlePickerSelect}
+          onNewInstrument={handlePickerNewInstrument}
+          onCancel={() => setPickerOpen(false)}
+        />
         <NewInstrumentDialog
           open={newInstrumentDefaultRole !== null}
           defaultRole={newInstrumentDefaultRole ?? 'lead'}

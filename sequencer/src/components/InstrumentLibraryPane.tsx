@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Instrument, InstrumentRole } from '../instruments/library';
 import { useUserInstrumentsStore } from '../instruments/userInstrumentsStore';
 import { NewInstrumentDialog } from './NewInstrumentDialog';
@@ -34,6 +34,22 @@ export function InstrumentLibraryPane() {
   const [editing, setEditing] = useState<Instrument | null>(null);
   const [creatingRole, setCreatingRole] = useState<InstrumentRole | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState('');
+  // Per-role collapsed state. All roles default-expanded — this pane is the
+  // place users come to *act*, not browse, so hiding rows by default would
+  // add a click before getting to work. Header click toggles.
+  const [collapsed, setCollapsed] = useState<Record<InstrumentRole, boolean>>({
+    lead: false,
+    bass: false,
+    pad: false,
+    drum: false,
+  });
+
+  // Reset search whenever the dialog containing this pane opens/closes —
+  // SettingsDialog mounts/unmounts us on open. Mount-time effect.
+  useEffect(() => {
+    setSearch('');
+  }, []);
 
   const handleDelete = (inst: Instrument) => {
     if (window.confirm(`delete "${inst.label}"?`)) {
@@ -60,16 +76,33 @@ export function InstrumentLibraryPane() {
     }
   };
 
+  const q = search.trim().toLowerCase();
+  const matches = (inst: Instrument): boolean => {
+    if (!q) return true;
+    const hay = `${inst.label} ${inst.role} ${inst.portName ?? ''} ch${inst.channel + 1} ${
+      inst.program ?? ''
+    }`.toLowerCase();
+    return hay.includes(q);
+  };
+
   const grouped: Record<InstrumentRole, Instrument[]> = {
     lead: [],
     bass: [],
     pad: [],
     drum: [],
   };
-  for (const inst of Object.values(userInstruments)) grouped[inst.role].push(inst);
+  for (const inst of Object.values(userInstruments)) {
+    if (matches(inst)) grouped[inst.role].push(inst);
+  }
 
   const total = Object.values(userInstruments).length;
+  const totalVisible = Object.values(grouped).reduce((n, list) => n + list.length, 0);
   const hasAny = total > 0;
+  const searchActive = q.length > 0;
+
+  const toggleRole = (role: InstrumentRole) => {
+    setCollapsed((prev) => ({ ...prev, [role]: !prev[role] }));
+  };
 
   return (
     <div className="flex flex-col">
@@ -103,7 +136,9 @@ export function InstrumentLibraryPane() {
           import
         </button>
         <span className="ml-auto text-white/55 text-[11px] normal-case tracking-normal">
-          {total} {total === 1 ? 'instrument' : 'instruments'}
+          {searchActive
+            ? `${totalVisible} / ${total}`
+            : `${total} ${total === 1 ? 'instrument' : 'instruments'}`}
         </span>
         <input
           ref={importRef}
@@ -117,29 +152,54 @@ export function InstrumentLibraryPane() {
         />
       </div>
 
+      {hasAny && (
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="search…"
+          className="mb-3 bg-transparent border border-white/15 px-3 py-1.5 text-[12px] normal-case tracking-normal text-white focus:outline-none focus:border-white"
+        />
+      )}
+
       <div className="normal-case tracking-normal">
         {!hasAny && (
           <div className="text-white/40 text-[12px] py-6 text-center">
             no saved instruments yet — click "+ new" or import a file
           </div>
         )}
+        {hasAny && totalVisible === 0 && (
+          <div className="text-white/40 text-[12px] py-6 text-center">no matches</div>
+        )}
         {ROLE_ORDER.map((role) => {
           const items = grouped[role];
           if (items.length === 0) return null;
+          // Search active → ignore collapsed state so hits are visible
+          // without an extra click.
+          const isCollapsed = !searchActive && collapsed[role];
           return (
-            <div key={role} className="mb-4">
-              <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1.5">
-                {role}
-              </div>
-              {items.map((inst) => (
-                <Row
-                  key={inst.id}
-                  inst={inst}
-                  onEdit={() => setEditing(inst)}
-                  onExport={() => handleExportOne(inst)}
-                  onDelete={() => handleDelete(inst)}
-                />
-              ))}
+            <div key={role} className="mb-2">
+              <button
+                type="button"
+                onClick={() => toggleRole(role)}
+                className="flex items-center gap-2 w-full text-left text-[10px] uppercase tracking-widest text-white/40 hover:text-white/80 transition-colors py-1"
+              >
+                <span className="inline-block w-3 text-white/50">
+                  {isCollapsed ? '▸' : '▾'}
+                </span>
+                <span>{role}</span>
+                <span className="text-white/25 tabular-nums">{items.length}</span>
+              </button>
+              {!isCollapsed &&
+                items.map((inst) => (
+                  <Row
+                    key={inst.id}
+                    inst={inst}
+                    onEdit={() => setEditing(inst)}
+                    onExport={() => handleExportOne(inst)}
+                    onDelete={() => handleDelete(inst)}
+                  />
+                ))}
             </div>
           );
         })}
