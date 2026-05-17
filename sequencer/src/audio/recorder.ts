@@ -37,7 +37,17 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 
 const WORKLET_NAME = 'recorder-processor';
 const TAP_RAMP_S = 0.02;
-const TAIL_CAPTURE_MS = 250;
+// Tail capture is silence-detected, not fixed: after `stop`, keep recording
+// until the worklet output stays below TAIL_SILENCE_PEAK for TAIL_SILENCE_MS
+// continuously (reverbs / sample tails / glitch fires all flush out). A hard
+// cap of TAIL_MAX_MS guards against a stuck noise floor never crossing the
+// threshold. A short LEAD_MS is enforced before silence-watch arms so the
+// audio graph has time to settle past `stop` (avoids a one-quantum-of-zeros
+// glitch finalizing instantly when the bus is momentarily empty).
+const TAIL_SILENCE_PEAK = 0.001; // ~-60 dBFS
+const TAIL_SILENCE_MS = 500;
+const TAIL_LEAD_MS = 80;
+const TAIL_MAX_MS = 15000;
 const TAURI_BATCH_QUANTA = 96; // ~256 ms at 48 kHz, 128-sample quanta
 
 const TAURI = isTauri();
@@ -56,12 +66,19 @@ export function setConfiguredRecordingsDir(dir: string | null): void {
   else localStorage.removeItem(LS_RECORDINGS_DIR);
 }
 
+interface TailWatch {
+  silentFrames: number;
+  totalFrames: number;
+  onComplete: () => void;
+}
+
 interface RecorderInstance {
   worklet: AudioWorkletNode;
   chunksL: Float32Array[];
   chunksR: Float32Array[];
   recording: boolean;
   filename: string;
+  tailWatch: TailWatch | null;
   // Tauri streaming state — null in browser mode.
   tauriFilename: string | null;
   tauriPendingL: Float32Array[];
@@ -97,6 +114,7 @@ function buildInstance(ctx: AudioContext): RecorderInstance {
     chunksR: [],
     recording: false,
     filename: '',
+    tailWatch: null,
     tauriFilename: null,
     tauriPendingL: [],
     tauriPendingR: [],
@@ -118,8 +136,50 @@ function buildInstance(ctx: AudioContext): RecorderInstance {
       instance.chunksL.push(left);
       if (right) instance.chunksR.push(right);
     }
+    if (instance.tailWatch) updateTailWatch(instance, left, right);
   };
   return instance;
+}
+
+function chunkPeak(left: Float32Array, right: Float32Array | undefined): number {
+  let peak = 0;
+  for (let i = 0; i < left.length; i++) {
+    const a = left[i] < 0 ? -left[i] : left[i];
+    if (a > peak) peak = a;
+  }
+  if (right && right !== left) {
+    for (let i = 0; i < right.length; i++) {
+      const a = right[i] < 0 ? -right[i] : right[i];
+      if (a > peak) peak = a;
+    }
+  }
+  return peak;
+}
+
+function updateTailWatch(
+  instance: RecorderInstance,
+  left: Float32Array,
+  right: Float32Array | undefined,
+): void {
+  const w = instance.tailWatch;
+  if (!w) return;
+  const frames = left.length;
+  w.totalFrames += frames;
+  const leadFrames = (TAIL_LEAD_MS / 1000) * captureSampleRate;
+  const silenceFrames = (TAIL_SILENCE_MS / 1000) * captureSampleRate;
+  const maxFrames = (TAIL_MAX_MS / 1000) * captureSampleRate;
+  if (w.totalFrames < leadFrames) return;
+  const peak = chunkPeak(left, right);
+  if (peak < TAIL_SILENCE_PEAK) {
+    w.silentFrames += frames;
+  } else {
+    w.silentFrames = 0;
+  }
+  if (w.silentFrames >= silenceFrames || w.totalFrames >= maxFrames) {
+    const cb = w.onComplete;
+    instance.tailWatch = null;
+    cb();
+  }
 }
 
 function floatStereoToInt16Bytes(left: Float32Array, right: Float32Array): Uint8Array {
@@ -200,6 +260,7 @@ export function isRecording(): boolean {
 async function startInstance(instance: RecorderInstance, filename: string): Promise<void> {
   instance.chunksL = [];
   instance.chunksR = [];
+  instance.tailWatch = null;
   instance.tauriPendingL = [];
   instance.tauriPendingR = [];
   instance.tauriPendingFrames = 0;
@@ -298,6 +359,13 @@ export function subscribeRecorder(): void {
         clearTimeout(pendingFinalize);
         pendingFinalize = null;
       }
+      // Clear stale tail watchers from a prior take. startInstance clears
+      // tailWatch on instances it restarts, but a mode change (e.g., stems
+      // → combined re-arm) wouldn't restart rhythm/melody, leaving their
+      // watchers alive to finalize the new take prematurely.
+      if (combined) combined.tailWatch = null;
+      if (rhythm) rhythm.tailWatch = null;
+      if (melody) melody.tailWatch = null;
       // Snapshot the mode at take start. A mid-take stems toggle won't
       // re-route in flight — what you armed is what you finalize.
       currentTakeMode = state.stems ? 'stems' : 'combined';
@@ -310,10 +378,44 @@ export function subscribeRecorder(): void {
       }
     } else {
       const mode = currentTakeMode;
-      pendingFinalize = window.setTimeout(() => {
-        pendingFinalize = null;
+      const instances: RecorderInstance[] = [];
+      if (mode === 'stems') {
+        if (rhythm && rhythm.recording) instances.push(rhythm);
+        if (melody && melody.recording) instances.push(melody);
+      } else if (combined && combined.recording) {
+        instances.push(combined);
+      }
+      if (instances.length === 0) {
         void finalizeTake(mode);
-      }, TAIL_CAPTURE_MS);
+        return;
+      }
+      // Tail-aware finalize: each active instance gets a silence watcher on
+      // its worklet chunks. Finalize fires once every instance has either
+      // observed continuous silence past TAIL_SILENCE_MS or hit the cap. A
+      // setTimeout backstop catches the impossible case of chunks not
+      // arriving (worklet stalled, audio context suspended mid-take).
+      let finalized = false;
+      let pending = instances.length;
+      const doFinalize = () => {
+        if (finalized) return;
+        finalized = true;
+        if (pendingFinalize !== null) {
+          clearTimeout(pendingFinalize);
+          pendingFinalize = null;
+        }
+        for (const ins of instances) ins.tailWatch = null;
+        void finalizeTake(mode);
+      };
+      pendingFinalize = window.setTimeout(doFinalize, TAIL_MAX_MS + 1000);
+      for (const ins of instances) {
+        ins.tailWatch = {
+          silentFrames: 0,
+          totalFrames: 0,
+          onComplete: () => {
+            if (--pending === 0) doFinalize();
+          },
+        };
+      }
     }
   });
 }
