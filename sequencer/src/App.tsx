@@ -143,6 +143,13 @@ export function App() {
       'instruments/soft_piano',
       'instruments/tape_piano',
       'instruments/under_piano',
+      'instruments/broken',
+      'instruments/dark-omen',
+      'instruments/dreams',
+      'instruments/grind',
+      'instruments/haunted',
+      'instruments/invasion',
+      'instruments/sample-and-hold',
     ];
     for (const kitPath of kits) {
       const baseUrl = `${import.meta.env.BASE_URL}samples/${kitPath}`;

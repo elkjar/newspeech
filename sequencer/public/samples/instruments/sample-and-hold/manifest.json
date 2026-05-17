@@ -1,0 +1,26 @@
+{
+  "name": "sample-and-hold",
+  "voices": {
+    "sample-and-hold": {
+      "gain": 0.7,
+      "roots": [
+    { "midi": 24, "files": ["sample-and-hold-C1.wav"] },
+    { "midi": 28, "files": ["sample-and-hold-E1.wav"] },
+    { "midi": 32, "files": ["sample-and-hold-Gs1.wav"] },
+    { "midi": 36, "files": ["sample-and-hold-C2.wav"] },
+    { "midi": 40, "files": ["sample-and-hold-E2.wav"] },
+    { "midi": 44, "files": ["sample-and-hold-Gs2.wav"] },
+    { "midi": 48, "files": ["sample-and-hold-C3.wav"] },
+    { "midi": 52, "files": ["sample-and-hold-E3.wav"] },
+    { "midi": 56, "files": ["sample-and-hold-Gs3.wav"] },
+    { "midi": 60, "files": ["sample-and-hold-C4.wav"] },
+    { "midi": 64, "files": ["sample-and-hold-E4.wav"] },
+    { "midi": 68, "files": ["sample-and-hold-Gs4.wav"] },
+    { "midi": 72, "files": ["sample-and-hold-C5.wav"] },
+    { "midi": 76, "files": ["sample-and-hold-E5.wav"] },
+    { "midi": 80, "files": ["sample-and-hold-Gs5.wav"] },
+    { "midi": 84, "files": ["sample-and-hold-C6.wav"] }
+    ]
+    }
+  }
+}

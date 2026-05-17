@@ -113,6 +113,13 @@ const INTERNAL_VOICE_IDS = new Set([
   'encounter',
   'mini-moog',
   'pulsed',
+  'broken',
+  'dark-omen',
+  'dreams',
+  'grind',
+  'haunted',
+  'invasion',
+  'sample-and-hold',
 ]);
 // migrate renamed voice ids when hydrating older `.seq` files. `pad` was
 // retired 2026-05-11 when the chord-master role became positional (row 1)

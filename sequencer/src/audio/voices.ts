@@ -226,6 +226,13 @@ export const VOICES: VoiceDef[] = [
   { id: 'soft-piano', label: 'soft piano', category: 'melodic' },
   { id: 'tape-piano', label: 'tape piano', category: 'melodic' },
   { id: 'under-piano', label: 'under piano', category: 'melodic' },
+  { id: 'broken', label: 'broken', category: 'melodic' },
+  { id: 'dark-omen', label: 'dark omen', category: 'melodic' },
+  { id: 'dreams', label: 'dreams', category: 'melodic' },
+  { id: 'grind', label: 'grind', category: 'melodic' },
+  { id: 'haunted', label: 'haunted', category: 'melodic' },
+  { id: 'invasion', label: 'invasion', category: 'melodic' },
+  { id: 'sample-and-hold', label: 'sample and hold', category: 'melodic' },
   {
     id: 'mini-moog',
     label: 'mini moog',

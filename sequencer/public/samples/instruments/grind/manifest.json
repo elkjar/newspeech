@@ -1,0 +1,26 @@
+{
+  "name": "grind",
+  "voices": {
+    "grind": {
+      "gain": 0.7,
+      "roots": [
+    { "midi": 24, "files": ["grind-C1.wav"] },
+    { "midi": 28, "files": ["grind-E1.wav"] },
+    { "midi": 32, "files": ["grind-Gs1.wav"] },
+    { "midi": 36, "files": ["grind-C2.wav"] },
+    { "midi": 40, "files": ["grind-E2.wav"] },
+    { "midi": 44, "files": ["grind-Gs2.wav"] },
+    { "midi": 48, "files": ["grind-C3.wav"] },
+    { "midi": 52, "files": ["grind-E3.wav"] },
+    { "midi": 56, "files": ["grind-Gs3.wav"] },
+    { "midi": 60, "files": ["grind-C4.wav"] },
+    { "midi": 64, "files": ["grind-E4.wav"] },
+    { "midi": 68, "files": ["grind-Gs4.wav"] },
+    { "midi": 72, "files": ["grind-C5.wav"] },
+    { "midi": 76, "files": ["grind-E5.wav"] },
+    { "midi": 80, "files": ["grind-Gs5.wav"] },
+    { "midi": 84, "files": ["grind-C6.wav"] }
+    ]
+    }
+  }
+}

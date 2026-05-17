@@ -1,0 +1,26 @@
+{
+  "name": "dark-omen",
+  "voices": {
+    "dark-omen": {
+      "gain": 0.7,
+      "roots": [
+    { "midi": 24, "files": ["dark-omen-C1.wav"] },
+    { "midi": 28, "files": ["dark-omen-E1.wav"] },
+    { "midi": 32, "files": ["dark-omen-Gs1.wav"] },
+    { "midi": 36, "files": ["dark-omen-C2.wav"] },
+    { "midi": 40, "files": ["dark-omen-E2.wav"] },
+    { "midi": 44, "files": ["dark-omen-Gs2.wav"] },
+    { "midi": 48, "files": ["dark-omen-C3.wav"] },
+    { "midi": 52, "files": ["dark-omen-E3.wav"] },
+    { "midi": 56, "files": ["dark-omen-Gs3.wav"] },
+    { "midi": 60, "files": ["dark-omen-C4.wav"] },
+    { "midi": 64, "files": ["dark-omen-E4.wav"] },
+    { "midi": 68, "files": ["dark-omen-Gs4.wav"] },
+    { "midi": 72, "files": ["dark-omen-C5.wav"] },
+    { "midi": 76, "files": ["dark-omen-E5.wav"] },
+    { "midi": 80, "files": ["dark-omen-Gs5.wav"] },
+    { "midi": 84, "files": ["dark-omen-C6.wav"] }
+    ]
+    }
+  }
+}
