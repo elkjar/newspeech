@@ -93,32 +93,44 @@ pub fn list_sample_kits(dir: String) -> Result<Vec<SampleKitEntry>, String> {
     Ok(entries)
 }
 
-// Parses `<anything>(-|_)<note><octave>.wav` (note ∈ C..B, optionally
-// followed by `s` for sharp or `b` for flat; octave is decimal digits) and
-// returns the resulting MIDI note number. Convention: C4 = 60 (middle C),
-// so midi = (octave + 1) * 12 + noteIndex.
+// Audio file extensions we recognize. Lowercased comparison.
+const AUDIO_EXTS: [&str; 3] = [".wav", ".aif", ".aiff"];
+
+// MIDI numbers below this threshold won't be interpreted from bare-number
+// suffixes like `kick-1.wav`. Below A0 (21) is implausibly low for a
+// musical root, and small numbers are almost always round-robin indices.
+const MIDI_NUMBER_FLOOR: u8 = 21;
+
+fn audio_extension_len(name_lower: &str) -> Option<usize> {
+    for ext in AUDIO_EXTS {
+        if name_lower.ends_with(ext) {
+            return Some(name_lower.len() - ext.len());
+        }
+    }
+    None
+}
+
+// Parses the filename suffix as a MIDI root note. Accepts:
+//   * `<name>(-|_)<letter>[s|b|#]<octave>.<ext>` — note letter style, e.g.
+//     `dreams-C2.wav`, `dreams-Cs2.wav`, `dreams-C#2.wav`, `dreams-Db2.wav`,
+//     `dreams_c2.wav` (case-insensitive).
+//   * `<name>(-|_)<midi>.<ext>` — bare MIDI number ≥ MIDI_NUMBER_FLOOR,
+//     e.g. `bass-60.wav`.
+// Returns None if no recognizable suffix is present (caller treats this
+// as either "ignore" or "flat voice candidate" depending on context).
 fn parse_root_from_filename(name: &str) -> Option<u8> {
     let lower = name.to_ascii_lowercase();
-    let trimmed = if let Some(t) = lower.strip_suffix(".wav") {
-        // preserve the case of the original for indexing back
-        &name[..t.len()]
-    } else if let Some(t) = lower.strip_suffix(".aif") {
-        &name[..t.len()]
-    } else if let Some(t) = lower.strip_suffix(".aiff") {
-        &name[..t.len()]
-    } else {
-        return None;
-    };
-    // The voice name itself can contain hyphens (e.g. `dark-omen-C1.wav`),
-    // so we can't just split on the first separator. Walk back from the end
-    // until we find a separator whose suffix parses as <note><octave>.
+    let stem_end = audio_extension_len(&lower)?;
+    let trimmed = &name[..stem_end];
+    // Voice names can contain hyphens (`dark-omen-C1.wav`); walk back from
+    // the end until we find a separator whose suffix parses as a root.
     let bytes = trimmed.as_bytes();
     let mut i = bytes.len();
     while i > 0 {
         let c = bytes[i - 1];
         if c == b'-' || c == b'_' {
             let candidate = &trimmed[i..];
-            if let Some(midi) = parse_note_octave(candidate) {
+            if let Some(midi) = parse_note_suffix(candidate) {
                 return Some(midi);
             }
         }
@@ -127,18 +139,55 @@ fn parse_root_from_filename(name: &str) -> Option<u8> {
     None
 }
 
-fn parse_note_octave(s: &str) -> Option<u8> {
+fn parse_note_suffix(s: &str) -> Option<u8> {
     if s.is_empty() {
         return None;
     }
+    // Try bare MIDI number first — short-circuits if the suffix is all
+    // digits. Only accepts values >= MIDI_NUMBER_FLOOR so round-robin
+    // indices like `-1.wav` / `-9.wav` aren't misinterpreted as roots.
+    if let Ok(n) = s.parse::<i32>() {
+        if (MIDI_NUMBER_FLOOR as i32..=127).contains(&n) {
+            return Some(n as u8);
+        }
+        return None;
+    }
+    // Note letter + optional accidental + octave.
     let bytes = s.as_bytes();
-    // Letter is 1..2 chars; octave is the rest (must be digits).
-    let (letter, rest) = if bytes.len() >= 2 && (bytes[1] == b's' || bytes[1] == b'b' || bytes[1] == b'S' || bytes[1] == b'B') {
-        (&s[0..2], &s[2..])
+    let first = bytes[0].to_ascii_uppercase();
+    // Letter is 1..2 chars; check whether byte[1] is an accidental marker
+    // (s/S for sharp, b/B for flat, # for sharp).
+    let (letter, rest) = if bytes.len() >= 2 {
+        let second = bytes[1];
+        let is_accidental = matches!(second, b's' | b'S' | b'b' | b'B' | b'#');
+        if is_accidental {
+            (
+                {
+                    // Normalize accidental marker: '#' and 's' both → 's'
+                    let mut buf = [0u8; 2];
+                    buf[0] = first;
+                    buf[1] = match second {
+                        b'#' | b's' | b'S' => b'S',
+                        b'b' | b'B' => b'B',
+                        _ => second,
+                    };
+                    std::str::from_utf8(&buf).ok().map(str::to_string).unwrap_or_default()
+                },
+                &s[2..],
+            )
+        } else {
+            (
+                std::str::from_utf8(&[first]).ok().map(str::to_string).unwrap_or_default(),
+                &s[1..],
+            )
+        }
     } else {
-        (&s[0..1], &s[1..])
+        (
+            std::str::from_utf8(&[first]).ok().map(str::to_string).unwrap_or_default(),
+            "",
+        )
     };
-    let note_idx: i32 = match letter.to_ascii_uppercase().as_str() {
+    let note_idx: i32 = match letter.as_str() {
         "C" => 0,
         "CS" | "DB" => 1,
         "D" => 2,
@@ -162,38 +211,61 @@ fn parse_note_octave(s: &str) -> Option<u8> {
 }
 
 fn synthesize_manifest_from_folder(kit_dir: &Path, kit_name: &str) -> Option<String> {
+    // Two-pass scan: collect every audio file, plus the subset that parses
+    // as a rooted sample.
+    //   * Any rooted files present → multi-sampled voice with roots (any
+    //     remaining unrooted files are dropped, treated as noise).
+    //   * No rooted files but at least one audio file → flat voice with all
+    //     files as round-robin layers (no pitch shifting on trigger).
+    //   * Empty / no audio → None (skip the folder).
+    let mut audio_files: Vec<String> = Vec::new();
     let mut roots: BTreeMap<u8, Vec<String>> = BTreeMap::new();
     for entry in fs::read_dir(kit_dir).ok()?.flatten() {
         if !entry.path().is_file() {
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
+        let lower = name.to_ascii_lowercase();
+        if audio_extension_len(&lower).is_none() {
+            continue;
+        }
+        audio_files.push(name.clone());
         if let Some(midi) = parse_root_from_filename(&name) {
             roots.entry(midi).or_default().push(name);
         }
     }
-    if roots.is_empty() {
+    if audio_files.is_empty() {
         return None;
     }
-    // Round-robin file lists sort deterministically so the playback order
-    // doesn't shuffle between launches.
-    for files in roots.values_mut() {
-        files.sort();
-    }
+    audio_files.sort();
     let label = kit_name.replace(['-', '_'], " ");
-    let roots_json: Vec<_> = roots
-        .into_iter()
-        .map(|(midi, files)| json!({ "midi": midi, "files": files }))
-        .collect();
+    let voice_body = if !roots.is_empty() {
+        // Sort each root's round-robin file list for deterministic order.
+        for files in roots.values_mut() {
+            files.sort();
+        }
+        let roots_json: Vec<_> = roots
+            .into_iter()
+            .map(|(midi, files)| json!({ "midi": midi, "files": files }))
+            .collect();
+        json!({
+            "label": label,
+            "gain": 0.7,
+            "roots": roots_json,
+        })
+    } else {
+        // Flat voice: no root → samplePlayer skips pitch-shift, just plays
+        // the file at original rate. Use the existing `files` field
+        // (rather than `roots`) to opt into the rootless code path.
+        json!({
+            "label": label,
+            "gain": 0.7,
+            "files": audio_files,
+        })
+    };
     let manifest = json!({
         "name": kit_name,
-        "voices": {
-            kit_name: {
-                "label": label,
-                "gain": 0.7,
-                "roots": roots_json,
-            }
-        }
+        "voices": { kit_name: voice_body }
     });
     serde_json::to_string(&manifest).ok()
 }
