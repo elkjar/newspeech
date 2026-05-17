@@ -290,7 +290,9 @@ export function Track({ track }: { track: TrackData }) {
       <div className="flex" style={{ gap: `${STEP_GAP}px` }}>
         {Array.from({ length: NUM_PAGES }, (_, p) => {
           const reachable = p * PAGE_SIZE < track.length;
-          const isActive = p === viewPage;
+          const brightPage = playing ? playingPage : viewPage;
+          const isBright = p === brightPage;
+          const isViewMarker = playing && p === viewPage && viewPage !== playingPage;
           return (
             <button
               key={p}
@@ -298,11 +300,13 @@ export function Track({ track }: { track: TrackData }) {
               disabled={!reachable}
               style={{ width: STEP_SIZE, height: STEP_SIZE }}
               className={
-                isActive
+                isBright
                   ? 'bg-white'
-                  : reachable
-                    ? 'bg-white/25 hover:bg-white/50 transition-colors'
-                    : 'bg-white/[0.05] cursor-not-allowed'
+                  : isViewMarker
+                    ? 'bg-white/50 hover:bg-white/70 transition-colors'
+                    : reachable
+                      ? 'bg-white/25 hover:bg-white/50 transition-colors'
+                      : 'bg-white/[0.05] cursor-not-allowed'
               }
               title={`page ${p + 1}`}
             />
