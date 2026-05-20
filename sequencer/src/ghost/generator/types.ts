@@ -42,7 +42,7 @@ export const GEN_MOVE_LABELS: Record<GenMove, string> = {
   'compose-driving': 'driving',
 };
 
-// Per-recipe natural dwell ranges (bars). The conductor reads these from
+// Per-recipe natural dwell ranges (bars). The ghost reads these from
 // the currently-active bank's `recipe` field to override the global
 // sceneGraph min/max. Each recipe has a musical-natural duration:
 //   - build / hits: punctuation moments — loop once or twice max

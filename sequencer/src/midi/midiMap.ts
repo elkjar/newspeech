@@ -53,7 +53,7 @@ export type MidiTarget =
   | 'transport:play'
   | 'transport:freeze'
   | 'transport:tap-tempo'
-  | 'transport:conductor';
+  | 'transport:ghost';
 
 export interface MidiBinding {
   ch: number;
@@ -294,7 +294,7 @@ function dispatchTarget(target: string, value01: number): void {
     tapTempo();
     return;
   }
-  if (target === 'transport:conductor') {
+  if (target === 'transport:ghost') {
     s.setSceneGraphEnabled(!s.sceneGraph.enabled);
     return;
   }
@@ -307,7 +307,7 @@ export function isValidTarget(t: string): boolean {
     t === 'transport:play' ||
     t === 'transport:freeze' ||
     t === 'transport:tap-tempo' ||
-    t === 'transport:conductor'
+    t === 'transport:ghost'
   ) {
     return true;
   }

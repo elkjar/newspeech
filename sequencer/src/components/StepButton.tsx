@@ -312,7 +312,7 @@ export function StepButton({
       onMouseEnter={handleMouseEnter}
       onClick={handleClick}
       aria-label={`step ${index + 1}`}
-      className="relative overflow-hidden flex items-center justify-center transition-shadow"
+      className="step-button relative overflow-hidden flex items-center justify-center transition-shadow focus:outline-none"
       style={{
         width: size,
         height: size,

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { PlayButton, RecordButton, CountInButton, RawRecordButton, StemsButton, AudioOutSelector, TransportControls, InitButton } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, RawRecordButton, SplitsButton, MultitrackButton, AudioOutSelector, TransportControls, InitButton } from './components/Transport';
 import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TrackGrid } from './components/TrackGrid';
 import { StepInspector } from './components/StepInspector';
 import { LFOPanel } from './components/LFOPanel';
 import { MacroStrip } from './components/MacroStrip';
+import { GhostDebug } from './components/GhostDebug';
+import { Toasts } from './components/Toasts';
 import { BankPad } from './components/BankPad';
-import { ConductorPanel } from './components/ConductorPanel';
+import { GhostPanel } from './components/GhostPanel';
 import { FXPanel } from './components/FXPanel';
 import { Scope } from './components/Scope';
 import {
@@ -34,11 +36,11 @@ import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
 import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMotion';
 import { togglePlayback } from './audio/transport';
 import {
-  initConductor,
-  tickBar as conductorTickBar,
-  beforeBarCommit as conductorBeforeBarCommit,
-} from './conductor/conductor';
-import { autoSeedBanks } from './conductor/generator';
+  initGhost,
+  tickBar as ghostTickBar,
+  beforeBarCommit as ghostBeforeBarCommit,
+} from './ghost/ghost';
+import { autoSeedBanks } from './ghost/generator';
 import { isTauri } from '@tauri-apps/api/core';
 
 const NATIVE = isTauri();
@@ -112,7 +114,7 @@ export function App() {
   useEffect(() => {
     if (NATIVE) document.body.classList.add('tauri-native');
     initMIDIOut();
-    initConductor();
+    initGhost();
     void initAudioOutputs();
     // Auto-seed banks on every load — wipes scene banks and fills slots
     // 0-9 with one of each recipe in song-arc order. User's track voices
@@ -173,19 +175,19 @@ export function App() {
     return scheduler.onStep((globalStep, when, stepDuration) => {
       // Bar boundary at 4/4 32nd resolution = every 32 global steps. A queued
       // pattern recall commits here, before we read `tracks` for this tick,
-      // so the swap is atomic from the dispatch's point of view. Conductor
+      // so the swap is atomic from the dispatch's point of view. Ghost
       // ordering: beforeBarCommit snapshots current macros as lerp source
       // BEFORE commit overwrites them; tickBar runs AFTER commit so it sees
       // the just-swapped activeBank as the lerp target.
       if (globalStep % 32 === 0) {
-        conductorBeforeBarCommit();
+        ghostBeforeBarCommit();
         // Pass the scheduler's globalStep so applyBankSlot's sceneStartStep
         // matches the SCHEDULED step (not the lagging audible step in the
         // store). Without this, sceneStep = scheduled - audible-stale ≠ 0,
         // and chord master / bass step 0 land at non-zero localStep — the
         // "dropping beat 1" symptom.
         useSequencerStore.getState().commitPendingBank(globalStep);
-        conductorTickBar(globalStep);
+        ghostTickBar(globalStep);
       }
       const state = useSequencerStore.getState();
       // Harmonic motion is a cross-tick state machine — owned by the
@@ -243,21 +245,59 @@ export function App() {
             }
             break;
           }
-          case 'sample':
-            samplePlayer.trigger(
-              ev.voice,
-              ev.when,
-              ev.velocity,
-              ev.midi,
-              ev.gate,
-              ev.stepDuration,
-              ev.voiceIntervals,
-              ev.pan,
-              ev.trackId,
-              ev.monophonic,
-              ev.section,
-            );
+          case 'sample': {
+            // Arpeggiator transformation — when on AND the trigger carries
+            // multiple chord intervals, split into N sequential single-tone
+            // triggers spread evenly across the step. Single-note triggers
+            // are passed through unchanged. v1: "up" pattern only (intervals
+            // played in their natural order); pattern/rate/range selection
+            // deferred per [[project_arp_mode]].
+            const evTrack = state.tracks.find((t) => t.id === ev.trackId);
+            const arpOn = evTrack?.arpConfig?.on === true;
+            if (arpOn && ev.voiceIntervals.length > 1) {
+              const n = ev.voiceIntervals.length;
+              // Spread arp tones across the FULL tied window — when the
+              // step is tied to followers, the arp extends through the
+              // whole chain instead of cramming all tones into the first
+              // step. Tied chains of N steps × M chord tones still play
+              // exactly M tones, each occupying (N/M) step-durations.
+              const totalDuration = ev.stepDuration * ev.tieLength;
+              const sub = totalDuration / n;
+              for (let i = 0; i < n; i++) {
+                samplePlayer.trigger(
+                  ev.voice,
+                  ev.when + i * sub,
+                  ev.velocity,
+                  ev.midi,
+                  ev.gate,
+                  sub,
+                  [ev.voiceIntervals[i]],
+                  ev.pan,
+                  ev.trackId,
+                  // Force monophonic per arp tone so each new note chokes
+                  // the previous one's natural decay. Without this, sample
+                  // releases overlap and it feels like a strum, not an arp.
+                  true,
+                  ev.section,
+                );
+              }
+            } else {
+              samplePlayer.trigger(
+                ev.voice,
+                ev.when,
+                ev.velocity,
+                ev.midi,
+                ev.gate,
+                ev.stepDuration,
+                ev.voiceIntervals,
+                ev.pan,
+                ev.trackId,
+                ev.monophonic,
+                ev.section,
+              );
+            }
             break;
+          }
         }
       }
     });
@@ -407,6 +447,7 @@ export function App() {
                 </svg>
               </button>
             </div>
+            <GhostDebug />
             <MacroStrip />
           </div>
           <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -420,7 +461,7 @@ export function App() {
           <div className="flex justify-between items-center gap-8 -my-4">
             <InitButton />
             <div className="flex items-center gap-8">
-              <ConductorPanel />
+              <GhostPanel />
               <BankPad />
             </div>
           </div>
@@ -432,7 +473,8 @@ export function App() {
                 <RecordButton />
                 <CountInButton />
                 <RawRecordButton />
-                <StemsButton />
+                <SplitsButton />
+                <MultitrackButton />
                 <AudioOutSelector />
               </div>
               <div className="flex items-center gap-4">
@@ -446,6 +488,7 @@ export function App() {
           <FXPanel />
         </div>
       </main>
+      <Toasts />
     </div>
   );
 }

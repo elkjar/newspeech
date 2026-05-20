@@ -4,15 +4,15 @@ import {
   GEN_MOVE_LABELS,
   COMPOSE_MOVES,
   type GenMove,
-} from '../conductor/generator';
+} from '../ghost/generator';
 
 const ROW_HEIGHT = 'h-[28px]';
 
-// Conductor controls — generate-bank picker only. The auto/conductor toggle
+// Ghost controls — generate-bank picker only. The auto/ghost toggle
 // lives in MacroStrip next to freeze; per-scene dwell is per-recipe (see
 // RECIPE_DWELL in generator.ts) so the prior min/max/trans inputs were
-// removed when the conductor became recipe-aware.
-export function ConductorPanel() {
+// removed when the ghost became recipe-aware.
+export function GhostPanel() {
   const [move, setMove] = useState<GenMove>('compose-sparse');
   const handleGenerate = () => {
     generateBank(move);

@@ -166,26 +166,55 @@ export function PlayButton() {
   );
 }
 
-// StemsButton — toggles split-stem recording. On = take produces two WAVs
-// (rhythm + melody). Forces sample-bus tap territory, so the `raw` toggle
-// is implicit-on while this is active. Count-in clicks land in both stems.
-export function StemsButton() {
-  const stems = useSequencerStore((s) => s.stems);
-  const toggleStems = useSequencerStore((s) => s.toggleStems);
+// SplitsButton — toggles two-WAV split recording (rhythm + melody). Forces
+// sample-bus tap territory, so the `raw` toggle is implicit-on while this
+// is active. Count-in clicks land in both files for DAW alignment.
+// Mutually exclusive with `multitrack`.
+export function SplitsButton() {
+  const splits = useSequencerStore((s) => s.splits);
+  const toggleSplits = useSequencerStore((s) => s.toggleSplits);
   return (
     <button
-      onClick={toggleStems}
+      onClick={toggleSplits}
       title={
-        stems
-          ? 'stems on — take exports rhythm + melody as separate WAVs (clicks land in both for alignment)'
-          : 'stems off — take exports a single combined WAV'
+        splits
+          ? 'splits on — take exports rhythm + melody as separate WAVs (clicks land in both for alignment)'
+          : 'splits off — take exports a single combined WAV'
       }
       className={[
         'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
-        stems ? 'text-white' : 'text-white/40 hover:text-white',
+        splits ? 'text-white' : 'text-white/40 hover:text-white',
       ].join(' ')}
     >
-      {stems ? '●' : '○'} stems
+      {splits ? '●' : '○'} splits
+    </button>
+  );
+}
+
+// MultitrackButton — toggles per-track recording. On = one WAV per audio
+// track (16+ files for the default kit), each tapped pre-FX/pre-master from
+// a dedicated per-track bus. Forces `raw` on as a UX coherence move since
+// multitrack output is always raw signal. Mutually exclusive with `splits`.
+// App-only: browser anchor-download would fire 16+ save prompts. Tauri
+// streams each file to disk directly. Returns null in browser builds.
+export function MultitrackButton() {
+  const multitrack = useSequencerStore((s) => s.multitrack);
+  const toggleMultitrack = useSequencerStore((s) => s.toggleMultitrack);
+  if (!isTauri()) return null;
+  return (
+    <button
+      onClick={toggleMultitrack}
+      title={
+        multitrack
+          ? 'multitrack on — one WAV per voice track, pre-FX/pre-master. Raw is implicit-on.'
+          : 'multitrack off — single combined WAV (or splits if enabled)'
+      }
+      className={[
+        'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
+        multitrack ? 'text-white' : 'text-white/40 hover:text-white',
+      ].join(' ')}
+    >
+      {multitrack ? '●' : '○'} multi
     </button>
   );
 }

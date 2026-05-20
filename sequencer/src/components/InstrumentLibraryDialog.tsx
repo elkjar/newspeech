@@ -154,7 +154,7 @@ export function InstrumentLibraryDialog({
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto -mx-2 px-2 normal-case tracking-normal">
+          <div className="flex-1 overflow-y-auto -mx-2 pl-2 pr-4 normal-case tracking-normal">
             {!hasAny && (
               <div className="text-white/40 text-[12px] py-6 text-center">
                 no saved instruments yet — click "+ new" or import a file

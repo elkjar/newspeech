@@ -217,7 +217,7 @@ export function resolveStepMutation(inputs: MutationInputs): StepResolution {
       .slice(0, track.length)
       .some((s) => s.on);
     if (hasAuthoredOn) {
-      const fillProb = computeFillProb(modDensity, localStep, track.length);
+      const fillProb = computeFillProb(modDensity, localStep, track.length, track.section);
       if (fillProb > 0 && Math.random() < fillProb) {
         gated = true;
       }
@@ -473,6 +473,12 @@ export type TickEvent =
       midi: number | undefined;
       gate: number;
       stepDuration: number;
+      // Tied-chain length (1 = no tie, 2+ = step + N consumed silent
+      // followers). Already folded into `gate` for the standard
+      // play-through; carried separately so the arp dispatcher can
+      // spread tones across the full tied window instead of just the
+      // first step.
+      tieLength: number;
       voiceIntervals: number[];
       pan: number;
       monophonic: boolean;
@@ -751,6 +757,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
           midi: rootMidi,
           gate: effectiveGate,
           stepDuration: rowStepDuration,
+          tieLength: ties,
           voiceIntervals,
           pan: modulated(track.pan, inputs.lfos, track.id, 'pan'),
           // Bass-by-position (melodic slot 1) is always monophonic

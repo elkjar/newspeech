@@ -313,7 +313,7 @@ export function Track({ track }: { track: TrackData }) {
                           computeThinMul(liveDensity, stepIndex, track.length)
                       )
                     : hasAuthoredOn
-                      ? 100 * computeFillProb(liveDensity, stepIndex, track.length)
+                      ? 100 * computeFillProb(liveDensity, stepIndex, track.length, track.section)
                       : 0
                 }
                 ratchet={display?.ratchet ?? 1}

@@ -156,7 +156,7 @@ export function hydrateSaturation(v: unknown): SaturationParams {
   };
 }
 
-// Conductor config. Dwell bars clamped 1..256 — enough range to span
+// Ghost config. Dwell bars clamped 1..256 — enough range to span
 // "shimmer for a couple bars" through "settle for several minutes at 120
 // bpm". transitionBars clamped 0..32 (0 = atomic snap, anything past 32
 // is musically eccentric).
@@ -174,11 +174,25 @@ export function hydrateSceneGraph(v: unknown): SceneGraphConfig {
     typeof sg.transitionBars === 'number' && Number.isFinite(sg.transitionBars)
       ? Math.max(0, Math.min(32, Math.floor(sg.transitionBars)))
       : DEFAULT_SCENE_GRAPH.transitionBars;
+  const shape =
+    sg.shape === 'sustain' ||
+    sg.shape === 'build' ||
+    sg.shape === 'arc' ||
+    sg.shape === 'wave' ||
+    sg.shape === 'decay'
+      ? sg.shape
+      : DEFAULT_SCENE_GRAPH.shape;
+  const phaseLength =
+    typeof sg.phaseLength === 'number' && Number.isFinite(sg.phaseLength)
+      ? Math.max(1, Math.min(1024, Math.floor(sg.phaseLength)))
+      : DEFAULT_SCENE_GRAPH.phaseLength;
   return {
     enabled: typeof sg.enabled === 'boolean' ? sg.enabled : DEFAULT_SCENE_GRAPH.enabled,
     minBars: Math.min(minRaw, maxRaw),
     maxBars: Math.max(minRaw, maxRaw),
     transitionBars: transRaw,
+    shape,
+    phaseLength,
   };
 }
 
@@ -293,8 +307,8 @@ export function importProject(json: string): boolean {
     selectedStep: null,
     tieAnchor: null,
     sceneGraph: hydrateSceneGraph(data.sceneGraph),
-    conductorBarsRemaining: 0,
-    conductorTargetBars: 0,
+    ghostBarsRemaining: 0,
+    ghostTargetBars: 0,
   });
   // Re-seed the chord context so followers (root-follow / chord-tone tracks)
   // have a sensible starting harmony before the chord master plays its first

@@ -46,7 +46,7 @@ const FLAVOR_VOICES = [
 //   0 kick / 1 snare / 2 hat-c / 3 hat-o / 4 cym (crash) /
 //   5 ride / 6 floortom / 7 racktom
 // Locking the layout (rather than rolling percussion picks per session)
-// lets the conductor reason about each slot SEMANTICALLY — cym is for
+// lets the ghost reason about each slot SEMANTICALLY — cym is for
 // phrase accents, ride is the ambient/sparse comp voice, toms are fill
 // accents. blck_noir voices stay available via the manual picker.
 const DRUM_BY_SLOT = [

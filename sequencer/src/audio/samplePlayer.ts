@@ -1,4 +1,4 @@
-import { getAudioContext, getMixBus, getSamplesBus, getRhythmBus, getMelodyBus } from './audioContext';
+import { getAudioContext, getMixBus, getSamplesBus, getRhythmBus, getMelodyBus, getTrackBus } from './audioContext';
 import type { TrackSection } from '../state/store';
 import { getTrackFilter } from './trackFilter';
 import { dropChordToneWeighted } from './chords';
@@ -189,16 +189,21 @@ class SamplePlayer {
     } else {
       busHead.connect(getMixBus());
     }
-    // Parallel raw-record tap, sectioned for stems output. busHead has
+    // Parallel raw-record tap, sectioned for splits output. busHead has
     // per-trigger gain + per-track pan baked in but no track filter, no FX,
     // no master — "voice as the user tuned it, minus production coloring."
     // rhythmBus / melodyBus feed samplesBus internally, so this single
-    // connect populates both the per-section stem path and the combined
+    // connect populates both the per-section split path and the combined
     // raw-sum path. None of these buses connect to destination — they're
     // recording-only taps.
     if (section === 'drum') busHead.connect(getRhythmBus());
     else if (section === 'melodic') busHead.connect(getMelodyBus());
     else busHead.connect(getSamplesBus());
+    // Per-track multitrack tap. Parallel to the section tap above — feeds a
+    // per-trackId GainNode that the recorder optionally attaches a dedicated
+    // worklet to. Lazy bus creation; idle (no consumer) unless a multitrack
+    // take is active.
+    if (trackId) busHead.connect(getTrackBus(trackId));
 
     const group = this.chokeGroups.get(voice);
     if (group) {

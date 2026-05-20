@@ -47,6 +47,15 @@ input {
   font-family: inherit;
 }
 
+/* Step button hover/focus — inset 1px ring so no outside paint = no layout
+   shift on interactive feedback. Inline `boxShadow` on current/selected
+   steps takes precedence (those have their own indicator), so this only
+   shows on idle steps. */
+.step-button:hover,
+.step-button:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;

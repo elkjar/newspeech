@@ -29,6 +29,7 @@ import {
   CHORD_MASTER_DEFAULT,
   parseChordVoicing,
 } from '../audio/chords';
+import { bankEntropyTotal } from '../ghost/entropy';
 
 const VALID_KNOBS: LFODestKnob[] = [
   'mutation',
@@ -465,17 +466,29 @@ function hydrateBankSlot(
   slotIndex: number
 ): BankSlot | null {
   if (!saved || typeof saved !== 'object') return null;
-  const obj = saved as { tracks?: unknown; macros?: unknown; kind?: unknown };
+  const obj = saved as {
+    tracks?: unknown;
+    macros?: unknown;
+    kind?: unknown;
+    recipe?: unknown;
+    entropy?: unknown;
+  };
   if (!Array.isArray(obj.tracks)) return null;
   const tracks = (obj.tracks as Array<Partial<Track>>)
     .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
     .map(hydrateTrack);
   if (tracks.length === 0) return null;
-  return {
+  const slot: BankSlot = {
     tracks,
     macros: hydrateBankMacros(obj.macros, fallbackMacros),
     kind: hydrateBankKind(obj.kind, slotIndex),
+    recipe: typeof obj.recipe === 'string' ? obj.recipe : undefined,
   };
+  slot.entropy =
+    typeof obj.entropy === 'number' && Number.isFinite(obj.entropy)
+      ? Math.max(0, Math.min(1, obj.entropy))
+      : bankEntropyTotal(slot);
+  return slot;
 }
 
 // Old .seq files have no banks field. Seed slot 0 from the loaded project

@@ -1,9 +1,11 @@
 // SampleLibraryPane — manage sample kits parallel to InstrumentLibraryPane.
 //
-// Lists every registered kit (bundled + user) grouped by source/folder, with
-// the same collapsible / searchable vibe as the voice picker. Bundled kits
-// are read-only (they ship inside the app bundle); user kits get reveal-in-
-// finder and move-to-trash actions plus a rescan/open-folder header bar.
+// Lists every registered kit (bundled + user) grouped by category, matching
+// the VoicePickerDialog's organization (drums → instruments → pads → bass →
+// textures). Bundled and user kits share each category group; the row tag
+// distinguishes them. Bundled kits are read-only (they ship inside the app
+// bundle); user kits get reveal-in-finder and move-to-trash actions plus a
+// rescan/open-folder header bar.
 
 import { useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
@@ -12,14 +14,13 @@ import { rescanAllKits, resolveUserSamplesDir } from '../instruments/userSamples
 import { type RegisteredKit } from '../instruments/manifestRegistry';
 import { ConfirmDialog } from './ConfirmDialog';
 
-type Bucket =
-  | { kind: 'bundled'; folder: 'drums' | 'instruments' | 'pads' }
-  | { kind: 'user'; folder: 'drums' | 'instruments' | 'pads' };
+type Folder = 'drums' | 'instruments' | 'pads' | 'bass' | 'textures';
+const FOLDER_ORDER: Folder[] = ['drums', 'instruments', 'pads', 'bass', 'textures'];
 
 interface KitGroup {
   key: string;
   label: string;
-  bucket: Bucket;
+  folder: Folder;
   kits: RegisteredKit[];
 }
 
@@ -33,13 +34,13 @@ function kitDisplayName(kit: RegisteredKit): string {
   return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
 }
 
-function kitFolder(kit: RegisteredKit): 'drums' | 'instruments' | 'pads' {
+function kitFolder(kit: RegisteredKit): Folder {
   const trimmed = kit.kitPath.startsWith('user/')
     ? kit.kitPath.slice('user/'.length)
     : kit.kitPath;
   const slash = trimmed.indexOf('/');
   const folder = slash >= 0 ? trimmed.slice(0, slash) : trimmed;
-  if (folder === 'drums' || folder === 'instruments' || folder === 'pads') return folder;
+  if ((FOLDER_ORDER as readonly string[]).includes(folder)) return folder as Folder;
   return 'instruments';
 }
 
@@ -49,22 +50,18 @@ function voiceCount(kit: RegisteredKit): number {
 
 function buildGroups(allKits: readonly RegisteredKit[]): KitGroup[] {
   const out: KitGroup[] = [];
-  const sources: Array<'bundled' | 'user'> = ['bundled', 'user'];
-  const folders: Array<'drums' | 'instruments' | 'pads'> = ['drums', 'instruments', 'pads'];
-  for (const src of sources) {
-    for (const folder of folders) {
-      const kits = allKits
-        .filter((k) => k.source === src && kitFolder(k) === folder)
-        .slice()
-        .sort((a, b) => a.kitPath.localeCompare(b.kitPath));
-      if (kits.length === 0) continue;
-      out.push({
-        key: `${src}-${folder}`,
-        label: `${src} / ${folder}`,
-        bucket: { kind: src, folder } as Bucket,
-        kits,
-      });
-    }
+  for (const folder of FOLDER_ORDER) {
+    const kits = allKits
+      .filter((k) => kitFolder(k) === folder)
+      .slice()
+      .sort((a, b) => a.kitPath.localeCompare(b.kitPath));
+    if (kits.length === 0) continue;
+    out.push({
+      key: folder,
+      label: folder,
+      folder,
+      kits,
+    });
   }
   return out;
 }

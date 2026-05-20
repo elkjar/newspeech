@@ -19,6 +19,13 @@ function isObject(x: unknown): x is Record<string, unknown> {
   return !!x && typeof x === 'object' && !Array.isArray(x);
 }
 
+// Legacy target rewrites — applied at parse so old localStorage maps and
+// `.midimap` files migrate transparently. Add entries here when targets
+// get renamed; key = old string, value = current string.
+const LEGACY_TARGET_RENAMES: Record<string, string> = {
+  'transport:conductor': 'transport:ghost',
+};
+
 function validateBinding(x: unknown): MidiBinding | null {
   if (!isObject(x)) return null;
   const { ch, msg, num, target } = x;
@@ -26,6 +33,7 @@ function validateBinding(x: unknown): MidiBinding | null {
   if (msg !== 'cc' && msg !== 'note') return null;
   if (typeof num !== 'number' || num < 0 || num > 127) return null;
   if (typeof target !== 'string') return null;
+  const migrated = LEGACY_TARGET_RENAMES[target] ?? target;
   // Allow unknown targets to round-trip through save/load — dispatcher
   // silently ignores at runtime. This protects forward compatibility
   // when a `.midimap` is loaded on an older build.
@@ -33,7 +41,7 @@ function validateBinding(x: unknown): MidiBinding | null {
     ch: Math.floor(ch),
     msg,
     num: Math.floor(num),
-    target: target as MidiTarget,
+    target: migrated as MidiTarget,
   };
 }
 

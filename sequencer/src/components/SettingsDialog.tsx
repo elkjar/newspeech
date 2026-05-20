@@ -15,8 +15,10 @@ import { MidiBar } from './MidiBar';
 import { ProjectFileControls } from './Transport';
 import { InstrumentLibraryPane } from './InstrumentLibraryPane';
 import { SampleLibraryPane } from './SampleLibraryPane';
+import pkg from '../../package.json';
 
 const NATIVE = isTauri();
+const APP_VERSION: string = pkg.version;
 
 // Tauri-only settings panel. Shell first — recordings directory now;
 // sample directory + default .seq dir get added later as those features
@@ -207,7 +209,7 @@ export function SettingsDialog({
         </div>
 
         {view === 'main' ? (
-          <div className="flex-1 overflow-y-auto -mx-2 px-2 flex flex-col normal-case tracking-normal text-[12px]">
+          <div className="flex-1 overflow-y-auto -mx-2 pl-2 pr-4 flex flex-col normal-case tracking-normal text-[12px]">
             {NATIVE && (
               <Section label="recordings">
                 <SettingRow
@@ -275,16 +277,19 @@ export function SettingsDialog({
 
           </div>
         ) : view === 'instruments' ? (
-          <div className="flex-1 overflow-y-auto -mx-2 px-2">
+          <div className="flex-1 overflow-y-auto -mx-2 pl-2 pr-4">
             <InstrumentLibraryPane />
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto -mx-2 px-2">
+          <div className="flex-1 overflow-y-auto -mx-2 pl-2 pr-4">
             <SampleLibraryPane />
           </div>
         )}
 
-        <div className="flex items-center justify-end mt-5">
+        <div className="flex items-center justify-between mt-5">
+          <span className="text-[10px] uppercase tracking-widest text-white/30 tabular-nums">
+            v{APP_VERSION}
+          </span>
           <button
             type="button"
             onClick={onClose}

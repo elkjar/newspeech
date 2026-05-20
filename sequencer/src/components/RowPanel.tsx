@@ -42,6 +42,7 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const setTrackDefaultChordVoicing = useSequencerStore((s) => s.setTrackDefaultChordVoicing);
   const setTrackPitchInterp = useSequencerStore((s) => s.setTrackPitchInterp);
   const setTrackOctave = useSequencerStore((s) => s.setTrackOctave);
+  const setTrackArpOn = useSequencerStore((s) => s.setTrackArpOn);
   const fireTrackProgram = useSequencerStore((s) => s.fireTrackProgram);
   const globalDeviceId = useSequencerStore((s) => s.midiOutDeviceId);
   const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
@@ -131,6 +132,22 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
             max={4}
             onChange={(v) => setTrackOctave(track.id, v)}
           />
+          <button
+            onClick={() => setTrackArpOn(track.id, !track.arpConfig?.on)}
+            title={
+              track.arpConfig?.on
+                ? 'arpeggiator on — chord triggers play out as a sequence across the step'
+                : 'arpeggiator off — chord triggers play simultaneously'
+            }
+            className={[
+              'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
+              track.arpConfig?.on
+                ? 'text-white'
+                : 'text-white/40 hover:text-white',
+            ].join(' ')}
+          >
+            {track.arpConfig?.on ? '●' : '○'} arp
+          </button>
         </>
       )}
       {instrument && (

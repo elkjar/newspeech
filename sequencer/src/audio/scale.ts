@@ -1,13 +1,47 @@
-export type Scale = 'major' | 'minor' | 'pentatonic' | 'chromatic';
+export type Scale =
+  | 'major'
+  | 'minor'
+  | 'harmonic-minor'
+  | 'dorian'
+  | 'phrygian'
+  | 'lydian'
+  | 'mixolydian'
+  | 'pentatonic'
+  | 'minor-pentatonic'
+  | 'blues'
+  | 'chromatic';
 
+// `pentatonic` is the MAJOR pentatonic (kept this name for `.seq` backward-
+// compat with files saved before minor-pentatonic landed). Modes added
+// 2026-05-20 — diatonic family + variant minors + pent completion; matches
+// Hydrasynth's built-in list to de-risk scale-follow plumbing later.
 const SCALE_INTERVALS: Record<Scale, number[]> = {
   major: [0, 2, 4, 5, 7, 9, 11],
   minor: [0, 2, 3, 5, 7, 8, 10],
+  'harmonic-minor': [0, 2, 3, 5, 7, 8, 11],
+  dorian: [0, 2, 3, 5, 7, 9, 10],
+  phrygian: [0, 1, 3, 5, 7, 8, 10],
+  lydian: [0, 2, 4, 6, 7, 9, 11],
+  mixolydian: [0, 2, 4, 5, 7, 9, 10],
   pentatonic: [0, 2, 4, 7, 9],
+  'minor-pentatonic': [0, 3, 5, 7, 10],
+  blues: [0, 3, 5, 6, 7, 10],
   chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
 };
 
-export const SCALES: Scale[] = ['major', 'minor', 'pentatonic', 'chromatic'];
+export const SCALES: Scale[] = [
+  'major',
+  'minor',
+  'harmonic-minor',
+  'dorian',
+  'phrygian',
+  'lydian',
+  'mixolydian',
+  'pentatonic',
+  'minor-pentatonic',
+  'blues',
+  'chromatic',
+];
 
 export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 

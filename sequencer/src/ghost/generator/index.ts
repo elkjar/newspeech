@@ -6,6 +6,7 @@ import {
   type BankSlot,
   type BankKind,
 } from '../../state/store';
+import { bankEntropyTotal } from '../entropy';
 import type { GenMove, MoveDef } from './types';
 import { composeSparse } from './moves/composeSparse';
 import { composePolyrhythmic } from './moves/composePolyrhythmic';
@@ -54,7 +55,7 @@ function findEmptySlot(banks: (BankSlot | null)[], kind: BankKind): number | nul
 export function generateBank(move: GenMove): { slotIndex: number } | null {
   const state = useSequencerStore.getState();
   const def = MOVES[move];
-  // Tag the generated bank with its recipe so the conductor can apply
+  // Tag the generated bank with its recipe so the ghost can apply
   // per-recipe dwell ranges and same-recipe avoidance.
   const newSlot: BankSlot = {
     ...def.fn({
@@ -64,6 +65,7 @@ export function generateBank(move: GenMove): { slotIndex: number } | null {
     }),
     recipe: move,
   };
+  newSlot.entropy = bankEntropyTotal(newSlot);
   const slotIndex = findEmptySlot(state.banks, newSlot.kind);
   if (slotIndex === null) return null;
   const banks = state.banks.slice();
@@ -119,7 +121,7 @@ export function autoSeedBanks(): void {
   // Apply the first seeded bank's tracks to active state. Without this the
   // user opens with defaultPreset's stub tracks while activeBank claims
   // they're hearing the ambient recipe — they only see the recipe content
-  // after the conductor's first scene change.
+  // after the ghost's first scene change.
   const state = useSequencerStore.getState();
   const firstSlot = state.banks[0];
   if (firstSlot) {

@@ -415,7 +415,7 @@ export function VoicePickerDialog({
           className="mb-3 bg-transparent border border-white/15 px-3 py-1.5 text-[12px] normal-case tracking-normal text-white focus:outline-none focus:border-white"
         />
 
-        <div className="flex-1 overflow-y-auto -mx-2 px-2 normal-case tracking-normal">
+        <div className="flex-1 overflow-y-auto -mx-2 pl-2 pr-4 normal-case tracking-normal">
           {groups.map((group) => {
             const visible = group.items.filter((it) => matchesSearch(it, group, q));
             if (visible.length === 0) return null;

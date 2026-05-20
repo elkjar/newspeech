@@ -125,20 +125,27 @@ export function getVoicesPostFX(): GainNode {
 
 // Three parallel passive buses tracking recorder taps, all pre-trackfilter /
 // pre-FX / pre-master. samplesBus is the full sample sum (rhythm + melody);
-// rhythmBus and melodyBus are the per-section feeds that drive stems output.
+// rhythmBus and melodyBus are the per-section feeds that drive splits output.
 // rhythm/melody both connect into samples so a single connect at the trigger
 // site populates both the section bus and the combined sum.
 //
+// trackBuses are per-track recording taps for multitrack mode, keyed by
+// Track.id and lazily created when samplePlayer.trigger first runs for that
+// trackId. They live alongside (not in series with) the section buses — each
+// per-trigger busHead fans into both the section bus AND its trackBus, so
+// splits + multitrack recording paths stay independent.
+//
 // clickBus carries count-in clicks. Routed so clicks land in EVERY captured
 // path: into mixBus for audible playback / master-tap recording, into
-// samplesBus for raw single-WAV recording, and directly into the stem
-// worklets (wired in recorder.ts) for stems WAVs. The dedicated bus avoids
+// samplesBus for raw single-WAV recording, and directly into the splits
+// worklets (wired in recorder.ts) for splits WAVs. The dedicated bus avoids
 // the "click appears 2x in samples" problem that would happen if clicks
 // connected to both rhythmBus and melodyBus (both feed samples).
 let samplesBus: GainNode | null = null;
 let rhythmBus: GainNode | null = null;
 let melodyBus: GainNode | null = null;
 let clickBus: GainNode | null = null;
+const trackBuses = new Map<string, GainNode>();
 
 export function getSamplesBus(): GainNode {
   if (!samplesBus) {
@@ -167,6 +174,21 @@ export function getMelodyBus(): GainNode {
     melodyBus.connect(getSamplesBus());
   }
   return melodyBus;
+}
+
+export function getTrackBus(trackId: string): GainNode {
+  let bus = trackBuses.get(trackId);
+  if (!bus) {
+    const c = getAudioContext();
+    bus = c.createGain();
+    bus.gain.value = 1;
+    trackBuses.set(trackId, bus);
+  }
+  return bus;
+}
+
+export function getActiveTrackBusIds(): string[] {
+  return Array.from(trackBuses.keys());
 }
 
 export function getClickBus(): GainNode {

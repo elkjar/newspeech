@@ -1,19 +1,22 @@
-// Web audio recorder. Three parallel AudioWorklet instances tap different
+// Web audio recorder. Multiple parallel AudioWorklet instances tap different
 // points of the audio graph; which ones record on a given take depends on
-// the `stems` toggle. All capture float32 PCM.
+// the `splits` and `multitrack` toggles. All capture float32 PCM.
 //
 // Tap layout:
 //   - combined: dual input (processedTap from master output + rawTap from
 //     samplesBus), crossfaded by `recordRaw`. The "single WAV" path.
-//   - rhythm:   tapped from rhythmBus + clickBus. Stem 1.
-//   - melody:   tapped from melodyBus + clickBus. Stem 2.
+//   - rhythm:   tapped from rhythmBus + clickBus. Splits file 1.
+//   - melody:   tapped from melodyBus + clickBus. Splits file 2.
+//   - per-track (multitrack): one worklet per trackId, tapped from the
+//     corresponding per-track bus + clickBus. Created on take start,
+//     torn down on finalize. Pre-FX/pre-master; "raw" tap territory.
 //
-// clickBus into the stem worklets is what puts count-in clicks into every
-// stem for DAW alignment; the audible click path is independent.
+// clickBus into the splits/multitrack worklets is what puts count-in clicks
+// into every file for DAW alignment; the audible click path is independent.
 //
-// Take-time mode is snapshotted into `currentTakeMode` so a mid-take stems
-// toggle doesn't break the finalize step. The mode you start in is the mode
-// you finish in.
+// Take-time mode is snapshotted into `currentTakeMode` so a mid-take toggle
+// doesn't break the finalize step. The mode you start in is the mode you
+// finish in.
 //
 // Write path branches on runtime:
 //   - Browser: chunks accumulate in JS arrays; on stop a WAV is built in
@@ -30,9 +33,10 @@ import {
   getRhythmBus,
   getMelodyBus,
   getClickBus,
+  getTrackBus,
 } from './audioContext';
 import { tapMasterOutput } from './master';
-import { useSequencerStore, type BankSlot } from '../state/store';
+import { useSequencerStore, type Track } from '../state/store';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
 const WORKLET_NAME = 'recorder-processor';
@@ -93,12 +97,19 @@ let melody: RecorderInstance | null = null;
 let processedTap: GainNode | null = null;
 let rawTap: GainNode | null = null;
 
+// Multitrack instances are created lazily at take start and stored keyed by
+// trackId. They share buildInstance / startInstance / stopInstance with the
+// fixed instances. Held in a Map across the take's lifecycle so finalizeTake
+// can iterate them; cleared after finalize so each take re-snapshots the
+// current track list.
+const multitrackInstances = new Map<string, RecorderInstance>();
+
 let initialized = false;
 let initializing: Promise<void> | null = null;
 let captureSampleRate = 48000;
 let pendingFinalize: number | null = null;
 let subscribed = false;
-type TakeMode = 'combined' | 'stems';
+type TakeMode = 'combined' | 'splits' | 'multitrack';
 let currentTakeMode: TakeMode = 'combined';
 
 function buildInstance(ctx: AudioContext): RecorderInstance {
@@ -240,7 +251,7 @@ export async function initRecorder(): Promise<void> {
     processedTap.connect(combined.worklet);
     rawTap.connect(combined.worklet);
 
-    // Stems: section buses + clickBus into each stem worklet so count-in
+    // Splits: section buses + clickBus into each split worklet so count-in
     // clicks land in both alignment files.
     getRhythmBus().connect(rhythm.worklet);
     getClickBus().connect(rhythm.worklet);
@@ -254,7 +265,11 @@ export async function initRecorder(): Promise<void> {
 }
 
 export function isRecording(): boolean {
-  return !!(combined?.recording || rhythm?.recording || melody?.recording);
+  if (combined?.recording || rhythm?.recording || melody?.recording) return true;
+  for (const ins of multitrackInstances.values()) {
+    if (ins.recording) return true;
+  }
+  return false;
 }
 
 async function startInstance(instance: RecorderInstance, filename: string): Promise<void> {
@@ -319,6 +334,10 @@ async function stopInstance(instance: RecorderInstance): Promise<FinalizedTake |
       };
     } catch (err) {
       console.error('[recorder] recording_finalize failed:', err);
+      useSequencerStore.getState().pushToast({
+        kind: 'error',
+        text: `recording finalize failed · ${String(err)}`,
+      });
       return null;
     }
   }
@@ -360,17 +379,32 @@ export function subscribeRecorder(): void {
         pendingFinalize = null;
       }
       // Clear stale tail watchers from a prior take. startInstance clears
-      // tailWatch on instances it restarts, but a mode change (e.g., stems
+      // tailWatch on instances it restarts, but a mode change (e.g., splits
       // → combined re-arm) wouldn't restart rhythm/melody, leaving their
       // watchers alive to finalize the new take prematurely.
       if (combined) combined.tailWatch = null;
       if (rhythm) rhythm.tailWatch = null;
       if (melody) melody.tailWatch = null;
-      // Snapshot the mode at take start. A mid-take stems toggle won't
-      // re-route in flight — what you armed is what you finalize.
-      currentTakeMode = state.stems ? 'stems' : 'combined';
+      // Snapshot the mode at take start. A mid-take toggle won't re-route
+      // in flight — what you armed is what you finalize.
+      currentTakeMode = state.multitrack ? 'multitrack' : state.splits ? 'splits' : 'combined';
       const base = buildFilenameBase(state);
-      if (currentTakeMode === 'stems') {
+      if (currentTakeMode === 'multitrack') {
+        const audioTracks = state.tracks.filter(isAudioTrack);
+        logMultitrackStart(audioTracks.length);
+        const ctx = getAudioContext();
+        for (let i = 0; i < audioTracks.length; i++) {
+          const t = audioTracks[i];
+          const ins = buildInstance(ctx);
+          multitrackInstances.set(t.id, ins);
+          const trackBus = getTrackBus(t.id);
+          trackBus.connect(ins.worklet);
+          getClickBus().connect(ins.worklet);
+          const slot = String(i + 1).padStart(2, '0');
+          const voiceSlug = trackVoiceSlug(t);
+          void startInstance(ins, `${base}_track-${slot}-${voiceSlug}.wav`);
+        }
+      } else if (currentTakeMode === 'splits') {
         if (rhythm) void startInstance(rhythm, `${base}_rhythm.wav`);
         if (melody) void startInstance(melody, `${base}_melody.wav`);
       } else if (combined) {
@@ -379,7 +413,11 @@ export function subscribeRecorder(): void {
     } else {
       const mode = currentTakeMode;
       const instances: RecorderInstance[] = [];
-      if (mode === 'stems') {
+      if (mode === 'multitrack') {
+        for (const ins of multitrackInstances.values()) {
+          if (ins.recording) instances.push(ins);
+        }
+      } else if (mode === 'splits') {
         if (rhythm && rhythm.recording) instances.push(rhythm);
         if (melody && melody.recording) instances.push(melody);
       } else if (combined && combined.recording) {
@@ -421,22 +459,137 @@ export function subscribeRecorder(): void {
 }
 
 async function finalizeTake(mode: TakeMode): Promise<void> {
+  const successful: FinalizedTake[] = [];
   try {
-    if (mode === 'stems') {
+    if (mode === 'multitrack') {
+      const tasks: Promise<FinalizedTake | null>[] = [];
+      const ids: string[] = [];
+      for (const [trackId, ins] of multitrackInstances) {
+        if (!ins.recording) continue;
+        ids.push(trackId);
+        tasks.push(stopInstance(ins));
+      }
+      const results = await Promise.all(tasks);
+      for (let i = 0; i < results.length; i++) {
+        const take = results[i];
+        if (take) {
+          deliverTake(take);
+          successful.push(take);
+        }
+        const ins = multitrackInstances.get(ids[i]);
+        if (ins) {
+          try {
+            const trackBus = getTrackBus(ids[i]);
+            trackBus.disconnect(ins.worklet);
+            getClickBus().disconnect(ins.worklet);
+          } catch {
+            /* node already torn down */
+          }
+        }
+      }
+      logMultitrackEnd();
+      multitrackInstances.clear();
+    } else if (mode === 'splits') {
       const tasks: Promise<FinalizedTake | null>[] = [];
       if (rhythm && rhythm.recording) tasks.push(stopInstance(rhythm));
       if (melody && melody.recording) tasks.push(stopInstance(melody));
       const results = await Promise.all(tasks);
       for (const take of results) {
-        if (take) deliverTake(take);
+        if (take) {
+          deliverTake(take);
+          successful.push(take);
+        }
       }
     } else if (combined && combined.recording) {
       const take = await stopInstance(combined);
-      if (take) deliverTake(take);
+      if (take) {
+        deliverTake(take);
+        successful.push(take);
+      }
+    }
+    if (successful.length > 0) {
+      pushFinalizeSuccessToast(successful, mode);
     }
   } finally {
     useSequencerStore.getState().setArmed(false);
   }
+}
+
+function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function parentDir(path: string): string {
+  const idx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  return idx > 0 ? path.slice(0, idx) : path;
+}
+
+function pushFinalizeSuccessToast(
+  takes: FinalizedTake[],
+  mode: TakeMode,
+): void {
+  // Tauri-only — web mode does per-file `downloadWav` calls and the browser
+  // shows its own download UI per file. No app-toast needed there.
+  const first = takes[0];
+  if (!first?.path) return;
+  const duration = formatDuration(first.durationS);
+  const count = takes.length;
+  let label: string;
+  if (count === 1) {
+    label = `recording saved · ${duration}`;
+  } else if (mode === 'multitrack') {
+    label = `saved ${count} stems · ${duration}`;
+  } else if (mode === 'splits') {
+    label = `saved ${count} splits · ${duration}`;
+  } else {
+    label = `saved ${count} files · ${duration}`;
+  }
+  // Reveal target: for batches, open the parent dir so Finder lands on the
+  // folder; for single takes, open the file directly so it lands selected.
+  const revealPath = count === 1 ? first.path : parentDir(first.path);
+  useSequencerStore.getState().pushToast({
+    kind: 'success',
+    text: label,
+    revealPath,
+  });
+}
+
+function isAudioTrack(t: Track): boolean {
+  return t.source.kind === 'voice';
+}
+
+function trackVoiceSlug(t: Track): string {
+  if (t.source.kind === 'voice') return t.source.id.replace(/[^a-z0-9-]/gi, '_');
+  return 'midi';
+}
+
+// Lightweight perf logging for multitrack takes. Single console.info at
+// take start (worklet count + base/output latency) and another at finalize
+// (wall-clock elapsed). Goal is "is this glitching?" — anything more
+// involved gets in the way of just listening to the take.
+let multitrackStartWall = 0;
+let multitrackStartCtx = 0;
+function logMultitrackStart(trackCount: number): void {
+  const ctx = getAudioContext();
+  multitrackStartWall = performance.now();
+  multitrackStartCtx = ctx.currentTime;
+  const baseMs = (ctx.baseLatency ?? 0) * 1000;
+  const outMs = ((ctx as AudioContext & { outputLatency?: number }).outputLatency ?? 0) * 1000;
+  console.info(
+    `[recorder/multitrack] start — ${trackCount} worklets · sampleRate ${ctx.sampleRate} · baseLatency ${baseMs.toFixed(2)}ms · outputLatency ${outMs.toFixed(2)}ms`,
+  );
+}
+function logMultitrackEnd(): void {
+  const ctx = getAudioContext();
+  const wallS = (performance.now() - multitrackStartWall) / 1000;
+  const ctxS = ctx.currentTime - multitrackStartCtx;
+  const drift = wallS - ctxS;
+  console.info(
+    `[recorder/multitrack] end — wall ${wallS.toFixed(2)}s · audio ${ctxS.toFixed(2)}s · drift ${drift >= 0 ? '+' : ''}${(drift * 1000).toFixed(1)}ms`,
+  );
 }
 
 function deliverTake(take: FinalizedTake): void {
@@ -522,8 +675,5 @@ function buildFilenameBase(state: ReturnType<typeof useSequencerStore.getState>)
   const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   const note = NOTE_NAMES_FOR_FILE[((state.rootNote % 12) + 12) % 12];
   const scaleSlug = state.scale === 'major' ? 'maj' : state.scale === 'minor' ? 'min' : state.scale;
-  const active: BankSlot | null =
-    state.activeBank !== null ? state.banks[state.activeBank] : null;
-  const recipe = active?.recipe?.replace('compose-', '') ?? 'manual';
-  return `newspeech_${ts}_${state.bpm}bpm_${note}${scaleSlug}_${recipe}`;
+  return `newspeech_${ts}_${state.bpm}bpm_${note}${scaleSlug}`;
 }

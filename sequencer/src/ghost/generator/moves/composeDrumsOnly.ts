@@ -23,6 +23,13 @@ import type { ComposeContext } from '../types';
 // length 16 as the downbeat anchor; everything else drifts at odd lengths
 // (snare 13, hat-c 11, hat-o 14, perc 12) — heavy polymeter, no aligned
 // "groove" beyond the kick.
+//
+// Authored as a TRANSITION-kind bank (lands in slot 14/15) so ghost doesn't
+// pick it autonomously — see `ghost.ts:pickNextBank` for the transition
+// exclusion. The role-diversity multiplier in `entropy.ts` already lowered
+// its score, but a drum-solo bank is musically a deliberate gesture (break
+// / drum solo), not a climax destination — user-trigger only is the right
+// scope. Same kit content, just scoped to user-driven moments.
 export function composeDrumsOnly(ctx: ComposeContext): BankSlot {
   const palette = getOrCreatePalette();
   const kickHits = randInt(3, 5);
@@ -89,6 +96,6 @@ export function composeDrumsOnly(ctx: ComposeContext): BankSlot {
   return {
     tracks,
     macros: { density: 0.6, chaos: 0.55, motion: 0.3, drift: 0.6, tension: 0.55 },
-    kind: 'scene',
+    kind: 'transition',
   };
 }

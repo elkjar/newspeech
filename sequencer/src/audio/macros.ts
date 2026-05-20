@@ -55,19 +55,31 @@ export function computeThinMul(
 
 // Fill-in firing probability in [0, 1] for an authored-OFF step. At density
 // <= 0.5 the result is 0 (pattern as authored, no fill). Above 0.5 the result
-// lerps from 0 to `(1 - metricWeight) × MAX_FILL_PROB` — offbeats fill fastest,
-// beats 2/4 fill slower, mid slowest, downbeat never fills. MAX_FILL_PROB
-// caps the strongest fill at 60% chance so density=1 doesn't fully saturate
-// the offbeats; keeps "high density" feeling busy without becoming chaotic.
+// lerps from 0 to `(1 - metricWeight) × MAX_FILL_PROB × sectionMul` —
+// offbeats fill fastest, beats 2/4 fill slower, mid slowest, downbeat never
+// fills. Section multiplier biases fill behavior toward rhythm — at high
+// density drum offbeats fill faster than melodic offbeats, so a rising
+// density knob reads as "drums leading the fill" rather than uniform busy.
+// MAX_FILL_PROB caps the strongest fill at 60% so density=1 doesn't fully
+// saturate offbeats; section multiplier can push above this, clamped to 1.
 export const MAX_FILL_PROB = 0.6;
+export const FILL_DRUM_MUL = 1.3;
+export const FILL_MELODIC_MUL = 0.5;
 
 export function computeFillProb(
   modDensity: number,
   stepIndex: number,
-  length: number
+  length: number,
+  section?: 'drum' | 'melodic'
 ): number {
   if (modDensity <= 0.5) return 0;
   const weight = metricWeight(stepIndex, length);
   const t = (modDensity - 0.5) * 2; // map [0.5, 1] → [0, 1]
-  return (1 - weight) * t * MAX_FILL_PROB;
+  const sectionMul =
+    section === 'drum'
+      ? FILL_DRUM_MUL
+      : section === 'melodic'
+        ? FILL_MELODIC_MUL
+        : 1;
+  return Math.min(1, (1 - weight) * t * MAX_FILL_PROB * sectionMul);
 }

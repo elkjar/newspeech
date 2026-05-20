@@ -55,11 +55,11 @@ function FreezeButton() {
 function DwellReadout() {
   const enabled = useSequencerStore((s) => s.sceneGraph.enabled);
   const playing = useSequencerStore((s) => s.playing);
-  const remaining = useSequencerStore((s) => s.conductorBarsRemaining);
-  const target = useSequencerStore((s) => s.conductorTargetBars);
+  const remaining = useSequencerStore((s) => s.ghostBarsRemaining);
+  const target = useSequencerStore((s) => s.ghostTargetBars);
   if (!enabled) return null;
   // Pre-play OR pre-first-tick state: no dwell rolled yet, show em-dash so
-  // the user sees the conductor is enabled but waiting for transport.
+  // the user sees the ghost is enabled but waiting for transport.
   const text =
     target <= 0
       ? '—'
@@ -81,7 +81,7 @@ function DwellReadout() {
 function AutoButton() {
   const enabled = useSequencerStore((s) => s.sceneGraph.enabled);
   const setSceneGraphEnabled = useSequencerStore((s) => s.setSceneGraphEnabled);
-  const learn = useMidiLearn('transport:conductor');
+  const learn = useMidiLearn('transport:ghost');
   const dotSize = MACRO_SIZE * 0.36;
   const handleClick = () => {
     if (learn.onLearnClick) {
@@ -100,7 +100,7 @@ function AutoButton() {
       title={
         learn.isLearnTarget
           ? 'auto — learning…'
-          : `${enabled ? 'auto · conductor walking' : 'auto · manual'}${titleSuffix}`
+          : `${enabled ? 'auto · ghost walking' : 'auto · manual'}${titleSuffix}`
       }
       style={{ width: MACRO_SIZE, height: MACRO_SIZE }}
       className="relative flex items-center justify-center bg-transparent cursor-pointer group"

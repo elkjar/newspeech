@@ -162,6 +162,13 @@ export interface VoiceDef {
   padConfig?: PadConfig;
   // Per-track mix defaults applied on voice assignment (compose + manual).
   trackDefaults?: VoiceTrackDefaults;
+  // Ghost entropy contribution score (0..1). Captures the spec stratification
+  // "drones < pads < drums < percussion." Drone/pad voices read low (sustained,
+  // little perceived rhythmic activity); drum + percussion voices read high
+  // (transients, dense rhythmic energy). Optional — `voiceEntropyClass` falls
+  // back to a category/type-derived default when absent so existing voice defs
+  // keep working unchanged.
+  entropyClass?: number;
 }
 
 // Defaults aimed at "obviously moving, obviously pad" per visible-defaults
@@ -276,4 +283,42 @@ export function voiceTrackDefaults(voiceId: string): VoiceTrackDefaults | undefi
 
 export function isPadVoice(voiceId: string): boolean {
   return voiceType(voiceId) === 'pad';
+}
+
+export type VoiceRole = 'drum' | 'pad' | 'lead';
+
+/**
+ * Coarse role bucket for a voice id — used by the Ghost entropy formula's
+ * diversity multiplier. Sample voices don't carry bass/lead distinction
+ * (that's per-track behavior, set by composer logic), so melodic non-pad
+ * voices all collapse to 'lead'. External MIDI instruments use the
+ * library's role field directly (4-way drum/bass/lead/pad).
+ */
+export function voiceRole(voiceId: string): VoiceRole {
+  const v = getCachedVoices().find((vd) => vd.id === voiceId);
+  if (!v) return 'lead';
+  if (v.category === 'drum') return 'drum';
+  if (v.type === 'pad') return 'pad';
+  return 'lead';
+}
+
+/**
+ * Ghost entropy contribution for a voice id. Reads the voice's `entropyClass`
+ * override when present; otherwise derives from category + type. Endpoints
+ * stretched to 0..1 so the spec's "drones < pads < drums < percussion"
+ * stratification produces meaningful absolute spread (was 0.20..0.75; new
+ * range 0.05..1.0 makes a pure-drone bank read genuinely low and an all-
+ * percussion bank read genuinely high).
+ *   melodic + type=pad    → 0.05 (drones/pads — sustained, low perceived activity)
+ *   melodic (no pad type) → 0.50 (leads, motifs, bass — mid)
+ *   drum                  → 1.00 (percussion category — transients, high activity)
+ * Unknown ids fall through to 0.50 (neutral melodic baseline).
+ */
+export function voiceEntropyClass(voiceId: string): number {
+  const v = getCachedVoices().find((vd) => vd.id === voiceId);
+  if (!v) return 0.5;
+  if (typeof v.entropyClass === 'number') return v.entropyClass;
+  if (v.category === 'drum') return 1;
+  if (v.type === 'pad') return 0.05;
+  return 0.5;
 }

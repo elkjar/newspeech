@@ -18,6 +18,7 @@ import {
 } from '../instruments/library';
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
 import { voiceTrackDefaults } from '../audio/voices';
+import { bankEntropyTotal } from '../ghost/entropy';
 import { ensureBothSections, hydrateTrack, hydrateLFOs, applyPositionalRoleDefaults, hydrateBanks, blankTrack } from './hydrate';
 import {
   hydrateTape as hydrateTapeFromPreset,
@@ -167,6 +168,12 @@ export interface Track {
   // default. Composer sets it true on bass tracks via populateBass; pad /
   // motif / drum tracks leave it false so triggers layer naturally.
   monophonic: boolean;
+  // v1 arpeggiator config — per-track toggle. When `on`, multi-note chord
+  // triggers (voiceIntervals.length > 1) get split into N sequential
+  // single-tone triggers spread evenly across the step duration. Single-
+  // note triggers are unaffected. Pattern = "up" (chord intervals in
+  // their natural order); range / pattern / gate selection deferred.
+  arpConfig?: { on: boolean };
 }
 
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
@@ -205,8 +212,8 @@ export interface BankMacros {
 }
 
 // Bank kind — scene banks are full-length musical sections (dwell governed
-// by the conductor's global min/max); transition banks are 1–2 bar inserts
-// (drum-mute turnarounds, breakdowns, etc.) that the conductor exits fast.
+// by the ghost's global min/max); transition banks are 1–2 bar inserts
+// (drum-mute turnarounds, breakdowns, etc.) that the ghost exits fast.
 // Last two pad slots (14, 15) default to 'transition' on new snapshots;
 // kind is the authority once set so a user can still snap a scene to those
 // slots if they want.
@@ -216,23 +223,118 @@ export interface BankSlot {
   tracks: Track[];
   macros: BankMacros;
   kind: BankKind;
-  // The compose recipe that generated this bank — used by the conductor for
+  // The compose recipe that generated this bank — used by the ghost for
   // per-recipe dwell ranges and same-recipe avoidance. Optional: user-saved
-  // banks (snapBank) don't have a recipe, in which case the conductor falls
+  // banks (snapBank) don't have a recipe, in which case the ghost falls
   // back to its global dwell range and any pick is valid.
   recipe?: string;
+  // Cached Ghost entropy (0..1). Computed when the slot is written
+  // (snapshotBank, ghost.generateBank) and round-tripped in `.seq`. Optional
+  // so old saves without the field still load — hydrator recomputes from
+  // tracks/macros on load if missing.
+  entropy?: number;
 }
 
-// Conductor scene-graph config. v0 is single-global-dwell + uniform-random
-// walk across populated banks (excluding current) — per-bank durations and
-// weighted transitions arrive in the next pass. transitionBars lerps the 5
-// global macros from the previous bank's effective values to the new bank's
-// saved values over N bars at the start of each scene; 0 = atomic snap.
+// Toast for user-facing app notifications. Surface for: recording finalize
+// confirmation + error reporting (silent failures = lost takes the user
+// didn't know about). Kept generic enough to grow other event sources.
+//   kind: success auto-dismisses after AUTO_DISMISS_MS in the Toast
+//         component; error is sticky until manually closed.
+//   revealPath: optional Tauri-only path to open in Finder on click.
+export interface Toast {
+  id: string;
+  kind: 'success' | 'error';
+  text: string;
+  revealPath?: string;
+  createdAt: number;
+}
+
+// Ghost picker rationale entry — one record per bank change, autonomous
+// or manual. Lives in the store as a small ring buffer so GhostDebug can
+// render the recent decision history (datafeed framing per
+// [[project_ghost_overlay]]). Transient — not persisted in `.seq`.
+//
+// Two kinds:
+//   'auto' — ghost picker fired; captures full context (target curve
+//     value, winner entropy, delta, candidate pool, shape phase).
+//   'manual' — user-driven swap (click, blank-start) where the rich
+//     context doesn't apply. Still captures globalStep + slot so the
+//     log shows EVERY change in order. applyBankSlot dedupes against
+//     a recent auto entry for the same slot so an auto pick that
+//     reaches commit doesn't get a duplicate manual entry.
+export type GhostPickLogEntry =
+  | {
+      kind: 'auto';
+      globalStep: number;
+      slot: number;
+      shape: 'sustain' | 'build' | 'arc' | 'wave' | 'decay';
+      phase: number;
+      target: number;
+      pickedEntropy: number;
+      deltaFromTarget: number;
+      candidateCount: number;
+      // Filled by tickBar AFTER the dwell roll lands. Indicates how many
+      // bars ghost will hold this bank before considering the next pick.
+      dwellBars?: number;
+    }
+  | {
+      kind: 'manual';
+      globalStep: number;
+      slot: number;
+      // 12-char hex nonce, generated at push time. Split into three 4-char
+      // chunks at render time so manual rows fill the same visual column
+      // width as auto rows. Purely cosmetic — datafeed framing.
+      nonce: string;
+      dwellBars?: number;
+    }
+  | {
+      kind: 'shape';
+      globalStep: number;
+      from: 'sustain' | 'build' | 'arc' | 'wave' | 'decay';
+      to: 'sustain' | 'build' | 'arc' | 'wave' | 'decay';
+    }
+  | { kind: 'ghost'; globalStep: number; enabled: boolean }
+  | { kind: 'transport'; globalStep: number; playing: boolean }
+  // Pre-filled startup-sequence rows + future system messages. Rendered
+  // with the same hex-chunk styling as manual entries so the log isn't
+  // empty on first launch. Pure flavor — no semantic meaning.
+  | { kind: 'system'; globalStep: number; label: string; nonce: string }
+  // Step placement — pushed when a step is turned ON via toggleStep.
+  // Captures track/step coords + the step's velocity as the numerical
+  // value. Step-off toggles are not logged (placement, not removal).
+  | {
+      kind: 'step';
+      globalStep: number;
+      track: number;
+      step: number;
+      value: number;
+    };
+
+export const GHOST_PICK_LOG_LIMIT = 16;
+
+// Ghost scene-graph config. `shape` + `phaseLength` drive the entropy-aware
+// picker introduced 2026-05-20:
+//   sustain — no target; picker zig-zags around current entropy
+//   build   — target ramps low→high over phaseLength bars, then holds high
+//   arc     — target curves low→high→low (sin), one full arc over phaseLength
+//   wave    — target oscillates as sin with phaseLength = period (loops)
+//   decay   — target ramps high→low over phaseLength bars, then holds low
+// `phaseLength` interpretation depends on shape (full duration for
+// build/arc/decay; one full oscillation period for wave; ignored for sustain).
+// transitionBars lerps the 5 global macros from the previous bank's effective
+// values to the new bank's saved values over N bars at the start of each
+// scene; 0 = atomic snap.
+export type SceneShape = 'sustain' | 'build' | 'arc' | 'wave' | 'decay';
+
+export const SCENE_SHAPES: SceneShape[] = ['sustain', 'build', 'arc', 'wave', 'decay'];
+
 export interface SceneGraphConfig {
   enabled: boolean;
   minBars: number;
   maxBars: number;
   transitionBars: number;
+  shape: SceneShape;
+  phaseLength: number;
 }
 
 export const DEFAULT_SCENE_GRAPH: SceneGraphConfig = {
@@ -240,6 +342,8 @@ export const DEFAULT_SCENE_GRAPH: SceneGraphConfig = {
   minBars: 8,
   maxBars: 24,
   transitionBars: 4,
+  shape: 'arc',
+  phaseLength: 128,
 };
 
 interface SequencerState {
@@ -288,13 +392,21 @@ interface SequencerState {
   recordRaw: boolean;
   setRecordRaw: (v: boolean) => void;
   toggleRecordRaw: () => void;
-  // Stems toggle. When true, a take produces two WAVs (rhythm + melody)
+  // Splits toggle. When true, a take produces two WAVs (rhythm + melody)
   // instead of one combined. Forces sample-bus tap territory; `recordRaw`
-  // becomes a no-op while stems is on. Count-in clicks land in both stems
+  // becomes a no-op while splits is on. Count-in clicks land in both splits
   // for DAW alignment.
-  stems: boolean;
-  setStems: (v: boolean) => void;
-  toggleStems: () => void;
+  splits: boolean;
+  setSplits: (v: boolean) => void;
+  toggleSplits: () => void;
+  // Multitrack toggle. When true, a take produces one WAV per audio-
+  // producing track (16+ files) tapped from per-track recording buses,
+  // pre-FX/pre-master. Mutually exclusive with `splits`. Toggling this on
+  // also flips `recordRaw` on for visual coherence — multitrack inherently
+  // captures raw signal.
+  multitrack: boolean;
+  setMultitrack: (v: boolean) => void;
+  toggleMultitrack: () => void;
   tape: TapeParams;
   setTape: (patch: Partial<TapeParams>) => void;
   glitch: GlitchParams;
@@ -354,6 +466,7 @@ interface SequencerState {
   setTrackRate: (trackId: string, rate: StepRate) => void;
   setTrackLockTiming: (trackId: string, lock: boolean) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
+  setTrackArpOn: (trackId: string, on: boolean) => void;
   clearTrack: (trackId: string) => void;
   commitMutationOverlay: () => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
@@ -369,22 +482,41 @@ interface SequencerState {
   snapBank: (i: number) => void;
   queueBank: (i: number) => void;
   clearBank: (i: number) => void;
+  moveBank: (from: number, to: number) => void;
+  startBlankBank: (i: number) => void;
   // atGlobalStep is the scheduler's currentStep at swap time. Caller passes
   // the scheduler globalStep parameter rather than letting the store read
   // its own (potentially-lagging audible-step) globalStep — the dispatch's
   // sceneStep math is keyed off the SCHEDULED step, not the audible step.
   commitPendingBank: (atGlobalStep: number) => void;
-  // Conductor — persisted config + transient display state. Display fields
-  // (`conductorBarsRemaining`, `conductorTargetBars`) are written by the
-  // conductor module each bar; not part of saved state.
+  // Ghost — persisted config + transient display state. Display fields
+  // (`ghostBarsRemaining`, `ghostTargetBars`) are written by the
+  // ghost module each bar; not part of saved state.
   sceneGraph: SceneGraphConfig;
-  conductorBarsRemaining: number;
-  conductorTargetBars: number;
+  ghostBarsRemaining: number;
+  ghostTargetBars: number;
+  // Composition-level step reference for shape phase. Unlike sceneStartStep
+  // (which resets on every bank swap), this persists across swaps so the
+  // arc/build/decay phase counts up over the full phaseLength. Reset to
+  // current globalStep when transport restarts or ghost is re-enabled.
+  ghostCompositionStartStep: number;
+  // Pick-rationale ring buffer (newest last). GhostDebug renders the tail
+  // as a datafeed. Cleared on resetGhost.
+  ghostPickLog: GhostPickLogEntry[];
   setSceneGraphEnabled: (enabled: boolean) => void;
   setSceneGraphMinBars: (bars: number) => void;
   setSceneGraphMaxBars: (bars: number) => void;
   setSceneGraphTransitionBars: (bars: number) => void;
-  setConductorDisplay: (remaining: number, target: number) => void;
+  setSceneGraphShape: (shape: SceneShape) => void;
+  setSceneGraphPhaseLength: (bars: number) => void;
+  setGhostDisplay: (remaining: number, target: number) => void;
+  setGhostCompositionStart: (step: number) => void;
+  pushGhostPickEvent: (entry: GhostPickLogEntry) => void;
+  setDwellOnLastBankChange: (slot: number, dwellBars: number) => void;
+  clearGhostPickLog: () => void;
+  toasts: Toast[];
+  pushToast: (t: Omit<Toast, 'id' | 'createdAt'>) => void;
+  dismissToast: (id: string) => void;
   setMacros: (m: Partial<BankMacros>) => void;
 }
 
@@ -498,7 +630,7 @@ function snapshotBank(
   },
   slotIndex: number
 ): BankSlot {
-  return {
+  const slot: BankSlot = {
     tracks: state.tracks.map(cloneTrack),
     macros: {
       density: state.density,
@@ -509,6 +641,8 @@ function snapshotBank(
     },
     kind: slotIndex >= TRANSITION_SLOT_START ? 'transition' : 'scene',
   };
+  slot.entropy = bankEntropyTotal(slot);
+  return slot;
 }
 
 const rawPresetTracks = defaultPreset.tracks as Array<Partial<Track> & { id: string }>;
@@ -545,6 +679,22 @@ const initialBanks: (BankSlot | null)[] = hydrateBanks(
     macros: { ...initialMacros },
   })
 );
+
+// Startup-sequence prefill for the GhostDebug event log. Rendered with the
+// same hex-chunk styling as manual entries so the log surface isn't empty
+// on first launch. Pure flavor — datafeed framing.
+function bootNonce(): string {
+  let s = '';
+  while (s.length < 12) s += Math.random().toString(16).slice(2);
+  return s.slice(0, 12).toUpperCase();
+}
+const STARTUP_LOG: GhostPickLogEntry[] = [
+  { kind: 'system', globalStep: 0, label: 'boot', nonce: bootNonce() },
+  { kind: 'system', globalStep: 0, label: 'palette', nonce: bootNonce() },
+  { kind: 'system', globalStep: 0, label: 'entropy', nonce: bootNonce() },
+  { kind: 'system', globalStep: 0, label: 'ghost idle', nonce: bootNonce() },
+  { kind: 'system', globalStep: 0, label: 'ready', nonce: bootNonce() },
+];
 
 // Validate activeBank: must be a populated slot, else fall back to the first
 // populated slot (or 0 if none).
@@ -599,12 +749,22 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   recordRaw: false,
   setRecordRaw: (v) => set({ recordRaw: v }),
   toggleRecordRaw: () => set((s) => ({ recordRaw: !s.recordRaw })),
-  stems: false,
-  setStems: (v) => set({ stems: v }),
-  toggleStems: () => set((s) => ({ stems: !s.stems })),
+  splits: false,
+  setSplits: (v) => set({ splits: v }),
+  toggleSplits: () => set((s) => ({ splits: !s.splits, multitrack: false })),
+  multitrack: false,
+  setMultitrack: (v) => set({ multitrack: v }),
+  toggleMultitrack: () =>
+    set((s) => {
+      const next = !s.multitrack;
+      return { multitrack: next, recordRaw: next, splits: next ? false : s.splits };
+    }),
   sceneGraph: hydrateSceneGraph((defaultPreset as { sceneGraph?: unknown }).sceneGraph),
-  conductorBarsRemaining: 0,
-  conductorTargetBars: 0,
+  ghostBarsRemaining: 0,
+  ghostTargetBars: 0,
+  ghostCompositionStartStep: 0,
+  ghostPickLog: [...STARTUP_LOG],
+  toasts: [],
   // FX param setters are pure state writes. The canonical store→worklet
   // bridge lives in `audio/fxModulation.ts` (RAF loop, started at first
   // play); it reads these slices each frame, applies LFO modulation, and
@@ -730,8 +890,11 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       pendingBank: null,
       sceneStartStep: 0,
       sceneGraph: { ...DEFAULT_SCENE_GRAPH },
-      conductorBarsRemaining: 0,
-      conductorTargetBars: 0,
+      ghostBarsRemaining: 0,
+      ghostTargetBars: 0,
+      ghostCompositionStartStep: 0,
+      ghostPickLog: [...STARTUP_LOG],
+      toasts: [],
     }));
   },
   fireAllProgramChanges: () => {
@@ -797,14 +960,19 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setRootNote: (rootNote) => set({ rootNote }),
   setScale: (scale) => set({ scale }),
   toggleStep: (trackId, index) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) => {
+    set((state) => {
+      let turningOn = false;
+      let velocity = 1;
+      let trackIdx = -1;
+      const tracks = state.tracks.map((t, ti) => {
         if (t.id !== trackId) return t;
+        trackIdx = ti;
         const steps = t.steps.slice();
         const wasOn = steps[index].on;
-        const turningOn = !wasOn;
+        turningOn = !wasOn;
         if (turningOn) {
           steps[index] = { ...steps[index], on: true, pitch: t.lastPitch };
+          velocity = steps[index].velocity;
         } else {
           // walk forward from this step clearing tieToNext until the chain
           // breaks, so removing the step also tears down its outgoing tie chain
@@ -816,8 +984,25 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           steps[index] = { ...steps[index], on: false };
         }
         return { ...t, steps };
-      }),
-    })),
+      });
+      // Push a step-placement entry to the event log when turning ON.
+      // Off-toggles are removals, not placements — skip.
+      let log = state.ghostPickLog;
+      if (turningOn && trackIdx >= 0) {
+        const entry: GhostPickLogEntry = {
+          kind: 'step',
+          globalStep: state.globalStep,
+          track: trackIdx,
+          step: index,
+          value: velocity,
+        };
+        log = state.ghostPickLog.concat(entry);
+        if (log.length > GHOST_PICK_LOG_LIMIT) {
+          log = log.slice(log.length - GHOST_PICK_LOG_LIMIT);
+        }
+      }
+      return { tracks, ghostPickLog: log };
+    }),
   setStepPitch: (trackId, index, pitch) =>
     set((state) => ({
       tracks: state.tracks.map((t) => {
@@ -947,6 +1132,12 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rowRatchet: clamped } : t)),
     }));
   },
+  setTrackArpOn: (trackId, on) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) =>
+        t.id === trackId ? { ...t, arpConfig: { on } } : t
+      ),
+    })),
   clearTrack: (trackId) =>
     set((state) => ({
       tracks: state.tracks.map((t) =>
@@ -1046,7 +1237,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       // at currentStep=0) computes a negative sceneStep → negative localStep
       // → dispatch silently skips every step. Visible symptom: pattern
       // doesn't play after stop+bank-swap.
-      ...(playing ? {} : { globalStep: 0, sceneStartStep: 0 }),
+      ...(playing ? {} : { globalStep: 0, sceneStartStep: 0, ghostCompositionStartStep: 0 }),
     })),
   snapBank: (i) => {
     if (i < 0 || i >= BANK_SLOT_COUNT) return;
@@ -1070,6 +1261,49 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     }
     set({ pendingBank: i });
   },
+  // Plain-click on an empty slot — materialize a blank pattern that
+  // inherits band identity (track sources, mix knobs) from the currently
+  // active state but clears all step authoring and resets pattern-shape
+  // params. Unblocks "click into an empty pattern and start from there"
+  // without forcing the user to author the whole bank first then shift-snap.
+  startBlankBank: (i) => {
+    if (i < 0 || i >= BANK_SLOT_COUNT) return;
+    const state = useSequencerStore.getState();
+    if (state.banks[i]) return;
+    const blankTracks: Track[] = state.tracks.map((t) => ({
+      ...t,
+      steps: emptySteps(),
+      length: DEFAULT_LENGTH,
+      rate: '1/16',
+      lockTiming: false,
+      mutation: 0,
+      rowRatchet: 0,
+      viewPage: 0,
+      euclidean: { hits: 0, rotation: 0 },
+      lastPitch: 0,
+    }));
+    const blankMacros: BankMacros = {
+      density: 0.5,
+      chaos: 0.5,
+      motion: 0.5,
+      drift: 1,
+      tension: 0.5,
+    };
+    const newSlot: BankSlot = {
+      tracks: blankTracks,
+      macros: blankMacros,
+      kind: i >= TRANSITION_SLOT_START ? 'transition' : 'scene',
+    };
+    newSlot.entropy = bankEntropyTotal(newSlot);
+    const banks = state.banks.slice();
+    banks[i] = newSlot;
+    if (!state.playing) {
+      set({ banks });
+      applyBankSlot(set, i, newSlot, state.globalStep);
+    } else {
+      set({ banks, pendingBank: i });
+    }
+  },
   clearBank: (i) => {
     if (i < 0 || i >= BANK_SLOT_COUNT) return;
     set((state) => {
@@ -1078,6 +1312,43 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       return {
         banks: next,
         pendingBank: state.pendingBank === i ? null : state.pendingBank,
+      };
+    });
+  },
+  // Insert-and-shift reorder within the scene-slot range (0..TRANSITION_SLOT_START).
+  // Banks between `from` and `to` slide by one to fill the gap and create the
+  // insertion point. activeBank and pendingBank follow the shift so the user's
+  // queued / playing state stays consistent. Transition slots (14/15) are not
+  // touched — they're a separate region for user-triggered breaks.
+  moveBank: (from, to) => {
+    set((state) => {
+      if (from === to) return {};
+      if (from < 0 || from >= TRANSITION_SLOT_START) return {};
+      if (to < 0 || to >= TRANSITION_SLOT_START) return {};
+      const moved = state.banks[from];
+      if (!moved) return {};
+      const banks = state.banks.slice();
+      if (from < to) {
+        // Moving right: pull items between left by one.
+        for (let i = from; i < to; i++) banks[i] = banks[i + 1];
+      } else {
+        // Moving left: push items between right by one.
+        for (let i = from; i > to; i--) banks[i] = banks[i - 1];
+      }
+      banks[to] = moved;
+
+      const shiftIndex = (idx: number | null): number | null => {
+        if (idx === null) return null;
+        if (idx === from) return to;
+        if (from < to && idx > from && idx <= to) return idx - 1;
+        if (from > to && idx >= to && idx < from) return idx + 1;
+        return idx;
+      };
+
+      return {
+        banks,
+        activeBank: shiftIndex(state.activeBank),
+        pendingBank: shiftIndex(state.pendingBank),
       };
     });
   },
@@ -1113,13 +1384,62 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       const next = Math.max(0, Math.min(32, Math.floor(Number.isFinite(bars) ? bars : 0)));
       return { sceneGraph: { ...state.sceneGraph, transitionBars: next } };
     }),
-  setConductorDisplay: (remaining, target) =>
-    set({ conductorBarsRemaining: remaining, conductorTargetBars: target }),
+  setSceneGraphShape: (shape) =>
+    set((state) => {
+      if (!SCENE_SHAPES.includes(shape)) return {};
+      return { sceneGraph: { ...state.sceneGraph, shape } };
+    }),
+  setSceneGraphPhaseLength: (bars) =>
+    set((state) => {
+      const next = Math.max(1, Math.min(1024, Math.floor(Number.isFinite(bars) ? bars : 1)));
+      return { sceneGraph: { ...state.sceneGraph, phaseLength: next } };
+    }),
+  setGhostDisplay: (remaining, target) =>
+    set({ ghostBarsRemaining: remaining, ghostTargetBars: target }),
+  setGhostCompositionStart: (step) =>
+    set({ ghostCompositionStartStep: Math.max(0, Math.floor(step)) }),
+  pushGhostPickEvent: (entry) =>
+    set((s) => {
+      const next = s.ghostPickLog.concat(entry);
+      // Cap at GHOST_PICK_LOG_LIMIT — slice the head if we've crossed.
+      if (next.length > GHOST_PICK_LOG_LIMIT) {
+        next.splice(0, next.length - GHOST_PICK_LOG_LIMIT);
+      }
+      return { ghostPickLog: next };
+    }),
+  // Decorate the most-recent log entry with its dwell decision. tickBar
+  // rolls the dwell AFTER applyBankSlot commits the swap, so the entry
+  // for this slot was already pushed (by pickNextBank for auto, or by
+  // applyBankSlot for manual). Slot match guards against a stray update
+  // tagging an unrelated entry.
+  setDwellOnLastBankChange: (slot, dwellBars) =>
+    set((s) => {
+      if (s.ghostPickLog.length === 0) return {};
+      const last = s.ghostPickLog[s.ghostPickLog.length - 1];
+      // Only bank-change entries carry a slot — skip meta entries (shape /
+      // ghost / transport) that might be the most-recent push.
+      if (last.kind !== 'auto' && last.kind !== 'manual') return {};
+      if (last.slot !== slot) return {};
+      const next = s.ghostPickLog.slice();
+      next[next.length - 1] = { ...last, dwellBars };
+      return { ghostPickLog: next };
+    }),
+  clearGhostPickLog: () => set({ ghostPickLog: [] }),
+  pushToast: (t) =>
+    set((s) => ({
+      toasts: s.toasts.concat({
+        ...t,
+        id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: Date.now(),
+      }),
+    })),
+  dismissToast: (id) =>
+    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   // Batched partial macro write — single set() so subscribers fire once
-  // regardless of how many fields the caller updates. Used by the conductor's
+  // regardless of how many fields the caller updates. Used by the ghost's
   // per-bar lerp (writes 4 — density excluded) and density drift (writes 1).
   // Manual UI knobs keep using the individual setDensity/setMotion/etc.
-  // setters; this is conductor-side machinery.
+  // setters; this is ghost-side machinery.
   setMacros: (m) => {
     const next: Partial<Pick<SequencerState, 'density' | 'chaos' | 'motion' | 'drift' | 'tension'>> = {};
     if (m.density !== undefined) next.density = clamp01(m.density);
@@ -1200,4 +1520,35 @@ function applyBankSlot(
   // via setTargetAtTime — so a disconnect here would only buy us cutting
   // off in-flight sample tails for tracks that survive the swap. Project
   // import (persist.ts) DOES reset filters because trackIds change there.
+
+  // Log this bank change for the GhostDebug datafeed. If the most recent
+  // auto entry already points at this slot (ghost picker pushed it before
+  // queueing), skip — that entry IS this commit. Otherwise log a manual
+  // entry so user-driven swaps (clicks, blank-starts, etc.) appear in the
+  // history. Dedupe window is 1 bar (32 globalSteps at 32nd resolution).
+  const post = useSequencerStore.getState();
+  const log = post.ghostPickLog;
+  let alreadyLogged = false;
+  for (let j = log.length - 1; j >= 0; j--) {
+    const e = log[j];
+    if (e.kind !== 'auto') continue;
+    if (atGlobalStep - e.globalStep > 32) break;
+    if (e.slot === i) {
+      alreadyLogged = true;
+      break;
+    }
+  }
+  if (!alreadyLogged) {
+    let nonce = '';
+    while (nonce.length < 12) {
+      nonce += Math.random().toString(16).slice(2);
+    }
+    nonce = nonce.slice(0, 12).toUpperCase();
+    post.pushGhostPickEvent({
+      kind: 'manual',
+      globalStep: atGlobalStep,
+      slot: i,
+      nonce,
+    });
+  }
 }

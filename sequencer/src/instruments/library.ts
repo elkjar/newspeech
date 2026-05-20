@@ -218,6 +218,28 @@ export function instrumentIsMelodic(id: string): boolean {
   return inst.role !== 'drum';
 }
 
+/**
+ * Ghost entropy contribution for an external MIDI instrument. Endpoints
+ * stretched to match `voiceEntropyClass` so MIDI-routed banks read at the
+ * same scale as sample-voice banks. Derived from `role`:
+ *   drum → 1.00 (percussion-tier)
+ *   lead → 0.50 (melodic-mid)
+ *   bass → 0.30 (low-freq anchor, mid-low)
+ *   pad  → 0.05 (sustained)
+ * Unknown ids fall through to 0.50.
+ */
+export function instrumentEntropyClass(id: string): number {
+  const inst = getInstrument(id);
+  if (!inst) return 0.5;
+  switch (inst.role) {
+    case 'drum': return 1;
+    case 'lead': return 0.5;
+    case 'bass': return 0.3;
+    case 'pad': return 0.05;
+    default: return 0.5;
+  }
+}
+
 export function instrumentsForRole(role: InstrumentRole): Instrument[] {
   return [
     ...INSTRUMENTS.filter((i) => i.role === role),
