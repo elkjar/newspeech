@@ -535,6 +535,13 @@ class SamplePlayer {
     src.onended = () => {
       this.activeChordVoices.delete(entry);
       if (this.activeVoices.get(voice) === src) this.activeVoices.delete(voice);
+      // Explicit disconnect — WKWebView is less aggressive than V8 about
+      // tearing down ended sources, and accumulated source+gain nodes
+      // visibly degrade audio quality over long sessions (chunking on the
+      // low end, comb-filter phasing from delayed-GC siblings still
+      // resident in the graph).
+      try { src.disconnect(); } catch { /* already disconnected */ }
+      try { gain.disconnect(); } catch { /* already disconnected */ }
     };
 
     return src;

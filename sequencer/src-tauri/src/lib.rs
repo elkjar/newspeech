@@ -123,6 +123,7 @@ pub fn run() {
       projectfs::reveal_in_finder,
       midi::midi_list_ports,
       midi::midi_subscribe_input,
+      midi::midi_unsubscribe_input,
       midi::midi_unsubscribe_all_inputs,
       midi::midi_send,
       midi::midi_panic,

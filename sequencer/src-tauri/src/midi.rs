@@ -64,7 +64,9 @@ pub fn midi_subscribe_input(
     }
     let mut m_in =
         MidiInput::new(CLIENT_NAME).map_err(|e| format!("MidiInput::new: {e}"))?;
-    m_in.ignore(Ignore::All);
+    // Allow SysEx through (Launchpad X may respond to layout/state queries via
+    // SysEx). Still drop timing + active-sense — those are noise for our use.
+    m_in.ignore(Ignore::TimeAndActiveSense);
     let ports = m_in.ports();
     let port = ports
         .iter()
@@ -99,6 +101,20 @@ pub fn midi_subscribe_input(
 pub fn midi_unsubscribe_all_inputs(state: State<MidiRegistry>) -> Result<(), String> {
     let mut inputs = state.inputs.lock().map_err(|e| format!("lock: {e}"))?;
     inputs.clear();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn midi_unsubscribe_input(
+    state: State<MidiRegistry>,
+    port_name: String,
+) -> Result<(), String> {
+    // Drop a single cached input connection. Called by the JS-side port poll
+    // when a previously-subscribed port disappears from the system list —
+    // without this, `midi_subscribe_input`'s `contains_key` early-return
+    // would block re-subscription on replug.
+    let mut inputs = state.inputs.lock().map_err(|e| format!("lock: {e}"))?;
+    inputs.remove(&port_name);
     Ok(())
 }
 

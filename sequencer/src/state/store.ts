@@ -19,6 +19,7 @@ import {
 import { sendPatchSelect, resolveDeviceId } from '../audio/midiOut';
 import { voiceTrackDefaults } from '../audio/voices';
 import { bankEntropyTotal } from '../ghost/entropy';
+import { noteDensityUserInput } from '../ghost/ghost';
 import { ensureBothSections, hydrateTrack, hydrateLFOs, applyPositionalRoleDefaults, hydrateBanks, blankTrack } from './hydrate';
 import {
   hydrateTape as hydrateTapeFromPreset,
@@ -868,7 +869,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       if (!preset) return {};
       return { master: { ...preset } };
     }),
-  setDensity: (v) => set({ density: clamp01(v) }),
+  setDensity: (v) => {
+    // Notify ghost that the user touched density so its per-frame smoother
+    // backs off for ~2 bars (lets the user hold the knob at a value without
+    // ghost immediately yanking it back).
+    noteDensityUserInput();
+    set({ density: clamp01(v) });
+  },
   setChaos: (v) => set({ chaos: clamp01(v) }),
   setMotion: (v) => set({ motion: clamp01(v) }),
   setDrift: (v) => set({ drift: clamp01(v) }),

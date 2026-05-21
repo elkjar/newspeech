@@ -80,6 +80,18 @@ async function refreshTauriInputs(): Promise<void> {
         }
       }
     }
+    // Evict stale Rust-side subscriptions for ports that disappeared. Without
+    // this, the next replug of the same device hits the cached (now-dead)
+    // connection entry and subscribe early-returns — events stop reaching JS.
+    for (const name of tauriInputNames) {
+      if (!next.includes(name)) {
+        try {
+          await invoke('midi_unsubscribe_input', { portName: name });
+        } catch (err) {
+          console.warn(`[midiIn] unsubscribe ${name} failed:`, err);
+        }
+      }
+    }
     const changed =
       next.length !== tauriInputNames.length ||
       next.some((n, i) => n !== tauriInputNames[i]);

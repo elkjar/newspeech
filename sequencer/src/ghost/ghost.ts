@@ -119,6 +119,18 @@ let lastPlaying = false;
 let lastShape: SceneShape = 'arc';
 let unsubscribe: (() => void) | null = null;
 
+// User-input override: when the user touches density (knob, MIDI CC, etc.)
+// the ghost's per-frame density smoother goes quiet for this many bars.
+// `tickDensity` (per-bar) keeps planning the target so the resume catches
+// up to whatever ghost would have wanted; only the per-frame WRITE pauses,
+// so the user holds whatever they dialled in until the window expires.
+const DENSITY_OVERRIDE_BARS = 2;
+let userDensityOverrideBars = 0;
+
+export function noteDensityUserInput(): void {
+  userDensityOverrideBars = DENSITY_OVERRIDE_BARS;
+}
+
 function rollDwellBars(minBars: number, maxBars: number): number {
   const lo = Math.max(1, Math.floor(minBars));
   const hi = Math.max(lo, Math.floor(maxBars));
@@ -426,10 +438,12 @@ function densityTick(): void {
     densityRAF = null;
     return;
   }
-  const cur = s.density;
-  const diff = state.densityTarget - cur;
-  if (Math.abs(diff) > 0.0005) {
-    s.setMacros({ density: cur + diff * DENSITY_SMOOTH_PER_FRAME });
+  if (userDensityOverrideBars <= 0) {
+    const cur = s.density;
+    const diff = state.densityTarget - cur;
+    if (Math.abs(diff) > 0.0005) {
+      s.setMacros({ density: cur + diff * DENSITY_SMOOTH_PER_FRAME });
+    }
   }
   densityRAF = requestAnimationFrame(densityTick);
 }
@@ -437,6 +451,20 @@ function densityTick(): void {
 function ensureDensitySmootherRunning(): void {
   if (densityRAF !== null) return;
   densityRAF = requestAnimationFrame(densityTick);
+}
+
+// HMR cleanup. Without this, every reload of this module orphans the
+// active RAF loop — the OLD densityTick keeps calling setMacros each
+// frame against the same store, and the NEW module starts another RAF
+// alongside. Two (or N) density writers fighting per frame; potential
+// source of audio-thread pressure that compounds across edits.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (densityRAF !== null) {
+      cancelAnimationFrame(densityRAF);
+      densityRAF = null;
+    }
+  });
 }
 
 export function resetGhost(): void {
@@ -494,6 +522,10 @@ export function beforeBarCommit(): void {
 // commitPendingBank() has applied any queued swap for this bar. Reads current
 // store state, may call queueBank() which becomes the *next* bar's swap.
 export function tickBar(globalStep: number): void {
+  // Decrement the user-input density override window every bar, regardless
+  // of ghost enabled/disabled state. Otherwise toggling ghost off mid-window
+  // would freeze the counter and the override would resume next session.
+  if (userDensityOverrideBars > 0) userDensityOverrideBars--;
   const store = useSequencerStore.getState();
   const { sceneGraph, banks, activeBank, pendingBank } = store;
 

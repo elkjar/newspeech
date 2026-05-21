@@ -5,6 +5,14 @@ import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 import { useMIDIInputs } from '../hooks/useMIDIInputs';
 import { midiOutStatus } from '../audio/midiOut';
 import { IconButton, DownloadIcon, ImportIcon } from './Transport';
+import {
+  isLaunchpadConnected,
+  onLaunchpadConnectionChange,
+  getConnectedPort,
+} from '../midi/launchpad';
+import { isTauri } from '@tauri-apps/api/core';
+
+const NATIVE = isTauri();
 
 const CREATE_NEW_ID = '__new__';
 
@@ -334,6 +342,33 @@ function MidiInputCluster() {
   );
 }
 
+function LaunchpadStatus() {
+  const [connected, setConnected] = useState(isLaunchpadConnected());
+  const [port, setPort] = useState(getConnectedPort());
+  useEffect(() => {
+    return onLaunchpadConnectionChange(() => {
+      setConnected(isLaunchpadConnected());
+      setPort(getConnectedPort());
+    });
+  }, []);
+  if (!NATIVE) return null;
+  return (
+    <div
+      className={[
+        'inline-flex items-center gap-2 px-2 text-[11px] uppercase tracking-widest border transition-colors',
+        ROW_HEIGHT,
+        connected
+          ? 'border-white/40 text-white'
+          : 'border-white/10 text-white/30',
+      ].join(' ')}
+      title={connected ? `launchpad ready · ${port}` : 'launchpad not detected'}
+    >
+      <span className={connected ? 'text-white' : 'text-white/30'}>●</span>
+      <span>launchpad</span>
+    </div>
+  );
+}
+
 export function MidiBar() {
   const labelCls = 'text-[11px] uppercase tracking-widest opacity-55 w-[64px] shrink-0';
   return (
@@ -341,6 +376,7 @@ export function MidiBar() {
       <div className="flex items-center gap-2">
         <span className={labelCls}>in</span>
         <MidiInDeviceSelector />
+        <LaunchpadStatus />
       </div>
       <div className="flex items-center gap-2">
         <span className={labelCls}>out</span>

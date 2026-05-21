@@ -20,10 +20,24 @@ import {
 } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
-import { initMIDIOut, sendMIDINote, resolveDeviceId } from './audio/midiOut';
-import { initMIDIIn } from './midi/midiIn';
+import {
+  initMIDIOut,
+  sendMIDINote,
+  resolveDeviceId,
+  getMIDIOutputs,
+  onMIDIOutputsChanged,
+} from './audio/midiOut';
+import { initMIDIIn, getConnectedInputNames, onMIDIInputsChanged } from './midi/midiIn';
 import { dispatchMidi } from './midi/midiMap';
 import { loadMidiMapLibrary } from './midi/midiMapLoader';
+import {
+  connectLaunchpad,
+  disconnectLaunchpad,
+  findLaunchpadPorts,
+  getConnectedPort,
+  isLaunchpadConnected,
+} from './midi/launchpad';
+import { attachLaunchpadBindings, detachLaunchpadBindings } from './midi/launchpadBindings';
 import { octaveDegrees } from './audio/scale';
 import { sourceIsMelodic } from './instruments/library';
 import { registerKit, type SampleKitEntry, type ExtendedSampleManifest } from './instruments/manifestRegistry';
@@ -184,6 +198,45 @@ export function App() {
       await loadMidiMapLibrary();
       await initMIDIIn(dispatchMidi);
     })();
+
+    // Launchpad X — native-only. Web Audio can't use SysEx without an extra
+    // permission request the rest of the web build doesn't need, and the
+    // device is a performance-tier feature per the app/web tiering decision.
+    if (!NATIVE) return;
+    const tryConnectLaunchpad = async () => {
+      const inputs = getConnectedInputNames();
+      const outputs = getMIDIOutputs().map((o) => o.name);
+      // If we're connected to a port that's no longer enumerated, the device
+      // was unplugged. Tear down so the next call can re-detect and reconnect
+      // — without this, `isLaunchpadConnected()` stays true forever and
+      // replugging the same device silently does nothing.
+      const connectedPort = getConnectedPort();
+      if (connectedPort && !inputs.includes(connectedPort)) {
+        detachLaunchpadBindings();
+        await disconnectLaunchpad();
+      }
+      if (isLaunchpadConnected()) return;
+      const found = findLaunchpadPorts(inputs, outputs);
+      if (!found) return;
+      const ok = await connectLaunchpad(found.inputPort, found.outputPort);
+      if (ok) attachLaunchpadBindings();
+    };
+    // Initial poke + watch for hot-plug on either side.
+    void tryConnectLaunchpad();
+    const offInputs = onMIDIInputsChanged(() => void tryConnectLaunchpad());
+    const offOutputs = onMIDIOutputsChanged(() => void tryConnectLaunchpad());
+    const onUnload = () => {
+      // Best-effort: return the device to Live Mode so it doesn't sit dark.
+      detachLaunchpadBindings();
+      void disconnectLaunchpad();
+    };
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      offInputs();
+      offOutputs();
+      window.removeEventListener('beforeunload', onUnload);
+      onUnload();
+    };
   }, []);
 
   useEffect(() => {
