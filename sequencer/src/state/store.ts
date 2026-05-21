@@ -233,6 +233,45 @@ export interface BankSlot {
   // so old saves without the field still load — hydrator recomputes from
   // tracks/macros on load if missing.
   entropy?: number;
+  // Per-bank dwell override (bars). When set, ghost uses this exact value
+  // instead of recipe-derived or scene-length-aware dwell. Lets the user
+  // pin specific banks to specific durations regardless of scene context.
+  // Undefined = automatic.
+  dwellBars?: number;
+}
+
+// A composition's per-scene snapshot — captures everything that should
+// swap as a unit when transitioning between scenes. Tracks include voice
+// assignments + per-track mix knobs (which DO load fresh at scene swap,
+// unlike bank swap which preserves "band identity"). Banks are the full
+// 16-slot palette for that scene. Macros + sceneGraph drive ghost
+// behavior within that scene.
+//
+// Master FX (saturation/glitch/reverb/tape), BPM, scale, rootNote stay
+// global across scenes — per user [[project_scene_session]] direction
+// 2026-05-20 ("FX stays global").
+export interface Scene {
+  name?: string;
+  tracks: Track[];
+  banks: (BankSlot | null)[];
+  activeBank: number | null;
+  macros: BankMacros;
+  sceneGraph: SceneGraphConfig;
+}
+
+export const COMPOSITION_SLOT_COUNT = 8;
+
+export interface Composition {
+  scenes: (Scene | null)[];
+  activeScene: number | null;
+  // Bar-boundary queued scene swap — mirrors pendingBank for banks.
+  // Cleared on commit, on transport stop, and on explicit disarm. UI
+  // pulses the pending slot until commit lands.
+  pendingScene: number | null;
+  // When true, composition stops after the last scene's shape completes
+  // (vs. looping back to scene 0). Mirrors the "defined ending" framing
+  // for piece-shaped compositions.
+  endsAfterLast: boolean;
 }
 
 // Toast for user-facing app notifications. Surface for: recording finalize
@@ -308,6 +347,11 @@ export type GhostPickLogEntry =
       track: number;
       step: number;
       value: number;
+    }
+  | {
+      kind: 'scene';
+      globalStep: number;
+      slot: number;
     };
 
 export const GHOST_PICK_LOG_LIMIT = 16;
@@ -328,6 +372,8 @@ export type SceneShape = 'sustain' | 'build' | 'arc' | 'wave' | 'decay';
 
 export const SCENE_SHAPES: SceneShape[] = ['sustain', 'build', 'arc', 'wave', 'decay'];
 
+export type BankOrderMode = 'entropy' | 'sequence';
+
 export interface SceneGraphConfig {
   enabled: boolean;
   minBars: number;
@@ -335,6 +381,13 @@ export interface SceneGraphConfig {
   transitionBars: number;
   shape: SceneShape;
   phaseLength: number;
+  // 'entropy' (default): ghost picks banks via shape curve + entropy
+  // delta + slot-distance bias. 'sequence': ghost walks filled scene
+  // banks in slot order, wrapping at the end. Same-recipe avoidance +
+  // entropy weighting are skipped — slot order is the user's authored
+  // intent. Shape + phase still drive density envelope independent of
+  // picker mode.
+  bankOrderMode: BankOrderMode;
 }
 
 export const DEFAULT_SCENE_GRAPH: SceneGraphConfig = {
@@ -344,6 +397,7 @@ export const DEFAULT_SCENE_GRAPH: SceneGraphConfig = {
   transitionBars: 4,
   shape: 'arc',
   phaseLength: 128,
+  bankOrderMode: 'entropy',
 };
 
 interface SequencerState {
@@ -484,11 +538,26 @@ interface SequencerState {
   clearBank: (i: number) => void;
   moveBank: (from: number, to: number) => void;
   startBlankBank: (i: number) => void;
+  setBankDwell: (i: number, bars: number | null) => void;
   // atGlobalStep is the scheduler's currentStep at swap time. Caller passes
   // the scheduler globalStep parameter rather than letting the store read
   // its own (potentially-lagging audible-step) globalStep — the dispatch's
   // sceneStep math is keyed off the SCHEDULED step, not the audible step.
   commitPendingBank: (atGlobalStep: number) => void;
+  // Composition layer — list of Scenes plus the active scene index.
+  // Scene swap loads everything per-scene fresh (tracks/banks/macros/
+  // sceneGraph) while keeping master FX + tempo + scale truly global.
+  composition: Composition;
+  snapScene: (i: number) => void;
+  loadScene: (i: number) => void;
+  clearScene: (i: number) => void;
+  commitPendingScene: (atGlobalStep: number) => void;
+  moveScene: (from: number, to: number) => void;
+  setCompositionEndsAfterLast: (v: boolean) => void;
+  // Insert a Scene snapshot (typically built via parseSceneFromSeq from
+  // an external `.seq` file) into the next empty composition slot.
+  // Returns the assigned slot index, or null when all slots are full.
+  importScene: (scene: Scene) => number | null;
   // Ghost — persisted config + transient display state. Display fields
   // (`ghostBarsRemaining`, `ghostTargetBars`) are written by the
   // ghost module each bar; not part of saved state.
@@ -509,6 +578,7 @@ interface SequencerState {
   setSceneGraphTransitionBars: (bars: number) => void;
   setSceneGraphShape: (shape: SceneShape) => void;
   setSceneGraphPhaseLength: (bars: number) => void;
+  setSceneGraphBankOrderMode: (mode: BankOrderMode) => void;
   setGhostDisplay: (remaining: number, target: number) => void;
   setGhostCompositionStart: (step: number) => void;
   pushGhostPickEvent: (entry: GhostPickLogEntry) => void;
@@ -765,6 +835,12 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   ghostCompositionStartStep: 0,
   ghostPickLog: [...STARTUP_LOG],
   toasts: [],
+  composition: {
+    scenes: Array.from({ length: COMPOSITION_SLOT_COUNT }, () => null),
+    activeScene: null,
+    pendingScene: null,
+    endsAfterLast: true,
+  },
   // FX param setters are pure state writes. The canonical store→worklet
   // bridge lives in `audio/fxModulation.ts` (RAF loop, started at first
   // play); it reads these slices each frame, applies LFO modulation, and
@@ -895,6 +971,12 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       ghostCompositionStartStep: 0,
       ghostPickLog: [...STARTUP_LOG],
       toasts: [],
+      composition: {
+        scenes: Array.from({ length: COMPOSITION_SLOT_COUNT }, () => null),
+        activeScene: null,
+        pendingScene: null,
+        endsAfterLast: true,
+      },
     }));
   },
   fireAllProgramChanges: () => {
@@ -1238,6 +1320,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       // → dispatch silently skips every step. Visible symptom: pattern
       // doesn't play after stop+bank-swap.
       ...(playing ? {} : { globalStep: 0, sceneStartStep: 0, ghostCompositionStartStep: 0 }),
+      // Drop any queued scene swap on stop, matching pendingBank semantics.
+      composition: playing
+        ? state.composition
+        : { ...state.composition, pendingScene: null },
     })),
   snapBank: (i) => {
     if (i < 0 || i >= BANK_SLOT_COUNT) return;
@@ -1315,6 +1401,24 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       };
     });
   },
+  setBankDwell: (i, bars) => {
+    if (i < 0 || i >= BANK_SLOT_COUNT) return;
+    set((state) => {
+      const slot = state.banks[i];
+      if (!slot) return {};
+      const next = state.banks.slice();
+      let updated: BankSlot;
+      if (bars === null || !Number.isFinite(bars)) {
+        const { dwellBars: _drop, ...rest } = slot;
+        void _drop;
+        updated = rest;
+      } else {
+        updated = { ...slot, dwellBars: Math.max(1, Math.min(1024, Math.floor(bars))) };
+      }
+      next[i] = updated;
+      return { banks: next, ...mirrorBankSlotIntoActiveScene(state, i, updated) };
+    });
+  },
   // Insert-and-shift reorder within the scene-slot range (0..TRANSITION_SLOT_START).
   // Banks between `from` and `to` slide by one to fill the gap and create the
   // insertion point. activeBank and pendingBank follow the shift so the user's
@@ -1363,36 +1467,164 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     }
     applyBankSlot(set, i, slot, atGlobalStep);
   },
+  snapScene: (i) => {
+    if (i < 0 || i >= COMPOSITION_SLOT_COUNT) return;
+    set((state) => {
+      const scene: Scene = {
+        tracks: state.tracks.map(cloneTrack),
+        banks: state.banks.map((b) =>
+          b
+            ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
+            : null,
+        ),
+        activeBank: state.activeBank,
+        macros: {
+          density: state.density,
+          chaos: state.chaos,
+          motion: state.motion,
+          drift: state.drift,
+          tension: state.tension,
+        },
+        sceneGraph: { ...state.sceneGraph },
+      };
+      const scenes = state.composition.scenes.slice();
+      scenes[i] = scene;
+      return { composition: { ...state.composition, scenes } };
+    });
+  },
+  loadScene: (i) => {
+    const state = useSequencerStore.getState();
+    if (i < 0 || i >= COMPOSITION_SLOT_COUNT) return;
+    const scene = state.composition.scenes[i];
+    if (!scene) return;
+    if (i === state.composition.activeScene) return;
+    if (!state.playing) {
+      // Stopped path: apply immediately, same convention as queueBank.
+      applyScene(set, i, scene, state.globalStep);
+      return;
+    }
+    // Playing: queue for next bar boundary so the swap lands atomically
+    // alongside any bank commit at the same boundary.
+    set((s) => ({
+      composition: { ...s.composition, pendingScene: i },
+    }));
+  },
+  commitPendingScene: (atGlobalStep) => {
+    const state = useSequencerStore.getState();
+    const i = state.composition.pendingScene;
+    if (i === null) return;
+    const scene = state.composition.scenes[i];
+    if (!scene) {
+      set((s) => ({ composition: { ...s.composition, pendingScene: null } }));
+      return;
+    }
+    applyScene(set, i, scene, atGlobalStep);
+  },
+  clearScene: (i) =>
+    set((state) => {
+      if (i < 0 || i >= COMPOSITION_SLOT_COUNT) return {};
+      const scenes = state.composition.scenes.slice();
+      scenes[i] = null;
+      return {
+        composition: {
+          ...state.composition,
+          scenes,
+          activeScene:
+            state.composition.activeScene === i
+              ? null
+              : state.composition.activeScene,
+        },
+      };
+    }),
+  setCompositionEndsAfterLast: (v) =>
+    set((state) => ({
+      composition: { ...state.composition, endsAfterLast: v },
+    })),
+  importScene: (scene): number | null => {
+    // Read + write in a single set() so the action doesn't reference
+    // useSequencerStore.getState() inside the factory — that triggers a
+    // circular type dependency through the SequencerState init.
+    let idx: number | null = null;
+    set((s) => {
+      const found = s.composition.scenes.findIndex((sc) => sc === null);
+      if (found === -1) return {};
+      idx = found;
+      const scenes = s.composition.scenes.slice();
+      scenes[found] = scene;
+      return { composition: { ...s.composition, scenes } };
+    });
+    return idx;
+  },
+  // Insert-and-shift reorder for scenes — mirrors moveBank's semantics
+  // exactly. Scenes between `from` and `to` slide one position to fill
+  // the gap. activeScene + pendingScene follow the shift so the
+  // playing / queued state stays consistent across the reorder.
+  moveScene: (from, to) => {
+    set((state) => {
+      if (from === to) return {};
+      if (from < 0 || from >= COMPOSITION_SLOT_COUNT) return {};
+      if (to < 0 || to >= COMPOSITION_SLOT_COUNT) return {};
+      const moved = state.composition.scenes[from];
+      if (!moved) return {};
+      const scenes = state.composition.scenes.slice();
+      if (from < to) {
+        for (let i = from; i < to; i++) scenes[i] = scenes[i + 1];
+      } else {
+        for (let i = from; i > to; i--) scenes[i] = scenes[i - 1];
+      }
+      scenes[to] = moved;
+      const shiftIndex = (idx: number | null): number | null => {
+        if (idx === null) return null;
+        if (idx === from) return to;
+        if (from < to && idx > from && idx <= to) return idx - 1;
+        if (from > to && idx >= to && idx < from) return idx + 1;
+        return idx;
+      };
+      return {
+        composition: {
+          ...state.composition,
+          scenes,
+          activeScene: shiftIndex(state.composition.activeScene),
+          pendingScene: shiftIndex(state.composition.pendingScene),
+        },
+      };
+    });
+  },
   setSceneGraphEnabled: (enabled) =>
-    set((state) => ({ sceneGraph: { ...state.sceneGraph, enabled } })),
+    set((state) => withSceneGraphPatch(state, { enabled })),
   setSceneGraphMinBars: (bars) =>
     set((state) => {
       const next = Math.max(1, Math.min(256, Math.floor(Number.isFinite(bars) ? bars : 1)));
       // Clamp max upward if user drags min past it — keeps the range valid
       // without forcing a separate "invalid" UI state.
       const max = Math.max(state.sceneGraph.maxBars, next);
-      return { sceneGraph: { ...state.sceneGraph, minBars: next, maxBars: max } };
+      return withSceneGraphPatch(state, { minBars: next, maxBars: max });
     }),
   setSceneGraphMaxBars: (bars) =>
     set((state) => {
       const next = Math.max(1, Math.min(256, Math.floor(Number.isFinite(bars) ? bars : 1)));
       const min = Math.min(state.sceneGraph.minBars, next);
-      return { sceneGraph: { ...state.sceneGraph, minBars: min, maxBars: next } };
+      return withSceneGraphPatch(state, { minBars: min, maxBars: next });
     }),
   setSceneGraphTransitionBars: (bars) =>
     set((state) => {
       const next = Math.max(0, Math.min(32, Math.floor(Number.isFinite(bars) ? bars : 0)));
-      return { sceneGraph: { ...state.sceneGraph, transitionBars: next } };
+      return withSceneGraphPatch(state, { transitionBars: next });
     }),
   setSceneGraphShape: (shape) =>
     set((state) => {
       if (!SCENE_SHAPES.includes(shape)) return {};
-      return { sceneGraph: { ...state.sceneGraph, shape } };
+      return withSceneGraphPatch(state, { shape });
     }),
   setSceneGraphPhaseLength: (bars) =>
     set((state) => {
       const next = Math.max(1, Math.min(1024, Math.floor(Number.isFinite(bars) ? bars : 1)));
-      return { sceneGraph: { ...state.sceneGraph, phaseLength: next } };
+      return withSceneGraphPatch(state, { phaseLength: next });
+    }),
+  setSceneGraphBankOrderMode: (mode) =>
+    set((state) => {
+      if (mode !== 'entropy' && mode !== 'sequence') return {};
+      return withSceneGraphPatch(state, { bankOrderMode: mode });
     }),
   setGhostDisplay: (remaining, target) =>
     set({ ghostBarsRemaining: remaining, ghostTargetBars: target }),
@@ -1551,4 +1783,102 @@ function applyBankSlot(
       nonce,
     });
   }
+}
+
+// Write-through helpers — scene-level edits (sceneGraph + per-bank dwell)
+// live on both the working state and the active scene's snapshot, so
+// switching scenes and returning preserves the user's authoring intent.
+// No-op when no scene is active or the active slot is empty (edits still
+// land in working state; user can shift-click to snap a new scene).
+function withSceneGraphPatch(
+  state: SequencerState,
+  patch: Partial<SceneGraphConfig>
+): Partial<SequencerState> {
+  const sceneGraph = { ...state.sceneGraph, ...patch };
+  const i = state.composition.activeScene;
+  if (i === null) return { sceneGraph };
+  const scene = state.composition.scenes[i];
+  if (!scene) return { sceneGraph };
+  const scenes = state.composition.scenes.slice();
+  scenes[i] = { ...scene, sceneGraph: { ...sceneGraph } };
+  return { sceneGraph, composition: { ...state.composition, scenes } };
+}
+
+function mirrorBankSlotIntoActiveScene(
+  state: SequencerState,
+  slotIdx: number,
+  slot: BankSlot
+): Partial<SequencerState> {
+  const i = state.composition.activeScene;
+  if (i === null) return {};
+  const scene = state.composition.scenes[i];
+  if (!scene) return {};
+  const sceneSlot = scene.banks[slotIdx];
+  if (!sceneSlot) return {};
+  const sceneBanks = scene.banks.slice();
+  // Only carry dwellBars across — the bank's tracks/macros/name belong to
+  // the scene's own authoring history, not the live working banks.
+  if (slot.dwellBars === undefined) {
+    const { dwellBars: _drop, ...rest } = sceneSlot;
+    void _drop;
+    sceneBanks[slotIdx] = rest;
+  } else {
+    sceneBanks[slotIdx] = { ...sceneSlot, dwellBars: slot.dwellBars };
+  }
+  const scenes = state.composition.scenes.slice();
+  scenes[i] = { ...scene, banks: sceneBanks };
+  return { composition: { ...state.composition, scenes } };
+}
+
+// Atomic scene swap. Unlike bank swap (which preserves band identity for
+// per-track mix knobs), scene swap loads EVERYTHING per-scene fresh:
+// voice assignments, per-track mix, banks, macros, sceneGraph. Truly
+// global state (bpm, scale, master FX, LFOs) is left untouched per the
+// composition-layer design. Filter graphs stay connected — sample tails
+// from the outgoing scene ring through naturally.
+function applyScene(
+  set: (
+    partial:
+      | Partial<SequencerState>
+      | ((state: SequencerState) => Partial<SequencerState>)
+  ) => void,
+  i: number,
+  scene: Scene,
+  atGlobalStep: number
+): void {
+  set((state) => ({
+    tracks: scene.tracks.map(cloneTrack),
+    banks: scene.banks.map((b) =>
+      b
+        ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
+        : null,
+    ),
+    activeBank: scene.activeBank,
+    pendingBank: null,
+    density: scene.macros.density,
+    chaos: scene.macros.chaos,
+    motion: scene.macros.motion,
+    drift: scene.macros.drift,
+    tension: scene.macros.tension,
+    // Ghost enabled is a session-level toggle, not per-scene state — preserve
+    // the user's current on/off choice across scene loads regardless of what
+    // was captured in the scene's snapshot.
+    sceneGraph: { ...scene.sceneGraph, enabled: state.sceneGraph.enabled },
+    sceneStartStep: atGlobalStep,
+    // Reset ghost arc clock — new scene starts a fresh shape phase
+    ghostCompositionStartStep: atGlobalStep,
+    freeze: false,
+    composition: { ...state.composition, activeScene: i, pendingScene: null },
+  }));
+  // Mutation overlay keyed by trackId+index → outgoing scene's mutated
+  // outcomes mustn't apply to the new scene's steps. Same rationale as
+  // applyBankSlot's clearOverlay call.
+  clearOverlay();
+  unfreezeLFOs();
+  resetPadDrift();
+  useSequencerStore.getState().pushGhostPickEvent({
+    kind: 'scene',
+    globalStep: atGlobalStep,
+    slot: i,
+  });
 }

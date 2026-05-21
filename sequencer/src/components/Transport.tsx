@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useSequencerStore } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
-import { exportProject, importProject, timestampSlug } from '../state/persist';
+import { exportProject, timestampSlug } from '../state/persist';
 import { presetsForTarget } from '../instruments/library';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -18,7 +18,7 @@ import { useAudioOutputs } from '../hooks/useAudioOutputs';
 
 const SEQ_FILTER = [{ name: 'newspeech sequence', extensions: ['seq'] }];
 
-async function saveProject() {
+export async function saveProject() {
   const code = exportProject();
   const defaultName = `newspeech-${timestampSlug()}.seq`;
   if (isTauri()) {
@@ -50,18 +50,6 @@ async function saveProject() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function openProjectViaDialog(): Promise<void> {
-  const { open } = await import('@tauri-apps/plugin-dialog');
-  const picked = await open({ multiple: false, filters: SEQ_FILTER });
-  if (!picked || typeof picked !== 'string') return;
-  try {
-    const text = await invoke<string>('read_text_file', { path: picked });
-    const ok = importProject(text);
-    if (!ok) console.warn('[project] failed to import sequence file');
-  } catch (err) {
-    console.error('[project] open failed:', err);
-  }
-}
 
 export function IconButton({
   title,
@@ -463,50 +451,6 @@ export function PresetControls() {
           ))}
         </select>
       </label>
-    </div>
-  );
-}
-
-export function ProjectFileControls() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const handleImport = async (file: File | null | undefined) => {
-    if (!file) return;
-    const text = await file.text();
-    const ok = importProject(text);
-    if (!ok) console.warn('failed to import sequence file');
-  };
-  const btn =
-    'flex items-center gap-2 px-3 h-[28px] text-[11px] uppercase tracking-widest border border-white/15 text-white/70 hover:text-white hover:border-white transition-colors';
-  return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <button type="button" onClick={() => void saveProject()} className={btn}>
-        <DownloadIcon />
-        save current scene
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          if (isTauri()) {
-            void openProjectViaDialog();
-          } else {
-            fileInputRef.current?.click();
-          }
-        }}
-        className={btn}
-      >
-        <ImportIcon />
-        load saved scene
-      </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".seq,.json,application/json,text/plain"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          handleImport(e.target.files?.[0]);
-          e.target.value = '';
-        }}
-      />
     </div>
   );
 }

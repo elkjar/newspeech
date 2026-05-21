@@ -2,13 +2,16 @@ import {
   useSequencerStore,
   type BankSlot,
   type BankMacros,
+  type BankOrderMode,
+  type Scene,
   type SceneShape,
 } from '../state/store';
+import { scheduler } from '../audio/scheduler';
 import { RECIPE_DWELL } from './generator';
 import { targetEntropy, phaseAt } from './shape';
 
 // Ghost v1.5 — autonomous walker across populated banks, color-macro lerp
-// on transitions, and ±10% in-scene density drift.
+// on transitions, and probabilistic mid-scene density fills.
 //
 // Density is treated differently from the four "color" macros (chaos / motion
 // / drift / tension): it's a pattern-tuning lens whose meaningful value is
@@ -16,9 +19,9 @@ import { targetEntropy, phaseAt } from './shape';
 // it across a swap means applying one pattern's density tuning to another
 // pattern's structure, which produces the "out of control" feeling when banks
 // have very different authored densities. So density SNAPS with the bank at
-// the swap (atomic, same as the rest of bank state), and the ghost
-// modulates it ±10% around the bank's saved value during the scene as a
-// subtle performance variation.
+// the swap (atomic, same as the rest of bank state), and ghost only
+// modulates it via fill gestures — never a sustained drift baseline.
+// Between fills, density sits exactly at the bank's saved value.
 //
 // Color macros still lerp from previous bank's effective values to new
 // bank's saved values over `transitionBars` bars at scene entry.
@@ -30,18 +33,10 @@ import { targetEntropy, phaseAt } from './shape';
 // cycle through the scheduler module.
 const STEPS_PER_BAR = 32;
 
-// Density drift constants. ±10% absolute range around the bank's saved
-// density, re-rolled every 4 bars; the RAF-driven smoother below pulls
-// store.density toward `state.densityTarget` continuously, so the per-bar
-// drift cadence just sets the target — no per-bar lerp math needed here.
-const DRIFT_RANGE = 0.1;
-const DRIFT_PERIOD_BARS = 4;
-
 // Mid-scene fill — short density gesture fired probabilistically during
-// the scene. Each spike is 1 bar at +MID_FILL_BOOST, then resolves back
-// to drift. The density knob is sensitive (+10% reads as "fill not
-// loop"), so the arc envelope is expressed via FREQUENCY of these
-// gestures rather than a sustained baseline shift.
+// the scene. Each spike is 1 bar at +MID_FILL_BOOST above the bank's
+// saved density, then resolves back to the saved value. The arc envelope
+// is expressed via FREQUENCY of these gestures, not a sustained shift.
 //
 // Probability per bar = BASE + shape_intensity * SHAPE_BONUS. BASE > 0
 // because Chris's hand-played patterns get fills CONSTANTLY across all
@@ -50,14 +45,15 @@ const DRIFT_PERIOD_BARS = 4;
 // At arc midpoint: 0.35 → ~3 bars
 // At arc peak: 0.5 → ~2 bars
 const MID_FILL_BARS = 1;
-const MID_FILL_BOOST = 0.3;
+// 2026-05-20: dialed 0.10 → 0.20 alongside removing the drift baseline.
+// With no rise riding underneath, fills need to be more present to read.
+const MID_FILL_BOOST = 0.2;
 const BASE_FILL_PROB_PER_BAR = 0.2;
 const SHAPE_FILL_PROB_BONUS = 0.3;
 
 // Per-frame smoothing factor for the RAF density smoother. At 60fps a value
 // of 0.06 reaches ~85% of the target in ~30 frames (~0.5s) — feels like a
-// hand turning a knob, not a step jump. Adjust if drift/fill changes feel
-// too sluggish or too tight.
+// hand turning a knob, not a step jump.
 const DENSITY_SMOOTH_PER_FRAME = 0.06;
 
 // Pre-transition fill constants. In the last FILL_BARS of a scene's dwell,
@@ -66,8 +62,14 @@ const DENSITY_SMOOTH_PER_FRAME = 0.06;
 // signaling change is coming. Boosts are additive on top of current values
 // (clamped to 1.0), peak at the transition bar, then snap with the bank swap
 // (density) or descend via macro lerp (chaos) into the new scene.
+//
+// Density boost is intentionally modest (tuned 2026-05-20 from 0.5 → 0.20)
+// per the listening note "+10% feels like a fill, +50% is real chaos, +100%
+// is spamming the grid." Pre-transition is the heaviest density gesture
+// ghost makes; it's the upper bound of what should feel musical, not the
+// place we hit the ceiling.
 const FILL_BARS = 2;
-const FILL_DENSITY_BOOST = 0.5;
+const FILL_DENSITY_BOOST = 0.2;
 const FILL_CHAOS_BOOST = 0.25;
 
 interface GhostRuntime {
@@ -82,17 +84,14 @@ interface GhostRuntime {
   lerpTarget: BankMacros | null;
   lerpBarsTotal: number;
   lerpBarsElapsed: number;
-  // Density drift state — independent of the color-macro lerp.
-  //   bankSavedDensity — baseline captured at scene entry
-  //   densityDriftJitter — signed ±DRIFT_RANGE offset, re-rolled every
-  //                        DRIFT_PERIOD_BARS, composed on top of baseline
+  // Density gesture state — independent of the color-macro lerp.
+  //   bankSavedDensity — baseline captured at scene entry; the resting value
+  //                      between fills (ghost never drifts it up or down)
   //   densityTarget — the actual destination the RAF smoother chases
   //   midFillBarsLeft — >0 while a mid-scene fill is in progress; the
   //                     per-bar tick decrements; pre-transition fill
   //                     cancels any active mid-fill on entry
   bankSavedDensity: number;
-  densityDriftJitter: number;
-  densityNextDriftStep: number;
   densityTarget: number;
   midFillBarsLeft: number;
   // Sustain-mode zig-zag state: sign of the last entropy delta, so the next
@@ -110,8 +109,6 @@ const state: GhostRuntime = {
   lerpBarsTotal: 0,
   lerpBarsElapsed: 0,
   bankSavedDensity: 0.5,
-  densityDriftJitter: 0,
-  densityNextDriftStep: 0,
   densityTarget: 0.5,
   midFillBarsLeft: 0,
   lastEntropySign: 1,
@@ -120,7 +117,7 @@ const state: GhostRuntime = {
 let lastEnabled = false;
 let lastPlaying = false;
 let lastShape: SceneShape = 'arc';
-let subscribed = false;
+let unsubscribe: (() => void) | null = null;
 
 function rollDwellBars(minBars: number, maxBars: number): number {
   const lo = Math.max(1, Math.floor(minBars));
@@ -163,6 +160,26 @@ function bankEntropy(slot: BankSlot | null | undefined): number {
   return typeof slot.entropy === 'number' ? slot.entropy : 0.5;
 }
 
+// Sequence-mode picker: walk filled scene-kind banks in slot order,
+// wrapping past the end. Skips empty slots and transitions. Same-recipe
+// avoidance + entropy weighting are bypassed — user's slot order IS the
+// authored intent.
+function pickSequenceNextBank(
+  banks: (BankSlot | null)[],
+  currentBank: number | null
+): number | null {
+  const start = (currentBank ?? -1) + 1;
+  for (let i = start; i < banks.length; i++) {
+    const slot = banks[i];
+    if (slot && slot.kind !== 'transition') return i;
+  }
+  for (let i = 0; i < start; i++) {
+    const slot = banks[i];
+    if (slot && slot.kind !== 'transition' && i !== currentBank) return i;
+  }
+  return null;
+}
+
 function pickNextBank(
   banks: (BankSlot | null)[],
   currentBank: number | null,
@@ -170,7 +187,8 @@ function pickNextBank(
   phaseLength: number,
   globalStep: number,
   compositionStartStep: number,
-  lastEntropySign: number
+  lastEntropySign: number,
+  bankOrderMode: BankOrderMode
 ): number | null {
   // Transitions are user-triggered in v0 — autonomous walks only target
   // scene banks. Filter them out of the candidate pool here.
@@ -182,6 +200,27 @@ function pickNextBank(
     }
   }
   if (populated.length === 0) return null;
+
+  // Sequence mode short-circuits all entropy + shape logic. We still push
+  // an auto log entry so the event log shows the pick — synthetic target
+  // = pickedEntropy so the delta column reads 0.
+  if (bankOrderMode === 'sequence') {
+    const winner = pickSequenceNextBank(banks, currentBank);
+    if (winner === null) return null;
+    const winnerEntropy = bankEntropy(banks[winner]);
+    useSequencerStore.getState().pushGhostPickEvent({
+      kind: 'auto',
+      globalStep,
+      slot: winner,
+      shape,
+      phase: 0,
+      target: winnerEntropy,
+      pickedEntropy: winnerEntropy,
+      deltaFromTarget: 0,
+      candidateCount: populated.length,
+    });
+    return winner;
+  }
 
   // Same-recipe avoidance: prefer banks whose recipe differs from the
   // current one — keeps "build" or "hits" from cycling into themselves
@@ -298,13 +337,6 @@ function applyLerpStep(): void {
   });
 }
 
-// Drift jitter — re-rolled every DRIFT_PERIOD_BARS, applied as a signed
-// offset on top of bankSavedDensity. Replaces the old `densityDriftTarget`
-// (absolute value) so it can compose cleanly with the shape envelope.
-function rollDriftJitter(): number {
-  return (Math.random() * 2 - 1) * DRIFT_RANGE;
-}
-
 // Shape intensity at the current composition phase — used as the
 // shape-driven boost on mid-fill probability. Sustain returns 0 (no arc,
 // fills still fire via the constant BASE rate). Other shapes return the
@@ -317,37 +349,18 @@ function currentShapeIntensity(globalStep: number): number {
   return targetEntropy(shape, phase, 0, 1);
 }
 
-function applyDensityDrift(): void {
-  // Two-layer compose: bank-saved baseline + drift jitter. The arc shape
-  // is NOT expressed as a baseline offset here — knob is too sensitive
-  // (+10% reads as "fill") so the arc envelope rides on mid-fill frequency
-  // instead. See applyMidFill below.
-  state.densityTarget = Math.max(
-    0,
-    Math.min(1, state.bankSavedDensity + state.densityDriftJitter)
-  );
-}
-
-function tickDriftJitter(globalStep: number): void {
-  if (globalStep >= state.densityNextDriftStep) {
-    state.densityDriftJitter = rollDriftJitter();
-    state.densityNextDriftStep = globalStep + DRIFT_PERIOD_BARS * STEPS_PER_BAR;
-  }
-}
-
-// Mid-scene fill — short density spike that resolves back to drift. The
-// progress ramps 0..1 across the fill's bars (clamped if MID_FILL_BARS=1).
-// Smoother handles the actual knob lerp from drift to peak and back.
+// Mid-scene fill — short density spike that resolves back to the bank's
+// saved density. The progress ramps 0..1 across the fill's bars (clamped
+// if MID_FILL_BARS=1). Writes density directly to the store; the
+// per-frame smoother that used to glide between values was removed
+// (RAF pile-up under HMR was killing UI responsiveness).
 function applyMidFill(): void {
   const elapsed = MID_FILL_BARS - state.midFillBarsLeft;
   const progress =
     MID_FILL_BARS <= 1 ? 1 : elapsed / (MID_FILL_BARS - 1);
   state.densityTarget = Math.max(
     0,
-    Math.min(
-      1,
-      state.bankSavedDensity + state.densityDriftJitter + MID_FILL_BOOST * progress
-    )
+    Math.min(1, state.bankSavedDensity + MID_FILL_BOOST * progress)
   );
 }
 
@@ -371,11 +384,10 @@ function applyFillBuild(barsRemaining: number): void {
 
 // Per-bar density dispatcher. Pre-transition fill takes priority; otherwise
 // mid-fill continues if in progress; otherwise roll for a new mid-fill
-// (probability = currentShapeIntensity * MAX_MID_FILL_PROB); otherwise
-// drift. Drift jitter is re-rolled on its own period regardless.
+// (probability = BASE + shape_intensity * BONUS). When no fill is active,
+// density rests at the bank's saved value — no drift baseline rides
+// underneath.
 function tickDensity(globalStep: number, inFillZone: boolean): void {
-  tickDriftJitter(globalStep);
-
   if (inFillZone) {
     state.midFillBarsLeft = 0;
     return; // applyFillBuild is called by tickBar separately
@@ -399,13 +411,14 @@ function tickDensity(globalStep: number, inFillZone: boolean): void {
     return;
   }
 
-  applyDensityDrift();
+  // No fill in flight — settle back to the bank's saved density.
+  state.densityTarget = state.bankSavedDensity;
 }
 
 // Per-frame density smoother. Runs only while ghost is enabled + playing.
 // Pulls store.density toward state.densityTarget at a fixed per-frame
-// fraction, so density changes from drift + fill feel like a knob being
-// turned continuously rather than stepping at each bar boundary.
+// fraction, so density changes from fills feel like a knob being turned
+// continuously rather than stepping at each bar boundary.
 let densityRAF: number | null = null;
 function densityTick(): void {
   const s = useSequencerStore.getState();
@@ -434,13 +447,12 @@ export function resetGhost(): void {
   state.lerpTarget = null;
   state.lerpBarsTotal = 0;
   state.lerpBarsElapsed = 0;
-  state.densityNextDriftStep = 0;
   state.midFillBarsLeft = 0;
   // Sustain-mode direction memory: reset to +1 so the first move biases up
   // from the current bank (arbitrary but deterministic; flips on first swap).
   state.lastEntropySign = 1;
-  // Drift baseline + target re-initialize from the live store value the next
-  // time the scene-change branch fires; no need to seed them here.
+  // bankSavedDensity + densityTarget re-initialize from the live store value
+  // the next time the scene-change branch fires; no need to seed them here.
   // Wipe the display fields too so stale "X bars remaining" doesn't linger
   // after a stop or a fresh enable. Restart the composition phase reference
   // from the current globalStep so toggling ghost mid-session starts a fresh
@@ -452,9 +464,9 @@ export function resetGhost(): void {
   // across stop / enable / disable transitions. FIFO ring buffer in the
   // store caps growth; treat it as a session-long history vs. transient
   // per-take state.
-  // Smoother target snaps to the live density value so the smoother has no
-  // pending lerp on enable — it'll only start chasing when drift/fill set a
-  // new target on the next bar boundary.
+  // Density target snaps to the live value so a fresh enable doesn't
+  // immediately jerk density toward a stale target. Fills set it again
+  // on the next bar boundary.
   state.densityTarget = store.density;
 }
 
@@ -509,14 +521,32 @@ export function tickBar(globalStep: number): void {
     state.lastActiveBank = activeBank;
     state.sceneStartStep = globalStep;
     // Dwell-range priority:
-    //   1. Transition-kind banks: 1–2 bars (turnarounds/breaks, fixed range).
-    //   2. Recipe-tagged scene banks: use RECIPE_DWELL[recipe] for musical-
-    //      natural durations (build/hits 1-2, ambient 6-12, song-body 4-8).
-    //   3. Untagged scene banks (user-snapped): fall back to the global
+    //   1. Transition-kind banks: 1–2 bars (turnarounds/breaks, fixed).
+    //   2. Scene-length-aware: when ghost is enabled and 2+ scene banks
+    //      are filled, divide phaseLength by filled-bank count so banks
+    //      get an even slice of the scene window (e.g. 4 banks × 64 bars
+    //      → ~16 bars each). Small ±15% jitter keeps it from feeling
+    //      metronomic. THIS is what makes the bank rotation feel sized
+    //      to the scene.
+    //   3. Recipe-tagged scene banks (no scene-length context): use
+    //      RECIPE_DWELL[recipe] for musical-natural durations.
+    //   4. Untagged scene banks (user-snapped): fall back to the global
     //      sceneGraph min/max as before.
     const activeSlot = activeBank !== null ? banks[activeBank] : null;
-    if (activeSlot?.kind === 'transition') {
+    const sceneBankCount = banks.filter(
+      (b) => b !== null && b.kind !== 'transition'
+    ).length;
+    if (activeSlot?.dwellBars !== undefined && activeSlot.dwellBars > 0) {
+      // Per-bank manual override — pin this bank to exactly this many
+      // bars, ignoring scene-length / recipe / global defaults.
+      state.dwellTargetBars = Math.max(1, Math.floor(activeSlot.dwellBars));
+    } else if (activeSlot?.kind === 'transition') {
       state.dwellTargetBars = rollDwellBars(TRANSITION_DWELL_MIN, TRANSITION_DWELL_MAX);
+    } else if (sceneGraph.enabled && sceneBankCount >= 2) {
+      const target = Math.max(2, sceneGraph.phaseLength / sceneBankCount);
+      const lo = Math.max(2, Math.round(target * 0.85));
+      const hi = Math.max(lo, Math.round(target * 1.15));
+      state.dwellTargetBars = rollDwellBars(lo, hi);
     } else if (activeSlot?.recipe && RECIPE_DWELL[activeSlot.recipe as keyof typeof RECIPE_DWELL]) {
       const range = RECIPE_DWELL[activeSlot.recipe as keyof typeof RECIPE_DWELL];
       state.dwellTargetBars = rollDwellBars(range.min, range.max);
@@ -530,15 +560,12 @@ export function tickBar(globalStep: number): void {
       store.setDwellOnLastBankChange(activeBank, state.dwellTargetBars);
     }
 
-    // Capture this bank's saved density as the drift baseline. applyBankSlot
+    // Capture this bank's saved density as the resting value. applyBankSlot
     // already wrote it to the store, so reading store.density gives us the
-    // authoritative value. Zero jitter at scene entry (no immediate
-    // motion); first re-roll fires DRIFT_PERIOD_BARS into the scene so the
-    // bank's saved density is heard cleanly before any drift kicks in.
+    // authoritative value. Between fills, ghost holds density exactly here —
+    // no drift baseline rides underneath.
     state.bankSavedDensity = store.density;
-    state.densityDriftJitter = 0;
     state.densityTarget = state.bankSavedDensity;
-    state.densityNextDriftStep = globalStep + DRIFT_PERIOD_BARS * STEPS_PER_BAR;
     state.midFillBarsLeft = 0;
 
     // Color-macro lerp setup. Only if beforeBarCommit captured a source on
@@ -606,13 +633,26 @@ export function tickBar(globalStep: number): void {
   }
 
   if (!sceneGraph.enabled) return;
+
+  // Composition auto-advance fires every bar boundary, INDEPENDENTLY of
+  // bank-pick state. Bank dwell and scene length are independent clocks —
+  // if we gated this on the bank-pick path, a scene with only one filled
+  // bank or with bank dwell that doesn't divide phaseLength would advance
+  // late or never. Runs before the pendingBank / dwell-not-yet guards so
+  // an in-flight bank queue doesn't suppress the scene swap.
+  maybeAutoAdvanceScene(store, globalStep);
+
   // Something else queued a swap — don't fight it; let it land and we'll
   // reset on the bar it commits.
   if (pendingBank !== null) return;
 
   store.setGhostDisplay(remaining, state.dwellTargetBars);
 
-  if (elapsedBars < state.dwellTargetBars) return;
+  // Fire the pick during the LAST bar of the dwell so queueBank → commit
+  // (next bar boundary) lands exactly dwellTargetBars after the bank started.
+  // Without the -1, dwell=8 plays 9 bars (queue fires at start of bar 9,
+  // commits at start of bar 10).
+  if (elapsedBars < state.dwellTargetBars - 1) return;
 
   const next = pickNextBank(
     banks,
@@ -621,10 +661,62 @@ export function tickBar(globalStep: number): void {
     sceneGraph.phaseLength,
     globalStep,
     store.ghostCompositionStartStep,
-    state.lastEntropySign
+    state.lastEntropySign,
+    sceneGraph.bankOrderMode
   );
   if (next === null) return;
   store.queueBank(next);
+}
+
+function findNextScene(
+  scenes: (Scene | null)[],
+  fromIdx: number,
+  endsAfterLast: boolean
+): number | null {
+  for (let i = fromIdx + 1; i < scenes.length; i++) {
+    if (scenes[i] !== null) return i;
+  }
+  if (endsAfterLast) return null;
+  for (let i = 0; i < fromIdx; i++) {
+    if (scenes[i] !== null) return i;
+  }
+  return null;
+}
+
+function maybeAutoAdvanceScene(
+  store: ReturnType<typeof useSequencerStore.getState>,
+  globalStep: number
+): void {
+  const { composition, sceneGraph } = store;
+  if (composition.activeScene === null) return;
+  if (composition.pendingScene !== null) return;
+  const filled = composition.scenes.filter((s) => s !== null).length;
+  // Skip when there's no meaningful auto-advance to make:
+  //   - 0 filled scenes: no composition to drive
+  //   - 1 filled, !endsAfterLast: solo scene loops forever, never advances
+  // (1 filled + endsAfterLast still fires — composition stops after that
+  //  scene's phaseLength elapses)
+  if (filled === 0) return;
+  if (filled === 1 && !composition.endsAfterLast) return;
+  const elapsed = Math.floor(
+    (globalStep - store.ghostCompositionStartStep) / STEPS_PER_BAR
+  );
+  if (elapsed < sceneGraph.phaseLength - 1) return;
+  const next = findNextScene(
+    composition.scenes,
+    composition.activeScene,
+    composition.endsAfterLast
+  );
+  if (next !== null) {
+    store.loadScene(next);
+    return;
+  }
+  if (composition.endsAfterLast) {
+    // End of composition. Stop transport — scheduler needs explicit halt
+    // alongside the store flag because the scheduler runs its own loop.
+    store.setPlaying(false);
+    scheduler.stop();
+  }
 }
 
 // Subscribe once at app mount. Two transitions reset the dwell timer:
@@ -637,13 +729,12 @@ export function tickBar(globalStep: number): void {
 // synchronously, which would otherwise see stale lastEnabled and recurse
 // forever. Snapshot the deltas first, update tracking, THEN act.
 export function initGhost(): void {
-  if (subscribed) return;
-  subscribed = true;
+  if (unsubscribe) return;
   const init = useSequencerStore.getState();
   lastEnabled = init.sceneGraph.enabled;
   lastPlaying = init.playing;
   lastShape = init.sceneGraph.shape;
-  useSequencerStore.subscribe((s) => {
+  unsubscribe = useSequencerStore.subscribe((s) => {
     const stopJustPressed = lastPlaying && !s.playing;
     const playJustPressed = !lastPlaying && s.playing;
     const enableJustFlipped = !lastEnabled && s.sceneGraph.enabled;
@@ -697,6 +788,22 @@ export function initGhost(): void {
         from: shapeFrom,
         to: s.sceneGraph.shape,
       });
+    }
+  });
+}
+
+// HMR cleanup — without this, every dev-mode reload of ghost.ts stacks a
+// new zustand subscriber on top of the previous one (zustand has no idea
+// the module was replaced). See [[reference-zustand-hmr-subscriber]].
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (unsubscribe) {
+      unsubscribe();
+      unsubscribe = null;
+    }
+    if (densityRAF !== null) {
+      cancelAnimationFrame(densityRAF);
+      densityRAF = null;
     }
   });
 }

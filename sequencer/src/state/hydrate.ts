@@ -472,6 +472,7 @@ function hydrateBankSlot(
     kind?: unknown;
     recipe?: unknown;
     entropy?: unknown;
+    dwellBars?: unknown;
   };
   if (!Array.isArray(obj.tracks)) return null;
   const tracks = (obj.tracks as Array<Partial<Track>>)
@@ -488,6 +489,9 @@ function hydrateBankSlot(
     typeof obj.entropy === 'number' && Number.isFinite(obj.entropy)
       ? Math.max(0, Math.min(1, obj.entropy))
       : bankEntropyTotal(slot);
+  if (typeof obj.dwellBars === 'number' && Number.isFinite(obj.dwellBars)) {
+    slot.dwellBars = Math.max(1, Math.min(1024, Math.floor(obj.dwellBars)));
+  }
   return slot;
 }
 

@@ -4,7 +4,6 @@ import {
   type BankSlot,
   type SceneShape,
   type GhostPickLogEntry,
-  SCENE_SHAPES,
 } from '../state/store';
 import { computeBankEntropy, type EntropyResult } from '../ghost/entropy';
 import { targetEntropy, phaseAt, sampleShape } from '../ghost/shape';
@@ -113,7 +112,7 @@ export function GhostDebug() {
   const shape = useSequencerStore((s) => s.sceneGraph.shape);
   const phaseLength = useSequencerStore((s) => s.sceneGraph.phaseLength);
   const ghostEnabled = useSequencerStore((s) => s.sceneGraph.enabled);
-  const setSceneGraphShape = useSequencerStore((s) => s.setSceneGraphShape);
+  const bankOrderMode = useSequencerStore((s) => s.sceneGraph.bankOrderMode);
   const pickLog = useSequencerStore((s) => s.ghostPickLog);
 
   // Recompute live so the visualizer reflects in-flight authoring (snap
@@ -150,19 +149,9 @@ export function GhostDebug() {
           ghost · entropy
         </span>
         <div className="flex flex-row items-center gap-2">
-          <select
-            value={shape}
-            onChange={(e) => setSceneGraphShape(e.target.value as SceneShape)}
-            className="bg-transparent border border-white/15 px-1 text-[9px] uppercase tracking-[0.12em] text-white focus:outline-none focus:border-white/50 box-border"
-            style={{ fontFamily: 'inherit', height: HISTOGRAM_HEIGHT }}
-            title="ghost scene shape"
-          >
-            {SCENE_SHAPES.map((s) => (
-              <option key={s} value={s} style={{ background: '#0a0a0a' }}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <span className="text-[9px] uppercase tracking-[0.12em] opacity-55 w-10">
+            {shape.slice(0, 3)}
+          </span>
           <div
             className="relative flex items-end"
             style={{ gap: CELL_GAP, height: HISTOGRAM_HEIGHT, width: HISTOGRAM_WIDTH }}
@@ -210,18 +199,21 @@ export function GhostDebug() {
             <span className="opacity-40">no active bank</span>
           )}
         </div>
-        {shape !== 'sustain' && (
-          <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] opacity-55 tabular-nums">
-            <ShapePreview shape={shape} />
-            <span>
-              P {fmt(phase)}{' '}
-              <span className="opacity-60">
-                ({elapsedBars}/{phaseLength})
+        <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] opacity-55 tabular-nums">
+          <ShapePreview shape={shape} />
+          {shape !== 'sustain' && (
+            <>
+              <span>
+                P {fmt(phase)}{' '}
+                <span className="opacity-60">
+                  ({elapsedBars}/{phaseLength})
+                </span>
               </span>
-            </span>
-            <span>T {fmt(target)}</span>
-          </div>
-        )}
+              <span>T {fmt(target)}</span>
+            </>
+          )}
+          <span className="opacity-60">{bankOrderMode === 'sequence' ? 'seq' : 'ent'}</span>
+        </div>
       </div>
       <div className="flex flex-row items-start gap-3">
         <PickLog log={pickLog} />
@@ -318,13 +310,13 @@ function PickLog({ log }: { log: GhostPickLogEntry[] }) {
   ];
   return (
     <div
-      className="flex flex-col items-stretch self-stretch"
-      style={{ width: HISTOGRAM_WIDTH, marginTop: 2 }}
+      className="flex flex-col items-stretch self-stretch overflow-hidden"
+      style={{ width: HISTOGRAM_WIDTH + 10, marginTop: 2 }}
     >
       <span className="text-[8px] uppercase tracking-[0.18em] opacity-40 leading-[1.35]">
         event log
       </span>
-      <div className="flex flex-col text-[8px] tracking-[0.08em] tabular-nums leading-[1.35]">
+      <div className="flex flex-col text-[8px] tracking-[0.08em] tabular-nums leading-[1.35] overflow-hidden">
       {padded.map((e, i) => {
         if (!e) {
           return (
@@ -336,6 +328,20 @@ function PickLog({ log }: { log: GhostPickLogEntry[] }) {
         // Fade older entries — newest at the bottom is full opacity.
         const ageFromBottom = LOG_VISIBLE_LINES - 1 - i;
         const opacity = Math.max(0.25, 1 - ageFromBottom * 0.18);
+        if (e.kind === 'scene') {
+          const slotStr = e.slot.toString().padStart(2, '0');
+          return (
+            <span
+              key={i}
+              className="uppercase whitespace-nowrap"
+              style={{ opacity }}
+            >
+              → scene{' '}
+              <span className="opacity-100">{slotStr}</span>{' '}
+              <span className="opacity-60">loaded</span>
+            </span>
+          );
+        }
         if (e.kind === 'step') {
           const trackStr = e.track.toString().padStart(2, '0');
           const stepStr = e.step.toString().padStart(2, '0');

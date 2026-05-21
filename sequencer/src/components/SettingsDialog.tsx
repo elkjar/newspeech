@@ -12,7 +12,6 @@ import {
   scanAndLoadUserSamples,
 } from '../instruments/userSamplesDir';
 import { MidiBar } from './MidiBar';
-import { ProjectFileControls } from './Transport';
 import { InstrumentLibraryPane } from './InstrumentLibraryPane';
 import { SampleLibraryPane } from './SampleLibraryPane';
 import pkg from '../../package.json';
@@ -250,10 +249,6 @@ export function SettingsDialog({
 
             <Section label="midi">
               <MidiBar />
-            </Section>
-
-            <Section label="scene">
-              <ProjectFileControls />
             </Section>
 
             <Section label="instruments">

@@ -9,6 +9,7 @@ import { MacroStrip } from './components/MacroStrip';
 import { GhostDebug } from './components/GhostDebug';
 import { Toasts } from './components/Toasts';
 import { BankPad } from './components/BankPad';
+import { ScenePad } from './components/ScenePad';
 import { GhostPanel } from './components/GhostPanel';
 import { FXPanel } from './components/FXPanel';
 import { Scope } from './components/Scope';
@@ -45,6 +46,26 @@ import { isTauri } from '@tauri-apps/api/core';
 
 const NATIVE = isTauri();
 
+// Guard for the sample-load effect. React StrictMode in dev double-invokes
+// effects, which would otherwise kick off two parallel sample loads —
+// counter would climb to 2× the kit count (36/18) and the splash would
+// flicker as both passes raced. Production won't hit this (no StrictMode
+// in prod), but the guard is cheap and correct either way.
+//
+// Stored on `window` so it survives App.tsx HMR cycles — a plain
+// module-scope `let` would reset on every reload, re-triggering the boot
+// and re-decoding every kit's WAVs. Each fresh decode allocates AudioBuffers
+// (the Map overwrite eventually drops the old refs) but the spike during
+// a fast HMR session is significant.
+const SAMPLES_BOOT_FLAG = '__newspeechSamplesBootStarted';
+type SamplesBootWindow = Window & { [SAMPLES_BOOT_FLAG]?: boolean };
+function samplesBootStarted(): boolean {
+  return (window as SamplesBootWindow)[SAMPLES_BOOT_FLAG] === true;
+}
+function markSamplesBootStarted(): void {
+  (window as SamplesBootWindow)[SAMPLES_BOOT_FLAG] = true;
+}
+
 const MODE_KEYS: Record<string, EditMode> = {
   '1': 'live',
   '2': 'velocity',
@@ -60,6 +81,34 @@ const SECTIONS: { id: TrackSection; label: string }[] = [
   { id: 'drum', label: 'rhythm' },
   { id: 'melodic', label: 'melody' },
 ];
+
+function SamplesSplash({ loaded, total }: { loaded: number; total: number }) {
+  // Cover the whole window. z-[100] sits above modals/portals; the splash
+  // owns the screen until bootDone. Terminal-style minimal text matching
+  // the rest of the app's aesthetic — no spinner, just a count.
+  const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#050505]">
+      <div className="flex flex-col items-center gap-3 text-white">
+        <div className="text-[11px] uppercase tracking-[0.3em] opacity-70">
+          newspeech sequence
+        </div>
+        <div className="text-[10px] uppercase tracking-widest opacity-40">
+          loading samples
+        </div>
+        <div className="text-[10px] uppercase tracking-widest opacity-70 tabular-nums">
+          {total > 0 ? `${loaded} / ${total}` : '…'}
+        </div>
+        <div className="w-[160px] h-px bg-white/15 relative overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 bg-white/60"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SectionToggle() {
   const viewSection = useSequencerStore((s) => s.viewSection);
@@ -110,6 +159,14 @@ function ModeSwitcher() {
 export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Sample-load splash. ~140MB of bundled WAVs decode on boot; without a
+  // splash the user sees a sluggish-feeling app for the duration (RAF-driven
+  // UI like LFO indicators chugs at 2-3 FPS while the audio thread + main
+  // thread chew through decodes). Splash hides that window — once loaded,
+  // every interaction is snappy from the first click.
+  const [samplesLoaded, setSamplesLoaded] = useState(0);
+  const [samplesTotal, setSamplesTotal] = useState(0);
+  const [bootDone, setBootDone] = useState(false);
 
   useEffect(() => {
     if (NATIVE) document.body.classList.add('tauri-native');
@@ -136,11 +193,17 @@ export function App() {
     // manifestRegistry for the VoiceDef-derivation path. Replaces the
     // previously hardcoded `kits = [...]` array + the per-voice entries
     // duplicated across voices.ts and hydrate.ts.
+    if (samplesBootStarted()) return;
+    markSamplesBootStarted();
     const indexUrl = `${import.meta.env.BASE_URL}samples/index.json`;
     void (async () => {
       try {
         const res = await fetch(indexUrl);
         const index = (await res.json()) as SampleKitEntry[];
+        setSamplesTotal(index.length);
+        // Splash screen is up — load kits in parallel for fastest wall-clock
+        // time. Counter increments as each kit's manifest finishes registering
+        // + decoding so the user sees progress instead of a frozen number.
         await Promise.all(
           index.map(async (entry) => {
             const baseUrl = `${import.meta.env.BASE_URL}samples/${entry.kitPath}`;
@@ -152,6 +215,7 @@ export function App() {
             } catch (err) {
               console.warn(`sample manifest ${entry.kitPath} load failed:`, err);
             }
+            setSamplesLoaded((n) => n + 1);
           }),
         );
       } catch (err) {
@@ -167,6 +231,7 @@ export function App() {
       if (userResult.errors.length > 0) {
         for (const e of userResult.errors) console.warn('[user samples]', e);
       }
+      setBootDone(true);
     })();
   }, []);
 
@@ -186,6 +251,10 @@ export function App() {
         // store). Without this, sceneStep = scheduled - audible-stale ≠ 0,
         // and chord master / bass step 0 land at non-zero localStep — the
         // "dropping beat 1" symptom.
+        // Scene commit fires BEFORE bank commit — a queued scene swap
+        // replaces the entire bank palette, so a pending bank within the
+        // outgoing scene would be stale by the time it commits.
+        useSequencerStore.getState().commitPendingScene(globalStep);
         useSequencerStore.getState().commitPendingBank(globalStep);
         ghostTickBar(globalStep);
       }
@@ -403,6 +472,9 @@ export function App() {
 
   return (
     <div className="relative w-full">
+      {!bootDone && (
+        <SamplesSplash loaded={samplesLoaded} total={samplesTotal} />
+      )}
       <main
         className={
           NATIVE
@@ -461,7 +533,7 @@ export function App() {
           <div className="flex justify-between items-center gap-8 -my-4">
             <InitButton />
             <div className="flex items-center gap-8">
-              <GhostPanel />
+              <ScenePad />
               <BankPad />
             </div>
           </div>
@@ -483,7 +555,10 @@ export function App() {
                 <ModeSwitcher />
               </div>
             </div>
-            <TransportControls />
+            <div className="flex items-center gap-8 flex-wrap">
+              <TransportControls />
+              <GhostPanel />
+            </div>
           </div>
           <FXPanel />
         </div>

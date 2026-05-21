@@ -6,45 +6,35 @@ import {
   type GenMove,
 } from '../ghost/generator';
 
-const ROW_HEIGHT = 'h-[28px]';
-
-// Ghost controls — generate-bank picker only. The auto/ghost toggle
-// lives in MacroStrip next to freeze; per-scene dwell is per-recipe (see
-// RECIPE_DWELL in generator.ts) so the prior min/max/trans inputs were
-// removed when the ghost became recipe-aware.
+// Ghost controls — generate-bank picker only. Styling mirrors the
+// TransportControls row (BPM / root / scale) so generate sits naturally
+// at the right end of that line.
 export function GhostPanel() {
   const [move, setMove] = useState<GenMove>('compose-sparse');
   const handleGenerate = () => {
     generateBank(move);
   };
   return (
-    <div className="flex items-center gap-3 text-[11px] uppercase tracking-widest">
-      <span className="opacity-55">gen</span>
-      <select
-        value={move}
-        onChange={(e) => setMove(e.target.value as GenMove)}
-        className={[
-          ROW_HEIGHT,
-          'px-2 bg-white/5 border border-white/15',
-          'text-[11px] tracking-widest text-white',
-          'focus:outline-none focus:border-white/50',
-        ].join(' ')}
-        title="compose recipe — generate a new bank from scratch"
-      >
-        {COMPOSE_MOVES.map((m) => (
-          <option key={m} value={m}>
-            {GEN_MOVE_LABELS[m]}
-          </option>
-        ))}
-      </select>
+    <div className="flex items-center gap-4 flex-wrap">
+      <label className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
+        <span className="opacity-55">gen</span>
+        <select
+          value={move}
+          onChange={(e) => setMove(e.target.value as GenMove)}
+          className="select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white h-[28px]"
+          title="compose recipe — generate a new bank from scratch"
+        >
+          {COMPOSE_MOVES.map((m) => (
+            <option key={m} value={m} className="bg-[#050505]">
+              {GEN_MOVE_LABELS[m]}
+            </option>
+          ))}
+        </select>
+      </label>
       <button
         onClick={handleGenerate}
         title="generate a new bank from the selected recipe"
-        className={[
-          ROW_HEIGHT,
-          'px-3 bg-white/5 hover:bg-white/15 border border-white/15',
-          'text-[11px] uppercase tracking-widest text-white',
-        ].join(' ')}
+        className="bg-transparent border border-white/15 hover:border-white px-3 text-[11px] uppercase tracking-widest text-white/70 hover:text-white transition-colors h-[28px]"
       >
         generate
       </button>

@@ -1,11 +1,14 @@
 import {
   useSequencerStore,
   BANK_SLOT_COUNT,
+  COMPOSITION_SLOT_COUNT,
   DEFAULT_SCENE_GRAPH,
   type Track,
   type TrackSection,
   type BankSlot,
   type SceneGraphConfig,
+  type Composition,
+  type Scene,
 } from './store';
 import {
   ensureBothSections,
@@ -47,6 +50,9 @@ interface PersistedState {
   banks?: (BankSlot | null)[];
   activeBank?: number | null;
   sceneGraph?: SceneGraphConfig;
+  // Composition layer added 2026-05-20. Optional so older `.seq` files
+  // load unchanged with an empty composition.
+  composition?: Composition;
 }
 
 function clamp01(v: unknown, fallback = 0.5): number {
@@ -89,6 +95,7 @@ export function exportProject(): string {
     banks: s.banks,
     activeBank: s.activeBank,
     sceneGraph: s.sceneGraph,
+    composition: s.composition,
   };
   return JSON.stringify(data, null, 2);
 }
@@ -156,6 +163,145 @@ export function hydrateSaturation(v: unknown): SaturationParams {
   };
 }
 
+// Composition layer. v1 = each scene is a self-contained snapshot of
+// tracks + banks + activeBank + macros + sceneGraph. Old `.seq` files
+// (no composition field) load as an empty composition; the active state
+// loaded from the file body IS the implicit "current scene" until the
+// user starts snapping scenes into the composition.
+function hydrateScene(
+  raw: unknown,
+  fallbackTracks: Track[],
+  fallbackBanks: (BankSlot | null)[],
+): Scene | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Partial<Scene> & { tracks?: unknown; banks?: unknown };
+  if (!Array.isArray(o.tracks)) return null;
+  // Hydrate tracks the same way the top-level loader does — preserves
+  // voice id migrations, default-value backfills, etc.
+  const tracks = (o.tracks as Array<Partial<Track>>)
+    .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
+    .map(hydrateTrack);
+  if (tracks.length === 0) return null;
+  const macros = (o.macros && typeof o.macros === 'object'
+    ? o.macros
+    : {}) as Partial<{ density: number; chaos: number; motion: number; drift: number; tension: number }>;
+  const banks = hydrateBanks(o.banks, () => ({
+    tracks,
+    macros: {
+      density: clamp01(macros.density),
+      chaos: clamp01(macros.chaos),
+      motion: clamp01(macros.motion, 0.5),
+      drift: clamp01(macros.drift, 1),
+      tension: clamp01(macros.tension),
+    },
+  }));
+  const activeBank =
+    typeof o.activeBank === 'number' && Number.isFinite(o.activeBank)
+      ? Math.max(0, Math.min(BANK_SLOT_COUNT - 1, Math.floor(o.activeBank)))
+      : null;
+  return {
+    name: typeof o.name === 'string' ? o.name : undefined,
+    tracks: tracks.length > 0 ? tracks : fallbackTracks,
+    banks: banks.length > 0 ? banks : fallbackBanks,
+    activeBank,
+    macros: {
+      density: clamp01(macros.density),
+      chaos: clamp01(macros.chaos),
+      motion: clamp01(macros.motion, 0.5),
+      drift: clamp01(macros.drift, 1),
+      tension: clamp01(macros.tension),
+    },
+    sceneGraph: hydrateSceneGraph(o.sceneGraph),
+  };
+}
+
+// Parse a `.seq` file and extract its active state as a Scene snapshot
+// WITHOUT touching the live store. Used by the "import scene from file"
+// flow — author a scene in isolation, save it as `.seq`, then pull it
+// into a composition slot here without losing what's currently on screen.
+export function parseSceneFromSeq(json: string): Scene | null {
+  let data: PersistedState;
+  try {
+    data = JSON.parse(json) as PersistedState;
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  if (!Array.isArray(data.tracks)) return null;
+  const rawTracks = data.tracks as Array<Partial<Track> & { id: string }>;
+  const tracks = applyPositionalRoleDefaults(
+    ensureBothSections(
+      rawTracks
+        .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
+        .map(hydrateTrack),
+    ),
+    rawTracks,
+  );
+  if (tracks.length === 0) return null;
+  const density = clamp01(data.density);
+  const chaos = clamp01(data.chaos);
+  const motion = clamp01(data.motion, 0.5);
+  const drift = clamp01(data.drift, 1);
+  const tension = clamp01(data.tension);
+  const banks = hydrateBanks(data.banks, () => ({
+    tracks,
+    macros: { density, chaos, motion, drift, tension },
+  }));
+  const requestedActive =
+    typeof data.activeBank === 'number' && Number.isFinite(data.activeBank)
+      ? Math.floor(data.activeBank)
+      : 0;
+  const activeBank =
+    requestedActive >= 0 && requestedActive < BANK_SLOT_COUNT
+      ? requestedActive
+      : null;
+  return {
+    tracks,
+    banks,
+    activeBank,
+    macros: { density, chaos, motion, drift, tension },
+    sceneGraph: hydrateSceneGraph(data.sceneGraph),
+  };
+}
+
+export function hydrateComposition(
+  raw: unknown,
+  fallbackTracks: Track[],
+  fallbackBanks: (BankSlot | null)[],
+): Composition {
+  const empty: Composition = {
+    scenes: Array.from({ length: COMPOSITION_SLOT_COUNT }, () => null),
+    activeScene: null,
+    pendingScene: null,
+    endsAfterLast: true,
+  };
+  if (!raw || typeof raw !== 'object') return empty;
+  const o = raw as Partial<Composition> & { scenes?: unknown };
+  const scenes: (Scene | null)[] = Array.from(
+    { length: COMPOSITION_SLOT_COUNT },
+    () => null,
+  );
+  if (Array.isArray(o.scenes)) {
+    for (let i = 0; i < Math.min(COMPOSITION_SLOT_COUNT, o.scenes.length); i++) {
+      scenes[i] = hydrateScene(o.scenes[i], fallbackTracks, fallbackBanks);
+    }
+  }
+  const activeScene =
+    typeof o.activeScene === 'number' &&
+    Number.isFinite(o.activeScene) &&
+    o.activeScene >= 0 &&
+    o.activeScene < COMPOSITION_SLOT_COUNT &&
+    scenes[o.activeScene]
+      ? Math.floor(o.activeScene)
+      : null;
+  return {
+    scenes,
+    activeScene,
+    pendingScene: null,
+    endsAfterLast: o.endsAfterLast !== false,
+  };
+}
+
 // Ghost config. Dwell bars clamped 1..256 — enough range to span
 // "shimmer for a couple bars" through "settle for several minutes at 120
 // bpm". transitionBars clamped 0..32 (0 = atomic snap, anything past 32
@@ -186,6 +332,10 @@ export function hydrateSceneGraph(v: unknown): SceneGraphConfig {
     typeof sg.phaseLength === 'number' && Number.isFinite(sg.phaseLength)
       ? Math.max(1, Math.min(1024, Math.floor(sg.phaseLength)))
       : DEFAULT_SCENE_GRAPH.phaseLength;
+  const bankOrderMode =
+    sg.bankOrderMode === 'entropy' || sg.bankOrderMode === 'sequence'
+      ? sg.bankOrderMode
+      : DEFAULT_SCENE_GRAPH.bankOrderMode;
   return {
     enabled: typeof sg.enabled === 'boolean' ? sg.enabled : DEFAULT_SCENE_GRAPH.enabled,
     minBars: Math.min(minRaw, maxRaw),
@@ -193,6 +343,7 @@ export function hydrateSceneGraph(v: unknown): SceneGraphConfig {
     transitionBars: transRaw,
     shape,
     phaseLength,
+    bankOrderMode,
   };
 }
 
@@ -309,6 +460,7 @@ export function importProject(json: string): boolean {
     sceneGraph: hydrateSceneGraph(data.sceneGraph),
     ghostBarsRemaining: 0,
     ghostTargetBars: 0,
+    composition: hydrateComposition(data.composition, tracks, banks),
   });
   // Re-seed the chord context so followers (root-follow / chord-tone tracks)
   // have a sensible starting harmony before the chord master plays its first
