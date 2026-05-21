@@ -70,11 +70,13 @@ pub fn list_sample_kits(dir: String) -> Result<Vec<SampleKitEntry>, String> {
             let manifest_path = kit_dir.join("manifest.json");
             // Manifest resolution:
             //   1. If manifest.json exists → use it verbatim (full control).
-            //   2. Else, attempt to synthesize from WAV filenames using the
-            //      `<voice>-<note><octave>.wav` convention. Lets the user
-            //      drop a raw sample folder without writing JSON. Drum kits
-            //      with subfolder-per-voice layouts won't match this pattern;
-            //      those still need a hand-written manifest.
+            //   2. Else, attempt to synthesize. Two layouts handled:
+            //        a) Subfolders-of-WAVs (one voice per subfolder, matches
+            //           bundled drum-kit layout: KICK/, SNARE/, OHH/, ...).
+            //        b) Flat WAVs (single voice, with roots if filenames carry
+            //           note suffixes, else rootless round-robin).
+            //      Subfolder layout wins when present — stray top-level files
+            //      alongside subfolders are ignored.
             let manifest_json = if manifest_path.is_file() {
                 match fs::read_to_string(&manifest_path) {
                     Ok(c) => c,
@@ -219,8 +221,34 @@ fn parse_note_suffix(s: &str) -> Option<u8> {
 }
 
 fn synthesize_manifest_from_folder(kit_dir: &Path, kit_name: &str) -> Option<String> {
-    // Two-pass scan: collect every audio file, plus the subset that parses
-    // as a rooted sample.
+    // Subfolder-per-voice layout takes priority. Matches the bundled drum-kit
+    // layout (KICK/, SNARE/, OHH/, ...) — each subfolder containing audio
+    // files becomes one voice with all its WAVs as round-robin files.
+    let subfolder_voices = collect_subfolder_voices(kit_dir);
+    if !subfolder_voices.is_empty() {
+        let voices_json: serde_json::Map<String, serde_json::Value> = subfolder_voices
+            .into_iter()
+            .map(|(voice_id, files)| {
+                let label = voice_id.replace(['-', '_'], " ");
+                (
+                    voice_id,
+                    json!({
+                        "label": label,
+                        "gain": 0.7,
+                        "files": files,
+                    }),
+                )
+            })
+            .collect();
+        let manifest = json!({
+            "name": kit_name,
+            "voices": voices_json,
+        });
+        return serde_json::to_string(&manifest).ok();
+    }
+
+    // Flat layout fallback: collect every top-level audio file, plus the
+    // subset that parses as a rooted sample.
     //   * Any rooted files present → multi-sampled voice with roots (any
     //     remaining unrooted files are dropped, treated as noise).
     //   * No rooted files but at least one audio file → flat voice with all
@@ -276,6 +304,57 @@ fn synthesize_manifest_from_folder(kit_dir: &Path, kit_name: &str) -> Option<Str
         "voices": { kit_name: voice_body }
     });
     serde_json::to_string(&manifest).ok()
+}
+
+// Walks one level into `kit_dir` looking for subfolders that contain audio
+// files. Returns a sorted (BTreeMap → ordered) map of `voice_id → sorted
+// list of "SUBFOLDER/file" paths`. Voice ID is the subfolder name
+// lowercased so a SNARE/ folder lines up with the bundled "snare" voice ID
+// convention. Empty map means no subfolder layout — caller falls back to
+// the flat-file synthesis path.
+fn collect_subfolder_voices(kit_dir: &Path) -> BTreeMap<String, Vec<String>> {
+    let mut voices: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let read = match fs::read_dir(kit_dir) {
+        Ok(r) => r,
+        Err(_) => return voices,
+    };
+    for entry in read.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let sub_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        // Skip hidden / dotfile dirs (e.g. .DS_Store sidecars, .git).
+        if sub_name.starts_with('.') {
+            continue;
+        }
+        let mut files: Vec<String> = Vec::new();
+        let sub_read = match fs::read_dir(&path) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for f in sub_read.flatten() {
+            if !f.path().is_file() {
+                continue;
+            }
+            let fname = f.file_name().to_string_lossy().to_string();
+            let lower = fname.to_ascii_lowercase();
+            if audio_extension_len(&lower).is_none() {
+                continue;
+            }
+            files.push(format!("{}/{}", sub_name, fname));
+        }
+        if files.is_empty() {
+            continue;
+        }
+        files.sort();
+        let voice_id = sub_name.to_ascii_lowercase();
+        voices.insert(voice_id, files);
+    }
+    voices
 }
 
 // Default user samples directory. ~/Documents/Sequence/samples/. Created
