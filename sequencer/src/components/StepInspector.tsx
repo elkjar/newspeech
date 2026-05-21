@@ -67,7 +67,6 @@ function displayedStep(track: Track, i: number): Step | undefined {
 export function StepInspector() {
   const selectedStep = useSequencerStore((s) => s.selectedStep);
   const tieAnchor = useSequencerStore((s) => s.tieAnchor);
-  const tracks = useSequencerStore((s) => s.tracks);
   const rootNote = useSequencerStore((s) => s.rootNote);
   const scale = useSequencerStore((s) => s.scale);
   const setStepChordVoicing = useSequencerStore((s) => s.setStepChordVoicing);
@@ -77,9 +76,19 @@ export function StepInspector() {
   // while the user reaches for the chord-voicing dropdowns. Hover-driven
   // `selectedStep` is the fallback when nothing's pinned.
   const activeSelection = tieAnchor ?? selectedStep;
-  const track = activeSelection
-    ? tracks.find((t) => t.id === activeSelection.trackId) ?? null
-    : null;
+  const activeTrackId = activeSelection?.trackId ?? null;
+  // Narrow selector: pull only the resolved track, not the whole tracks array.
+  // Returns the same Track reference unless that specific track changes, so
+  // unrelated step toggles / knob twists / mutation rolls on other tracks
+  // don't re-render the inspector.
+  const track = useSequencerStore((s) =>
+    activeTrackId ? (s.tracks.find((t) => t.id === activeTrackId) ?? null) : null,
+  );
+  // Chord master = first melodic track. ID is a primitive, so selector
+  // short-circuits unless track reordering shifts which row is first.
+  const chordMasterId = useSequencerStore(
+    (s) => s.tracks.find((t) => t.section === 'melodic')?.id ?? null,
+  );
   const step =
     track && activeSelection ? displayedStep(track, activeSelection.index) ?? null : null;
 
@@ -143,8 +152,7 @@ export function StepInspector() {
   // master's published chord context and ignore the per-step override, so
   // showing the picker there would let users set a degree the dispatch
   // throws away.
-  const isChordMaster =
-    track !== null && tracks.find((t) => t.section === 'melodic')?.id === track.id;
+  const isChordMaster = track !== null && chordMasterId === track.id;
   const showChord =
     track !== null &&
     step !== null &&

@@ -1,6 +1,7 @@
 import { Knob } from './Knob';
-import { findRouted, GLOBAL_TRACK_ID, type LFODestKnobGlobal } from '../audio/lfo';
+import { GLOBAL_TRACK_ID, type LFODestKnobGlobal } from '../audio/lfo';
 import { useLFOValue } from '../hooks/useLFOValue';
+import { useRoutedLFOs } from '../hooks/useRoutedLFOs';
 import { useSequencerStore } from '../state/store';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import type { MidiTarget } from '../midi/midiMap';
@@ -22,11 +23,10 @@ export function MacroKnob({
   bipolar?: boolean;
   learnTarget?: MidiTarget;
 }) {
-  const lfos = useSequencerStore((s) => s.lfos);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
 
-  const routed = findRouted(lfos, GLOBAL_TRACK_ID, knob);
+  const routed = useRoutedLFOs(GLOBAL_TRACK_ID, knob);
   // LFOs run at their natural rates now (motion no longer scales them).
   const displayValue = useLFOValue(value, routed, 1);
 

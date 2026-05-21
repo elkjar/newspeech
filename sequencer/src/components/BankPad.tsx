@@ -121,7 +121,18 @@ function PadSlot({
 }
 
 export function BankPad() {
-  const banks = useSequencerStore((s) => s.banks);
+  // Bitmask of filled slots — primitive return type means the selector
+  // short-circuits via Object.is on every render except actual fill/clear,
+  // so per-track knob propagations (which rebuild every populated bank's
+  // tracks array) no longer re-render the pad. BANK_SLOT_COUNT = 16 fits
+  // comfortably in a JS number.
+  const bankFilledMask = useSequencerStore((s) => {
+    let m = 0;
+    for (let i = 0; i < BANK_SLOT_COUNT; i++) {
+      if (s.banks[i]) m |= 1 << i;
+    }
+    return m;
+  });
   const activeBank = useSequencerStore((s) => s.activeBank);
   const pendingBank = useSequencerStore((s) => s.pendingBank);
   const snapBank = useSequencerStore((s) => s.snapBank);
@@ -188,7 +199,7 @@ export function BankPad() {
       </span>
       <div className="relative flex items-center" style={{ gap: PAD_GAP }}>
         {Array.from({ length: BANK_SLOT_COUNT }, (_, i) => {
-          const filled = !!banks[i];
+          const filled = (bankFilledMask & (1 << i)) !== 0;
           const isSceneSlot = i < TRANSITION_SLOT_START;
           return (
             <PadSlot

@@ -1,6 +1,7 @@
 import { Knob } from './Knob';
-import { findRouted, type LFODestKnobTrack } from '../audio/lfo';
+import { type LFODestKnobTrack } from '../audio/lfo';
 import { useLFOValue } from '../hooks/useLFOValue';
+import { useRoutedLFOs } from '../hooks/useRoutedLFOs';
 import { useSequencerStore, type Track as TrackData } from '../state/store';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import type { MidiTarget, TrackKnobTargetName } from '../midi/midiMap';
@@ -85,20 +86,21 @@ function formatKnobValue(knob: LFODestKnobTrack, value: number): string {
 export function TrackKnob({
   track,
   knob,
+  trackIndex,
   size,
 }: {
   track: TrackData;
   knob: LFODestKnobTrack;
+  // Index in the full tracks array — passed from Track (plumbed by TrackGrid)
+  // so each knob doesn't have to re-run `findIndex` inside a selector on
+  // every store change. Bindings are positional against the full tracks
+  // array; section filtering happens upstream but doesn't shift indices.
+  trackIndex: number;
   size: number;
 }) {
-  const lfos = useSequencerStore((s) => s.lfos);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
-  // Track index for MIDI target naming. Bindings are positional, not by
-  // trackId, so they survive across .seq files with the same shape.
-  const trackIndex = useSequencerStore((s) =>
-    s.tracks.findIndex((t) => t.id === track.id)
-  );
+  const routed = useRoutedLFOs(track.id, knob);
   const learnTarget =
     trackIndex >= 0
       ? (`track:${trackIndex}:${knob as TrackKnobTargetName}` as MidiTarget)
@@ -106,7 +108,6 @@ export function TrackKnob({
   const learn = useMidiLearn(learnTarget);
 
   const value = readKnob(track, knob);
-  const routed = findRouted(lfos, track.id, knob);
   const displayValue = useLFOValue(value, routed, 1);
   const label = LABELS[knob];
 

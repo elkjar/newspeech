@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useSequencerStore } from '../state/store';
 import { getAudioContext } from '../audio/audioContext';
 import { Knob } from './Knob';
@@ -139,12 +140,22 @@ function LFOCell({
 
 export function LFOPanel() {
   const lfos = useSequencerStore((s) => s.lfos);
-  const tracks = useSequencerStore((s) => s.tracks);
+  // Subscribe to a shallow-compared id→source map instead of the whole
+  // tracks array. Source rarely changes (only on voice/instrument re-assign),
+  // so any step toggle / knob twist / mutation roll keeps the record's
+  // shallow identity and skips the panel's reconcile.
+  const trackSources = useSequencerStore(
+    useShallow((s) => {
+      const out: Record<string, TrackSource> = {};
+      for (const t of s.tracks) out[t.id] = t.source;
+      return out;
+    }),
+  );
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const setSelectingLFO = useSequencerStore((s) => s.setSelectingLFO);
   const setLFODepth = useSequencerStore((s) => s.setLFODepth);
 
-  const sourceFor = (trackId: string) => tracks.find((t) => t.id === trackId)?.source;
+  const sourceFor = (trackId: string): TrackSource | undefined => trackSources[trackId];
 
   useEffect(() => {
     if (selectingLFO === null) return;

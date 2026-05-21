@@ -20,9 +20,10 @@ import { NewInstrumentDialog } from './NewInstrumentDialog';
 import { VoicePickerDialog } from './VoicePickerDialog';
 import { getOverlay } from '../audio/mutationOverlay';
 import { effectiveTieToNext } from '../audio/mutationTie';
-import { findRouted, GLOBAL_TRACK_ID } from '../audio/lfo';
+import { GLOBAL_TRACK_ID } from '../audio/lfo';
 import { computeThinMul, computeFillProb } from '../audio/macros';
 import { useLFOValue } from '../hooks/useLFOValue';
+import { useRoutedLFOs } from '../hooks/useRoutedLFOs';
 
 const STEP_GAP = 6;
 const STEP_SIZE = 36;
@@ -56,23 +57,23 @@ function displayStep(
   return authored;
 }
 
-export function Track({ track }: { track: TrackData }) {
+export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: number }) {
+  // Subscribe to this track's own row only. Per-row identity is preserved by
+  // the store's setters (`tracks.map(t => t.id === id ? {...t} : t)`), so
+  // mutations to OTHER tracks return the same object reference here →
+  // Object.is short-circuits, this Track skips reconcile.
+  const track = useSequencerStore((s) => s.tracks.find((t) => t.id === trackId));
   const globalStep = useSequencerStore((s) => s.globalStep);
   const sceneStartStep = useSequencerStore((s) => s.sceneStartStep);
   const playing = useSequencerStore((s) => s.playing);
-  const lfos = useSequencerStore((s) => s.lfos);
   const density = useSequencerStore((s) => s.density);
   const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
   // Live density value for chance-mode opacity. Mirrors the gate the dispatch
   // loop uses, so twisting macros fades the grid at the same rate the audio
   // thins out. Metric-weighted density is computed per step in the render loop
   // below (downbeat preserved, offbeats fade first).
-  const densityLFOs = findRouted(lfos, GLOBAL_TRACK_ID, 'density');
+  const densityLFOs = useRoutedLFOs(GLOBAL_TRACK_ID, 'density');
   const liveDensity = useLFOValue(density, densityLFOs, 1);
-  // Empty rows shouldn't get density fill-in — keep them silent regardless.
-  const hasAuthoredOn = track.steps
-    .slice(0, track.length)
-    .some((s) => s.on);
   const setTrackSource = useSequencerStore((s) => s.setTrackSource);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
@@ -81,14 +82,23 @@ export function Track({ track }: { track: TrackData }) {
   const setTrackLockTiming = useSequencerStore((s) => s.setTrackLockTiming);
 
   const [panelOpen, setPanelOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  const silenced = track.mute || (anySolo && !track.solo);
-  const melodic = sourceIsMelodic(track.source);
-
   const [newInstrumentDefaultRole, setNewInstrumentDefaultRole] =
     useState<InstrumentRole | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Defensive guard: trackId comes from TrackGrid's shallow-compared key list,
+  // which can briefly outlive the underlying tracks array during initProject /
+  // applyPreset replacements.
+  if (!track) return null;
+
+  // Empty rows shouldn't get density fill-in — keep them silent regardless.
+  const hasAuthoredOn = track.steps
+    .slice(0, track.length)
+    .some((s) => s.on);
+
+  const silenced = track.mute || (anySolo && !track.solo);
+  const melodic = sourceIsMelodic(track.source);
 
   const handlePickerSelect = (next: TrackSource) => {
     setTrackSource(track.id, next);
@@ -180,7 +190,13 @@ export function Track({ track }: { track: TrackData }) {
           )}
         </div>
         {(['gain', 'pan', 'filterCutoff', 'filterResonance', 'fxSend', 'mutation', 'rowRatchet'] as const).map((knob) => (
-          <TrackKnob key={knob} track={track} knob={knob} size={STEP_SIZE} />
+          <TrackKnob
+            key={knob}
+            track={track}
+            knob={knob}
+            trackIndex={trackIndex}
+            size={STEP_SIZE}
+          />
         ))}
       </div>
 

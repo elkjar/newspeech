@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSequencerStore } from '../state/store';
 import { Knob } from './Knob';
-import { findRouted, GLOBAL_TRACK_ID, type LFODestKnobGlobal } from '../audio/lfo';
+import { GLOBAL_TRACK_ID, type LFO, type LFODestKnobGlobal } from '../audio/lfo';
 import { useLFOValue } from '../hooks/useLFOValue';
+import { useRoutedLFOs } from '../hooks/useRoutedLFOs';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import type { MidiTarget } from '../midi/midiMap';
+import type { TapeParams } from '../audio/tape';
+import type { GlitchParams } from '../audio/glitch';
+import type { ReverbParams } from '../audio/reverb';
+import type { SaturationParams } from '../audio/saturation';
 import {
   loCutLabel,
   modeLabel,
@@ -16,9 +21,28 @@ import {
   COMP_RELEASE_COUNT,
   MASTER_PRESET_NAMES,
   findActivePreset,
+  type MasterParams,
 } from '../audio/master';
 
+// Stage wrappers below own per-knob subscriptions so a single FX field
+// change only re-renders the knob bound to that field. The parent FXPanel
+// no longer subscribes to any FX stage object directly — pre-refactor, a
+// `setTape({position: v})` mousemove re-rendered all 40+ knobs in the
+// panel because every knob's parent subscribed to the whole `tape` object.
+type NumericKeys<T> = {
+  [K in keyof T]: T[K] extends number ? K : never;
+}[keyof T];
+type BooleanKeys<T> = {
+  [K in keyof T]: T[K] extends boolean ? K : never;
+}[keyof T];
+
 const KNOB_SIZE = 44;
+
+// Stable empty reference for knobs that don't participate in LFO routing
+// (those without an lfoKnob prop). Returning a fresh `[]` each render would
+// look like a routing change to useLFOValue's downstream `routed` ref and
+// cause an unnecessary render hop the first time the empty list "settles."
+const EMPTY_LFO_LIST: LFO[] = [];
 
 function LabeledKnob({
   label,
@@ -43,12 +67,15 @@ function LabeledKnob({
   const knobValue = bipolar ? (value + 1) / 2 : value;
   const handleKnobChange = (v: number) => onChange(bipolar ? v * 2 - 1 : v);
 
-  const lfos = useSequencerStore((s) => s.lfos);
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
   const learn = useMidiLearn(midiTarget);
 
-  const routed = lfoKnob ? findRouted(lfos, GLOBAL_TRACK_ID, lfoKnob) : [];
+  // useRoutedLFOs returns a stable reference unless this knob's specific
+  // routing changes, so unrelated LFO tweaks (depth, other destinations,
+  // freeze) no longer re-render every knob in the panel.
+  const routedForKnob = useRoutedLFOs(GLOBAL_TRACK_ID, lfoKnob ?? ('density' as LFODestKnobGlobal));
+  const routed = lfoKnob ? routedForKnob : EMPTY_LFO_LIST;
   const displayValue = useLFOValue(knobValue, routed, 1);
 
   // Precedence: LFO-selecting mode > MIDI learn mode > normal drag.
@@ -226,19 +253,264 @@ function StageDivider({ label }: { label: string }) {
 
 const MASTER_EXPANDED_KEY = 'sequencer.fxPanel.masterExpanded';
 
-export function FXPanel() {
-  const tape = useSequencerStore((s) => s.tape);
+function TapeKnob<F extends NumericKeys<TapeParams>>({
+  field,
+  label,
+  lfoKnob,
+  midiTarget,
+}: {
+  field: F;
+  label: string;
+  lfoKnob?: LFODestKnobGlobal;
+  midiTarget?: MidiTarget;
+}) {
+  const value = useSequencerStore((s) => s.tape[field] as number);
   const setTape = useSequencerStore((s) => s.setTape);
-  const glitch = useSequencerStore((s) => s.glitch);
-  const setGlitch = useSequencerStore((s) => s.setGlitch);
-  const reverb = useSequencerStore((s) => s.reverb);
-  const setReverb = useSequencerStore((s) => s.setReverb);
-  const saturation = useSequencerStore((s) => s.saturation);
-  const setSaturation = useSequencerStore((s) => s.setSaturation);
-  const master = useSequencerStore((s) => s.master);
-  const setMaster = useSequencerStore((s) => s.setMaster);
-  const setMasterPreset = useSequencerStore((s) => s.setMasterPreset);
+  const onChange = useCallback(
+    (v: number) => setTape({ [field]: v } as Partial<TapeParams>),
+    [setTape, field],
+  );
+  return (
+    <LabeledKnob
+      label={label}
+      value={value}
+      onChange={onChange}
+      lfoKnob={lfoKnob}
+      midiTarget={midiTarget}
+    />
+  );
+}
 
+function TapeToggle<F extends BooleanKeys<TapeParams>>({
+  field,
+  label,
+  midiTarget,
+}: {
+  field: F;
+  label: string;
+  midiTarget?: MidiTarget;
+}) {
+  const active = useSequencerStore((s) => s.tape[field] as boolean);
+  const setTape = useSequencerStore((s) => s.setTape);
+  // Read fresh state from the store on click instead of capturing `active`,
+  // so the toggle handler reference is stable across renders.
+  const onToggle = useCallback(
+    () => setTape({ [field]: !useSequencerStore.getState().tape[field] } as Partial<TapeParams>),
+    [setTape, field],
+  );
+  return (
+    <ToggleButton
+      label={label}
+      active={active}
+      onToggle={onToggle}
+      midiTarget={midiTarget}
+    />
+  );
+}
+
+function GlitchKnob<F extends NumericKeys<GlitchParams>>({
+  field,
+  label,
+  lfoKnob,
+  midiTarget,
+}: {
+  field: F;
+  label: string;
+  lfoKnob?: LFODestKnobGlobal;
+  midiTarget?: MidiTarget;
+}) {
+  const value = useSequencerStore((s) => s.glitch[field] as number);
+  const setGlitch = useSequencerStore((s) => s.setGlitch);
+  const onChange = useCallback(
+    (v: number) => setGlitch({ [field]: v } as Partial<GlitchParams>),
+    [setGlitch, field],
+  );
+  return (
+    <LabeledKnob
+      label={label}
+      value={value}
+      onChange={onChange}
+      lfoKnob={lfoKnob}
+      midiTarget={midiTarget}
+    />
+  );
+}
+
+function ReverbKnob<F extends NumericKeys<ReverbParams>>({
+  field,
+  label,
+  lfoKnob,
+  midiTarget,
+}: {
+  field: F;
+  label: string;
+  lfoKnob?: LFODestKnobGlobal;
+  midiTarget?: MidiTarget;
+}) {
+  const value = useSequencerStore((s) => s.reverb[field] as number);
+  const setReverb = useSequencerStore((s) => s.setReverb);
+  const onChange = useCallback(
+    (v: number) => setReverb({ [field]: v } as Partial<ReverbParams>),
+    [setReverb, field],
+  );
+  return (
+    <LabeledKnob
+      label={label}
+      value={value}
+      onChange={onChange}
+      lfoKnob={lfoKnob}
+      midiTarget={midiTarget}
+    />
+  );
+}
+
+function SaturationKnob<F extends NumericKeys<SaturationParams>>({
+  field,
+  label,
+  lfoKnob,
+  midiTarget,
+}: {
+  field: F;
+  label: string;
+  lfoKnob?: LFODestKnobGlobal;
+  midiTarget?: MidiTarget;
+}) {
+  const value = useSequencerStore((s) => s.saturation[field] as number);
+  const setSaturation = useSequencerStore((s) => s.setSaturation);
+  const onChange = useCallback(
+    (v: number) => setSaturation({ [field]: v } as Partial<SaturationParams>),
+    [setSaturation, field],
+  );
+  return (
+    <LabeledKnob
+      label={label}
+      value={value}
+      onChange={onChange}
+      lfoKnob={lfoKnob}
+      midiTarget={midiTarget}
+    />
+  );
+}
+
+function MasterKnob<F extends NumericKeys<MasterParams>>({
+  field,
+  label,
+  lfoKnob,
+  midiTarget,
+  scale = 1,
+}: {
+  field: F;
+  label: string;
+  lfoKnob?: LFODestKnobGlobal;
+  midiTarget?: MidiTarget;
+  // For fields whose store range differs from the 0..1 knob range (currently
+  // just `bias`, stored 0..0.2). knob = store / scale; store = knob * scale.
+  scale?: number;
+}) {
+  const raw = useSequencerStore((s) => s.master[field] as number);
+  const setMaster = useSequencerStore((s) => s.setMaster);
+  const value = scale === 1 ? raw : raw / scale;
+  const onChange = useCallback(
+    (v: number) =>
+      setMaster({ [field]: (scale === 1 ? v : v * scale) } as Partial<MasterParams>),
+    [setMaster, field, scale],
+  );
+  return (
+    <LabeledKnob
+      label={label}
+      value={value}
+      onChange={onChange}
+      lfoKnob={lfoKnob}
+      midiTarget={midiTarget}
+    />
+  );
+}
+
+function MasterCycle<F extends NumericKeys<MasterParams>>({
+  field,
+  label,
+  count,
+  format,
+  midiTarget,
+}: {
+  field: F;
+  label: string;
+  count: number;
+  format: (v: number) => string;
+  midiTarget?: MidiTarget;
+}) {
+  const value = useSequencerStore((s) => s.master[field] as number);
+  const setMaster = useSequencerStore((s) => s.setMaster);
+  const onChange = useCallback(
+    (v: number) => setMaster({ [field]: v } as Partial<MasterParams>),
+    [setMaster, field],
+  );
+  return (
+    <CycleButton
+      label={label}
+      value={value}
+      count={count}
+      format={format}
+      onChange={onChange}
+      midiTarget={midiTarget}
+    />
+  );
+}
+
+function MasterToggle<F extends BooleanKeys<MasterParams>>({
+  field,
+  label,
+  midiTarget,
+}: {
+  field: F;
+  label: string;
+  midiTarget?: MidiTarget;
+}) {
+  const active = useSequencerStore((s) => s.master[field] as boolean);
+  const setMaster = useSequencerStore((s) => s.setMaster);
+  const onToggle = useCallback(
+    () =>
+      setMaster({
+        [field]: !useSequencerStore.getState().master[field],
+      } as Partial<MasterParams>),
+    [setMaster, field],
+  );
+  return (
+    <ToggleButton label={label} active={active} onToggle={onToggle} midiTarget={midiTarget} />
+  );
+}
+
+function MasterPresetSelect() {
+  // Selector returns the matched preset name (or null) — a primitive, so
+  // it only re-renders when active preset identity changes, not on every
+  // master-knob mousemove. findActivePreset is O(presets × fields), tiny.
+  const activePreset = useSequencerStore((s) => findActivePreset(s.master));
+  const setMasterPreset = useSequencerStore((s) => s.setMasterPreset);
+  return (
+    <select
+      value={activePreset ?? ''}
+      onChange={(e) => {
+        const name = e.target.value;
+        if (name) setMasterPreset(name);
+      }}
+      className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
+      title="Load a master-section preset"
+    >
+      {activePreset === null && (
+        <option value="" disabled className="bg-[#050505]">
+          modified
+        </option>
+      )}
+      {MASTER_PRESET_NAMES.map((name) => (
+        <option key={name} value={name} className="bg-[#050505]">
+          {name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+export function FXPanel() {
   // Master controls are hidden by default — the section is 14+ knobs and
   // overwhelms the upstream-FX row otherwise. Audio routing is unaffected
   // by the toggle; only the UI is collapsed.
@@ -255,125 +527,85 @@ export function FXPanel() {
     <div className="flex flex-col items-stretch gap-6 px-4 py-4">
       <div className="flex flex-wrap items-start justify-end gap-5">
       <StageDivider label="pre" />
-      <LabeledKnob
+      <SaturationKnob
+        field="preDrive"
         label="drive"
-        value={saturation.preDrive}
-        onChange={(v) => setSaturation({ preDrive: v })}
         lfoKnob="preSaturationDrive"
         midiTarget="fx:saturation.preDrive"
       />
       <StageDivider label="tape" />
-      <LabeledKnob
+      <TapeKnob
+        field="position"
         label="position"
-        value={tape.position}
-        onChange={(v) => setTape({ position: v })}
         lfoKnob="tapePosition"
         midiTarget="fx:tape.position"
       />
-      <LabeledKnob
+      <TapeKnob
+        field="length"
         label="length"
-        value={tape.length}
-        onChange={(v) => setTape({ length: v })}
         lfoKnob="tapeLength"
         midiTarget="fx:tape.length"
       />
-      <ToggleButton
-        label="reverse"
-        active={tape.reverse}
-        onToggle={() => setTape({ reverse: !tape.reverse })}
-      />
-      <ToggleButton
-        label="hold"
-        active={tape.hold}
-        onToggle={() => setTape({ hold: !tape.hold })}
-        midiTarget="fx:tape.hold"
-      />
-      <LabeledKnob
+      <TapeToggle field="reverse" label="reverse" />
+      <TapeToggle field="hold" label="hold" midiTarget="fx:tape.hold" />
+      <TapeKnob
+        field="grainRate"
         label="grain rate"
-        value={tape.grainRate}
-        onChange={(v) => setTape({ grainRate: v })}
         lfoKnob="tapeGrainRate"
         midiTarget="fx:tape.grainRate"
       />
-      <LabeledKnob
+      <TapeKnob
+        field="grainMix"
         label="grain mix"
-        value={tape.grainMix}
-        onChange={(v) => setTape({ grainMix: v })}
         lfoKnob="tapeGrainMix"
         midiTarget="fx:tape.grainMix"
       />
-      <LabeledKnob
+      <TapeKnob
+        field="mix"
         label="mix"
-        value={tape.mix}
-        onChange={(v) => setTape({ mix: v })}
         lfoKnob="tapeMix"
         midiTarget="fx:tape.mix"
       />
       <StageDivider label="glitch" />
-      <LabeledKnob
+      <GlitchKnob
+        field="chance"
         label="chance"
-        value={glitch.chance}
-        onChange={(v) => setGlitch({ chance: v })}
         lfoKnob="glitchChance"
         midiTarget="fx:glitch.chance"
       />
-      <LabeledKnob
+      <GlitchKnob
+        field="mix"
         label="mix"
-        value={glitch.mix}
-        onChange={(v) => setGlitch({ mix: v })}
         lfoKnob="glitchMix"
         midiTarget="fx:glitch.mix"
       />
       <StageDivider label="reverb" />
-      <LabeledKnob
+      <ReverbKnob
+        field="size"
         label="size"
-        value={reverb.size}
-        onChange={(v) => setReverb({ size: v })}
         lfoKnob="reverbSize"
         midiTarget="fx:reverb.size"
       />
-      <LabeledKnob
+      <ReverbKnob
+        field="mix"
         label="mix"
-        value={reverb.mix}
-        onChange={(v) => setReverb({ mix: v })}
         lfoKnob="reverbMix"
         midiTarget="fx:reverb.mix"
       />
-      <LabeledKnob
+      <ReverbKnob
+        field="diffusion"
         label="diff"
-        value={reverb.diffusion}
-        onChange={(v) => setReverb({ diffusion: v })}
         lfoKnob="reverbDiffusion"
         midiTarget="fx:reverb.diffusion"
       />
-      <LabeledKnob
+      <ReverbKnob
+        field="damping"
         label="damp"
-        value={reverb.damping}
-        onChange={(v) => setReverb({ damping: v })}
         lfoKnob="reverbDamping"
         midiTarget="fx:reverb.damping"
       />
         <div className="flex flex-col items-stretch gap-2 self-center text-xs uppercase tracking-widest opacity-70">
-          <select
-            value={findActivePreset(master) ?? ''}
-            onChange={(e) => {
-              const name = e.target.value;
-              if (name) setMasterPreset(name);
-            }}
-            className="select-chevron bg-transparent border border-white/15 pl-2 py-1 focus:outline-none focus:border-white text-white"
-            title="Load a master-section preset"
-          >
-            {findActivePreset(master) === null && (
-              <option value="" disabled className="bg-[#050505]">
-                modified
-              </option>
-            )}
-            {MASTER_PRESET_NAMES.map((name) => (
-              <option key={name} value={name} className="bg-[#050505]">
-                {name}
-              </option>
-            ))}
-          </select>
+          <MasterPresetSelect />
           <button
             onClick={() => setMasterExpanded(!masterExpanded)}
             title={masterExpanded ? 'Hide master output' : 'Show master output'}
@@ -386,106 +618,89 @@ export function FXPanel() {
       {masterExpanded && (
       <div className="flex flex-wrap items-start justify-end gap-5">
       <StageDivider label="master" />
-      <LabeledKnob
+      <MasterKnob
+        field="input"
         label="input"
-        value={master.input}
-        onChange={(v) => setMaster({ input: v })}
         lfoKnob="masterInput"
         midiTarget="fx:master.input"
       />
-      <CycleButton
+      <MasterCycle
+        field="loCut"
         label="lo-cut"
-        value={master.loCut}
         count={LO_CUT_POSITIONS}
         format={loCutLabel}
-        onChange={(v) => setMaster({ loCut: v })}
         midiTarget="fx:master.loCut"
       />
-      <LabeledKnob
+      <MasterKnob
+        field="comp"
         label="comp"
-        value={master.comp}
-        onChange={(v) => setMaster({ comp: v })}
         lfoKnob="masterComp"
         midiTarget="fx:master.comp"
       />
-      <CycleButton
+      <MasterCycle
+        field="compAttack"
         label="atk"
-        value={master.compAttack}
         count={COMP_ATTACK_COUNT}
         format={compAttackLabel}
-        onChange={(v) => setMaster({ compAttack: v })}
         midiTarget="fx:master.compAttack"
       />
-      <CycleButton
+      <MasterCycle
+        field="compRelease"
         label="rel"
-        value={master.compRelease}
         count={COMP_RELEASE_COUNT}
         format={compReleaseLabel}
-        onChange={(v) => setMaster({ compRelease: v })}
         midiTarget="fx:master.compRelease"
       />
-      <CycleButton
+      <MasterCycle
+        field="mode"
         label="mode"
-        value={master.mode}
         count={MODE_COUNT}
         format={modeLabel}
-        onChange={(v) => setMaster({ mode: v })}
         midiTarget="fx:master.mode"
       />
-      <LabeledKnob
+      <MasterKnob
+        field="drive"
         label="drive"
-        value={master.drive}
-        onChange={(v) => setMaster({ drive: v })}
         lfoKnob="masterDrive"
         midiTarget="fx:master.drive"
       />
-      <LabeledKnob
+      <MasterKnob
+        field="bias"
         label="bias"
-        value={master.bias / 0.2}
-        onChange={(v) => setMaster({ bias: v * 0.2 })}
         lfoKnob="masterBias"
         midiTarget="fx:master.bias"
+        scale={0.2}
       />
-      <LabeledKnob
+      <MasterKnob
+        field="mix"
         label="mix"
-        value={master.mix}
-        onChange={(v) => setMaster({ mix: v })}
         lfoKnob="masterMix"
         midiTarget="fx:master.mix"
       />
-      <LabeledKnob
+      <MasterKnob
+        field="hiCut"
         label="hi-cut"
-        value={master.hiCut}
-        onChange={(v) => setMaster({ hiCut: v })}
         lfoKnob="masterHiCut"
         midiTarget="fx:master.hiCut"
       />
-      <LabeledKnob
+      <MasterKnob
+        field="trim"
         label="trim"
-        value={master.trim}
-        onChange={(v) => setMaster({ trim: v })}
         lfoKnob="masterTrim"
         midiTarget="fx:master.trim"
       />
-      <ToggleButton
+      <MasterToggle
+        field="gateEnabled"
         label="gate"
-        active={master.gateEnabled}
-        onToggle={() => setMaster({ gateEnabled: !master.gateEnabled })}
         midiTarget="fx:master.gateEnabled"
       />
-      <LabeledKnob
+      <MasterKnob
+        field="gateThreshold"
         label="gate thr"
-        value={master.gateThreshold}
-        onChange={(v) => setMaster({ gateThreshold: v })}
         lfoKnob="masterGateThreshold"
         midiTarget="fx:master.gateThreshold"
       />
-      <ToggleButton
-        label="bypass"
-        active={master.bypass}
-        onToggle={() => setMaster({ bypass: !master.bypass })}
-        midiTarget="fx:master.bypass"
-      />
+      <MasterToggle field="bypass" label="bypass" midiTarget="fx:master.bypass" />
       </div>
       )}
     </div>
