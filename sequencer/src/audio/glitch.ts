@@ -104,11 +104,33 @@ export function getGlitchNode(): AudioWorkletNode | null {
   return glitchNode;
 }
 
-// Currently unused — kept so a future "shutdown" path can clean up the
-// scheduler subscription if we ever need to tear down the FX chain.
+// Tears down the scheduler subscription and removes glitchNode from the FX
+// graph so the next initGlitch() starts from a clean slot. Called from the
+// HMR dispose hook below — without it, every module reload stacks a fresh
+// glitchNode in parallel with the old one (both still wired between fxBus
+// and mixBus), and the orphaned scheduler callback keeps firing.
 export function disposeGlitch(): void {
   if (stepUnsub) {
     stepUnsub();
     stepUnsub = null;
   }
+  if (glitchNode) {
+    try {
+      getFxBus().disconnect(glitchNode);
+    } catch {
+      /* fxBus may have already been re-routed by a downstream module */
+    }
+    try {
+      glitchNode.disconnect();
+    } catch {
+      /* ignore */
+    }
+    glitchNode = null;
+  }
+  initialized = false;
+  initializing = null;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(disposeGlitch);
 }

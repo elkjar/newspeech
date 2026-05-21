@@ -28,6 +28,7 @@ let activeId: string | null =
   typeof localStorage !== 'undefined' ? localStorage.getItem(LS_DEVICE_ID) : null;
 let initialized = false;
 let routingAudio: HTMLAudioWithSink | null = null;
+let devicechangeListener: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -90,9 +91,10 @@ export async function initAudioOutputs(): Promise<void> {
   if (initialized) return;
   initialized = true;
   await refreshOutputs();
-  navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+  devicechangeListener = () => {
     void refreshOutputs();
-  });
+  };
+  navigator.mediaDevices?.addEventListener?.('devicechange', devicechangeListener);
   if (activeId) {
     // Attempt restore. Will fail silently if autoplay policy blocks; user
     // gesture (clicking play in the transport) wakes it up.
@@ -140,6 +142,32 @@ export async function setActiveAudioOutput(deviceId: string): Promise<void> {
     else localStorage.removeItem(LS_DEVICE_ID);
   }
   notify();
+}
+
+// HMR cleanup — without this, every reload registers another devicechange
+// listener and appends a new <audio> routing element to the DOM, leaving
+// the old ones live forever.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (devicechangeListener) {
+      navigator.mediaDevices?.removeEventListener?.('devicechange', devicechangeListener);
+      devicechangeListener = null;
+    }
+    if (routingAudio) {
+      try {
+        routingAudio.pause();
+      } catch {
+        /* ignore */
+      }
+      try {
+        routingAudio.remove();
+      } catch {
+        /* ignore */
+      }
+      routingAudio = null;
+    }
+    initialized = false;
+  });
 }
 
 export async function requestDeviceLabels(): Promise<boolean> {

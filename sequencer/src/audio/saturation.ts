@@ -101,3 +101,32 @@ export function setSaturationParams(patch: Partial<SaturationParams>): void {
 export function getSaturationParams(): SaturationParams {
   return params;
 }
+
+// Disconnect the pre-saturation shaper from voicesBus → voicesPostFX so a
+// fresh init can splice in cleanly. Without this, every HMR reload adds
+// another shaper in parallel and audio fans through both at once.
+export function disposePreSaturation(): void {
+  if (pre) {
+    try {
+      getVoicesBus().disconnect(pre.shaper);
+    } catch {
+      /* ignore */
+    }
+    try {
+      pre.shaper.disconnect();
+    } catch {
+      /* ignore */
+    }
+    try {
+      pre.postGain.disconnect();
+    } catch {
+      /* ignore */
+    }
+    pre = null;
+  }
+  preInitializing = null;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(disposePreSaturation);
+}

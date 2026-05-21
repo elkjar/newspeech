@@ -219,3 +219,14 @@ export function midiPanic() {
     }
   });
 }
+
+// HMR cleanup — without this, the Tauri hot-plug polling setInterval gets
+// orphaned on module reload and a new one stacks on next init.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (tauriPoll !== null) {
+      window.clearInterval(tauriPoll);
+      tauriPoll = null;
+    }
+  });
+}

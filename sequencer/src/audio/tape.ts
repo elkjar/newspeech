@@ -173,3 +173,45 @@ export function setTapeParams(patch: Partial<TapeParams>): void {
 export function getTapeParams(): TapeParams {
   return params;
 }
+
+// Tear down the tape branch so the next initTape() doesn't stack a second
+// parallel wet path. Without this, every HMR cycle adds another
+// tapeMachine + highpass + mix gain feeding fxBus.
+export function disposeTape(): void {
+  if (tapeMachine) {
+    try {
+      getVoicesPostFX().disconnect(tapeMachine);
+    } catch {
+      /* ignore */
+    }
+    try {
+      tapeMachine.disconnect();
+    } catch {
+      /* ignore */
+    }
+    tapeMachine = null;
+  }
+  if (tapeHighpass) {
+    try {
+      tapeHighpass.disconnect();
+    } catch {
+      /* ignore */
+    }
+    tapeHighpass = null;
+  }
+  if (tapeMix) {
+    try {
+      tapeMix.disconnect();
+    } catch {
+      /* ignore */
+    }
+    tapeMix = null;
+  }
+  dryGainRef = null;
+  initialized = false;
+  initializing = null;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(disposeTape);
+}

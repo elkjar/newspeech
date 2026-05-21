@@ -119,3 +119,14 @@ export function stopFXModulation(): void {
     rafId = null;
   }
 }
+
+// HMR cleanup — without this, every reload of fxModulation.ts stacks a new
+// RAF loop on top of the previous one. Each accumulated loop does ALL the
+// per-frame FX param work (tape/glitch/reverb/saturation/master + per-track
+// filter graphs), so pile-up scales linearly with HMR cycles and tanks
+// frame rate. See [[reference-zustand-hmr-subscriber]].
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    stopFXModulation();
+  });
+}

@@ -428,6 +428,63 @@ export function getMasterParams(): MasterParams {
   return params;
 }
 
+// Splice the master chain out of mixBus → outputRouter so the next
+// initMaster() can wire a fresh chain in. Without this every HMR reload
+// stacks an entire master chain in parallel — both feeding the router.
+export function disposeMaster(): void {
+  if (inputNode) {
+    try {
+      getMixBus().disconnect(inputNode);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (outNode) {
+    try {
+      outNode.disconnect();
+    } catch {
+      /* ignore */
+    }
+  }
+  const nodes: (AudioNode | null)[] = [
+    inputNode, inputGain, dcBlock, loCut, compressor, preEmphasis, distortion,
+    deEmphasis, distDryGain, distWetGain, distSum, hiCut, gate, trim, tailEq,
+    wetMix, dryMix,
+  ];
+  for (const n of nodes) {
+    if (!n) continue;
+    try {
+      n.disconnect();
+    } catch {
+      /* ignore */
+    }
+  }
+  inputNode = null;
+  inputGain = null;
+  dcBlock = null;
+  loCut = null;
+  compressor = null;
+  preEmphasis = null;
+  distortion = null;
+  deEmphasis = null;
+  distDryGain = null;
+  distWetGain = null;
+  distSum = null;
+  hiCut = null;
+  gate = null;
+  trim = null;
+  tailEq = null;
+  wetMix = null;
+  dryMix = null;
+  outNode = null;
+  initialized = false;
+  initializing = null;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(disposeMaster);
+}
+
 // Tap point for downstream consumers (the recorder, future broadcasters).
 // Connects `target` to the master's final output node — after every tone-
 // shaping stage and the bypass crossfade — so the tap captures exactly what

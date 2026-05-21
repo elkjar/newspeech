@@ -212,12 +212,11 @@ import {
 } from '../instruments/manifestRegistry';
 
 let voicesCache: VoiceDef[] | null = null;
-let registrySubscribed = false;
+let unsubscribeRegistry: (() => void) | null = null;
 
 function getCachedVoices(): VoiceDef[] {
-  if (!registrySubscribed) {
-    registrySubscribed = true;
-    subscribeRegistry(() => {
+  if (!unsubscribeRegistry) {
+    unsubscribeRegistry = subscribeRegistry(() => {
       voicesCache = null;
     });
   }
@@ -225,6 +224,21 @@ function getCachedVoices(): VoiceDef[] {
     voicesCache = [...STATIC_VOICES, ...deriveSampleVoices()];
   }
   return voicesCache;
+}
+
+// Clear the registry subscription + cache so the next module reload starts
+// clean. Without this every HMR cycle of voices.ts (or any importer of it)
+// would leave the previous cache-invalidation callback live in the registry's
+// listener Set forever — silent leak (callback is cheap), but the Set grows
+// unbounded across a long dev session.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (unsubscribeRegistry) {
+      unsubscribeRegistry();
+      unsubscribeRegistry = null;
+    }
+    voicesCache = null;
+  });
 }
 
 /**

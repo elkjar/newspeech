@@ -153,3 +153,18 @@ export function resetTrackFilters(): void {
   }
   graphs.clear();
 }
+
+// Tear every per-track filter graph out of voicesBus/mixBus so the next
+// module init can build fresh ones. Without this, every HMR cycle would
+// leave the previous per-track ladder + wet/dry split alive in parallel
+// with the new one — drive doubles, wet/dry sums stack.
+export function disposeTrackFilter(): void {
+  resetTrackFilters();
+  initialized = false;
+  initializing = null;
+  workletLoaded = false;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(disposeTrackFilter);
+}

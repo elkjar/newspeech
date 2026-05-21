@@ -161,3 +161,21 @@ export function getConnectedInputNames(): string[] {
   }
   return names;
 }
+
+// HMR cleanup — without this, the Tauri hot-plug polling setInterval gets
+// orphaned on module reload and a new one stacks on next init. Also clears
+// the `midi://message` Tauri event listener, since a midiIn-only HMR cycle
+// won't necessarily re-run App.tsx's effect that calls initMIDIIn() — without
+// the unlisten here the handle is zeroed and the old listener leaks forever.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (tauriPoll !== null) {
+      window.clearInterval(tauriPoll);
+      tauriPoll = null;
+    }
+    if (tauriUnlisten) {
+      tauriUnlisten();
+      tauriUnlisten = null;
+    }
+  });
+}

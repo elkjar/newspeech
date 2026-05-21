@@ -131,3 +131,29 @@ export function getReverbParams(): ReverbParams {
 export function getReverbNode(): AudioWorkletNode | null {
   return reverbNode;
 }
+
+// Pull reverbNode out of the chain so the next initReverb() can wire a fresh
+// one in without stacking. Without this every HMR cycle would leave the old
+// reverbNode connected between its upstream node and mixBus.
+export function disposeReverb(): void {
+  if (reverbNode) {
+    try {
+      const upstream: AudioNode = getGlitchNode() || getFxBus();
+      upstream.disconnect(reverbNode);
+    } catch {
+      /* ignore */
+    }
+    try {
+      reverbNode.disconnect();
+    } catch {
+      /* ignore */
+    }
+    reverbNode = null;
+  }
+  initialized = false;
+  initializing = null;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(disposeReverb);
+}

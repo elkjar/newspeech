@@ -108,7 +108,7 @@ let initialized = false;
 let initializing: Promise<void> | null = null;
 let captureSampleRate = 48000;
 let pendingFinalize: number | null = null;
-let subscribed = false;
+let unsubscribeStore: (() => void) | null = null;
 type TakeMode = 'combined' | 'splits' | 'multitrack';
 let currentTakeMode: TakeMode = 'combined';
 
@@ -357,11 +357,10 @@ async function stopInstance(instance: RecorderInstance): Promise<FinalizedTake |
 }
 
 export function subscribeRecorder(): void {
-  if (subscribed) return;
-  subscribed = true;
+  if (unsubscribeStore) return;
   let prev = false;
   let prevRaw = useSequencerStore.getState().recordRaw;
-  useSequencerStore.subscribe((state) => {
+  unsubscribeStore = useSequencerStore.subscribe((state) => {
     if (!initialized) return;
     if (state.recordRaw !== prevRaw && processedTap && rawTap) {
       prevRaw = state.recordRaw;
@@ -484,6 +483,17 @@ async function finalizeTake(mode: TakeMode): Promise<void> {
             getClickBus().disconnect(ins.worklet);
           } catch {
             /* node already torn down */
+          }
+          // Drop the port handler so the closure stops pinning the chunk
+          // arrays, then disconnect the worklet from anything downstream
+          // (no current downstream, but mirror the bus tear-down for safety
+          // in case a future tap is added). Without this the worklet would
+          // remain GC-reachable via its port's onmessage closure.
+          try {
+            ins.worklet.port.onmessage = null;
+            ins.worklet.disconnect();
+          } catch {
+            /* ignore */
           }
         }
       }
@@ -676,4 +686,17 @@ function buildFilenameBase(state: ReturnType<typeof useSequencerStore.getState>)
   const note = NOTE_NAMES_FOR_FILE[((state.rootNote % 12) + 12) % 12];
   const scaleSlug = state.scale === 'major' ? 'maj' : state.scale === 'minor' ? 'min' : state.scale;
   return `newspeech_${ts}_${state.bpm}bpm_${note}${scaleSlug}`;
+}
+
+// HMR cleanup — without this, every reload stacks a new zustand subscriber
+// on top of the previous one. The subscriber does Web Audio work (gain ramps,
+// instance lifecycle) on every state change, so pile-up gets expensive fast.
+// See [[reference-zustand-hmr-subscriber]].
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (unsubscribeStore) {
+      unsubscribeStore();
+      unsubscribeStore = null;
+    }
+  });
 }
