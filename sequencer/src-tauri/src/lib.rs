@@ -2,6 +2,7 @@ mod audio;
 mod midi;
 mod projectfs;
 mod recording;
+mod reverb;
 mod samples;
 
 #[cfg(target_os = "macos")]
@@ -142,6 +143,7 @@ pub fn run() {
       audio::audio_trigger_sample,
       audio::audio_set_track_filter,
       audio::audio_set_track_filters_bulk,
+      audio::audio_set_reverb_params,
       audio::audio_stop_all,
     ])
     .setup(|app| {

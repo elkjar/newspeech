@@ -108,7 +108,17 @@ class SamplePlayer {
     baseUrl: string,
     manifest: SampleManifest,
     fetcher: (file: string, baseUrl: string) => Promise<AudioBuffer> = defaultUrlFetcher,
+    opts: { pathsOnly?: boolean } = {},
   ) {
+    // pathsOnly skips the per-file fetcher entirely (no fetch / no
+    // decodeAudioData), populating only paths[]. The Tauri build sets
+    // this since every voice trigger goes through the native cpal
+    // engine — Web Audio AudioBuffers are wasted work, AND the
+    // user-samples fetcher route relays bytes back through invoke as
+    // JSON-encoded number arrays (slow per [[reference_tauri_binary_ipc]]).
+    // Web triggers will gracefully no-op when bank.bufs.length === 0,
+    // so leaving bufs[] empty in this mode is safe.
+    const pathsOnly = opts.pathsOnly === true;
     if (manifest.chokeGroups) {
       for (const [id, group] of Object.entries(manifest.chokeGroups)) {
         this.chokeGroups.set(id, group);
@@ -118,15 +128,19 @@ class SamplePlayer {
       Object.entries(manifest.voices).map(async ([id, def]) => {
         const banks: SampleBank[] = [];
         if (def.files && def.files.length > 0) {
-          const bufs = await Promise.all(def.files.map((file) => fetcher(file, baseUrl)));
           const paths = def.files.map((file) => `${baseUrl}/${file}`);
+          const bufs = pathsOnly
+            ? []
+            : await Promise.all(def.files.map((file) => fetcher(file, baseUrl)));
           banks.push({ root: null, bufs, paths });
         }
         if (def.roots) {
           for (const r of def.roots) {
             if (!r.files || r.files.length === 0) continue;
-            const bufs = await Promise.all(r.files.map((file) => fetcher(file, baseUrl)));
             const paths = r.files.map((file) => `${baseUrl}/${file}`);
+            const bufs = pathsOnly
+              ? []
+              : await Promise.all(r.files.map((file) => fetcher(file, baseUrl)));
             banks.push({ root: r.midi, bufs, paths });
           }
         }

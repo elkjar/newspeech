@@ -104,7 +104,17 @@ export async function scanAndLoadUserSamples(): Promise<UserKitScanResult> {
       // baseUrl is purely cosmetic when the fetcher ignores it; pass the
       // absolute dir for log readability if anything goes wrong downstream.
       registerKit(`user/${kit.kit_path}`, absDir, manifest);
-      await samplePlayer.loadManifest(absDir, manifest, fetcher);
+      // In Tauri, native is the only audio path — skip the Web Audio
+      // AudioBuffer decode pass. Path strings + voice metadata are
+      // all the native engine needs; the fetcher relays bytes back
+      // through invoke as a JSON number array, which is the
+      // dominant cost of cold-boot user-samples loading. Native
+      // preload reads files directly via hound::WavReader::open on
+      // the absolute filesystem path (see [[reference_tauri_binary_ipc]]).
+      const nativeMode = isTauri();
+      await samplePlayer.loadManifest(absDir, manifest, fetcher, {
+        pathsOnly: nativeMode,
+      });
       result.loaded += 1;
     } catch (err) {
       result.failed += 1;
@@ -136,7 +146,9 @@ export async function rescanAllKits(): Promise<UserKitScanResult> {
           const manifestRes = await fetch(`${baseUrl}/manifest.json`);
           const manifest = (await manifestRes.json()) as ExtendedSampleManifest;
           registerKit(entry.kitPath, baseUrl, manifest);
-          await samplePlayer.loadManifest(baseUrl, manifest);
+          await samplePlayer.loadManifest(baseUrl, manifest, undefined, {
+            pathsOnly: isTauri(),
+          });
         } catch (err) {
           console.warn(`bundled ${entry.kitPath} reload failed:`, err);
         }

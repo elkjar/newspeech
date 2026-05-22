@@ -25,6 +25,8 @@ use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use serde::Serialize;
 
+use crate::reverb::ReverbBus;
+
 // --- device + open metadata ---
 
 #[derive(Debug, Serialize, Clone)]
@@ -133,6 +135,10 @@ fn decode_wav<R: std::io::Read>(mut reader: hound::WavReader<R>) -> Result<Sampl
 pub struct TrackParams {
   cutoff_hz: AtomicU32,
   resonance: AtomicU32,
+  // 0..1 — portion of the voice signal routed to the global reverb bus.
+  // The voice's dry signal is attenuated by (1 - fx_send) and the wet
+  // contribution scaled by fx_send. Per-voice mix, audio-rate atomic.
+  fx_send: AtomicU32,
 }
 
 impl TrackParams {
@@ -140,6 +146,7 @@ impl TrackParams {
     Self {
       cutoff_hz: AtomicU32::new(18000.0_f32.to_bits()),
       resonance: AtomicU32::new(0.0_f32.to_bits()),
+      fx_send: AtomicU32::new(0.0_f32.to_bits()),
     }
   }
   fn cutoff(&self) -> f32 {
@@ -148,9 +155,15 @@ impl TrackParams {
   fn resonance(&self) -> f32 {
     f32::from_bits(self.resonance.load(Ordering::Relaxed))
   }
-  fn set(&self, cutoff_hz: f32, resonance: f32) {
+  fn fx_send(&self) -> f32 {
+    f32::from_bits(self.fx_send.load(Ordering::Relaxed))
+  }
+  fn set_filter(&self, cutoff_hz: f32, resonance: f32) {
     self.cutoff_hz.store(cutoff_hz.to_bits(), Ordering::Release);
     self.resonance.store(resonance.to_bits(), Ordering::Release);
+  }
+  fn set_fx_send(&self, fx_send: f32) {
+    self.fx_send.store(fx_send.to_bits(), Ordering::Release);
   }
 }
 
@@ -166,6 +179,38 @@ fn get_or_create_track_params(track_id: &str) -> Arc<TrackParams> {
     .entry(track_id.to_string())
     .or_insert_with(|| Arc::new(TrackParams::new()))
     .clone()
+}
+
+// --- reverb shared state ---
+//
+// One global reverb bus. Per-voice fx_send routes a portion of each
+// voice's post-gain/pan signal into the reverb input; the wet output is
+// added to channels 0+1. Params updated via IPC live in atomics so the
+// audio callback can re-apply them block-by-block without locking.
+
+pub struct ReverbState {
+  size: AtomicU32,
+  wet_gain: AtomicU32,
+  diffusion: AtomicU32,
+  damping: AtomicU32,
+}
+
+impl ReverbState {
+  fn new() -> Self {
+    Self {
+      size: AtomicU32::new(0.7_f32.to_bits()),
+      // wet_gain defaults to 0 — silent until the user dials in a mix.
+      wet_gain: AtomicU32::new(0.0_f32.to_bits()),
+      diffusion: AtomicU32::new(0.625_f32.to_bits()),
+      damping: AtomicU32::new(0.4_f32.to_bits()),
+    }
+  }
+}
+
+static REVERB_STATE: OnceLock<ReverbState> = OnceLock::new();
+
+fn reverb_state() -> &'static ReverbState {
+  REVERB_STATE.get_or_init(ReverbState::new)
 }
 
 // Moog-style 4-pole ladder lowpass — direct port of public/worklets/track-
@@ -359,8 +404,14 @@ impl AudioEngine {
     let (cmd_tx, cmd_rx) = channel();
     let state = Arc::new(SharedState::new());
     let state_clone = state.clone();
+    // 16 MB stack — the Faust-generated reverb DSP struct contains
+    // several large delay/feedback buffers (~600 KB total) and is
+    // constructed on this thread inside ReverbBus::new(). Default
+    // thread stack (~2 MB on macOS) overflows during struct-literal
+    // initialization. Bumping here so the closure has headroom.
     thread::Builder::new()
       .name("sequence-audio-control".into())
+      .stack_size(16 * 1024 * 1024)
       .spawn(move || control_thread(cmd_rx, state_clone))
       .expect("spawn audio control thread");
     Self { cmd_tx, state }
@@ -523,7 +574,27 @@ impl AudioEngine {
 
   pub fn set_track_filter(&self, track_id: String, cutoff_hz: f32, resonance: f32) {
     let params = get_or_create_track_params(&track_id);
-    params.set(cutoff_hz.max(20.0).min(20000.0), resonance.clamp(0.0, 1.0));
+    params.set_filter(cutoff_hz.max(20.0).min(20000.0), resonance.clamp(0.0, 1.0));
+  }
+
+  pub fn set_track_fx_send(&self, track_id: String, fx_send: f32) {
+    let params = get_or_create_track_params(&track_id);
+    params.set_fx_send(fx_send.clamp(0.0, 1.0));
+  }
+
+  // Reverb DSP params + global wet-bus gain. Held in atomics inside the
+  // shared ReverbState so the audio callback can read them lock-free
+  // each block. The DSP's internal mix is pinned to 1.0 (fully wet) at
+  // construction — the `wet_gain` here is the post-reverb bus gain.
+  pub fn set_reverb_params(&self, size: f32, wet_gain: f32, diffusion: f32, damping: f32) {
+    let r = reverb_state();
+    r.size.store(size.clamp(0.0, 1.0).to_bits(), Ordering::Release);
+    r.wet_gain
+      .store(wet_gain.clamp(0.0, 4.0).to_bits(), Ordering::Release);
+    r.diffusion
+      .store(diffusion.clamp(0.0, 0.85).to_bits(), Ordering::Release);
+    r.damping
+      .store(damping.clamp(0.0, 1.0).to_bits(), Ordering::Release);
   }
 
   pub fn stop_all_voices(&self) -> Result<(), String> {
@@ -650,6 +721,15 @@ fn build_stream(
   let nominal_channels = channels as usize;
   let nominal_sr = sample_rate as f32;
   let device_sr_f64 = sample_rate as f64;
+  // Reverb bus + scratch buffers. 8192 frames is well above the typical
+  // cpal block size (256–2048); chunked processing kicks in if the
+  // device ever calls back with a larger buffer.
+  const REVERB_SCRATCH: usize = 8192;
+  let mut reverb_bus = ReverbBus::new(sample_rate);
+  let mut reverb_in_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut reverb_in_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut reverb_out_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut reverb_out_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
 
   let cb_state = state.clone();
   let stream = device
@@ -754,6 +834,14 @@ fn build_stream(
           }
         }
 
+        // Clear the reverb input bus for this block. Voices accumulate
+        // their wet contribution into it during the loop below.
+        let rev_frames = frames.min(REVERB_SCRATCH);
+        for i in 0..rev_frames {
+          reverb_in_l[i] = 0.0;
+          reverb_in_r[i] = 0.0;
+        }
+
         // 3) Voices — per-voice routing.
         //   • Stereo voice: writes interpolated L/R to out_first / out_first+1
         //     with equal-power pan, channel bounds checked.
@@ -764,6 +852,11 @@ fn build_stream(
         //     output write when track_params is present. cutoff_hz +
         //     resonance read once per FRAME (not per voice per frame
         //     redundantly) — knob twists land at audio-block resolution.
+        //   • Per-track fx_send routes (signal × fx_send × gain × pan) into
+        //     the reverb input bus. Voice's dry output to assigned
+        //     channels is attenuated by (1 - fx_send). For mono routing
+        //     the wet contribution still uses the post-pan stereo signal
+        //     (reverb sums L+R internally before processing anyway).
         // Per-channel buffer-index math stays inside the per-voice branch so
         // we never blindly write past n_ch on a smaller-than-expected device.
         for v in voices.iter_mut() {
@@ -813,20 +906,68 @@ fn build_stream(
               ls = fl;
               rs = fr;
             }
+            let fx_send = track_params
+              .as_ref()
+              .map(|p| p.fx_send())
+              .unwrap_or(0.0);
+            let dry_scale = 1.0 - fx_send;
+            // Reverb input is post-gain + post-pan so the wet bus
+            // matches the dry path's positioning. Reverb sums L+R to
+            // mono internally so the pan only affects relative wet
+            // level, not the reverb tail's spatial placement.
+            if fx_send > 0.0 && frame < REVERB_SCRATCH {
+              let wet_l = ls * v.gain * v.pan_left * fx_send;
+              let wet_r = rs * v.gain * v.pan_right * fx_send;
+              reverb_in_l[frame] += wet_l;
+              reverb_in_r[frame] += wet_r;
+            }
             if v.out_stereo {
               let l_idx = v.out_first;
               let r_idx = v.out_first + 1;
               if l_idx < n_ch {
-                buf[frame * n_ch + l_idx] += ls * v.gain * v.pan_left;
+                buf[frame * n_ch + l_idx] += ls * v.gain * v.pan_left * dry_scale;
               }
               if r_idx < n_ch {
-                buf[frame * n_ch + r_idx] += rs * v.gain * v.pan_right;
+                buf[frame * n_ch + r_idx] += rs * v.gain * v.pan_right * dry_scale;
               }
             } else if v.out_first < n_ch {
               let mono = 0.5 * (ls + rs);
-              buf[frame * n_ch + v.out_first] += mono * v.gain;
+              buf[frame * n_ch + v.out_first] += mono * v.gain * dry_scale;
             }
             v.position += v.rate;
+          }
+        }
+
+        // 4) Reverb — apply current params, process the wet bus, mix the
+        // result into the main monitor pair (channels 0 + 1). The DSP's
+        // internal mix is pinned to 1.0 in ReverbBus::new so we get pure
+        // wet; wet_gain here is the post-reverb bus volume. wet_gain=0
+        // is silent (default), letting the reverb stay completely
+        // out-of-circuit until the user dials it in.
+        let r = reverb_state();
+        let size = f32::from_bits(r.size.load(Ordering::Relaxed));
+        let wet_gain = f32::from_bits(r.wet_gain.load(Ordering::Relaxed));
+        let diffusion = f32::from_bits(r.diffusion.load(Ordering::Relaxed));
+        let damping = f32::from_bits(r.damping.load(Ordering::Relaxed));
+        reverb_bus.set_size(size);
+        reverb_bus.set_diffusion(diffusion);
+        reverb_bus.set_damping(damping);
+        if rev_frames > 0 {
+          reverb_bus.process_block(
+            &reverb_in_l[..rev_frames],
+            &reverb_in_r[..rev_frames],
+            &mut reverb_out_l[..rev_frames],
+            &mut reverb_out_r[..rev_frames],
+          );
+          if wet_gain > 0.0 && n_ch >= 1 {
+            for frame in 0..rev_frames {
+              buf[frame * n_ch] += reverb_out_l[frame] * wet_gain;
+            }
+            if n_ch >= 2 {
+              for frame in 0..rev_frames {
+                buf[frame * n_ch + 1] += reverb_out_r[frame] * wet_gain;
+              }
+            }
           }
         }
       },
@@ -995,6 +1136,7 @@ pub struct TrackFilterUpdate {
   pub track_id: String,
   pub cutoff_hz: f32,
   pub resonance: f32,
+  pub fx_send: f32,
 }
 
 // One invoke carrying N per-track updates. The RAF-driven LFO push in
@@ -1004,8 +1146,20 @@ pub struct TrackFilterUpdate {
 pub fn audio_set_track_filters_bulk(updates: Vec<TrackFilterUpdate>) -> Result<(), String> {
   let e = engine();
   for u in updates {
-    e.set_track_filter(u.track_id, u.cutoff_hz, u.resonance);
+    e.set_track_filter(u.track_id.clone(), u.cutoff_hz, u.resonance);
+    e.set_track_fx_send(u.track_id, u.fx_send);
   }
+  Ok(())
+}
+
+#[tauri::command]
+pub fn audio_set_reverb_params(
+  size: f32,
+  wet_gain: f32,
+  diffusion: f32,
+  damping: f32,
+) -> Result<(), String> {
+  engine().set_reverb_params(size, wet_gain, diffusion, damping);
   Ok(())
 }
 

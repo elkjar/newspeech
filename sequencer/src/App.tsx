@@ -24,6 +24,7 @@ import {
   isNativeAudioAvailable,
   triggerSample,
   setTrackFiltersBulk,
+  setReverbParams,
   cutoffNormToHz,
   initNativeAudio,
   type TrackFilterUpdate,
@@ -273,7 +274,12 @@ export function App() {
               const manifestRes = await fetch(`${baseUrl}/manifest.json`);
               const manifest = (await manifestRes.json()) as ExtendedSampleManifest;
               registerKit(entry.kitPath, baseUrl, manifest);
-              await samplePlayer.loadManifest(baseUrl, manifest);
+              // In Tauri, native is the only audio path — skip the
+              // Web Audio AudioBuffer decode pass entirely. Path
+              // strings + voice/bank metadata are all we need.
+              await samplePlayer.loadManifest(baseUrl, manifest, undefined, {
+                pathsOnly: isNativeAudioAvailable(),
+              });
             } catch (err) {
               console.warn(`sample manifest ${entry.kitPath} load failed:`, err);
             }
@@ -283,42 +289,25 @@ export function App() {
       } catch (err) {
         console.warn('samples index load failed:', err);
       }
-      // User-samples load is intentionally NOT awaited here — see the
-      // separate useEffect below. Reading + decoding user WAVs through
-      // the JSON-encoded bytes IPC path (per [[reference_tauri_binary_ipc]])
-      // blocked the splash at 18/18 for tens of seconds before this split.
+      // Bring user-sample kits in alongside bundled ones BEFORE
+      // bootDone fires. In Tauri this is cheap because
+      // samplePlayer.loadManifest runs in pathsOnly mode there — no
+      // Web Audio decodeAudioData pass, no JSON-encoded bytes round
+      // trip through invoke, just path-string interning. Native
+      // preload reads files directly via the cpal-side bytes path
+      // when each voice is first triggered. Without this, user-
+      // sample tracks would briefly trigger silence after cold boot
+      // until the background load caught up.
+      const userResult = await scanAndLoadUserSamples();
+      if (userResult.loaded > 0) {
+        console.info(`[user samples] loaded ${userResult.loaded} kit(s)`);
+      }
+      if (userResult.errors.length > 0) {
+        for (const e of userResult.errors) console.warn('[user samples]', e);
+      }
       setBootDone(true);
     })();
   }, []);
-
-  // Load user-sample kits in the background AFTER bundled kits land and
-  // the UI is interactive. Each user WAV crosses IPC as a JSON-encoded
-  // number array which is multi-second-per-kit on cold boot, so this
-  // can't sit on the critical path to bootDone. New voices register
-  // into samplePlayer mid-session; immediately after load we kick off
-  // a native preload pass so any track already pointing at a user voice
-  // has its samples in the cpal registry.
-  useEffect(() => {
-    if (!bootDone) return;
-    void (async () => {
-      const result = await scanAndLoadUserSamples();
-      if (result.loaded > 0) {
-        console.info(`[user samples] loaded ${result.loaded} kit(s)`);
-      }
-      if (result.errors.length > 0) {
-        for (const e of result.errors) console.warn('[user samples]', e);
-      }
-      if (result.loaded > 0 && isNativeAudioAvailable()) {
-        const seen = new Set<string>();
-        for (const t of useSequencerStore.getState().tracks) {
-          if (t.source.kind === 'voice' && !seen.has(t.source.id)) {
-            seen.add(t.source.id);
-            void samplePlayer.preloadNativeForVoice(t.source.id);
-          }
-        }
-      }
-    })();
-  }, [bootDone]);
 
   useEffect(() => {
     const harmonic = makeHarmonicMotionState();
@@ -535,24 +524,30 @@ export function App() {
     void initNativeAudio();
   }, []);
 
-  // Phase 3b: push LFO-modulated filter params to the native engine
-  // every animation frame. modulated() reads each track's base cutoff/
-  // resonance plus any routed LFOs and returns the live value; we diff
-  // against the last-pushed value per track and batch the changes into
-  // a single audio_set_track_filters_bulk IPC per frame. Without this
-  // loop, LFO sweeps on cutoff/resonance only move the (unused) web
-  // worklet and the native filter sits at baseline values.
+  // Phase 3b + 7a: push LFO-modulated DSP params to the native engine
+  // every animation frame. Per-track filter cutoff/resonance + fxSend
+  // go through one bulk invoke. Global reverb params (size, mix→wet
+  // gain, diffusion, damping) go through a separate invoke. modulated()
+  // folds in any routed LFOs so sweeps reach the native DSP at frame
+  // resolution — well over-sampled for LFOs whose periods are seconds.
   //
-  // Thresholds (cutoff 0.5 Hz, resonance 0.001) prevent floating-point
+  // Thresholds (cutoff 0.5 Hz, others 0.001) prevent floating-point
   // noise from generating no-op pushes when nothing's actually moving.
-  // gated on bootDone so the loop doesn't start before tracks settle.
+  // Gated on bootDone so the loop doesn't start before tracks settle.
   useEffect(() => {
     if (!isNativeAudioAvailable()) return;
     if (!bootDone) return;
-    const lastPushed = new Map<string, { cutoffHz: number; resonance: number }>();
+    const lastTrack = new Map<
+      string,
+      { cutoffHz: number; resonance: number; fxSend: number }
+    >();
+    let lastReverb: { size: number; wetGain: number; diffusion: number; damping: number } | null =
+      null;
     let raf = 0;
     const tick = () => {
       const state = useSequencerStore.getState();
+
+      // Per-track DSP params (filter + fx send).
       const updates: TrackFilterUpdate[] = [];
       for (const t of state.tracks) {
         const cutoffNorm = modulated(
@@ -567,18 +562,51 @@ export function App() {
           t.id,
           'filterResonance',
         );
+        const fxSend = modulated(t.fxSend, state.lfos, t.id, 'fxSend');
         const cutoffHz = cutoffNormToHz(cutoffNorm);
-        const last = lastPushed.get(t.id);
+        const last = lastTrack.get(t.id);
         const changed =
           !last ||
           Math.abs(last.cutoffHz - cutoffHz) > 0.5 ||
-          Math.abs(last.resonance - resonance) > 0.001;
+          Math.abs(last.resonance - resonance) > 0.001 ||
+          Math.abs(last.fxSend - fxSend) > 0.001;
         if (changed) {
-          updates.push({ trackId: t.id, cutoffHz, resonance });
-          lastPushed.set(t.id, { cutoffHz, resonance });
+          updates.push({ trackId: t.id, cutoffHz, resonance, fxSend });
+          lastTrack.set(t.id, { cutoffHz, resonance, fxSend });
         }
       }
       if (updates.length > 0) void setTrackFiltersBulk(updates);
+
+      // Global reverb params. Store's `mix` is reinterpreted as the
+      // post-reverb wet bus gain on the native side (DSP's internal
+      // crossfade pinned to fully-wet; per-voice fxSend carries the
+      // dry/wet split per track).
+      const rv = state.reverb;
+      const size = modulated(rv.size, state.lfos, GLOBAL_TRACK_ID, 'reverbSize');
+      const wetGain = modulated(rv.mix, state.lfos, GLOBAL_TRACK_ID, 'reverbMix');
+      const diffusion = modulated(
+        rv.diffusion,
+        state.lfos,
+        GLOBAL_TRACK_ID,
+        'reverbDiffusion',
+      );
+      const damping = modulated(
+        rv.damping,
+        state.lfos,
+        GLOBAL_TRACK_ID,
+        'reverbDamping',
+      );
+      const reverbChanged =
+        !lastReverb ||
+        Math.abs(lastReverb.size - size) > 0.001 ||
+        Math.abs(lastReverb.wetGain - wetGain) > 0.001 ||
+        Math.abs(lastReverb.diffusion - diffusion) > 0.001 ||
+        Math.abs(lastReverb.damping - damping) > 0.001;
+      if (reverbChanged) {
+        lastReverb = { size, wetGain, diffusion, damping };
+        void setReverbParams({ size, wetGain, diffusion, damping });
+      }
+
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

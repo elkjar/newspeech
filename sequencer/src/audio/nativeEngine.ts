@@ -325,27 +325,49 @@ export async function setTrackFilter(
   });
 }
 
-// Batched filter updates — one IPC round-trip carrying many tracks.
+// Batched track DSP updates — one IPC round-trip carrying many tracks.
 // Used by the LFO-driven RAF push loop where every animation frame can
 // touch up to N tracks; per-track invokes would balloon IPC overhead.
+// Carries filter params + fx_send so a single bulk command updates
+// everything per-track-per-frame.
 export interface TrackFilterUpdate {
   trackId: string;
   cutoffHz: number;
   resonance: number;
+  fxSend: number;
 }
 
 export async function setTrackFiltersBulk(
   updates: TrackFilterUpdate[],
 ): Promise<void> {
   if (updates.length === 0) return;
-  // Rust side expects snake_case track_id / cutoff_hz; payload is the
-  // updates array serialized via serde.
+  // Rust side expects snake_case keys; payload is the updates array
+  // serialized via serde.
   await invoke<void>('audio_set_track_filters_bulk', {
     updates: updates.map((u) => ({
       track_id: u.trackId,
       cutoff_hz: u.cutoffHz,
       resonance: u.resonance,
+      fx_send: u.fxSend,
     })),
+  });
+}
+
+// Global reverb params. `wetGain` is the post-reverb bus gain (0..1
+// roughly, the user-facing "mix" knob remapped — the DSP's internal
+// wet/dry crossfade is pinned to fully-wet on the Rust side, our
+// per-voice fx_send carries the dry/wet split per track).
+export async function setReverbParams(opts: {
+  size: number;
+  wetGain: number;
+  diffusion: number;
+  damping: number;
+}): Promise<void> {
+  await invoke<void>('audio_set_reverb_params', {
+    size: opts.size,
+    wetGain: opts.wetGain,
+    diffusion: opts.diffusion,
+    damping: opts.damping,
   });
 }
 
