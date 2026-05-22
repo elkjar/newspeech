@@ -177,6 +177,10 @@ export async function triggerSample(
     // single channel (pan ignored).
     outFirst?: number;
     outStereo?: boolean;
+    // Optional track id — when provided, the voice attaches to the
+    // track's filter params and gets per-track ladder filtering. Without
+    // it the voice plays dry (manual triggers from the phase-0 panel).
+    trackId?: string;
   } = {},
 ): Promise<void> {
   await invoke<void>('audio_trigger_sample', {
@@ -186,7 +190,34 @@ export async function triggerSample(
     pitch: opts.pitch ?? null,
     outFirst: opts.outFirst ?? null,
     outStereo: opts.outStereo ?? null,
+    trackId: opts.trackId ?? null,
   });
+}
+
+// Per-track filter params (cutoff in Hz, resonance 0..1). Voices already
+// playing pick up changes within one audio block — the audio thread reads
+// the underlying atomics each frame.
+export async function setTrackFilter(
+  trackId: string,
+  cutoffHz: number,
+  resonance: number,
+): Promise<void> {
+  await invoke<void>('audio_set_track_filter', {
+    trackId,
+    cutoffHz,
+    resonance,
+  });
+}
+
+// Cutoff mapping matches src/audio/trackFilter.ts — tight log range from
+// 50 Hz (very dark) to 18 kHz (effectively open). Defaults stay
+// transparent so a fresh track sounds the same as no filter.
+export const CUTOFF_MIN_HZ = 50;
+export const CUTOFF_MAX_HZ = 18000;
+const CUTOFF_RATIO = CUTOFF_MAX_HZ / CUTOFF_MIN_HZ;
+export function cutoffNormToHz(norm: number): number {
+  const clamped = Math.max(0, Math.min(1, norm));
+  return CUTOFF_MIN_HZ * Math.pow(CUTOFF_RATIO, clamped);
 }
 
 export async function stopAllVoices(): Promise<void> {

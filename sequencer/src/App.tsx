@@ -20,7 +20,12 @@ import {
 } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
-import { isNativeAudioAvailable, triggerSample } from './audio/nativeEngine';
+import {
+  isNativeAudioAvailable,
+  triggerSample,
+  setTrackFilter,
+  cutoffNormToHz,
+} from './audio/nativeEngine';
 import { getAudioContext } from './audio/audioContext';
 import {
   initMIDIOut,
@@ -413,6 +418,7 @@ export function App() {
                       pitch: pick.pitch,
                       outFirst: out?.firstChannel ?? 0,
                       outStereo: out?.stereo ?? true,
+                      trackId: ev.trackId,
                     });
                   };
                   if (delayMs <= 1) fire();
@@ -464,6 +470,7 @@ export function App() {
                   pitch: pick.pitch,
                   outFirst: out?.firstChannel ?? 0,
                   outStereo: out?.stereo ?? true,
+                  trackId: ev.trackId,
                 });
               }
             } else {
@@ -492,6 +499,34 @@ export function App() {
   useEffect(() => {
     scheduler.setBpm(bpm);
   }, [bpm]);
+
+  // Push per-track filter params (cutoff Hz + resonance 0..1) to the
+  // native engine whenever they change. Baseline values from the store
+  // only — LFO modulation routes still flow through the existing web
+  // worklet path and won't reach native filter until LFOs move into the
+  // audio thread (Phase 6). Tauri-only.
+  useEffect(() => {
+    if (!isNativeAudioAvailable()) return;
+    const push = (trackId: string, cutoffNorm: number, resonance: number) => {
+      void setTrackFilter(trackId, cutoffNormToHz(cutoffNorm), resonance);
+    };
+    for (const t of useSequencerStore.getState().tracks) {
+      push(t.id, t.filterCutoff, t.filterResonance);
+    }
+    return useSequencerStore.subscribe((state, prev) => {
+      const prevById = new Map(prev.tracks.map((t) => [t.id, t] as const));
+      for (const cur of state.tracks) {
+        const prv = prevById.get(cur.id);
+        if (
+          !prv ||
+          prv.filterCutoff !== cur.filterCutoff ||
+          prv.filterResonance !== cur.filterResonance
+        ) {
+          push(cur.id, cur.filterCutoff, cur.filterResonance);
+        }
+      }
+    });
+  }, []);
 
   // Preload sample paths into the native cpal registry for every voice
   // track that lands in state. Idempotent (Rust caches by path). Without

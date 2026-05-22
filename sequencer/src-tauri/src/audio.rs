@@ -121,6 +121,127 @@ fn decode_wav<R: std::io::Read>(mut reader: hound::WavReader<R>) -> Result<Sampl
   })
 }
 
+// --- per-track filter params + ladder filter ---
+
+// Shared per-track filter state. Cutoff arrives in Hz (the JS side does the
+// log mapping from 0..1 store space to 50..18000 Hz, matching the Web Audio
+// worklet's input convention). Resonance is 0..1.
+//
+// Stored as Arc<TrackParams> so every voice triggered for the track holds
+// the same reference and reads coefficient changes immediately (knob twists
+// hit existing voices, not just future triggers).
+pub struct TrackParams {
+  cutoff_hz: AtomicU32,
+  resonance: AtomicU32,
+}
+
+impl TrackParams {
+  fn new() -> Self {
+    Self {
+      cutoff_hz: AtomicU32::new(18000.0_f32.to_bits()),
+      resonance: AtomicU32::new(0.0_f32.to_bits()),
+    }
+  }
+  fn cutoff(&self) -> f32 {
+    f32::from_bits(self.cutoff_hz.load(Ordering::Relaxed))
+  }
+  fn resonance(&self) -> f32 {
+    f32::from_bits(self.resonance.load(Ordering::Relaxed))
+  }
+  fn set(&self, cutoff_hz: f32, resonance: f32) {
+    self.cutoff_hz.store(cutoff_hz.to_bits(), Ordering::Release);
+    self.resonance.store(resonance.to_bits(), Ordering::Release);
+  }
+}
+
+static TRACK_PARAMS: OnceLock<Mutex<HashMap<String, Arc<TrackParams>>>> = OnceLock::new();
+
+fn track_params_registry() -> &'static Mutex<HashMap<String, Arc<TrackParams>>> {
+  TRACK_PARAMS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn get_or_create_track_params(track_id: &str) -> Arc<TrackParams> {
+  let mut reg = track_params_registry().lock().expect("track params lock");
+  reg
+    .entry(track_id.to_string())
+    .or_insert_with(|| Arc::new(TrackParams::new()))
+    .clone()
+}
+
+// Moog-style 4-pole ladder lowpass — direct port of public/worklets/track-
+// ladder.js. Per-voice state (each trigger gets a fresh filter); shared
+// params via the voice's Arc<TrackParams>. Voice-vs-track-state divergence
+// from the web path is intentional: per-voice means each chord tone runs
+// through its own filter envelope, which is arguably more musical for the
+// polyphonic case and removes the trackId tag from the audio loop.
+#[derive(Clone, Default)]
+struct LadderFilter {
+  y1_l: f32,
+  y2_l: f32,
+  y3_l: f32,
+  y4_l: f32,
+  y1_r: f32,
+  y2_r: f32,
+  y3_r: f32,
+  y4_r: f32,
+}
+
+const LADDER_MAX_K: f32 = 3.95;
+const LADDER_G_CEIL: f32 = 0.95;
+
+impl LadderFilter {
+  fn reset(&mut self) {
+    self.y1_l = 0.0;
+    self.y2_l = 0.0;
+    self.y3_l = 0.0;
+    self.y4_l = 0.0;
+    self.y1_r = 0.0;
+    self.y2_r = 0.0;
+    self.y3_r = 0.0;
+    self.y4_r = 0.0;
+  }
+
+  fn process_stereo(
+    &mut self,
+    ls: f32,
+    rs: f32,
+    cutoff_hz: f32,
+    resonance: f32,
+    sample_rate: f32,
+  ) -> (f32, f32) {
+    // g = 1 - exp(-2π·fc/sr), clamped at 0.95 — above that the cascaded
+    // feedback has no smoothing per stage and the loop blows up at high
+    // resonance.
+    let g = (1.0 - (-std::f32::consts::TAU * cutoff_hz / sample_rate).exp())
+      .min(LADDER_G_CEIL)
+      .max(0.0);
+    // Cutoff-dependent resonance taming. As cutoff approaches Nyquist
+    // the cascaded poles' phase response tightens and k near 4 becomes
+    // numerically unstable; scale by (1 - 0.85·g) so resonance fades
+    // gracefully into the top of the cutoff range.
+    let k = (4.0 * resonance).min(LADDER_MAX_K) * (1.0 - 0.85 * g);
+    // Passband-level compensation. At low res the gain is ~unity; at
+    // res=1 the passband dips ~6 dB. Scale the (1 + 0.5·res) boost by
+    // (1 - g) so fully open cutoff doesn't pile gain onto already
+    // near-full-scale audio.
+    let comp = 1.0 + resonance * 0.5 * (1.0 - g);
+
+    let drive_l = (ls - k * self.y4_l).tanh();
+    self.y1_l += g * (drive_l - self.y1_l);
+    self.y2_l += g * (self.y1_l - self.y2_l);
+    self.y3_l += g * (self.y2_l - self.y3_l);
+    self.y4_l += g * (self.y3_l - self.y4_l);
+
+    let drive_r = (rs - k * self.y4_r).tanh();
+    self.y1_r += g * (drive_r - self.y1_r);
+    self.y2_r += g * (self.y1_r - self.y2_r);
+    self.y3_r += g * (self.y2_r - self.y3_r);
+    self.y4_r += g * (self.y3_r - self.y4_r);
+
+    (self.y4_l * comp, self.y4_r * comp)
+  }
+}
+
 // --- voice pool ---
 
 const VOICE_POOL_SIZE: usize = 64;
@@ -140,6 +261,12 @@ struct Voice {
   // a stereo concept; on a mono out it'd just attenuate).
   out_first: usize,
   out_stereo: bool,
+  // Per-track filter params. None = no filter (manual triggers from the
+  // Phase 0 panel don't carry a track context). Some = ladder filter
+  // applied per-frame with cutoff/resonance read from these atomics, so
+  // knob twists hit voices already in flight.
+  track_params: Option<Arc<TrackParams>>,
+  filter: LadderFilter,
   active: bool,
 }
 
@@ -154,6 +281,8 @@ impl Default for Voice {
       pan_right: 0.0,
       out_first: 0,
       out_stereo: true,
+      track_params: None,
+      filter: LadderFilter::default(),
       active: false,
     }
   }
@@ -167,6 +296,7 @@ enum MixerCommand {
     pitch: f32,      // 1.0 = native rate
     out_first: u32,  // first physical channel, 0-indexed
     out_stereo: bool,
+    track_params: Option<Arc<TrackParams>>,
   },
   StopAll,
 }
@@ -354,6 +484,7 @@ impl AudioEngine {
     pitch: f32,
     out_first: u32,
     out_stereo: bool,
+    track_id: Option<String>,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -364,6 +495,9 @@ impl AudioEngine {
         .cloned()
         .ok_or_else(|| format!("sample not loaded: {}", path))?
     };
+    let track_params = track_id
+      .as_deref()
+      .map(get_or_create_track_params);
     let cmd = MixerCommand::Trigger {
       sample,
       gain,
@@ -371,6 +505,7 @@ impl AudioEngine {
       pitch,
       out_first,
       out_stereo,
+      track_params,
     };
     let mut guard = self
       .state
@@ -384,6 +519,11 @@ impl AudioEngine {
       .try_push(cmd)
       .map_err(|_| "trigger queue full".to_string())?;
     Ok(())
+  }
+
+  pub fn set_track_filter(&self, track_id: String, cutoff_hz: f32, resonance: f32) {
+    let params = get_or_create_track_params(&track_id);
+    params.set(cutoff_hz.max(20.0).min(20000.0), resonance.clamp(0.0, 1.0));
   }
 
   pub fn stop_all_voices(&self) -> Result<(), String> {
@@ -548,6 +688,7 @@ fn build_stream(
               pitch,
               out_first,
               out_stereo,
+              track_params,
             } => {
               // Prefer an inactive slot; if all are busy, steal one
               // round-robin via steal_cursor.
@@ -565,22 +706,25 @@ fn build_stream(
               let pan_right = angle.sin();
               let base_rate = sample.sample_rate as f64 / device_sr_f64;
               let rate = base_rate * (pitch.max(0.001) as f64);
-              voices[slot] = Voice {
-                sample: Some(sample),
-                position: 0.0,
-                rate,
-                gain,
-                pan_left,
-                pan_right,
-                out_first: out_first as usize,
-                out_stereo,
-                active: true,
-              };
+              let mut v = &mut voices[slot];
+              v.sample = Some(sample);
+              v.position = 0.0;
+              v.rate = rate;
+              v.gain = gain;
+              v.pan_left = pan_left;
+              v.pan_right = pan_right;
+              v.out_first = out_first as usize;
+              v.out_stereo = out_stereo;
+              v.track_params = track_params;
+              v.filter.reset();
+              v.active = true;
             }
             MixerCommand::StopAll => {
               for v in voices.iter_mut() {
                 v.active = false;
                 v.sample = None;
+                v.track_params = None;
+                v.filter.reset();
               }
             }
           }
@@ -616,6 +760,10 @@ fn build_stream(
         //   • Mono voice:  writes 0.5×(L+R) sum to out_first only; pan is
         //     ignored (it's a stereo concept — on a mono out it would just
         //     attenuate). Bass / kick / centered leads ride mono pairs.
+        //   • Per-track ladder filter applied between interpolation and
+        //     output write when track_params is present. cutoff_hz +
+        //     resonance read once per FRAME (not per voice per frame
+        //     redundantly) — knob twists land at audio-block resolution.
         // Per-channel buffer-index math stays inside the per-voice branch so
         // we never blindly write past n_ch on a smaller-than-expected device.
         for v in voices.iter_mut() {
@@ -629,6 +777,9 @@ fn build_stream(
               continue;
             }
           };
+          // Per-trigger snapshot of the track params Arc. Reads off the
+          // atomics each frame — cheap, lockfree.
+          let track_params = v.track_params.clone();
           for frame in 0..frames {
             let pos = v.position;
             let i0 = pos.floor() as usize;
@@ -636,11 +787,12 @@ fn build_stream(
             if i0 + 1 >= frame_count {
               v.active = false;
               v.sample = None;
+              v.track_params = None;
               break;
             }
             let frac = (pos - i0 as f64) as f32;
             let inv = 1.0 - frac;
-            let (ls, rs) = if sample.channels == 1 {
+            let (mut ls, mut rs) = if sample.channels == 1 {
               let s0 = sample.frames[i0];
               let s1 = sample.frames[i0 + 1];
               let interp = s0 * inv + s1 * frac;
@@ -654,6 +806,13 @@ fn build_stream(
               let s1r = sample.frames[i1s + 1];
               (s0l * inv + s1l * frac, s0r * inv + s1r * frac)
             };
+            if let Some(p) = track_params.as_ref() {
+              let fc = p.cutoff();
+              let res = p.resonance();
+              let (fl, fr) = v.filter.process_stereo(ls, rs, fc, res, sr_f32);
+              ls = fl;
+              rs = fr;
+            }
             if v.out_stereo {
               let l_idx = v.out_first;
               let r_idx = v.out_first + 1;
@@ -808,6 +967,7 @@ pub fn audio_trigger_sample(
   pitch: Option<f32>,
   out_first: Option<u32>,
   out_stereo: Option<bool>,
+  track_id: Option<String>,
 ) -> Result<(), String> {
   engine().trigger_sample(
     path,
@@ -816,7 +976,18 @@ pub fn audio_trigger_sample(
     pitch.unwrap_or(1.0),
     out_first.unwrap_or(0),
     out_stereo.unwrap_or(true),
+    track_id,
   )
+}
+
+#[tauri::command]
+pub fn audio_set_track_filter(
+  track_id: String,
+  cutoff_hz: f32,
+  resonance: f32,
+) -> Result<(), String> {
+  engine().set_track_filter(track_id, cutoff_hz, resonance);
+  Ok(())
 }
 
 #[tauri::command]
