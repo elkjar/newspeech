@@ -294,6 +294,7 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
       hydratePitchInterp((saved as { pitchInterp?: unknown }).pitchInterp) ?? 'semitones',
     octave: hydrateOctave((saved as { octave?: unknown }).octave) ?? 0,
     monophonic: typeof saved.monophonic === 'boolean' ? saved.monophonic : false,
+    engine: saved.engine === 'native' ? 'native' : 'web',
   };
 }
 
@@ -383,6 +384,7 @@ export function blankTrack(t: Track): Track {
     pitchInterp: 'semitones',
     octave: 0,
     monophonic: false,
+    engine: 'web',
   };
 }
 
@@ -424,6 +426,7 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     // Slot 1 (bass-by-convention) defaults to monophonic; everything else
     // is polyphonic. User can flip per-track later via UI when that lands.
     monophonic: slot === 1,
+    engine: 'web',
   };
 }
 

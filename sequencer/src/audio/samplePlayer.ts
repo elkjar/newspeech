@@ -63,6 +63,12 @@ export interface SampleManifest {
 interface SampleBank {
   root: number | null;
   bufs: AudioBuffer[];
+  // Absolute paths parallel to bufs (same length, same order). For user
+  // kits these are real filesystem paths the native cpal engine can load
+  // directly; for bundled kits they're URLs (storing them anyway keeps
+  // bank shape uniform — the native engine simply fails on URL loads
+  // until a bytes-decode path lands).
+  paths: string[];
 }
 
 interface VoiceData {
@@ -113,13 +119,15 @@ class SamplePlayer {
         const banks: SampleBank[] = [];
         if (def.files && def.files.length > 0) {
           const bufs = await Promise.all(def.files.map((file) => fetcher(file, baseUrl)));
-          banks.push({ root: null, bufs });
+          const paths = def.files.map((file) => `${baseUrl}/${file}`);
+          banks.push({ root: null, bufs, paths });
         }
         if (def.roots) {
           for (const r of def.roots) {
             if (!r.files || r.files.length === 0) continue;
             const bufs = await Promise.all(r.files.map((file) => fetcher(file, baseUrl)));
-            banks.push({ root: r.midi, bufs });
+            const paths = r.files.map((file) => `${baseUrl}/${file}`);
+            banks.push({ root: r.midi, bufs, paths });
           }
         }
         if (banks.length === 0) return;
@@ -548,6 +556,71 @@ class SamplePlayer {
   }
 
   // Oldest-first eviction with a soft release ramp. Raw stop() on a sustained
+  // Native-engine helpers (Phase 1b) ----------------------------------------
+  //
+  // pickNativeSample reproduces the bank-selection + round-robin logic from
+  // spawnSampleInstance but returns { path, pitch } instead of touching
+  // audio nodes. The rrIndex Map is SHARED with the web path so flipping
+  // engine mid-pattern doesn't double-advance the counter.
+  pickNativeSample(
+    voice: SampleId,
+    midiNote?: number
+  ): { path: string; pitch: number; voiceGain: number } | null {
+    const data = this.voices.get(voice);
+    if (!data || data.banks.length === 0) return null;
+    let bankIdx = 0;
+    if (midiNote !== undefined) {
+      let bestDiff = Infinity;
+      for (let i = 0; i < data.banks.length; i++) {
+        const root = data.banks[i].root;
+        if (root === null) continue;
+        const diff = Math.abs(midiNote - root);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bankIdx = i;
+        }
+      }
+    }
+    const bank = data.banks[bankIdx];
+    if (!bank || bank.paths.length === 0) return null;
+    const idx = data.rrIndex.get(bankIdx) ?? 0;
+    const path = bank.paths[idx % bank.paths.length];
+    data.rrIndex.set(bankIdx, (idx + 1) % bank.paths.length);
+    let pitch = 1.0;
+    if (midiNote !== undefined && bank.root !== null) {
+      pitch = Math.pow(2, (midiNote - bank.root) / 12);
+    }
+    return { path, pitch, voiceGain: data.gain };
+  }
+
+  // Eagerly loads every sample in every bank of a voice into the native
+  // engine's registry. Idempotent (the Rust side caches by path). Used by
+  // App.tsx whenever a track flips to native or its voice changes while
+  // native — without preload, first trigger has invoke + decode latency
+  // that produces a perceptible click delay.
+  async preloadNativeForVoice(
+    voice: SampleId
+  ): Promise<{ loaded: number; failed: number }> {
+    const data = this.voices.get(voice);
+    if (!data) return { loaded: 0, failed: 0 };
+    const { isNativeAudioAvailable, loadSample } = await import('./nativeEngine');
+    if (!isNativeAudioAvailable()) return { loaded: 0, failed: 0 };
+    const allPaths = new Set<string>();
+    for (const bank of data.banks) {
+      for (const p of bank.paths) allPaths.add(p);
+    }
+    const results = await Promise.allSettled(
+      Array.from(allPaths).map((p) => loadSample(p))
+    );
+    let loaded = 0;
+    let failed = 0;
+    for (const r of results) {
+      if (r.status === 'fulfilled') loaded++;
+      else failed++;
+    }
+    return { loaded, failed };
+  }
+
   // looped pad sample clicks; the 20 ms linearRamp to zero is below the
   // threshold of perception but kills the click. Insertion order on Set is
   // preserved by spec, so .values().next() is the oldest entry.

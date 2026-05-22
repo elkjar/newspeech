@@ -20,6 +20,7 @@ import {
 } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
+import { isNativeAudioAvailable, triggerSample } from './audio/nativeEngine';
 import {
   initMIDIOut,
   sendMIDINote,
@@ -404,19 +405,43 @@ export function App() {
                 );
               }
             } else {
-              samplePlayer.trigger(
-                ev.voice,
-                ev.when,
-                ev.velocity,
-                ev.midi,
-                ev.gate,
-                ev.stepDuration,
-                ev.voiceIntervals,
-                ev.pan,
-                ev.trackId,
-                ev.monophonic,
-                ev.section,
-              );
+              // Phase 1b: per-track native engine bypass. When the track is
+              // flipped to 'native' AND the trigger is a single-tone (chord
+              // triggers stay on the web path for now — no native polyphony
+              // helper yet), route to the cpal mixer. Native plays dry on
+              // device channels 1-2; no per-track filter / FX / envelope /
+              // detune jitter. Sequencer integration in Phase 4 wires
+              // per-track output routing; Phase 7-8 brings FX parity.
+              const tonesCount = ev.voiceIntervals?.length ?? 0;
+              const nativeRoute =
+                isNativeAudioAvailable() &&
+                evTrack?.engine === 'native' &&
+                tonesCount <= 1;
+              if (nativeRoute) {
+                const interval = ev.voiceIntervals?.[0] ?? 0;
+                const targetMidi =
+                  ev.midi !== undefined ? ev.midi + interval : undefined;
+                const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
+                if (pick) {
+                  const gain = ev.velocity * pick.voiceGain * (evTrack?.gain ?? 1);
+                  const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
+                  void triggerSample(pick.path, { gain, pan, pitch: pick.pitch });
+                }
+              } else {
+                samplePlayer.trigger(
+                  ev.voice,
+                  ev.when,
+                  ev.velocity,
+                  ev.midi,
+                  ev.gate,
+                  ev.stepDuration,
+                  ev.voiceIntervals,
+                  ev.pan,
+                  ev.trackId,
+                  ev.monophonic,
+                  ev.section,
+                );
+              }
             }
             break;
           }
@@ -428,6 +453,40 @@ export function App() {
   useEffect(() => {
     scheduler.setBpm(bpm);
   }, [bpm]);
+
+  // Phase 1b: preload sample paths into the native cpal registry whenever
+  // a track flips to engine='native' or its voice changes while native.
+  // Without preload, the first trigger after the flip incurs ~50 ms of
+  // invoke + WAV decode latency on the audio path and lands as an audible
+  // click delay.
+  useEffect(() => {
+    if (!isNativeAudioAvailable()) return;
+    const preload = (voiceId: string) => {
+      void samplePlayer.preloadNativeForVoice(voiceId);
+    };
+    // Initial pass: any native tracks already in state (reopened project).
+    for (const t of useSequencerStore.getState().tracks) {
+      if (t.engine === 'native' && t.source.kind === 'voice') {
+        preload(t.source.id);
+      }
+    }
+    // Watch for changes — fire only on engine flips and on voice swaps
+    // while native. Comparing by track id survives length / order changes
+    // from initProject / applyPreset.
+    return useSequencerStore.subscribe((state, prev) => {
+      const prevById = new Map(prev.tracks.map((t) => [t.id, t] as const));
+      for (const cur of state.tracks) {
+        if (cur.engine !== 'native' || cur.source.kind !== 'voice') continue;
+        const prv = prevById.get(cur.id);
+        const isNewlyNative =
+          !prv ||
+          prv.engine !== 'native' ||
+          prv.source.kind !== 'voice' ||
+          prv.source.id !== cur.source.id;
+        if (isNewlyNative) preload(cur.source.id);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

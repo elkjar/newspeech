@@ -175,6 +175,13 @@ export interface Track {
   // note triggers are unaffected. Pattern = "up" (chord intervals in
   // their natural order); range / pattern / gate selection deferred.
   arpConfig?: { on: boolean };
+  // Audio engine for sample triggers on this track. 'web' = existing
+  // Web Audio path (samplePlayer.trigger → AudioBufferSource → track
+  // filter / FX / master). 'native' = cpal Rust mixer (dry, channels 1-2
+  // of the open hardware device — no per-track filter / FX / envelope
+  // yet; Phase 4 wires per-track output routing, later phases bring FX
+  // parity). Tauri-only field; on the web build only 'web' is meaningful.
+  engine: 'web' | 'native';
 }
 
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
@@ -522,6 +529,7 @@ interface SequencerState {
   setTrackLockTiming: (trackId: string, lock: boolean) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
   setTrackArpOn: (trackId: string, on: boolean) => void;
+  setTrackEngine: (trackId: string, engine: 'web' | 'native') => void;
   clearTrack: (trackId: string) => void;
   commitMutationOverlay: () => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
@@ -1225,6 +1233,12 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set((state) => ({
       tracks: state.tracks.map((t) =>
         t.id === trackId ? { ...t, arpConfig: { on } } : t
+      ),
+    })),
+  setTrackEngine: (trackId, engine) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) =>
+        t.id === trackId ? { ...t, engine } : t
       ),
     })),
   clearTrack: (trackId) =>
