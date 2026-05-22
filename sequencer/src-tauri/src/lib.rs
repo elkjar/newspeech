@@ -1,3 +1,4 @@
+mod audio;
 mod midi;
 mod projectfs;
 mod recording;
@@ -131,6 +132,11 @@ pub fn run() {
       samples::get_user_samples_dir,
       samples::read_audio_file,
       samples::trash_sample_kit,
+      audio::audio_list_output_devices,
+      audio::audio_open_device,
+      audio::audio_close_device,
+      audio::audio_status,
+      audio::audio_test_tone,
     ])
     .setup(|app| {
       #[cfg(target_os = "macos")]

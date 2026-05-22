@@ -1,0 +1,118 @@
+// Native audio engine bridge — Tauri-only.
+//
+// Phase 0 surface: device enumeration, open/close, per-channel test tone.
+// Sample voices, synths, FX, and the scheduler land in later phases; this
+// file grows alongside the Rust audio module. The Web Audio engine
+// (audioContext.ts and friends) remains the entirety of the web build —
+// nothing here touches it.
+
+import { invoke, isTauri } from '@tauri-apps/api/core';
+
+export interface NativeDeviceInfo {
+  name: string;
+  isDefault: boolean;
+  maxOutputChannels: number;
+  defaultSampleRate: number;
+  supportedSampleRates: number[];
+  minBufferSize: number | null;
+  maxBufferSize: number | null;
+}
+
+export interface NativeOpenedInfo {
+  deviceName: string;
+  channels: number;
+  sampleRate: number;
+  bufferSize: number;
+}
+
+export interface NativeAudioStatus {
+  channels: number;
+  sampleRate: number;
+}
+
+// Rust types use snake_case + Option<>. Normalize at the boundary so the
+// rest of the TS code can ignore the IPC wire format.
+
+interface RawDeviceInfo {
+  name: string;
+  is_default: boolean;
+  max_output_channels: number;
+  default_sample_rate: number;
+  supported_sample_rates: number[];
+  min_buffer_size: number | null;
+  max_buffer_size: number | null;
+}
+
+interface RawOpenedInfo {
+  device_name: string;
+  channels: number;
+  sample_rate: number;
+  buffer_size: number;
+}
+
+interface RawAudioStatus {
+  channels: number;
+  sample_rate: number;
+}
+
+function normalizeDevice(d: RawDeviceInfo): NativeDeviceInfo {
+  return {
+    name: d.name,
+    isDefault: d.is_default,
+    maxOutputChannels: d.max_output_channels,
+    defaultSampleRate: d.default_sample_rate,
+    supportedSampleRates: d.supported_sample_rates,
+    minBufferSize: d.min_buffer_size,
+    maxBufferSize: d.max_buffer_size,
+  };
+}
+
+function normalizeOpened(o: RawOpenedInfo): NativeOpenedInfo {
+  return {
+    deviceName: o.device_name,
+    channels: o.channels,
+    sampleRate: o.sample_rate,
+    bufferSize: o.buffer_size,
+  };
+}
+
+export function isNativeAudioAvailable(): boolean {
+  return isTauri();
+}
+
+export async function listOutputDevices(): Promise<NativeDeviceInfo[]> {
+  const raw = await invoke<RawDeviceInfo[]>('audio_list_output_devices');
+  return raw.map(normalizeDevice);
+}
+
+export async function openOutputDevice(opts: {
+  deviceName: string;
+  channels: number;
+  sampleRate: number;
+  bufferSize?: number;
+}): Promise<NativeOpenedInfo> {
+  const raw = await invoke<RawOpenedInfo>('audio_open_device', {
+    deviceName: opts.deviceName,
+    channels: opts.channels,
+    sampleRate: opts.sampleRate,
+    bufferSize: opts.bufferSize ?? null,
+  });
+  return normalizeOpened(raw);
+}
+
+export async function closeOutputDevice(): Promise<void> {
+  await invoke<void>('audio_close_device');
+}
+
+export async function getAudioStatus(): Promise<NativeAudioStatus> {
+  const raw = await invoke<RawAudioStatus>('audio_status');
+  return { channels: raw.channels, sampleRate: raw.sample_rate };
+}
+
+// channel === null stops the tone.
+export async function setTestTone(channel: number | null, frequencyHz = 440): Promise<void> {
+  await invoke<void>('audio_test_tone', {
+    channel,
+    frequencyHz,
+  });
+}

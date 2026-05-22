@@ -14,6 +14,7 @@ import {
 import { MidiBar } from './MidiBar';
 import { InstrumentLibraryPane } from './InstrumentLibraryPane';
 import { SampleLibraryPane } from './SampleLibraryPane';
+import { NativeAudioPanel } from './NativeAudioPanel';
 import pkg from '../../package.json';
 
 const NATIVE = isTauri();
@@ -209,6 +210,12 @@ export function SettingsDialog({
 
         {view === 'main' ? (
           <div className="flex-1 overflow-y-auto -mx-2 pl-2 pr-4 flex flex-col normal-case tracking-normal text-[12px]">
+            {NATIVE && (
+              <Section label="native audio (phase 0)">
+                <NativeAudioPanel />
+              </Section>
+            )}
+
             {NATIVE && (
               <Section label="recordings">
                 <SettingRow
