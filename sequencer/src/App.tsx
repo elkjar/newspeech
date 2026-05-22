@@ -498,8 +498,15 @@ export function App() {
   // preload, the first trigger on a freshly-assigned voice incurs invoke
   // + WAV-decode latency on the audio path and lands as an audible click
   // delay. Tauri-only — the web build skips this entirely.
+  //
+  // Gated on `bootDone` because samplePlayer.voices is empty until kit
+  // manifests resolve (async after mount). Running before boot would
+  // silently no-op — preloadNativeForVoice returns early on unknown
+  // voice. Once bootDone flips, the initial pass fires with voices
+  // populated and the subscription stays live for source swaps after.
   useEffect(() => {
     if (!isNativeAudioAvailable()) return;
+    if (!bootDone) return;
     const preload = (voiceId: string) => {
       void samplePlayer.preloadNativeForVoice(voiceId);
     };
@@ -518,7 +525,7 @@ export function App() {
         if (sourceChanged) preload(cur.source.id);
       }
     });
-  }, []);
+  }, [bootDone]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
