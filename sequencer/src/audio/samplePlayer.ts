@@ -614,6 +614,14 @@ class SamplePlayer {
     // that hound can open directly. Bundled kits store Vite-served URLs
     // (`/samples/drums/606/foo.wav`) that hound can't reach — fetch the
     // bytes JS-side and hand them to the bytes-load path.
+    //
+    // Paths run SEQUENTIALLY (not Promise.allSettled). The bytes-load
+    // path encodes a Uint8Array as a JSON number array on the IPC wire
+    // (see [[reference_tauri_binary_ipc]]) — running many in parallel
+    // piles up that synchronous encoding on the main thread and hangs
+    // the UI at cold boot. Between each path we yield via setTimeout(0)
+    // so React, animations, and user input get a slice of the event
+    // loop during what can be a multi-second preload.
     const loadOne = async (path: string) => {
       try {
         await loadSample(path);
@@ -624,14 +632,17 @@ class SamplePlayer {
         await loadSampleFromBytes(path, new Uint8Array(buf));
       }
     };
-    const results = await Promise.allSettled(
-      Array.from(allPaths).map(loadOne),
-    );
+    const yieldTick = () => new Promise<void>((r) => setTimeout(r, 0));
     let loaded = 0;
     let failed = 0;
-    for (const r of results) {
-      if (r.status === 'fulfilled') loaded++;
-      else failed++;
+    for (const path of allPaths) {
+      try {
+        await loadOne(path);
+        loaded++;
+      } catch {
+        failed++;
+      }
+      await yieldTick();
     }
     return { loaded, failed };
   }

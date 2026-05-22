@@ -283,19 +283,42 @@ export function App() {
       } catch (err) {
         console.warn('samples index load failed:', err);
       }
-      // After bundled samples register, fold in any kits from the user
-      // samples dir. Tauri-only — no-op on web. Awaited so they appear in
-      // the source pickers without a second refresh.
-      const userResult = await scanAndLoadUserSamples();
-      if (userResult.loaded > 0) {
-        console.info(`[user samples] loaded ${userResult.loaded} kit(s)`);
-      }
-      if (userResult.errors.length > 0) {
-        for (const e of userResult.errors) console.warn('[user samples]', e);
-      }
+      // User-samples load is intentionally NOT awaited here — see the
+      // separate useEffect below. Reading + decoding user WAVs through
+      // the JSON-encoded bytes IPC path (per [[reference_tauri_binary_ipc]])
+      // blocked the splash at 18/18 for tens of seconds before this split.
       setBootDone(true);
     })();
   }, []);
+
+  // Load user-sample kits in the background AFTER bundled kits land and
+  // the UI is interactive. Each user WAV crosses IPC as a JSON-encoded
+  // number array which is multi-second-per-kit on cold boot, so this
+  // can't sit on the critical path to bootDone. New voices register
+  // into samplePlayer mid-session; immediately after load we kick off
+  // a native preload pass so any track already pointing at a user voice
+  // has its samples in the cpal registry.
+  useEffect(() => {
+    if (!bootDone) return;
+    void (async () => {
+      const result = await scanAndLoadUserSamples();
+      if (result.loaded > 0) {
+        console.info(`[user samples] loaded ${result.loaded} kit(s)`);
+      }
+      if (result.errors.length > 0) {
+        for (const e of result.errors) console.warn('[user samples]', e);
+      }
+      if (result.loaded > 0 && isNativeAudioAvailable()) {
+        const seen = new Set<string>();
+        for (const t of useSequencerStore.getState().tracks) {
+          if (t.source.kind === 'voice' && !seen.has(t.source.id)) {
+            seen.add(t.source.id);
+            void samplePlayer.preloadNativeForVoice(t.source.id);
+          }
+        }
+      }
+    })();
+  }, [bootDone]);
 
   useEffect(() => {
     const harmonic = makeHarmonicMotionState();
@@ -563,26 +586,88 @@ export function App() {
   }, [bootDone]);
 
   // Preload sample paths into the native cpal registry for every voice
-  // track that lands in state. Idempotent (Rust caches by path). Without
-  // preload, the first trigger on a freshly-assigned voice incurs invoke
-  // + WAV-decode latency on the audio path and lands as an audible click
+  // track in state. Idempotent (Rust caches by path). Without preload,
+  // the first trigger on a freshly-assigned voice incurs invoke + WAV-
+  // decode latency on the audio path and lands as an audible click
   // delay. Tauri-only — the web build skips this entirely.
   //
   // Gated on `bootDone` because samplePlayer.voices is empty until kit
-  // manifests resolve (async after mount). Running before boot would
-  // silently no-op — preloadNativeForVoice returns early on unknown
-  // voice. Once bootDone flips, the initial pass fires with voices
-  // populated and the subscription stays live for source swaps after.
+  // manifests resolve. Once bootDone flips, the initial pass fires with
+  // voices populated; the subscription stays live for source swaps.
+  //
+  // The pass is staged carefully to avoid hanging the UI:
+  //   1. De-dupe by voice id (multiple tracks share voices — we don't
+  //      want to fire the same preload twice).
+  //   2. Defer the initial pass via setTimeout(0) so React gets to
+  //      paint the post-splash UI BEFORE we start the IPC pile-up.
+  //   3. Serialize voices through a small queue (one voice at a time);
+  //      each voice's preloadNativeForVoice still parallelizes its own
+  //      paths internally via Promise.allSettled. This caps the wave
+  //      of concurrent fetch+IPC calls hitting the audio thread.
   useEffect(() => {
     if (!isNativeAudioAvailable()) return;
     if (!bootDone) return;
-    const preload = (voiceId: string) => {
-      void samplePlayer.preloadNativeForVoice(voiceId);
+
+    const queue: string[] = [];
+    let draining = false;
+    let cancelled = false;
+
+    const drain = async () => {
+      if (draining || cancelled) return;
+      draining = true;
+      while (queue.length > 0 && !cancelled) {
+        const voiceId = queue.shift()!;
+        try {
+          await samplePlayer.preloadNativeForVoice(voiceId);
+        } catch (err) {
+          console.warn('[nativeAudio] preload failed for', voiceId, err);
+        }
+      }
+      draining = false;
     };
-    for (const t of useSequencerStore.getState().tracks) {
-      if (t.source.kind === 'voice') preload(t.source.id);
-    }
-    return useSequencerStore.subscribe((state, prev) => {
+
+    const enqueue = (voiceId: string) => {
+      if (queue.includes(voiceId)) return;
+      queue.push(voiceId);
+      void drain();
+    };
+
+    // 100 ms gap (not just setTimeout(0)) so React's first paint of the
+    // post-splash UI lands and the browser does its initial layout
+    // before we start the preload pile-up. Without this gap the
+    // synchronous bytes-encoding work for the first few files races
+    // the first paint and the user sees the splash sit at 18/18.
+    const initialHandle = setTimeout(() => {
+      const unique = new Set<string>();
+      for (const t of useSequencerStore.getState().tracks) {
+        if (t.source.kind === 'voice') unique.add(t.source.id);
+      }
+      console.info(
+        `[nativeAudio] preload start: ${unique.size} unique voice(s)`,
+      );
+      const startedAt = performance.now();
+      const onComplete = () => {
+        const ms = (performance.now() - startedAt).toFixed(0);
+        console.info(`[nativeAudio] preload finished in ${ms} ms`);
+      };
+      // Wrap the queue's drain to report completion. drain() is the
+      // shared loop; we patch the cancelled flag check so when the
+      // queue empties we log once.
+      for (const v of unique) enqueue(v);
+      // Poll for completion (cheap — once per 250 ms while draining).
+      const waitDone = setInterval(() => {
+        if (cancelled) {
+          clearInterval(waitDone);
+          return;
+        }
+        if (queue.length === 0 && !draining) {
+          clearInterval(waitDone);
+          onComplete();
+        }
+      }, 250);
+    }, 100);
+
+    const unsubscribe = useSequencerStore.subscribe((state, prev) => {
       const prevById = new Map(prev.tracks.map((t) => [t.id, t] as const));
       for (const cur of state.tracks) {
         if (cur.source.kind !== 'voice') continue;
@@ -591,9 +676,15 @@ export function App() {
           !prv ||
           prv.source.kind !== 'voice' ||
           prv.source.id !== cur.source.id;
-        if (sourceChanged) preload(cur.source.id);
+        if (sourceChanged) enqueue(cur.source.id);
       }
     });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(initialHandle);
+      unsubscribe();
+    };
   }, [bootDone]);
 
   useEffect(() => {
