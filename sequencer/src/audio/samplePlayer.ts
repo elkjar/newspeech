@@ -603,14 +603,29 @@ class SamplePlayer {
   ): Promise<{ loaded: number; failed: number }> {
     const data = this.voices.get(voice);
     if (!data) return { loaded: 0, failed: 0 };
-    const { isNativeAudioAvailable, loadSample } = await import('./nativeEngine');
+    const { isNativeAudioAvailable, loadSample, loadSampleFromBytes } =
+      await import('./nativeEngine');
     if (!isNativeAudioAvailable()) return { loaded: 0, failed: 0 };
     const allPaths = new Set<string>();
     for (const bank of data.banks) {
       for (const p of bank.paths) allPaths.add(p);
     }
+    // User-sample kits store absolute filesystem paths (`/Users/.../foo.wav`)
+    // that hound can open directly. Bundled kits store Vite-served URLs
+    // (`/samples/drums/606/foo.wav`) that hound can't reach — fetch the
+    // bytes JS-side and hand them to the bytes-load path.
+    const loadOne = async (path: string) => {
+      try {
+        await loadSample(path);
+      } catch {
+        const res = await fetch(path);
+        if (!res.ok) throw new Error(`fetch ${path}: ${res.status}`);
+        const buf = await res.arrayBuffer();
+        await loadSampleFromBytes(path, new Uint8Array(buf));
+      }
+    };
     const results = await Promise.allSettled(
-      Array.from(allPaths).map((p) => loadSample(p))
+      Array.from(allPaths).map(loadOne),
     );
     let loaded = 0;
     let failed = 0;

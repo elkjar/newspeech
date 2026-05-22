@@ -150,6 +150,22 @@ export async function loadSample(path: string): Promise<NativeSampleLoadInfo> {
   return normalizeSampleLoad(raw);
 }
 
+// For samples that live behind a URL (bundled kits served by Vite) instead
+// of a real filesystem path — fetch bytes JS-side, hand them to Rust to
+// decode via hound's in-memory Cursor reader. Same registry key (`path`)
+// as `loadSample`, so the matching `triggerSample(path, ...)` works after
+// either load route.
+export async function loadSampleFromBytes(
+  path: string,
+  bytes: Uint8Array,
+): Promise<NativeSampleLoadInfo> {
+  const raw = await invoke<RawSampleLoadInfo>('audio_load_sample_from_bytes', {
+    path,
+    bytes: Array.from(bytes),
+  });
+  return normalizeSampleLoad(raw);
+}
+
 export async function triggerSample(
   path: string,
   opts: {

@@ -138,6 +138,7 @@ pub fn run() {
       audio::audio_status,
       audio::audio_test_tone,
       audio::audio_load_sample,
+      audio::audio_load_sample_from_bytes,
       audio::audio_trigger_sample,
       audio::audio_stop_all,
     ])

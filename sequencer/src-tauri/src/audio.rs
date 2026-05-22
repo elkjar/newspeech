@@ -12,6 +12,7 @@
 // later phase.
 
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -76,8 +77,18 @@ fn samples_registry() -> &'static Mutex<HashMap<String, Arc<SampleData>>> {
 }
 
 fn load_wav(path: &str) -> Result<SampleData, String> {
-  let mut reader = hound::WavReader::open(Path::new(path))
+  let reader = hound::WavReader::open(Path::new(path))
     .map_err(|e| format!("open wav: {}", e))?;
+  decode_wav(reader)
+}
+
+fn load_wav_from_bytes(bytes: &[u8]) -> Result<SampleData, String> {
+  let reader = hound::WavReader::new(Cursor::new(bytes))
+    .map_err(|e| format!("read wav bytes: {}", e))?;
+  decode_wav(reader)
+}
+
+fn decode_wav<R: std::io::Read>(mut reader: hound::WavReader<R>) -> Result<SampleData, String> {
   let spec = reader.spec();
   let channels = spec.channels;
   let sample_rate = spec.sample_rate;
@@ -274,27 +285,52 @@ impl AudioEngine {
   }
 
   pub fn load_sample(&self, path: String) -> Result<SampleLoadInfo, String> {
-    // Cache hit?
-    {
-      let registry = samples_registry()
-        .lock()
-        .map_err(|e| format!("registry lock: {}", e))?;
-      if let Some(existing) = registry.get(&path) {
-        let fc = existing.frame_count();
-        return Ok(SampleLoadInfo {
-          path: path.clone(),
-          channels: existing.channels,
-          sample_rate: existing.sample_rate,
-          frames: fc as u32,
-          duration_secs: if existing.sample_rate > 0 {
-            fc as f32 / existing.sample_rate as f32
-          } else {
-            0.0
-          },
-        });
-      }
+    if let Some(info) = self.cached_sample_info(&path)? {
+      return Ok(info);
     }
     let sample = load_wav(&path)?;
+    Ok(self.register_sample(path, sample)?)
+  }
+
+  pub fn load_sample_from_bytes(
+    &self,
+    path: String,
+    bytes: Vec<u8>,
+  ) -> Result<SampleLoadInfo, String> {
+    if let Some(info) = self.cached_sample_info(&path)? {
+      return Ok(info);
+    }
+    let sample = load_wav_from_bytes(&bytes)?;
+    Ok(self.register_sample(path, sample)?)
+  }
+
+  fn cached_sample_info(&self, path: &str) -> Result<Option<SampleLoadInfo>, String> {
+    let registry = samples_registry()
+      .lock()
+      .map_err(|e| format!("registry lock: {}", e))?;
+    if let Some(existing) = registry.get(path) {
+      let fc = existing.frame_count();
+      Ok(Some(SampleLoadInfo {
+        path: path.to_string(),
+        channels: existing.channels,
+        sample_rate: existing.sample_rate,
+        frames: fc as u32,
+        duration_secs: if existing.sample_rate > 0 {
+          fc as f32 / existing.sample_rate as f32
+        } else {
+          0.0
+        },
+      }))
+    } else {
+      Ok(None)
+    }
+  }
+
+  fn register_sample(
+    &self,
+    path: String,
+    sample: SampleData,
+  ) -> Result<SampleLoadInfo, String> {
     let fc = sample.frame_count();
     let info = SampleLoadInfo {
       path: path.clone(),
@@ -754,6 +790,14 @@ pub fn audio_test_tone(channel: Option<usize>, frequency_hz: Option<f32>) -> Res
 #[tauri::command]
 pub fn audio_load_sample(path: String) -> Result<SampleLoadInfo, String> {
   engine().load_sample(path)
+}
+
+#[tauri::command]
+pub fn audio_load_sample_from_bytes(
+  path: String,
+  bytes: Vec<u8>,
+) -> Result<SampleLoadInfo, String> {
+  engine().load_sample_from_bytes(path, bytes)
 }
 
 #[tauri::command]
