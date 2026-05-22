@@ -12,12 +12,12 @@
 // Other side buttons are off / reserved for future transport mappings
 // (record arm, stop, page nudge with second Launchpad, etc.).
 //
-// Playhead column lights as the global scheduler advances. Reference rate
-// is 1/16 (matching the default pattern length × per-track stride). Tracks
-// running at other rates won't have their own per-track playhead until v2.
+// Each row's playhead is computed from that track's own rate + length +
+// the scene start offset (mirrors Track.tsx). Rows with different rates,
+// odd-meter lengths, or polyrhythmic loops light independently.
 
 import { invoke } from '@tauri-apps/api/core';
-import { useSequencerStore, RATE_STRIDE, PAGE_SIZE, type Track, type TrackSection } from '../state/store';
+import { useSequencerStore, RATE_STRIDE, type Track, type TrackSection } from '../state/store';
 import { scheduler } from '../audio/scheduler';
 import { togglePlayback } from '../audio/transport';
 import {
@@ -65,7 +65,9 @@ const PITCH_MIN = -36;
 const PITCH_MAX = 36;
 
 let activeQuadrant: Quadrant = 0;
-let lastPlayheadCol = -1;
+// Per-row column of the last painted playhead. -1 = no playhead currently
+// drawn on that row (track absent, paused, or out of visible page).
+const lastPlayheadCols: number[] = new Array(8).fill(-1);
 let lastPlacedStep: { trackId: string; index: number } | null = null;
 // Currently-held grid pads, by 0..63 index. Used to detect hold-source +
 // tap-end tie gestures on the same row.
@@ -87,14 +89,22 @@ function visibleTracks(section: TrackSection): Track[] {
     .slice(0, 8);
 }
 
-function computePlayheadCol(): number {
-  const { globalStep, playing } = useSequencerStore.getState();
+function computePlayheadColForTrack(track: Track | undefined): number {
+  if (!track) return -1;
+  const { globalStep, playing, sceneStartStep } = useSequencerStore.getState();
   if (!playing) return -1;
-  const stride = RATE_STRIDE['1/16']; // 2 global ticks per 1/16 step
-  const localStep = Math.floor(globalStep / stride) % PAGE_SIZE;
+  const stride = RATE_STRIDE[track.rate];
+  // Match Track.tsx: scene-relative position, modulo this track's own length.
+  // Safe-mod the result so a brief pre-scene globalStep doesn't go negative.
+  const raw = Math.floor((globalStep - sceneStartStep) / stride);
+  const localStep = ((raw % track.length) + track.length) % track.length;
   const pageStart = quadPage(activeQuadrant) * 8;
   if (localStep < pageStart || localStep >= pageStart + 8) return -1;
   return localStep - pageStart;
+}
+
+function resetLastPlayheadCols(): void {
+  for (let i = 0; i < 8; i++) lastPlayheadCols[i] = -1;
 }
 
 // Classify a step's role in a tie chain. A "source" is an on step whose
@@ -138,9 +148,9 @@ function buildSurface(): Uint8Array {
   const out = new Uint8Array(SURFACE_SIZE);
   const tracks = visibleTracks(quadSection(activeQuadrant));
   const pageStart = quadPage(activeQuadrant) * 8;
-  const phCol = computePlayheadCol();
   for (let row = 0; row < 8; row++) {
     const track = tracks[row];
+    const phCol = computePlayheadColForTrack(track);
     for (let col = 0; col < 8; col++) {
       out[row * 8 + col] = colorForCell(track, pageStart + col, col === phCol);
     }
@@ -188,21 +198,23 @@ function applyPendingPulse(): void {
   setTopPulse(pending, COL_BANK_PENDING_PALETTE);
 }
 
-function repaintColumn(col: number, onPlayhead: boolean): void {
+function repaintCell(row: number, col: number, onPlayhead: boolean): void {
   if (col < 0) return;
   const tracks = visibleTracks(quadSection(activeQuadrant));
   const pageStart = quadPage(activeQuadrant) * 8;
-  for (let row = 0; row < 8; row++) {
-    setPadColor(row * 8 + col, colorForCell(tracks[row], pageStart + col, onPlayhead));
-  }
+  setPadColor(row * 8 + col, colorForCell(tracks[row], pageStart + col, onPlayhead));
 }
 
 function updatePlayhead(): void {
-  const next = computePlayheadCol();
-  if (next === lastPlayheadCol) return;
-  repaintColumn(lastPlayheadCol, false);
-  repaintColumn(next, true);
-  lastPlayheadCol = next;
+  const tracks = visibleTracks(quadSection(activeQuadrant));
+  for (let row = 0; row < 8; row++) {
+    const next = computePlayheadColForTrack(tracks[row]);
+    const prev = lastPlayheadCols[row];
+    if (next === prev) continue;
+    repaintCell(row, prev, false);
+    repaintCell(row, next, true);
+    lastPlayheadCols[row] = next;
+  }
 }
 
 // Signature of the visible slice — collapses tracks×steps to a string so we
@@ -344,7 +356,7 @@ function handleEvent(e: LaunchpadEvent): void {
       }
       lastPlacedStep = null;
       heldPads.clear();
-      lastPlayheadCol = -1;
+      resetLastPlayheadCols();
       bulkRedraw(buildSurface());
       applyPendingPulse();
       return;
@@ -376,11 +388,17 @@ export function attachLaunchpadBindings(): void {
   // on whichever section the user was already looking at.
   const initial = useSequencerStore.getState().viewSection;
   activeQuadrant = initial === 'drum' ? 0 : 2;
-  // buildSurface() already paints the playhead column at the current step,
-  // so seed lastPlayheadCol from the same computation rather than re-painting.
+  // buildSurface() already paints each row's playhead at its own current
+  // step, so seed lastPlayheadCols from the same computation rather than
+  // re-painting.
   bulkRedraw(buildSurface());
   applyPendingPulse();
-  lastPlayheadCol = computePlayheadCol();
+  {
+    const tracks = visibleTracks(quadSection(activeQuadrant));
+    for (let row = 0; row < 8; row++) {
+      lastPlayheadCols[row] = computePlayheadColForTrack(tracks[row]);
+    }
+  }
 
   unsubs.push(onLaunchpadEvent(handleEvent));
 
@@ -402,9 +420,11 @@ export function attachLaunchpadBindings(): void {
         prevPlaying = state.playing;
         setSideColor(0, state.playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED);
         if (!state.playing) {
-          // Restore old column to its non-playhead colors.
-          repaintColumn(lastPlayheadCol, false);
-          lastPlayheadCol = -1;
+          // Restore each row's prior playhead pad to its non-playhead color.
+          for (let row = 0; row < 8; row++) {
+            repaintCell(row, lastPlayheadCols[row], false);
+            lastPlayheadCols[row] = -1;
+          }
         }
       }
       // Bank state changed (queue, commit, populate, wipe) → repaint top row.
@@ -427,7 +447,7 @@ export function attachLaunchpadBindings(): void {
         } else if (state.viewSection === 'melodic' && (activeQuadrant === 0 || activeQuadrant === 1)) {
           activeQuadrant = 2;
         }
-        lastPlayheadCol = -1;
+        resetLastPlayheadCols();
         prevSig = visibleSignature(activeQuadrant);
         bulkRedraw(buildSurface());
         applyPendingPulse();
@@ -439,7 +459,7 @@ export function attachLaunchpadBindings(): void {
         prevSig = nextSig;
         bulkRedraw(buildSurface());
         applyPendingPulse();
-        lastPlayheadCol = -1;
+        resetLastPlayheadCols();
         updatePlayhead();
       }
     })
@@ -458,7 +478,7 @@ export function detachLaunchpadBindings(): void {
   for (const u of unsubs) u();
   unsubs = [];
   attached = false;
-  lastPlayheadCol = -1;
+  resetLastPlayheadCols();
   lastPlacedStep = null;
   heldPads.clear();
 }
