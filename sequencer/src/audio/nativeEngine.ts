@@ -100,6 +100,122 @@ export async function openOutputDevice(opts: {
   return normalizeOpened(raw);
 }
 
+// --- persistence + auto-open ---------------------------------------------
+//
+// Saves the last device + channel/SR/buffer values to localStorage and
+// auto-opens on app launch. The manual open/close UX from Phase 0 is
+// retired — the cpal stream should be alive whenever the app is, and the
+// user shouldn't have to click "open" every time they relaunch.
+
+const LS_PREFIX = 'newspeech.sequencer.nativeAudio.';
+const LS_DEVICE = `${LS_PREFIX}deviceName`;
+const LS_CHANNELS = `${LS_PREFIX}channels`;
+const LS_SAMPLE_RATE = `${LS_PREFIX}sampleRate`;
+const LS_BUFFER = `${LS_PREFIX}bufferSize`;
+
+export interface PersistedNativeAudioSettings {
+  deviceName?: string;
+  channels?: number;
+  sampleRate?: number;
+  bufferSize?: number;
+}
+
+export function readPersistedNativeAudioSettings(): PersistedNativeAudioSettings {
+  if (typeof localStorage === 'undefined') return {};
+  const out: PersistedNativeAudioSettings = {};
+  const d = localStorage.getItem(LS_DEVICE);
+  if (d) out.deviceName = d;
+  const ch = parseInt(localStorage.getItem(LS_CHANNELS) ?? '', 10);
+  if (Number.isFinite(ch) && ch > 0) out.channels = ch;
+  const sr = parseInt(localStorage.getItem(LS_SAMPLE_RATE) ?? '', 10);
+  if (Number.isFinite(sr) && sr > 0) out.sampleRate = sr;
+  const bs = parseInt(localStorage.getItem(LS_BUFFER) ?? '', 10);
+  if (Number.isFinite(bs) && bs >= 0) out.bufferSize = bs;
+  return out;
+}
+
+function writePersistedNativeAudioSettings(s: {
+  deviceName: string;
+  channels: number;
+  sampleRate: number;
+  bufferSize: number;
+}): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LS_DEVICE, s.deviceName);
+    localStorage.setItem(LS_CHANNELS, String(s.channels));
+    localStorage.setItem(LS_SAMPLE_RATE, String(s.sampleRate));
+    localStorage.setItem(LS_BUFFER, String(s.bufferSize));
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
+// Wraps openOutputDevice with reported-channel-count update and
+// persistence. NativeAudioPanel + initNativeAudio both go through this.
+export async function applyOutputDeviceConfig(config: {
+  deviceName: string;
+  channels: number;
+  sampleRate: number;
+  bufferSize?: number;
+}): Promise<NativeOpenedInfo> {
+  const info = await openOutputDevice(config);
+  setReportedChannelCount(info.channels);
+  writePersistedNativeAudioSettings({
+    deviceName: config.deviceName,
+    channels: config.channels,
+    sampleRate: config.sampleRate,
+    bufferSize: config.bufferSize ?? 0,
+  });
+  return info;
+}
+
+// Called once on app launch (Tauri-only). Reads persisted settings,
+// validates against currently-attached devices, falls back to defaults
+// where needed, opens the device. Returns null on web build or on hard
+// failure — failure is non-fatal; user can still open via Settings.
+export async function initNativeAudio(): Promise<NativeOpenedInfo | null> {
+  if (!isNativeAudioAvailable()) return null;
+  let devices: NativeDeviceInfo[];
+  try {
+    devices = await listOutputDevices();
+  } catch (err) {
+    console.warn('[nativeAudio] device list failed:', err);
+    return null;
+  }
+  if (devices.length === 0) {
+    console.warn('[nativeAudio] no output devices');
+    return null;
+  }
+  const persisted = readPersistedNativeAudioSettings();
+  // Validate persisted device — if it's been unplugged, fall back to
+  // system default (or first available).
+  const device =
+    devices.find((d) => d.name === persisted.deviceName) ??
+    devices.find((d) => d.isDefault) ??
+    devices[0];
+  const channels =
+    persisted.channels && persisted.channels <= device.maxOutputChannels
+      ? persisted.channels
+      : device.maxOutputChannels;
+  const sampleRate =
+    persisted.sampleRate && device.supportedSampleRates.includes(persisted.sampleRate)
+      ? persisted.sampleRate
+      : device.defaultSampleRate;
+  const bufferSize = persisted.bufferSize ?? 0;
+  try {
+    return await applyOutputDeviceConfig({
+      deviceName: device.name,
+      channels,
+      sampleRate,
+      bufferSize: bufferSize > 0 ? bufferSize : undefined,
+    });
+  } catch (err) {
+    console.warn('[nativeAudio] open failed:', err);
+    return null;
+  }
+}
+
 export async function closeOutputDevice(): Promise<void> {
   await invoke<void>('audio_close_device');
 }
@@ -206,6 +322,30 @@ export async function setTrackFilter(
     trackId,
     cutoffHz,
     resonance,
+  });
+}
+
+// Batched filter updates — one IPC round-trip carrying many tracks.
+// Used by the LFO-driven RAF push loop where every animation frame can
+// touch up to N tracks; per-track invokes would balloon IPC overhead.
+export interface TrackFilterUpdate {
+  trackId: string;
+  cutoffHz: number;
+  resonance: number;
+}
+
+export async function setTrackFiltersBulk(
+  updates: TrackFilterUpdate[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  // Rust side expects snake_case track_id / cutoff_hz; payload is the
+  // updates array serialized via serde.
+  await invoke<void>('audio_set_track_filters_bulk', {
+    updates: updates.map((u) => ({
+      track_id: u.trackId,
+      cutoff_hz: u.cutoffHz,
+      resonance: u.resonance,
+    })),
   });
 }
 

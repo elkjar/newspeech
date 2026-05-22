@@ -1,21 +1,19 @@
-// Phase 0 — exercises the native cpal audio engine.
-// Device picker + channel/rate/buffer selection + per-channel test tones.
-// No connection to the sequencer audio path yet; voices, FX, and routing
-// move over in subsequent phases.
+// Native audio settings — device picker + per-channel test tones.
+// The cpal device auto-opens on app launch from persisted settings
+// (see initNativeAudio in nativeEngine.ts), so this panel is purely
+// for "change device", "tweak buffer/SR", or "verify channel routing".
+// Every selector change immediately re-applies the device config and
+// persists it.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   listOutputDevices,
-  openOutputDevice,
-  closeOutputDevice,
+  applyOutputDeviceConfig,
   setTestTone,
-  getAudioStatus,
-  loadSample,
-  triggerSample,
-  stopAllVoices,
-  setReportedChannelCount,
+  readPersistedNativeAudioSettings,
+  getReportedChannelCount,
+  subscribeReportedChannelCount,
   type NativeDeviceInfo,
-  type NativeSampleLoadInfo,
 } from '../audio/nativeEngine';
 
 const COMMON_BUFFER_SIZES = [64, 128, 256, 512, 1024];
@@ -27,12 +25,12 @@ export function NativeAudioPanel() {
   const [channels, setChannels] = useState<number>(2);
   const [sampleRate, setSampleRate] = useState<number>(48000);
   const [bufferSize, setBufferSize] = useState<number>(0);
-  const [isOpen, setIsOpen] = useState(false);
-  const [statusText, setStatusText] = useState<string>('closed');
   const [activeToneChannel, setActiveToneChannel] = useState<number | null>(null);
-  const [openedChannels, setOpenedChannels] = useState<number>(0);
-  const [openedSampleRate, setOpenedSampleRate] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const reportedChannels = useSyncExternalStore(
+    subscribeReportedChannelCount,
+    getReportedChannelCount,
+  );
 
   const refreshDevices = async () => {
     setLoadingDevices(true);
@@ -40,15 +38,6 @@ export function NativeAudioPanel() {
     try {
       const list = await listOutputDevices();
       setDevices(list);
-      // Default selection: prefer the system default, else the first.
-      if (!selectedDevice) {
-        const def = list.find((d) => d.isDefault) ?? list[0];
-        if (def) {
-          setSelectedDevice(def.name);
-          if (def.defaultSampleRate > 0) setSampleRate(def.defaultSampleRate);
-          if (def.maxOutputChannels > 0) setChannels(Math.min(2, def.maxOutputChannels));
-        }
-      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -56,62 +45,81 @@ export function NativeAudioPanel() {
     }
   };
 
+  // On mount, fetch device list + read whatever the auto-open chose
+  // (or fallback to persisted / system default) so the controls show
+  // the live state instead of stale UI defaults.
   useEffect(() => {
     void refreshDevices();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const persisted = readPersistedNativeAudioSettings();
+    if (persisted.deviceName) setSelectedDevice(persisted.deviceName);
+    if (persisted.channels) setChannels(persisted.channels);
+    if (persisted.sampleRate) setSampleRate(persisted.sampleRate);
+    if (persisted.bufferSize !== undefined) setBufferSize(persisted.bufferSize);
   }, []);
 
   const current = devices.find((d) => d.name === selectedDevice);
 
-  // When the user picks a new device, re-clamp channel count + sample rate.
-  useEffect(() => {
-    if (!current) return;
-    if (current.maxOutputChannels > 0 && channels > current.maxOutputChannels) {
-      setChannels(current.maxOutputChannels);
-    }
-    if (current.supportedSampleRates.length > 0 && !current.supportedSampleRates.includes(sampleRate)) {
-      setSampleRate(current.defaultSampleRate || current.supportedSampleRates[0]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDevice]);
-
-  const handleOpen = async () => {
+  // Apply + persist whenever the user changes a selector. Wrapped so
+  // every onChange handler can fire-and-forget.
+  const apply = (overrides: {
+    deviceName?: string;
+    channels?: number;
+    sampleRate?: number;
+    bufferSize?: number;
+  }) => {
+    const config = {
+      deviceName: overrides.deviceName ?? selectedDevice,
+      channels: overrides.channels ?? channels,
+      sampleRate: overrides.sampleRate ?? sampleRate,
+      bufferSize: overrides.bufferSize ?? bufferSize,
+    };
+    if (!config.deviceName) return;
     setError(null);
-    setStatusText('opening…');
-    try {
-      const info = await openOutputDevice({
-        deviceName: selectedDevice,
-        channels,
-        sampleRate,
-        bufferSize: bufferSize > 0 ? bufferSize : undefined,
-      });
-      setIsOpen(true);
-      setOpenedChannels(info.channels);
-      setOpenedSampleRate(info.sampleRate);
-      setReportedChannelCount(info.channels);
-      setStatusText(
-        `open · ${info.channels}ch · ${info.sampleRate} Hz · buf ${info.bufferSize || 'default'}`,
-      );
-    } catch (err) {
-      setIsOpen(false);
+    void applyOutputDeviceConfig({
+      deviceName: config.deviceName,
+      channels: config.channels,
+      sampleRate: config.sampleRate,
+      bufferSize: config.bufferSize > 0 ? config.bufferSize : undefined,
+    }).catch((err) => {
       setError(String(err));
-      setStatusText('failed');
-    }
+    });
   };
 
-  const handleClose = async () => {
-    setError(null);
-    try {
-      await closeOutputDevice();
-    } catch (err) {
-      setError(String(err));
+  const onPickDevice = (name: string) => {
+    setSelectedDevice(name);
+    // When switching device, snap channels + SR to the new device's
+    // capabilities so we don't try to open an unsupported config.
+    const dev = devices.find((d) => d.name === name);
+    let newChannels = channels;
+    let newSampleRate = sampleRate;
+    if (dev) {
+      if (channels > dev.maxOutputChannels) {
+        newChannels = dev.maxOutputChannels;
+        setChannels(newChannels);
+      }
+      if (
+        dev.supportedSampleRates.length > 0 &&
+        !dev.supportedSampleRates.includes(sampleRate)
+      ) {
+        newSampleRate = dev.defaultSampleRate || dev.supportedSampleRates[0];
+        setSampleRate(newSampleRate);
+      }
     }
-    setIsOpen(false);
-    setActiveToneChannel(null);
-    setOpenedChannels(0);
-    setOpenedSampleRate(0);
-    setReportedChannelCount(0);
-    setStatusText('closed');
+    apply({ deviceName: name, channels: newChannels, sampleRate: newSampleRate });
+  };
+
+  const onChannels = (n: number) => {
+    const clamped = Math.max(1, Math.min(current?.maxOutputChannels ?? 32, n));
+    setChannels(clamped);
+    apply({ channels: clamped });
+  };
+  const onSampleRate = (sr: number) => {
+    setSampleRate(sr);
+    apply({ sampleRate: sr });
+  };
+  const onBufferSize = (bs: number) => {
+    setBufferSize(bs);
+    apply({ bufferSize: bs });
   };
 
   const handleToneToggle = async (ch: number) => {
@@ -128,47 +136,29 @@ export function NativeAudioPanel() {
     }
   };
 
-  const refreshStatus = async () => {
-    try {
-      const s = await getAudioStatus();
-      setOpenedChannels(s.channels);
-      setOpenedSampleRate(s.sampleRate);
-      setReportedChannelCount(s.channels);
-      setStatusText(
-        s.channels > 0
-          ? `open · ${s.channels}ch · ${s.sampleRate} Hz`
-          : 'closed',
-      );
-      setIsOpen(s.channels > 0);
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  const activeChannels = openedChannels > 0 ? openedChannels : channels;
+  const isOpen = reportedChannels > 0;
+  const activeChannels = isOpen ? reportedChannels : channels;
 
   return (
     <div className="flex flex-col gap-3 normal-case tracking-normal text-[12px]">
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[10px] uppercase tracking-widest text-white/55">device</span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={refreshDevices}
-            disabled={loadingDevices}
-            className={
-              loadingDevices
-                ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20'
-                : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
-            }
-          >
-            {loadingDevices ? 'loading…' : 'rescan'}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => void refreshDevices()}
+          disabled={loadingDevices}
+          className={
+            loadingDevices
+              ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20'
+              : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
+          }
+        >
+          {loadingDevices ? 'loading…' : 'rescan'}
+        </button>
       </div>
       <select
         value={selectedDevice}
-        onChange={(e) => setSelectedDevice(e.target.value)}
+        onChange={(e) => onPickDevice(e.target.value)}
         className="w-full bg-transparent border border-white/15 text-white/90 text-[12px] px-2 py-1"
       >
         {devices.length === 0 && <option value="">— no devices —</option>}
@@ -187,7 +177,7 @@ export function NativeAudioPanel() {
             min={1}
             max={current?.maxOutputChannels ?? 32}
             value={channels}
-            onChange={(e) => setChannels(Math.max(1, parseInt(e.target.value, 10) || 1))}
+            onChange={(e) => onChannels(parseInt(e.target.value, 10) || 1)}
             className="w-full bg-transparent border border-white/15 text-white/90 text-[12px] px-2 py-1"
           />
           {current && (
@@ -197,7 +187,7 @@ export function NativeAudioPanel() {
         <Field label="sample rate">
           <select
             value={sampleRate}
-            onChange={(e) => setSampleRate(parseInt(e.target.value, 10))}
+            onChange={(e) => onSampleRate(parseInt(e.target.value, 10))}
             className="w-full bg-transparent border border-white/15 text-white/90 text-[12px] px-2 py-1"
           >
             {(current?.supportedSampleRates ?? [44100, 48000, 96000]).map((sr) => (
@@ -210,7 +200,7 @@ export function NativeAudioPanel() {
         <Field label="buffer">
           <select
             value={bufferSize}
-            onChange={(e) => setBufferSize(parseInt(e.target.value, 10))}
+            onChange={(e) => onBufferSize(parseInt(e.target.value, 10))}
             className="w-full bg-transparent border border-white/15 text-white/90 text-[12px] px-2 py-1"
           >
             <option value={0}>default</option>
@@ -228,44 +218,18 @@ export function NativeAudioPanel() {
         </Field>
       </div>
 
-      <div className="flex items-center gap-2 mt-2">
-        {!isOpen ? (
-          <button
-            type="button"
-            onClick={handleOpen}
-            disabled={!selectedDevice}
-            className={
-              !selectedDevice
-                ? 'px-3 py-1 text-[11px] uppercase tracking-widest border border-white/10 text-white/20 cursor-not-allowed'
-                : 'px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
-            }
-          >
-            open
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors"
-          >
-            close
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={refreshStatus}
-          className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors"
-        >
-          status
-        </button>
-        <span className="text-[11px] text-white/60 font-mono">{statusText}</span>
+      <div className="text-[11px] text-white/60 font-mono mt-1">
+        {isOpen
+          ? `running · ${reportedChannels}ch`
+          : 'device not open'}
       </div>
 
       {error && <div className="text-[11px] text-red-400 font-mono">{error}</div>}
 
-      <div className="flex flex-col gap-1 mt-2">
+      <div className="flex flex-col gap-1 mt-3 pt-3 border-t border-white/10">
         <div className="text-[10px] uppercase tracking-widest text-white/55">test tone (440 hz)</div>
-        <div className="flex flex-wrap gap-1">
+        <div className="text-[10px] text-white/40">click a channel number to fire a sine on it — verifies the physical routing on a new interface.</div>
+        <div className="flex flex-wrap gap-1 mt-1">
           {Array.from({ length: activeChannels }).map((_, i) => {
             const active = activeToneChannel === i;
             return (
@@ -288,161 +252,7 @@ export function NativeAudioPanel() {
             );
           })}
         </div>
-        {openedSampleRate > 0 && (
-          <div className="text-[10px] text-white/40 font-mono">
-            running at {openedSampleRate} Hz · {openedChannels}ch
-          </div>
-        )}
       </div>
-
-      <SampleVoiceSection isOpen={isOpen} />
-    </div>
-  );
-}
-
-function SampleVoiceSection({ isOpen }: { isOpen: boolean }) {
-  const [loaded, setLoaded] = useState<NativeSampleLoadInfo | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [gain, setGain] = useState(1.0);
-  const [pan, setPan] = useState(0.0);
-  const [pitch, setPitch] = useState(1.0);
-  const [error, setError] = useState<string | null>(null);
-
-  const pickAndLoad = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const picked = await open({
-        directory: false,
-        multiple: false,
-        filters: [{ name: 'wav', extensions: ['wav'] }],
-      });
-      if (picked && typeof picked === 'string') {
-        const info = await loadSample(picked);
-        setLoaded(info);
-      }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const play = async () => {
-    if (!loaded) return;
-    setError(null);
-    try {
-      await triggerSample(loaded.path, { gain, pan, pitch });
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  const stop = async () => {
-    setError(null);
-    try {
-      await stopAllVoices();
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  const shortPath = loaded
-    ? loaded.path.split('/').slice(-2).join('/')
-    : null;
-
-  return (
-    <div className="flex flex-col gap-2 mt-4 pt-3 border-t border-white/10">
-      <div className="text-[10px] uppercase tracking-widest text-white/55">
-        sample voice (phase 1a)
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={pickAndLoad}
-          disabled={loading}
-          className={
-            loading
-              ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20'
-              : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
-          }
-        >
-          {loading ? 'loading…' : 'load wav…'}
-        </button>
-        <button
-          type="button"
-          onClick={play}
-          disabled={!isOpen || !loaded}
-          className={
-            !isOpen || !loaded
-              ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20 cursor-not-allowed'
-              : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
-          }
-        >
-          play
-        </button>
-        <button
-          type="button"
-          onClick={stop}
-          disabled={!isOpen}
-          className={
-            !isOpen
-              ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20 cursor-not-allowed'
-              : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
-          }
-        >
-          stop all
-        </button>
-      </div>
-      {loaded && (
-        <div className="text-[10px] text-white/50 font-mono">
-          {shortPath} · {loaded.channels}ch · {loaded.sampleRate} Hz ·{' '}
-          {loaded.durationSecs.toFixed(2)} s
-        </div>
-      )}
-      <div className="grid grid-cols-3 gap-3 mt-1">
-        <SliderField label="gain" value={gain} min={0} max={2} step={0.01} onChange={setGain} display={gain.toFixed(2)} />
-        <SliderField label="pan" value={pan} min={-1} max={1} step={0.01} onChange={setPan} display={pan.toFixed(2)} />
-        <SliderField label="pitch" value={pitch} min={0.25} max={4} step={0.01} onChange={setPitch} display={`${pitch.toFixed(2)}×`} />
-      </div>
-      {error && <div className="text-[11px] text-red-400 font-mono">{error}</div>}
-    </div>
-  );
-}
-
-function SliderField({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  display,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (v: number) => void;
-  display: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-widest text-white/55">{label}</span>
-        <span className="text-[10px] text-white/50 font-mono">{display}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full"
-      />
     </div>
   );
 }

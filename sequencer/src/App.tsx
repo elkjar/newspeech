@@ -23,8 +23,10 @@ import { samplePlayer } from './audio/samplePlayer';
 import {
   isNativeAudioAvailable,
   triggerSample,
-  setTrackFilter,
+  setTrackFiltersBulk,
   cutoffNormToHz,
+  initNativeAudio,
+  type TrackFilterUpdate,
 } from './audio/nativeEngine';
 import { getAudioContext } from './audio/audioContext';
 import {
@@ -500,33 +502,65 @@ export function App() {
     scheduler.setBpm(bpm);
   }, [bpm]);
 
-  // Push per-track filter params (cutoff Hz + resonance 0..1) to the
-  // native engine whenever they change. Baseline values from the store
-  // only — LFO modulation routes still flow through the existing web
-  // worklet path and won't reach native filter until LFOs move into the
-  // audio thread (Phase 6). Tauri-only.
+  // Auto-open the native cpal device on app launch using persisted
+  // settings (device + channels + SR + buffer from localStorage). On
+  // first launch or after a device is unplugged, falls back to the
+  // system default. Non-fatal on failure — user can still pick a
+  // device in Settings → native audio.
   useEffect(() => {
     if (!isNativeAudioAvailable()) return;
-    const push = (trackId: string, cutoffNorm: number, resonance: number) => {
-      void setTrackFilter(trackId, cutoffNormToHz(cutoffNorm), resonance);
-    };
-    for (const t of useSequencerStore.getState().tracks) {
-      push(t.id, t.filterCutoff, t.filterResonance);
-    }
-    return useSequencerStore.subscribe((state, prev) => {
-      const prevById = new Map(prev.tracks.map((t) => [t.id, t] as const));
-      for (const cur of state.tracks) {
-        const prv = prevById.get(cur.id);
-        if (
-          !prv ||
-          prv.filterCutoff !== cur.filterCutoff ||
-          prv.filterResonance !== cur.filterResonance
-        ) {
-          push(cur.id, cur.filterCutoff, cur.filterResonance);
+    void initNativeAudio();
+  }, []);
+
+  // Phase 3b: push LFO-modulated filter params to the native engine
+  // every animation frame. modulated() reads each track's base cutoff/
+  // resonance plus any routed LFOs and returns the live value; we diff
+  // against the last-pushed value per track and batch the changes into
+  // a single audio_set_track_filters_bulk IPC per frame. Without this
+  // loop, LFO sweeps on cutoff/resonance only move the (unused) web
+  // worklet and the native filter sits at baseline values.
+  //
+  // Thresholds (cutoff 0.5 Hz, resonance 0.001) prevent floating-point
+  // noise from generating no-op pushes when nothing's actually moving.
+  // gated on bootDone so the loop doesn't start before tracks settle.
+  useEffect(() => {
+    if (!isNativeAudioAvailable()) return;
+    if (!bootDone) return;
+    const lastPushed = new Map<string, { cutoffHz: number; resonance: number }>();
+    let raf = 0;
+    const tick = () => {
+      const state = useSequencerStore.getState();
+      const updates: TrackFilterUpdate[] = [];
+      for (const t of state.tracks) {
+        const cutoffNorm = modulated(
+          t.filterCutoff,
+          state.lfos,
+          t.id,
+          'filterCutoff',
+        );
+        const resonance = modulated(
+          t.filterResonance,
+          state.lfos,
+          t.id,
+          'filterResonance',
+        );
+        const cutoffHz = cutoffNormToHz(cutoffNorm);
+        const last = lastPushed.get(t.id);
+        const changed =
+          !last ||
+          Math.abs(last.cutoffHz - cutoffHz) > 0.5 ||
+          Math.abs(last.resonance - resonance) > 0.001;
+        if (changed) {
+          updates.push({ trackId: t.id, cutoffHz, resonance });
+          lastPushed.set(t.id, { cutoffHz, resonance });
         }
       }
-    });
-  }, []);
+      if (updates.length > 0) void setTrackFiltersBulk(updates);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [bootDone]);
 
   // Preload sample paths into the native cpal registry for every voice
   // track that lands in state. Idempotent (Rust caches by path). Without

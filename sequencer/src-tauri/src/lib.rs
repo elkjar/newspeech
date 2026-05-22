@@ -141,6 +141,7 @@ pub fn run() {
       audio::audio_load_sample_from_bytes,
       audio::audio_trigger_sample,
       audio::audio_set_track_filter,
+      audio::audio_set_track_filters_bulk,
       audio::audio_stop_all,
     ])
     .setup(|app| {

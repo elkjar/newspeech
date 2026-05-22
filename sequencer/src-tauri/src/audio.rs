@@ -990,6 +990,25 @@ pub fn audio_set_track_filter(
   Ok(())
 }
 
+#[derive(serde::Deserialize)]
+pub struct TrackFilterUpdate {
+  pub track_id: String,
+  pub cutoff_hz: f32,
+  pub resonance: f32,
+}
+
+// One invoke carrying N per-track updates. The RAF-driven LFO push in
+// JS hits this once per animation frame even when many tracks have LFO
+// routings to filter params, capping IPC overhead at one round-trip.
+#[tauri::command]
+pub fn audio_set_track_filters_bulk(updates: Vec<TrackFilterUpdate>) -> Result<(), String> {
+  let e = engine();
+  for u in updates {
+    e.set_track_filter(u.track_id, u.cutoff_hz, u.resonance);
+  }
+  Ok(())
+}
+
 #[tauri::command]
 pub fn audio_stop_all() -> Result<(), String> {
   engine().stop_all_voices()
