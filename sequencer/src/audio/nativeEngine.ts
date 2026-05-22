@@ -116,3 +116,52 @@ export async function setTestTone(channel: number | null, frequencyHz = 440): Pr
     frequencyHz,
   });
 }
+
+// --- sample voice (phase 1a) ---
+
+export interface NativeSampleLoadInfo {
+  path: string;
+  channels: number;
+  sampleRate: number;
+  frames: number;
+  durationSecs: number;
+}
+
+interface RawSampleLoadInfo {
+  path: string;
+  channels: number;
+  sample_rate: number;
+  frames: number;
+  duration_secs: number;
+}
+
+function normalizeSampleLoad(r: RawSampleLoadInfo): NativeSampleLoadInfo {
+  return {
+    path: r.path,
+    channels: r.channels,
+    sampleRate: r.sample_rate,
+    frames: r.frames,
+    durationSecs: r.duration_secs,
+  };
+}
+
+export async function loadSample(path: string): Promise<NativeSampleLoadInfo> {
+  const raw = await invoke<RawSampleLoadInfo>('audio_load_sample', { path });
+  return normalizeSampleLoad(raw);
+}
+
+export async function triggerSample(
+  path: string,
+  opts: { gain?: number; pan?: number; pitch?: number } = {},
+): Promise<void> {
+  await invoke<void>('audio_trigger_sample', {
+    path,
+    gain: opts.gain ?? null,
+    pan: opts.pan ?? null,
+    pitch: opts.pitch ?? null,
+  });
+}
+
+export async function stopAllVoices(): Promise<void> {
+  await invoke<void>('audio_stop_all');
+}

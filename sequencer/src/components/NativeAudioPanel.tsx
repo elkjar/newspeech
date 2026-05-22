@@ -10,7 +10,11 @@ import {
   closeOutputDevice,
   setTestTone,
   getAudioStatus,
+  loadSample,
+  triggerSample,
+  stopAllVoices,
   type NativeDeviceInfo,
+  type NativeSampleLoadInfo,
 } from '../audio/nativeEngine';
 
 const COMMON_BUFFER_SIZES = [64, 128, 256, 512, 1024];
@@ -286,6 +290,155 @@ export function NativeAudioPanel() {
           </div>
         )}
       </div>
+
+      <SampleVoiceSection isOpen={isOpen} />
+    </div>
+  );
+}
+
+function SampleVoiceSection({ isOpen }: { isOpen: boolean }) {
+  const [loaded, setLoaded] = useState<NativeSampleLoadInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [gain, setGain] = useState(1.0);
+  const [pan, setPan] = useState(0.0);
+  const [pitch, setPitch] = useState(1.0);
+  const [error, setError] = useState<string | null>(null);
+
+  const pickAndLoad = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const picked = await open({
+        directory: false,
+        multiple: false,
+        filters: [{ name: 'wav', extensions: ['wav'] }],
+      });
+      if (picked && typeof picked === 'string') {
+        const info = await loadSample(picked);
+        setLoaded(info);
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const play = async () => {
+    if (!loaded) return;
+    setError(null);
+    try {
+      await triggerSample(loaded.path, { gain, pan, pitch });
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const stop = async () => {
+    setError(null);
+    try {
+      await stopAllVoices();
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const shortPath = loaded
+    ? loaded.path.split('/').slice(-2).join('/')
+    : null;
+
+  return (
+    <div className="flex flex-col gap-2 mt-4 pt-3 border-t border-white/10">
+      <div className="text-[10px] uppercase tracking-widest text-white/55">
+        sample voice (phase 1a)
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={pickAndLoad}
+          disabled={loading}
+          className={
+            loading
+              ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20'
+              : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
+          }
+        >
+          {loading ? 'loading…' : 'load wav…'}
+        </button>
+        <button
+          type="button"
+          onClick={play}
+          disabled={!isOpen || !loaded}
+          className={
+            !isOpen || !loaded
+              ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20 cursor-not-allowed'
+              : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
+          }
+        >
+          play
+        </button>
+        <button
+          type="button"
+          onClick={stop}
+          disabled={!isOpen}
+          className={
+            !isOpen
+              ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20 cursor-not-allowed'
+              : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
+          }
+        >
+          stop all
+        </button>
+      </div>
+      {loaded && (
+        <div className="text-[10px] text-white/50 font-mono">
+          {shortPath} · {loaded.channels}ch · {loaded.sampleRate} Hz ·{' '}
+          {loaded.durationSecs.toFixed(2)} s
+        </div>
+      )}
+      <div className="grid grid-cols-3 gap-3 mt-1">
+        <SliderField label="gain" value={gain} min={0} max={2} step={0.01} onChange={setGain} display={gain.toFixed(2)} />
+        <SliderField label="pan" value={pan} min={-1} max={1} step={0.01} onChange={setPan} display={pan.toFixed(2)} />
+        <SliderField label="pitch" value={pitch} min={0.25} max={4} step={0.01} onChange={setPitch} display={`${pitch.toFixed(2)}×`} />
+      </div>
+      {error && <div className="text-[11px] text-red-400 font-mono">{error}</div>}
+    </div>
+  );
+}
+
+function SliderField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  display,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+  display: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-white/55">{label}</span>
+        <span className="text-[10px] text-white/50 font-mono">{display}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full"
+      />
     </div>
   );
 }

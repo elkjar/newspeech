@@ -2,18 +2,29 @@
 //
 // Owns a cpal output stream on a dedicated control thread; the audio
 // callback closure reads from an Arc<SharedState> using atomics so the
-// real-time thread never blocks. Phase 0 mixer only emits silence or a
-// per-channel sine test tone — voices, samples, FX, and the scheduler
-// move in over subsequent phases.
+// real-time thread never blocks. Triggers cross the boundary through a
+// lockfree SPSC ringbuf (control thread → audio callback).
+//
+// Phase 0: per-channel test tone.
+// Phase 1a: sample voice mixer — WAV loader, 64-slot voice pool, linear
+// interpolation, equal-power pan. Voices always render to channels 0+1
+// of the open device for now; per-track output routing arrives in a
+// later phase.
 
+use std::collections::HashMap;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, SampleRate, Stream, StreamConfig};
+use ringbuf::traits::{Consumer, Producer, Split};
+use ringbuf::{HeapCons, HeapProd, HeapRb};
 use serde::Serialize;
+
+// --- device + open metadata ---
 
 #[derive(Debug, Serialize, Clone)]
 pub struct DeviceInfo {
@@ -34,13 +45,123 @@ pub struct OpenedInfo {
   pub buffer_size: u32,
 }
 
+// --- sample data + registry ---
+
+#[derive(Debug, Clone)]
+pub struct SampleData {
+  pub channels: u16,
+  pub sample_rate: u32,
+  pub frames: Vec<f32>, // interleaved if stereo
+}
+
+impl SampleData {
+  pub fn frame_count(&self) -> usize {
+    self.frames.len() / (self.channels.max(1) as usize)
+  }
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct SampleLoadInfo {
+  pub path: String,
+  pub channels: u16,
+  pub sample_rate: u32,
+  pub frames: u32,
+  pub duration_secs: f32,
+}
+
+static SAMPLES: OnceLock<Mutex<HashMap<String, Arc<SampleData>>>> = OnceLock::new();
+
+fn samples_registry() -> &'static Mutex<HashMap<String, Arc<SampleData>>> {
+  SAMPLES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn load_wav(path: &str) -> Result<SampleData, String> {
+  let mut reader = hound::WavReader::open(Path::new(path))
+    .map_err(|e| format!("open wav: {}", e))?;
+  let spec = reader.spec();
+  let channels = spec.channels;
+  let sample_rate = spec.sample_rate;
+  if sample_rate == 0 {
+    return Err("wav reports sample_rate = 0".into());
+  }
+
+  let frames: Vec<f32> = match spec.sample_format {
+    hound::SampleFormat::Float => reader
+      .samples::<f32>()
+      .collect::<Result<_, _>>()
+      .map_err(|e| format!("decode f32: {}", e))?,
+    hound::SampleFormat::Int => {
+      let bits = spec.bits_per_sample.max(1);
+      // Hound's i32 decoder sign-extends to a 32-bit range scaled by
+      // bits_per_sample. Normalize to [-1, 1] in f32.
+      let scale = 1.0_f32 / ((1u32 << (bits - 1)) as f32);
+      reader
+        .samples::<i32>()
+        .map(|s| s.map(|v| (v as f32) * scale))
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("decode int: {}", e))?
+    }
+  };
+
+  Ok(SampleData {
+    channels,
+    sample_rate,
+    frames,
+  })
+}
+
+// --- voice pool ---
+
+const VOICE_POOL_SIZE: usize = 64;
+const TRIGGER_QUEUE_CAPACITY: usize = 256;
+
+#[derive(Clone)]
+struct Voice {
+  sample: Option<Arc<SampleData>>,
+  position: f64,
+  rate: f64,
+  gain: f32,
+  pan_left: f32,
+  pan_right: f32,
+  active: bool,
+}
+
+impl Default for Voice {
+  fn default() -> Self {
+    Self {
+      sample: None,
+      position: 0.0,
+      rate: 1.0,
+      gain: 0.0,
+      pan_left: 0.0,
+      pan_right: 0.0,
+      active: false,
+    }
+  }
+}
+
+enum MixerCommand {
+  Trigger {
+    sample: Arc<SampleData>,
+    gain: f32,
+    pan: f32,   // -1..1
+    pitch: f32, // 1.0 = native rate
+  },
+  StopAll,
+}
+
+// --- shared state ---
+
 struct SharedState {
-  // Mixer parameters — written by control commands, read by audio callback.
   channels: AtomicU32,
   sample_rate: AtomicU32,
   test_tone_enabled: AtomicBool,
   test_tone_channel: AtomicUsize,
   test_tone_freq_mhz: AtomicU32, // freq Hz * 1000
+  // Producer for the audio callback's command queue. Lives behind a
+  // Mutex so command threads can push, but the audio thread holds the
+  // matching consumer side directly and never blocks.
+  trigger_producer: Mutex<Option<HeapProd<MixerCommand>>>,
 }
 
 impl SharedState {
@@ -51,6 +172,7 @@ impl SharedState {
       test_tone_enabled: AtomicBool::new(false),
       test_tone_channel: AtomicUsize::new(0),
       test_tone_freq_mhz: AtomicU32::new(440_000),
+      trigger_producer: Mutex::new(None),
     }
   }
 }
@@ -140,13 +262,99 @@ impl AudioEngine {
   pub fn current_sample_rate(&self) -> u32 {
     self.state.sample_rate.load(Ordering::Acquire)
   }
+
+  pub fn load_sample(&self, path: String) -> Result<SampleLoadInfo, String> {
+    // Cache hit?
+    {
+      let registry = samples_registry()
+        .lock()
+        .map_err(|e| format!("registry lock: {}", e))?;
+      if let Some(existing) = registry.get(&path) {
+        let fc = existing.frame_count();
+        return Ok(SampleLoadInfo {
+          path: path.clone(),
+          channels: existing.channels,
+          sample_rate: existing.sample_rate,
+          frames: fc as u32,
+          duration_secs: if existing.sample_rate > 0 {
+            fc as f32 / existing.sample_rate as f32
+          } else {
+            0.0
+          },
+        });
+      }
+    }
+    let sample = load_wav(&path)?;
+    let fc = sample.frame_count();
+    let info = SampleLoadInfo {
+      path: path.clone(),
+      channels: sample.channels,
+      sample_rate: sample.sample_rate,
+      frames: fc as u32,
+      duration_secs: fc as f32 / sample.sample_rate as f32,
+    };
+    let mut registry = samples_registry()
+      .lock()
+      .map_err(|e| format!("registry lock: {}", e))?;
+    registry.insert(path, Arc::new(sample));
+    Ok(info)
+  }
+
+  pub fn trigger_sample(
+    &self,
+    path: String,
+    gain: f32,
+    pan: f32,
+    pitch: f32,
+  ) -> Result<(), String> {
+    let sample = {
+      let registry = samples_registry()
+        .lock()
+        .map_err(|e| format!("registry lock: {}", e))?;
+      registry
+        .get(&path)
+        .cloned()
+        .ok_or_else(|| format!("sample not loaded: {}", path))?
+    };
+    let cmd = MixerCommand::Trigger {
+      sample,
+      gain,
+      pan,
+      pitch,
+    };
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(cmd)
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
+
+  pub fn stop_all_voices(&self) -> Result<(), String> {
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(MixerCommand::StopAll)
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
 }
 
 fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
-  // The Stream is kept here; cpal::Stream is !Send on some platforms so
-  // its lifetime must stay on this single thread.
-  // _stream is held purely to keep the cpal output stream alive; the
-  // compiler sees writes-only because audio runs through the closure.
+  // _stream holds the cpal output stream for the duration of an open
+  // device; cpal::Stream is !Send on macOS so its lifetime stays here.
   let mut _stream: Option<Stream> = None;
   while let Ok(cmd) = rx.recv() {
     match cmd {
@@ -157,13 +365,28 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
         buffer_size,
         reply,
       } => {
-        // Drop any existing stream before opening a new one.
+        // Drop any existing stream + producer before opening a new one.
         _stream = None;
+        if let Ok(mut prod) = state.trigger_producer.lock() {
+          *prod = None;
+        }
         state.channels.store(0, Ordering::Release);
         state.sample_rate.store(0, Ordering::Release);
         state.test_tone_enabled.store(false, Ordering::Release);
 
-        match build_stream(&device_name, channels, sample_rate, buffer_size, state.clone()) {
+        // Fresh trigger queue per open. Audio thread takes the consumer
+        // side; producer goes into shared state for command pushes.
+        let rb = HeapRb::<MixerCommand>::new(TRIGGER_QUEUE_CAPACITY);
+        let (prod, cons) = rb.split();
+
+        match build_stream(
+          &device_name,
+          channels,
+          sample_rate,
+          buffer_size,
+          state.clone(),
+          cons,
+        ) {
           Ok((s, info)) => {
             if let Err(e) = s.play() {
               let _ = reply.send(Err(format!("stream play: {}", e)));
@@ -171,6 +394,9 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
             }
             state.channels.store(info.channels, Ordering::Release);
             state.sample_rate.store(info.sample_rate, Ordering::Release);
+            if let Ok(mut guard) = state.trigger_producer.lock() {
+              *guard = Some(prod);
+            }
             _stream = Some(s);
             let _ = reply.send(Ok(info));
           }
@@ -181,6 +407,9 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
       }
       EngineCommand::Close { reply } => {
         _stream = None;
+        if let Ok(mut prod) = state.trigger_producer.lock() {
+          *prod = None;
+        }
         state.channels.store(0, Ordering::Release);
         state.sample_rate.store(0, Ordering::Release);
         state.test_tone_enabled.store(false, Ordering::Release);
@@ -197,6 +426,7 @@ fn build_stream(
   sample_rate: u32,
   buffer_size: Option<u32>,
   state: Arc<SharedState>,
+  mut consumer: HeapCons<MixerCommand>,
 ) -> Result<(Stream, OpenedInfo), String> {
   let host = cpal::default_host();
   let device = if device_name.is_empty() || device_name == "default" {
@@ -222,18 +452,21 @@ fn build_stream(
 
   let actual_name = device.name().unwrap_or_else(|_| "unknown".to_string());
 
-  // Phase + last-channel are owned solely by the audio callback.
+  // Callback-local state — only the audio thread touches these.
   let mut phase: f32 = 0.0;
   let mut last_ch: usize = usize::MAX;
+  let mut voices: Vec<Voice> = vec![Voice::default(); VOICE_POOL_SIZE];
+  let mut steal_cursor: usize = 0;
   let nominal_channels = channels as usize;
   let nominal_sr = sample_rate as f32;
+  let device_sr_f64 = sample_rate as f64;
 
   let cb_state = state.clone();
   let stream = device
     .build_output_stream(
       &config,
       move |buf: &mut [f32], _info: &cpal::OutputCallbackInfo| {
-        // Silence by default — every frame, every channel.
+        // Start every block with silence; all sources are additive.
         for s in buf.iter_mut() {
           *s = 0.0;
         }
@@ -246,7 +479,7 @@ fn build_stream(
             v
           }
         };
-        let sr = {
+        let sr_f32 = {
           let v = cb_state.sample_rate.load(Ordering::Acquire) as f32;
           if v == 0.0 {
             nominal_sr
@@ -255,27 +488,163 @@ fn build_stream(
           }
         };
 
-        if !cb_state.test_tone_enabled.load(Ordering::Acquire) {
-          return;
+        // 1) Drain the trigger queue.
+        while let Some(cmd) = consumer.try_pop() {
+          match cmd {
+            MixerCommand::Trigger {
+              sample,
+              gain,
+              pan,
+              pitch,
+            } => {
+              // Prefer an inactive slot; if all are busy, steal one
+              // round-robin via steal_cursor.
+              let slot = (0..VOICE_POOL_SIZE)
+                .find(|i| !voices[*i].active)
+                .unwrap_or_else(|| {
+                  let s = steal_cursor;
+                  steal_cursor = (steal_cursor + 1) % VOICE_POOL_SIZE;
+                  s
+                });
+              let pan_clamped = pan.clamp(-1.0, 1.0);
+              let angle =
+                (pan_clamped + 1.0) * 0.5 * std::f32::consts::FRAC_PI_2;
+              let pan_left = angle.cos();
+              let pan_right = angle.sin();
+              let base_rate = sample.sample_rate as f64 / device_sr_f64;
+              let rate = base_rate * (pitch.max(0.001) as f64);
+              voices[slot] = Voice {
+                sample: Some(sample),
+                position: 0.0,
+                rate,
+                gain,
+                pan_left,
+                pan_right,
+                active: true,
+              };
+            }
+            MixerCommand::StopAll => {
+              for v in voices.iter_mut() {
+                v.active = false;
+                v.sample = None;
+              }
+            }
+          }
         }
-        let target_ch = cb_state.test_tone_channel.load(Ordering::Relaxed);
-        if target_ch >= n_ch {
-          return;
-        }
-        if target_ch != last_ch {
-          phase = 0.0;
-          last_ch = target_ch;
-        }
-        let freq = cb_state.test_tone_freq_mhz.load(Ordering::Relaxed) as f32 / 1000.0;
-        let dphase = std::f32::consts::TAU * freq / sr;
 
-        let frames = buf.len() / n_ch;
-        for frame in 0..frames {
-          let sample = phase.sin() * 0.2;
-          buf[frame * n_ch + target_ch] = sample;
-          phase += dphase;
-          if phase > std::f32::consts::TAU {
-            phase -= std::f32::consts::TAU;
+        let frames = buf.len() / n_ch.max(1);
+
+        // 2) Test tone (additive).
+        if cb_state.test_tone_enabled.load(Ordering::Acquire) {
+          let target_ch = cb_state.test_tone_channel.load(Ordering::Relaxed);
+          if target_ch < n_ch {
+            if target_ch != last_ch {
+              phase = 0.0;
+              last_ch = target_ch;
+            }
+            let freq =
+              cb_state.test_tone_freq_mhz.load(Ordering::Relaxed) as f32 / 1000.0;
+            let dphase = std::f32::consts::TAU * freq / sr_f32;
+            for frame in 0..frames {
+              let s = phase.sin() * 0.2;
+              buf[frame * n_ch + target_ch] += s;
+              phase += dphase;
+              if phase > std::f32::consts::TAU {
+                phase -= std::f32::consts::TAU;
+              }
+            }
+          }
+        }
+
+        // 3) Voices — render to channels 0 + 1 (mono devices: channel 0).
+        if n_ch >= 2 {
+          for frame in 0..frames {
+            let mut l = 0.0f32;
+            let mut r = 0.0f32;
+            for v in voices.iter_mut() {
+              if !v.active {
+                continue;
+              }
+              let sample = match v.sample.as_ref() {
+                Some(s) => s.clone(),
+                None => {
+                  v.active = false;
+                  continue;
+                }
+              };
+              let pos = v.position;
+              let i0 = pos.floor() as usize;
+              let frame_count = sample.frame_count();
+              if i0 + 1 >= frame_count {
+                v.active = false;
+                v.sample = None;
+                continue;
+              }
+              let frac = (pos - i0 as f64) as f32;
+              let inv = 1.0 - frac;
+              let (ls, rs) = if sample.channels == 1 {
+                let s0 = sample.frames[i0];
+                let s1 = sample.frames[i0 + 1];
+                let interp = s0 * inv + s1 * frac;
+                (interp, interp)
+              } else {
+                let i0s = i0 * 2;
+                let i1s = (i0 + 1) * 2;
+                let s0l = sample.frames[i0s];
+                let s1l = sample.frames[i1s];
+                let s0r = sample.frames[i0s + 1];
+                let s1r = sample.frames[i1s + 1];
+                (s0l * inv + s1l * frac, s0r * inv + s1r * frac)
+              };
+              l += ls * v.gain * v.pan_left;
+              r += rs * v.gain * v.pan_right;
+              v.position += v.rate;
+            }
+            buf[frame * n_ch + 0] += l;
+            buf[frame * n_ch + 1] += r;
+          }
+        } else if n_ch == 1 {
+          for frame in 0..frames {
+            let mut m = 0.0f32;
+            for v in voices.iter_mut() {
+              if !v.active {
+                continue;
+              }
+              let sample = match v.sample.as_ref() {
+                Some(s) => s.clone(),
+                None => {
+                  v.active = false;
+                  continue;
+                }
+              };
+              let pos = v.position;
+              let i0 = pos.floor() as usize;
+              let frame_count = sample.frame_count();
+              if i0 + 1 >= frame_count {
+                v.active = false;
+                v.sample = None;
+                continue;
+              }
+              let frac = (pos - i0 as f64) as f32;
+              let inv = 1.0 - frac;
+              let mono = if sample.channels == 1 {
+                let s0 = sample.frames[i0];
+                let s1 = sample.frames[i0 + 1];
+                s0 * inv + s1 * frac
+              } else {
+                let i0s = i0 * 2;
+                let i1s = (i0 + 1) * 2;
+                let l =
+                  sample.frames[i0s] * inv + sample.frames[i1s] * frac;
+                let r = sample.frames[i0s + 1] * inv
+                  + sample.frames[i1s + 1] * frac;
+                0.5 * (l + r)
+              };
+              let pan_avg = 0.5 * (v.pan_left + v.pan_right);
+              m += mono * v.gain * pan_avg;
+              v.position += v.rate;
+            }
+            buf[frame * n_ch] += m;
           }
         }
       },
@@ -393,4 +762,29 @@ pub fn audio_test_tone(channel: Option<usize>, frequency_hz: Option<f32>) -> Res
   let freq = frequency_hz.unwrap_or(440.0);
   engine().set_test_tone(channel, freq);
   Ok(())
+}
+
+#[tauri::command]
+pub fn audio_load_sample(path: String) -> Result<SampleLoadInfo, String> {
+  engine().load_sample(path)
+}
+
+#[tauri::command]
+pub fn audio_trigger_sample(
+  path: String,
+  gain: Option<f32>,
+  pan: Option<f32>,
+  pitch: Option<f32>,
+) -> Result<(), String> {
+  engine().trigger_sample(
+    path,
+    gain.unwrap_or(1.0),
+    pan.unwrap_or(0.0),
+    pitch.unwrap_or(1.0),
+  )
+}
+
+#[tauri::command]
+pub fn audio_stop_all() -> Result<(), String> {
+  engine().stop_all_voices()
 }

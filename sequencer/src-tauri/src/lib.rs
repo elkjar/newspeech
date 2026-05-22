@@ -137,6 +137,9 @@ pub fn run() {
       audio::audio_close_device,
       audio::audio_status,
       audio::audio_test_tone,
+      audio::audio_load_sample,
+      audio::audio_trigger_sample,
+      audio::audio_stop_all,
     ])
     .setup(|app| {
       #[cfg(target_os = "macos")]
