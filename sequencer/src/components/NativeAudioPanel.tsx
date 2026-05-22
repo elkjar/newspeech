@@ -13,6 +13,7 @@ import {
   loadSample,
   triggerSample,
   stopAllVoices,
+  setReportedChannelCount,
   type NativeDeviceInfo,
   type NativeSampleLoadInfo,
 } from '../audio/nativeEngine';
@@ -87,6 +88,7 @@ export function NativeAudioPanel() {
       setIsOpen(true);
       setOpenedChannels(info.channels);
       setOpenedSampleRate(info.sampleRate);
+      setReportedChannelCount(info.channels);
       setStatusText(
         `open · ${info.channels}ch · ${info.sampleRate} Hz · buf ${info.bufferSize || 'default'}`,
       );
@@ -108,6 +110,7 @@ export function NativeAudioPanel() {
     setActiveToneChannel(null);
     setOpenedChannels(0);
     setOpenedSampleRate(0);
+    setReportedChannelCount(0);
     setStatusText('closed');
   };
 
@@ -130,6 +133,7 @@ export function NativeAudioPanel() {
       const s = await getAudioStatus();
       setOpenedChannels(s.channels);
       setOpenedSampleRate(s.sampleRate);
+      setReportedChannelCount(s.channels);
       setStatusText(
         s.channels > 0
           ? `open · ${s.channels}ch · ${s.sampleRate} Hz`

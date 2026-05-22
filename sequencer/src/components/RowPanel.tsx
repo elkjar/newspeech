@@ -1,4 +1,5 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
+import { isTauri } from '@tauri-apps/api/core';
 import {
   useSequencerStore,
   STEP_RATES,
@@ -7,7 +8,12 @@ import {
   type Track as TrackData,
   type StepRate,
   type PitchInterp,
+  type TrackOutput,
 } from '../state/store';
+import {
+  getReportedChannelCount,
+  subscribeReportedChannelCount,
+} from '../audio/nativeEngine';
 import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 import type { MIDIOutputInfo } from '../audio/midiOut';
 import { getInstrument, sourceIsMelodic } from '../instruments/library';
@@ -43,7 +49,12 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const setTrackPitchInterp = useSequencerStore((s) => s.setTrackPitchInterp);
   const setTrackOctave = useSequencerStore((s) => s.setTrackOctave);
   const setTrackArpOn = useSequencerStore((s) => s.setTrackArpOn);
+  const setTrackOutput = useSequencerStore((s) => s.setTrackOutput);
   const fireTrackProgram = useSequencerStore((s) => s.fireTrackProgram);
+  const nativeChannels = useSyncExternalStore(
+    subscribeReportedChannelCount,
+    getReportedChannelCount,
+  );
   const globalDeviceId = useSequencerStore((s) => s.midiOutDeviceId);
   const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
   const instrument = instrumentId ? getInstrument(instrumentId) : undefined;
@@ -207,8 +218,66 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
           )}
         </>
       )}
+      {isTauri() && track.source.kind === 'voice' && (
+        <>
+          <div className="self-stretch w-px bg-white/15 mx-1" />
+          <label className="flex flex-col items-start gap-1">
+            <span className="text-[9px] uppercase tracking-widest text-white/40">out</span>
+            <select
+              value={`${track.output.stereo ? 's' : 'm'}${track.output.firstChannel}`}
+              onChange={(e) => {
+                const v = e.target.value;
+                const stereo = v.startsWith('s');
+                const firstChannel = parseInt(v.slice(1), 10);
+                if (!Number.isFinite(firstChannel)) return;
+                setTrackOutput(track.id, { firstChannel, stereo });
+              }}
+              disabled={nativeChannels <= 0}
+              style={{ height: CELL }}
+              className="select-chevron bg-transparent border border-white/15 pl-2 pr-6 text-[12px] tabular-nums focus:outline-none focus:border-white text-white"
+              title={
+                nativeChannels > 0
+                  ? 'physical output. stereo pair routes L/R with pan; mono sums L+R into one channel (pan ignored).'
+                  : 'open the audio device in settings → native audio first'
+              }
+            >
+              {outputOptions(nativeChannels, track.output).map((opt) => (
+                <option key={opt.value} value={opt.value} className="bg-[#050505]">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
     </div>
   );
+}
+
+function outputOptions(
+  channels: number,
+  current: TrackOutput,
+): Array<{ value: string; label: string }> {
+  const opts: Array<{ value: string; label: string }> = [];
+  for (let i = 0; i + 1 < channels; i += 2) {
+    opts.push({ value: `s${i}`, label: `${i + 1}-${i + 2}` });
+  }
+  for (let i = 0; i < channels; i++) {
+    opts.push({ value: `m${i}`, label: `${i + 1}` });
+  }
+  // If the saved assignment is out of range for the active device, keep
+  // it in the list so the select can display the real value. Fixing it
+  // is a user choice, not a silent rewrite.
+  const currentValue = `${current.stereo ? 's' : 'm'}${current.firstChannel}`;
+  if (!opts.some((o) => o.value === currentValue)) {
+    opts.unshift({
+      value: currentValue,
+      label: current.stereo
+        ? `${current.firstChannel + 1}-${current.firstChannel + 2}`
+        : `${current.firstChannel + 1}`,
+    });
+  }
+  return opts;
 }
 
 function NumField({

@@ -152,16 +152,55 @@ export async function loadSample(path: string): Promise<NativeSampleLoadInfo> {
 
 export async function triggerSample(
   path: string,
-  opts: { gain?: number; pan?: number; pitch?: number } = {},
+  opts: {
+    gain?: number;
+    pan?: number;
+    pitch?: number;
+    // 0-indexed physical output channel. With outStereo=true this is L
+    // and outFirst+1 is R; with outStereo=false the voice sums to this
+    // single channel (pan ignored).
+    outFirst?: number;
+    outStereo?: boolean;
+  } = {},
 ): Promise<void> {
   await invoke<void>('audio_trigger_sample', {
     path,
     gain: opts.gain ?? null,
     pan: opts.pan ?? null,
     pitch: opts.pitch ?? null,
+    outFirst: opts.outFirst ?? null,
+    outStereo: opts.outStereo ?? null,
   });
 }
 
 export async function stopAllVoices(): Promise<void> {
   await invoke<void>('audio_stop_all');
+}
+
+// --- reported channel count (for UI routing pickers) ---
+//
+// NativeAudioPanel updates this whenever it opens/closes the device or
+// runs a status refresh; consumers (per-track output picker) subscribe.
+// Tiny external-store so the Track row dropdown can render options for
+// the actual hardware channel count without each Track polling on its
+// own. Zero when no device is open.
+
+let _reportedChannels = 0;
+const channelListeners = new Set<() => void>();
+
+export function setReportedChannelCount(n: number): void {
+  if (n === _reportedChannels) return;
+  _reportedChannels = n;
+  for (const cb of channelListeners) cb();
+}
+
+export function getReportedChannelCount(): number {
+  return _reportedChannels;
+}
+
+export function subscribeReportedChannelCount(cb: () => void): () => void {
+  channelListeners.add(cb);
+  return () => {
+    channelListeners.delete(cb);
+  };
 }

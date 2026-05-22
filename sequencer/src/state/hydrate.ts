@@ -4,6 +4,7 @@ import type {
   TrackSection,
   StepRate,
   TrackMidi,
+  TrackOutput,
   BankSlot,
   BankKind,
   BankMacros,
@@ -12,6 +13,7 @@ import type {
 import {
   STEP_RATES,
   DEFAULT_TRACK_MIDI,
+  DEFAULT_TRACK_OUTPUT,
   BANK_SLOT_COUNT,
   PITCH_INTERPS,
   snapshotInstrumentMidi,
@@ -294,8 +296,21 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
       hydratePitchInterp((saved as { pitchInterp?: unknown }).pitchInterp) ?? 'semitones',
     octave: hydrateOctave((saved as { octave?: unknown }).octave) ?? 0,
     monophonic: typeof saved.monophonic === 'boolean' ? saved.monophonic : false,
-    engine: saved.engine === 'native' ? 'native' : 'web',
+    output: hydrateTrackOutput((saved as { output?: unknown }).output),
   };
+}
+
+function hydrateTrackOutput(raw: unknown): TrackOutput {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TRACK_OUTPUT };
+  const r = raw as { firstChannel?: unknown; stereo?: unknown };
+  const firstChannel =
+    typeof r.firstChannel === 'number' &&
+    Number.isFinite(r.firstChannel) &&
+    r.firstChannel >= 0
+      ? Math.floor(r.firstChannel)
+      : DEFAULT_TRACK_OUTPUT.firstChannel;
+  const stereo = typeof r.stereo === 'boolean' ? r.stereo : DEFAULT_TRACK_OUTPUT.stereo;
+  return { firstChannel, stereo };
 }
 
 // Walk hydrated tracks in array order, filling in position-based role
@@ -384,7 +399,7 @@ export function blankTrack(t: Track): Track {
     pitchInterp: 'semitones',
     octave: 0,
     monophonic: false,
-    engine: 'web',
+    output: { ...DEFAULT_TRACK_OUTPUT },
   };
 }
 
@@ -426,7 +441,7 @@ export function emptyMelodicTrack(id: string, slot: number): Track {
     // Slot 1 (bass-by-convention) defaults to monophonic; everything else
     // is polyphonic. User can flip per-track later via UI when that lands.
     monophonic: slot === 1,
-    engine: 'web',
+    output: { ...DEFAULT_TRACK_OUTPUT },
   };
 }
 

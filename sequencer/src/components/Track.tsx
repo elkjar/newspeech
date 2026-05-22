@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { isTauri } from '@tauri-apps/api/core';
 import {
   useSequencerStore,
   RATE_STRIDE,
@@ -58,6 +57,7 @@ function displayStep(
   return authored;
 }
 
+
 export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: number }) {
   // Subscribe to this track's own row only. Per-row identity is preserved by
   // the store's setters (`tracks.map(t => t.id === id ? {...t} : t)`), so
@@ -81,7 +81,6 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
   const setTrackPage = useSequencerStore((s) => s.setTrackPage);
   const clearTrack = useSequencerStore((s) => s.clearTrack);
   const setTrackLockTiming = useSequencerStore((s) => s.setTrackLockTiming);
-  const setTrackEngine = useSequencerStore((s) => s.setTrackEngine);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [newInstrumentDefaultRole, setNewInstrumentDefaultRole] =
@@ -229,32 +228,6 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
           }
           title="solo"
         />
-        {isTauri() && track.source.kind === 'voice' && (
-          <button
-            type="button"
-            onClick={() =>
-              setTrackEngine(track.id, track.engine === 'native' ? 'web' : 'native')
-            }
-            style={{ width: STEP_SIZE, height: STEP_SIZE }}
-            className="flex items-center justify-center bg-transparent transition-colors group"
-            title={
-              track.engine === 'native'
-                ? 'native cpal engine (dry → outs 1-2 of audio device). click to revert to web audio.'
-                : 'click to route this track to the native cpal engine (dry, outs 1-2 of audio device — no per-track filter / FX yet)'
-            }
-            aria-pressed={track.engine === 'native'}
-          >
-            <span
-              className={
-                track.engine === 'native'
-                  ? 'text-white text-[10px] font-mono uppercase tracking-widest'
-                  : 'text-white/30 group-hover:text-white/70 text-[10px] font-mono uppercase tracking-widest transition-colors'
-              }
-            >
-              n
-            </span>
-          </button>
-        )}
       </div>
       </div>
 

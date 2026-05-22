@@ -123,6 +123,12 @@ struct Voice {
   gain: f32,
   pan_left: f32,
   pan_right: f32,
+  // Output routing. out_first is the first physical channel (0-indexed).
+  // out_stereo=true uses out_first + out_first+1 (L/R with pan applied).
+  // out_stereo=false sums L+R*0.5 into out_first only (pan ignored — pan is
+  // a stereo concept; on a mono out it'd just attenuate).
+  out_first: usize,
+  out_stereo: bool,
   active: bool,
 }
 
@@ -135,6 +141,8 @@ impl Default for Voice {
       gain: 0.0,
       pan_left: 0.0,
       pan_right: 0.0,
+      out_first: 0,
+      out_stereo: true,
       active: false,
     }
   }
@@ -144,8 +152,10 @@ enum MixerCommand {
   Trigger {
     sample: Arc<SampleData>,
     gain: f32,
-    pan: f32,   // -1..1
-    pitch: f32, // 1.0 = native rate
+    pan: f32,        // -1..1 (ignored when out_stereo=false)
+    pitch: f32,      // 1.0 = native rate
+    out_first: u32,  // first physical channel, 0-indexed
+    out_stereo: bool,
   },
   StopAll,
 }
@@ -306,6 +316,8 @@ impl AudioEngine {
     gain: f32,
     pan: f32,
     pitch: f32,
+    out_first: u32,
+    out_stereo: bool,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -321,6 +333,8 @@ impl AudioEngine {
       gain,
       pan,
       pitch,
+      out_first,
+      out_stereo,
     };
     let mut guard = self
       .state
@@ -496,6 +510,8 @@ fn build_stream(
               gain,
               pan,
               pitch,
+              out_first,
+              out_stereo,
             } => {
               // Prefer an inactive slot; if all are busy, steal one
               // round-robin via steal_cursor.
@@ -520,6 +536,8 @@ fn build_stream(
                 gain,
                 pan_left,
                 pan_right,
+                out_first: out_first as usize,
+                out_stereo,
                 active: true,
               };
             }
@@ -556,95 +574,64 @@ fn build_stream(
           }
         }
 
-        // 3) Voices — render to channels 0 + 1 (mono devices: channel 0).
-        if n_ch >= 2 {
-          for frame in 0..frames {
-            let mut l = 0.0f32;
-            let mut r = 0.0f32;
-            for v in voices.iter_mut() {
-              if !v.active {
-                continue;
-              }
-              let sample = match v.sample.as_ref() {
-                Some(s) => s.clone(),
-                None => {
-                  v.active = false;
-                  continue;
-                }
-              };
-              let pos = v.position;
-              let i0 = pos.floor() as usize;
-              let frame_count = sample.frame_count();
-              if i0 + 1 >= frame_count {
-                v.active = false;
-                v.sample = None;
-                continue;
-              }
-              let frac = (pos - i0 as f64) as f32;
-              let inv = 1.0 - frac;
-              let (ls, rs) = if sample.channels == 1 {
-                let s0 = sample.frames[i0];
-                let s1 = sample.frames[i0 + 1];
-                let interp = s0 * inv + s1 * frac;
-                (interp, interp)
-              } else {
-                let i0s = i0 * 2;
-                let i1s = (i0 + 1) * 2;
-                let s0l = sample.frames[i0s];
-                let s1l = sample.frames[i1s];
-                let s0r = sample.frames[i0s + 1];
-                let s1r = sample.frames[i1s + 1];
-                (s0l * inv + s1l * frac, s0r * inv + s1r * frac)
-              };
-              l += ls * v.gain * v.pan_left;
-              r += rs * v.gain * v.pan_right;
-              v.position += v.rate;
-            }
-            buf[frame * n_ch + 0] += l;
-            buf[frame * n_ch + 1] += r;
+        // 3) Voices — per-voice routing.
+        //   • Stereo voice: writes interpolated L/R to out_first / out_first+1
+        //     with equal-power pan, channel bounds checked.
+        //   • Mono voice:  writes 0.5×(L+R) sum to out_first only; pan is
+        //     ignored (it's a stereo concept — on a mono out it would just
+        //     attenuate). Bass / kick / centered leads ride mono pairs.
+        // Per-channel buffer-index math stays inside the per-voice branch so
+        // we never blindly write past n_ch on a smaller-than-expected device.
+        for v in voices.iter_mut() {
+          if !v.active {
+            continue;
           }
-        } else if n_ch == 1 {
-          for frame in 0..frames {
-            let mut m = 0.0f32;
-            for v in voices.iter_mut() {
-              if !v.active {
-                continue;
-              }
-              let sample = match v.sample.as_ref() {
-                Some(s) => s.clone(),
-                None => {
-                  v.active = false;
-                  continue;
-                }
-              };
-              let pos = v.position;
-              let i0 = pos.floor() as usize;
-              let frame_count = sample.frame_count();
-              if i0 + 1 >= frame_count {
-                v.active = false;
-                v.sample = None;
-                continue;
-              }
-              let frac = (pos - i0 as f64) as f32;
-              let inv = 1.0 - frac;
-              let mono = if sample.channels == 1 {
-                let s0 = sample.frames[i0];
-                let s1 = sample.frames[i0 + 1];
-                s0 * inv + s1 * frac
-              } else {
-                let i0s = i0 * 2;
-                let i1s = (i0 + 1) * 2;
-                let l =
-                  sample.frames[i0s] * inv + sample.frames[i1s] * frac;
-                let r = sample.frames[i0s + 1] * inv
-                  + sample.frames[i1s + 1] * frac;
-                0.5 * (l + r)
-              };
-              let pan_avg = 0.5 * (v.pan_left + v.pan_right);
-              m += mono * v.gain * pan_avg;
-              v.position += v.rate;
+          let sample = match v.sample.as_ref() {
+            Some(s) => s.clone(),
+            None => {
+              v.active = false;
+              continue;
             }
-            buf[frame * n_ch] += m;
+          };
+          for frame in 0..frames {
+            let pos = v.position;
+            let i0 = pos.floor() as usize;
+            let frame_count = sample.frame_count();
+            if i0 + 1 >= frame_count {
+              v.active = false;
+              v.sample = None;
+              break;
+            }
+            let frac = (pos - i0 as f64) as f32;
+            let inv = 1.0 - frac;
+            let (ls, rs) = if sample.channels == 1 {
+              let s0 = sample.frames[i0];
+              let s1 = sample.frames[i0 + 1];
+              let interp = s0 * inv + s1 * frac;
+              (interp, interp)
+            } else {
+              let i0s = i0 * 2;
+              let i1s = (i0 + 1) * 2;
+              let s0l = sample.frames[i0s];
+              let s1l = sample.frames[i1s];
+              let s0r = sample.frames[i0s + 1];
+              let s1r = sample.frames[i1s + 1];
+              (s0l * inv + s1l * frac, s0r * inv + s1r * frac)
+            };
+            if v.out_stereo {
+              let l_idx = v.out_first;
+              let r_idx = v.out_first + 1;
+              if l_idx < n_ch {
+                buf[frame * n_ch + l_idx] += ls * v.gain * v.pan_left;
+              }
+              if r_idx < n_ch {
+                buf[frame * n_ch + r_idx] += rs * v.gain * v.pan_right;
+              }
+            } else if v.out_first < n_ch {
+              let mono = 0.5 * (ls + rs);
+              buf[frame * n_ch + v.out_first] += mono * v.gain;
+            }
+            v.position += v.rate;
           }
         }
       },
@@ -775,12 +762,16 @@ pub fn audio_trigger_sample(
   gain: Option<f32>,
   pan: Option<f32>,
   pitch: Option<f32>,
+  out_first: Option<u32>,
+  out_stereo: Option<bool>,
 ) -> Result<(), String> {
   engine().trigger_sample(
     path,
     gain.unwrap_or(1.0),
     pan.unwrap_or(0.0),
     pitch.unwrap_or(1.0),
+    out_first.unwrap_or(0),
+    out_stereo.unwrap_or(true),
   )
 }
 

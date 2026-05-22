@@ -21,6 +21,7 @@ import {
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
 import { isNativeAudioAvailable, triggerSample } from './audio/nativeEngine';
+import { getAudioContext } from './audio/audioContext';
 import {
   initMIDIOut,
   sendMIDINote,
@@ -386,62 +387,100 @@ export function App() {
               // exactly M tones, each occupying (N/M) step-durations.
               const totalDuration = ev.stepDuration * ev.tieLength;
               const sub = totalDuration / n;
-              for (let i = 0; i < n; i++) {
-                samplePlayer.trigger(
-                  ev.voice,
-                  ev.when + i * sub,
-                  ev.velocity,
-                  ev.midi,
-                  ev.gate,
-                  sub,
-                  [ev.voiceIntervals[i]],
-                  ev.pan,
-                  ev.trackId,
-                  // Force monophonic per arp tone so each new note chokes
-                  // the previous one's natural decay. Without this, sample
-                  // releases overlap and it feels like a strum, not an arp.
-                  true,
-                  ev.section,
-                );
+              if (isNativeAudioAvailable()) {
+                // Native arp — setTimeout each tone relative to the JS
+                // event loop. Time precision is bounded by setTimeout
+                // (~5 ms jitter); Phase 5 will move dispatch into the
+                // audio thread for sample-accurate spread. pickNativeSample
+                // is called NOW so the round-robin counter advances in
+                // arp order regardless of when each timeout fires.
+                const out = evTrack?.output;
+                const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
+                const trackGain = evTrack?.gain ?? 1;
+                const nowAudio = getAudioContext().currentTime;
+                for (let i = 0; i < n; i++) {
+                  const fireAt = ev.when + i * sub;
+                  const delayMs = Math.max(0, (fireAt - nowAudio) * 1000);
+                  const interval = ev.voiceIntervals[i];
+                  const targetMidi =
+                    ev.midi !== undefined ? ev.midi + interval : undefined;
+                  const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
+                  if (!pick) continue;
+                  const fire = () => {
+                    void triggerSample(pick.path, {
+                      gain: ev.velocity * pick.voiceGain * trackGain,
+                      pan,
+                      pitch: pick.pitch,
+                      outFirst: out?.firstChannel ?? 0,
+                      outStereo: out?.stereo ?? true,
+                    });
+                  };
+                  if (delayMs <= 1) fire();
+                  else setTimeout(fire, delayMs);
+                }
+              } else {
+                for (let i = 0; i < n; i++) {
+                  samplePlayer.trigger(
+                    ev.voice,
+                    ev.when + i * sub,
+                    ev.velocity,
+                    ev.midi,
+                    ev.gate,
+                    sub,
+                    [ev.voiceIntervals[i]],
+                    ev.pan,
+                    ev.trackId,
+                    // Force monophonic per arp tone so each new note chokes
+                    // the previous one's natural decay. Without this,
+                    // sample releases overlap and it feels like a strum,
+                    // not an arp.
+                    true,
+                    ev.section,
+                  );
+                }
               }
-            } else {
-              // Phase 1b: per-track native engine bypass. When the track is
-              // flipped to 'native' AND the trigger is a single-tone (chord
-              // triggers stay on the web path for now — no native polyphony
-              // helper yet), route to the cpal mixer. Native plays dry on
-              // device channels 1-2; no per-track filter / FX / envelope /
-              // detune jitter. Sequencer integration in Phase 4 wires
-              // per-track output routing; Phase 7-8 brings FX parity.
-              const tonesCount = ev.voiceIntervals?.length ?? 0;
-              const nativeRoute =
-                isNativeAudioAvailable() &&
-                evTrack?.engine === 'native' &&
-                tonesCount <= 1;
-              if (nativeRoute) {
-                const interval = ev.voiceIntervals?.[0] ?? 0;
+            } else if (isNativeAudioAvailable()) {
+              // Native-only audio path (Tauri build). Multi-tone triggers
+              // fire one native voice per interval — all simultaneous, i.e.
+              // a chord. Arp time-spread isn't preserved here (the arp
+              // branch above also collapses to "all tones at step time"
+              // until the audio-thread scheduler in Phase 5 lets us
+              // dispatch native triggers at sample-accurate future times).
+              const intervals =
+                ev.voiceIntervals && ev.voiceIntervals.length > 0
+                  ? ev.voiceIntervals
+                  : [0];
+              const out = evTrack?.output;
+              const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
+              const trackGain = evTrack?.gain ?? 1;
+              for (const interval of intervals) {
                 const targetMidi =
                   ev.midi !== undefined ? ev.midi + interval : undefined;
                 const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
-                if (pick) {
-                  const gain = ev.velocity * pick.voiceGain * (evTrack?.gain ?? 1);
-                  const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
-                  void triggerSample(pick.path, { gain, pan, pitch: pick.pitch });
-                }
-              } else {
-                samplePlayer.trigger(
-                  ev.voice,
-                  ev.when,
-                  ev.velocity,
-                  ev.midi,
-                  ev.gate,
-                  ev.stepDuration,
-                  ev.voiceIntervals,
-                  ev.pan,
-                  ev.trackId,
-                  ev.monophonic,
-                  ev.section,
-                );
+                if (!pick) continue;
+                void triggerSample(pick.path, {
+                  gain: ev.velocity * pick.voiceGain * trackGain,
+                  pan,
+                  pitch: pick.pitch,
+                  outFirst: out?.firstChannel ?? 0,
+                  outStereo: out?.stereo ?? true,
+                });
               }
+            } else {
+              // Web build — original Web Audio path.
+              samplePlayer.trigger(
+                ev.voice,
+                ev.when,
+                ev.velocity,
+                ev.midi,
+                ev.gate,
+                ev.stepDuration,
+                ev.voiceIntervals,
+                ev.pan,
+                ev.trackId,
+                ev.monophonic,
+                ev.section,
+              );
             }
             break;
           }
@@ -454,36 +493,29 @@ export function App() {
     scheduler.setBpm(bpm);
   }, [bpm]);
 
-  // Phase 1b: preload sample paths into the native cpal registry whenever
-  // a track flips to engine='native' or its voice changes while native.
-  // Without preload, the first trigger after the flip incurs ~50 ms of
-  // invoke + WAV decode latency on the audio path and lands as an audible
-  // click delay.
+  // Preload sample paths into the native cpal registry for every voice
+  // track that lands in state. Idempotent (Rust caches by path). Without
+  // preload, the first trigger on a freshly-assigned voice incurs invoke
+  // + WAV-decode latency on the audio path and lands as an audible click
+  // delay. Tauri-only — the web build skips this entirely.
   useEffect(() => {
     if (!isNativeAudioAvailable()) return;
     const preload = (voiceId: string) => {
       void samplePlayer.preloadNativeForVoice(voiceId);
     };
-    // Initial pass: any native tracks already in state (reopened project).
     for (const t of useSequencerStore.getState().tracks) {
-      if (t.engine === 'native' && t.source.kind === 'voice') {
-        preload(t.source.id);
-      }
+      if (t.source.kind === 'voice') preload(t.source.id);
     }
-    // Watch for changes — fire only on engine flips and on voice swaps
-    // while native. Comparing by track id survives length / order changes
-    // from initProject / applyPreset.
     return useSequencerStore.subscribe((state, prev) => {
       const prevById = new Map(prev.tracks.map((t) => [t.id, t] as const));
       for (const cur of state.tracks) {
-        if (cur.engine !== 'native' || cur.source.kind !== 'voice') continue;
+        if (cur.source.kind !== 'voice') continue;
         const prv = prevById.get(cur.id);
-        const isNewlyNative =
+        const sourceChanged =
           !prv ||
-          prv.engine !== 'native' ||
           prv.source.kind !== 'voice' ||
           prv.source.id !== cur.source.id;
-        if (isNewlyNative) preload(cur.source.id);
+        if (sourceChanged) preload(cur.source.id);
       }
     });
   }, []);

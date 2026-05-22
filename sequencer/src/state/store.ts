@@ -175,14 +175,20 @@ export interface Track {
   // note triggers are unaffected. Pattern = "up" (chord intervals in
   // their natural order); range / pattern / gate selection deferred.
   arpConfig?: { on: boolean };
-  // Audio engine for sample triggers on this track. 'web' = existing
-  // Web Audio path (samplePlayer.trigger → AudioBufferSource → track
-  // filter / FX / master). 'native' = cpal Rust mixer (dry, channels 1-2
-  // of the open hardware device — no per-track filter / FX / envelope
-  // yet; Phase 4 wires per-track output routing, later phases bring FX
-  // parity). Tauri-only field; on the web build only 'web' is meaningful.
-  engine: 'web' | 'native';
+  // Physical output assignment (Tauri app only — the web build's stereo
+  // mix bus ignores this). 0-indexed firstChannel; stereo=true routes
+  // L→firstChannel + R→firstChannel+1 with the track's pan applied;
+  // stereo=false sums L+R*0.5 into firstChannel with pan ignored
+  // (bass / kick on a single mono out is the canonical use).
+  output: TrackOutput;
 }
+
+export interface TrackOutput {
+  firstChannel: number;
+  stereo: boolean;
+}
+
+export const DEFAULT_TRACK_OUTPUT: TrackOutput = { firstChannel: 0, stereo: true };
 
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
   channel: 0,
@@ -529,7 +535,7 @@ interface SequencerState {
   setTrackLockTiming: (trackId: string, lock: boolean) => void;
   setTrackRowRatchet: (trackId: string, rowRatchet: number) => void;
   setTrackArpOn: (trackId: string, on: boolean) => void;
-  setTrackEngine: (trackId: string, engine: 'web' | 'native') => void;
+  setTrackOutput: (trackId: string, output: TrackOutput) => void;
   clearTrack: (trackId: string) => void;
   commitMutationOverlay: () => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
@@ -1235,10 +1241,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         t.id === trackId ? { ...t, arpConfig: { on } } : t
       ),
     })),
-  setTrackEngine: (trackId, engine) =>
+  setTrackOutput: (trackId, output) =>
     set((state) => ({
       tracks: state.tracks.map((t) =>
-        t.id === trackId ? { ...t, engine } : t
+        t.id === trackId ? { ...t, output } : t
       ),
     })),
   clearTrack: (trackId) =>

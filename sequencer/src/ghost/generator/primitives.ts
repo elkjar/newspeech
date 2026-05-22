@@ -176,7 +176,7 @@ export function emptyTrackForCompose(t: Track): Track {
     pitchInterp: 'semitones',
     octave: 0,
     monophonic: false,
-    engine: 'web',
+    output: { firstChannel: 0, stereo: true },
   };
 }
 
