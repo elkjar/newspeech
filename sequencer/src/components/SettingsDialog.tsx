@@ -4,7 +4,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
   getConfiguredRecordingsDir,
   setConfiguredRecordingsDir,
-} from '../audio/recorder';
+} from '../audio/recorderConfig';
 import {
   getConfiguredUserSamplesDir,
   setConfiguredUserSamplesDir,

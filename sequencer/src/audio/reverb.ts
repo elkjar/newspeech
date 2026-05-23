@@ -14,17 +14,13 @@ import { getGlitchNode } from './glitch';
 export interface ReverbParams {
   // 0..1 → tank feedback (krt) 0.30..0.92
   size: number;
-  // wet/dry crossfade
+  // wet/dry crossfade. mix=0 is the bypass — no separate flag.
   mix: number;
   // 0..0.85 — allpass coefficient across input diffusers + tank APs.
   // Higher = thicker smear, more late-reflection density.
   diffusion: number;
   // 0..1 — HF rolloff in the feedback path. 0 = bright, 1 = dark.
   damping: number;
-  // Skip the reverb DSP entirely. Independent of the global FX bus
-  // bypass (which kills the whole chain when other FX land); this one
-  // just removes reverb from the chain so e.g. tape/glitch stay live.
-  bypass: boolean;
 }
 
 export const DEFAULT_REVERB_PARAMS: ReverbParams = {
@@ -33,7 +29,6 @@ export const DEFAULT_REVERB_PARAMS: ReverbParams = {
   // 0.735 here = 0.625 inside the .dsp (its native default; range 0..0.85).
   diffusion: 0.735,
   damping: 0.4,
-  bypass: false,
 };
 
 const PARAM_RAMP = 0.05;

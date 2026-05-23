@@ -26,7 +26,9 @@ import { DEFAULT_SATURATION_PARAMS, type SaturationParams } from '../audio/satur
 import { DEFAULT_MASTER_PARAMS, type MasterParams } from '../audio/master';
 import { resetChordContext } from '../audio/chordContext';
 import { resetPadDrift } from '../audio/padState';
-import { resetTrackFilters } from '../audio/trackFilter';
+// resetTrackFilters lives in the WebAudio chain (`./audio/trackFilter`).
+// Loaded via dynamic import below so the Tauri build (where per-track
+// filters are in Rust) doesn't statically bundle it.
 
 interface PersistedState {
   version: number;
@@ -153,7 +155,6 @@ export function hydrateReverb(v: unknown): ReverbParams {
     mix: clamp01(r.mix, DEFAULT_REVERB_PARAMS.mix),
     diffusion: clamp01(r.diffusion, DEFAULT_REVERB_PARAMS.diffusion),
     damping: clamp01(r.damping, DEFAULT_REVERB_PARAMS.damping),
-    bypass: typeof r.bypass === 'boolean' ? r.bypass : DEFAULT_REVERB_PARAMS.bypass,
   };
 }
 
@@ -161,7 +162,6 @@ export function hydrateSaturation(v: unknown): SaturationParams {
   const s = (v && typeof v === 'object' ? v : {}) as Partial<SaturationParams>;
   return {
     preDrive: clamp01(s.preDrive, DEFAULT_SATURATION_PARAMS.preDrive),
-    bypass: typeof s.bypass === 'boolean' ? s.bypass : DEFAULT_SATURATION_PARAMS.bypass,
   };
 }
 
@@ -477,7 +477,12 @@ export function importProject(json: string): boolean {
   // Per-track filter graphs keyed by trackId — same reasoning. Disconnect +
   // clear so the loaded project starts with fresh filters rather than
   // inheriting cutoff/resonance/ring from the prior session's audio graph.
-  resetTrackFilters();
+  // Web only: native track filters live in Rust and don't carry state across
+  // project loads. Fire-and-forget — caller's load path doesn't depend on
+  // the reset completing synchronously.
+  void import('../audio/trackFilter')
+    .then((m) => m.resetTrackFilters())
+    .catch(() => { /* webChain not loaded yet — nothing to reset */ });
   return true;
 }
 

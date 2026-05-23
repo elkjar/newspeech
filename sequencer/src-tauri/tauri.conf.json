@@ -36,6 +36,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../public/samples": "samples"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

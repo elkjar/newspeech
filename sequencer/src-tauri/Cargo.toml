@@ -29,6 +29,7 @@ midir = "0.10"
 cpal = "0.15"
 hound = "3.5"
 ringbuf = "0.4"
+rand = { version = "0.8", default-features = false, features = ["small_rng"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"

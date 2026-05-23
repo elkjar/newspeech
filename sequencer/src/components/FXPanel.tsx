@@ -364,17 +364,6 @@ function ReverbKnob<F extends NumericKeys<ReverbParams>>({
   );
 }
 
-function ReverbBypassToggle({ midiTarget }: { midiTarget?: MidiTarget }) {
-  const active = useSequencerStore((s) => s.reverb.bypass);
-  const setReverb = useSequencerStore((s) => s.setReverb);
-  const onToggle = useCallback(
-    () => setReverb({ bypass: !useSequencerStore.getState().reverb.bypass }),
-    [setReverb],
-  );
-  return (
-    <ToggleButton label="bypass" active={active} onToggle={onToggle} midiTarget={midiTarget} />
-  );
-}
 
 function SaturationKnob<F extends NumericKeys<SaturationParams>>({
   field,
@@ -401,19 +390,6 @@ function SaturationKnob<F extends NumericKeys<SaturationParams>>({
       lfoKnob={lfoKnob}
       midiTarget={midiTarget}
     />
-  );
-}
-
-function SaturationBypassToggle({ midiTarget }: { midiTarget?: MidiTarget }) {
-  const active = useSequencerStore((s) => s.saturation.bypass);
-  const setSaturation = useSequencerStore((s) => s.setSaturation);
-  const onToggle = useCallback(
-    () =>
-      setSaturation({ bypass: !useSequencerStore.getState().saturation.bypass }),
-    [setSaturation],
-  );
-  return (
-    <ToggleButton label="bypass" active={active} onToggle={onToggle} midiTarget={midiTarget} />
   );
 }
 
@@ -552,7 +528,6 @@ export function FXPanel() {
     <div className="flex flex-col items-stretch gap-6 px-4 py-4">
       <div className="flex flex-wrap items-start justify-end gap-5">
       <StageDivider label="pre" />
-      <SaturationBypassToggle midiTarget="fx:saturation.bypass" />
       <SaturationKnob
         field="preDrive"
         label="drive"
@@ -606,7 +581,6 @@ export function FXPanel() {
         midiTarget="fx:glitch.mix"
       />
       <StageDivider label="reverb" />
-      <ReverbBypassToggle midiTarget="fx:reverb.bypass" />
       <ReverbKnob
         field="size"
         label="size"

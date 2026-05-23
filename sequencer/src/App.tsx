@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PlayButton, RecordButton, CountInButton, RawRecordButton, SplitsButton, MultitrackButton, AudioOutSelector, TransportControls, InitButton } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, RawRecordButton, SplitsButton, TransportControls, InitButton } from './components/Transport';
 import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TrackGrid } from './components/TrackGrid';
@@ -21,16 +21,37 @@ import {
 } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
+import { voiceEnvelope } from './audio/voices';
+
+// TrackSection string → native section code (matches SECTION_* in
+// `src-tauri/src/audio.rs`). 0 = none (no splits write), 1 = drum,
+// 2 = melodic, 3 = click (written to both splits — used by the
+// transport-level count-in trigger, not by track events).
+function sectionCode(section: 'drum' | 'melodic' | undefined): number {
+  if (section === 'drum') return 1;
+  if (section === 'melodic') return 2;
+  return 0;
+}
 import {
   isNativeAudioAvailable,
   triggerSample,
   setTrackFiltersBulk,
   setReverbParams,
   setSaturationParams,
+  setTapeParams,
+  setGlitchParams,
+  fireGlitch,
+  setMasterFilters,
+  setMasterComp,
+  setMasterDist,
+  setMasterGate,
+  setMasterBypass,
   setMixRouting,
-  cutoffNormToHz,
+  setLfos,
   initNativeAudio,
   type TrackFilterUpdate,
+  type NativeLfo,
+  type LfoDestKind,
 } from './audio/nativeEngine';
 import { getAudioContext } from './audio/audioContext';
 import {
@@ -429,6 +450,7 @@ export function App() {
                     ev.midi !== undefined ? ev.midi + interval : undefined;
                   const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
                   if (!pick) continue;
+                  const arpEnv = voiceEnvelope(ev.voice);
                   void triggerSample(pick.path, {
                     gain: ev.velocity * pick.voiceGain * trackGain,
                     pan,
@@ -437,6 +459,18 @@ export function App() {
                     outStereo: out?.stereo ?? true,
                     trackId: ev.trackId,
                     delaySecs,
+                    // Force monophonic per arp tone — same reasoning as
+                    // the web branch below: new tones choke the prior
+                    // tail so the line reads as an arp, not a strum.
+                    monophonic: true,
+                    section: sectionCode(ev.section),
+                    // Per-arp-tone hold = sub-step duration × gate.
+                    // Envelope follows the voice's configured shape.
+                    envelopeAttack: arpEnv?.attack,
+                    envelopeDecay: arpEnv?.decay,
+                    envelopeSustain: arpEnv?.sustain,
+                    envelopeRelease: arpEnv?.release,
+                    envelopeHold: arpEnv ? ev.gate * sub : undefined,
                   });
                 }
               } else {
@@ -475,6 +509,8 @@ export function App() {
               const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
               const trackGain = evTrack?.gain ?? 1;
               const delaySecs = Math.max(0, ev.when - getAudioContext().currentTime);
+              const env = voiceEnvelope(ev.voice);
+              const holdSecs = env ? ev.gate * ev.stepDuration : undefined;
               for (const interval of intervals) {
                 const targetMidi =
                   ev.midi !== undefined ? ev.midi + interval : undefined;
@@ -488,6 +524,20 @@ export function App() {
                   outStereo: out?.stereo ?? true,
                   trackId: ev.trackId,
                   delaySecs,
+                  // Web path uses `ev.monophonic` (carried through from
+                  // the engine event) — mirror that for native so bass /
+                  // lead tracks marked monophonic actually choke.
+                  monophonic: ev.monophonic === true,
+                  section: sectionCode(ev.section),
+                  // Voice ADSR + hold = gate × stepDuration (matches the
+                  // web `samplePlayer.trigger` envelope). Voices without
+                  // an envelope config (drums, leads) pass nothing here
+                  // and run at flat gain in native.
+                  envelopeAttack: env?.attack,
+                  envelopeDecay: env?.decay,
+                  envelopeSustain: env?.sustain,
+                  envelopeRelease: env?.release,
+                  envelopeHold: holdSecs,
                 });
               }
             } else {
@@ -525,6 +575,10 @@ export function App() {
   useEffect(() => {
     if (!isNativeAudioAvailable()) return;
     void initNativeAudio();
+    // Bridge the store's armed+playing edge to the native recorder's
+    // start/stop IPCs. Web build keeps its own subscriber (inside
+    // webChain) so this stays Tauri-only.
+    void import('./audio/nativeRecorder').then((m) => m.subscribeNativeRecorder());
   }, []);
 
   // Push mix-routing changes (multi_out, fxOutput, fxBypass) on every
@@ -547,112 +601,291 @@ export function App() {
     });
   }, []);
 
-  // Phase 3b + 7a: push LFO-modulated DSP params to the native engine
-  // every animation frame. Per-track filter cutoff/resonance + fxSend
-  // go through one bulk invoke. Global reverb params (size, mix→wet
-  // gain, diffusion, damping) go through a separate invoke. modulated()
-  // folds in any routed LFOs so sweeps reach the native DSP at frame
-  // resolution — well over-sampled for LFOs whose periods are seconds.
+  // Phase 6: push raw BASE values to the native engine every animation
+  // frame. The LFO compute lives Rust-side now (see audio.rs LfoEngine
+  // section) — the audio thread reads its own snapshot and overwrites
+  // each routed destination's `_eff` atomic per block. This loop is
+  // just the user-knob → Rust bridge for hand-edits / non-LFO moves.
   //
-  // Thresholds (cutoff 0.5 Hz, others 0.001) prevent floating-point
-  // noise from generating no-op pushes when nothing's actually moving.
-  // Gated on bootDone so the loop doesn't start before tracks settle.
+  // Thresholds prevent floating-point noise from generating no-op
+  // pushes when nothing's actually moving. Gated on bootDone so the
+  // loop doesn't start before tracks settle.
   useEffect(() => {
     if (!isNativeAudioAvailable()) return;
     if (!bootDone) return;
     const lastTrack = new Map<
       string,
-      { cutoffHz: number; resonance: number; fxSend: number }
+      { cutoffNorm: number; resonance: number; fxSend: number }
     >();
     let lastReverb: {
       size: number;
       wetGain: number;
       diffusion: number;
       damping: number;
-      bypass: boolean;
     } | null = null;
-    let lastSaturation: { preDrive: number; bypass: boolean } | null = null;
+    let lastSaturation: { preDrive: number } | null = null;
+    let lastTape: {
+      position: number;
+      length: number;
+      stretch1: number;
+      gain1: number;
+      stretch2: number;
+      gain2: number;
+      mix: number;
+      reverse: boolean;
+      hold: boolean;
+      grainRate: number;
+      grainMix: number;
+    } | null = null;
+    let lastGlitchMix: number | null = null;
+    let lastMaster: {
+      input: number;
+      loCut: number;
+      hiCut: number;
+      trim: number;
+    } | null = null;
+    let lastMasterComp: {
+      amount: number;
+      attackIdx: number;
+      releaseIdx: number;
+    } | null = null;
+    let lastMasterDist: {
+      mode: number;
+      drive: number;
+      bias: number;
+      mix: number;
+    } | null = null;
+    let lastMasterGate: {
+      enabled: boolean;
+      threshold: number;
+    } | null = null;
+    let lastMasterBypass: boolean | null = null;
     let raf = 0;
     const tick = () => {
       const state = useSequencerStore.getState();
 
-      // Per-track DSP params (filter + fx send).
+      // Per-track DSP bases (filter + fx send). Phase 6: cutoff travels
+      // as normalized 0..1 so the Rust LFO compute matches the web
+      // modulator's space. Resonance + fxSend already are.
       const updates: TrackFilterUpdate[] = [];
       for (const t of state.tracks) {
-        const cutoffNorm = modulated(
-          t.filterCutoff,
-          state.lfos,
-          t.id,
-          'filterCutoff',
-        );
-        const resonance = modulated(
-          t.filterResonance,
-          state.lfos,
-          t.id,
-          'filterResonance',
-        );
-        const fxSend = modulated(t.fxSend, state.lfos, t.id, 'fxSend');
-        const cutoffHz = cutoffNormToHz(cutoffNorm);
+        const cutoffNorm = t.filterCutoff;
+        const resonance = t.filterResonance;
+        const fxSend = t.fxSend;
         const last = lastTrack.get(t.id);
         const changed =
           !last ||
-          Math.abs(last.cutoffHz - cutoffHz) > 0.5 ||
+          Math.abs(last.cutoffNorm - cutoffNorm) > 0.0005 ||
           Math.abs(last.resonance - resonance) > 0.001 ||
           Math.abs(last.fxSend - fxSend) > 0.001;
         if (changed) {
-          updates.push({ trackId: t.id, cutoffHz, resonance, fxSend });
-          lastTrack.set(t.id, { cutoffHz, resonance, fxSend });
+          updates.push({ trackId: t.id, cutoffNorm, resonance, fxSend });
+          lastTrack.set(t.id, { cutoffNorm, resonance, fxSend });
         }
       }
       if (updates.length > 0) void setTrackFiltersBulk(updates);
 
-      // Global reverb params. Store's `mix` is reinterpreted as the
+      // Global reverb base. Store's `mix` is reinterpreted as the
       // post-reverb wet bus gain on the native side (DSP's internal
       // crossfade pinned to fully-wet; per-voice fxSend carries the
       // dry/wet split per track).
       const rv = state.reverb;
-      const size = modulated(rv.size, state.lfos, GLOBAL_TRACK_ID, 'reverbSize');
-      const wetGain = modulated(rv.mix, state.lfos, GLOBAL_TRACK_ID, 'reverbMix');
-      const diffusion = modulated(
-        rv.diffusion,
-        state.lfos,
-        GLOBAL_TRACK_ID,
-        'reverbDiffusion',
-      );
-      const damping = modulated(
-        rv.damping,
-        state.lfos,
-        GLOBAL_TRACK_ID,
-        'reverbDamping',
-      );
-      const bypass = rv.bypass;
+      const size = rv.size;
+      const wetGain = rv.mix;
+      const diffusion = rv.diffusion;
+      const damping = rv.damping;
       const reverbChanged =
         !lastReverb ||
         Math.abs(lastReverb.size - size) > 0.001 ||
         Math.abs(lastReverb.wetGain - wetGain) > 0.001 ||
         Math.abs(lastReverb.diffusion - diffusion) > 0.001 ||
-        Math.abs(lastReverb.damping - damping) > 0.001 ||
-        lastReverb.bypass !== bypass;
+        Math.abs(lastReverb.damping - damping) > 0.001;
       if (reverbChanged) {
-        lastReverb = { size, wetGain, diffusion, damping, bypass };
-        void setReverbParams({ size, wetGain, diffusion, damping, bypass });
+        lastReverb = { size, wetGain, diffusion, damping };
+        void setReverbParams({ size, wetGain, diffusion, damping });
       }
 
-      // Pre-saturation (LFO-modulated drive + bypass toggle).
-      const preDrive = modulated(
-        state.saturation.preDrive,
-        state.lfos,
-        GLOBAL_TRACK_ID,
-        'preSaturationDrive',
-      );
-      const satBypass = state.saturation.bypass;
+      // Pre-saturation drive (base). Drive at 0 is a true no-op in
+      // the FX bus, so a separate bypass toggle would only duplicate
+      // the knob's already-pinned-down zero.
+      const preDrive = state.saturation.preDrive;
       const satChanged =
         !lastSaturation ||
-        Math.abs(lastSaturation.preDrive - preDrive) > 0.001 ||
-        lastSaturation.bypass !== satBypass;
+        Math.abs(lastSaturation.preDrive - preDrive) > 0.001;
       if (satChanged) {
-        lastSaturation = { preDrive, bypass: satBypass };
-        void setSaturationParams({ preDrive, bypass: satBypass });
+        lastSaturation = { preDrive };
+        void setSaturationParams({ preDrive });
+      }
+
+      // Glitch mix base. `chance` drives the beat-fire dice roll in
+      // the scheduler subscriber below; the engine just receives
+      // one-shot fire commands.
+      const glitchMix = state.glitch.mix;
+      if (lastGlitchMix === null || Math.abs(lastGlitchMix - glitchMix) > 0.001) {
+        lastGlitchMix = glitchMix;
+        void setGlitchParams({ mix: glitchMix });
+      }
+
+      // Master stage filters (phase 7e-1) — bases. loCut is an integer
+      // index, the others are 0..1 norms.
+      const masterInput = state.master.input;
+      const masterHiCut = state.master.hiCut;
+      const masterTrim = state.master.trim;
+      const masterLoCut = state.master.loCut;
+      const masterChanged =
+        !lastMaster ||
+        Math.abs(lastMaster.input - masterInput) > 0.001 ||
+        Math.abs(lastMaster.hiCut - masterHiCut) > 0.001 ||
+        Math.abs(lastMaster.trim - masterTrim) > 0.001 ||
+        lastMaster.loCut !== masterLoCut;
+      if (masterChanged) {
+        lastMaster = {
+          input: masterInput,
+          loCut: masterLoCut,
+          hiCut: masterHiCut,
+          trim: masterTrim,
+        };
+        void setMasterFilters({
+          input: masterInput,
+          loCut: masterLoCut,
+          hiCut: masterHiCut,
+          trim: masterTrim,
+        });
+      }
+
+      // Master compressor (phase 7e-2). `amount` is the LFO-routable
+      // base; attack/release are discrete selector positions.
+      const masterCompAmount = state.master.comp;
+      const masterCompAttack = state.master.compAttack;
+      const masterCompRelease = state.master.compRelease;
+      const masterCompChanged =
+        !lastMasterComp ||
+        Math.abs(lastMasterComp.amount - masterCompAmount) > 0.001 ||
+        lastMasterComp.attackIdx !== masterCompAttack ||
+        lastMasterComp.releaseIdx !== masterCompRelease;
+      if (masterCompChanged) {
+        lastMasterComp = {
+          amount: masterCompAmount,
+          attackIdx: masterCompAttack,
+          releaseIdx: masterCompRelease,
+        };
+        void setMasterComp({
+          amount: masterCompAmount,
+          attackIdx: masterCompAttack,
+          releaseIdx: masterCompRelease,
+        });
+      }
+
+      // Master distortion (phase 7e-3) — bases. Bias travels in its
+      // natural 0..0.2 range; Rust LFO compute normalizes per the
+      // `bias/0.2 → modulate → ×0.2` pattern.
+      const masterDistMode = state.master.mode;
+      const masterDistDrive = state.master.drive;
+      const masterDistBias = state.master.bias;
+      const masterDistMix = state.master.mix;
+      const masterDistChanged =
+        !lastMasterDist ||
+        lastMasterDist.mode !== masterDistMode ||
+        Math.abs(lastMasterDist.drive - masterDistDrive) > 0.001 ||
+        Math.abs(lastMasterDist.bias - masterDistBias) > 0.0005 ||
+        Math.abs(lastMasterDist.mix - masterDistMix) > 0.001;
+      if (masterDistChanged) {
+        lastMasterDist = {
+          mode: masterDistMode,
+          drive: masterDistDrive,
+          bias: masterDistBias,
+          mix: masterDistMix,
+        };
+        void setMasterDist({
+          mode: masterDistMode,
+          drive: masterDistDrive,
+          bias: masterDistBias,
+          mix: masterDistMix,
+        });
+      }
+
+      // Master gate (phase 7e-4) — bases.
+      const masterGateEnabled = state.master.gateEnabled;
+      const masterGateThreshold = state.master.gateThreshold;
+      const masterGateChanged =
+        !lastMasterGate ||
+        lastMasterGate.enabled !== masterGateEnabled ||
+        Math.abs(lastMasterGate.threshold - masterGateThreshold) > 0.001;
+      if (masterGateChanged) {
+        lastMasterGate = {
+          enabled: masterGateEnabled,
+          threshold: masterGateThreshold,
+        };
+        void setMasterGate({
+          enabled: masterGateEnabled,
+          threshold: masterGateThreshold,
+        });
+      }
+
+      // Master full-unit bypass (phase 7e-5). Discrete toggle, no
+      // modulation — Rust handles the smooth crossfade internally.
+      const masterBypass = state.master.bypass;
+      if (lastMasterBypass !== masterBypass) {
+        lastMasterBypass = masterBypass;
+        void setMasterBypass(masterBypass);
+      }
+
+      // Tape (full bed + grains) — bases. Stretch knobs are 0..1 in
+      // store; map to 0.25..4 playback rate the same way web tape.ts
+      // does. Stretch/gain/reverse/hold aren't LFO-modulated, so no
+      // base/effective split Rust-side.
+      const tape = state.tape;
+      const tapePosition = tape.position;
+      const tapeLength = tape.length;
+      const tapeMix = tape.mix;
+      const tapeStretch1 = Math.pow(2, (tape.stretch1 - 0.5) * 4);
+      const tapeStretch2 = Math.pow(2, (tape.stretch2 - 0.5) * 4);
+      const tapeGain1 = tape.gain1;
+      const tapeGain2 = tape.gain2;
+      const tapeReverse = tape.reverse;
+      const tapeHold = tape.hold;
+      const tapeGrainRate = tape.grainRate;
+      const tapeGrainMix = tape.grainMix;
+      const tapeChanged =
+        !lastTape ||
+        Math.abs(lastTape.position - tapePosition) > 0.001 ||
+        Math.abs(lastTape.length - tapeLength) > 0.001 ||
+        Math.abs(lastTape.stretch1 - tapeStretch1) > 0.001 ||
+        Math.abs(lastTape.gain1 - tapeGain1) > 0.001 ||
+        Math.abs(lastTape.stretch2 - tapeStretch2) > 0.001 ||
+        Math.abs(lastTape.gain2 - tapeGain2) > 0.001 ||
+        Math.abs(lastTape.mix - tapeMix) > 0.001 ||
+        lastTape.reverse !== tapeReverse ||
+        lastTape.hold !== tapeHold ||
+        Math.abs(lastTape.grainRate - tapeGrainRate) > 0.001 ||
+        Math.abs(lastTape.grainMix - tapeGrainMix) > 0.001;
+      if (tapeChanged) {
+        lastTape = {
+          position: tapePosition,
+          length: tapeLength,
+          stretch1: tapeStretch1,
+          gain1: tapeGain1,
+          stretch2: tapeStretch2,
+          gain2: tapeGain2,
+          mix: tapeMix,
+          reverse: tapeReverse,
+          hold: tapeHold,
+          grainRate: tapeGrainRate,
+          grainMix: tapeGrainMix,
+        };
+        void setTapeParams({
+          position: tapePosition,
+          length: tapeLength,
+          stretch1: tapeStretch1,
+          gain1: tapeGain1,
+          stretch2: tapeStretch2,
+          gain2: tapeGain2,
+          mix: tapeMix,
+          reverse: tapeReverse,
+          hold: tapeHold,
+          grainRate: tapeGrainRate,
+          grainMix: tapeGrainMix,
+        });
       }
 
       raf = requestAnimationFrame(tick);
@@ -660,6 +893,113 @@ export function App() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [bootDone]);
+
+  // Phase 6 — push LFO panel state to the Rust audio thread on change.
+  // The audio-thread compute reads its own snapshot of (rate / depth /
+  // destinations) per block; only the IPC fires here, at user-event
+  // rate, not RAF rate. JS still owns LFO compute for the destinations
+  // that aren't audio params (mutation / motion / drift / chaos /
+  // tension / rowRatchet / glitchChance / etc. — handled inline above
+  // via the JS `modulated()` helper).
+  //
+  // We translate the web LFO type to the native shape: per-track
+  // destinations carry `trackId`, globals omit it. Knobs that don't
+  // map to a Rust destination (JS-only sequencer logic) get filtered.
+  useEffect(() => {
+    if (!isNativeAudioAvailable()) return;
+    if (!bootDone) return;
+    const KNOB_MAP: Partial<Record<string, LfoDestKind>> = {
+      filterCutoff: 'trackFilterCutoff',
+      filterResonance: 'trackFilterResonance',
+      fxSend: 'trackFxSend',
+      reverbSize: 'reverbSize',
+      reverbMix: 'reverbMix',
+      reverbDiffusion: 'reverbDiffusion',
+      reverbDamping: 'reverbDamping',
+      preSaturationDrive: 'preSaturationDrive',
+      glitchMix: 'glitchMix',
+      tapePosition: 'tapePosition',
+      tapeLength: 'tapeLength',
+      tapeMix: 'tapeMix',
+      tapeGrainRate: 'tapeGrainRate',
+      tapeGrainMix: 'tapeGrainMix',
+      masterInput: 'masterInput',
+      masterHiCut: 'masterHiCut',
+      masterTrim: 'masterTrim',
+      masterComp: 'masterComp',
+      masterDrive: 'masterDrive',
+      masterBias: 'masterBias',
+      masterMix: 'masterMix',
+      masterGateThreshold: 'masterGateThreshold',
+    };
+    const push = () => {
+      const lfos = useSequencerStore.getState().lfos;
+      const payload: NativeLfo[] = lfos.map((lfo) => {
+        const destinations: { knob: LfoDestKind; trackId?: string }[] = [];
+        for (const d of lfo.destinations) {
+          const native = KNOB_MAP[d.knob];
+          if (!native) continue;
+          // Per-track destinations carry trackId; globals don't.
+          // GLOBAL_TRACK_ID is the sentinel for global routings.
+          if (
+            native === 'trackFilterCutoff' ||
+            native === 'trackFilterResonance' ||
+            native === 'trackFxSend'
+          ) {
+            if (d.trackId === GLOBAL_TRACK_ID) continue;
+            destinations.push({ knob: native, trackId: d.trackId });
+          } else {
+            destinations.push({ knob: native });
+          }
+        }
+        return {
+          id: lfo.id,
+          rate: lfo.rate,
+          depth: lfo.depth,
+          destinations,
+        };
+      });
+      void setLfos(payload);
+    };
+    // Initial push so the audio thread has the current state at boot.
+    push();
+    // Subscribe to ALL store changes; only re-push when `lfos` ref
+    // changes (reducer updates with structural copy → new ref). This
+    // catches rate / depth / destination edits without per-frame churn.
+    let prevLfos = useSequencerStore.getState().lfos;
+    const unsub = useSequencerStore.subscribe((state) => {
+      if (state.lfos !== prevLfos) {
+        prevLfos = state.lfos;
+        push();
+      }
+    });
+    return () => unsub();
+  }, [bootDone]);
+
+  // Glitch beat-fire dice roll. The scheduler ticks at 32nds
+  // (stepsPerBeat=8), so beat boundaries are `stepIndex % 8 === 0`.
+  // On each beat we roll `state.glitch.chance` (LFO-modulated via
+  // `glitchChance`) and fire via IPC on a hit. The Rust glitch stage
+  // is otherwise pass-through. Mirrors `audio/glitch.ts`'s web setup
+  // but skips the `setTimeout` align — beat-level alignment with one
+  // block of latency is imperceptible against the stutter character.
+  useEffect(() => {
+    if (!isNativeAudioAvailable()) return;
+    const unsub = scheduler.onStep((stepIndex) => {
+      if (stepIndex % 8 !== 0) return;
+      const state = useSequencerStore.getState();
+      const chance = modulated(
+        state.glitch.chance,
+        state.lfos,
+        GLOBAL_TRACK_ID,
+        'glitchChance',
+      );
+      if (chance <= 0) return;
+      if (Math.random() >= chance) return;
+      void fireGlitch();
+    });
+    return unsub;
+  }, []);
 
   // Preload sample paths into the native cpal registry for every voice
   // track in state. Idempotent (Rust caches by path). Without preload,
@@ -933,8 +1273,6 @@ export function App() {
                 <CountInButton />
                 <RawRecordButton />
                 <SplitsButton />
-                <MultitrackButton />
-                <AudioOutSelector />
               </div>
               <div className="flex items-center gap-4">
                 <SectionToggle />

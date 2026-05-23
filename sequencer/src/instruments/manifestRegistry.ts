@@ -130,6 +130,52 @@ export function registerKit(
   notifyListeners();
 }
 
+// Voice IDs live in a global registry inside samplePlayer (`voices` Map
+// keyed by SampleId). When two kits declare the same key — bundled
+// blck_noir's "kick" and a user kit auto-synthesized from a KICK/
+// subfolder also called "kick" — the second `loadManifest` silently
+// overwrites the first, causing triggers to play whichever kit
+// registered last (the "glitched together kick" symptom). Bundled kits
+// pre-coordinate (ns1-kick / blk / etc.) so they keep their bare IDs
+// for `.seq` backward compatibility; user kits don't have that luxury
+// and get namespaced here.
+//
+// Apply this BEFORE both `registerKit` and `samplePlayer.loadManifest`
+// — both consumers need to see the same namespaced voice keys. Bundled
+// kits (kitPath without `user/` prefix) pass through unchanged.
+//
+// Note: existing `.seq` files that reference a user-kit voice by its
+// bare ID (saved pre-fix) won't find a match post-fix and will fall
+// through to synthMelodic at trigger time. User has to re-pick the
+// voice on those tracks once. The fix is worth the one-time hiccup
+// because the bug it solves is silent / mis-routing samples.
+export function withNamespacedVoiceIds(
+  kitPath: string,
+  manifest: ExtendedSampleManifest,
+): ExtendedSampleManifest {
+  if (!kitPath.startsWith('user/')) return manifest;
+  const prefix = kitPath
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  const namespacedVoices: Record<string, ManifestVoice> = {};
+  for (const [id, voice] of Object.entries(manifest.voices)) {
+    namespacedVoices[`${prefix}-${id}`] = voice;
+  }
+  const out: ExtendedSampleManifest = { ...manifest, voices: namespacedVoices };
+  if (manifest.chokeGroups) {
+    // Both key (voice ID) and value (group name) get the prefix — otherwise
+    // two user kits with the same group name (e.g. "open-hat") would cross-
+    // choke each other in samplePlayer's global chokeGroups Map.
+    const ns: Record<string, string> = {};
+    for (const [id, group] of Object.entries(manifest.chokeGroups)) {
+      ns[`${prefix}-${id}`] = `${prefix}-${group}`;
+    }
+    out.chokeGroups = ns;
+  }
+  return out;
+}
+
 export function clearKits(): void {
   kits.clear();
   notifyListeners();

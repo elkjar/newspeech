@@ -137,11 +137,6 @@ impl ReverbBus {
 dsp::mydsp::class_init(sample_rate as i32);
     let mut inner = dsp::mydsp::new();
     inner.init(sample_rate as i32);
-    // Pin internal wet/dry crossfade fully-wet. The "mix" UI value is
-    // reinterpreted on the native side as a global wet-bus gain
-    // applied AFTER the reverb (see audio.rs). This keeps per-voice
-    // fxSend as the only dry/wet control.
-    inner.set_param(PARAM_MIX, 1.0);
     Self { inner }
   }
 
@@ -153,6 +148,15 @@ self.inner.set_param(PARAM_DIFFUSION, v.clamp(0.0, 0.85));
   }
   pub fn set_damping(&mut self, v: f32) {
 self.inner.set_param(PARAM_DAMPING, v.clamp(0.0, 1.0));
+  }
+  // Reverb internal wet/dry crossfade — controls how much of the dry
+  // input bleeds through alongside the tank's wet tail. At mix=0 the
+  // reverb passes the (already saturated) input straight through;
+  // at mix=1 it's fully wet tail only. The "drive" stage upstream
+  // stays audible at any mix because mix=0 just means "no reverb
+  // tail," not "no FX bus output."
+  pub fn set_mix(&mut self, v: f32) {
+self.inner.set_param(PARAM_MIX, v.clamp(0.0, 1.0));
   }
 
   // Compute one block in-place: writes wet output to (out_l, out_r).

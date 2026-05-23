@@ -134,9 +134,9 @@ export interface Track {
   midi: TrackMidi;
   // sample/internal-synth playback level multiplier; no effect on MIDI velocity
   gain: number;
-  // contribution into the FX bus (0..1). 0 (default) = signal goes straight
-  // to destination, bypassing tape/glitch/reverb/sat. 1 = full FX chain.
-  // Per-trigger snapshot — LFO modulation steps per trigger, not glides.
+  // Wet/dry crossfade into the FX bus (0..1). 0 = pure dry, no FX bus
+  // contribution. 0.5 = 50/50 dry + wet. 1.0 = pure wet (the dry leg
+  // drops out and only the FX bus return is heard). LFO-modulatable.
   fxSend: number;
   // stereo placement (0..1, 0.5 = center). Mapped to [-1,+1] at the audio
   // boundary in samplePlayer. Internal voices/synths only — instrument MIDI
@@ -199,12 +199,13 @@ export const DEFAULT_TRACK_OUTPUT: TrackOutput = { firstChannel: 0, stereo: true
 //                   land on their configured channels.
 //   • fxOutput    — where the FX bus (currently just reverb wet)
 //                   lands when multiOut is ON. Default 1-2.
-//   • fxBypass    — kills the entire FX chain. Voice fxSend is treated
-//                   as 0 so dry passes through at full level and no
-//                   wet contribution accumulates. Reverb's own bypass
-//                   (ReverbParams.bypass) is independent — it skips
-//                   only the reverb stage so a future tape/glitch
-//                   chain still processes.
+//   • fxBypass    — kills the entire FX chain (pre-master drive +
+//                   reverb). Voice fxSend is treated as 0 so dry
+//                   passes through at full level and no wet
+//                   accumulates; the pre-master saturator is also
+//                   skipped. Reverb's own bypass (ReverbParams.bypass)
+//                   is independent — it skips only the reverb stage
+//                   so the drive remains audible.
 export interface NativeMix {
   multiOut: boolean;
   fxOutput: TrackOutput;

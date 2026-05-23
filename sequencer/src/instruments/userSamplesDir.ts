@@ -11,7 +11,12 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getAudioContext } from '../audio/audioContext';
 import { samplePlayer } from '../audio/samplePlayer';
-import { clearKits, registerKit, type ExtendedSampleManifest } from './manifestRegistry';
+import {
+  clearKits,
+  registerKit,
+  withNamespacedVoiceIds,
+  type ExtendedSampleManifest,
+} from './manifestRegistry';
 
 const LS_USER_SAMPLES_DIR = 'newspeech.sequencer.userSamplesDir';
 
@@ -103,7 +108,13 @@ export async function scanAndLoadUserSamples(): Promise<UserKitScanResult> {
     try {
       // baseUrl is purely cosmetic when the fetcher ignores it; pass the
       // absolute dir for log readability if anything goes wrong downstream.
-      registerKit(`user/${kit.kit_path}`, absDir, manifest);
+      // Voice IDs get kit-scoped here so user-kit "kick" doesn't collide
+      // with bundled blck_noir's "kick" (or any other user kit's "kick").
+      // Same namespaced manifest goes to BOTH the registry and the player
+      // — they must agree on the keys.
+      const namespacedKitPath = `user/${kit.kit_path}`;
+      const namespaced = withNamespacedVoiceIds(namespacedKitPath, manifest);
+      registerKit(namespacedKitPath, absDir, namespaced);
       // In Tauri, native is the only audio path — skip the Web Audio
       // AudioBuffer decode pass. Path strings + voice metadata are
       // all the native engine needs; the fetcher relays bytes back
@@ -112,7 +123,7 @@ export async function scanAndLoadUserSamples(): Promise<UserKitScanResult> {
       // preload reads files directly via hound::WavReader::open on
       // the absolute filesystem path (see [[reference_tauri_binary_ipc]]).
       const nativeMode = isTauri();
-      await samplePlayer.loadManifest(absDir, manifest, fetcher, {
+      await samplePlayer.loadManifest(absDir, namespaced, fetcher, {
         pathsOnly: nativeMode,
       });
       result.loaded += 1;

@@ -617,26 +617,40 @@ class SamplePlayer {
   ): Promise<{ loaded: number; failed: number }> {
     const data = this.voices.get(voice);
     if (!data) return { loaded: 0, failed: 0 };
-    const { isNativeAudioAvailable, loadSample, loadSampleFromBytes } =
-      await import('./nativeEngine');
+    const {
+      isNativeAudioAvailable,
+      loadSample,
+      loadSampleFromBytes,
+      loadBundledSample,
+    } = await import('./nativeEngine');
     if (!isNativeAudioAvailable()) return { loaded: 0, failed: 0 };
     const allPaths = new Set<string>();
     for (const bank of data.banks) {
       for (const p of bank.paths) allPaths.add(p);
     }
-    // User-sample kits store absolute filesystem paths (`/Users/.../foo.wav`)
-    // that hound can open directly. Bundled kits store Vite-served URLs
-    // (`/samples/drums/606/foo.wav`) that hound can't reach — fetch the
-    // bytes JS-side and hand them to the bytes-load path.
+    // Three path shapes hit different loaders:
+    //   • `/samples/...` (bundled kit URL) → `loadBundledSample` resolves
+    //     it Rust-side to a real fs path and `hound` opens it directly.
+    //     No fetch, no IPC bytes — the fast cold-boot path.
+    //   • `/Users/.../foo.wav` (user-samples dir) → `loadSample` opens
+    //     the absolute fs path directly (also fast).
+    //   • Anything else → fall back to `fetch` + `loadSampleFromBytes`.
+    //     This is the slow JSON-array-IPC path, retained as a universal
+    //     fallback for paths that don't resolve to a real file location.
     //
-    // Paths run SEQUENTIALLY (not Promise.allSettled). The bytes-load
-    // path encodes a Uint8Array as a JSON number array on the IPC wire
-    // (see [[reference_tauri_binary_ipc]]) — running many in parallel
-    // piles up that synchronous encoding on the main thread and hangs
-    // the UI at cold boot. Between each path we yield via setTimeout(0)
-    // so React, animations, and user input get a slice of the event
-    // loop during what can be a multi-second preload.
+    // Paths run SEQUENTIALLY with a setTimeout(0) yield between each so
+    // React, animations, and user input keep getting event-loop slices
+    // during a multi-second preload of user kits.
     const loadOne = async (path: string) => {
+      if (path.startsWith('/samples/')) {
+        try {
+          await loadBundledSample(path);
+          return;
+        } catch {
+          // resource_dir resolution miss (e.g. dev path tree changed) —
+          // fall through to fetch path so the load doesn't fail entirely.
+        }
+      }
       try {
         await loadSample(path);
       } catch {

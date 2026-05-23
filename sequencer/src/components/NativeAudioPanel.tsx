@@ -13,6 +13,7 @@ import {
   readPersistedNativeAudioSettings,
   getReportedChannelCount,
   subscribeReportedChannelCount,
+  getAudioStatus,
   type NativeDeviceInfo,
 } from '../audio/nativeEngine';
 import { useSequencerStore, type TrackOutput } from '../state/store';
@@ -24,7 +25,9 @@ export function NativeAudioPanel() {
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [channels, setChannels] = useState<number>(2);
-  const [sampleRate, setSampleRate] = useState<number>(48000);
+  // 0 until the engine reports its actual running rate (audio_status)
+  // or a device is selected — never a hardcoded fallback rate.
+  const [sampleRate, setSampleRate] = useState<number>(0);
   const [bufferSize, setBufferSize] = useState<number>(0);
   const [activeToneChannel, setActiveToneChannel] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,17 +51,34 @@ export function NativeAudioPanel() {
 
   // On mount, fetch device list + read whatever the auto-open chose
   // (or fallback to persisted / system default) so the controls show
-  // the live state instead of stale UI defaults.
+  // the live state instead of stale UI defaults. Sample rate comes
+  // from the running engine (audio_status), not persistence — the
+  // device's native rate is the source of truth.
   useEffect(() => {
     void refreshDevices();
     const persisted = readPersistedNativeAudioSettings();
     if (persisted.deviceName) setSelectedDevice(persisted.deviceName);
     if (persisted.channels) setChannels(persisted.channels);
-    if (persisted.sampleRate) setSampleRate(persisted.sampleRate);
     if (persisted.bufferSize !== undefined) setBufferSize(persisted.bufferSize);
+    void getAudioStatus()
+      .then((s) => {
+        if (s.sampleRate > 0) setSampleRate(s.sampleRate);
+      })
+      .catch(() => {
+        /* engine not open yet — picker will fill in when device loads */
+      });
   }, []);
 
   const current = devices.find((d) => d.name === selectedDevice);
+
+  // If audio_status didn't fill in a running rate (engine not open at
+  // mount), backfill from the selected device's native default once
+  // devices have loaded. Still no hardcoded 44.1/48 fallback — only
+  // the device's own reported rate.
+  useEffect(() => {
+    if (sampleRate > 0) return;
+    if (current?.defaultSampleRate) setSampleRate(current.defaultSampleRate);
+  }, [sampleRate, current?.defaultSampleRate]);
 
   // Apply + persist whenever the user changes a selector. Wrapped so
   // every onChange handler can fire-and-forget.
@@ -75,6 +95,11 @@ export function NativeAudioPanel() {
       bufferSize: overrides.bufferSize ?? bufferSize,
     };
     if (!config.deviceName) return;
+    // sampleRate=0 means we haven't learned the device's native rate
+    // yet (audio_status race window before devices load). Skip the
+    // open — the engine's already running and the panel will sync on
+    // the next render once defaultSampleRate is known.
+    if (!config.sampleRate) return;
     setError(null);
     void applyOutputDeviceConfig({
       deviceName: config.deviceName,
@@ -88,8 +113,10 @@ export function NativeAudioPanel() {
 
   const onPickDevice = (name: string) => {
     setSelectedDevice(name);
-    // When switching device, snap channels + SR to the new device's
-    // capabilities so we don't try to open an unsupported config.
+    // When switching device, always adopt the new device's native
+    // sample rate — that's what "detected from the device" means.
+    // Channels stay sticky unless the new device can't carry the
+    // current count.
     const dev = devices.find((d) => d.name === name);
     let newChannels = channels;
     let newSampleRate = sampleRate;
@@ -98,13 +125,9 @@ export function NativeAudioPanel() {
         newChannels = dev.maxOutputChannels;
         setChannels(newChannels);
       }
-      if (
-        dev.supportedSampleRates.length > 0 &&
-        !dev.supportedSampleRates.includes(sampleRate)
-      ) {
-        newSampleRate = dev.defaultSampleRate || dev.supportedSampleRates[0];
-        setSampleRate(newSampleRate);
-      }
+      newSampleRate =
+        dev.defaultSampleRate || dev.supportedSampleRates[0] || sampleRate;
+      if (newSampleRate !== sampleRate) setSampleRate(newSampleRate);
     }
     apply({ deviceName: name, channels: newChannels, sampleRate: newSampleRate });
   };
@@ -315,9 +338,9 @@ function MixRoutingSection({
               ? 'px-3 py-1 text-[10px] uppercase tracking-widest border border-white text-white bg-white/10'
               : 'px-3 py-1 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
           }
-          title="bypass the FX bus (currently just reverb). When bypassed, voices' wet contributions drop to zero and dry passes through at full level."
+          title="bypass the FX chain (pre-master drive + reverb). When bypassed, voices' wet contributions drop to zero, the saturator is skipped, and dry passes through at full level."
         >
-          {mix.fxBypass ? '● fx bus bypassed' : '○ fx bus'}
+          {mix.fxBypass ? '● fx bypassed' : '○ fx'}
         </button>
       </div>
       <div className="flex flex-col gap-1 mt-2">

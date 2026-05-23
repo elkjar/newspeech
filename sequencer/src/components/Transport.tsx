@@ -179,33 +179,10 @@ export function SplitsButton() {
   );
 }
 
-// MultitrackButton — toggles per-track recording. On = one WAV per audio
-// track (16+ files for the default kit), each tapped pre-FX/pre-master from
-// a dedicated per-track bus. Forces `raw` on as a UX coherence move since
-// multitrack output is always raw signal. Mutually exclusive with `splits`.
-// App-only: browser anchor-download would fire 16+ save prompts. Tauri
-// streams each file to disk directly. Returns null in browser builds.
-export function MultitrackButton() {
-  const multitrack = useSequencerStore((s) => s.multitrack);
-  const toggleMultitrack = useSequencerStore((s) => s.toggleMultitrack);
-  if (!isTauri()) return null;
-  return (
-    <button
-      onClick={toggleMultitrack}
-      title={
-        multitrack
-          ? 'multitrack on — one WAV per voice track, pre-FX/pre-master. Raw is implicit-on.'
-          : 'multitrack off — single combined WAV (or splits if enabled)'
-      }
-      className={[
-        'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
-        multitrack ? 'text-white' : 'text-white/40 hover:text-white',
-      ].join(' ')}
-    >
-      {multitrack ? '●' : '○'} multi
-    </button>
-  );
-}
+// MultitrackButton removed 2026-05-22 — multi-out routing (per-track to
+// separate physical channels) handles this workflow better than 16 WAV
+// files. The store's `multitrack` flag stays so old session files load
+// cleanly, but the button + the recording flow are gone.
 
 // AudioOutSelector — picks which physical output device gets the
 // sequencer's audio. Backed by AudioContext.setSinkId (Safari 17+,
