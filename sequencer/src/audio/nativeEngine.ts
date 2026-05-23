@@ -381,6 +381,19 @@ export async function setReverbParams(opts: {
   });
 }
 
+// Pre-master saturation. Engages only when multi-out is OFF (stems in
+// multi-out mode are pre-drive by convention). bypass=true skips the
+// stage entirely. preDrive 0..1 with quadratic scaling (web parity).
+export async function setSaturationParams(opts: {
+  preDrive: number;
+  bypass?: boolean;
+}): Promise<void> {
+  await invoke<void>('audio_set_saturation_params', {
+    preDrive: opts.preDrive,
+    bypass: opts.bypass ?? null,
+  });
+}
+
 // Mix routing — multi-out mode, FX bus output channels, FX chain
 // bypass. See store.ts NativeMix for the semantics.
 export async function setMixRouting(opts: {

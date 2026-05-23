@@ -304,14 +304,20 @@ function MixRoutingSection({
         <button
           type="button"
           onClick={() => setNativeMix({ fxBypass: !mix.fxBypass })}
+          // Pedal-style bypass: default state is dim/dark (FX bus on),
+          // engaging the toggle brightens it to indicate the bypass is
+          // active (FX bus off). The label changes to explicitly read
+          // BYPASSED so it doesn't visually conflict with multi-out's
+          // bright=on semantics — both buttons are bright but the
+          // labels make their meanings unambiguous.
           className={
             mix.fxBypass
               ? 'px-3 py-1 text-[10px] uppercase tracking-widest border border-white text-white bg-white/10'
               : 'px-3 py-1 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
           }
-          title="bypass the whole FX chain (currently just reverb). Voices' wet contributions drop to zero so dry passes through full level."
+          title="bypass the FX bus (currently just reverb). When bypassed, voices' wet contributions drop to zero and dry passes through at full level."
         >
-          fx bus {mix.fxBypass ? '● bypass' : '○ active'}
+          {mix.fxBypass ? '● fx bus bypassed' : '○ fx bus'}
         </button>
       </div>
       <div className="flex flex-col gap-1 mt-2">

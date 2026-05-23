@@ -219,6 +219,52 @@ fn reverb_state() -> &'static ReverbState {
   REVERB_STATE.get_or_init(ReverbState::new)
 }
 
+// --- pre-saturation shared state ---
+//
+// Tanh waveshaper applied to the dry voices sum on channels 0+1 before
+// reverb output mixes in. Matches the web architecture's pre-saturation
+// stage (between voicesBus and voicesPostFX). Only engages when
+// multi-out is OFF — stems in multi-out mode are pre-master-drive by
+// convention so the engineer/DAW does the saturation.
+pub struct SaturationState {
+  pre_drive: AtomicU32,
+  bypass: AtomicBool,
+}
+
+impl SaturationState {
+  fn new() -> Self {
+    Self {
+      pre_drive: AtomicU32::new(0.0_f32.to_bits()),
+      bypass: AtomicBool::new(false),
+    }
+  }
+}
+
+static SATURATION_STATE: OnceLock<SaturationState> = OnceLock::new();
+
+fn saturation_state() -> &'static SaturationState {
+  SATURATION_STATE.get_or_init(SaturationState::new)
+}
+
+// Web saturation.ts builds a WaveShaperNode curve: y = tanh(k*x) /
+// tanh(k), where k = 1 + drive^2 * 30. Quadratic on drive keeps the
+// 0..0.5 range warm and 0.5..1 crushing hard. Post-gain = 1 / (1 +
+// drive * 0.9) compensates for the energy boost the saturator adds.
+// Skip oversampling for now (Web Audio used 4x); the curve is smooth
+// enough that aliasing isn't audible at typical drive levels. Bump if
+// we hear it at extreme settings.
+#[inline]
+fn pre_saturate_sample(x: f32, drive: f32) -> f32 {
+  if drive < 0.001 {
+    return x;
+  }
+  let k = 1.0 + drive * drive * 30.0;
+  let norm = k.tanh();
+  let shaped = (k * x).tanh() / norm;
+  let post_gain = 1.0 / (1.0 + drive * 0.9);
+  shaped * post_gain
+}
+
 // Moog-style 4-pole ladder lowpass — direct port of public/worklets/track-
 // ladder.js. Per-voice state (each trigger gets a fresh filter); shared
 // params via the voice's Arc<TrackParams>. Voice-vs-track-state divergence
@@ -667,6 +713,16 @@ impl AudioEngine {
     r.bypass.store(bypass, Ordering::Release);
   }
 
+  // Pre-saturation params. Stage lives outside the FX bus — it's a
+  // pre-master drive applied to the dry-voices sum on channels 0+1
+  // when multi-out is OFF (per the web architecture's saturation.ts).
+  pub fn set_saturation_params(&self, pre_drive: f32, bypass: bool) {
+    let s = saturation_state();
+    s.pre_drive
+      .store(pre_drive.clamp(0.0, 1.0).to_bits(), Ordering::Release);
+    s.bypass.store(bypass, Ordering::Release);
+  }
+
   // Global mix routing — see SharedState comments.
   pub fn set_mix_routing(
     &self,
@@ -1108,6 +1164,33 @@ fn build_stream(
           v.start_frame = 0;
         }
 
+        // 3.5) Pre-master saturation — applied to the dry voices +
+        // test-tone sum on channels 0+1 BEFORE reverb's wet adds in.
+        // Matches web architecture's saturation.ts: tanh waveshaper
+        // between voicesBus and voicesPostFX, so the reverb tail
+        // doesn't get saturated. Engages only when multi-out is OFF
+        // (folded-to-stereo mode) — multi-out stems stay pre-drive
+        // by convention so the DAW/FOH does the saturation.
+        if !multi_out_now {
+          let sat = saturation_state();
+          let sat_bypass = sat.bypass.load(Ordering::Acquire);
+          let drive = f32::from_bits(sat.pre_drive.load(Ordering::Relaxed));
+          if !sat_bypass && drive > 0.001 {
+            if n_ch >= 1 {
+              for frame in 0..frames {
+                let idx = frame * n_ch;
+                buf[idx] = pre_saturate_sample(buf[idx], drive);
+              }
+            }
+            if n_ch >= 2 {
+              for frame in 0..frames {
+                let idx = frame * n_ch + 1;
+                buf[idx] = pre_saturate_sample(buf[idx], drive);
+              }
+            }
+          }
+        }
+
         // 4) Reverb — apply current params, process the wet bus, route
         // the result. Skipped when fx_bypass or reverb's own bypass
         // toggle is on. Output channel pair depends on multi_out:
@@ -1362,6 +1445,15 @@ pub fn audio_set_mix_routing(
   fx_bypass: bool,
 ) -> Result<(), String> {
   engine().set_mix_routing(multi_out, fx_out_first, fx_out_stereo, fx_bypass);
+  Ok(())
+}
+
+#[tauri::command]
+pub fn audio_set_saturation_params(
+  pre_drive: f32,
+  bypass: Option<bool>,
+) -> Result<(), String> {
+  engine().set_saturation_params(pre_drive, bypass.unwrap_or(false));
   Ok(())
 }
 

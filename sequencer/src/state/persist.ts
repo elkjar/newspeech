@@ -161,6 +161,7 @@ export function hydrateSaturation(v: unknown): SaturationParams {
   const s = (v && typeof v === 'object' ? v : {}) as Partial<SaturationParams>;
   return {
     preDrive: clamp01(s.preDrive, DEFAULT_SATURATION_PARAMS.preDrive),
+    bypass: typeof s.bypass === 'boolean' ? s.bypass : DEFAULT_SATURATION_PARAMS.bypass,
   };
 }
 

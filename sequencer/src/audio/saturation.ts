@@ -11,10 +11,14 @@ import { getAudioContext, getVoicesBus, getVoicesPostFX } from './audioContext';
 
 export interface SaturationParams {
   preDrive: number;
+  // Skip the pre-saturation stage entirely. Native engine only —
+  // the web-build waveshaper doesn't honor this flag yet.
+  bypass: boolean;
 }
 
 export const DEFAULT_SATURATION_PARAMS: SaturationParams = {
   preDrive: 0,
+  bypass: false,
 };
 
 const PARAM_RAMP = 0.05;

@@ -26,6 +26,7 @@ import {
   triggerSample,
   setTrackFiltersBulk,
   setReverbParams,
+  setSaturationParams,
   setMixRouting,
   cutoffNormToHz,
   initNativeAudio,
@@ -570,6 +571,7 @@ export function App() {
       damping: number;
       bypass: boolean;
     } | null = null;
+    let lastSaturation: { preDrive: number; bypass: boolean } | null = null;
     let raf = 0;
     const tick = () => {
       const state = useSequencerStore.getState();
@@ -634,6 +636,23 @@ export function App() {
       if (reverbChanged) {
         lastReverb = { size, wetGain, diffusion, damping, bypass };
         void setReverbParams({ size, wetGain, diffusion, damping, bypass });
+      }
+
+      // Pre-saturation (LFO-modulated drive + bypass toggle).
+      const preDrive = modulated(
+        state.saturation.preDrive,
+        state.lfos,
+        GLOBAL_TRACK_ID,
+        'preSaturationDrive',
+      );
+      const satBypass = state.saturation.bypass;
+      const satChanged =
+        !lastSaturation ||
+        Math.abs(lastSaturation.preDrive - preDrive) > 0.001 ||
+        lastSaturation.bypass !== satBypass;
+      if (satChanged) {
+        lastSaturation = { preDrive, bypass: satBypass };
+        void setSaturationParams({ preDrive, bypass: satBypass });
       }
 
       raf = requestAnimationFrame(tick);

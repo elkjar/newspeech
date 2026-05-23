@@ -404,6 +404,19 @@ function SaturationKnob<F extends NumericKeys<SaturationParams>>({
   );
 }
 
+function SaturationBypassToggle({ midiTarget }: { midiTarget?: MidiTarget }) {
+  const active = useSequencerStore((s) => s.saturation.bypass);
+  const setSaturation = useSequencerStore((s) => s.setSaturation);
+  const onToggle = useCallback(
+    () =>
+      setSaturation({ bypass: !useSequencerStore.getState().saturation.bypass }),
+    [setSaturation],
+  );
+  return (
+    <ToggleButton label="bypass" active={active} onToggle={onToggle} midiTarget={midiTarget} />
+  );
+}
+
 function MasterKnob<F extends NumericKeys<MasterParams>>({
   field,
   label,
@@ -539,6 +552,7 @@ export function FXPanel() {
     <div className="flex flex-col items-stretch gap-6 px-4 py-4">
       <div className="flex flex-wrap items-start justify-end gap-5">
       <StageDivider label="pre" />
+      <SaturationBypassToggle midiTarget="fx:saturation.bypass" />
       <SaturationKnob
         field="preDrive"
         label="drive"

@@ -29,7 +29,9 @@ export type FxKnobTargetName =
   | 'reverb.mix'
   | 'reverb.diffusion'
   | 'reverb.damping'
+  | 'reverb.bypass'
   | 'saturation.preDrive'
+  | 'saturation.bypass'
   | 'master.input'
   | 'master.loCut'
   | 'master.comp'
@@ -75,7 +77,9 @@ export const FX_KNOB_TARGETS: FxKnobTargetName[] = [
   'reverb.mix',
   'reverb.diffusion',
   'reverb.damping',
+  'reverb.bypass',
   'saturation.preDrive',
+  'saturation.bypass',
   'master.input',
   'master.loCut',
   'master.comp',
