@@ -190,6 +190,67 @@ export interface TrackOutput {
 
 export const DEFAULT_TRACK_OUTPUT: TrackOutput = { firstChannel: 0, stereo: true };
 
+// Global mix-routing config (Tauri / native engine only). Lives in
+// localStorage so the user's physical-interface setup persists across
+// app launches independently of any project preset.
+//   • multiOut    — master switch. When OFF, every voice + the FX bus
+//                   collapse to channels 1-2 regardless of per-track
+//                   assignment. When ON, per-track outputs + FX output
+//                   land on their configured channels.
+//   • fxOutput    — where the FX bus (currently just reverb wet)
+//                   lands when multiOut is ON. Default 1-2.
+//   • fxBypass    — kills the entire FX chain. Voice fxSend is treated
+//                   as 0 so dry passes through at full level and no
+//                   wet contribution accumulates. Reverb's own bypass
+//                   (ReverbParams.bypass) is independent — it skips
+//                   only the reverb stage so a future tape/glitch
+//                   chain still processes.
+export interface NativeMix {
+  multiOut: boolean;
+  fxOutput: TrackOutput;
+  fxBypass: boolean;
+}
+
+export const DEFAULT_NATIVE_MIX: NativeMix = {
+  multiOut: false,
+  fxOutput: { firstChannel: 0, stereo: true },
+  fxBypass: false,
+};
+
+const LS_NATIVE_MIX = 'newspeech.sequencer.nativeMix';
+
+function readPersistedNativeMix(): NativeMix {
+  if (typeof localStorage === 'undefined') return { ...DEFAULT_NATIVE_MIX };
+  try {
+    const raw = localStorage.getItem(LS_NATIVE_MIX);
+    if (!raw) return { ...DEFAULT_NATIVE_MIX };
+    const v = JSON.parse(raw) as Partial<NativeMix>;
+    const out = v.fxOutput && typeof v.fxOutput === 'object' ? v.fxOutput : DEFAULT_NATIVE_MIX.fxOutput;
+    return {
+      multiOut: typeof v.multiOut === 'boolean' ? v.multiOut : DEFAULT_NATIVE_MIX.multiOut,
+      fxOutput: {
+        firstChannel:
+          typeof out.firstChannel === 'number' && out.firstChannel >= 0
+            ? Math.floor(out.firstChannel)
+            : DEFAULT_NATIVE_MIX.fxOutput.firstChannel,
+        stereo: typeof out.stereo === 'boolean' ? out.stereo : DEFAULT_NATIVE_MIX.fxOutput.stereo,
+      },
+      fxBypass: typeof v.fxBypass === 'boolean' ? v.fxBypass : DEFAULT_NATIVE_MIX.fxBypass,
+    };
+  } catch {
+    return { ...DEFAULT_NATIVE_MIX };
+  }
+}
+
+function writePersistedNativeMix(v: NativeMix): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LS_NATIVE_MIX, JSON.stringify(v));
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
   channel: 0,
   portName: null,
@@ -481,6 +542,8 @@ interface SequencerState {
   setGlitch: (patch: Partial<GlitchParams>) => void;
   reverb: ReverbParams;
   setReverb: (patch: Partial<ReverbParams>) => void;
+  nativeMix: NativeMix;
+  setNativeMix: (patch: Partial<NativeMix>) => void;
   saturation: SaturationParams;
   setSaturation: (patch: Partial<SaturationParams>) => void;
   master: MasterParams;
@@ -871,6 +934,18 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   reverb: hydrateReverbFromPreset((defaultPreset as { reverb?: unknown }).reverb),
   setReverb: (patch) =>
     set((state) => ({ reverb: { ...state.reverb, ...patch } })),
+  nativeMix: readPersistedNativeMix(),
+  setNativeMix: (patch) =>
+    set((state) => {
+      const merged: NativeMix = { ...state.nativeMix, ...patch };
+      // Merge fxOutput deeply since partial patches may carry just one
+      // of its fields. The bool/scalar fields are flat-merged above.
+      if (patch.fxOutput) {
+        merged.fxOutput = { ...state.nativeMix.fxOutput, ...patch.fxOutput };
+      }
+      writePersistedNativeMix(merged);
+      return { nativeMix: merged };
+    }),
   saturation: hydrateSaturationFromPreset((defaultPreset as { saturation?: unknown }).saturation),
   setSaturation: (patch) =>
     set((state) => ({ saturation: { ...state.saturation, ...patch } })),

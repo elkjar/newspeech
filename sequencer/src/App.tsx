@@ -17,6 +17,7 @@ import {
   useSequencerStore,
   type EditMode,
   type TrackSection,
+  type TrackOutput,
 } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
@@ -25,6 +26,7 @@ import {
   triggerSample,
   setTrackFiltersBulk,
   setReverbParams,
+  setMixRouting,
   cutoffNormToHz,
   initNativeAudio,
   type TrackFilterUpdate,
@@ -524,6 +526,26 @@ export function App() {
     void initNativeAudio();
   }, []);
 
+  // Push mix-routing changes (multi_out, fxOutput, fxBypass) on every
+  // store edit. Discrete state — no modulation — so a store.subscribe
+  // beats folding it into the RAF loop. Initial pass fires the current
+  // state to the engine right after device open.
+  useEffect(() => {
+    if (!isNativeAudioAvailable()) return;
+    const push = (mix: { multiOut: boolean; fxOutput: TrackOutput; fxBypass: boolean }) => {
+      void setMixRouting({
+        multiOut: mix.multiOut,
+        fxOutFirst: mix.fxOutput.firstChannel,
+        fxOutStereo: mix.fxOutput.stereo,
+        fxBypass: mix.fxBypass,
+      });
+    };
+    push(useSequencerStore.getState().nativeMix);
+    return useSequencerStore.subscribe((state, prev) => {
+      if (state.nativeMix !== prev.nativeMix) push(state.nativeMix);
+    });
+  }, []);
+
   // Phase 3b + 7a: push LFO-modulated DSP params to the native engine
   // every animation frame. Per-track filter cutoff/resonance + fxSend
   // go through one bulk invoke. Global reverb params (size, mix→wet
@@ -541,8 +563,13 @@ export function App() {
       string,
       { cutoffHz: number; resonance: number; fxSend: number }
     >();
-    let lastReverb: { size: number; wetGain: number; diffusion: number; damping: number } | null =
-      null;
+    let lastReverb: {
+      size: number;
+      wetGain: number;
+      diffusion: number;
+      damping: number;
+      bypass: boolean;
+    } | null = null;
     let raf = 0;
     const tick = () => {
       const state = useSequencerStore.getState();
@@ -596,15 +623,17 @@ export function App() {
         GLOBAL_TRACK_ID,
         'reverbDamping',
       );
+      const bypass = rv.bypass;
       const reverbChanged =
         !lastReverb ||
         Math.abs(lastReverb.size - size) > 0.001 ||
         Math.abs(lastReverb.wetGain - wetGain) > 0.001 ||
         Math.abs(lastReverb.diffusion - diffusion) > 0.001 ||
-        Math.abs(lastReverb.damping - damping) > 0.001;
+        Math.abs(lastReverb.damping - damping) > 0.001 ||
+        lastReverb.bypass !== bypass;
       if (reverbChanged) {
-        lastReverb = { size, wetGain, diffusion, damping };
-        void setReverbParams({ size, wetGain, diffusion, damping });
+        lastReverb = { size, wetGain, diffusion, damping, bypass };
+        void setReverbParams({ size, wetGain, diffusion, damping, bypass });
       }
 
       raf = requestAnimationFrame(tick);

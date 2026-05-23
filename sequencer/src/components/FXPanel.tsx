@@ -364,6 +364,18 @@ function ReverbKnob<F extends NumericKeys<ReverbParams>>({
   );
 }
 
+function ReverbBypassToggle({ midiTarget }: { midiTarget?: MidiTarget }) {
+  const active = useSequencerStore((s) => s.reverb.bypass);
+  const setReverb = useSequencerStore((s) => s.setReverb);
+  const onToggle = useCallback(
+    () => setReverb({ bypass: !useSequencerStore.getState().reverb.bypass }),
+    [setReverb],
+  );
+  return (
+    <ToggleButton label="bypass" active={active} onToggle={onToggle} midiTarget={midiTarget} />
+  );
+}
+
 function SaturationKnob<F extends NumericKeys<SaturationParams>>({
   field,
   label,
@@ -580,6 +592,7 @@ export function FXPanel() {
         midiTarget="fx:glitch.mix"
       />
       <StageDivider label="reverb" />
+      <ReverbBypassToggle midiTarget="fx:reverb.bypass" />
       <ReverbKnob
         field="size"
         label="size"

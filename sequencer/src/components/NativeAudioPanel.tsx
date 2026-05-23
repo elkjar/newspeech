@@ -15,6 +15,7 @@ import {
   subscribeReportedChannelCount,
   type NativeDeviceInfo,
 } from '../audio/nativeEngine';
+import { useSequencerStore, type TrackOutput } from '../state/store';
 
 const COMMON_BUFFER_SIZES = [64, 128, 256, 512, 1024];
 
@@ -226,6 +227,8 @@ export function NativeAudioPanel() {
 
       {error && <div className="text-[11px] text-red-400 font-mono">{error}</div>}
 
+      <MixRoutingSection nativeChannels={activeChannels} isOpen={isOpen} />
+
       <div className="flex flex-col gap-1 mt-3 pt-3 border-t border-white/10">
         <div className="text-[10px] uppercase tracking-widest text-white/55">test tone (440 hz)</div>
         <div className="text-[10px] text-white/40">click a channel number to fire a sine on it — verifies the physical routing on a new interface.</div>
@@ -264,4 +267,105 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+// Mix routing — multi-out + FX bus output + FX bypass. Multi-out OFF
+// is the default headphone-monitor mode where everything (per-track
+// outputs + FX bus) folds to channels 1-2. Multi-out ON honors per-
+// track output assignments and routes the FX wet bus to a dedicated
+// channel pair (or mono channel) for stem capture / FOH split.
+function MixRoutingSection({
+  nativeChannels,
+  isOpen,
+}: {
+  nativeChannels: number;
+  isOpen: boolean;
+}) {
+  const mix = useSequencerStore((s) => s.nativeMix);
+  const setNativeMix = useSequencerStore((s) => s.setNativeMix);
+  return (
+    <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/10">
+      <div className="text-[10px] uppercase tracking-widest text-white/55">mix routing</div>
+      <div className="text-[10px] text-white/40">
+        multi-out OFF folds everything to 1-2. ON honors per-track outputs (in the row settings) + the FX bus channel below.
+      </div>
+      <div className="flex items-center gap-3 mt-1">
+        <button
+          type="button"
+          onClick={() => setNativeMix({ multiOut: !mix.multiOut })}
+          className={
+            mix.multiOut
+              ? 'px-3 py-1 text-[10px] uppercase tracking-widest border border-white text-white bg-white/10'
+              : 'px-3 py-1 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
+          }
+        >
+          multi-out {mix.multiOut ? '● on' : '○ off'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setNativeMix({ fxBypass: !mix.fxBypass })}
+          className={
+            mix.fxBypass
+              ? 'px-3 py-1 text-[10px] uppercase tracking-widest border border-white text-white bg-white/10'
+              : 'px-3 py-1 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
+          }
+          title="bypass the whole FX chain (currently just reverb). Voices' wet contributions drop to zero so dry passes through full level."
+        >
+          fx bus {mix.fxBypass ? '● bypass' : '○ active'}
+        </button>
+      </div>
+      <div className="flex flex-col gap-1 mt-2">
+        <span className="text-[10px] uppercase tracking-widest text-white/55">fx output</span>
+        <select
+          value={`${mix.fxOutput.stereo ? 's' : 'm'}${mix.fxOutput.firstChannel}`}
+          onChange={(e) => {
+            const v = e.target.value;
+            const stereo = v.startsWith('s');
+            const firstChannel = parseInt(v.slice(1), 10);
+            if (!Number.isFinite(firstChannel)) return;
+            setNativeMix({ fxOutput: { firstChannel, stereo } });
+          }}
+          disabled={!isOpen || !mix.multiOut}
+          className="w-full bg-transparent border border-white/15 text-white/90 text-[12px] px-2 py-1 disabled:text-white/30"
+          title={
+            !mix.multiOut
+              ? 'multi-out is OFF — FX bus folds to 1-2 regardless of this setting.'
+              : 'where the reverb wet bus lands when multi-out is ON.'
+          }
+        >
+          {outputOptions(nativeChannels, mix.fxOutput).map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// Mirrors the helper in RowPanel.tsx — stereo pairs first, mono
+// channels after, with the saved value pinned at the top if it falls
+// outside the active device's channel count.
+function outputOptions(
+  channels: number,
+  current: TrackOutput,
+): Array<{ value: string; label: string }> {
+  const opts: Array<{ value: string; label: string }> = [];
+  for (let i = 0; i + 1 < channels; i += 2) {
+    opts.push({ value: `s${i}`, label: `${i + 1}-${i + 2}` });
+  }
+  for (let i = 0; i < channels; i++) {
+    opts.push({ value: `m${i}`, label: `${i + 1}` });
+  }
+  const currentValue = `${current.stereo ? 's' : 'm'}${current.firstChannel}`;
+  if (!opts.some((o) => o.value === currentValue)) {
+    opts.unshift({
+      value: currentValue,
+      label: current.stereo
+        ? `${current.firstChannel + 1}-${current.firstChannel + 2}`
+        : `${current.firstChannel + 1}`,
+    });
+  }
+  return opts;
 }

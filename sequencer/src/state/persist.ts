@@ -153,6 +153,7 @@ export function hydrateReverb(v: unknown): ReverbParams {
     mix: clamp01(r.mix, DEFAULT_REVERB_PARAMS.mix),
     diffusion: clamp01(r.diffusion, DEFAULT_REVERB_PARAMS.diffusion),
     damping: clamp01(r.damping, DEFAULT_REVERB_PARAMS.damping),
+    bypass: typeof r.bypass === 'boolean' ? r.bypass : DEFAULT_REVERB_PARAMS.bypass,
   };
 }
 

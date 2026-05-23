@@ -193,6 +193,11 @@ pub struct ReverbState {
   wet_gain: AtomicU32,
   diffusion: AtomicU32,
   damping: AtomicU32,
+  // Bypass skips reverb.process_block entirely. Distinct from
+  // SharedState::fx_bypass — that one kills the whole FX chain
+  // (silencing voice wet contributions); this one just removes
+  // reverb from the chain so future tape/glitch stages still process.
+  bypass: AtomicBool,
 }
 
 impl ReverbState {
@@ -203,6 +208,7 @@ impl ReverbState {
       wet_gain: AtomicU32::new(0.0_f32.to_bits()),
       diffusion: AtomicU32::new(0.625_f32.to_bits()),
       damping: AtomicU32::new(0.4_f32.to_bits()),
+      bypass: AtomicBool::new(false),
     }
   }
 }
@@ -358,6 +364,17 @@ struct SharedState {
   // Mutex so command threads can push, but the audio thread holds the
   // matching consumer side directly and never blocks.
   trigger_producer: Mutex<Option<HeapProd<MixerCommand>>>,
+  // Mix routing. multi_out=false collapses every voice + FX bus to
+  // channels 0+1 regardless of per-voice routing config (graceful
+  // headphone-monitor mode). multi_out=true honors per-voice
+  // out_first/out_stereo and fx_out_first/fx_out_stereo. fx_bypass
+  // skips the entire FX chain (currently just reverb); voices' wet
+  // contributions are treated as zero so dry passes through full
+  // level with no energy loss.
+  multi_out: AtomicBool,
+  fx_out_first: AtomicU32,
+  fx_out_stereo: AtomicBool,
+  fx_bypass: AtomicBool,
 }
 
 impl SharedState {
@@ -369,6 +386,10 @@ impl SharedState {
       test_tone_channel: AtomicUsize::new(0),
       test_tone_freq_mhz: AtomicU32::new(440_000),
       trigger_producer: Mutex::new(None),
+      multi_out: AtomicBool::new(false),
+      fx_out_first: AtomicU32::new(0),
+      fx_out_stereo: AtomicBool::new(true),
+      fx_bypass: AtomicBool::new(false),
     }
   }
 }
@@ -586,7 +607,14 @@ impl AudioEngine {
   // shared ReverbState so the audio callback can read them lock-free
   // each block. The DSP's internal mix is pinned to 1.0 (fully wet) at
   // construction — the `wet_gain` here is the post-reverb bus gain.
-  pub fn set_reverb_params(&self, size: f32, wet_gain: f32, diffusion: f32, damping: f32) {
+  pub fn set_reverb_params(
+    &self,
+    size: f32,
+    wet_gain: f32,
+    diffusion: f32,
+    damping: f32,
+    bypass: bool,
+  ) {
     let r = reverb_state();
     r.size.store(size.clamp(0.0, 1.0).to_bits(), Ordering::Release);
     r.wet_gain
@@ -595,6 +623,21 @@ impl AudioEngine {
       .store(diffusion.clamp(0.0, 0.85).to_bits(), Ordering::Release);
     r.damping
       .store(damping.clamp(0.0, 1.0).to_bits(), Ordering::Release);
+    r.bypass.store(bypass, Ordering::Release);
+  }
+
+  // Global mix routing — see SharedState comments.
+  pub fn set_mix_routing(
+    &self,
+    multi_out: bool,
+    fx_out_first: u32,
+    fx_out_stereo: bool,
+    fx_bypass: bool,
+  ) {
+    self.state.multi_out.store(multi_out, Ordering::Release);
+    self.state.fx_out_first.store(fx_out_first, Ordering::Release);
+    self.state.fx_out_stereo.store(fx_out_stereo, Ordering::Release);
+    self.state.fx_bypass.store(fx_bypass, Ordering::Release);
   }
 
   pub fn stop_all_voices(&self) -> Result<(), String> {
@@ -834,6 +877,13 @@ fn build_stream(
           }
         }
 
+        // Mix-routing snapshot for this block. Read once so all the
+        // per-frame routing in the loop sees a consistent state.
+        let multi_out_now = cb_state.multi_out.load(Ordering::Acquire);
+        let fx_bypass_now = cb_state.fx_bypass.load(Ordering::Acquire);
+        let fx_out_first = cb_state.fx_out_first.load(Ordering::Acquire) as usize;
+        let fx_out_stereo = cb_state.fx_out_stereo.load(Ordering::Acquire);
+
         // Clear the reverb input bus for this block. Voices accumulate
         // their wet contribution into it during the loop below.
         let rev_frames = frames.min(REVERB_SCRATCH);
@@ -906,10 +956,16 @@ fn build_stream(
               ls = fl;
               rs = fr;
             }
-            let fx_send = track_params
+            // Effective fx_send is 0 when the FX bus is bypassed —
+            // dry passes through at full level, no wet accumulates.
+            // Voice's stored fx_send is preserved in TrackParams so
+            // turning bypass off restores the prior amount with no
+            // discontinuity.
+            let raw_fx_send = track_params
               .as_ref()
               .map(|p| p.fx_send())
               .unwrap_or(0.0);
+            let fx_send = if fx_bypass_now { 0.0 } else { raw_fx_send };
             let dry_scale = 1.0 - fx_send;
             // Reverb input is post-gain + post-pan so the wet bus
             // matches the dry path's positioning. Reverb sums L+R to
@@ -921,30 +977,39 @@ fn build_stream(
               reverb_in_l[frame] += wet_l;
               reverb_in_r[frame] += wet_r;
             }
-            if v.out_stereo {
-              let l_idx = v.out_first;
-              let r_idx = v.out_first + 1;
+            // Voice routing — multi_out OFF collapses everything to
+            // channels 0+1 stereo (graceful headphone fold). Per-voice
+            // out_* config is preserved in voice state for when
+            // multi_out flips back on.
+            let (route_first, route_stereo) = if multi_out_now {
+              (v.out_first, v.out_stereo)
+            } else {
+              (0usize, true)
+            };
+            if route_stereo {
+              let l_idx = route_first;
+              let r_idx = route_first + 1;
               if l_idx < n_ch {
                 buf[frame * n_ch + l_idx] += ls * v.gain * v.pan_left * dry_scale;
               }
               if r_idx < n_ch {
                 buf[frame * n_ch + r_idx] += rs * v.gain * v.pan_right * dry_scale;
               }
-            } else if v.out_first < n_ch {
+            } else if route_first < n_ch {
               let mono = 0.5 * (ls + rs);
-              buf[frame * n_ch + v.out_first] += mono * v.gain * dry_scale;
+              buf[frame * n_ch + route_first] += mono * v.gain * dry_scale;
             }
             v.position += v.rate;
           }
         }
 
-        // 4) Reverb — apply current params, process the wet bus, mix the
-        // result into the main monitor pair (channels 0 + 1). The DSP's
-        // internal mix is pinned to 1.0 in ReverbBus::new so we get pure
-        // wet; wet_gain here is the post-reverb bus volume. wet_gain=0
-        // is silent (default), letting the reverb stay completely
-        // out-of-circuit until the user dials it in.
+        // 4) Reverb — apply current params, process the wet bus, route
+        // the result. Skipped when fx_bypass or reverb's own bypass
+        // toggle is on. Output channel pair depends on multi_out:
+        // OFF → always 0+1 stereo (monitor fold); ON → fx_out_first /
+        // fx_out_stereo (user-assigned, e.g. outs 7+8 for stems).
         let r = reverb_state();
+        let reverb_bypass_now = r.bypass.load(Ordering::Acquire);
         let size = f32::from_bits(r.size.load(Ordering::Relaxed));
         let wet_gain = f32::from_bits(r.wet_gain.load(Ordering::Relaxed));
         let diffusion = f32::from_bits(r.diffusion.load(Ordering::Relaxed));
@@ -952,20 +1017,38 @@ fn build_stream(
         reverb_bus.set_size(size);
         reverb_bus.set_diffusion(diffusion);
         reverb_bus.set_damping(damping);
-        if rev_frames > 0 {
+        let fx_active = !fx_bypass_now && !reverb_bypass_now;
+        if fx_active && rev_frames > 0 {
           reverb_bus.process_block(
             &reverb_in_l[..rev_frames],
             &reverb_in_r[..rev_frames],
             &mut reverb_out_l[..rev_frames],
             &mut reverb_out_r[..rev_frames],
           );
-          if wet_gain > 0.0 && n_ch >= 1 {
-            for frame in 0..rev_frames {
-              buf[frame * n_ch] += reverb_out_l[frame] * wet_gain;
-            }
-            if n_ch >= 2 {
+          if wet_gain > 0.0 {
+            let (out_first, out_stereo) = if multi_out_now {
+              (fx_out_first, fx_out_stereo)
+            } else {
+              (0usize, true)
+            };
+            if out_stereo {
+              let l_idx = out_first;
+              let r_idx = out_first + 1;
+              if l_idx < n_ch {
+                for frame in 0..rev_frames {
+                  buf[frame * n_ch + l_idx] += reverb_out_l[frame] * wet_gain;
+                }
+              }
+              if r_idx < n_ch {
+                for frame in 0..rev_frames {
+                  buf[frame * n_ch + r_idx] += reverb_out_r[frame] * wet_gain;
+                }
+              }
+            } else if out_first < n_ch {
+              // Mono FX out — sum L+R*0.5 into a single channel.
               for frame in 0..rev_frames {
-                buf[frame * n_ch + 1] += reverb_out_r[frame] * wet_gain;
+                let mono = 0.5 * (reverb_out_l[frame] + reverb_out_r[frame]);
+                buf[frame * n_ch + out_first] += mono * wet_gain;
               }
             }
           }
@@ -1158,8 +1241,20 @@ pub fn audio_set_reverb_params(
   wet_gain: f32,
   diffusion: f32,
   damping: f32,
+  bypass: Option<bool>,
 ) -> Result<(), String> {
-  engine().set_reverb_params(size, wet_gain, diffusion, damping);
+  engine().set_reverb_params(size, wet_gain, diffusion, damping, bypass.unwrap_or(false));
+  Ok(())
+}
+
+#[tauri::command]
+pub fn audio_set_mix_routing(
+  multi_out: bool,
+  fx_out_first: u32,
+  fx_out_stereo: bool,
+  fx_bypass: bool,
+) -> Result<(), String> {
+  engine().set_mix_routing(multi_out, fx_out_first, fx_out_stereo, fx_bypass);
   Ok(())
 }
 

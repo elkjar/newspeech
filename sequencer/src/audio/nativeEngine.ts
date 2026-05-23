@@ -356,18 +356,37 @@ export async function setTrackFiltersBulk(
 // Global reverb params. `wetGain` is the post-reverb bus gain (0..1
 // roughly, the user-facing "mix" knob remapped — the DSP's internal
 // wet/dry crossfade is pinned to fully-wet on the Rust side, our
-// per-voice fx_send carries the dry/wet split per track).
+// per-voice fx_send carries the dry/wet split per track). `bypass`
+// skips reverb.process_block entirely.
 export async function setReverbParams(opts: {
   size: number;
   wetGain: number;
   diffusion: number;
   damping: number;
+  bypass?: boolean;
 }): Promise<void> {
   await invoke<void>('audio_set_reverb_params', {
     size: opts.size,
     wetGain: opts.wetGain,
     diffusion: opts.diffusion,
     damping: opts.damping,
+    bypass: opts.bypass ?? null,
+  });
+}
+
+// Mix routing — multi-out mode, FX bus output channels, FX chain
+// bypass. See store.ts NativeMix for the semantics.
+export async function setMixRouting(opts: {
+  multiOut: boolean;
+  fxOutFirst: number;
+  fxOutStereo: boolean;
+  fxBypass: boolean;
+}): Promise<void> {
+  await invoke<void>('audio_set_mix_routing', {
+    multiOut: opts.multiOut,
+    fxOutFirst: opts.fxOutFirst,
+    fxOutStereo: opts.fxOutStereo,
+    fxBypass: opts.fxBypass,
   });
 }
 
