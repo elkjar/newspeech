@@ -318,6 +318,12 @@ struct Voice {
   // knob twists hit voices already in flight.
   track_params: Option<Arc<TrackParams>>,
   filter: LadderFilter,
+  // Sample offset within the FIRST audio block to begin emitting from.
+  // Set by the pending-trigger queue for sample-accurate dispatch — a
+  // voice with start_frame=N skips the first N frames of its first
+  // block then plays normally from frame N onward. Reset to 0 at end
+  // of that first block so subsequent blocks emit from frame 0.
+  start_frame: usize,
   active: bool,
 }
 
@@ -334,6 +340,7 @@ impl Default for Voice {
       out_stereo: true,
       track_params: None,
       filter: LadderFilter::default(),
+      start_frame: 0,
       active: false,
     }
   }
@@ -348,8 +355,31 @@ enum MixerCommand {
     out_first: u32,  // first physical channel, 0-indexed
     out_stereo: bool,
     track_params: Option<Arc<TrackParams>>,
+    // Frames to wait after this trigger is drained from the queue
+    // before the voice begins emitting. 0 = fire immediately at start
+    // of the next audio block (existing behavior). >0 = queue in
+    // pending_triggers and fire sample-accurately when the deadline
+    // falls within an audio block.
+    delay_samples: u32,
   },
   StopAll,
+}
+
+// Holds a voice-ready trigger that hasn't fired yet. Pan, rate, etc.
+// are pre-computed at queue time so the firing path only has to copy
+// into a slot. remaining_samples can go negative if the trigger
+// arrives "late" relative to its requested delay (IPC + block boundary
+// latency) — handled by clamping start_frame to 0.
+struct PendingTrigger {
+  sample: Arc<SampleData>,
+  rate: f64,
+  gain: f32,
+  pan_left: f32,
+  pan_right: f32,
+  out_first: usize,
+  out_stereo: bool,
+  track_params: Option<Arc<TrackParams>>,
+  remaining_samples: i32,
 }
 
 // --- shared state ---
@@ -557,6 +587,7 @@ impl AudioEngine {
     out_first: u32,
     out_stereo: bool,
     track_id: Option<String>,
+    delay_secs: f32,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -570,6 +601,15 @@ impl AudioEngine {
     let track_params = track_id
       .as_deref()
       .map(get_or_create_track_params);
+    // Convert delay seconds → frames at the device sample rate. The
+    // audio callback dequeues by frame count, so seconds is the
+    // unit-agnostic value to cross IPC; sample rate is owned by Rust.
+    let sr = self.state.sample_rate.load(Ordering::Acquire);
+    let delay_samples = if sr == 0 || !delay_secs.is_finite() || delay_secs <= 0.0 {
+      0u32
+    } else {
+      (delay_secs * sr as f32).round().max(0.0).min(u32::MAX as f32) as u32
+    };
     let cmd = MixerCommand::Trigger {
       sample,
       gain,
@@ -578,6 +618,7 @@ impl AudioEngine {
       out_first,
       out_stereo,
       track_params,
+      delay_samples,
     };
     let mut guard = self
       .state
@@ -724,6 +765,38 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
   }
 }
 
+// Drops a PendingTrigger into a voice slot — picks an inactive slot,
+// or steals one round-robin via steal_cursor if all are busy. Used by
+// both the immediate-fire path (delay_samples == 0) and the
+// sample-accurate dispatch path (delay reached this block).
+fn claim_voice_slot(
+  voices: &mut [Voice],
+  steal_cursor: &mut usize,
+  p: PendingTrigger,
+  start_frame: usize,
+) {
+  let slot = (0..VOICE_POOL_SIZE)
+    .find(|i| !voices[*i].active)
+    .unwrap_or_else(|| {
+      let s = *steal_cursor;
+      *steal_cursor = (*steal_cursor + 1) % VOICE_POOL_SIZE;
+      s
+    });
+  let v = &mut voices[slot];
+  v.sample = Some(p.sample);
+  v.position = 0.0;
+  v.rate = p.rate;
+  v.gain = p.gain;
+  v.pan_left = p.pan_left;
+  v.pan_right = p.pan_right;
+  v.out_first = p.out_first;
+  v.out_stereo = p.out_stereo;
+  v.track_params = p.track_params;
+  v.filter.reset();
+  v.start_frame = start_frame;
+  v.active = true;
+}
+
 fn build_stream(
   device_name: &str,
   channels: u32,
@@ -761,6 +834,10 @@ fn build_stream(
   let mut last_ch: usize = usize::MAX;
   let mut voices: Vec<Voice> = vec![Voice::default(); VOICE_POOL_SIZE];
   let mut steal_cursor: usize = 0;
+  // Pending triggers — sample-accurate dispatch queue. Triggers with
+  // delay_samples > 0 land here at drain time; each block we scan and
+  // fire any whose remaining_samples falls inside this block.
+  let mut pending_triggers: Vec<PendingTrigger> = Vec::with_capacity(64);
   let nominal_channels = channels as usize;
   let nominal_sr = sample_rate as f32;
   let device_sr_f64 = sample_rate as f64;
@@ -801,7 +878,10 @@ fn build_stream(
           }
         };
 
-        // 1) Drain the trigger queue.
+        // 1) Drain the trigger queue. Triggers with delay_samples == 0
+        // claim a voice slot immediately at start_frame=0 (existing
+        // behavior). Triggers with delay_samples > 0 are pushed to
+        // pending_triggers for sample-accurate dispatch in step 2.
         while let Some(cmd) = consumer.try_pop() {
           match cmd {
             MixerCommand::Trigger {
@@ -812,16 +892,8 @@ fn build_stream(
               out_first,
               out_stereo,
               track_params,
+              delay_samples,
             } => {
-              // Prefer an inactive slot; if all are busy, steal one
-              // round-robin via steal_cursor.
-              let slot = (0..VOICE_POOL_SIZE)
-                .find(|i| !voices[*i].active)
-                .unwrap_or_else(|| {
-                  let s = steal_cursor;
-                  steal_cursor = (steal_cursor + 1) % VOICE_POOL_SIZE;
-                  s
-                });
               let pan_clamped = pan.clamp(-1.0, 1.0);
               let angle =
                 (pan_clamped + 1.0) * 0.5 * std::f32::consts::FRAC_PI_2;
@@ -829,18 +901,22 @@ fn build_stream(
               let pan_right = angle.sin();
               let base_rate = sample.sample_rate as f64 / device_sr_f64;
               let rate = base_rate * (pitch.max(0.001) as f64);
-              let mut v = &mut voices[slot];
-              v.sample = Some(sample);
-              v.position = 0.0;
-              v.rate = rate;
-              v.gain = gain;
-              v.pan_left = pan_left;
-              v.pan_right = pan_right;
-              v.out_first = out_first as usize;
-              v.out_stereo = out_stereo;
-              v.track_params = track_params;
-              v.filter.reset();
-              v.active = true;
+              let pending = PendingTrigger {
+                sample,
+                rate,
+                gain,
+                pan_left,
+                pan_right,
+                out_first: out_first as usize,
+                out_stereo,
+                track_params,
+                remaining_samples: delay_samples as i32,
+              };
+              if delay_samples == 0 {
+                claim_voice_slot(&mut voices, &mut steal_cursor, pending, 0);
+              } else {
+                pending_triggers.push(pending);
+              }
             }
             MixerCommand::StopAll => {
               for v in voices.iter_mut() {
@@ -848,12 +924,35 @@ fn build_stream(
                 v.sample = None;
                 v.track_params = None;
                 v.filter.reset();
+                v.start_frame = 0;
               }
+              pending_triggers.clear();
             }
           }
         }
 
         let frames = buf.len() / n_ch.max(1);
+
+        // 1.5) Sample-accurate dispatch — scan pending triggers and
+        // fire any whose deadline falls inside the current block. Uses
+        // swap_remove for O(1) deletion. Order changes but that's fine
+        // (each trigger carries its own delay; the JS scheduler already
+        // computed pan/rate/etc. at push time).
+        let block_frames = frames as i32;
+        let mut i = 0;
+        while i < pending_triggers.len() {
+          if pending_triggers[i].remaining_samples < block_frames {
+            let mut p = pending_triggers.swap_remove(i);
+            let start_frame = p.remaining_samples.max(0) as usize;
+            // Re-zero remaining so the moved value doesn't leak weird
+            // state if anything in claim_voice_slot reads it.
+            p.remaining_samples = 0;
+            claim_voice_slot(&mut voices, &mut steal_cursor, p, start_frame);
+          } else {
+            pending_triggers[i].remaining_samples -= block_frames;
+            i += 1;
+          }
+        }
 
         // 2) Test tone (additive).
         if cb_state.test_tone_enabled.load(Ordering::Acquire) {
@@ -923,7 +1022,11 @@ fn build_stream(
           // Per-trigger snapshot of the track params Arc. Reads off the
           // atomics each frame — cheap, lockfree.
           let track_params = v.track_params.clone();
-          for frame in 0..frames {
+          // Honor sample-accurate dispatch — voice may have been queued
+          // to start partway into this block. Reset start_frame after
+          // this block so subsequent blocks emit from frame 0.
+          let start = v.start_frame;
+          for frame in start..frames {
             let pos = v.position;
             let i0 = pos.floor() as usize;
             let frame_count = sample.frame_count();
@@ -1001,6 +1104,8 @@ fn build_stream(
             }
             v.position += v.rate;
           }
+          // Block-end reset — subsequent blocks emit from frame 0.
+          v.start_frame = 0;
         }
 
         // 4) Reverb — apply current params, process the wet bus, route
@@ -1192,6 +1297,7 @@ pub fn audio_trigger_sample(
   out_first: Option<u32>,
   out_stereo: Option<bool>,
   track_id: Option<String>,
+  delay_secs: Option<f32>,
 ) -> Result<(), String> {
   engine().trigger_sample(
     path,
@@ -1201,6 +1307,7 @@ pub fn audio_trigger_sample(
     out_first.unwrap_or(0),
     out_stereo.unwrap_or(true),
     track_id,
+    delay_secs.unwrap_or(0.0),
   )
 }
 

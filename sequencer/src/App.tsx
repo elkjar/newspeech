@@ -409,36 +409,34 @@ export function App() {
               const totalDuration = ev.stepDuration * ev.tieLength;
               const sub = totalDuration / n;
               if (isNativeAudioAvailable()) {
-                // Native arp — setTimeout each tone relative to the JS
-                // event loop. Time precision is bounded by setTimeout
-                // (~5 ms jitter); Phase 5 will move dispatch into the
-                // audio thread for sample-accurate spread. pickNativeSample
-                // is called NOW so the round-robin counter advances in
-                // arp order regardless of when each timeout fires.
+                // Native arp — Phase 5 sample-accurate dispatch. Fire
+                // all tones IMMEDIATELY through the IPC; each carries
+                // its own delaySecs so the Rust audio callback queues
+                // them and emits at the exact sub-step sample. No more
+                // setTimeout jitter. pickNativeSample is still called
+                // at scheduling time so the round-robin counter
+                // advances in arp order regardless of dispatch latency.
                 const out = evTrack?.output;
                 const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
                 const trackGain = evTrack?.gain ?? 1;
                 const nowAudio = getAudioContext().currentTime;
                 for (let i = 0; i < n; i++) {
                   const fireAt = ev.when + i * sub;
-                  const delayMs = Math.max(0, (fireAt - nowAudio) * 1000);
+                  const delaySecs = Math.max(0, fireAt - nowAudio);
                   const interval = ev.voiceIntervals[i];
                   const targetMidi =
                     ev.midi !== undefined ? ev.midi + interval : undefined;
                   const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
                   if (!pick) continue;
-                  const fire = () => {
-                    void triggerSample(pick.path, {
-                      gain: ev.velocity * pick.voiceGain * trackGain,
-                      pan,
-                      pitch: pick.pitch,
-                      outFirst: out?.firstChannel ?? 0,
-                      outStereo: out?.stereo ?? true,
-                      trackId: ev.trackId,
-                    });
-                  };
-                  if (delayMs <= 1) fire();
-                  else setTimeout(fire, delayMs);
+                  void triggerSample(pick.path, {
+                    gain: ev.velocity * pick.voiceGain * trackGain,
+                    pan,
+                    pitch: pick.pitch,
+                    outFirst: out?.firstChannel ?? 0,
+                    outStereo: out?.stereo ?? true,
+                    trackId: ev.trackId,
+                    delaySecs,
+                  });
                 }
               } else {
                 for (let i = 0; i < n; i++) {
@@ -463,11 +461,11 @@ export function App() {
               }
             } else if (isNativeAudioAvailable()) {
               // Native-only audio path (Tauri build). Multi-tone triggers
-              // fire one native voice per interval — all simultaneous, i.e.
-              // a chord. Arp time-spread isn't preserved here (the arp
-              // branch above also collapses to "all tones at step time"
-              // until the audio-thread scheduler in Phase 5 lets us
-              // dispatch native triggers at sample-accurate future times).
+              // fire one native voice per interval — all simultaneous
+              // (a chord). delaySecs = ev.when - audioContext.currentTime
+              // lets the Rust callback dispatch sample-accurately, so
+              // the trigger no longer fires the moment the IPC arrives
+              // (which was ~25-100 ms early from the JS lookahead).
               const intervals =
                 ev.voiceIntervals && ev.voiceIntervals.length > 0
                   ? ev.voiceIntervals
@@ -475,6 +473,7 @@ export function App() {
               const out = evTrack?.output;
               const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
               const trackGain = evTrack?.gain ?? 1;
+              const delaySecs = Math.max(0, ev.when - getAudioContext().currentTime);
               for (const interval of intervals) {
                 const targetMidi =
                   ev.midi !== undefined ? ev.midi + interval : undefined;
@@ -487,6 +486,7 @@ export function App() {
                   outFirst: out?.firstChannel ?? 0,
                   outStereo: out?.stereo ?? true,
                   trackId: ev.trackId,
+                  delaySecs,
                 });
               }
             } else {

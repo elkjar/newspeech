@@ -297,6 +297,12 @@ export async function triggerSample(
     // track's filter params and gets per-track ladder filtering. Without
     // it the voice plays dry (manual triggers from the phase-0 panel).
     trackId?: string;
+    // Seconds in the future to fire (relative to when the audio
+    // callback drains this trigger). 0 = fire immediately at next
+    // block boundary (existing behavior). Used by the scheduler for
+    // sample-accurate dispatch (arp time-spread, etc.). Rust converts
+    // to samples at the device sample rate.
+    delaySecs?: number;
   } = {},
 ): Promise<void> {
   await invoke<void>('audio_trigger_sample', {
@@ -307,6 +313,7 @@ export async function triggerSample(
     outFirst: opts.outFirst ?? null,
     outStereo: opts.outStereo ?? null,
     trackId: opts.trackId ?? null,
+    delaySecs: opts.delaySecs ?? null,
   });
 }
 
