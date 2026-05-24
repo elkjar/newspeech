@@ -1318,11 +1318,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       ),
     })),
   setTrackOutput: (trackId, output) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) =>
-        t.id === trackId ? { ...t, output } : t
-      ),
-    })),
+    set((state) => propagateTrackUpdate(state, trackId, { output })),
   clearTrack: (trackId) =>
     set((state) => ({
       tracks: state.tracks.map((t) =>
@@ -1806,11 +1802,12 @@ function applyBankSlot(
   // which otherwise picks up mid-cycle at swap moments.
   //
   // Global-knob preservation: per-track mix knobs (gain / fxSend / pan /
-  // filterCutoff / filterResonance / octave) carry forward from the current
-  // active tracks onto the swap target. The bank's stored values for those
-  // fields are ignored — knobs are band-global identity, not per-pattern
-  // state. Pattern fields (steps / length / mutation / rowRatchet / rate /
-  // lockTiming / euclidean) come from the bank as before.
+  // filterCutoff / filterResonance / octave) and hardware routing
+  // (output) carry forward from the current active tracks onto the swap
+  // target. The bank's stored values for those fields are ignored —
+  // these are band-global identity, not per-pattern state. Pattern
+  // fields (steps / length / mutation / rowRatchet / rate / lockTiming
+  // / euclidean) come from the bank as before.
   const currentTracks = useSequencerStore.getState().tracks;
   const globalsById = new Map<string, Partial<Track>>();
   for (const t of currentTracks) {
@@ -1821,6 +1818,7 @@ function applyBankSlot(
       filterCutoff: t.filterCutoff,
       filterResonance: t.filterResonance,
       octave: t.octave,
+      output: t.output,
     });
   }
   const mergedTracks = slot.tracks.map((bankTrack) => {
