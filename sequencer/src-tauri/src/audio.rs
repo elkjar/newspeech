@@ -19,6 +19,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 
+use arc_swap::ArcSwap;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, SampleRate, Stream, StreamConfig};
 use rand::rngs::SmallRng;
@@ -2578,17 +2579,16 @@ impl LfoSnapshot {
   }
 }
 
-static LFO_SNAPSHOT: OnceLock<Mutex<Arc<LfoSnapshot>>> = OnceLock::new();
+// ArcSwap so the audio thread reads the snapshot wait-free at the top
+// of each callback (no Mutex on the audio thread). Writers (IPC) do an
+// atomic `store` with a freshly-built Arc; the previous Arc is dropped
+// on the writer thread, not the audio callback. Audio thread uses
+// `load()` (Guard, no Arc::clone) so even high-rate LFO panel churn
+// can't stall the deadline. See `install_lfo_snapshot` for the writer.
+static LFO_SNAPSHOT: OnceLock<ArcSwap<LfoSnapshot>> = OnceLock::new();
 
-fn lfo_snapshot_cell() -> &'static Mutex<Arc<LfoSnapshot>> {
-  LFO_SNAPSHOT.get_or_init(|| Mutex::new(Arc::new(LfoSnapshot::empty())))
-}
-
-fn current_lfo_snapshot() -> Arc<LfoSnapshot> {
-  lfo_snapshot_cell()
-    .lock()
-    .expect("lfo snapshot lock")
-    .clone()
+fn lfo_snapshot_cell() -> &'static ArcSwap<LfoSnapshot> {
+  LFO_SNAPSHOT.get_or_init(|| ArcSwap::from_pointee(LfoSnapshot::empty()))
 }
 
 // JS payload → snapshot builder. Resolves per-track destinations to
@@ -2694,7 +2694,10 @@ fn install_lfo_snapshot(lfos: Vec<LfoIpc>) {
     depth,
     groups,
   });
-  *lfo_snapshot_cell().lock().expect("lfo snapshot lock") = snap;
+  // Atomic store; previous Arc is dropped here on the writer thread.
+  // Audio thread's outstanding `load()` Guards remain valid and are
+  // released without an Arc decrement (arc-swap's hazard-cell trick).
+  lfo_snapshot_cell().store(snap);
 }
 
 // Port of `applyLFO` in src/audio/lfo.ts. Slides the swing window inside
@@ -2725,6 +2728,16 @@ fn apply_lfo(base: f32, depth: f32, out: f32) -> f32 {
 
 const VOICE_POOL_SIZE: usize = 64;
 const TRIGGER_QUEUE_CAPACITY: usize = 256;
+// Cap for the per-stream sample-accurate pending-trigger queue. The
+// audio thread pre-allocates this many slots so pushes never realloc;
+// overflow drops with `PENDING_TRIGGER_DROPS` for diagnostics.
+const PENDING_TRIGGERS_CAP: usize = 512;
+
+// Diagnostic counter — incremented from the audio thread when a
+// delayed trigger arrives with the pending queue full. Read via the
+// status IPC for debug overlays.
+static PENDING_TRIGGER_DROPS: std::sync::atomic::AtomicU32 =
+  std::sync::atomic::AtomicU32::new(0);
 
 #[derive(Clone)]
 struct Voice {
@@ -3757,7 +3770,14 @@ fn build_stream(
   // Pending triggers — sample-accurate dispatch queue. Triggers with
   // delay_samples > 0 land here at drain time; each block we scan and
   // fire any whose remaining_samples falls inside this block.
-  let mut pending_triggers: Vec<PendingTrigger> = Vec::with_capacity(64);
+  //
+  // Bounded at PENDING_TRIGGERS_CAP. Pre-allocated to that size so the
+  // audio thread never reallocates; pushes past the cap drop with the
+  // global `PENDING_TRIGGER_DROPS` counter incremented for diagnostics.
+  // Cap chosen well above any realistic burst (dense 32nd-note patterns
+  // × multiple sections at long lookahead).
+  let mut pending_triggers: Vec<PendingTrigger> =
+    Vec::with_capacity(PENDING_TRIGGERS_CAP);
   // Audio-thread-local recorder producers. None when idle; populated
   // by Start*Recording, cleared by Stop*Recording. Holding them in the
   // callback closure avoids any locking on the audio thread.
@@ -3831,15 +3851,16 @@ fn build_stream(
         };
 
         // 0) Phase 6 — advance LFO phases and write modulated values to
-        // each routed destination's `_eff` atomic. Grabs the current
-        // snapshot Arc once per block; iterates groups (already pre-
-        // resolved to TrackParams handles where applicable) and applies
+        // each routed destination's `_eff` atomic. Reads the current
+        // snapshot wait-free via ArcSwap::load (no Mutex, no Arc::clone
+        // on the audio thread); iterates groups (already pre-resolved
+        // to TrackParams handles where applicable) and applies
         // `apply_lfo` to base. With no LFOs routed the `groups` Vec is
-        // empty and this is just an Arc::clone + a phase update.
+        // empty and this is just an atomic load + a phase update.
         {
           let frames_in_block = buf.len() / n_ch.max(1);
           let dt = (frames_in_block as f64) / (sr_f32 as f64).max(1.0);
-          let snap = current_lfo_snapshot();
+          let snap = lfo_snapshot_cell().load();
           // Advance all phases first so the loop below reads coherent
           // outputs even when multiple LFOs share a destination.
           let two_pi = std::f64::consts::TAU;
@@ -4071,8 +4092,13 @@ fn build_stream(
                   0,
                   sr_f32,
                 );
-              } else {
+              } else if pending_triggers.len() < PENDING_TRIGGERS_CAP {
                 pending_triggers.push(pending);
+              } else {
+                // Queue full — drop and bump the diagnostic counter.
+                // The push is the only realloc risk on the audio
+                // thread; the guard keeps us in pre-allocated space.
+                PENDING_TRIGGER_DROPS.fetch_add(1, Ordering::Relaxed);
               }
             }
             MixerCommand::StopAll => {
@@ -4196,47 +4222,53 @@ fn build_stream(
           if !v.active {
             continue;
           }
-          let sample = match v.sample.as_ref() {
-            Some(s) => s.clone(),
-            None => {
-              v.active = false;
-              continue;
-            }
+          // Borrow the sample + track params instead of Arc-cloning each
+          // voice each block: disjoint field borrows let us still mutate
+          // v.position / v.env_* / v.active through the same &mut Voice.
+          // Avoids the per-voice atomic inc/dec and — more importantly —
+          // ensures the final Arc::drop never lands on the audio thread.
+          if v.sample.is_none() {
+            v.active = false;
+            continue;
+          }
+          // Borrow sample frames + channel count for the duration of
+          // the per-frame loop. We MUST NOT mutate v.sample or
+          // v.track_params inside this loop — defer those writes to
+          // the post-loop block using `deactivate_reason`.
+          let (frames_slice, sample_channels, frame_count) = {
+            let s = v.sample.as_ref().expect("active voice has sample");
+            (s.frames.as_slice(), s.channels, s.frame_count())
           };
-          // Per-trigger snapshot of the track params Arc. Reads off the
-          // atomics each frame — cheap, lockfree.
-          let track_params = v.track_params.clone();
+          let track_params_ref = v.track_params.as_ref();
           // Honor sample-accurate dispatch — voice may have been queued
           // to start partway into this block. Reset start_frame after
-          // this block so subsequent blocks emit from frame 0.
+          // the loop so subsequent blocks emit from frame 0.
           let start = v.start_frame;
+          let mut deactivate = false;
           for frame in start..frames {
             let pos = v.position;
             let i0 = pos.floor() as usize;
-            let frame_count = sample.frame_count();
             if i0 + 1 >= frame_count {
-              v.active = false;
-              v.sample = None;
-              v.track_params = None;
+              deactivate = true;
               break;
             }
             let frac = (pos - i0 as f64) as f32;
             let inv = 1.0 - frac;
-            let (mut ls, mut rs) = if sample.channels == 1 {
-              let s0 = sample.frames[i0];
-              let s1 = sample.frames[i0 + 1];
+            let (mut ls, mut rs) = if sample_channels == 1 {
+              let s0 = frames_slice[i0];
+              let s1 = frames_slice[i0 + 1];
               let interp = s0 * inv + s1 * frac;
               (interp, interp)
             } else {
               let i0s = i0 * 2;
               let i1s = (i0 + 1) * 2;
-              let s0l = sample.frames[i0s];
-              let s1l = sample.frames[i1s];
-              let s0r = sample.frames[i0s + 1];
-              let s1r = sample.frames[i1s + 1];
+              let s0l = frames_slice[i0s];
+              let s1l = frames_slice[i1s];
+              let s0r = frames_slice[i0s + 1];
+              let s1r = frames_slice[i1s + 1];
               (s0l * inv + s1l * frac, s0r * inv + s1r * frac)
             };
-            if let Some(p) = track_params.as_ref() {
+            if let Some(p) = track_params_ref {
               let fc = p.cutoff();
               let res = p.resonance();
               let (fl, fr) = v.filter.process_stereo(ls, rs, fc, res, sr_f32);
@@ -4276,12 +4308,13 @@ fn build_stream(
               v.env_elapsed = v.env_elapsed.saturating_add(1);
               ls *= v.env_level;
               rs *= v.env_level;
-              // Deactivate on the frame after release ends.
+              // Deactivate on the frame after release ends. We can't
+              // null out v.sample / v.track_params here because their
+              // borrows are still live in this loop body — defer the
+              // cleanup to the post-loop block via `deactivate`.
               if v.env_elapsed >= release_end {
-                v.active = false;
-                v.sample = None;
-                v.track_params = None;
                 v.env_active = false;
+                deactivate = true;
                 break;
               }
             }
@@ -4328,8 +4361,7 @@ fn build_stream(
             // the wet bus stays silent; voice's stored fx_send is
             // preserved in TrackParams so turning bypass off restores
             // the prior amount with no discontinuity.
-            let raw_fx_send = track_params
-              .as_ref()
+            let raw_fx_send = track_params_ref
               .map(|p| p.fx_send())
               .unwrap_or(0.0);
             let fx_send = if fx_bypass_now { 0.0 } else { raw_fx_send };
@@ -4348,7 +4380,18 @@ fn build_stream(
             // channels 0+1 stereo (graceful headphone fold). Per-voice
             // out_* config is preserved in voice state for when
             // multi_out flips back on.
-            let (route_first, route_stereo) = if multi_out_now {
+            //
+            // Also fold to 0/1 when the voice's assigned channel pair
+            // falls off the end of the current device (e.g., user
+            // swapped from an 8ch interface to 2ch and a track was
+            // routed to ch 4). Without this fallback the voice would
+            // silently drop; the existing `< n_ch` guards below would
+            // still bounds-check but no audio reaches any output. The
+            // UI surfaces the misrouting separately.
+            let needed_channels = if v.out_stereo { 2 } else { 1 };
+            let voice_in_range =
+              v.out_first.saturating_add(needed_channels) <= n_ch;
+            let (route_first, route_stereo) = if multi_out_now && voice_in_range {
               (v.out_first, v.out_stereo)
             } else {
               (0usize, true)
@@ -4369,19 +4412,28 @@ fn build_stream(
             v.position += v.rate;
             // Decrement release counter at frame-end. Hitting zero ends
             // the voice cleanly — no more samples emitted this block.
+            // Cleanup happens in the post-loop deactivation block.
             if v.release_remaining > 0 {
               v.release_remaining -= 1;
               if v.release_remaining == 0 {
-                v.active = false;
-                v.sample = None;
-                v.track_params = None;
                 v.release_total = 0;
+                deactivate = true;
                 break;
               }
             }
           }
           // Block-end reset — subsequent blocks emit from frame 0.
           v.start_frame = 0;
+          // Deferred deactivation: cleared here so the borrows of
+          // v.sample / v.track_params don't conflict with the per-frame
+          // loop's reads. Either the sample ran past its end OR a
+          // monophonic choke ran out OR the ADSR release tail
+          // completed; any of those flips `deactivate`.
+          if deactivate {
+            v.active = false;
+            v.sample = None;
+            v.track_params = None;
+          }
         }
 
         // 4) FX bus — pre-reverb drive (saturation) → reverb. Both
@@ -4487,7 +4539,14 @@ fn build_stream(
             &mut reverb_out_r[..rev_frames],
           );
           {
-            let (out_first, out_stereo) = if multi_out_now {
+            // Same multi-out fallback as voice routing: if the FX bus
+            // pair falls off the end of the device, fold to 0/1 so the
+            // wet bus stays audible rather than vanishing on a smaller
+            // interface than the config was authored against.
+            let needed_channels = if fx_out_stereo { 2 } else { 1 };
+            let fx_in_range =
+              fx_out_first.saturating_add(needed_channels) <= n_ch;
+            let (out_first, out_stereo) = if multi_out_now && fx_in_range {
               (fx_out_first, fx_out_stereo)
             } else {
               (0usize, true)
@@ -4516,9 +4575,10 @@ fn build_stream(
         }
 
         // 5) Master stage — final tone-shaping on channels 0+1. Sits
-        // AFTER the FX bus output has mixed in. In multi-out mode this
-        // still only touches 0+1; the per-voice multi-out stems on
-        // higher channels stay pre-master (DAW/FOH does the master).
+        // AFTER the FX bus output has mixed in. In multi-out mode the
+        // master chain is SKIPPED ENTIRELY: per-voice stems on higher
+        // channels stay pre-master AND the FX-bus pair stays pre-
+        // master too, so the DAW (or FOH) drives its own master.
         if !multi_out_now {
           let ms = master_state();
           let input = master_input_linear(f32::from_bits(

@@ -222,7 +222,9 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
         <>
           <div className="self-stretch w-px bg-white/15 mx-1" />
           <label className="flex flex-col items-start gap-1">
-            <span className="text-[9px] uppercase tracking-widest text-white/40">out</span>
+            <span className="text-[9px] uppercase tracking-widest text-white/40">
+              out{outOfRange(track.output, nativeChannels) ? ' (!)' : ''}
+            </span>
             <select
               value={`${track.output.stereo ? 's' : 'm'}${track.output.firstChannel}`}
               onChange={(e) => {
@@ -234,11 +236,21 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
               }}
               disabled={nativeChannels <= 0}
               style={{ height: CELL }}
-              className="select-chevron bg-transparent border border-white/15 pl-2 pr-6 text-[12px] tabular-nums focus:outline-none focus:border-white text-white"
+              className={`select-chevron bg-transparent border pl-2 pr-6 text-[12px] tabular-nums focus:outline-none focus:border-white text-white ${
+                outOfRange(track.output, nativeChannels)
+                  ? 'border-yellow-400/70'
+                  : 'border-white/15'
+              }`}
               title={
-                nativeChannels > 0
-                  ? 'physical output. stereo pair routes L/R with pan; mono sums L+R into one channel (pan ignored).'
-                  : 'open the audio device in settings → native audio first'
+                nativeChannels <= 0
+                  ? 'open the audio device in settings → native audio first'
+                  : outOfRange(track.output, nativeChannels)
+                    ? `track routed to channel ${track.output.firstChannel + 1}${
+                        track.output.stereo
+                          ? `-${track.output.firstChannel + 2}`
+                          : ''
+                      } but device only has ${nativeChannels} channel${nativeChannels === 1 ? '' : 's'} — audio is folding to 1-2 until you pick a valid output`
+                    : 'physical output. stereo pair routes L/R with pan; mono sums L+R into one channel (pan ignored).'
               }
             >
               {outputOptions(nativeChannels, track.output).map((opt) => (
@@ -252,6 +264,18 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
       )}
     </div>
   );
+}
+
+// True when the track's saved output channel pair falls off the end of
+// the active device — e.g., a track authored for an 8ch interface
+// playing through a 2ch one. Rust folds audio to 1-2 in this case so
+// the user still hears the track; this flag tells the UI to surface
+// the misrouting so they can repick. Returns false when no device is
+// open yet (nativeChannels = 0) — the picker is disabled anyway.
+function outOfRange(out: TrackOutput, channels: number): boolean {
+  if (channels <= 0) return false;
+  const needed = out.stereo ? 2 : 1;
+  return out.firstChannel + needed > channels;
 }
 
 function outputOptions(
