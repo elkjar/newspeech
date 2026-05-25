@@ -8,10 +8,9 @@ import {
 } from '../state/store';
 import {
   exportPerformance,
-  exportProject,
+  filenameSlug,
   parsePerformanceFromSeqset,
   parseSongFromSeq,
-  timestampSlug,
 } from '../state/persist';
 import { NOTE_NAMES } from '../audio/scale';
 
@@ -231,52 +230,6 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
     e.target.value = '';
   };
 
-  // Build a filename slug from an optional user-given name or fall back
-  // to a timestamp. Strips characters that aren't filesystem-friendly so
-  // the OS picker doesn't reject the default.
-  const filenameSlug = (name: string | undefined, fallbackPrefix: string): string => {
-    const trimmed = (name ?? '').trim();
-    if (!trimmed) return `${fallbackPrefix}-${timestampSlug()}`;
-    const slug = trimmed.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
-    return slug || `${fallbackPrefix}-${timestampSlug()}`;
-  };
-
-  const handleSaveCurrentAsSeqcomp = async () => {
-    const code = exportProject();
-    const activeSong =
-      performance.activeSong !== null
-        ? performance.songs[performance.activeSong]
-        : null;
-    const defaultName = `${filenameSlug(activeSong?.name, 'newspeech-song')}.seq`;
-    if (isTauri()) {
-      try {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        const { documentDir, join } = await import('@tauri-apps/api/path');
-        let defaultPath: string | undefined;
-        try {
-          defaultPath = await join(await documentDir(), defaultName);
-        } catch {
-          defaultPath = defaultName;
-        }
-        const picked = await save({ defaultPath, filters: SONG_FILTER });
-        if (!picked) return;
-        await invoke('save_text_file', { path: picked, contents: code });
-      } catch (err) {
-        console.error('[performance] save song failed:', err);
-      }
-      return;
-    }
-    const blob = new Blob([code], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = defaultName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
   const handleSavePerformanceAsSeqset = async () => {
     const code = exportPerformance();
     const defaultName = `${filenameSlug(performance.name, 'newspeech-set')}.seqset`;
@@ -437,14 +390,6 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
             ].join(' ')}
           >
             snap current
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSaveCurrentAsSeqcomp()}
-            title="export the current piece as a .seq file"
-            className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/80 hover:border-white hover:text-white transition-colors"
-          >
-            save song (.seq)
           </button>
           <button
             type="button"

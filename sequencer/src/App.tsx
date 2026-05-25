@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PlayButton, RecordButton, CountInButton, RawRecordButton, SplitsButton, TransportControls, InitButton } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, RawRecordButton, SplitsButton, TransportControls, InitButton, SaveSongButton } from './components/Transport';
 import { PerformanceButton } from './components/PerformanceDialog';
 import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -1298,6 +1298,7 @@ export function App() {
           <div className="flex justify-between items-center gap-8 -my-4">
             <div className="flex items-center gap-2">
               <InitButton />
+              <SaveSongButton />
               <PerformanceButton />
             </div>
             <div className="flex items-center gap-8">

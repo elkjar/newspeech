@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSequencerStore } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
-import { exportProject, timestampSlug } from '../state/persist';
+import { exportProject, filenameSlug } from '../state/persist';
 import { presetsForTarget } from '../instruments/library';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -16,11 +16,21 @@ import {
 } from '../audio/audioOutput';
 import { useAudioOutputs } from '../hooks/useAudioOutputs';
 
-const SEQ_FILTER = [{ name: 'newspeech sequence', extensions: ['seq'] }];
+// .seqcomp accepted on import for back-compat with the short-lived
+// 2026-05-24 intermediate naming; save always writes .seq going forward.
+const SONG_FILTER = [{ name: 'newspeech song', extensions: ['seq', 'seqcomp'] }];
 
+// Canonical "save current song as .seq" action — single source of truth
+// for the song-save flow. Uses the active song's name (if any) for the
+// default filename so successive saves of the same song reuse the slug.
 export async function saveProject() {
+  const state = useSequencerStore.getState();
   const code = exportProject();
-  const defaultName = `newspeech-${timestampSlug()}.seq`;
+  const activeSong =
+    state.performance.activeSong !== null
+      ? state.performance.songs[state.performance.activeSong]
+      : null;
+  const defaultName = `${filenameSlug(activeSong?.name, 'newspeech-song')}.seq`;
   if (isTauri()) {
     const { save } = await import('@tauri-apps/plugin-dialog');
     const { documentDir, join } = await import('@tauri-apps/api/path');
@@ -30,12 +40,12 @@ export async function saveProject() {
     } catch {
       defaultPath = defaultName;
     }
-    const picked = await save({ defaultPath, filters: SEQ_FILTER });
+    const picked = await save({ defaultPath, filters: SONG_FILTER });
     if (!picked) return;
     try {
       await invoke('save_text_file', { path: picked, contents: code });
     } catch (err) {
-      console.error('[project] save failed:', err);
+      console.error('[song save] failed:', err);
     }
     return;
   }
@@ -48,6 +58,23 @@ export async function saveProject() {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Toolbar button — save the current working state as a single .seq
+// song file. Same tier as InitButton / PerformanceButton; this is the
+// primary save action when authoring a piece (the perf dialog handles
+// SET-level concerns, not individual song saves).
+export function SaveSongButton() {
+  return (
+    <button
+      type="button"
+      onClick={() => void saveProject()}
+      title="save the current song as a .seq file"
+      className="px-2 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors inline-flex items-center justify-center h-[28px]"
+    >
+      save song
+    </button>
+  );
 }
 
 

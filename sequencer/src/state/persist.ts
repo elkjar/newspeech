@@ -712,6 +712,21 @@ export function importProject(json: string): boolean {
   return true;
 }
 
+// Sanitize a user-supplied name into a filesystem-safe slug. Falls back
+// to `<fallbackPrefix>-<timestampSlug>` when the name is empty or
+// becomes empty after stripping non-portable characters. Shared between
+// the song-save (Transport.tsx) and set-save (PerformanceDialog.tsx)
+// paths so default filenames stay consistent.
+export function filenameSlug(
+  name: string | undefined,
+  fallbackPrefix: string,
+): string {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return `${fallbackPrefix}-${timestampSlug()}`;
+  const slug = trimmed.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || `${fallbackPrefix}-${timestampSlug()}`;
+}
+
 export function timestampSlug(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
