@@ -72,7 +72,7 @@ export function SaveSongButton() {
       title="save the current song as a .seq file"
       className="px-2 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors inline-flex items-center justify-center h-[28px]"
     >
-      save song
+      .seq
     </button>
   );
 }

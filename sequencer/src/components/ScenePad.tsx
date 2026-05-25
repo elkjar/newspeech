@@ -1,13 +1,5 @@
-import { useRef, useState } from 'react';
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { useState } from 'react';
 import { useSequencerStore, COMPOSITION_SLOT_COUNT } from '../state/store';
-import {
-  exportSceneAsSeqscene,
-  parseSceneFromSeq,
-  parseSceneFromSeqscene,
-  timestampSlug,
-} from '../state/persist';
-import { DownloadIcon, ImportIcon } from './Transport';
 import { SceneSettingsDialog } from './SceneSettingsDialog';
 
 const PAD_SIZE = 36;
@@ -107,8 +99,6 @@ function SceneSlotButton({
   );
 }
 
-const ALL_SCENES_MASK = (1 << COMPOSITION_SLOT_COUNT) - 1;
-
 export function ScenePad() {
   // Bitmask of filled scene slots — primitive return short-circuits via
   // Object.is, so per-track / per-bank mutations inside an active scene
@@ -126,97 +116,10 @@ export function ScenePad() {
   const loadScene = useSequencerStore((s) => s.loadScene);
   const clearScene = useSequencerStore((s) => s.clearScene);
   const moveScene = useSequencerStore((s) => s.moveScene);
-  const importScene = useSequencerStore((s) => s.importScene);
 
   const [dragSource, setDragSource] = useState<number | null>(null);
   const [dropGap, setDropGap] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const hasEmptySlot = (sceneFilledMask & ALL_SCENES_MASK) !== ALL_SCENES_MASK;
-
-  // Try `.seqscene` strict parse first; if it doesn't match the scene
-  // shape, fall back to the legacy song-extractor (`parseSceneFromSeq`)
-  // which pulls the active scene out of a `.seq` / `.seqcomp` file.
-  // Lets pre-split saves still drop into scene slots without manual
-  // conversion.
-  const importFromText = (text: string): boolean => {
-    const scene = parseSceneFromSeqscene(text) ?? parseSceneFromSeq(text);
-    if (!scene) {
-      console.warn('[scene import] failed to parse file');
-      return false;
-    }
-    const slot = importScene(scene);
-    if (slot === null) {
-      console.warn('[scene import] no empty scene slots');
-      return false;
-    }
-    return true;
-  };
-
-  const handleImportClick = async () => {
-    if (!hasEmptySlot) return;
-    if (isTauri()) {
-      try {
-        const { open } = await import('@tauri-apps/plugin-dialog');
-        const picked = await open({
-          multiple: false,
-          filters: [
-            { name: 'Sequence scene', extensions: ['seqscene', 'seq', 'seqcomp', 'json'] },
-          ],
-        });
-        if (!picked || typeof picked !== 'string') return;
-        const text = await invoke<string>('read_text_file', { path: picked });
-        importFromText(text);
-      } catch (err) {
-        console.error('[scene import] tauri picker failed:', err);
-      }
-      return;
-    }
-    fileInputRef.current?.click();
-  };
-
-  const handleSaveSceneClick = async () => {
-    const code = exportSceneAsSeqscene();
-    const defaultName = `newspeech-scene-${timestampSlug()}.seqscene`;
-    if (isTauri()) {
-      try {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        const { documentDir, join } = await import('@tauri-apps/api/path');
-        let defaultPath: string | undefined;
-        try {
-          defaultPath = await join(await documentDir(), defaultName);
-        } catch {
-          defaultPath = defaultName;
-        }
-        const picked = await save({
-          defaultPath,
-          filters: [{ name: 'Sequence scene', extensions: ['seqscene'] }],
-        });
-        if (!picked) return;
-        await invoke('save_text_file', { path: picked, contents: code });
-      } catch (err) {
-        console.error('[scene save] failed:', err);
-      }
-      return;
-    }
-    const blob = new Blob([code], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = defaultName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    importFromText(text);
-    e.target.value = '';
-  };
 
   const handlePadDragOver = (i: number, e: React.DragEvent) => {
     if (dragSource === null) return;
@@ -301,40 +204,8 @@ export function ScenePad() {
           />
         )}
         <button
-          onClick={() => void handleSaveSceneClick()}
-          title="export the current state as a .seqscene file"
-          style={{ width: PAD_SIZE, height: PAD_SIZE }}
-          className="relative overflow-hidden flex items-center justify-center opacity-55 hover:opacity-100 transition-opacity"
-        >
-          <span className="absolute inset-0 bg-white/5" />
-          <span className="relative">
-            <DownloadIcon />
-          </span>
-        </button>
-        <button
-          onClick={handleImportClick}
-          disabled={!hasEmptySlot}
-          title={
-            hasEmptySlot
-              ? 'import a .seq file as a scene into the next empty slot'
-              : 'all scene slots full — clear a slot first'
-          }
-          style={{ width: PAD_SIZE, height: PAD_SIZE }}
-          className={[
-            'relative overflow-hidden flex items-center justify-center transition-opacity',
-            hasEmptySlot
-              ? 'opacity-55 hover:opacity-100'
-              : 'opacity-15 cursor-not-allowed',
-          ].join(' ')}
-        >
-          <span className="absolute inset-0 bg-white/5" />
-          <span className="relative">
-            <ImportIcon />
-          </span>
-        </button>
-        <button
           onClick={() => setSettingsOpen(true)}
-          title="scene settings — shape, length, bank order, dwell locks"
+          title="scene settings — import / export, shape, length, bank order, dwell locks"
           style={{ width: PAD_SIZE, height: PAD_SIZE }}
           className="relative overflow-hidden flex items-center justify-center opacity-55 hover:opacity-100 transition-opacity"
         >
@@ -347,13 +218,6 @@ export function ScenePad() {
       <SceneSettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-      />
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".seqscene,.seq,.seqcomp,.json,application/json"
-        className="hidden"
-        onChange={handleFileChange}
       />
     </div>
   );

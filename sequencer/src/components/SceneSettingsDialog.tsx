@@ -1,11 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
   useSequencerStore,
   BANK_SLOT_COUNT,
   SCENE_SHAPES,
   type SceneShape,
 } from '../state/store';
+import {
+  exportSceneAsSeqscene,
+  filenameSlug,
+  parseSceneFromSeq,
+  parseSceneFromSeqscene,
+} from '../state/persist';
 import { sampleShape } from '../ghost/shape';
 
 // Centered modal scene config — owns all per-scene ghost behavior knobs
@@ -13,6 +20,7 @@ import { sampleShape } from '../ghost/shape';
 // stays read-only; this dialog is where you author scene-level intent.
 //
 // Sections:
+//   - import / export (.seqscene save/load)
 //   - shape (entropy curve type: sustain / build / arc / wave / decay)
 //   - scene length (phaseLength in bars — drives shape phase + auto-advance)
 //   - bank order mode (entropy: shape curve picks; sequence: slot order walk)
@@ -65,9 +73,28 @@ export function SceneSettingsDialog({ open, onClose }: SceneSettingsDialogProps)
     (s) => s.setSceneGraphBankOrderMode,
   );
   const setBankDwell = useSequencerStore((s) => s.setBankDwell);
+  const importScene = useSequencerStore((s) => s.importScene);
+  const composition = useSequencerStore((s) => s.composition);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ioMessage, setIoMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(
+    null,
+  );
+
+  const filledSlotCount = composition.scenes.reduce(
+    (acc, s) => acc + (s ? 1 : 0),
+    0,
+  );
+  const hasEmptySlot = filledSlotCount < composition.scenes.length;
+  const activeSceneIndex = composition.activeScene;
+  const activeSceneName =
+    activeSceneIndex !== null
+      ? composition.scenes[activeSceneIndex]?.name
+      : undefined;
 
   useEffect(() => {
     if (!open) return;
+    setIoMessage(null);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
@@ -77,6 +104,98 @@ export function SceneSettingsDialog({ open, onClose }: SceneSettingsDialogProps)
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onClose]);
+
+  // Save current state as .seqscene. Uses active scene name (if any) for
+  // the default filename, falls back to a timestamped slug otherwise.
+  const handleSaveScene = async () => {
+    setIoMessage(null);
+    const code = exportSceneAsSeqscene();
+    const defaultName = `${filenameSlug(activeSceneName, 'newspeech-scene')}.seqscene`;
+    if (isTauri()) {
+      try {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { documentDir, join } = await import('@tauri-apps/api/path');
+        let defaultPath: string | undefined;
+        try {
+          defaultPath = await join(await documentDir(), defaultName);
+        } catch {
+          defaultPath = defaultName;
+        }
+        const picked = await save({
+          defaultPath,
+          filters: [{ name: 'Sequence scene', extensions: ['seqscene'] }],
+        });
+        if (!picked) return;
+        await invoke('save_text_file', { path: picked, contents: code });
+        setIoMessage({ kind: 'ok', text: 'scene exported' });
+      } catch (err) {
+        console.error('[scene save] failed:', err);
+        setIoMessage({ kind: 'err', text: 'save failed — see console' });
+      }
+      return;
+    }
+    const blob = new Blob([code], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = defaultName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  // Try `.seqscene` strict parse first; fall back to `parseSceneFromSeq`
+  // which extracts the active scene from a full song file. Lets pre-split
+  // saves drop into scene slots without manual conversion.
+  const importFromText = (text: string) => {
+    setIoMessage(null);
+    const scene = parseSceneFromSeqscene(text) ?? parseSceneFromSeq(text);
+    if (!scene) {
+      setIoMessage({ kind: 'err', text: 'could not parse this file' });
+      return;
+    }
+    const slot = importScene(scene);
+    if (slot === null) {
+      setIoMessage({ kind: 'err', text: 'all scene slots full — clear one first' });
+      return;
+    }
+    setIoMessage({ kind: 'ok', text: `imported into scene slot ${slot + 1}` });
+  };
+
+  const handleImportScene = async () => {
+    if (!hasEmptySlot) {
+      setIoMessage({ kind: 'err', text: 'all scene slots full — clear one first' });
+      return;
+    }
+    if (isTauri()) {
+      try {
+        const { open: pickFile } = await import('@tauri-apps/plugin-dialog');
+        const picked = await pickFile({
+          multiple: false,
+          filters: [
+            { name: 'Sequence scene', extensions: ['seqscene', 'seq', 'seqcomp', 'json'] },
+          ],
+        });
+        if (!picked || typeof picked !== 'string') return;
+        const text = await invoke<string>('read_text_file', { path: picked });
+        importFromText(text);
+      } catch (err) {
+        console.error('[scene import] tauri picker failed:', err);
+        setIoMessage({ kind: 'err', text: 'import failed — see console' });
+      }
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    importFromText(text);
+    e.target.value = '';
+  };
 
   if (!open) return null;
 
@@ -99,6 +218,49 @@ export function SceneSettingsDialog({ open, onClose }: SceneSettingsDialogProps)
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-white text-sm mb-5">scene settings</div>
+
+        {/* IMPORT / EXPORT */}
+        <div className="mb-5">
+          <div className="text-white/55 mb-2 text-[10px]">import / export</div>
+          <div className="flex items-center flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSaveScene()}
+              title="export the current state as a .seqscene file"
+              className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/80 hover:border-white hover:text-white transition-colors"
+            >
+              save scene (.seqscene)
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleImportScene()}
+              disabled={!hasEmptySlot}
+              title={
+                hasEmptySlot
+                  ? 'import a scene file into the next empty scene slot'
+                  : 'all scene slots full — clear one first'
+              }
+              className={[
+                'px-3 py-1 text-[11px] uppercase tracking-widest border transition-colors',
+                hasEmptySlot
+                  ? 'border-white/15 text-white/80 hover:border-white hover:text-white'
+                  : 'border-white/5 text-white/25 cursor-not-allowed',
+              ].join(' ')}
+            >
+              import scene
+            </button>
+          </div>
+          {ioMessage && (
+            <div
+              className={[
+                'mt-2 text-[10px] normal-case tracking-normal',
+                ioMessage.kind === 'ok' ? 'text-white/55' : 'text-red-400/90',
+              ].join(' ')}
+            >
+              {ioMessage.text}
+            </div>
+          )}
+        </div>
 
         {/* SHAPE */}
         <div className="mb-5">
@@ -276,6 +438,14 @@ export function SceneSettingsDialog({ open, onClose }: SceneSettingsDialogProps)
             close
           </button>
         </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".seqscene,.seq,.seqcomp,.json,application/json"
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
     </div>,
     document.body,
