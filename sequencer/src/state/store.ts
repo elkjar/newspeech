@@ -375,6 +375,7 @@ export interface Song {
 export const PERFORMANCE_SLOT_COUNT = 8;
 
 export interface Performance {
+  name?: string;
   songs: (Song | null)[];
   activeSong: number | null;
   // Bar-boundary queued song swap, with optional tail-out gap before the
@@ -695,6 +696,8 @@ interface SequencerState {
   commitPendingSong: (atGlobalStep: number) => void;
   tickPerformanceTailOut: () => void;
   setPerformanceTailOutBars: (bars: number) => void;
+  setPerformanceName: (name: string) => void;
+  setSongName: (i: number, name: string) => void;
   importSong: (song: Song) => number | null;
   // Replace the entire performance container (used when loading a
   // `.seqset` file). Caller passes an already-hydrated Performance —
@@ -1872,6 +1875,22 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         tailOutBars: Math.max(0, Math.min(32, Math.floor(Number.isFinite(bars) ? bars : 0))),
       },
     })),
+  setPerformanceName: (name) =>
+    set((state) => ({
+      performance: {
+        ...state.performance,
+        name: name.trim() ? name : undefined,
+      },
+    })),
+  setSongName: (i, name) =>
+    set((state) => {
+      if (i < 0 || i >= PERFORMANCE_SLOT_COUNT) return {};
+      const song = state.performance.songs[i];
+      if (!song) return {};
+      const songs = state.performance.songs.slice();
+      songs[i] = { ...song, name: name.trim() ? name : undefined };
+      return { performance: { ...state.performance, songs } };
+    }),
   importSong: (song): number | null => {
     let idx: number | null = null;
     set((s) => {

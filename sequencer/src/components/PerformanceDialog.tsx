@@ -46,6 +46,7 @@ function SongSlotCard({
   onClick,
   onShiftClick,
   onCmdClick,
+  onRename,
 }: {
   i: number;
   song: Song | null;
@@ -55,6 +56,7 @@ function SongSlotCard({
   onClick: () => void;
   onShiftClick: () => void;
   onCmdClick: () => void;
+  onRename: (name: string) => void;
 }) {
   const handleClick = (e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey) {
@@ -78,16 +80,23 @@ function SongSlotCard({
         ? 'loaded'
         : 'empty';
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick(e as unknown as React.MouseEvent);
+        }
+      }}
       title={
         filled
-          ? `${song?.name ?? `song ${i + 1}`} — click to load · shift-click to overwrite · cmd-click to clear`
-          : `song ${i + 1} — shift-click to snap current state into this slot`
+          ? `click to load · shift-click to overwrite · cmd-click to clear`
+          : `shift-click to snap current state into this slot`
       }
       className={[
-        'relative text-left p-3 border transition-colors h-[78px] flex flex-col justify-between',
+        'relative text-left p-3 border transition-colors h-[78px] flex flex-col justify-between cursor-pointer select-none',
         isActive
           ? 'border-white bg-white/10 text-white'
           : isPending
@@ -106,16 +115,29 @@ function SongSlotCard({
         </span>
       </div>
       <div>
-        <div className="text-[11px] uppercase tracking-widest truncate">
-          {song?.name ?? (filled ? `song ${i + 1}` : '—')}
-        </div>
+        <input
+          type="text"
+          value={song?.name ?? ''}
+          placeholder={filled ? `song ${i + 1}` : '—'}
+          onChange={(e) => onRename(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          disabled={!filled}
+          className={[
+            'w-full bg-transparent border-none p-0 text-[11px] uppercase tracking-widest truncate focus:outline-none focus:ring-0',
+            filled
+              ? 'text-white/90 placeholder:text-white/40'
+              : 'text-white/40 placeholder:text-white/25 cursor-not-allowed',
+          ].join(' ')}
+        />
         {song && (
           <div className="text-[9px] tracking-widest opacity-55 mt-0.5">
             {songSummary(song)}
           </div>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -130,6 +152,8 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
   const setPerformanceTailOutBars = useSequencerStore(
     (s) => s.setPerformanceTailOutBars,
   );
+  const setPerformanceName = useSequencerStore((s) => s.setPerformanceName);
+  const setSongName = useSequencerStore((s) => s.setSongName);
 
   const songInputRef = useRef<HTMLInputElement>(null);
   const seqsetInputRef = useRef<HTMLInputElement>(null);
@@ -207,9 +231,23 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
     e.target.value = '';
   };
 
+  // Build a filename slug from an optional user-given name or fall back
+  // to a timestamp. Strips characters that aren't filesystem-friendly so
+  // the OS picker doesn't reject the default.
+  const filenameSlug = (name: string | undefined, fallbackPrefix: string): string => {
+    const trimmed = (name ?? '').trim();
+    if (!trimmed) return `${fallbackPrefix}-${timestampSlug()}`;
+    const slug = trimmed.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+    return slug || `${fallbackPrefix}-${timestampSlug()}`;
+  };
+
   const handleSaveCurrentAsSeqcomp = async () => {
     const code = exportProject();
-    const defaultName = `newspeech-song-${timestampSlug()}.seq`;
+    const activeSong =
+      performance.activeSong !== null
+        ? performance.songs[performance.activeSong]
+        : null;
+    const defaultName = `${filenameSlug(activeSong?.name, 'newspeech-song')}.seq`;
     if (isTauri()) {
       try {
         const { save } = await import('@tauri-apps/plugin-dialog');
@@ -241,7 +279,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
 
   const handleSavePerformanceAsSeqset = async () => {
     const code = exportPerformance();
-    const defaultName = `newspeech-performance-${timestampSlug()}.seqset`;
+    const defaultName = `${filenameSlug(performance.name, 'newspeech-set')}.seqset`;
     if (isTauri()) {
       try {
         const { save } = await import('@tauri-apps/plugin-dialog');
@@ -325,11 +363,18 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
         className="w-[680px] max-h-[85vh] overflow-auto p-6 bg-[#0a0a0a] border border-white/15 text-white/90 text-xs uppercase tracking-widest"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-5">
-          <div className="text-white text-sm">performance</div>
+        <div className="mb-5">
+          <div className="text-white text-sm mb-3">performance</div>
+          <input
+            type="text"
+            value={performance.name ?? ''}
+            placeholder="untitled set"
+            onChange={(e) => setPerformanceName(e.target.value)}
+            className="w-full bg-transparent border border-white/15 px-2 text-[12px] tracking-widest text-white placeholder:text-white/30 focus:outline-none focus:border-white h-[28px] mb-2"
+          />
           <div className="text-[10px] normal-case tracking-normal text-white/40">
             songs make up a performance · click to load · shift-click to snap
-            current · cmd-click to clear
+            current · cmd-click to clear · type in a slot to name it
           </div>
         </div>
 
@@ -346,6 +391,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
               onClick={() => loadSong(i)}
               onShiftClick={() => snapSong(i)}
               onCmdClick={() => clearSong(i)}
+              onRename={(name) => setSongName(i, name)}
             />
           ))}
         </div>
@@ -425,7 +471,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
             title="export the whole performance (all songs) as a .seqset file"
             className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/80 hover:border-white hover:text-white transition-colors"
           >
-            save performance (.seqset)
+            save set (.seqset)
           </button>
           <button
             type="button"
@@ -433,7 +479,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
             title="load a .seqset file — replaces the current performance"
             className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/80 hover:border-white hover:text-white transition-colors"
           >
-            load performance
+            load set
           </button>
         </div>
 

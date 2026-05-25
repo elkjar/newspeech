@@ -465,6 +465,7 @@ export function parseSongFromSeq(json: string): Song | null {
 
 interface PersistedPerformance {
   version: number;
+  name?: string;
   songs: (Song | null)[];
   activeSong: number | null;
   tailOutBars: number;
@@ -474,6 +475,7 @@ export function exportPerformance(): string {
   const s = useSequencerStore.getState();
   const data: PersistedPerformance = {
     version: CURRENT_VERSION,
+    name: s.performance.name,
     songs: s.performance.songs,
     activeSong: s.performance.activeSong,
     tailOutBars: s.performance.tailOutBars,
@@ -519,6 +521,7 @@ export function parsePerformanceFromSeqset(json: string): Performance | null {
       ? Math.max(0, Math.min(32, Math.floor(data.tailOutBars)))
       : 2;
   return {
+    name: typeof data.name === 'string' ? data.name : undefined,
     songs,
     activeSong,
     pendingSong: null,
