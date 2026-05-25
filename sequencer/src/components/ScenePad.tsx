@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore, COMPOSITION_SLOT_COUNT } from '../state/store';
 import { parseSceneFromSeq } from '../state/persist';
-import { ImportIcon, DownloadIcon, saveProject } from './Transport';
+import { ImportIcon } from './Transport';
 import { SceneSettingsDialog } from './SceneSettingsDialog';
 
 const PAD_SIZE = 36;
@@ -253,17 +253,6 @@ export function ScenePad() {
             }}
           />
         )}
-        <button
-          onClick={() => void saveProject()}
-          title="export the current scene as a .seq file"
-          style={{ width: PAD_SIZE, height: PAD_SIZE }}
-          className="relative overflow-hidden flex items-center justify-center opacity-55 hover:opacity-100 transition-opacity"
-        >
-          <span className="absolute inset-0 bg-white/5" />
-          <span className="relative">
-            <DownloadIcon />
-          </span>
-        </button>
         <button
           onClick={handleImportClick}
           disabled={!hasEmptySlot}

@@ -75,6 +75,18 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
   // below (downbeat preserved, offbeats fade first).
   const densityLFOs = useRoutedLFOs(GLOBAL_TRACK_ID, 'density');
   const liveDensity = useLFOValue(density, densityLFOs, 1);
+  // Melodic slot for this track (how many melodic tracks precede it in
+  // the array). Returns -1 for drum tracks. Used below to mirror the
+  // engine's harmonicAnchor detection — bass row UI shouldn't fade
+  // under low density when playback ignores density for that row.
+  const melodicSlot = useSequencerStore((s) => {
+    if (s.tracks[trackIndex]?.section !== 'melodic') return -1;
+    let slot = -1;
+    for (let i = 0; i <= trackIndex; i++) {
+      if (s.tracks[i]?.section === 'melodic') slot++;
+    }
+    return slot;
+  });
   const setTrackSource = useSequencerStore((s) => s.setTrackSource);
   const setTrackMute = useSequencerStore((s) => s.setTrackMute);
   const setTrackSolo = useSequencerStore((s) => s.setTrackSolo);
@@ -100,6 +112,15 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
 
   const silenced = track.mute || (anySolo && !track.solo);
   const melodic = sourceIsMelodic(track.source);
+  // Mirror engine's harmonicAnchor (tick.ts:578) so the step grid stops
+  // visually fading on rows whose playback ignores density. Without
+  // this the bass row dims at low density while it actually plays at
+  // full strength — a UI lie.
+  const harmonicAnchor =
+    track.section === 'melodic' &&
+    (melodicSlot === 0 ||
+      melodicSlot === 1 ||
+      track.pitchInterp === 'root-follow');
 
   const handlePickerSelect = (next: TrackSource) => {
     setTrackSource(track.id, next);
@@ -324,12 +345,14 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
                 velocity={display?.velocity ?? 1}
                 probability={
                   display?.on
-                    ? Math.min(
-                        100,
-                        (display.probability ?? 100) *
-                          computeThinMul(liveDensity, stepIndex, track.length)
-                      )
-                    : hasAuthoredOn
+                    ? harmonicAnchor
+                      ? display.probability ?? 100
+                      : Math.min(
+                          100,
+                          (display.probability ?? 100) *
+                            computeThinMul(liveDensity, stepIndex, track.length)
+                        )
+                    : hasAuthoredOn && !harmonicAnchor
                       ? 100 * computeFillProb(liveDensity, stepIndex, track.length, track.section)
                       : 0
                 }
