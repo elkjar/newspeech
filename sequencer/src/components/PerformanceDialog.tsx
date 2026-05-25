@@ -42,20 +42,36 @@ function SongSlotCard({
   isActive,
   isPending,
   isTailingOut,
+  isDragging,
+  isDragOver,
+  draggable,
   onClick,
   onShiftClick,
   onCmdClick,
   onRename,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }: {
   i: number;
   song: Song | null;
   isActive: boolean;
   isPending: boolean;
   isTailingOut: boolean;
+  isDragging: boolean;
+  isDragOver: boolean;
+  draggable: boolean;
   onClick: () => void;
   onShiftClick: () => void;
   onCmdClick: () => void;
   onRename: (name: string) => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
 }) {
   const handleClick = (e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey) {
@@ -82,6 +98,12 @@ function SongSlotCard({
     <div
       role="button"
       tabIndex={0}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
       onClick={handleClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -91,18 +113,21 @@ function SongSlotCard({
       }}
       title={
         filled
-          ? `click to load · shift-click to overwrite · cmd-click to clear`
+          ? `click to load · shift-click to overwrite · cmd-click to clear · drag to reorder`
           : `shift-click to snap current state into this slot`
       }
+      style={{ opacity: isDragging ? 0.3 : 1 }}
       className={[
         'relative text-left p-3 border transition-colors h-[78px] flex flex-col justify-between cursor-pointer select-none',
-        isActive
-          ? 'border-white bg-white/10 text-white'
-          : isPending
-            ? 'border-white text-white animate-pulse'
-            : filled
-              ? 'border-white/25 text-white/90 hover:border-white'
-              : 'border-white/10 text-white/40 hover:border-white/40 hover:text-white/80',
+        isDragOver
+          ? 'border-white bg-white/15 text-white'
+          : isActive
+            ? 'border-white bg-white/10 text-white'
+            : isPending
+              ? 'border-white text-white animate-pulse'
+              : filled
+                ? 'border-white/25 text-white/90 hover:border-white'
+                : 'border-white/10 text-white/40 hover:border-white/40 hover:text-white/80',
       ].join(' ')}
     >
       <div className="flex items-center justify-between">
@@ -122,6 +147,7 @@ function SongSlotCard({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
+          draggable={false}
           disabled={!filled}
           className={[
             'w-full bg-transparent border-none p-0 text-[11px] uppercase tracking-widest truncate focus:outline-none focus:ring-0',
@@ -146,6 +172,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
   const snapSong = useSequencerStore((s) => s.snapSong);
   const loadSong = useSequencerStore((s) => s.loadSong);
   const clearSong = useSequencerStore((s) => s.clearSong);
+  const moveSong = useSequencerStore((s) => s.moveSong);
   const importSong = useSequencerStore((s) => s.importSong);
   const replacePerformance = useSequencerStore((s) => s.replacePerformance);
   const setPerformanceTailOutBars = useSequencerStore(
@@ -157,6 +184,12 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
   const songInputRef = useRef<HTMLInputElement>(null);
   const seqsetInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  // Drag-to-reorder state. dragSource is the slot the user picked up;
+  // dragOverSlot is the card the cursor is currently hovering over with
+  // a valid drop (different from source, source is filled). Both reset
+  // on dragEnd / drop.
+  const [dragSource, setDragSource] = useState<number | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -333,20 +366,52 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
 
         {/* SONG SLOTS */}
         <div className="grid grid-cols-2 gap-2 mb-6">
-          {Array.from({ length: PERFORMANCE_SLOT_COUNT }, (_, i) => (
-            <SongSlotCard
-              key={i}
-              i={i}
-              song={performance.songs[i]}
-              isActive={performance.activeSong === i}
-              isPending={performance.pendingSong === i}
-              isTailingOut={performance.pendingSong === i && isTailingOut}
-              onClick={() => loadSong(i)}
-              onShiftClick={() => snapSong(i)}
-              onCmdClick={() => clearSong(i)}
-              onRename={(name) => setSongName(i, name)}
-            />
-          ))}
+          {Array.from({ length: PERFORMANCE_SLOT_COUNT }, (_, i) => {
+            const filled = !!performance.songs[i];
+            return (
+              <SongSlotCard
+                key={i}
+                i={i}
+                song={performance.songs[i]}
+                isActive={performance.activeSong === i}
+                isPending={performance.pendingSong === i}
+                isTailingOut={performance.pendingSong === i && isTailingOut}
+                isDragging={dragSource === i}
+                isDragOver={dragOverSlot === i && dragSource !== null && dragSource !== i}
+                draggable={filled}
+                onClick={() => loadSong(i)}
+                onShiftClick={() => snapSong(i)}
+                onCmdClick={() => clearSong(i)}
+                onRename={(name) => setSongName(i, name)}
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', String(i));
+                  setDragSource(i);
+                }}
+                onDragEnd={() => {
+                  setDragSource(null);
+                  setDragOverSlot(null);
+                }}
+                onDragOver={(e) => {
+                  if (dragSource === null || dragSource === i) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dragOverSlot !== i) setDragOverSlot(i);
+                }}
+                onDragLeave={() => {
+                  if (dragOverSlot === i) setDragOverSlot(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragSource !== null && dragSource !== i) {
+                    moveSong(dragSource, i);
+                  }
+                  setDragSource(null);
+                  setDragOverSlot(null);
+                }}
+              />
+            );
+          })}
         </div>
 
         {/* TAIL-OUT */}
