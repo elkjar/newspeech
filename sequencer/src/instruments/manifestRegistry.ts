@@ -18,6 +18,7 @@ import type {
   VoiceDef,
   VoiceEnvelope,
   VoiceLoop,
+  VoiceRole,
   VoiceTrackDefaults,
   VoiceType,
   PadConfig,
@@ -28,6 +29,7 @@ import {
   DRUM_MUTATION,
   KICK_MUTATION,
   HAT_O_MUTATION,
+  BASS_MUTATION,
   PAD_MUTATION,
   DEFAULT_PAD_CONFIG,
 } from '../audio/voices';
@@ -43,9 +45,39 @@ function resolveMutationProfile(name: string | undefined): MutationProfile | und
     case 'drum':    return DRUM_MUTATION;
     case 'kick':    return KICK_MUTATION;
     case 'hat-o':   return HAT_O_MUTATION;
+    case 'bass':    return BASS_MUTATION;
     case 'pad':     return PAD_MUTATION;
     default:        return undefined;
   }
+}
+
+// Infer a default role from the kit path when the manifest doesn't
+// declare one. Folder convention mirrors the Rust scanner's category
+// list (`src-tauri/src/samples.rs` CATEGORIES): drums / pads / bass are
+// behavior-bearing; instruments + textures default to lead. User kits
+// get the same treatment after the `user/` prefix is stripped.
+function inferRoleFromKitPath(kitPath: string): VoiceRole {
+  const trimmed = kitPath.startsWith('user/') ? kitPath.slice('user/'.length) : kitPath;
+  if (trimmed.startsWith('drums/')) return 'drum';
+  if (trimmed.startsWith('pads/')) return 'pad';
+  if (trimmed.startsWith('bass/')) return 'bass';
+  return 'lead';
+}
+
+// Auto-detect specialized drum profiles by voice id. Within a drum kit
+// any voice id that reads as a kick gets KICK_MUTATION's quarter-note
+// pull; any open hat reading gets HAT_O_MUTATION's offbeat bias.
+// Patterns match common naming conventions: "kick" / "808-kick" /
+// "ns1-kick" / "kick-deep" / etc., and "ohh" / "hho" / "hat-o" /
+// "o-hat" / "open-hat" / "hat-open". Anything else falls through and
+// the role default (DRUM_MUTATION) applies.
+function inferDrumProfile(voiceId: string): MutationProfile | undefined {
+  const id = voiceId.toLowerCase();
+  if (/(^|[-_])kick(s|[-_]|$)/.test(id)) return KICK_MUTATION;
+  if (/(^|[-_])(ohh|hho|o-?hat|hat-?o(pen)?|open-?hat)([-_]|$)/.test(id)) {
+    return HAT_O_MUTATION;
+  }
+  return undefined;
 }
 
 // Per-voice metadata layered on top of SampleVoiceDef. The audio graph
@@ -56,6 +88,11 @@ function resolveMutationProfile(name: string | undefined): MutationProfile | und
 export interface ManifestVoiceMeta {
   label?: string;
   category?: VoiceCategory;        // optional override; default = inferred from parent folder
+  // Behavioral role (drum / bass / lead / pad). When absent, inferred
+  // from kit path (drums/* → 'drum', pads/* → 'pad', else 'lead').
+  // Drives voiceMutation's profile mapping; explicit `mutationProfile`
+  // still takes precedence for special cases like kick/hat-o.
+  role?: VoiceRole;
   envelope?: VoiceEnvelope;
   loop?: VoiceLoop;
   octaveOffset?: number;
@@ -205,17 +242,30 @@ export function deriveSampleVoices(): VoiceDef[] {
     for (const [voiceId, voice] of Object.entries(kit.manifest.voices)) {
       const meta = voice as ManifestVoice;
       const category: VoiceCategory = meta.category ?? kit.category;
+      // Role priority: explicit meta.role > type==='pad' shortcut >
+      // kit-path inference. The type='pad' shortcut keeps pad-typed
+      // voices on PAD_MUTATION even if they live outside pads/* (a
+      // pad-character voice cross-listed under instruments/ for the
+      // picker).
+      const role: VoiceRole =
+        meta.role ??
+        (meta.type === 'pad' ? 'pad' : inferRoleFromKitPath(kit.kitPath));
       const def: VoiceDef = {
         id: voiceId,
         label: meta.label ?? voiceId,
         category,
+        role,
       };
       if (meta.type) def.type = meta.type;
-      const mp = resolveMutationProfile(meta.mutationProfile);
+      // Mutation profile resolution priority:
+      //   1. explicit meta.mutationProfile (named lookup)
+      //   2. role==='drum' + voice-id heuristic (kick / open-hat)
+      //   3. (implicit) role mapping at voiceMutation lookup time
+      const mp =
+        resolveMutationProfile(meta.mutationProfile) ??
+        (role === 'drum' ? inferDrumProfile(voiceId) : undefined);
       if (mp) {
         def.mutationProfile = mp;
-      } else if (meta.type === 'pad') {
-        def.mutationProfile = PAD_MUTATION;
       }
       if (meta.envelope) def.envelope = meta.envelope;
       if (meta.loop) def.loop = meta.loop;

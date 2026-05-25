@@ -3,6 +3,7 @@
   "voices": {
     "mini-moog": {
       "label": "mini moog",
+      "role": "bass",
       "pickerCategories": ["instruments", "bass"],
       "trackDefaults": {
         "gain": 0.44

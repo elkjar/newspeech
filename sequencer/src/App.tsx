@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PlayButton, RecordButton, CountInButton, RawRecordButton, SplitsButton, TransportControls, InitButton } from './components/Transport';
+import { PerformanceButton } from './components/PerformanceDialog';
 import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TrackGrid } from './components/TrackGrid';
@@ -221,11 +222,23 @@ export function App() {
     initMIDIOut();
     initGhost();
     void initAudioOutputs();
-    // Auto-seed banks on every load — wipes scene banks and fills slots
-    // 0-9 with one of each recipe in song-arc order. User's track voices
-    // (band identity) persist via persist.ts and seed banks inherit those
-    // via activeVoice() in compose moves.
-    autoSeedBanks();
+    if (NATIVE) {
+      // Tauri app launches in init state — blank tracks, no banks, no
+      // scenes, no composition (2026-05-24 user direction). The default
+      // preset's authored patterns / voice IDs only make sense on the
+      // web build where bundled samples are loaded; on Tauri the user's
+      // library is the source of truth and they start from scratch.
+      // Tempo / scale / master FX stay (good starting tone).
+      useSequencerStore.getState().initProject();
+    } else {
+      // Web: auto-seed banks on every load — wipes scene banks and fills
+      // slots 0-9 with one of each recipe in song-arc order. User's
+      // track voices (band identity) persist via persist.ts and seed
+      // banks inherit those via activeVoice() in compose moves. Default
+      // preset's authored tracks remain so the demo is immediately
+      // playable.
+      autoSeedBanks();
+    }
     // Load any saved user mappings FIRST so the active mapping is in
     // place before MIDI input starts firing.
     void (async () => {
@@ -274,54 +287,58 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // Sample kits are discovered via samples/index.json (emitted by the
-    // vite samplesIndex plugin at build time; served live in dev). Each
-    // manifest is loaded into samplePlayer for the audio path AND into
-    // manifestRegistry for the VoiceDef-derivation path. Replaces the
-    // previously hardcoded `kits = [...]` array + the per-voice entries
-    // duplicated across voices.ts and hydrate.ts.
+    // Sample kit boot. Two sources of kits:
+    //   - Web: bundled samples under public/samples/, discovered via
+    //     samples/index.json (emitted by the vite samplesIndex plugin
+    //     at build time; served live in dev). The web tier is the
+    //     "free baseline" per [[project-app-web-tiering]] and has no
+    //     user-samples-dir mechanism, so bundled is the only source.
+    //   - Tauri app: user samples directory only. The app defaults to
+    //     "your library is the source of truth" (user direction
+    //     2026-05-24) — bundled kits in the repo are for the web build
+    //     only and skipped here. First-launch trade: default preset's
+    //     voice IDs won't resolve until the user loads their kits, and
+    //     those tracks fall through to the synth fallback. Acceptable
+    //     per "leave broken (manual re-pick)" save-compat policy.
     if (samplesBootStarted()) return;
     markSamplesBootStarted();
     const indexUrl = `${import.meta.env.BASE_URL}samples/index.json`;
     void (async () => {
-      try {
-        const res = await fetch(indexUrl);
-        const index = (await res.json()) as SampleKitEntry[];
-        setSamplesTotal(index.length);
-        // Splash screen is up — load kits in parallel for fastest wall-clock
-        // time. Counter increments as each kit's manifest finishes registering
-        // + decoding so the user sees progress instead of a frozen number.
-        await Promise.all(
-          index.map(async (entry) => {
-            const baseUrl = `${import.meta.env.BASE_URL}samples/${entry.kitPath}`;
-            try {
-              const manifestRes = await fetch(`${baseUrl}/manifest.json`);
-              const manifest = (await manifestRes.json()) as ExtendedSampleManifest;
-              registerKit(entry.kitPath, baseUrl, manifest);
-              // In Tauri, native is the only audio path — skip the
-              // Web Audio AudioBuffer decode pass entirely. Path
-              // strings + voice/bank metadata are all we need.
-              await samplePlayer.loadManifest(baseUrl, manifest, undefined, {
-                pathsOnly: isNativeAudioAvailable(),
-              });
-            } catch (err) {
-              console.warn(`sample manifest ${entry.kitPath} load failed:`, err);
-            }
-            setSamplesLoaded((n) => n + 1);
-          }),
-        );
-      } catch (err) {
-        console.warn('samples index load failed:', err);
+      if (!NATIVE) {
+        try {
+          const res = await fetch(indexUrl);
+          const index = (await res.json()) as SampleKitEntry[];
+          setSamplesTotal(index.length);
+          // Splash screen is up — load kits in parallel for fastest wall-clock
+          // time. Counter increments as each kit's manifest finishes registering
+          // + decoding so the user sees progress instead of a frozen number.
+          await Promise.all(
+            index.map(async (entry) => {
+              const baseUrl = `${import.meta.env.BASE_URL}samples/${entry.kitPath}`;
+              try {
+                const manifestRes = await fetch(`${baseUrl}/manifest.json`);
+                const manifest = (await manifestRes.json()) as ExtendedSampleManifest;
+                registerKit(entry.kitPath, baseUrl, manifest);
+                await samplePlayer.loadManifest(baseUrl, manifest, undefined, {
+                  pathsOnly: isNativeAudioAvailable(),
+                });
+              } catch (err) {
+                console.warn(`sample manifest ${entry.kitPath} load failed:`, err);
+              }
+              setSamplesLoaded((n) => n + 1);
+            }),
+          );
+        } catch (err) {
+          console.warn('samples index load failed:', err);
+        }
       }
-      // Bring user-sample kits in alongside bundled ones BEFORE
-      // bootDone fires. In Tauri this is cheap because
+      // User-sample kits. No-op on web (isTauri false → resolveUserSamplesDir
+      // returns null → scanner skips). In Tauri this is cheap because
       // samplePlayer.loadManifest runs in pathsOnly mode there — no
       // Web Audio decodeAudioData pass, no JSON-encoded bytes round
       // trip through invoke, just path-string interning. Native
       // preload reads files directly via the cpal-side bytes path
-      // when each voice is first triggered. Without this, user-
-      // sample tracks would briefly trigger silence after cold boot
-      // until the background load caught up.
+      // when each voice is first triggered.
       const userResult = await scanAndLoadUserSamples();
       if (userResult.loaded > 0) {
         console.info(`[user samples] loaded ${userResult.loaded} kit(s)`);
@@ -349,9 +366,19 @@ export function App() {
         // store). Without this, sceneStep = scheduled - audible-stale ≠ 0,
         // and chord master / bass step 0 land at non-zero localStep — the
         // "dropping beat 1" symptom.
-        // Scene commit fires BEFORE bank commit — a queued scene swap
-        // replaces the entire bank palette, so a pending bank within the
-        // outgoing scene would be stale by the time it commits.
+        // Order: song → scene → bank. An outgoing song's queued scene/bank
+        // would be stale by the time it commits, so song commit fires first
+        // (after its tail-out gap). Song's tail-out gap counts down here:
+        // while remaining > 0 we leave activeSong unchanged and don't emit
+        // triggers (see emit gate below); when it hits 0 we commit.
+        const performance = useSequencerStore.getState().performance;
+        if (performance.pendingSong !== null) {
+          if (performance.tailOutBarsRemaining > 0) {
+            useSequencerStore.getState().tickPerformanceTailOut();
+          } else {
+            useSequencerStore.getState().commitPendingSong(globalStep);
+          }
+        }
         useSequencerStore.getState().commitPendingScene(globalStep);
         useSequencerStore.getState().commitPendingBank(globalStep);
         ghostTickBar(globalStep);
@@ -372,28 +399,39 @@ export function App() {
             modDrift,
             octaveDegrees(state.scale),
           );
-      const events = runTick(
-        {
-          tracks: state.tracks,
-          rootNote: state.rootNote,
-          scale: state.scale,
-          lfos: state.lfos,
-          density: state.density,
-          chaos: state.chaos,
-          tension: state.tension,
-          freeze: state.freeze,
-          sceneStartStep: state.sceneStartStep,
-          globalStep,
-          when,
-          stepDuration,
-          harmonicOffset,
-          chordContext: getChordContext(),
-        },
-        {
-          readOverlay: getOverlay,
-          consumePadDrift: tickPadDrift,
-        },
-      );
+      // Performance tail-out gate. When a song swap is queued and the
+      // tail-out clock hasn't elapsed, skip emitting fresh triggers so
+      // the outgoing piece's voices ring out cleanly before the new
+      // song snaps in. Sample tails / reverb / delay all keep ringing
+      // because the audio graph is untouched — we just stop the source
+      // of new step events.
+      const inTailOut =
+        state.performance.pendingSong !== null &&
+        state.performance.tailOutBarsRemaining > 0;
+      const events = inTailOut
+        ? []
+        : runTick(
+            {
+              tracks: state.tracks,
+              rootNote: state.rootNote,
+              scale: state.scale,
+              lfos: state.lfos,
+              density: state.density,
+              chaos: state.chaos,
+              tension: state.tension,
+              freeze: state.freeze,
+              sceneStartStep: state.sceneStartStep,
+              globalStep,
+              when,
+              stepDuration,
+              harmonicOffset,
+              chordContext: getChordContext(),
+            },
+            {
+              readOverlay: getOverlay,
+              consumePadDrift: tickPadDrift,
+            },
+          );
       for (const ev of events) {
         switch (ev.kind) {
           case 'overlay':
@@ -1258,7 +1296,10 @@ export function App() {
             <LFOPanel />
           </div>
           <div className="flex justify-between items-center gap-8 -my-4">
-            <InitButton />
+            <div className="flex items-center gap-2">
+              <InitButton />
+              <PerformanceButton />
+            </div>
             <div className="flex items-center gap-8">
               <ScenePad />
               <BankPad />

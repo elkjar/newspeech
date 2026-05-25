@@ -24,8 +24,15 @@ export function effectiveTieToNext(track: Track, i: number): boolean {
   const authored = track.steps[i]?.tieToNext ?? false;
   if (track.mutation === 0 || track.lockTiming) return authored;
   const profile = sourceMutation(track.source);
-  if (profile.tieFlipChance === 0) return authored;
+  // Asymmetric flip — easier to BREAK an existing tie than to CREATE a new
+  // one. Stops mutation from building full-bar chains while still letting
+  // it add variety to authored sustains. See voices.ts MutationProfile
+  // notes for the rate split.
+  const rate = authored
+    ? profile.tieFlipOffChance
+    : profile.tieFlipOnChance;
+  if (rate === 0) return authored;
   const seed = stepSeed(track.id, i + TIE_INDEX_OFFSET);
-  if (seed < track.mutation * profile.tieFlipChance) return !authored;
+  if (seed < track.mutation * rate) return !authored;
   return authored;
 }

@@ -38,18 +38,20 @@ const STEPS_PER_BAR = 32;
 // saved density, then resolves back to the saved value. The arc envelope
 // is expressed via FREQUENCY of these gestures, not a sustained shift.
 //
+// 2026-05-24 — heavy tone-down per user listening notes ("ghost is too
+// heavy-handed with density"). Spike magnitude + base rate both cut so
+// density mostly sits at bank-saved value with small occasional gestures;
+// the other macros (chaos, motion, drift, tension) carry the variation.
+//
 // Probability per bar = BASE + shape_intensity * SHAPE_BONUS. BASE > 0
 // because Chris's hand-played patterns get fills CONSTANTLY across all
-// scene phases — that's the lifeblood, not a climax-only thing.
-// At sustain / arc bottom: BASE = 0.2 → ~5 bars between fills
-// At arc midpoint: 0.35 → ~3 bars
-// At arc peak: 0.5 → ~2 bars
+// scene phases — that's the lifeblood, not a climax-only thing. With the
+// lower values, fills land roughly every ~10–14 bars in flat sections
+// and ~5 bars at arc peaks.
 const MID_FILL_BARS = 1;
-// 2026-05-20: dialed 0.10 → 0.20 alongside removing the drift baseline.
-// With no rise riding underneath, fills need to be more present to read.
-const MID_FILL_BOOST = 0.2;
-const BASE_FILL_PROB_PER_BAR = 0.2;
-const SHAPE_FILL_PROB_BONUS = 0.3;
+const MID_FILL_BOOST = 0.05;
+const BASE_FILL_PROB_PER_BAR = 0.08;
+const SHAPE_FILL_PROB_BONUS = 0.12;
 
 // Per-frame smoothing factor for the RAF density smoother. At 60fps a value
 // of 0.06 reaches ~85% of the target in ~30 frames (~0.5s) — feels like a
@@ -63,13 +65,13 @@ const DENSITY_SMOOTH_PER_FRAME = 0.06;
 // (clamped to 1.0), peak at the transition bar, then snap with the bank swap
 // (density) or descend via macro lerp (chaos) into the new scene.
 //
-// Density boost is intentionally modest (tuned 2026-05-20 from 0.5 → 0.20)
-// per the listening note "+10% feels like a fill, +50% is real chaos, +100%
-// is spamming the grid." Pre-transition is the heaviest density gesture
-// ghost makes; it's the upper bound of what should feel musical, not the
-// place we hit the ceiling.
+// Density boost is intentionally modest. 2026-05-20: 0.5 → 0.20.
+// 2026-05-24: 0.20 → 0.10 alongside the heavy mid-fill tone-down — the
+// pre-transition fill should signal change is coming without crowding
+// the existing pattern, and the surrounding macros (chaos, motion) carry
+// most of the build feel.
 const FILL_BARS = 2;
-const FILL_DENSITY_BOOST = 0.2;
+const FILL_DENSITY_BOOST = 0.1;
 const FILL_CHAOS_BOOST = 0.25;
 
 interface GhostRuntime {

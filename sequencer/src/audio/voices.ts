@@ -7,7 +7,16 @@ export interface MutationProfile {
   pitchWeights: { octave: number; fifth: number; small: number };
   gateBias: number;
   gateSpread: number;
-  tieFlipChance: number;
+  // Asymmetric tie-flip rates (split 2026-05-24 — the old single
+  // `tieFlipChance` made it as easy to create new chains as to break them,
+  // which produced occasional full-bar tied notes when consecutive FNV
+  // seeds happened to land below the threshold). OnChance is the rate at
+  // which an authored-untied step flips ON → creating / extending a chain;
+  // OffChance is the rate at which an authored-tied step flips OFF →
+  // breaking a chain. Off should be HIGHER so mutation reads as adding
+  // variety to existing chains, not building new long sustains.
+  tieFlipOnChance: number;
+  tieFlipOffChance: number;
   stepWeights?: number[];
   // Stage 7: probability the chord master applies a chord-aware mutation
   // (dropChordTone / borrowChord / shuffleInversion / shiftSpread) on a
@@ -23,7 +32,8 @@ export const DEFAULT_MUTATION: MutationProfile = {
   pitchWeights: { octave: 0.3, fifth: 0.3, small: 0.4 },
   gateBias: 0.4,
   gateSpread: 0.8,
-  tieFlipChance: 0.2,
+  tieFlipOnChance: 0.05,
+  tieFlipOffChance: 0.2,
   chordMutationChance: 0.35,
 };
 
@@ -57,7 +67,8 @@ export const BASS_MUTATION: MutationProfile = {
   pitchWeights: { octave: 0.1, fifth: 0.4, small: 0.5 },
   gateBias: 0.3,
   gateSpread: 0.6,
-  tieFlipChance: 0.15,
+  tieFlipOnChance: 0.03,
+  tieFlipOffChance: 0.15,
   chordMutationChance: 0,
 };
 
@@ -74,7 +85,11 @@ export const PAD_MUTATION: MutationProfile = {
   pitchWeights: { octave: 0, fifth: 0, small: 0 },
   gateBias: 0.7,
   gateSpread: 0.3,
-  tieFlipChance: 0.05,
+  // Pads love sustain — the few ties they do shift should keep them long,
+  // not chop them shorter. Keep off-rate modest to preserve the
+  // crossfade-via-long-release character pads depend on.
+  tieFlipOnChance: 0.02,
+  tieFlipOffChance: 0.05,
   chordMutationChance: 0.55,
 };
 
@@ -141,6 +156,12 @@ export interface VoiceDef {
   id: string;
   label: string;
   category: VoiceCategory;
+  // Behavioral role — drives mutation profile + ghost entropy class via
+  // role mapping. Independent of `category` (which is just drum vs.
+  // melodic for dispatch routing) and `type` (which opts into specific
+  // dispatch features like pad voicing-drift). When absent,
+  // voiceMutation falls back to category-derived defaults.
+  role?: VoiceRole;
   // Optional category tag; 'pad' opts the voice into pad dispatch in
   // samplePlayer and the chord-master voicing-drift hook in App.tsx.
   type?: VoiceType;
@@ -263,9 +284,27 @@ export function voiceLabel(voiceId: string): string {
   return getCachedVoices().find((v) => v.id === voiceId)?.label ?? voiceId;
 }
 
+// Role → profile mapping. Same shape as instrumentMutation's role switch
+// so MIDI instruments and sample voices get the same behavior given the
+// same role label. Per-voice `mutationProfile` overrides (e.g. KICK_MUTATION
+// for specific kick voices) take precedence over the role default.
 export function voiceMutation(voiceId: string): MutationProfile {
-  return getCachedVoices().find((v) => v.id === voiceId)?.mutationProfile ?? DEFAULT_MUTATION;
+  const voice = getCachedVoices().find((v) => v.id === voiceId);
+  if (!voice) return DEFAULT_MUTATION;
+  if (voice.mutationProfile) return voice.mutationProfile;
+  switch (voice.role) {
+    case 'drum': return DRUM_MUTATION;
+    case 'bass': return BASS_MUTATION;
+    case 'pad': return PAD_MUTATION;
+    case 'lead': return DEFAULT_MUTATION;
+    default:
+      // No explicit role + no explicit profile. Fall back to category:
+      // drum voices get DRUM_MUTATION (no pitch jump), everything else
+      // gets DEFAULT_MUTATION (lead-shaped).
+      return voice.category === 'drum' ? DRUM_MUTATION : DEFAULT_MUTATION;
+  }
 }
+
 
 export function voiceEnvelope(voiceId: string): VoiceEnvelope | undefined {
   return getCachedVoices().find((v) => v.id === voiceId)?.envelope;
@@ -299,18 +338,27 @@ export function isPadVoice(voiceId: string): boolean {
   return voiceType(voiceId) === 'pad';
 }
 
-export type VoiceRole = 'drum' | 'pad' | 'lead';
+// Role classification used to attach behavior (mutation profile, ghost
+// entropy class) to a voice by what it IS, not which slot it lands in.
+// Mirrors InstrumentRole on the MIDI side so the two sources share a
+// mental model. Slot-position bass/anchor detection in the engine stays
+// as a positional fallback, but role is the authoring intent.
+//
+// 'bass' added 2026-05-24 — previously the type was drum/pad/lead and
+// sample voices "didn't carry bass distinction" (was per-track / slot-1
+// positional). Now manifests can declare a bass voice explicitly so it
+// gets BASS_MUTATION wherever it's slotted.
+export type VoiceRole = 'drum' | 'bass' | 'lead' | 'pad';
 
 /**
- * Coarse role bucket for a voice id — used by the Ghost entropy formula's
- * diversity multiplier. Sample voices don't carry bass/lead distinction
- * (that's per-track behavior, set by composer logic), so melodic non-pad
- * voices all collapse to 'lead'. External MIDI instruments use the
- * library's role field directly (4-way drum/bass/lead/pad).
+ * Coarse role bucket for a voice id. Returns the voice's explicit role
+ * if declared, otherwise infers from category + type. Used by Ghost's
+ * entropy formula diversity multiplier and by the mutation lookup.
  */
 export function voiceRole(voiceId: string): VoiceRole {
   const v = getCachedVoices().find((vd) => vd.id === voiceId);
   if (!v) return 'lead';
+  if (v.role) return v.role;
   if (v.category === 'drum') return 'drum';
   if (v.type === 'pad') return 'pad';
   return 'lead';
@@ -332,6 +380,14 @@ export function voiceEntropyClass(voiceId: string): number {
   const v = getCachedVoices().find((vd) => vd.id === voiceId);
   if (!v) return 0.5;
   if (typeof v.entropyClass === 'number') return v.entropyClass;
+  // Role-driven first — bass voices anchor at 0.30 (low-freq, mid-low
+  // entropy contribution) to match instrumentEntropyClass's bass slot.
+  if (v.role === 'bass') return 0.3;
+  if (v.role === 'pad') return 0.05;
+  if (v.role === 'drum') return 1;
+  // Fallbacks for voices that don't declare a role: drum-category goes
+  // percussion-tier, pad-typed voices go sustained-tier, everything else
+  // sits at the neutral melodic baseline.
   if (v.category === 'drum') return 1;
   if (v.type === 'pad') return 0.05;
   return 0.5;

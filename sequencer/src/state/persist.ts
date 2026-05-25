@@ -2,6 +2,7 @@ import {
   useSequencerStore,
   BANK_SLOT_COUNT,
   COMPOSITION_SLOT_COUNT,
+  PERFORMANCE_SLOT_COUNT,
   DEFAULT_SCENE_GRAPH,
   type Track,
   type TrackSection,
@@ -9,6 +10,8 @@ import {
   type SceneGraphConfig,
   type Composition,
   type Scene,
+  type Song,
+  type Performance,
 } from './store';
 import {
   ensureBothSections,
@@ -301,6 +304,132 @@ export function hydrateComposition(
     activeScene,
     pendingScene: null,
     endsAfterLast: o.endsAfterLast !== false,
+  };
+}
+
+// Parse a `.seqcomp` (or legacy `.seq`) file into a Song snapshot. A
+// .seq file already serializes a full composition (tracks + banks +
+// scenes + bpm + root + scale + sceneGraph), so the same parser
+// handles both extensions — the distinction is purely about user-
+// facing semantics (one song file = one piece of music).
+export function parseSongFromSeqcomp(json: string): Song | null {
+  let data: PersistedState;
+  try {
+    data = JSON.parse(json) as PersistedState;
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  if (!Array.isArray(data.tracks)) return null;
+  const rawTracks = data.tracks as Array<Partial<Track> & { id: string }>;
+  const tracks = applyPositionalRoleDefaults(
+    ensureBothSections(
+      rawTracks
+        .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
+        .map(hydrateTrack),
+    ),
+    rawTracks,
+  );
+  if (tracks.length === 0) return null;
+  const density = clamp01(data.density);
+  const chaos = clamp01(data.chaos);
+  const motion = clamp01(data.motion, 0.5);
+  const drift = clamp01(data.drift, 1);
+  const tension = clamp01(data.tension);
+  const banks = hydrateBanks(data.banks, () => ({
+    tracks,
+    macros: { density, chaos, motion, drift, tension },
+  }));
+  const requestedActive =
+    typeof data.activeBank === 'number' && Number.isFinite(data.activeBank)
+      ? Math.floor(data.activeBank)
+      : 0;
+  const activeBank =
+    requestedActive >= 0 && requestedActive < BANK_SLOT_COUNT
+      ? requestedActive
+      : null;
+  const sceneGraph = hydrateSceneGraph(data.sceneGraph);
+  const composition = hydrateComposition(data.composition, tracks, banks);
+  return {
+    tracks,
+    banks,
+    activeBank,
+    macros: { density, chaos, motion, drift, tension },
+    sceneGraph,
+    scenes: composition.scenes,
+    activeScene: composition.activeScene,
+    endsAfterLast: composition.endsAfterLast,
+    bpm: typeof data.bpm === 'number' && Number.isFinite(data.bpm) ? data.bpm : 120,
+    rootNote:
+      typeof data.rootNote === 'number' && Number.isFinite(data.rootNote)
+        ? data.rootNote
+        : 60,
+    scale: data.scale ?? 'major',
+    lfos: hydrateLFOs(data.lfos),
+  };
+}
+
+interface PersistedPerformance {
+  version: number;
+  songs: (Song | null)[];
+  activeSong: number | null;
+  tailOutBars: number;
+}
+
+export function exportPerformance(): string {
+  const s = useSequencerStore.getState();
+  const data: PersistedPerformance = {
+    version: CURRENT_VERSION,
+    songs: s.performance.songs,
+    activeSong: s.performance.activeSong,
+    tailOutBars: s.performance.tailOutBars,
+  };
+  return JSON.stringify(data, null, 2);
+}
+
+export function parsePerformanceFromSeqset(json: string): Performance | null {
+  let data: PersistedPerformance;
+  try {
+    data = JSON.parse(json) as PersistedPerformance;
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  const songs: (Song | null)[] = Array.from(
+    { length: PERFORMANCE_SLOT_COUNT },
+    () => null,
+  );
+  if (Array.isArray(data.songs)) {
+    for (let i = 0; i < Math.min(PERFORMANCE_SLOT_COUNT, data.songs.length); i++) {
+      const raw = data.songs[i];
+      if (!raw) continue;
+      // Each song is already a Song shape (we wrote it ourselves). Round-trip
+      // through stringify+parseSongFromSeqcomp to reuse the full hydration
+      // path — keeps voice-id migrations + positional-role defaults aligned
+      // with the .seqcomp import path.
+      const text = JSON.stringify(raw);
+      const song = parseSongFromSeqcomp(text);
+      songs[i] = song;
+    }
+  }
+  const activeSong =
+    typeof data.activeSong === 'number' &&
+    Number.isFinite(data.activeSong) &&
+    data.activeSong >= 0 &&
+    data.activeSong < PERFORMANCE_SLOT_COUNT &&
+    songs[data.activeSong]
+      ? Math.floor(data.activeSong)
+      : null;
+  const tailOutBars =
+    typeof data.tailOutBars === 'number' && Number.isFinite(data.tailOutBars)
+      ? Math.max(0, Math.min(32, Math.floor(data.tailOutBars)))
+      : 2;
+  return {
+    songs,
+    activeSong,
+    pendingSong: null,
+    tailOutBarsRemaining: 0,
+    tailOutBars,
   };
 }
 

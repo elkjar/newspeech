@@ -350,6 +350,52 @@ export interface Composition {
   endsAfterLast: boolean;
 }
 
+// Song = one composition as it sits in a Performance slot. Captures
+// everything that changes between songs in a set: the full composition
+// (scenes + ordering + endsAfterLast), the bank palette behind those
+// scenes, the live tracks, macros, sceneGraph, and the song-level
+// globals (bpm / rootNote / scale / lfos). Master FX and nativeMix
+// stay global per [[project_scene_session]].
+export interface Song {
+  name?: string;
+  tracks: Track[];
+  banks: (BankSlot | null)[];
+  activeBank: number | null;
+  macros: BankMacros;
+  sceneGraph: SceneGraphConfig;
+  scenes: (Scene | null)[];
+  activeScene: number | null;
+  endsAfterLast: boolean;
+  bpm: number;
+  rootNote: number;
+  scale: Scale;
+  lfos: LFO[];
+}
+
+export const PERFORMANCE_SLOT_COUNT = 8;
+
+export interface Performance {
+  songs: (Song | null)[];
+  activeSong: number | null;
+  // Bar-boundary queued song swap, with optional tail-out gap before the
+  // snap lands. While `pendingSong` is set and `tailOutBarsRemaining > 0`,
+  // the scheduler stops emitting fresh triggers so existing voices ring
+  // out cleanly; when the count reaches 0 we applySong atomically.
+  pendingSong: number | null;
+  tailOutBarsRemaining: number;
+  // How many bars of tail-out gap to insert before snapping to a queued
+  // song. 0 = atomic swap on next bar boundary (same as scene swap).
+  tailOutBars: number;
+}
+
+export const DEFAULT_PERFORMANCE: Performance = {
+  songs: Array.from({ length: PERFORMANCE_SLOT_COUNT }, () => null),
+  activeSong: null,
+  pendingSong: null,
+  tailOutBarsRemaining: 0,
+  tailOutBars: 2,
+};
+
 // Toast for user-facing app notifications. Surface for: recording finalize
 // confirmation + error reporting (silent failures = lost takes the user
 // didn't know about). Kept generic enough to grow other event sources.
@@ -637,6 +683,24 @@ interface SequencerState {
   // an external `.seq` file) into the next empty composition slot.
   // Returns the assigned slot index, or null when all slots are full.
   importScene: (scene: Scene) => number | null;
+  // Performance layer — slots of Songs (full compositions). Click load
+  // queues a swap that lands after the configured tail-out gap; the
+  // entire piece (tracks + banks + scenes + bpm + key + scale + LFOs)
+  // swaps atomically when the gap elapses.
+  performance: Performance;
+  snapSong: (i: number) => void;
+  loadSong: (i: number) => void;
+  clearSong: (i: number) => void;
+  moveSong: (from: number, to: number) => void;
+  commitPendingSong: (atGlobalStep: number) => void;
+  tickPerformanceTailOut: () => void;
+  setPerformanceTailOutBars: (bars: number) => void;
+  importSong: (song: Song) => number | null;
+  // Replace the entire performance container (used when loading a
+  // `.seqset` file). Caller passes an already-hydrated Performance —
+  // hydration logic lives in persist.ts to keep store free of JSON
+  // parsing concerns.
+  replacePerformance: (performance: Performance) => void;
   // Ghost — persisted config + transient display state. Display fields
   // (`ghostBarsRemaining`, `ghostTargetBars`) are written by the
   // ghost module each bar; not part of saved state.
@@ -920,6 +984,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     pendingScene: null,
     endsAfterLast: true,
   },
+  performance: { ...DEFAULT_PERFORMANCE, songs: [...DEFAULT_PERFORMANCE.songs] },
   // FX param setters are pure state writes. The canonical store→worklet
   // bridge lives in `audio/fxModulation.ts` (RAF loop, started at first
   // play); it reads these slices each frame, applies LFO modulation, and
@@ -1073,6 +1138,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         activeScene: null,
         pendingScene: null,
         endsAfterLast: true,
+      },
+      performance: {
+        ...state.performance,
+        songs: Array.from({ length: PERFORMANCE_SLOT_COUNT }, () => null),
+        activeSong: null,
+        pendingSong: null,
+        tailOutBarsRemaining: 0,
       },
     }));
   },
@@ -1654,6 +1726,172 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     });
     return idx;
   },
+  snapSong: (i) => {
+    if (i < 0 || i >= PERFORMANCE_SLOT_COUNT) return;
+    set((state) => {
+      const song: Song = {
+        tracks: state.tracks.map(cloneTrack),
+        banks: state.banks.map((b) =>
+          b
+            ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
+            : null,
+        ),
+        activeBank: state.activeBank,
+        macros: {
+          density: state.density,
+          chaos: state.chaos,
+          motion: state.motion,
+          drift: state.drift,
+          tension: state.tension,
+        },
+        sceneGraph: { ...state.sceneGraph },
+        scenes: state.composition.scenes.map((sc) =>
+          sc
+            ? {
+                ...sc,
+                tracks: sc.tracks.map(cloneTrack),
+                banks: sc.banks.map((b) =>
+                  b
+                    ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
+                    : null,
+                ),
+                macros: { ...sc.macros },
+                sceneGraph: { ...sc.sceneGraph },
+              }
+            : null,
+        ),
+        activeScene: state.composition.activeScene,
+        endsAfterLast: state.composition.endsAfterLast,
+        bpm: state.bpm,
+        rootNote: state.rootNote,
+        scale: state.scale,
+        lfos: state.lfos.map((l) => ({ ...l, destinations: l.destinations.map((d) => ({ ...d })) })),
+      };
+      const songs = state.performance.songs.slice();
+      songs[i] = song;
+      return { performance: { ...state.performance, songs } };
+    });
+  },
+  loadSong: (i) => {
+    const state = useSequencerStore.getState();
+    if (i < 0 || i >= PERFORMANCE_SLOT_COUNT) return;
+    const song = state.performance.songs[i];
+    if (!song) return;
+    if (i === state.performance.activeSong && state.performance.pendingSong === null) return;
+    if (!state.playing) {
+      // Stopped: snap immediately. No tail-out needed since nothing's ringing.
+      applySong(set, i, song, state.globalStep);
+      return;
+    }
+    // Playing: queue the swap. tickPerformanceTailOut is driven from the
+    // scheduler's bar-boundary callback and counts down before commit.
+    set((s) => ({
+      performance: {
+        ...s.performance,
+        pendingSong: i,
+        tailOutBarsRemaining: Math.max(0, s.performance.tailOutBars),
+      },
+    }));
+  },
+  clearSong: (i) =>
+    set((state) => {
+      if (i < 0 || i >= PERFORMANCE_SLOT_COUNT) return {};
+      const songs = state.performance.songs.slice();
+      songs[i] = null;
+      return {
+        performance: {
+          ...state.performance,
+          songs,
+          activeSong:
+            state.performance.activeSong === i ? null : state.performance.activeSong,
+          pendingSong:
+            state.performance.pendingSong === i ? null : state.performance.pendingSong,
+        },
+      };
+    }),
+  moveSong: (from, to) => {
+    set((state) => {
+      if (from === to) return {};
+      if (from < 0 || from >= PERFORMANCE_SLOT_COUNT) return {};
+      if (to < 0 || to >= PERFORMANCE_SLOT_COUNT) return {};
+      const moved = state.performance.songs[from];
+      if (!moved) return {};
+      const songs = state.performance.songs.slice();
+      if (from < to) {
+        for (let j = from; j < to; j++) songs[j] = songs[j + 1];
+      } else {
+        for (let j = from; j > to; j--) songs[j] = songs[j - 1];
+      }
+      songs[to] = moved;
+      const shiftIndex = (idx: number | null): number | null => {
+        if (idx === null) return null;
+        if (idx === from) return to;
+        if (from < to && idx > from && idx <= to) return idx - 1;
+        if (from > to && idx >= to && idx < from) return idx + 1;
+        return idx;
+      };
+      return {
+        performance: {
+          ...state.performance,
+          songs,
+          activeSong: shiftIndex(state.performance.activeSong),
+          pendingSong: shiftIndex(state.performance.pendingSong),
+        },
+      };
+    });
+  },
+  commitPendingSong: (atGlobalStep) => {
+    const state = useSequencerStore.getState();
+    const i = state.performance.pendingSong;
+    if (i === null) return;
+    const song = state.performance.songs[i];
+    if (!song) {
+      set((s) => ({
+        performance: { ...s.performance, pendingSong: null, tailOutBarsRemaining: 0 },
+      }));
+      return;
+    }
+    applySong(set, i, song, atGlobalStep);
+  },
+  tickPerformanceTailOut: () => {
+    set((s) => {
+      if (s.performance.pendingSong === null) return {};
+      if (s.performance.tailOutBarsRemaining <= 0) return {};
+      return {
+        performance: {
+          ...s.performance,
+          tailOutBarsRemaining: s.performance.tailOutBarsRemaining - 1,
+        },
+      };
+    });
+  },
+  setPerformanceTailOutBars: (bars) =>
+    set((state) => ({
+      performance: {
+        ...state.performance,
+        tailOutBars: Math.max(0, Math.min(32, Math.floor(Number.isFinite(bars) ? bars : 0))),
+      },
+    })),
+  importSong: (song): number | null => {
+    let idx: number | null = null;
+    set((s) => {
+      const found = s.performance.songs.findIndex((x) => x === null);
+      if (found === -1) return {};
+      idx = found;
+      const songs = s.performance.songs.slice();
+      songs[found] = song;
+      return { performance: { ...s.performance, songs } };
+    });
+    return idx;
+  },
+  replacePerformance: (next) =>
+    set({
+      performance: {
+        ...next,
+        pendingSong: null,
+        tailOutBarsRemaining: 0,
+      },
+    }),
   // Insert-and-shift reorder for scenes — mirrors moveBank's semantics
   // exactly. Scenes between `from` and `to` slide one position to fill
   // the gap. activeScene + pendingScene follow the shift so the
@@ -1982,4 +2220,79 @@ function applyScene(
     globalStep: atGlobalStep,
     slot: i,
   });
+}
+
+// Atomic song swap. Replaces the entire piece: tracks, banks, scenes,
+// macros, sceneGraph, bpm, root, scale, LFOs. Master FX + nativeMix +
+// midiOutDeviceId stay global (rig-level identity). Used by the
+// performance layer's loadSong + commitPendingSong.
+function applySong(
+  set: (
+    partial:
+      | Partial<SequencerState>
+      | ((state: SequencerState) => Partial<SequencerState>)
+  ) => void,
+  i: number,
+  song: Song,
+  atGlobalStep: number,
+): void {
+  set((state) => ({
+    tracks: song.tracks.map(cloneTrack),
+    banks: song.banks.map((b) =>
+      b
+        ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
+        : null,
+    ),
+    activeBank: song.activeBank,
+    pendingBank: null,
+    density: song.macros.density,
+    chaos: song.macros.chaos,
+    motion: song.macros.motion,
+    drift: song.macros.drift,
+    tension: song.macros.tension,
+    // Ghost enabled is session-level, not per-song — preserve the user's
+    // current on/off choice across song loads.
+    sceneGraph: { ...song.sceneGraph, enabled: state.sceneGraph.enabled },
+    sceneStartStep: atGlobalStep,
+    ghostCompositionStartStep: atGlobalStep,
+    freeze: false,
+    bpm: song.bpm,
+    rootNote: song.rootNote,
+    scale: song.scale,
+    lfos: song.lfos.map((l) => ({ ...l, destinations: l.destinations.map((d) => ({ ...d })) })),
+    composition: {
+      scenes: song.scenes.map((sc) =>
+        sc
+          ? {
+              ...sc,
+              tracks: sc.tracks.map(cloneTrack),
+              banks: sc.banks.map((b) =>
+                b
+                  ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
+                  : null,
+              ),
+              macros: { ...sc.macros },
+              sceneGraph: { ...sc.sceneGraph },
+            }
+          : null,
+      ),
+      activeScene: song.activeScene,
+      pendingScene: null,
+      endsAfterLast: song.endsAfterLast,
+    },
+    performance: {
+      ...state.performance,
+      activeSong: i,
+      pendingSong: null,
+      tailOutBarsRemaining: 0,
+    },
+  }));
+  clearOverlay();
+  unfreezeLFOs();
+  resetPadDrift();
+  // Re-seed chord context against the new song's root + scale so root/
+  // chord-tone followers latch onto the new key immediately rather than
+  // carrying the prior song's harmony until the chord master plays its
+  // next step.
+  resetChordContext(song.rootNote, song.scale);
 }

@@ -165,7 +165,16 @@ export function resolveStepMutation(inputs: MutationInputs): StepResolution {
   }
   const velJitter =
     mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.velSpread : 0;
-  const velocity = Math.max(0, Math.min(1, step.velocity + velJitter));
+  // Anchored tracks (chord master / bass / root-follow) keep an audible
+  // floor on jittered velocity so high mutation × chaos can't reduce a
+  // bass hit to inaudible levels — the perceived "bass dropping notes"
+  // symptom even when the engine fires the step. Non-anchors keep the
+  // full 0..1 range so quiet hits remain a creative option there.
+  const velFloor = harmonicAnchor ? 0.6 : 0;
+  const velocity = Math.max(
+    velFloor,
+    Math.min(1, step.velocity + velJitter),
+  );
   let pitch = step.pitch;
   if (melodic && mut > 0 && Math.random() < mut * profile.pitchJumpProb) {
     // chord-tone-mode followers measure octaves in chord-tone count rather
@@ -575,7 +584,14 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
       isChordMaster = melodicSlot === 0;
       isBass = melodicSlot === 1;
     }
-    const harmonicAnchor = isChordMaster || isBass;
+    // Anchor any root-follow melodic track regardless of slot. Root-follow
+    // = "pin to the chord root each step" = bass-role by definition, so the
+    // density-thinning + mutation-flip exemption should track that intent
+    // rather than only the slot-1 positional default. Lets the user place
+    // bass anywhere in the stack without ghost stripping notes off it.
+    const isRootFollow =
+      track.section === 'melodic' && track.pitchInterp === 'root-follow';
+    const harmonicAnchor = isChordMaster || isBass || isRootFollow;
     // Row 0 mute split — chord master still resolves so chord context
     // publishes, but no audio events get emitted at the tail.
     if (track.mute && !isChordMaster) continue;
