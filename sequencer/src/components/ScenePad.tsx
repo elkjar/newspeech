@@ -1,8 +1,13 @@
 import { useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore, COMPOSITION_SLOT_COUNT } from '../state/store';
-import { parseSceneFromSeq } from '../state/persist';
-import { ImportIcon } from './Transport';
+import {
+  exportSceneAsSeqscene,
+  parseSceneFromSeq,
+  parseSceneFromSeqscene,
+  timestampSlug,
+} from '../state/persist';
+import { DownloadIcon, ImportIcon } from './Transport';
 import { SceneSettingsDialog } from './SceneSettingsDialog';
 
 const PAD_SIZE = 36;
@@ -129,10 +134,15 @@ export function ScenePad() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasEmptySlot = (sceneFilledMask & ALL_SCENES_MASK) !== ALL_SCENES_MASK;
 
+  // Try `.seqscene` strict parse first; if it doesn't match the scene
+  // shape, fall back to the legacy song-extractor (`parseSceneFromSeq`)
+  // which pulls the active scene out of a `.seq` / `.seqcomp` file.
+  // Lets pre-split saves still drop into scene slots without manual
+  // conversion.
   const importFromText = (text: string): boolean => {
-    const scene = parseSceneFromSeq(text);
+    const scene = parseSceneFromSeqscene(text) ?? parseSceneFromSeq(text);
     if (!scene) {
-      console.warn('[scene import] failed to parse .seq file');
+      console.warn('[scene import] failed to parse file');
       return false;
     }
     const slot = importScene(scene);
@@ -150,7 +160,9 @@ export function ScenePad() {
         const { open } = await import('@tauri-apps/plugin-dialog');
         const picked = await open({
           multiple: false,
-          filters: [{ name: 'Sequence', extensions: ['seq', 'json'] }],
+          filters: [
+            { name: 'Sequence scene', extensions: ['seqscene', 'seq', 'seqcomp', 'json'] },
+          ],
         });
         if (!picked || typeof picked !== 'string') return;
         const text = await invoke<string>('read_text_file', { path: picked });
@@ -161,6 +173,41 @@ export function ScenePad() {
       return;
     }
     fileInputRef.current?.click();
+  };
+
+  const handleSaveSceneClick = async () => {
+    const code = exportSceneAsSeqscene();
+    const defaultName = `newspeech-scene-${timestampSlug()}.seqscene`;
+    if (isTauri()) {
+      try {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { documentDir, join } = await import('@tauri-apps/api/path');
+        let defaultPath: string | undefined;
+        try {
+          defaultPath = await join(await documentDir(), defaultName);
+        } catch {
+          defaultPath = defaultName;
+        }
+        const picked = await save({
+          defaultPath,
+          filters: [{ name: 'Sequence scene', extensions: ['seqscene'] }],
+        });
+        if (!picked) return;
+        await invoke('save_text_file', { path: picked, contents: code });
+      } catch (err) {
+        console.error('[scene save] failed:', err);
+      }
+      return;
+    }
+    const blob = new Blob([code], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = defaultName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -254,6 +301,17 @@ export function ScenePad() {
           />
         )}
         <button
+          onClick={() => void handleSaveSceneClick()}
+          title="export the current state as a .seqscene file"
+          style={{ width: PAD_SIZE, height: PAD_SIZE }}
+          className="relative overflow-hidden flex items-center justify-center opacity-55 hover:opacity-100 transition-opacity"
+        >
+          <span className="absolute inset-0 bg-white/5" />
+          <span className="relative">
+            <DownloadIcon />
+          </span>
+        </button>
+        <button
           onClick={handleImportClick}
           disabled={!hasEmptySlot}
           title={
@@ -293,7 +351,7 @@ export function ScenePad() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".seq,.json,application/json"
+        accept=".seqscene,.seq,.seqcomp,.json,application/json"
         className="hidden"
         onChange={handleFileChange}
       />

@@ -307,12 +307,106 @@ export function hydrateComposition(
   };
 }
 
-// Parse a `.seqcomp` (or legacy `.seq`) file into a Song snapshot. A
-// .seq file already serializes a full composition (tracks + banks +
-// scenes + bpm + root + scale + sceneGraph), so the same parser
-// handles both extensions — the distinction is purely about user-
-// facing semantics (one song file = one piece of music).
-export function parseSongFromSeqcomp(json: string): Song | null {
+// Serialize the live state as a single Scene (.seqscene file). Only the
+// scene-shape fields land in the file: tracks, banks, activeBank,
+// macros, sceneGraph. Globals (bpm, root, scale, FX, LFOs) are
+// excluded because scenes inherit those from their containing song.
+interface PersistedScene {
+  version: number;
+  kind: 'scene';
+  name?: string;
+  tracks: Track[];
+  banks: (BankSlot | null)[];
+  activeBank: number | null;
+  macros: { density: number; chaos: number; motion: number; drift: number; tension: number };
+  sceneGraph: SceneGraphConfig;
+}
+
+export function exportSceneAsSeqscene(): string {
+  const s = useSequencerStore.getState();
+  const data: PersistedScene = {
+    version: CURRENT_VERSION,
+    kind: 'scene',
+    tracks: s.tracks,
+    banks: s.banks,
+    activeBank: s.activeBank,
+    macros: {
+      density: s.density,
+      chaos: s.chaos,
+      motion: s.motion,
+      drift: s.drift,
+      tension: s.tension,
+    },
+    sceneGraph: s.sceneGraph,
+  };
+  return JSON.stringify(data, null, 2);
+}
+
+// Parse a `.seqscene` file into a Scene snapshot. Distinct from
+// `parseSceneFromSeq` which extracts the active scene from a full song
+// file — that path is the legacy fallback for files saved before the
+// scene/song split (2026-05-24). New scene files use this strict path.
+export function parseSceneFromSeqscene(json: string): Scene | null {
+  let data: PersistedScene;
+  try {
+    data = JSON.parse(json) as PersistedScene;
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  if (!Array.isArray(data.tracks)) return null;
+  const rawTracks = data.tracks as Array<Partial<Track> & { id: string }>;
+  const tracks = applyPositionalRoleDefaults(
+    ensureBothSections(
+      rawTracks
+        .filter((t): t is Partial<Track> & { id: string } => !!t && typeof t.id === 'string')
+        .map(hydrateTrack),
+    ),
+    rawTracks,
+  );
+  if (tracks.length === 0) return null;
+  const macros = (data.macros ?? {}) as Partial<{
+    density: number;
+    chaos: number;
+    motion: number;
+    drift: number;
+    tension: number;
+  }>;
+  const density = clamp01(macros.density);
+  const chaos = clamp01(macros.chaos);
+  const motion = clamp01(macros.motion, 0.5);
+  const drift = clamp01(macros.drift, 1);
+  const tension = clamp01(macros.tension);
+  const banks = hydrateBanks(data.banks, () => ({
+    tracks,
+    macros: { density, chaos, motion, drift, tension },
+  }));
+  const requestedActive =
+    typeof data.activeBank === 'number' && Number.isFinite(data.activeBank)
+      ? Math.floor(data.activeBank)
+      : 0;
+  const activeBank =
+    requestedActive >= 0 && requestedActive < BANK_SLOT_COUNT
+      ? requestedActive
+      : null;
+  return {
+    name: typeof data.name === 'string' ? data.name : undefined,
+    tracks,
+    banks,
+    activeBank,
+    macros: { density, chaos, motion, drift, tension },
+    sceneGraph: hydrateSceneGraph(data.sceneGraph),
+  };
+}
+
+// Parse a `.seq` (or legacy `.seqcomp`) file into a Song snapshot. Both
+// extensions carry the same JSON shape — full project state including
+// tracks, banks, all scenes, and globals. `.seqcomp` was a short-lived
+// intermediate name (2026-05-24) before we recognized `.seq` and the
+// song format are literally the same thing; the import path accepts
+// both. Distinct from `parseSceneFromSeqscene` — songs hold many
+// scenes, scenes hold none.
+export function parseSongFromSeq(json: string): Song | null {
   let data: PersistedState;
   try {
     data = JSON.parse(json) as PersistedState;
@@ -404,11 +498,11 @@ export function parsePerformanceFromSeqset(json: string): Performance | null {
       const raw = data.songs[i];
       if (!raw) continue;
       // Each song is already a Song shape (we wrote it ourselves). Round-trip
-      // through stringify+parseSongFromSeqcomp to reuse the full hydration
+      // through stringify+parseSongFromSeq to reuse the full hydration
       // path — keeps voice-id migrations + positional-role defaults aligned
-      // with the .seqcomp import path.
+      // with the .seq import path.
       const text = JSON.stringify(raw);
-      const song = parseSongFromSeqcomp(text);
+      const song = parseSongFromSeq(text);
       songs[i] = song;
     }
   }

@@ -10,7 +10,7 @@ import {
   exportPerformance,
   exportProject,
   parsePerformanceFromSeqset,
-  parseSongFromSeqcomp,
+  parseSongFromSeq,
   timestampSlug,
 } from '../state/persist';
 import { NOTE_NAMES } from '../audio/scale';
@@ -19,15 +19,17 @@ import { NOTE_NAMES } from '../audio/scale';
 // outermost layer of the hierarchy (scene → composition/song →
 // performance). Songs are slotted here; clicking one during playback
 // queues a tail-out swap, while shift-click snaps the live state into
-// the slot. Save/load handles both .seqcomp (single song) and .seqset
-// (whole performance).
+// the slot. Save/load handles both .seq (single song; same shape as
+// the legacy project save) and .seqset (whole performance).
 
 type PerformanceDialogProps = {
   open: boolean;
   onClose: () => void;
 };
 
-const SEQCOMP_FILTER = [{ name: 'newspeech song', extensions: ['seqcomp', 'seq', 'json'] }];
+// .seqcomp accepted on import for back-compat with the short-lived
+// 2026-05-24 intermediate naming; save always writes .seq going forward.
+const SONG_FILTER = [{ name: 'newspeech song', extensions: ['seq', 'seqcomp', 'json'] }];
 const SEQSET_FILTER = [{ name: 'newspeech performance', extensions: ['seqset', 'json'] }];
 
 function songSummary(s: Song): string {
@@ -129,7 +131,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
     (s) => s.setPerformanceTailOutBars,
   );
 
-  const songcompInputRef = useRef<HTMLInputElement>(null);
+  const songInputRef = useRef<HTMLInputElement>(null);
   const seqsetInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -161,11 +163,11 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
     snapSong(idx);
   };
 
-  const handleImportSeqcompText = (text: string) => {
+  const handleImportSongText = (text: string) => {
     setImportError(null);
-    const song = parseSongFromSeqcomp(text);
+    const song = parseSongFromSeq(text);
     if (!song) {
-      setImportError('could not parse this .seqcomp / .seq file');
+      setImportError('could not parse this .seq file');
       return;
     }
     const slot = importSong(song);
@@ -174,40 +176,40 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
     }
   };
 
-  const handleImportSeqcompClick = async () => {
+  const handleImportSongClick = async () => {
     if (!hasEmptySlot) return;
     if (isTauri()) {
       try {
         const { open: pickFile } = await import('@tauri-apps/plugin-dialog');
         const picked = await pickFile({
           multiple: false,
-          filters: SEQCOMP_FILTER,
+          filters: SONG_FILTER,
         });
         if (!picked || typeof picked !== 'string') return;
         const text = await invoke<string>('read_text_file', { path: picked });
-        handleImportSeqcompText(text);
+        handleImportSongText(text);
       } catch (err) {
-        console.error('[performance] import seqcomp failed:', err);
+        console.error('[performance] import song failed:', err);
         setImportError('import failed — see console');
       }
       return;
     }
-    songcompInputRef.current?.click();
+    songInputRef.current?.click();
   };
 
-  const handleSongcompFileChange = async (
+  const handleSongFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
-    handleImportSeqcompText(text);
+    handleImportSongText(text);
     e.target.value = '';
   };
 
   const handleSaveCurrentAsSeqcomp = async () => {
     const code = exportProject();
-    const defaultName = `newspeech-song-${timestampSlug()}.seqcomp`;
+    const defaultName = `newspeech-song-${timestampSlug()}.seq`;
     if (isTauri()) {
       try {
         const { save } = await import('@tauri-apps/plugin-dialog');
@@ -218,11 +220,11 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
         } catch {
           defaultPath = defaultName;
         }
-        const picked = await save({ defaultPath, filters: SEQCOMP_FILTER });
+        const picked = await save({ defaultPath, filters: SONG_FILTER });
         if (!picked) return;
         await invoke('save_text_file', { path: picked, contents: code });
       } catch (err) {
-        console.error('[performance] save seqcomp failed:', err);
+        console.error('[performance] save song failed:', err);
       }
       return;
     }
@@ -393,18 +395,18 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
           <button
             type="button"
             onClick={() => void handleSaveCurrentAsSeqcomp()}
-            title="export the current piece as a .seqcomp file"
+            title="export the current piece as a .seq file"
             className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/80 hover:border-white hover:text-white transition-colors"
           >
-            save song (.seqcomp)
+            save song (.seq)
           </button>
           <button
             type="button"
-            onClick={() => void handleImportSeqcompClick()}
+            onClick={() => void handleImportSongClick()}
             disabled={!hasEmptySlot}
             title={
               hasEmptySlot
-                ? 'import a .seqcomp file into the next empty song slot'
+                ? 'import a .seq file into the next empty song slot'
                 : 'all song slots full — clear one first'
             }
             className={[
@@ -461,11 +463,11 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
         </div>
 
         <input
-          ref={songcompInputRef}
+          ref={songInputRef}
           type="file"
-          accept=".seqcomp,.seq,.json,application/json"
+          accept=".seq,.seqcomp,.json,application/json"
           className="hidden"
-          onChange={handleSongcompFileChange}
+          onChange={handleSongFileChange}
         />
         <input
           ref={seqsetInputRef}
