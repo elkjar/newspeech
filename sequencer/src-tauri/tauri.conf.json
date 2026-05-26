@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Sequence",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "identifier": "com.newspeechsound.sequencer",
   "build": {
     "frontendDist": "../dist",
@@ -23,7 +23,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/Documents/newspeech-visuals/**"]
+      }
     }
   },
   "bundle": {

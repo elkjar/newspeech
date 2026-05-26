@@ -75,6 +75,12 @@ import {
 import { attachLaunchpadBindings, detachLaunchpadBindings } from './midi/launchpadBindings';
 import { octaveDegrees } from './audio/scale';
 import { sourceIsMelodic } from './instruments/library';
+import {
+  emitStreamEvents,
+  initStreamPresenceMain,
+  isStreamListenerActive,
+  type StreamEvent,
+} from './stream/streamEvents';
 import { registerKit, type SampleKitEntry, type ExtendedSampleManifest } from './instruments/manifestRegistry';
 import { scanAndLoadUserSamples } from './instruments/userSamplesDir';
 import { tickPadDrift } from './audio/padState';
@@ -91,7 +97,9 @@ import {
   beforeBarCommit as ghostBeforeBarCommit,
 } from './ghost/ghost';
 import { autoSeedBanks } from './ghost/generator';
-import { isTauri } from '@tauri-apps/api/core';
+import { computeBankEntropy } from './ghost/entropy';
+import { phaseAt, targetEntropy as computeTargetEntropy } from './ghost/shape';
+import { isTauri, invoke } from '@tauri-apps/api/core';
 
 const NATIVE = isTauri();
 
@@ -350,9 +358,22 @@ export function App() {
     })();
   }, []);
 
+  // Track whether the stream window is mounted. Gates emitStreamEvents
+  // and the 10Hz snapshot so the audio dispatcher isn't paying Tauri
+  // IPC serialization cost when nobody's listening.
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void initStreamPresenceMain().then((fn) => {
+      cleanup = fn;
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, []);
+
   useEffect(() => {
     const harmonic = makeHarmonicMotionState();
-    return scheduler.onStep((globalStep, when, stepDuration) => {
+    return scheduler.onStep('app:dispatcher', (globalStep, when, stepDuration) => {
       // Bar boundary at 4/4 32nd resolution = every 32 global steps. A queued
       // pattern recall commits here, before we read `tracks` for this tick,
       // so the swap is atomic from the dispatch's point of view. Ghost
@@ -432,6 +453,7 @@ export function App() {
               consumePadDrift: tickPadDrift,
             },
           );
+      const streamBatch: StreamEvent[] = [];
       for (const ev of events) {
         switch (ev.kind) {
           case 'overlay':
@@ -446,11 +468,23 @@ export function App() {
           case 'midi': {
             const deviceId = resolveDeviceId(ev.portName, state.midiOutDeviceId);
             if (deviceId) {
-              sendMIDINote(deviceId, ev.channel, ev.note, ev.velocity, ev.when, ev.durationS);
+              sendMIDINote(
+                deviceId,
+                ev.channel,
+                ev.note,
+                ev.velocity,
+                ev.when,
+                ev.durationS,
+              );
             }
             break;
           }
           case 'sample': {
+            streamBatch.push({
+              kind: 'step',
+              voice: ev.voice,
+              velocity: ev.velocity,
+            });
             // Arpeggiator transformation — when on AND the trigger carries
             // multiple chord intervals, split into N sequential single-tone
             // triggers spread evenly across the step. Single-note triggers
@@ -598,12 +632,150 @@ export function App() {
           }
         }
       }
+      if (streamBatch.length > 0) emitStreamEvents(streamBatch);
     });
   }, []);
 
   useEffect(() => {
     scheduler.setBpm(bpm);
   }, [bpm]);
+
+  // Periodic state snapshot for the stream window. 10Hz matches
+  // GhostDebug's DensityTrace sample rate so Datafeed reads identically
+  // across the two surfaces. Carries macros + ghost state — Datafeed
+  // renders the histogram + shape preview + phase/target from these
+  // fields; Visualizer drives its procedural params from macros.
+  // Skips entirely when no stream window is listening (computeBankEntropy
+  // walks every populated bank slot, not free).
+  useEffect(() => {
+    const STEPS_PER_BAR = 32;
+    const id = window.setInterval(() => {
+      if (!isStreamListenerActive()) return;
+      const s = useSequencerStore.getState();
+      // Per-slot entropy (live recompute matches GhostDebug behaviour).
+      const results = s.banks.map((slot) =>
+        slot ? computeBankEntropy(slot) : null,
+      );
+      const populated = results.filter((r): r is NonNullable<typeof r> => r !== null);
+      const minE = populated.length > 0 ? Math.min(...populated.map((r) => r.total)) : 0;
+      const maxE = populated.length > 0 ? Math.max(...populated.map((r) => r.total)) : 0;
+      const active = s.activeBank !== null ? results[s.activeBank] : null;
+      const bankSummary = s.banks.map((slot, i) =>
+        slot
+          ? {
+              kind: slot.kind === 'transition' ? ('transition' as const) : ('normal' as const),
+              entropy: results[i]?.total ?? 0,
+            }
+          : null,
+      );
+      const phase = phaseAt(
+        s.globalStep,
+        s.ghostCompositionStartStep,
+        s.sceneGraph.phaseLength,
+        s.sceneGraph.shape,
+      );
+      const target = computeTargetEntropy(s.sceneGraph.shape, phase, minE, maxE);
+      const elapsedBars = Math.max(
+        0,
+        Math.floor((s.globalStep - s.ghostCompositionStartStep) / STEPS_PER_BAR),
+      );
+      emitStreamEvents([
+        {
+          kind: 'state',
+          density: s.density,
+          chaos: s.chaos,
+          motion: s.motion,
+          drift: s.drift,
+          tension: s.tension,
+          activeBank: s.activeBank,
+          pendingBank: s.pendingBank,
+          shape: s.sceneGraph.shape,
+          phaseLength: s.sceneGraph.phaseLength,
+          phase,
+          targetEntropy: target,
+          ghostEnabled: s.sceneGraph.enabled,
+          bankOrderMode: s.sceneGraph.bankOrderMode,
+          elapsedBars,
+          minE,
+          maxE,
+          bankSummary,
+          activeBreakdown: active
+            ? {
+                total: active.total,
+                channels: active.channels,
+                voiceType: active.voiceType,
+                stepDensity: active.stepDensity,
+                mutation: active.mutation,
+                polyphony: active.polyphony,
+              }
+            : null,
+        },
+      ]);
+    }, 100);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Performer-interaction emission. Throttled per-key at ~3Hz with a 0.04
+  // value-delta floor so a knob sweep produces a handful of meaningful
+  // landings rather than a smear of micro-steps. Catches MIDI-CC moves
+  // and on-screen drag the same way — both go through the store setter.
+  // Covers the highest-impact performance surfaces: macros (global feel),
+  // per-track filter cutoff / Q (filter sweeps), per-track mutation rate,
+  // and LFO depth. LFO destination assignments emit directly from the
+  // store actions (discrete events, no throttle needed).
+  useEffect(() => {
+    const lastEmit: Record<string, number> = {};
+    const lastVal: Record<string, number> = {};
+    const MACRO_KEYS = ['density', 'chaos', 'motion', 'drift', 'tension'] as const;
+
+    const check = (
+      id: string,
+      cur: number,
+      prv: number,
+      label: string,
+      now: number,
+      out: Array<{ kind: 'param'; label: string }>
+    ) => {
+      if (cur === prv) return;
+      if (now - (lastEmit[id] ?? 0) < 300) return;
+      if (Math.abs(cur - (lastVal[id] ?? -1)) < 0.04) return;
+      out.push({ kind: 'param', label: `${label} ${cur.toFixed(2)}` });
+      lastEmit[id] = now;
+      lastVal[id] = cur;
+    };
+
+    return useSequencerStore.subscribe((state, prev) => {
+      const now = performance.now();
+      const out: Array<{ kind: 'param'; label: string }> = [];
+
+      // Macros
+      for (const k of MACRO_KEYS) {
+        check(k, state[k], prev[k], k, now, out);
+      }
+
+      // Per-track: filter cutoff, filter resonance, mutation
+      const tCount = Math.min(state.tracks.length, prev.tracks.length);
+      for (let i = 0; i < tCount; i++) {
+        const cur = state.tracks[i];
+        const prv = prev.tracks[i];
+        if (!cur || !prv || cur.id !== prv.id) continue;
+        check(`${cur.id}:cutoff`, cur.filterCutoff, prv.filterCutoff, `${cur.id} · cutoff`, now, out);
+        check(`${cur.id}:Q`, cur.filterResonance, prv.filterResonance, `${cur.id} · Q`, now, out);
+        check(`${cur.id}:mutate`, cur.mutation, prv.mutation, `${cur.id} · mutate`, now, out);
+      }
+
+      // LFO depths
+      const lCount = Math.min(state.lfos.length, prev.lfos.length);
+      for (let i = 0; i < lCount; i++) {
+        const cur = state.lfos[i];
+        const prv = prev.lfos[i];
+        if (!cur || !prv || cur.id !== prv.id) continue;
+        check(`lfo:${cur.id}:depth`, cur.depth, prv.depth, `LFO${cur.id} · depth`, now, out);
+      }
+
+      if (out.length > 0) emitStreamEvents(out);
+    });
+  }, []);
 
   // Auto-open the native cpal device on app launch using persisted
   // settings (device + channels + SR + buffer from localStorage). On
@@ -1023,7 +1195,7 @@ export function App() {
   // block of latency is imperceptible against the stutter character.
   useEffect(() => {
     if (!isNativeAudioAvailable()) return;
-    const unsub = scheduler.onStep((stepIndex) => {
+    const unsub = scheduler.onStep('app:native-glitch', (stepIndex) => {
       if (stepIndex % 8 !== 0) return;
       const state = useSequencerStore.getState();
       const chance = modulated(
@@ -1283,6 +1455,42 @@ export function App() {
                   <circle cx="11" cy="7" r="1" fill="white" fillOpacity="0.6" />
                 </svg>
               </button>
+              {NATIVE && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void invoke('toggle_stream_window').catch((e) =>
+                      console.error('toggle_stream_window failed', e)
+                    );
+                  }}
+                  title="toggle stream window"
+                  aria-label="toggle stream window"
+                  style={{ width: 20, height: 20 }}
+                  className="bg-transparent border border-white/15 hover:border-white/50 transition-colors inline-flex items-center justify-center"
+                >
+                  <svg viewBox="0 0 14 14" width="12" height="12">
+                    <rect
+                      x="2"
+                      y="3"
+                      width="10"
+                      height="7"
+                      fill="none"
+                      stroke="white"
+                      strokeOpacity="0.6"
+                      strokeWidth="1"
+                    />
+                    <line
+                      x1="5"
+                      y1="11.5"
+                      x2="9"
+                      y2="11.5"
+                      stroke="white"
+                      strokeOpacity="0.6"
+                      strokeWidth="1"
+                    />
+                  </svg>
+                </button>
+              )}
             </div>
             <GhostDebug />
             <MacroStrip />

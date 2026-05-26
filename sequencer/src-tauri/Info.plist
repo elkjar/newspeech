@@ -9,14 +9,16 @@
   <key>CFBundleDisplayName</key>
   <string>Sequence</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>0.3.1</string>
   <key>CFBundleVersion</key>
-  <string>0.1.0</string>
+  <string>0.3.1</string>
   <key>LSMinimumSystemVersion</key>
   <string>10.15</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>Sequence needs microphone access to list available audio output devices for routing.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Sequence uses the camera as a live video source for the stream window's visualizer modes.</string>
 </dict>
 </plist>

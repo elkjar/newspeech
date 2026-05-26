@@ -68,7 +68,7 @@ export async function initGlitch(): Promise<void> {
 
     // Subscribe to beat boundaries via the scheduler. Scheduler runs at
     // 32nds (stepsPerBeat = 8), so every 8th step is a beat.
-    stepUnsub = scheduler.onStep((stepIndex, when) => {
+    stepUnsub = scheduler.onStep('glitch:beat-stepper', (stepIndex, when) => {
       if (stepIndex % 8 !== 0) return;
       if (params.chance <= 0) return;
       if (Math.random() >= params.chance) return;

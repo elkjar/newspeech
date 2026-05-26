@@ -19,7 +19,14 @@ class Scheduler {
   // 32nd-note resolution. Per-row rate selects how many ticks make up one row step
   // (see RATE_STRIDE in store.ts). 1/16 rows advance every other tick.
   private stepsPerBeat = 8;
-  private callbacks: StepCallback[] = [];
+  // Map keyed by registration name so the second registration under the
+  // same name evicts the first. Subscribers in useEffects can pass a stable
+  // name and survive HMR cleanly even if React's cleanup is skipped — the
+  // re-mount's re-registration replaces the stale callback by key.
+  // Anonymous callers get an auto-generated name (still unique, just not
+  // HMR-safe).
+  private callbacks = new Map<string, StepCallback>();
+  private anonCounter = 0;
   private playing = false;
   private scheduled: ScheduledStep[] = [];
 
@@ -27,10 +34,19 @@ class Scheduler {
     this.bpm = bpm;
   }
 
-  onStep(cb: StepCallback) {
-    this.callbacks.push(cb);
+  onStep(cb: StepCallback): () => void;
+  onStep(name: string, cb: StepCallback): () => void;
+  onStep(a: string | StepCallback, b?: StepCallback): () => void {
+    const name = typeof a === 'string' ? a : `anon:${this.anonCounter++}`;
+    const cb = typeof a === 'string' ? b! : a;
+    this.callbacks.set(name, cb);
     return () => {
-      this.callbacks = this.callbacks.filter((c) => c !== cb);
+      // Only delete if this exact callback is still registered — avoids
+      // a stale cleanup from clobbering a fresher registration under the
+      // same name.
+      if (this.callbacks.get(name) === cb) {
+        this.callbacks.delete(name);
+      }
     };
   }
 
@@ -80,7 +96,7 @@ class Scheduler {
     const ctx = getAudioContext();
     while (this.nextStepTime < ctx.currentTime + SCHEDULE_AHEAD_S) {
       const dur = this.stepDuration();
-      for (const cb of this.callbacks) cb(this.currentStep, this.nextStepTime, dur);
+      for (const cb of this.callbacks.values()) cb(this.currentStep, this.nextStepTime, dur);
       this.scheduled.push({ index: this.currentStep, when: this.nextStepTime });
       this.nextStepTime += dur;
       this.currentStep += 1;

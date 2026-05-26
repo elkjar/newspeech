@@ -404,7 +404,7 @@ export function attachLaunchpadBindings(): void {
 
   // Per-step playhead. Cheaper than relying on the store subscription
   // (which fires on every globalStep write, not all of which matter).
-  unsubs.push(scheduler.onStep(() => updatePlayhead()));
+  unsubs.push(scheduler.onStep('launchpad:playhead', () => updatePlayhead()));
 
   // Coarse-grained: detect grid edits + section/playing/bank changes.
   let prevSig = visibleSignature(activeQuadrant);

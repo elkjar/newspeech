@@ -30,6 +30,20 @@ use serde::Serialize;
 
 use crate::reverb::ReverbBus;
 
+// --- output level meter ---
+//
+// Audio thread writes the peak amplitude of the most recent block to this
+// atomic on every callback. A tokio task on the main thread reads it at
+// ~30Hz and emits `audio:level` Tauri events. Stored as `f32` bits via
+// `to_bits()` / `from_bits()` since AtomicF32 isn't stable. Range is
+// nominally 0..1; clipped output can exceed but the visualizer clamps.
+
+static AUDIO_OUTPUT_LEVEL: AtomicU32 = AtomicU32::new(0);
+
+pub fn audio_output_level() -> f32 {
+  f32::from_bits(AUDIO_OUTPUT_LEVEL.load(Ordering::Relaxed))
+}
+
 // --- device + open metadata ---
 
 #[derive(Debug, Serialize, Clone)]
@@ -4668,6 +4682,19 @@ fn build_stream(
             let _ = prod.try_push(f32_to_i16(melody_r[frame]));
           }
         }
+
+        // Block peak for the visualizer level meter. Computed AFTER all
+        // FX + master processing so the meter reflects what the audience
+        // actually hears. abs() of all samples in the interleaved buffer
+        // is fine — block size × channels is small (256-2048 × 2 ch).
+        let mut peak: f32 = 0.0;
+        for &s in buf.iter() {
+          let a = s.abs();
+          if a > peak {
+            peak = a;
+          }
+        }
+        AUDIO_OUTPUT_LEVEL.store(peak.to_bits(), Ordering::Relaxed);
       },
       move |err| {
         log::error!("[audio] stream error: {}", err);

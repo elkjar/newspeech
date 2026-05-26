@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Scale } from '../audio/scale';
+import { emitStreamEvent } from '../stream/streamEvents';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 import { resetPadDrift } from '../audio/padState';
@@ -478,6 +479,27 @@ export type GhostPickLogEntry =
     };
 
 export const GHOST_PICK_LOG_LIMIT = 16;
+
+function ghostPickLabel(entry: GhostPickLogEntry): string {
+  switch (entry.kind) {
+    case 'auto':
+      return `ghost · pattern ${entry.slot} · ent ${entry.pickedEntropy.toFixed(2)}`;
+    case 'manual':
+      return `pattern ${entry.slot}`;
+    case 'shape':
+      return `shape ${entry.from} → ${entry.to}`;
+    case 'ghost':
+      return `ghost ${entry.enabled ? 'on' : 'off'}`;
+    case 'transport':
+      return `transport ${entry.playing ? 'play' : 'stop'}`;
+    case 'system':
+      return entry.label;
+    case 'step':
+      return `place t${entry.track} s${entry.step} v${entry.value.toFixed(2)}`;
+    case 'scene':
+      return `scene ${entry.slot}`;
+  }
+}
 
 // Ghost scene-graph config. `shape` + `phaseLength` drive the entropy-aware
 // picker introduced 2026-05-20:
@@ -1185,7 +1207,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       lfos: state.lfos.map((l) => (l.id === id ? { ...l, depth: clamped } : l)),
     }));
   },
-  toggleLFODestination: (id, destination) =>
+  toggleLFODestination: (id, destination) => {
+    // Capture add-vs-remove before the set so the stream label can show
+    // which way the toggle went without diffing destinations arrays.
+    const lfoBefore = useSequencerStore.getState().lfos.find((l) => l.id === id);
+    const existed =
+      lfoBefore?.destinations.some(
+        (d) => d.trackId === destination.trackId && d.knob === destination.knob
+      ) ?? false;
     set((state) => ({
       lfos: state.lfos.map((l) => {
         if (l.id !== id) return l;
@@ -1201,11 +1230,19 @@ export const useSequencerStore = create<SequencerState>((set) => ({
             : [...l.destinations, destination],
         };
       }),
-    })),
-  clearLFODestinations: (id) =>
+    }));
+    const trackLabel = destination.trackId ? ` ${destination.trackId}` : '';
+    emitStreamEvent({
+      kind: 'param',
+      label: `LFO${id} ${existed ? '✕' : '→'} ${destination.knob}${trackLabel}`,
+    });
+  },
+  clearLFODestinations: (id) => {
     set((state) => ({
       lfos: state.lfos.map((l) => (l.id === id ? { ...l, destinations: [] } : l)),
-    })),
+    }));
+    emitStreamEvent({ kind: 'param', label: `LFO${id} · clear` });
+  },
   setSelectingLFO: (id) => set({ selectingLFO: id }),
   setBpm: (bpm) => {
     const clamped = Math.max(40, Math.min(240, Number.isFinite(bpm) ? bpm : 120));
@@ -1986,7 +2023,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set({ ghostBarsRemaining: remaining, ghostTargetBars: target }),
   setGhostCompositionStart: (step) =>
     set({ ghostCompositionStartStep: Math.max(0, Math.floor(step)) }),
-  pushGhostPickEvent: (entry) =>
+  pushGhostPickEvent: (entry) => {
     set((s) => {
       const next = s.ghostPickLog.concat(entry);
       // Cap at GHOST_PICK_LOG_LIMIT — slice the head if we've crossed.
@@ -1994,7 +2031,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         next.splice(0, next.length - GHOST_PICK_LOG_LIMIT);
       }
       return { ghostPickLog: next };
-    }),
+    });
+    emitStreamEvent({
+      kind: 'ghost',
+      label: ghostPickLabel(entry),
+      subkind: entry.kind,
+    });
+  },
   // Decorate the most-recent log entry with its dwell decision. tickBar
   // rolls the dwell AFTER applyBankSlot commits the swap, so the entry
   // for this slot was already pushed (by pickNextBank for auto, or by
