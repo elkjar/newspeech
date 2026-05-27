@@ -54,23 +54,30 @@ export function Pool() {
     };
   }, []);
 
-  // Auto-advance on bank-swap (pattern pick — auto or manual). Keeps
-  // pool media changes lock-step with the music so the audience reads
-  // visualizer + audio as one system rather than independent layers.
+  // Auto-advance on actual bank commit. Watch activeBank transitions in
+  // the state snapshots — activeBank only flips at the bar boundary
+  // where applyBankSlot lands the swap, so it tracks the audible event.
+  // Reacting to 'auto' ghost events instead leads the audio by up to a
+  // bar (they fire at DECISION time, before queueBank → commit).
+  const lastBankRef = useRef<number | null | undefined>(undefined);
   useEffect(() => {
     if (files.length === 0) return;
     let unsub: (() => void) | null = null;
     let cancelled = false;
     void subscribeStreamEvents((batch) => {
       if (cancelled) return;
-      let didAdvance = false;
+      let latestBank: number | null | undefined = undefined;
       for (const e of batch) {
-        if (e.kind !== 'ghost') continue;
-        if (e.subkind !== 'auto' && e.subkind !== 'manual') continue;
-        if (didAdvance) break; // collapse multiple picks in one tick
-        didAdvance = true;
-        setIndex((i) => (i + 1) % files.length);
+        if (e.kind === 'state') latestBank = e.activeBank;
       }
+      if (latestBank === undefined) return;
+      const prev = lastBankRef.current;
+      lastBankRef.current = latestBank;
+      // First snapshot establishes baseline — never advance on mount.
+      if (prev === undefined) return;
+      if (latestBank === prev) return;
+      if (latestBank === null) return; // bank cleared, don't advance
+      setIndex((i) => (i + 1) % files.length);
     }).then((u) => {
       if (cancelled) u();
       else unsub = u;

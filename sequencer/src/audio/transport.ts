@@ -26,13 +26,24 @@ export function tapTempo(): void {
 }
 import { scheduleClickIn } from './clickIn';
 import { getAudioContext } from './audioContext';
-import { isNativeAudioAvailable } from './nativeEngine';
+import { isNativeAudioAvailable, fadeTextures } from './nativeEngine';
+
+// Texture voices ring down over this many seconds when transport stops,
+// rather than playing their (often minute-long) sample out to the end.
+// Everything else is left untouched — it stops issuing new triggers and
+// any short tails ring out naturally. Native path only (the web build
+// keeps the prior natural-end behavior, same as recording being
+// native-only). Tune by ear.
+const TEXTURE_STOP_FADE_SECS = 6;
 
 export async function togglePlayback(): Promise<void> {
   const store = useSequencerStore.getState();
   if (store.playing) {
     scheduler.stop();
     midiPanic();
+    if (isNativeAudioAvailable()) {
+      void fadeTextures(TEXTURE_STOP_FADE_SECS);
+    }
     store.setPlaying(false);
     store.commitMutationOverlay();
   } else {

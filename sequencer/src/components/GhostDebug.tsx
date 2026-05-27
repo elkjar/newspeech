@@ -417,16 +417,29 @@ function PickLog({ log }: { log: GhostPickLogEntry[] }) {
             </span>
           );
         }
-        // Past the meta-event branches: `e` is narrowed to auto | manual,
-        // both of which carry slot + optional dwellBars.
+        // Past the meta-event branches: `e` is narrowed to auto | manual
+        // | commit, all carrying slot. dwellBars only lives on commit.
         const slotStr = e.slot.toString().padStart(2, '0');
-        const dwellSuffix =
-          e.dwellBars !== undefined ? (
-            <>
-              {' '}
-              <span className="opacity-60">[{e.dwellBars}b]</span>
-            </>
-          ) : null;
+        if (e.kind === 'commit') {
+          const dwellSuffix =
+            e.dwellBars !== undefined ? (
+              <>
+                {' '}
+                <span className="opacity-60">[{e.dwellBars}b]</span>
+              </>
+            ) : null;
+          return (
+            <span
+              key={i}
+              className="uppercase whitespace-nowrap"
+              style={{ opacity }}
+            >
+              → {slotStr}{' '}
+              <span className="opacity-100">active</span>
+              {dwellSuffix}
+            </span>
+          );
+        }
         if (e.kind === 'manual') {
           const a = e.nonce.slice(0, 4);
           const b = e.nonce.slice(4, 8);
@@ -441,7 +454,6 @@ function PickLog({ log }: { log: GhostPickLogEntry[] }) {
               <span className="opacity-70">{a}</span>{' '}
               <span className="opacity-90">{b}</span>{' '}
               <span className="opacity-70">{c}</span>
-              {dwellSuffix}
             </span>
           );
         }
@@ -460,7 +472,6 @@ function PickLog({ log }: { log: GhostPickLogEntry[] }) {
             <span className="opacity-90">t {fmt(e.target)}</span>{' '}
             <span className="opacity-70">Δ{fmt(e.deltaFromTarget)}</span>{' '}
             <span className="opacity-50">·{e.candidateCount}</span>
-            {dwellSuffix}
           </span>
         );
       })}

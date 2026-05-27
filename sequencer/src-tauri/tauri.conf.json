@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Sequence",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "identifier": "com.newspeechsound.sequencer",
   "build": {
     "frontendDist": "../dist",
@@ -40,9 +40,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "../public/samples": "samples"
-    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

@@ -94,5 +94,21 @@ export default defineConfig({
         });
       },
     },
+    // Tauri builds don't load bundled samples — the app reads from the
+    // user samples directory only (per the 2026-05-24 direction). Vite's
+    // publicDir auto-copies ALL of public/ to dist/, so without this hook
+    // the .app ships ~140MB of dead-weight WAVs inside the frontend
+    // bundle. Web build still ships them (only source of kits there).
+    {
+      name: 'newspeech-strip-samples-for-tauri',
+      apply: 'build',
+      closeBundle() {
+        if (!isTauri) return;
+        const dir = path.resolve(__dirname, 'dist/samples');
+        if (fs.existsSync(dir)) {
+          fs.rmSync(dir, { recursive: true, force: true });
+        }
+      },
+    },
   ],
 });

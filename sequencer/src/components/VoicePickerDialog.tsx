@@ -79,6 +79,7 @@ const ROLE_TO_CATEGORY: Record<InstrumentRole, MelodicCategory | 'drum'> = {
   lead: 'instruments',
   bass: 'bass',
   pad: 'pads',
+  texture: 'textures',
   drum: 'drum',
 };
 

@@ -14,7 +14,7 @@ import {
   getUserInstrumentsForRole,
 } from './userInstrumentsStore';
 
-export type InstrumentRole = 'drum' | 'bass' | 'lead' | 'pad';
+export type InstrumentRole = 'drum' | 'bass' | 'lead' | 'pad' | 'texture';
 
 export interface Instrument {
   id: string;
@@ -204,6 +204,7 @@ export function instrumentMutation(id: string): MutationProfile {
     case 'bass':
       return BASS_MUTATION;
     case 'pad':
+    case 'texture':
       return PAD_MUTATION;
     case 'lead':
     case 'drum':
@@ -236,6 +237,7 @@ export function instrumentEntropyClass(id: string): number {
     case 'lead': return 0.5;
     case 'bass': return 0.3;
     case 'pad': return 0.05;
+    case 'texture': return 0.05;
     default: return 0.5;
   }
 }

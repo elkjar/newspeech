@@ -22,7 +22,7 @@ import {
 } from './state/store';
 import { scheduler } from './audio/scheduler';
 import { samplePlayer } from './audio/samplePlayer';
-import { voiceEnvelope } from './audio/voices';
+import { voiceEnvelope, voiceRole } from './audio/voices';
 
 // TrackSection string → native section code (matches SECTION_* in
 // `src-tauri/src/audio.rs`). 0 = none (no splits write), 1 = drum,
@@ -50,6 +50,7 @@ import {
   setMixRouting,
   setLfos,
   initNativeAudio,
+  freezeVoiceParams,
   type TrackFilterUpdate,
   type NativeLfo,
   type LfoDestKind,
@@ -381,6 +382,14 @@ export function App() {
       // BEFORE commit overwrites them; tickBar runs AFTER commit so it sees
       // the just-swapped activeBank as the lerp target.
       if (globalStep % 32 === 0) {
+        // Snapshot the active bank/scene/song BEFORE any commit so we can
+        // tell afterward whether a swap landed this bar. A swap means the
+        // about-to-be-pushed new track params would otherwise retune the
+        // outgoing scene's still-ringing tails — so we freeze them first.
+        const preSwap = useSequencerStore.getState();
+        const preBank = preSwap.activeBank;
+        const preScene = preSwap.composition.activeScene;
+        const preSong = preSwap.performance.activeSong;
         ghostBeforeBarCommit();
         // Pass the scheduler's globalStep so applyBankSlot's sceneStartStep
         // matches the SCHEDULED step (not the lagging audible step in the
@@ -403,6 +412,22 @@ export function App() {
         useSequencerStore.getState().commitPendingScene(globalStep);
         useSequencerStore.getState().commitPendingBank(globalStep);
         ghostTickBar(globalStep);
+        // If a bank/scene/song swap landed this bar, freeze the outgoing
+        // scene's in-flight voice tails at their current DSP settings so
+        // the new scene's params (pushed by the RAF a frame later) can't
+        // retune them — a resonance jump on a ringing tail self-oscillates
+        // into a crash. Fires before the new triggers below (which start
+        // unfrozen on the new scene's settings).
+        if (isNativeAudioAvailable()) {
+          const postSwap = useSequencerStore.getState();
+          if (
+            postSwap.activeBank !== preBank ||
+            postSwap.composition.activeScene !== preScene ||
+            postSwap.performance.activeSong !== preSong
+          ) {
+            void freezeVoiceParams();
+          }
+        }
       }
       const state = useSequencerStore.getState();
       // Harmonic motion is a cross-tick state machine — owned by the
@@ -492,6 +517,9 @@ export function App() {
             // played in their natural order); pattern/rate/range selection
             // deferred per [[project_arp_mode]].
             const evTrack = state.tracks.find((t) => t.id === ev.trackId);
+            // Texture voices fade on transport stop rather than cutting —
+            // flag the native voice so the StopFade path can target them.
+            const isTexture = voiceRole(ev.voice) === 'texture';
             const arpOn = evTrack?.arpConfig?.on === true;
             if (arpOn && ev.voiceIntervals.length > 1) {
               const n = ev.voiceIntervals.length;
@@ -536,6 +564,7 @@ export function App() {
                     // tail so the line reads as an arp, not a strum.
                     monophonic: true,
                     section: sectionCode(ev.section),
+                    isTexture,
                     // Per-arp-tone hold = sub-step duration × gate.
                     // Envelope follows the voice's configured shape.
                     envelopeAttack: arpEnv?.attack,
@@ -601,6 +630,7 @@ export function App() {
                   // lead tracks marked monophonic actually choke.
                   monophonic: ev.monophonic === true,
                   section: sectionCode(ev.section),
+                  isTexture,
                   // Voice ADSR + hold = gate × stepDuration (matches the
                   // web `samplePlayer.trigger` envelope). Voices without
                   // an envelope config (drums, leads) pass nothing here
@@ -745,6 +775,9 @@ export function App() {
     };
 
     return useSequencerStore.subscribe((state, prev) => {
+      // Param-change events only feed the stream window — skip the full
+      // diff walk when no listener is mounted.
+      if (!isStreamListenerActive()) return;
       const now = performance.now();
       const out: Array<{ kind: 'param'; label: string }> = [];
 

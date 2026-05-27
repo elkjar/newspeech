@@ -365,7 +365,7 @@ function RoleField({
   value: InstrumentRole;
   onChange: (v: InstrumentRole) => void;
 }) {
-  const opts: InstrumentRole[] = ['lead', 'bass', 'pad', 'drum'];
+  const opts: InstrumentRole[] = ['lead', 'bass', 'pad', 'texture', 'drum'];
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[10px] uppercase tracking-widest text-white/55">role</span>

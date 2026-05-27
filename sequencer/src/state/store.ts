@@ -426,6 +426,13 @@ export interface Toast {
 //     a recent auto entry for the same slot so an auto pick that
 //     reaches commit doesn't get a duplicate manual entry.
 export type GhostPickLogEntry =
+  // Bank-change logging is two-stage. `auto` / `manual` are QUEUE-stage
+  // entries pushed when pendingBank is set; `commit` is the COMMIT-stage
+  // entry pushed by applyBankSlot when the bank actually swaps audibly.
+  // For an auto pick: auto → commit (rich rationale at queue, "active"
+  // at commit). For a manual click while playing: manual → commit. For a
+  // manual click while stopped: just commit (queueBank → applyBankSlot
+  // fires inline, no queue stage to log).
   | {
       kind: 'auto';
       globalStep: number;
@@ -436,9 +443,6 @@ export type GhostPickLogEntry =
       pickedEntropy: number;
       deltaFromTarget: number;
       candidateCount: number;
-      // Filled by tickBar AFTER the dwell roll lands. Indicates how many
-      // bars ghost will hold this bank before considering the next pick.
-      dwellBars?: number;
     }
   | {
       kind: 'manual';
@@ -448,6 +452,15 @@ export type GhostPickLogEntry =
       // chunks at render time so manual rows fill the same visual column
       // width as auto rows. Purely cosmetic — datafeed framing.
       nonce: string;
+    }
+  | {
+      kind: 'commit';
+      globalStep: number;
+      slot: number;
+      // 'auto' if a recent auto entry queued this swap, else 'manual'.
+      trigger: 'auto' | 'manual';
+      // Filled by tickBar AFTER the dwell roll lands. Indicates how many
+      // bars ghost will hold this bank before considering the next pick.
       dwellBars?: number;
     }
   | {
@@ -478,14 +491,19 @@ export type GhostPickLogEntry =
       slot: number;
     };
 
-export const GHOST_PICK_LOG_LIMIT = 16;
+// Each bank swap now produces TWO log entries (queue stage + commit
+// stage), so the limit was raised from 16 → 24 to keep the GhostDebug
+// overlay showing the same effective number of swaps.
+export const GHOST_PICK_LOG_LIMIT = 24;
 
 function ghostPickLabel(entry: GhostPickLogEntry): string {
   switch (entry.kind) {
     case 'auto':
       return `ghost · pattern ${entry.slot} · ent ${entry.pickedEntropy.toFixed(2)}`;
     case 'manual':
-      return `pattern ${entry.slot}`;
+      return `pattern ${entry.slot} · queued`;
+    case 'commit':
+      return `pattern ${entry.slot} · active`;
     case 'shape':
       return `shape ${entry.from} → ${entry.to}`;
     case 'ghost':
@@ -545,7 +563,7 @@ export const DEFAULT_SCENE_GRAPH: SceneGraphConfig = {
   bankOrderMode: 'entropy',
 };
 
-interface SequencerState {
+export interface SequencerState {
   bpm: number;
   rootNote: number;
   scale: Scale;
@@ -682,7 +700,10 @@ interface SequencerState {
   activeBank: number | null;
   pendingBank: number | null;
   snapBank: (i: number) => void;
-  queueBank: (i: number) => void;
+  // source='auto' when called by the ghost picker — suppresses the
+  // manual queue-stage log entry (ghost has already pushed its own
+  // richer 'auto' entry with rationale).
+  queueBank: (i: number, source?: 'auto' | 'manual') => void;
   clearBank: (i: number) => void;
   moveBank: (from: number, to: number) => void;
   startBlankBank: (i: number) => void;
@@ -697,7 +718,10 @@ interface SequencerState {
   // sceneGraph) while keeping master FX + tempo + scale truly global.
   composition: Composition;
   snapScene: (i: number) => void;
-  loadScene: (i: number) => void;
+  // source='ghost' skips the auto-save snap-back of the outgoing scene
+  // (used by the autonomous advance so a performance doesn't bake runtime
+  // mutations into the saved composition). Defaults to 'manual'.
+  loadScene: (i: number, source?: 'manual' | 'ghost') => void;
   clearScene: (i: number) => void;
   commitPendingScene: (atGlobalStep: number) => void;
   moveScene: (from: number, to: number) => void;
@@ -713,6 +737,12 @@ interface SequencerState {
   performance: Performance;
   snapSong: (i: number) => void;
   loadSong: (i: number) => void;
+  // Immediate atomic song swap while playing — no tail-out gap. Used by
+  // the ghost's autonomous set advance so song N hands directly to N+1
+  // on the bar boundary (the outgoing song's texture voices fade over
+  // the new song via a separate fadeTextures call). atGlobalStep is the
+  // scheduler's scheduled step (not the lagging store globalStep).
+  swapSongImmediate: (i: number, atGlobalStep: number) => void;
   clearSong: (i: number) => void;
   moveSong: (from: number, to: number) => void;
   commitPendingSong: (atGlobalStep: number) => void;
@@ -881,6 +911,27 @@ function snapshotBank(
   };
   slot.entropy = bankEntropyTotal(slot);
   return slot;
+}
+
+// Returns the banks array with the ACTIVE bank slot folded from the live
+// working pattern (s.tracks + macros). The active bank is edited via the
+// live state; its stored slot goes stale the moment a step changes. Used
+// by capture/serialize paths so the active bank reflects current edits
+// (auto-save). Per-bank metadata (dwellBars / recipe) is carried over —
+// it isn't part of the live pattern. No-op when no active bank.
+export function banksWithLiveActiveBank(
+  state: SequencerState
+): (BankSlot | null)[] {
+  const { activeBank } = state;
+  if (activeBank === null) return state.banks;
+  const prev = state.banks[activeBank];
+  if (!prev) return state.banks;
+  const fresh = snapshotBank(state, activeBank);
+  if (prev.dwellBars !== undefined) fresh.dwellBars = prev.dwellBars;
+  if (prev.recipe !== undefined) fresh.recipe = prev.recipe;
+  const banks = state.banks.slice();
+  banks[activeBank] = fresh;
+  return banks;
 }
 
 const rawPresetTracks = defaultPreset.tracks as Array<Partial<Track> & { id: string }>;
@@ -1539,24 +1590,57 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   snapBank: (i) => {
     if (i < 0 || i >= BANK_SLOT_COUNT) return;
     set((state) => {
+      const prev = state.banks[i];
       const next = state.banks.slice();
-      next[i] = snapshotBank(state, i);
+      const fresh = snapshotBank(state, i);
+      // snapshotBank rebuilds the slot from the live pattern (tracks +
+      // macros + entropy) and drops per-bank METADATA that isn't part of
+      // the pattern: the user's dwell-length override and the recipe tag.
+      // Carry them over so re-snapping a bank to save step edits doesn't
+      // reset its pattern-length override back to 'auto'.
+      if (prev?.dwellBars !== undefined) fresh.dwellBars = prev.dwellBars;
+      if (prev?.recipe !== undefined) fresh.recipe = prev.recipe;
+      next[i] = fresh;
       return { banks: next };
     });
   },
-  queueBank: (i) => {
+  queueBank: (i, source = 'manual') => {
     if (i < 0 || i >= BANK_SLOT_COUNT) return;
     const state = useSequencerStore.getState();
     const slot = state.banks[i];
     if (!slot) return;
     if (i === state.activeBank) return;
+    // Auto-save: a user-initiated bank switch commits the outgoing bank's
+    // live step edits back into its slot first (snapBank preserves the
+    // dwell/recipe metadata), so authoring across banks never loses work.
+    // Ghost auto-picks pass source='auto' to SKIP this — baking the
+    // performance's bank rotation / runtime state into saved patterns
+    // would permanently drift the authored banks.
+    const outgoing = state.activeBank;
+    if (source === 'manual' && outgoing !== null && outgoing !== i) {
+      useSequencerStore.getState().snapBank(outgoing);
+    }
     if (!state.playing) {
       // Stopped path: globalStep is 0 after setPlaying(false) reset, so
       // sceneStartStep also lands at 0. Next play tick: sceneStep = 0.
+      // No queue-stage log entry — the commit entry covers it.
       applyBankSlot(set, i, slot, state.globalStep);
       return;
     }
     set({ pendingBank: i });
+    if (source === 'manual') {
+      let nonce = '';
+      while (nonce.length < 12) {
+        nonce += Math.random().toString(16).slice(2);
+      }
+      nonce = nonce.slice(0, 12).toUpperCase();
+      useSequencerStore.getState().pushGhostPickEvent({
+        kind: 'manual',
+        globalStep: state.globalStep,
+        slot: i,
+        nonce,
+      });
+    }
   },
   // Plain-click on an empty slot — materialize a blank pattern that
   // inherits band identity (track sources, mix knobs) from the currently
@@ -1683,7 +1767,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set((state) => {
       const scene: Scene = {
         tracks: state.tracks.map(cloneTrack),
-        banks: state.banks.map((b) =>
+        // Fold the live pattern into the active bank slot so the snapped
+        // scene captures current on-screen step edits (auto-save).
+        banks: banksWithLiveActiveBank(state).map((b) =>
           b
             ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
             : null,
@@ -1703,12 +1789,22 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       return { composition: { ...state.composition, scenes } };
     });
   },
-  loadScene: (i) => {
+  loadScene: (i, source = 'manual') => {
     const state = useSequencerStore.getState();
     if (i < 0 || i >= COMPOSITION_SLOT_COUNT) return;
     const scene = state.composition.scenes[i];
     if (!scene) return;
     if (i === state.composition.activeScene) return;
+    // Auto-save: a user-initiated switch commits the outgoing scene's live
+    // edits back into its slot first, so authoring across scenes never
+    // loses work (no manual snap needed). Ghost auto-advance passes
+    // source='ghost' to SKIP this — baking runtime mutations / density
+    // fills into the saved scenes would let a performance permanently
+    // drift the authored composition.
+    const outgoing = state.composition.activeScene;
+    if (source === 'manual' && outgoing !== null && outgoing !== i) {
+      useSequencerStore.getState().snapScene(outgoing);
+    }
     if (!state.playing) {
       // Stopped path: apply immediately, same convention as queueBank.
       applyScene(set, i, scene, state.globalStep);
@@ -1769,9 +1865,18 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   snapSong: (i) => {
     if (i < 0 || i >= PERFORMANCE_SLOT_COUNT) return;
     set((state) => {
+      // Fold the live working state into the active scene so the captured
+      // song reflects current on-screen edits, not the stale snapshot for
+      // the scene being edited (auto-save — see loadScene). Other scenes
+      // capture as-is.
+      const liveScenes = composeLiveActiveScene(state);
       const song: Song = {
+        // Preserve the slot's user-assigned title — it's slot metadata,
+        // not live state, so re-snapping (incl. the loadSong auto-save
+        // snap-back) must carry it over or the title gets wiped.
+        name: state.performance.songs[i]?.name,
         tracks: state.tracks.map(cloneTrack),
-        banks: state.banks.map((b) =>
+        banks: banksWithLiveActiveBank(state).map((b) =>
           b
             ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
             : null,
@@ -1785,7 +1890,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           tension: state.tension,
         },
         sceneGraph: { ...state.sceneGraph },
-        scenes: state.composition.scenes.map((sc) =>
+        scenes: liveScenes.map((sc) =>
           sc
             ? {
                 ...sc,
@@ -1818,6 +1923,15 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     const song = state.performance.songs[i];
     if (!song) return;
     if (i === state.performance.activeSong && state.performance.pendingSong === null) return;
+    // Auto-save: commit the outgoing song's live edits back into its slot
+    // before switching, so authoring across songs never loses work (same
+    // rationale as loadScene). Manual switches only — the ghost set
+    // advance uses swapSongImmediate, which intentionally skips this so a
+    // performance doesn't bake runtime drift into the saved songs.
+    const outgoing = state.performance.activeSong;
+    if (outgoing !== null && outgoing !== i) {
+      useSequencerStore.getState().snapSong(outgoing);
+    }
     if (!state.playing) {
       // Stopped: snap immediately. No tail-out needed since nothing's ringing.
       applySong(set, i, song, state.globalStep);
@@ -1832,6 +1946,15 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         tailOutBarsRemaining: Math.max(0, s.performance.tailOutBars),
       },
     }));
+  },
+  swapSongImmediate: (i, atGlobalStep) => {
+    const state = useSequencerStore.getState();
+    if (i < 0 || i >= PERFORMANCE_SLOT_COUNT) return;
+    const song = state.performance.songs[i];
+    if (!song) return;
+    // Atomic swap right now — clears any queued pendingSong/tail-out so a
+    // half-counted manual queue doesn't fight the autonomous advance.
+    applySong(set, i, song, atGlobalStep);
   },
   clearSong: (i) =>
     set((state) => {
@@ -2038,18 +2161,15 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       subkind: entry.kind,
     });
   },
-  // Decorate the most-recent log entry with its dwell decision. tickBar
-  // rolls the dwell AFTER applyBankSlot commits the swap, so the entry
-  // for this slot was already pushed (by pickNextBank for auto, or by
-  // applyBankSlot for manual). Slot match guards against a stray update
-  // tagging an unrelated entry.
+  // Decorate the most-recent commit log entry with its dwell decision.
+  // tickBar rolls the dwell AFTER applyBankSlot commits the swap, so the
+  // 'commit' entry for this slot is the most-recent push. Slot match
+  // guards against a stray update tagging an unrelated entry.
   setDwellOnLastBankChange: (slot, dwellBars) =>
     set((s) => {
       if (s.ghostPickLog.length === 0) return {};
       const last = s.ghostPickLog[s.ghostPickLog.length - 1];
-      // Only bank-change entries carry a slot — skip meta entries (shape /
-      // ghost / transport) that might be the most-recent push.
-      if (last.kind !== 'auto' && last.kind !== 'manual') return {};
+      if (last.kind !== 'commit') return {};
       if (last.slot !== slot) return {};
       const next = s.ghostPickLog.slice();
       next[next.length - 1] = { ...last, dwellBars };
@@ -2154,36 +2274,28 @@ function applyBankSlot(
   // off in-flight sample tails for tracks that survive the swap. Project
   // import (persist.ts) DOES reset filters because trackIds change there.
 
-  // Log this bank change for the GhostDebug datafeed. If the most recent
-  // auto entry already points at this slot (ghost picker pushed it before
-  // queueing), skip — that entry IS this commit. Otherwise log a manual
-  // entry so user-driven swaps (clicks, blank-starts, etc.) appear in the
-  // history. Dedupe window is 1 bar (32 globalSteps at 32nd resolution).
+  // Commit-stage log entry. The matching queue-stage entry (auto or
+  // manual) was pushed earlier by pickNextBank or queueBank; this is the
+  // "pattern N · active" pair that confirms the audible swap. Determine
+  // trigger by walking back to the most-recent queue-stage entry for this
+  // slot within the 1-bar window (32 globalSteps).
   const post = useSequencerStore.getState();
   const log = post.ghostPickLog;
-  let alreadyLogged = false;
+  let trigger: 'auto' | 'manual' = 'manual';
   for (let j = log.length - 1; j >= 0; j--) {
     const e = log[j];
-    if (e.kind !== 'auto') continue;
     if (atGlobalStep - e.globalStep > 32) break;
-    if (e.slot === i) {
-      alreadyLogged = true;
+    if ((e.kind === 'auto' || e.kind === 'manual') && e.slot === i) {
+      trigger = e.kind;
       break;
     }
   }
-  if (!alreadyLogged) {
-    let nonce = '';
-    while (nonce.length < 12) {
-      nonce += Math.random().toString(16).slice(2);
-    }
-    nonce = nonce.slice(0, 12).toUpperCase();
-    post.pushGhostPickEvent({
-      kind: 'manual',
-      globalStep: atGlobalStep,
-      slot: i,
-      nonce,
-    });
-  }
+  post.pushGhostPickEvent({
+    kind: 'commit',
+    globalStep: atGlobalStep,
+    slot: i,
+    trigger,
+  });
 }
 
 // Write-through helpers — scene-level edits (sceneGraph + per-bank dwell)
@@ -2282,6 +2394,32 @@ function applyScene(
     globalStep: atGlobalStep,
     slot: i,
   });
+}
+
+// Returns the composition's scenes with the ACTIVE scene replaced by a
+// fresh snapshot of the live working state. The active scene is edited
+// in place via the live state; its stored snapshot goes stale the moment
+// anything changes. Callers that capture/serialize a composition use this
+// so the active scene reflects current edits (auto-save). Returns shallow
+// references — callers that need deep clones (snapSong) clone downstream.
+function composeLiveActiveScene(state: SequencerState): (Scene | null)[] {
+  const { composition } = state;
+  if (composition.activeScene === null) return composition.scenes;
+  const scenes = composition.scenes.slice();
+  scenes[composition.activeScene] = {
+    tracks: state.tracks,
+    banks: banksWithLiveActiveBank(state),
+    activeBank: state.activeBank,
+    macros: {
+      density: state.density,
+      chaos: state.chaos,
+      motion: state.motion,
+      drift: state.drift,
+      tension: state.tension,
+    },
+    sceneGraph: state.sceneGraph,
+  };
+  return scenes;
 }
 
 // Atomic song swap. Replaces the entire piece: tracks, banks, scenes,

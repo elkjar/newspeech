@@ -12,6 +12,8 @@ import {
   type Scene,
   type Song,
   type Performance,
+  type SequencerState,
+  banksWithLiveActiveBank,
 } from './store';
 import {
   ensureBothSections,
@@ -97,12 +99,45 @@ export function exportProject(): string {
     reverb: s.reverb,
     saturation: s.saturation,
     master: s.master,
-    banks: s.banks,
+    // Fold the live pattern into the active bank slot so the top-level
+    // banks round-trip the on-screen pattern, not the stale snapshot.
+    banks: banksWithLiveActiveBank(s),
     activeBank: s.activeBank,
     sceneGraph: s.sceneGraph,
-    composition: s.composition,
+    composition: compositionWithLiveActiveScene(s),
   };
   return JSON.stringify(data, null, 2);
+}
+
+// The active scene is represented by the LIVE working state (s.tracks /
+// s.banks / macros / sceneGraph), while composition.scenes[activeScene]
+// holds the snapshot from when the scene was last snapped — stale the
+// moment the user edits anything. applyScene never snaps the outgoing
+// scene back, so without this the export's composition would carry the
+// pre-edit snapshot for the scene currently on screen. Fold the live
+// state into the active slot so an exported song round-trips every
+// scene at its current state. No store mutation — the returned object is
+// only used for serialization (JSON.stringify deep-copies).
+function compositionWithLiveActiveScene(s: SequencerState): Composition {
+  const { composition } = s;
+  if (composition.activeScene === null) return composition;
+  const scenes = composition.scenes.slice();
+  scenes[composition.activeScene] = {
+    tracks: s.tracks,
+    // Fold the live pattern into the active bank slot too — the active
+    // bank's step edits live in s.tracks, not s.banks[activeBank].
+    banks: banksWithLiveActiveBank(s),
+    activeBank: s.activeBank,
+    macros: {
+      density: s.density,
+      chaos: s.chaos,
+      motion: s.motion,
+      drift: s.drift,
+      tension: s.tension,
+    },
+    sceneGraph: s.sceneGraph,
+  };
+  return { ...composition, scenes };
 }
 
 export function hydrateTape(v: unknown): TapeParams {
@@ -443,8 +478,26 @@ export function parseSongFromSeq(json: string): Song | null {
       ? requestedActive
       : null;
   const sceneGraph = hydrateSceneGraph(data.sceneGraph);
-  const composition = hydrateComposition(data.composition, tracks, banks);
+  // Two input shapes reach here:
+  //   - `.seq` files / standalone songs nest scenes under `composition`.
+  //   - Songs stored inside a `.seqset` carry `scenes`/`activeScene`/
+  //     `endsAfterLast` as FLAT top-level fields (the Song interface).
+  // The flat Song fields already match the Composition shape, so fall
+  // back to `data` itself when there's no nested composition — otherwise
+  // every song round-tripped out of a performance loses its scenes +
+  // active scene (symptom: "no active scene on first song" after loading
+  // a .seqset).
+  const composition = hydrateComposition(
+    data.composition ?? data,
+    tracks,
+    banks,
+  );
+  // A Song stored in a .seqset carries its slot title as a flat `name`
+  // field; .seq files have no name. Read it back so titles survive a
+  // .seqset round-trip.
+  const name = (data as { name?: unknown }).name;
   return {
+    name: typeof name === 'string' ? name : undefined,
     tracks,
     banks,
     activeBank,
@@ -476,11 +529,46 @@ export function exportPerformance(): string {
   const data: PersistedPerformance = {
     version: CURRENT_VERSION,
     name: s.performance.name,
-    songs: s.performance.songs,
+    songs: songsWithLiveActiveSong(s),
     activeSong: s.performance.activeSong,
     tailOutBars: s.performance.tailOutBars,
   };
   return JSON.stringify(data, null, 2);
+}
+
+// Same staleness as compositionWithLiveActiveScene, one layer up: the
+// active SONG is represented by the live working state (tracks / banks /
+// composition / globals), while performance.songs[activeSong] is the
+// snapshot from when the song was last snapped. Fold the live state
+// (including its live active scene) into the active song slot so an
+// exported set round-trips the song currently on screen at its current
+// state. Serialization-only; no store mutation.
+function songsWithLiveActiveSong(s: SequencerState): (Song | null)[] {
+  const { performance } = s;
+  if (performance.activeSong === null) return performance.songs;
+  const songs = performance.songs.slice();
+  songs[performance.activeSong] = {
+    name: performance.songs[performance.activeSong]?.name,
+    tracks: s.tracks,
+    banks: banksWithLiveActiveBank(s),
+    activeBank: s.activeBank,
+    macros: {
+      density: s.density,
+      chaos: s.chaos,
+      motion: s.motion,
+      drift: s.drift,
+      tension: s.tension,
+    },
+    sceneGraph: s.sceneGraph,
+    scenes: compositionWithLiveActiveScene(s).scenes,
+    activeScene: s.composition.activeScene,
+    endsAfterLast: s.composition.endsAfterLast,
+    bpm: s.bpm,
+    rootNote: s.rootNote,
+    scale: s.scale,
+    lfos: s.lfos,
+  };
+  return songs;
 }
 
 export function parsePerformanceFromSeqset(json: string): Performance | null {

@@ -87,6 +87,7 @@ export function InstrumentLibraryDialog({
     lead: [],
     bass: [],
     pad: [],
+    texture: [],
     drum: [],
   };
   for (const inst of Object.values(userInstruments)) grouped[inst.role].push(inst);

@@ -4,11 +4,19 @@ import {
   type BankMacros,
   type BankOrderMode,
   type Scene,
+  type Song,
   type SceneShape,
 } from '../state/store';
 import { scheduler } from '../audio/scheduler';
+import { isNativeAudioAvailable, fadeTextures } from '../audio/nativeEngine';
 import { RECIPE_DWELL } from './generator';
 import { targetEntropy, phaseAt } from './shape';
+
+// How long outgoing texture voices ring down across a song transition —
+// matches transport.ts's stop fade so the gesture is consistent. The
+// outgoing song's textures fade over the first SONG_FADE_SECS of the new
+// song. Kept here (not imported) to avoid a transport.ts ↔ ghost.ts cycle.
+const SONG_FADE_SECS = 6;
 
 // Ghost v1.5 — autonomous walker across populated banks, color-macro lerp
 // on transitions, and probabilistic mid-scene density fills.
@@ -674,7 +682,10 @@ export function tickBar(globalStep: number): void {
   // bank or with bank dwell that doesn't divide phaseLength would advance
   // late or never. Runs before the pendingBank / dwell-not-yet guards so
   // an in-flight bank queue doesn't suppress the scene swap.
-  maybeAutoAdvanceScene(store, globalStep);
+  // If the composition advanced (next scene), swapped to the next song,
+  // or stopped the set, bail — the store has changed under us and the
+  // bank-pick below would operate on a stale snapshot.
+  if (maybeAutoAdvanceScene(store, globalStep)) return;
 
   // Something else queued a swap — don't fight it; let it land and we'll
   // reset on the bar it commits.
@@ -699,7 +710,7 @@ export function tickBar(globalStep: number): void {
     sceneGraph.bankOrderMode
   );
   if (next === null) return;
-  store.queueBank(next);
+  store.queueBank(next, 'auto');
 }
 
 function findNextScene(
@@ -717,40 +728,90 @@ function findNextScene(
   return null;
 }
 
+// Next filled song slot after `fromIdx`, no wrap — the set has a defined
+// ending (stop after the last filled song) rather than looping. A
+// set-loop toggle could relax this later.
+function findNextSong(
+  songs: (Song | null)[],
+  fromIdx: number
+): number | null {
+  for (let i = fromIdx + 1; i < songs.length; i++) {
+    if (songs[i] !== null) return i;
+  }
+  return null;
+}
+
+// Returns true if it changed the store (advanced a scene, swapped songs,
+// or stopped) — the caller must then bail rather than continue acting on
+// its now-stale snapshot.
 function maybeAutoAdvanceScene(
   store: ReturnType<typeof useSequencerStore.getState>,
   globalStep: number
-): void {
-  const { composition, sceneGraph } = store;
-  if (composition.activeScene === null) return;
-  if (composition.pendingScene !== null) return;
+): boolean {
+  const { composition, sceneGraph, performance } = store;
+  if (composition.activeScene === null) return false;
+  if (composition.pendingScene !== null) return false;
   const filled = composition.scenes.filter((s) => s !== null).length;
-  // Skip when there's no meaningful auto-advance to make:
-  //   - 0 filled scenes: no composition to drive
-  //   - 1 filled, !endsAfterLast: solo scene loops forever, never advances
-  // (1 filled + endsAfterLast still fires — composition stops after that
-  //  scene's phaseLength elapses)
-  if (filled === 0) return;
-  if (filled === 1 && !composition.endsAfterLast) return;
+  if (filled === 0) return false;
+
+  // Is this composition sitting in a performance with a further song to
+  // play? If so, the SET is the loop unit — composition end advances the
+  // song even for a single-scene / !endsAfterLast song (which would
+  // otherwise loop in place forever and never reach the next song).
+  const nextSong =
+    performance.activeSong !== null && performance.pendingSong === null
+      ? findNextSong(performance.songs, performance.activeSong)
+      : null;
+
+  // A solo, looping (!endsAfterLast) scene with no next song just plays
+  // continuously — nothing to advance to, and re-loading it every
+  // phaseLength would pointlessly re-trigger its macros.
+  if (filled === 1 && !composition.endsAfterLast && nextSong === null) {
+    return false;
+  }
+
   const elapsed = Math.floor(
     (globalStep - store.ghostCompositionStartStep) / STEPS_PER_BAR
   );
-  if (elapsed < sceneGraph.phaseLength - 1) return;
-  const next = findNextScene(
-    composition.scenes,
-    composition.activeScene,
-    composition.endsAfterLast
-  );
-  if (next !== null) {
-    store.loadScene(next);
-    return;
+  if (elapsed < sceneGraph.phaseLength - 1) return false;
+
+  // More scenes left in this composition? (no-wrap detection.)
+  const nextScene = findNextScene(composition.scenes, composition.activeScene, true);
+  if (nextScene !== null) {
+    store.loadScene(nextScene, 'ghost');
+    return true;
   }
+
+  // Composition's last scene just finished its arc.
+  //
+  // Priority 1 — performance set: hand directly to the next filled song.
+  // Immediate atomic swap (no tail-out gap, per the "shift directly" feel
+  // Chris wants); the outgoing song's texture voices ring down over the
+  // new song via fadeTextures, so the transition bridges on the textural
+  // layer rather than a silent gap.
+  if (nextSong !== null) {
+    if (isNativeAudioAvailable()) void fadeTextures(SONG_FADE_SECS);
+    store.swapSongImmediate(nextSong, globalStep);
+    return true;
+  }
+
+  // Priority 2 — standalone composition (or last song in the set) with a
+  // defined ending: stop. Scheduler needs an explicit halt alongside the
+  // store flag because it runs its own loop.
   if (composition.endsAfterLast) {
-    // End of composition. Stop transport — scheduler needs explicit halt
-    // alongside the store flag because the scheduler runs its own loop.
     store.setPlaying(false);
     scheduler.stop();
+    return true;
   }
+
+  // Priority 3 — no defined ending and no next song: loop the composition
+  // back to its first scene.
+  const wrapScene = findNextScene(composition.scenes, composition.activeScene, false);
+  if (wrapScene !== null && wrapScene !== composition.activeScene) {
+    store.loadScene(wrapScene, 'ghost');
+    return true;
+  }
+  return false;
 }
 
 // Subscribe once at app mount. Two transitions reset the dwell timer:

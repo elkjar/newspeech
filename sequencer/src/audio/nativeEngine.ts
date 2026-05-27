@@ -337,6 +337,10 @@ export async function triggerSample(
     // from splits), 1 = 'drum', 2 = 'melodic', 3 = 'click' (writes to
     // both rhythm + melody splits so count-in lands in either stem).
     section?: number;
+    // Texture-role flag. When true, this voice fades out (rather than
+    // hard-cutting) on transport stop — see fadeAndStop. Sustained
+    // texture material rings down gracefully; everything else cuts.
+    isTexture?: boolean;
     // Optional ADSR envelope (seconds). Pass all of attack / release /
     // hold to enable; native applies a per-sample envelope multiplier
     // and deactivates the voice once the release tail completes.
@@ -359,6 +363,7 @@ export async function triggerSample(
     trackId: opts.trackId ?? null,
     monophonic: opts.monophonic ?? null,
     section: opts.section ?? null,
+    isTexture: opts.isTexture ?? null,
     envelopeAttack: opts.envelopeAttack ?? null,
     envelopeDecay: opts.envelopeDecay ?? null,
     envelopeSustain: opts.envelopeSustain ?? null,
@@ -691,6 +696,20 @@ export function cutoffNormToHz(norm: number): number {
 
 export async function stopAllVoices(): Promise<void> {
   await invoke<void>('audio_stop_all');
+}
+
+// Transport-stop texture fade. Rings down texture-role voices over
+// `fadeSecs` while every other voice keeps playing untouched.
+export async function fadeTextures(fadeSecs: number): Promise<void> {
+  await invoke<void>('audio_fade_textures', { fadeSecs });
+}
+
+// Freeze in-flight voice DSP params (filter cutoff/resonance + fx send)
+// on a scene/bank/song swap, so ringing tails keep the OUTGOING scene's
+// settings instead of jumping to the incoming scene's (a resonance jump
+// would self-oscillate into a crash). New triggers are unaffected.
+export async function freezeVoiceParams(): Promise<void> {
+  await invoke<void>('audio_freeze_voice_params');
 }
 
 // --- reported channel count (for UI routing pickers) ---

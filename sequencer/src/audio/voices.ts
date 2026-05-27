@@ -296,6 +296,7 @@ export function voiceMutation(voiceId: string): MutationProfile {
     case 'drum': return DRUM_MUTATION;
     case 'bass': return BASS_MUTATION;
     case 'pad': return PAD_MUTATION;
+    case 'texture': return PAD_MUTATION;
     case 'lead': return DEFAULT_MUTATION;
     default:
       // No explicit role + no explicit profile. Fall back to category:
@@ -348,7 +349,12 @@ export function isPadVoice(voiceId: string): boolean {
 // sample voices "didn't carry bass distinction" (was per-track / slot-1
 // positional). Now manifests can declare a bass voice explicitly so it
 // gets BASS_MUTATION wherever it's slotted.
-export type VoiceRole = 'drum' | 'bass' | 'lead' | 'pad';
+// 'texture' added 2026-05-26 — long sustained source material (field
+// recordings, drones, processed loops) loaded from the `textures/`
+// folder. Behaves pad-like for mutation/entropy, but is a distinct role
+// so the transport-stop fade can target texture voices specifically
+// (fade out over seconds) while everything else cuts immediately.
+export type VoiceRole = 'drum' | 'bass' | 'lead' | 'pad' | 'texture';
 
 /**
  * Coarse role bucket for a voice id. Returns the voice's explicit role
@@ -384,6 +390,7 @@ export function voiceEntropyClass(voiceId: string): number {
   // entropy contribution) to match instrumentEntropyClass's bass slot.
   if (v.role === 'bass') return 0.3;
   if (v.role === 'pad') return 0.05;
+  if (v.role === 'texture') return 0.05;
   if (v.role === 'drum') return 1;
   // Fallbacks for voices that don't declare a role: drum-category goes
   // percussion-tier, pad-typed voices go sustained-tier, everything else

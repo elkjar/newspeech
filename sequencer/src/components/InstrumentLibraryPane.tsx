@@ -8,7 +8,7 @@ import { NewInstrumentDialog } from './NewInstrumentDialog';
 // NewInstrumentDialog stays as a nested modal for the form (single-
 // level form stack on top of settings, OK).
 
-const ROLE_ORDER: InstrumentRole[] = ['lead', 'bass', 'pad', 'drum'];
+const ROLE_ORDER: InstrumentRole[] = ['lead', 'bass', 'pad', 'texture', 'drum'];
 
 function downloadFile(filename: string, content: string): void {
   const blob = new Blob([content], { type: 'application/json' });
@@ -42,6 +42,7 @@ export function InstrumentLibraryPane() {
     lead: false,
     bass: false,
     pad: false,
+    texture: false,
     drum: false,
   });
 
@@ -89,6 +90,7 @@ export function InstrumentLibraryPane() {
     lead: [],
     bass: [],
     pad: [],
+    texture: [],
     drum: [],
   };
   for (const inst of Object.values(userInstruments)) {

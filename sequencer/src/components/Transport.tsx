@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSequencerStore } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
@@ -476,6 +476,50 @@ export function InstrumentLibraryButton() {
   );
 }
 
+// Buffered BPM field. The store's setBpm clamps to 40–240, so binding a
+// controlled input straight to it makes intermediate keystrokes
+// un-typeable (typing "2" toward "200" clamps to 40 and snaps the field
+// back). Instead we hold a local string draft while editing and commit
+// (parse + clamp via setBpm) only on blur or Enter. The draft re-syncs
+// from the store when bpm changes externally (tap tempo, scene load).
+function BpmInput({
+  bpm,
+  setBpm,
+}: {
+  bpm: number;
+  setBpm: (n: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(bpm));
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(String(bpm));
+  }, [bpm, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const parsed = Number(draft);
+    if (Number.isFinite(parsed)) setBpm(parsed);
+    else setDraft(String(bpm));
+  };
+
+  return (
+    <input
+      type="number"
+      min={40}
+      max={240}
+      value={draft}
+      onFocus={() => setEditing(true)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      className="w-20 bg-transparent border border-white/15 px-2 tabular-nums text-[11px] focus:outline-none focus:border-white h-[28px]"
+    />
+  );
+}
+
 export function TransportControls() {
   const bpm = useSequencerStore((s) => s.bpm);
   const rootNote = useSequencerStore((s) => s.rootNote);
@@ -490,14 +534,7 @@ export function TransportControls() {
     <div className="globals flex items-center gap-4 flex-wrap">
       <label className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
         <span className="opacity-55">bpm</span>
-        <input
-          type="number"
-          min={40}
-          max={240}
-          value={bpm}
-          onChange={(e) => setBpm(Number(e.target.value))}
-          className="w-20 bg-transparent border border-white/15 px-2 tabular-nums text-[11px] focus:outline-none focus:border-white h-[28px]"
-        />
+        <BpmInput bpm={bpm} setBpm={setBpm} />
         <TapTempoButton />
       </label>
       <label className="flex items-center gap-2 text-[11px] uppercase tracking-widest">

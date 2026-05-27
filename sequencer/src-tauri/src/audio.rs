@@ -2714,6 +2714,23 @@ fn install_lfo_snapshot(lfos: Vec<LfoIpc>) {
   lfo_snapshot_cell().store(snap);
 }
 
+// Catmull-Rom cubic interpolation — 4-tap reconstruction for reading a
+// sample at a fractional position (pitch shift / detune jitter / SR
+// mismatch). p1..p2 bracket the read; p0/p3 are the outer neighbours and
+// shape the curve. Smoother high end + less aliasing than 2-tap linear,
+// most audible on sustained / pitched tonal material. ~a dozen flops more
+// than linear per channel per frame. `t` is the 0..1 fraction past p1.
+#[inline]
+fn catmull(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+  let t2 = t * t;
+  let t3 = t2 * t;
+  0.5
+    * ((2.0 * p1)
+      + (-p0 + p2) * t
+      + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+      + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
+}
+
 // Port of `applyLFO` in src/audio/lfo.ts. Slides the swing window inside
 // [0,1] when base sits near an edge so the dial keeps moving continuously
 // instead of pinning. `out` is the bipolar (-1..1) summed LFO output.
@@ -2785,6 +2802,22 @@ struct Voice {
   // 3 = click (writes to BOTH so DAW alignment markers land in either
   // split file). Mirrors the web `TrackSection` plus the click bus tap.
   section: u8,
+  // Texture-role flag. On transport stop, texture voices get a long
+  // release ramp (graceful fade) while everything else cuts; see the
+  // StopFade mixer command.
+  is_texture: bool,
+  // Frozen per-track DSP snapshot (cutoff_hz, resonance, fx_send). None =
+  // read live from track_params (the normal case — knob twists hit the
+  // voice). Some = this voice was caught mid-tail by a scene/bank/song
+  // swap and detached from the shared track_params so the incoming
+  // scene's settings can't retune its ring-out (a resonance jump would
+  // self-oscillate into a crash). Set by FreezeVoiceParams, cleared on
+  // re-trigger.
+  frozen_params: Option<(f32, f32, f32)>,
+  // Output frames elapsed since trigger — drives the flat-voice declick
+  // fade-in. Counts output frames (not sample position), so it's
+  // rate-independent.
+  frames_played: u32,
   // Monophonic-choke release state. When a new trigger lands on a track
   // marked monophonic, all existing active voices that share the SAME
   // track_params Arc get `release_remaining` set to RELEASE_FRAMES. Per
@@ -2847,6 +2880,9 @@ impl Default for Voice {
       env_sustain_level: 1.0,
       env_release_start_level: -1.0,
       section: 0,
+      is_texture: false,
+      frozen_params: None,
+      frames_played: 0,
     }
   }
 }
@@ -2889,6 +2925,9 @@ enum MixerCommand {
     // tap — drum voices into rhythm WAV, melodic into melody WAV, click
     // into both. SECTION_NONE skips splits entirely.
     section: u8,
+    // Texture-role flag. Texture voices fade out (multi-second release
+    // ramp) on transport stop; everything else cuts. See StopFade.
+    is_texture: bool,
     // Optional ADSR envelope. None → voice plays at flat `gain` (drums,
     // leads without an envelope config). Some → output multiplied by
     // per-sample envelope level; voice deactivates when release tail
@@ -2902,6 +2941,22 @@ enum MixerCommand {
     delay_samples: u32,
   },
   StopAll,
+  // Transport-stop texture fade. ONLY texture-role voices get a release
+  // ramp (fade_frames) so sustained material rings down gracefully on
+  // stop. Every other voice — and the pending-trigger queue — is left
+  // completely untouched (rings out naturally, exactly as before).
+  // Reuses the per-voice release_remaining/release_total ramp already
+  // mixed in per sample.
+  FadeTextures {
+    fade_frames: u32,
+  },
+  // Detach every active, not-yet-frozen voice from its shared
+  // track_params by snapshotting the current cutoff/resonance/fx_send
+  // onto the voice. Issued on a scene/bank/song swap so in-flight tails
+  // keep the OUTGOING scene's DSP settings as they ring out — the
+  // incoming scene's params (pushed moments later) then can't retune the
+  // tails (a resonance jump would otherwise self-oscillate into a crash).
+  FreezeVoiceParams,
 }
 
 #[derive(Clone, Copy)]
@@ -2929,6 +2984,7 @@ struct PendingTrigger {
   track_params: Option<Arc<TrackParams>>,
   monophonic: bool,
   section: u8,
+  is_texture: bool,
   envelope: Option<EnvelopeSpec>,
   remaining_samples: i32,
 }
@@ -3160,6 +3216,7 @@ impl AudioEngine {
     delay_secs: f32,
     monophonic: bool,
     section: u8,
+    is_texture: bool,
     envelope: Option<EnvelopeSpec>,
   ) -> Result<(), String> {
     let sample = {
@@ -3193,6 +3250,7 @@ impl AudioEngine {
       track_params,
       monophonic,
       section,
+      is_texture,
       envelope,
       delay_samples,
     };
@@ -3584,6 +3642,48 @@ impl AudioEngine {
       .map_err(|_| "trigger queue full".to_string())?;
     Ok(())
   }
+
+  // Transport-stop texture fade. Fade time arrives in seconds; convert
+  // to frames at the device sample rate (the audio thread counts down in
+  // frames). Only texture-role voices are affected.
+  pub fn fade_textures(&self, fade_secs: f32) -> Result<(), String> {
+    let sr = self.state.sample_rate.load(Ordering::Acquire);
+    let fade_frames = if sr == 0 || !fade_secs.is_finite() || fade_secs <= 0.0 {
+      0
+    } else {
+      (fade_secs * sr as f32).round().max(0.0).min(u32::MAX as f32) as u32
+    };
+    let cmd = MixerCommand::FadeTextures { fade_frames };
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(cmd)
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
+
+  // Freeze in-flight voice DSP params (see MixerCommand::FreezeVoiceParams).
+  // Called on every scene/bank/song swap.
+  pub fn freeze_voice_params(&self) -> Result<(), String> {
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(MixerCommand::FreezeVoiceParams)
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
 }
 
 fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
@@ -3720,6 +3820,9 @@ fn claim_voice_slot(
   v.release_remaining = 0;
   v.release_total = 0;
   v.section = p.section;
+  v.is_texture = p.is_texture;
+  v.frozen_params = None;
+  v.frames_played = 0;
   if let Some(spec) = p.envelope {
     // Convert seconds → sample counts. attack/release/hold have a 1ms
     // floor so a zero-length phase doesn't divide by zero in the ramp.
@@ -4072,6 +4175,7 @@ fn build_stream(
               track_params,
               monophonic,
               section,
+              is_texture,
               envelope,
               delay_samples,
             } => {
@@ -4095,6 +4199,7 @@ fn build_stream(
                 track_params,
                 monophonic,
                 section,
+                is_texture,
                 envelope,
                 remaining_samples: delay_samples as i32,
               };
@@ -4124,8 +4229,42 @@ fn build_stream(
                 v.start_frame = 0;
                 v.release_remaining = 0;
                 v.release_total = 0;
+                v.is_texture = false;
               }
               pending_triggers.clear();
+            }
+            MixerCommand::FreezeVoiceParams => {
+              for v in voices.iter_mut() {
+                if !v.active || v.frozen_params.is_some() {
+                  continue;
+                }
+                // Snapshot the live values the voice is currently reading.
+                // No track_params (manual panel trigger) → nothing to
+                // freeze; it doesn't read filter/fx_send anyway.
+                if let Some(tp) = v.track_params.as_ref() {
+                  v.frozen_params = Some((tp.cutoff(), tp.resonance(), tp.fx_send()));
+                }
+              }
+            }
+            MixerCommand::FadeTextures { fade_frames } => {
+              if fade_frames > 0 {
+                for v in voices.iter_mut() {
+                  // Only texture voices fade. Everything else — and the
+                  // pending-trigger queue — is intentionally left alone.
+                  if !v.active || !v.is_texture {
+                    continue;
+                  }
+                  // Don't re-lengthen a ramp already shorter than this
+                  // (e.g. a texture mid-choke) — only start or extend
+                  // toward the stop fade.
+                  let already =
+                    v.release_remaining > 0 && v.release_remaining <= fade_frames;
+                  if !already {
+                    v.release_remaining = fade_frames;
+                    v.release_total = fade_frames;
+                  }
+                }
+              }
             }
             MixerCommand::StartCombinedRecording { producer } => {
               // Drop any prior producer (worker thread observes via
@@ -4267,24 +4406,46 @@ fn build_stream(
               break;
             }
             let frac = (pos - i0 as f64) as f32;
-            let inv = 1.0 - frac;
+            // Catmull-Rom needs the two outer neighbours i0-1 and i0+2.
+            // Clamp them at the sample's edges (repeat the boundary frame)
+            // so the curve degrades to near-linear at start/end rather
+            // than reading out of bounds. The i0+1 < frame_count guard
+            // above already protects the inner pair.
+            let im1 = if i0 >= 1 { i0 - 1 } else { i0 };
+            let ip2 = if i0 + 2 < frame_count { i0 + 2 } else { i0 + 1 };
             let (mut ls, mut rs) = if sample_channels == 1 {
-              let s0 = frames_slice[i0];
-              let s1 = frames_slice[i0 + 1];
-              let interp = s0 * inv + s1 * frac;
+              let interp = catmull(
+                frames_slice[im1],
+                frames_slice[i0],
+                frames_slice[i0 + 1],
+                frames_slice[ip2],
+                frac,
+              );
               (interp, interp)
             } else {
-              let i0s = i0 * 2;
-              let i1s = (i0 + 1) * 2;
-              let s0l = frames_slice[i0s];
-              let s1l = frames_slice[i1s];
-              let s0r = frames_slice[i0s + 1];
-              let s1r = frames_slice[i1s + 1];
-              (s0l * inv + s1l * frac, s0r * inv + s1r * frac)
+              let l = catmull(
+                frames_slice[im1 * 2],
+                frames_slice[i0 * 2],
+                frames_slice[(i0 + 1) * 2],
+                frames_slice[ip2 * 2],
+                frac,
+              );
+              let r = catmull(
+                frames_slice[im1 * 2 + 1],
+                frames_slice[i0 * 2 + 1],
+                frames_slice[(i0 + 1) * 2 + 1],
+                frames_slice[ip2 * 2 + 1],
+                frac,
+              );
+              (l, r)
             };
-            if let Some(p) = track_params_ref {
-              let fc = p.cutoff();
-              let res = p.resonance();
+            // Filter coefficients: frozen snapshot (detached on a swap) if
+            // present, else live from track_params.
+            let filt_coeffs = match v.frozen_params {
+              Some((fc, res, _)) => Some((fc, res)),
+              None => track_params_ref.map(|p| (p.cutoff(), p.resonance())),
+            };
+            if let Some((fc, res)) = filt_coeffs {
               let (fl, fr) = v.filter.process_stereo(ls, rs, fc, res, sr_f32);
               ls = fl;
               rs = fr;
@@ -4332,6 +4493,24 @@ fn build_stream(
                 break;
               }
             }
+            // Declick: flat (non-enveloped) voices get a ~1ms linear fade
+            // at the trigger and at the natural sample end, so samples not
+            // trimmed to a zero-crossing don't click on start / cutoff.
+            // Enveloped voices skip this — their ADSR already ramps both
+            // ends. fade_in tracks output frames since trigger; fade_out
+            // tracks output frames until the sample runs out (rate-scaled,
+            // so it holds at pitched playback). Overlap on a very short
+            // sample just yields a gentle bell — still click-free.
+            if !v.env_active {
+              let declick = (sr_f32 * 0.001).max(1.0);
+              let fade_in = (v.frames_played as f32 / declick).min(1.0);
+              let to_end =
+                (((frame_count as f64 - 1.0 - pos) / v.rate) as f32).max(0.0);
+              let fade_out = (to_end / declick).min(1.0);
+              let g = fade_in.min(fade_out);
+              ls *= g;
+              rs *= g;
+            }
             // Monophonic-choke release ramp. release_remaining counts
             // down per sample; voice gets scaled linearly toward zero
             // and deactivates when it hits 0. Skipped (scale=1) when
@@ -4375,9 +4554,10 @@ fn build_stream(
             // the wet bus stays silent; voice's stored fx_send is
             // preserved in TrackParams so turning bypass off restores
             // the prior amount with no discontinuity.
-            let raw_fx_send = track_params_ref
-              .map(|p| p.fx_send())
-              .unwrap_or(0.0);
+            let raw_fx_send = match v.frozen_params {
+              Some((_, _, fx)) => fx,
+              None => track_params_ref.map(|p| p.fx_send()).unwrap_or(0.0),
+            };
             let fx_send = if fx_bypass_now { 0.0 } else { raw_fx_send };
             let dry_scale = 1.0 - fx_send;
             // Reverb input is post-gain + post-pan so the wet bus
@@ -4424,6 +4604,7 @@ fn build_stream(
               buf[frame * n_ch + route_first] += mono * v.gain * dry_scale;
             }
             v.position += v.rate;
+            v.frames_played = v.frames_played.saturating_add(1);
             // Decrement release counter at frame-end. Hitting zero ends
             // the voice cleanly — no more samples emitted this block.
             // Cleanup happens in the post-loop deactivation block.
@@ -4888,6 +5069,8 @@ pub fn audio_trigger_sample(
   // splits WAVs), 1 = drum, 2 = melodic, 3 = click (writes to BOTH
   // splits so count-in is in either stem).
   section: Option<u8>,
+  // Texture-role flag — texture voices fade out on transport stop.
+  is_texture: Option<bool>,
   // ADSR envelope spec — all four fields must be present for the voice
   // to apply one. None of these → flat-gain voice (drums, leads
   // without envelope config). Times in seconds; sustain is 0..1.
@@ -4922,6 +5105,7 @@ pub fn audio_trigger_sample(
     delay_secs.unwrap_or(0.0),
     monophonic.unwrap_or(false),
     section.unwrap_or(0),
+    is_texture.unwrap_or(false),
     envelope,
   )
 }
@@ -5116,6 +5300,22 @@ pub fn audio_set_tape_params(
 #[tauri::command]
 pub fn audio_stop_all() -> Result<(), String> {
   engine().stop_all_voices()
+}
+
+// Transport-stop texture fade — ring down texture-role voices over
+// fade_secs while everything else keeps playing untouched. See
+// MixerCommand::FadeTextures.
+#[tauri::command]
+pub fn audio_fade_textures(fade_secs: f32) -> Result<(), String> {
+  engine().fade_textures(fade_secs)
+}
+
+// Freeze in-flight voice DSP params on a scene/bank/song swap so ringing
+// tails keep the outgoing scene's filter/fx settings. See
+// MixerCommand::FreezeVoiceParams.
+#[tauri::command]
+pub fn audio_freeze_voice_params() -> Result<(), String> {
+  engine().freeze_voice_params()
 }
 
 // Phase 6: push the full LFO panel state (rate / depth / destinations

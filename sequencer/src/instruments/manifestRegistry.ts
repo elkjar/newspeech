@@ -53,14 +53,15 @@ function resolveMutationProfile(name: string | undefined): MutationProfile | und
 
 // Infer a default role from the kit path when the manifest doesn't
 // declare one. Folder convention mirrors the Rust scanner's category
-// list (`src-tauri/src/samples.rs` CATEGORIES): drums / pads / bass are
-// behavior-bearing; instruments + textures default to lead. User kits
+// list (`src-tauri/src/samples.rs` CATEGORIES): drums / pads / bass /
+// textures are behavior-bearing; instruments default to lead. User kits
 // get the same treatment after the `user/` prefix is stripped.
 function inferRoleFromKitPath(kitPath: string): VoiceRole {
   const trimmed = kitPath.startsWith('user/') ? kitPath.slice('user/'.length) : kitPath;
   if (trimmed.startsWith('drums/')) return 'drum';
   if (trimmed.startsWith('pads/')) return 'pad';
   if (trimmed.startsWith('bass/')) return 'bass';
+  if (trimmed.startsWith('textures/')) return 'texture';
   return 'lead';
 }
 

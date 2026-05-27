@@ -36,6 +36,14 @@ function songSummary(s: Song): string {
   return `${Math.round(s.bpm)} bpm · ${root} ${s.scale}`;
 }
 
+// Derive a song title from an imported .seq file path/name: drop any
+// directory prefix and the known extension. Handles both the Tauri full
+// path (forward + back slashes) and a bare web filename.
+function songNameFromFilename(filename: string): string {
+  const base = filename.split(/[/\\]/).pop() ?? filename;
+  return base.replace(/\.(seq|seqcomp|json)$/i, '');
+}
+
 function SongSlotCard({
   i,
   song,
@@ -219,14 +227,21 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
     snapSong(idx);
   };
 
-  const handleImportSongText = (text: string) => {
+  const handleImportSongText = (text: string, filename?: string) => {
     setImportError(null);
     const song = parseSongFromSeq(text);
     if (!song) {
       setImportError('could not parse this .seq file');
       return;
     }
-    const slot = importSong(song);
+    // .seq files carry no title — use the filename (sans path + extension)
+    // as the song name so imported songs land labeled in the set. Respect
+    // an existing name if the parsed song somehow has one.
+    const named =
+      song.name || !filename
+        ? song
+        : { ...song, name: songNameFromFilename(filename) };
+    const slot = importSong(named);
     if (slot === null) {
       setImportError('all song slots are full — clear one first');
     }
@@ -243,7 +258,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
         });
         if (!picked || typeof picked !== 'string') return;
         const text = await invoke<string>('read_text_file', { path: picked });
-        handleImportSongText(text);
+        handleImportSongText(text, picked);
       } catch (err) {
         console.error('[performance] import song failed:', err);
         setImportError('import failed — see console');
@@ -259,7 +274,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
     const file = e.target.files?.[0];
     if (!file) return;
     const text = await file.text();
-    handleImportSongText(text);
+    handleImportSongText(text, file.name);
     e.target.value = '';
   };
 

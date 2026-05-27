@@ -34,6 +34,7 @@ export interface EntropyBreakdown {
 export type GhostKind =
   | 'auto'
   | 'manual'
+  | 'commit'
   | 'shape'
   | 'ghost'
   | 'transport'
@@ -130,6 +131,11 @@ export async function initStreamPresenceMain(): Promise<() => void> {
 // teardown. Mirrors initStreamPresenceMain — idempotent under HMR.
 export async function announceStreamPresence(): Promise<() => void> {
   if (!isTauri()) return () => {};
+  // The stream window IS the listener — its own emits (Pool's visual
+  // events) loop back through Tauri to the Datafeed in this same window.
+  // Without this, the listenerActive gate in emitStreamEvents drops those
+  // self-emitted events on the floor.
+  listenerActive = true;
   void emit(PRESENCE_CHANNEL, 'ready');
   const unlistenPing = await listen<null>(PRESENCE_PING_CHANNEL, () => {
     void emit(PRESENCE_CHANNEL, 'ready');
@@ -142,6 +148,7 @@ export async function announceStreamPresence(): Promise<() => void> {
     onUnload();
     window.removeEventListener('beforeunload', onUnload);
     unlistenPing();
+    listenerActive = false;
   };
 }
 
