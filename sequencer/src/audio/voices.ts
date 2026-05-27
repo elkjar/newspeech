@@ -1,5 +1,10 @@
 export type VoiceCategory = 'drum' | 'melodic';
 
+// Dev: mutation profiles here are read inside runTick (captured by the scheduler
+// callback at mount), so HMR can't hot-swap them in the running audio loop.
+// Force a reload on change so profile/maxTie edits take effect. No-op in prod.
+if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());
+
 export interface MutationProfile {
   flipChance: number;
   velSpread: number;
@@ -23,6 +28,15 @@ export interface MutationProfile {
   // given chord step. Only consulted when the track is the melodic-slot-0
   // chord master AND the step's voicing.degree > 0; ignored elsewhere.
   chordMutationChance: number;
+  // When true, lead-role melodic tracks route on-flip + pitch-jump through the
+  // deterministic accumulative variation tree (mutationTree.ts) instead of the
+  // per-cycle stochastic rolls. Leads only — drums/bass/pad/anchors keep the
+  // stochastic path. Optional: undefined = off.
+  treeMutation?: boolean;
+  // Max sustained tie-chain length WHILE MUTATION IS ACTIVE. Caps the "stuck on
+  // a long sustain" symptom on leads (maxTie = 2 → one-step legato max). Undefined
+  // = unlimited, so pads/bass keep authored sustains. No effect at mutation = 0.
+  maxTie?: number;
 }
 
 export const DEFAULT_MUTATION: MutationProfile = {
@@ -32,9 +46,16 @@ export const DEFAULT_MUTATION: MutationProfile = {
   pitchWeights: { octave: 0.3, fifth: 0.3, small: 0.4 },
   gateBias: 0.4,
   gateSpread: 0.8,
-  tieFlipOnChance: 0.05,
+  // Leads never AUTO-CREATE ties — melodic mutation varies by move + pitch, not
+  // by sprouting legato/sustain the user didn't write. (This was the phantom
+  // "stuck tie" source: tie-flip-on landing on consecutive steps made a held
+  // note out of a plain melody.) Off-chance stays so it can still BREAK an
+  // authored tie for variety; maxTie remains as a safety cap on authored ties.
+  tieFlipOnChance: 0,
   tieFlipOffChance: 0.2,
   chordMutationChance: 0.35,
+  treeMutation: true,
+  maxTie: 2,
 };
 
 // Drums never pitch-jump via mutation. The internal-synth fallback ignores
@@ -45,6 +66,7 @@ export const DRUM_MUTATION: MutationProfile = {
   pitchJumpProb: 0,
   pitchWeights: { octave: 0, fifth: 0, small: 0 },
   chordMutationChance: 0,
+  treeMutation: false,
 };
 
 export const KICK_MUTATION: MutationProfile = {

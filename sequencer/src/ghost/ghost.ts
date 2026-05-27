@@ -82,6 +82,54 @@ const FILL_BARS = 2;
 const FILL_DENSITY_BOOST = 0.1;
 const FILL_CHAOS_BOOST = 0.25;
 
+// Ghost-driven lead melodic development (Phase 1, 2026-05-26; opened to FULL
+// range 2026-05-27). Ghost adds an arc-shaped amount to LEAD tracks' mutation-
+// tree depth (treePos) — autonomous melodic variation Ghost couldn't reach
+// before (it only ever rearranged / filled / lerped macros, never developed a
+// melody). Spans the FULL parameter across the arc: ~0 at the edges → full at
+// the peak. The mutation control's OWN guardrails (density-conserving moves, no
+// phantom ties, grid-weighted placement, depth-staged forks) keep it musical
+// even maxed — so unlike density it needs no low ceiling. ADDITIVE in the engine
+// (rides on the user's manual mutation / LFO); held at 0 when ghost is disabled.
+const GHOST_LEAD_MUT_BASE = 0; // floor in all phases (0 = clean at arc edges; raise for constant melodic life)
+const GHOST_LEAD_MUT_CEILING = 1; // arc peak — full mutation depth (the control self-guardrails)
+
+// STAGGERED per-lead spotlight (Phase 1.5, 2026-05-27). Rather than one global
+// amount applied to every lead in lockstep, each lead's ghost mutation is its
+// own arc-scaled envelope on a phase-offset cycle — so development ROTATES voice
+// to voice (one lead climbs while another rests): an arranger's call-and-
+// response rather than everyone moving together. Periods are coprime-ish primes
+// so the rotation drifts and never exactly repeats ([[feedback-intersecting-systems]]).
+const SPOTLIGHT_PERIODS_BARS = [11, 13, 17, 19];
+
+// Per-track value, recomputed each bar by tickBar; getGhostLeadMutation reads it.
+const ghostLeadMut = new Map<string, number>();
+
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// Per-lead spotlight in [0,1]: a smooth raised-cosine swell whose period + phase
+// are derived from the trackId, so each lead peaks at a different time.
+function staggerSpotlight(trackId: string, barTime: number): number {
+  const h = hashStr(trackId);
+  const period = SPOTLIGHT_PERIODS_BARS[h % SPOTLIGHT_PERIODS_BARS.length];
+  const offset = ((h >>> 8) % 1024) / 1024;
+  const phase = (barTime / period + offset) % 1;
+  return 0.5 - 0.5 * Math.cos(2 * Math.PI * phase);
+}
+
+// Read by App.tsx into the engine's TickInputs each tick, per track. The engine
+// adds it to that lead's treePos (inside the useTree branch — leads only).
+export function getGhostLeadMutation(trackId: string): number {
+  return ghostLeadMut.get(trackId) ?? 0;
+}
+
 interface GhostRuntime {
   sceneStartStep: number;
   dwellTargetBars: number;
@@ -475,6 +523,10 @@ if (import.meta.hot) {
       densityRAF = null;
     }
   });
+  // ghost.tickBar / getGhostLeadMutation are captured by the scheduler step
+  // callback at mount, so HMR can't hot-swap them in the running loop. Force a
+  // reload on change so ghost edits take effect. No-op in production.
+  import.meta.hot.accept(() => window.location.reload());
 }
 
 export function resetGhost(): void {
@@ -486,6 +538,7 @@ export function resetGhost(): void {
   state.lerpBarsTotal = 0;
   state.lerpBarsElapsed = 0;
   state.midFillBarsLeft = 0;
+  ghostLeadMut.clear(); // drop ghost's lead-mutation contribution immediately on stop / re-enable
   // Sustain-mode direction memory: reset to +1 so the first move biases up
   // from the current bank (arbitrary but deterministic; flips on first swap).
   state.lastEntropySign = 1;
@@ -538,6 +591,24 @@ export function tickBar(globalStep: number): void {
   if (userDensityOverrideBars > 0) userDensityOverrideBars--;
   const store = useSequencerStore.getState();
   const { sceneGraph, banks, activeBank, pendingBank } = store;
+
+  // Per-lead staggered ghost mutation — recompute every bar (before the scene-
+  // change early-return so it always tracks). Each track gets its own arc ×
+  // spotlight envelope, so development rotates between leads. currentShapeIntensity
+  // is the [0,1] arc curve (0 for sustain). Held empty (→ 0) when disabled.
+  if (sceneGraph.enabled) {
+    const intensity = currentShapeIntensity(globalStep);
+    const barTime = globalStep / STEPS_PER_BAR;
+    const span = GHOST_LEAD_MUT_CEILING - GHOST_LEAD_MUT_BASE;
+    for (const t of store.tracks) {
+      ghostLeadMut.set(
+        t.id,
+        GHOST_LEAD_MUT_BASE + intensity * staggerSpotlight(t.id, barTime) * span,
+      );
+    }
+  } else {
+    ghostLeadMut.clear();
+  }
 
   // Scene change branch — always sync the active-bank watcher so manual bank
   // changes trigger a fresh dwell roll when ghost next acts. Doing this

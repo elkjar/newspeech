@@ -85,6 +85,7 @@ import {
 import { registerKit, type SampleKitEntry, type ExtendedSampleManifest } from './instruments/manifestRegistry';
 import { scanAndLoadUserSamples } from './instruments/userSamplesDir';
 import { tickPadDrift } from './audio/padState';
+import { consumeBranchLeaf } from './audio/treeState';
 import type { ChordDegree } from './audio/chords';
 import { getChordContext, setChordContext } from './audio/chordContext';
 import { getOverlay, setOverlay, attachChordToOverlay } from './audio/mutationOverlay';
@@ -96,6 +97,7 @@ import {
   initGhost,
   tickBar as ghostTickBar,
   beforeBarCommit as ghostBeforeBarCommit,
+  getGhostLeadMutation,
 } from './ghost/ghost';
 import { autoSeedBanks } from './ghost/generator';
 import { computeBankEntropy } from './ghost/entropy';
@@ -466,6 +468,7 @@ export function App() {
               chaos: state.chaos,
               tension: state.tension,
               freeze: state.freeze,
+              ghostLeadMutation: getGhostLeadMutation,
               sceneStartStep: state.sceneStartStep,
               globalStep,
               when,
@@ -476,6 +479,7 @@ export function App() {
             {
               readOverlay: getOverlay,
               consumePadDrift: tickPadDrift,
+              consumeBranchLeaf,
             },
           );
       const streamBatch: StreamEvent[] = [];

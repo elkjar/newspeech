@@ -30,6 +30,7 @@ import {
 } from '../audio/chords';
 import type { OverlayValue } from '../audio/mutationOverlay';
 import { effectiveTieToNext } from '../audio/mutationTie';
+import { deriveVariation } from '../audio/mutationTree';
 import {
   octaveDegrees,
   fifthDegrees,
@@ -41,24 +42,52 @@ import { computeThinMul, computeFillProb } from '../audio/macros';
 import { modulated, GLOBAL_TRACK_ID, type LFO } from '../audio/lfo';
 import { sourceIsMelodic, sourceMutation } from '../instruments/library';
 
+// Dev: runTick is called from the audio scheduler's step callback, which is
+// registered once at mount — so HMR can't hot-swap the engine in the running
+// loop (edits would silently not take effect until a reload). Force a full
+// reload on change so engine edits are always audible. No-op in production.
+if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());
+
+// Max sustained tie-chain length per voice profile. Leads cap at maxTie = 2
+// (one-step legato max) UNCONDITIONALLY — a melodic lead never holds a 4-step
+// sustain, whether the variation comes from the knob, an LFO, or Ghost. (The
+// old `mutation === 0 → uncapped` exemption let Ghost-driven leads — knob at 0,
+// Ghost adding to treePos — slip through and get "stuck" on authored long ties.)
+// Pads/bass leave maxTie undefined → unlimited, so their sustains are untouched.
+function tieCap(track: Track): number {
+  const max = sourceMutation(track.source).maxTie;
+  return max && max > 0 ? max : Infinity;
+}
+
+// Start index of the maximal unbroken tie-run ending at i (so origin → … → i
+// are all tied). With a cap, the run is segmented into notes of length `cap`
+// starting at `origin`, `origin+cap`, … — i is silenced unless it lands on a
+// segment boundary.
+function tieRunOrigin(track: Track, i: number): number {
+  let o = i;
+  while (o > 0 && effectiveTieToNext(track, o - 1)) o--;
+  return o;
+}
+
 export function isSilencedByTie(track: Track, i: number): boolean {
-  const len = track.length;
-  if (len <= 0 || i <= 0) return false;
-  let cur = i - 1;
-  while (cur >= 0) {
-    if (!effectiveTieToNext(track, cur)) return false;
-    if (track.steps[cur]?.on) return true;
-    cur--;
-  }
-  return false;
+  if (i <= 0) return false;
+  if (!effectiveTieToNext(track, i - 1)) return false; // not tied into i
+  const origin = tieRunOrigin(track, i);
+  // Degenerate: a tie run whose origin doesn't sound (e.g. mutation set a tie on
+  // an off step) — don't silence, so we never drop a note into nothing.
+  if (!track.steps[origin]?.on) return false;
+  const cap = tieCap(track);
+  // i is absorbed unless it's a segment boundary (a re-articulation point).
+  return (i - origin) % cap !== 0;
 }
 
 export function tieLength(track: Track, i: number): number {
   const len = track.length;
   if (len <= 0) return 1;
+  const cap = tieCap(track);
   let count = 1;
   let cur = i;
-  while (cur < len - 1) {
+  while (cur < len - 1 && count < cap) {
     if (!effectiveTieToNext(track, cur)) break;
     count++;
     cur++;
@@ -125,11 +154,19 @@ export interface MutationInputs {
   rowRatchet: number;
   chordContext: ChordContext;
   scale: Scale;
+  // Lead mutation tree (mutationTree.ts). When useTree is true the on-flip +
+  // pitch-jump rolls are replaced by these deterministic, caller-computed
+  // values; the stochastic path is skipped. Lead-role melodic tracks only.
+  useTree: boolean;
+  treeFlip: boolean;
+  treePitchJump: number;
+  treeClampMax: number;
 }
 
 // Non-freeze per-step roll: on-flip, velocity jitter, pitch jump (chord-tone
-// aware), gate jitter, tie + density thin/fill, row ratchet bump. All random
-// state lives here; the caller writes the result to the mutation overlay.
+// aware), gate jitter, tie + density thin/fill, row ratchet bump. Lead-role
+// tracks take their on-flip + pitch from the deterministic tree instead. All
+// random state lives here; the caller writes the result to the mutation overlay.
 export function resolveStepMutation(inputs: MutationInputs): StepResolution {
   const {
     track,
@@ -147,19 +184,32 @@ export function resolveStepMutation(inputs: MutationInputs): StepResolution {
     rowRatchet,
     chordContext,
     scale,
+    useTree,
+    treeFlip,
+    treePitchJump,
+    treeClampMax,
   } = inputs;
   let on = step.on;
-  if (mut > 0 && !track.lockTiming && !harmonicAnchor) {
-    let flipChance = mut * profile.flipChance;
-    if (!step.on && profile.stepWeights && profile.stepWeights.length > 0) {
-      flipChance *= profile.stepWeights[localStep % profile.stepWeights.length];
-    }
-    if (flipChance > 0 && Math.random() < flipChance) {
-      // Don't flip authored-ON hits OFF at bar downbeats — drum / motif
-      // downbeats stay reliable. Chord master + bass short-circuit above
-      // via harmonicAnchor.
-      if (!(isBarDownbeatTick && step.on)) {
+  if (!track.lockTiming && !harmonicAnchor) {
+    if (useTree) {
+      // Deterministic tree flip (lead). Still honor the bar-downbeat guard so
+      // authored downbeats stay reliable. Driven by the mutation control
+      // directly (treePos), independent of the chaos macro.
+      if (treeFlip && !(isBarDownbeatTick && step.on)) {
         on = !on;
+      }
+    } else if (mut > 0) {
+      let flipChance = mut * profile.flipChance;
+      if (!step.on && profile.stepWeights && profile.stepWeights.length > 0) {
+        flipChance *= profile.stepWeights[localStep % profile.stepWeights.length];
+      }
+      if (flipChance > 0 && Math.random() < flipChance) {
+        // Don't flip authored-ON hits OFF at bar downbeats — drum / motif
+        // downbeats stay reliable. Chord master + bass short-circuit above
+        // via harmonicAnchor.
+        if (!(isBarDownbeatTick && step.on)) {
+          on = !on;
+        }
       }
     }
   }
@@ -176,7 +226,14 @@ export function resolveStepMutation(inputs: MutationInputs): StepResolution {
     Math.min(1, step.velocity + velJitter),
   );
   let pitch = step.pitch;
-  if (melodic && mut > 0 && Math.random() < mut * profile.pitchJumpProb) {
+  if (useTree) {
+    // Deterministic tree pitch (lead). The tree already chose the degree-delta
+    // using the same octave/fifth/small vocabulary; clamp identically here
+    // (treeClampMax mirrors the chord-tone-aware bound below).
+    if (treePitchJump !== 0) {
+      pitch = Math.max(-treeClampMax, Math.min(treeClampMax, pitch + treePitchJump));
+    }
+  } else if (melodic && mut > 0 && Math.random() < mut * profile.pitchJumpProb) {
     // chord-tone-mode followers measure octaves in chord-tone count rather
     // than scale degrees; see App.tsx history for the rationale.
     const isChordToneMode = !isChordMaster && track.pitchInterp === 'chord-tone';
@@ -503,6 +560,10 @@ export interface TickContext {
   // only invokes this when it has decided drift roll should happen, so the
   // counter advances on exactly the triggers it would have under 1a.
   consumePadDrift(trackId: string): number;
+  // Lead mutation-tree branch leaf (A/B bitmask). Read every active lead tick;
+  // advance=true at a track's loop boundary takes one Markov walk step. treePos
+  // gates how many forks the walk may flip (see mutationTree.markovStep).
+  consumeBranchLeaf(trackId: string, advance: boolean, treePos: number): number;
 }
 
 export interface TickInputs {
@@ -516,6 +577,10 @@ export interface TickInputs {
   chaos: number;
   tension: number;
   freeze: boolean;
+  // Ghost-driven per-lead melodic-development amount, ADDED to a lead track's
+  // tree depth (treePos). Per-track (staggered spotlight) — call with the track
+  // id. 0 when ghost is off. Only used inside the useTree branch. See ghost.ts.
+  ghostLeadMutation: (trackId: string) => number;
   sceneStartStep: number;
   // Per-tick scheduler params.
   globalStep: number;
@@ -605,8 +670,12 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     if (track.source.kind === 'empty') continue;
 
     const rowStepDuration = inputs.stepDuration * stride;
-    const mut =
-      modulated(track.mutation, inputs.lfos, track.id, 'mutation') * chaosMul;
+    // Pre-chaos modulated mutation control — this is the LFO-swept value the
+    // user "turns." The lead tree uses it directly as a depth coordinate (so
+    // "75%" means 75% of the knob regardless of chaos); the stochastic axes
+    // (velocity / gate / non-lead flip + pitch) keep the chaos-amplified `mut`.
+    const mutControl = modulated(track.mutation, inputs.lfos, track.id, 'mutation');
+    const mut = mutControl * chaosMul;
     const trackRowRatchet = modulated(
       track.rowRatchet,
       inputs.lfos,
@@ -616,6 +685,44 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     const melodic = sourceIsMelodic(track.source);
     const profile = sourceMutation(track.source);
     const stepVoicing = step.chordVoicing ?? track.defaultChordVoicing;
+
+    // Lead mutation tree — standard melodic instruments only (not chord
+    // master, not bass/root-follow anchors, not pads/textures/drums). Replaces
+    // the per-cycle stochastic on-flip + pitch-jump with a deterministic,
+    // recallable walk through related variations.
+    const useTree =
+      melodic &&
+      !isChordMaster &&
+      !harmonicAnchor &&
+      profile.treeMutation === true &&
+      !track.lockTiming &&
+      !inputs.freeze;
+    let treeFlip = false;
+    let treePitchJump = 0;
+    let treeClampMax = 14;
+    if (useTree) {
+      // Ghost adds an arc-shaped melodic-development amount on top of the
+      // user's mutation control (additive — never overwrites their knob/LFO).
+      const treePos = Math.min(1, Math.max(0, mutControl + inputs.ghostLeadMutation(track.id)));
+      if (treePos > 0) {
+        // Advance the branch walk once per loop whenever mutation is on. The
+        // walk (markovStep) stays or flips one open fork; treePos gates how many
+        // forks are open. consumeBranchLeaf returns the (maybe-advanced) leaf.
+        const shouldAdvance = localStep === 0;
+        const leaf = ctx.consumeBranchLeaf(track.id, shouldAdvance, treePos);
+        const variation = deriveVariation(track, treePos, leaf, {
+          scale: inputs.scale,
+          chordContext: localChordCtx,
+          isChordMaster,
+          profile,
+          tStableMul,
+          tColorMul,
+        });
+        treeFlip = variation.flip[localStep];
+        treePitchJump = variation.pitchJump[localStep];
+        treeClampMax = variation.clampMax;
+      }
+    }
 
     const resolution = inputs.freeze
       ? resolveFreezePlayback(
@@ -640,6 +747,10 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
           rowRatchet: trackRowRatchet,
           chordContext: localChordCtx,
           scale: inputs.scale,
+          useTree,
+          treeFlip,
+          treePitchJump,
+          treeClampMax,
         });
 
     if (!inputs.freeze) {

@@ -4,6 +4,7 @@ import { emitStreamEvent } from '../stream/streamEvents';
 import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 import { resetPadDrift } from '../audio/padState';
+import { resetBranchWalk } from '../audio/treeState';
 import {
   defaultLFOs,
   freezeLFOs,
@@ -2267,6 +2268,7 @@ function applyBankSlot(
   // pattern's drift cadence starts fresh rather than mid-cycle from the
   // previous pattern's trigger count.
   resetPadDrift();
+  resetBranchWalk();
   // Per-track filter graphs intentionally KEEP across bank swaps. trackIds
   // are stable (compose / variant preserve t.id), and fxModulation's RAF
   // loop slews cutoff/resonance/fxSend to the new bank's per-track values
@@ -2389,6 +2391,7 @@ function applyScene(
   clearOverlay();
   unfreezeLFOs();
   resetPadDrift();
+  resetBranchWalk();
   useSequencerStore.getState().pushGhostPickEvent({
     kind: 'scene',
     globalStep: atGlobalStep,
@@ -2490,6 +2493,7 @@ function applySong(
   clearOverlay();
   unfreezeLFOs();
   resetPadDrift();
+  resetBranchWalk();
   // Re-seed chord context against the new song's root + scale so root/
   // chord-tone followers latch onto the new key immediately rather than
   // carrying the prior song's harmony until the chord master plays its
