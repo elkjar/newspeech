@@ -355,7 +355,7 @@ export function Datafeed() {
           stream · live
         </div>
         <div className="mt-1 text-[9px] tracking-widest opacity-50 font-mono tabular-nums">
-          {fmtClock(Date.now())} · seq 0.3.2
+          {fmtClock(Date.now())} · seq 0.3.4
         </div>
       </div>
 
