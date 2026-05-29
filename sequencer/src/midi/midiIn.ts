@@ -9,9 +9,12 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
+// `port` is the source device's display name. Carried on every message
+// so per-feature routing (e.g. record-from-keyboard-only) can filter.
+// CC mapping ignores it; only the recording path inspects it today.
 export type MidiMessage =
-  | { ch: number; msg: 'cc'; num: number; value: number }
-  | { ch: number; msg: 'note'; num: number; value: number };
+  | { ch: number; msg: 'cc'; num: number; value: number; port: string }
+  | { ch: number; msg: 'note'; num: number; value: number; port: string };
 
 const TAURI = isTauri();
 
@@ -36,26 +39,27 @@ function notifyInputsChanged(): void {
   for (const cb of inputsChangedListeners) cb();
 }
 
-function parseMessage(data: Uint8Array | number[]): MidiMessage | null {
+function parseMessage(data: Uint8Array | number[], port: string): MidiMessage | null {
   if (data.length < 2) return null;
   const status = data[0];
   const ch = status & 0x0f;
   const type = status & 0xf0;
   if (type === 0xb0) {
     if (data.length < 3) return null;
-    return { ch, msg: 'cc', num: data[1], value: data[2] };
+    return { ch, msg: 'cc', num: data[1], value: data[2], port };
   }
   if (type === 0x90 && data.length >= 3 && data[2] > 0) {
-    return { ch, msg: 'note', num: data[1], value: data[2] };
+    return { ch, msg: 'note', num: data[1], value: data[2], port };
   }
   return null;
 }
 
 function wireInput(input: MIDIInput): void {
+  const port = input.name ?? '';
   input.onmidimessage = (e) => {
     const data = (e as MIDIMessageEvent).data;
     if (!data) return;
-    const msg = parseMessage(data);
+    const msg = parseMessage(data, port);
     if (msg && listener) listener(msg);
   };
 }
@@ -112,7 +116,7 @@ async function initTauri(): Promise<boolean> {
       'midi://message',
       (event) => {
         if (!listener) return;
-        const msg = parseMessage(event.payload.bytes);
+        const msg = parseMessage(event.payload.bytes, event.payload.port);
         if (msg) listener(msg);
       }
     );

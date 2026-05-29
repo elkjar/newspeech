@@ -93,6 +93,8 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
   const setTrackPage = useSequencerStore((s) => s.setTrackPage);
   const clearTrack = useSequencerStore((s) => s.clearTrack);
   const setTrackLockTiming = useSequencerStore((s) => s.setTrackLockTiming);
+  const setTrackInputArmed = useSequencerStore((s) => s.setTrackInputArmed);
+  const midiRecInputPort = useSequencerStore((s) => s.midiRecInputPort);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [newInstrumentDefaultRole, setNewInstrumentDefaultRole] =
@@ -150,7 +152,7 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
     !(track.section === 'drum' && track.source.kind === 'voice');
 
   return (
-    <div className="flex items-center justify-between" style={{ gap: STEP_SIZE }}>
+    <div className="flex items-center" style={{ gap: `${STEP_GAP}px` }}>
       <div className="flex items-center gap-3">
       <div className="flex items-center gap-2">
         <button
@@ -211,6 +213,29 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
             />
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => setTrackInputArmed(track.id, !track.inputArmed)}
+          style={{ width: STEP_SIZE, height: STEP_SIZE }}
+          className="flex items-center justify-center bg-transparent transition-colors group"
+          title={
+            !midiRecInputPort
+              ? 'pick a midi input port in the MIDI bar to record'
+              : track.inputArmed
+                ? 'armed for midi recording — click to disarm'
+                : 'click to arm for midi recording (overdub on the current step)'
+          }
+          aria-pressed={!!track.inputArmed}
+          aria-label="record arm"
+        >
+          <span
+            className={
+              track.inputArmed
+                ? 'w-3 h-3 rounded-full bg-white'
+                : 'w-3 h-3 rounded-full border border-white/30 group-hover:border-white/70 transition-colors'
+            }
+          />
+        </button>
         {(['gain', 'pan', 'filterCutoff', 'filterResonance', 'fxSend', 'mutation', 'rowRatchet'] as const).map((knob) => (
           <TrackKnob
             key={knob}

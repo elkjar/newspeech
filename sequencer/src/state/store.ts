@@ -177,6 +177,11 @@ export interface Track {
   // note triggers are unaffected. Pattern = "up" (chord intervals in
   // their natural order); range / pattern / gate selection deferred.
   arpConfig?: { on: boolean };
+  // Runtime-only: true when this track is armed for MIDI input recording.
+  // Only one track is armed at a time (setTrackInputArmed auto-disarms
+  // others). Stripped on bank snapshot (cloneTrack zeroes it) so banks
+  // never carry arm state — arming is purely a transient UI gesture.
+  inputArmed?: boolean;
   // Physical output assignment (Tauri app only — the web build's stereo
   // mix bus ignores this). 0-indexed firstChannel; stereo=true routes
   // L→firstChannel + R→firstChannel+1 with the track's pan applied;
@@ -668,6 +673,7 @@ export interface SequencerState {
   toggleStep: (trackId: string, index: number) => void;
   setStepPitch: (trackId: string, index: number, pitch: number) => void;
   setStepVelocity: (trackId: string, index: number, velocity: number) => void;
+  setStepOn: (trackId: string, index: number, on: boolean) => void;
   setStepProbability: (trackId: string, index: number, probability: number) => void;
   setStepRatchet: (trackId: string, index: number, ratchet: number) => void;
   setStepMicroTiming: (trackId: string, index: number, microTiming: number) => void;
@@ -692,6 +698,12 @@ export interface SequencerState {
   commitMutationOverlay: () => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
+  // MIDI recording — `inputArmed` is per-track but mutually exclusive
+  // (arming one disarms the rest). midiRecInputPort gates which device's
+  // note-on messages reach the recorder; null = recording off entirely.
+  setTrackInputArmed: (trackId: string, armed: boolean) => void;
+  midiRecInputPort: string | null;
+  setMidiRecInputPort: (port: string | null) => void;
   setTrackLength: (trackId: string, length: number) => void;
   setTrackPage: (trackId: string, page: number) => void;
   setTrackEuclidean: (trackId: string, partial: Partial<EuclideanParams>) => void;
@@ -880,6 +892,8 @@ export function cloneTrack(t: Track): Track {
       ...s,
       chordVoicing: s.chordVoicing ? { ...s.chordVoicing } : undefined,
     })),
+    // Runtime UI state — never round-tripped through bank snapshots.
+    inputArmed: false,
   };
 }
 
@@ -1020,6 +1034,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   playing: false,
   editMode: 'live',
   midiOutDeviceId: null,
+  midiRecInputPort: null,
   viewSection: 'drum',
   density: initialMacros.density,
   chaos: initialMacros.chaos,
@@ -1364,6 +1379,15 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         return { ...t, steps };
       }),
     })),
+  setStepOn: (trackId, index, on) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const steps = t.steps.slice();
+        steps[index] = { ...steps[index], on };
+        return { ...t, steps };
+      }),
+    })),
   setStepProbability: (trackId, index, probability) =>
     set((state) => ({
       tracks: state.tracks.map((t) => {
@@ -1513,6 +1537,16 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, solo } : t)),
     })),
+  setTrackInputArmed: (trackId, armed) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        // Single-arm: arming one auto-disarms all others. Disarm only
+        // touches the target track.
+        if (armed) return { ...t, inputArmed: t.id === trackId };
+        return t.id === trackId ? { ...t, inputArmed: false } : t;
+      }),
+    })),
+  setMidiRecInputPort: (port) => set({ midiRecInputPort: port }),
   setTrackLength: (trackId, length) => {
     const safe = Number.isFinite(length) ? Math.floor(length) : DEFAULT_LENGTH;
     const clamped = Math.max(1, Math.min(MAX_STEPS, safe));

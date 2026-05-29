@@ -14,6 +14,59 @@ use tauri::{AppHandle, Emitter, State};
 
 const CLIENT_NAME: &str = "Sequence";
 
+// macOS CoreMIDI hands back byte-identical display names when two of the same
+// device are connected (e.g. two Launchpad X units both report "Launchpad X
+// LPX MIDI Out"). midir's port_name() is our only stable handle — it doesn't
+// expose the CoreMIDI UID — so without disambiguation every find()-by-name
+// resolves to the FIRST matching endpoint and the second device is
+// unreachable. We append " #2", " #3", … to duplicates, in enumeration order,
+// so each physical endpoint gets a unique key. The numbering is deterministic
+// for a given port ordering, so list/subscribe/send all agree as long as they
+// dedup the same ordered Vec — which they do, since midir returns ports in a
+// consistent order within a process.
+fn dedup_names(names: Vec<String>) -> Vec<String> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    names
+        .into_iter()
+        .map(|n| {
+            let c = counts.entry(n.clone()).or_insert(0);
+            *c += 1;
+            if *c == 1 {
+                n
+            } else {
+                format!("{n} #{c}")
+            }
+        })
+        .collect()
+}
+
+// Resolve a (possibly deduped) input port name back to its midir port handle.
+// Rebuilds the same deduped name list over the current port ordering and
+// matches by exact name, so a "Foo #2" target lands on the second "Foo".
+fn resolve_input_port(m_in: &MidiInput, target: &str) -> Option<midir::MidiInputPort> {
+    let ports = m_in.ports();
+    let raw: Vec<String> = ports
+        .iter()
+        .map(|p| m_in.port_name(p).unwrap_or_default())
+        .collect();
+    dedup_names(raw)
+        .iter()
+        .position(|n| n == target)
+        .map(|i| ports[i].clone())
+}
+
+fn resolve_output_port(m_out: &MidiOutput, target: &str) -> Option<midir::MidiOutputPort> {
+    let ports = m_out.ports();
+    let raw: Vec<String> = ports
+        .iter()
+        .map(|p| m_out.port_name(p).unwrap_or_default())
+        .collect();
+    dedup_names(raw)
+        .iter()
+        .position(|n| n == target)
+        .map(|i| ports[i].clone())
+}
+
 #[derive(Default)]
 pub struct MidiRegistry {
     pub inputs: Mutex<HashMap<String, MidiInputConnection<()>>>,
@@ -36,17 +89,23 @@ pub struct MidiMessageEvent {
 pub fn midi_list_ports() -> Result<MidiPorts, String> {
     let m_in = MidiInput::new(CLIENT_NAME).map_err(|e| format!("MidiInput::new: {e}"))?;
     let in_ports = m_in.ports();
-    let inputs: Vec<String> = in_ports
-        .iter()
-        .filter_map(|p| m_in.port_name(p).ok())
-        .collect();
+    // unwrap_or_default (not filter_map) keeps the Vec index-aligned with
+    // ports() so resolve_input_port's dedup reproduces the same numbering.
+    let inputs = dedup_names(
+        in_ports
+            .iter()
+            .map(|p| m_in.port_name(p).unwrap_or_default())
+            .collect(),
+    );
 
     let m_out = MidiOutput::new(CLIENT_NAME).map_err(|e| format!("MidiOutput::new: {e}"))?;
     let out_ports = m_out.ports();
-    let outputs: Vec<String> = out_ports
-        .iter()
-        .filter_map(|p| m_out.port_name(p).ok())
-        .collect();
+    let outputs = dedup_names(
+        out_ports
+            .iter()
+            .map(|p| m_out.port_name(p).unwrap_or_default())
+            .collect(),
+    );
     Ok(MidiPorts { inputs, outputs })
 }
 
@@ -67,15 +126,12 @@ pub fn midi_subscribe_input(
     // Allow SysEx through (Launchpad X may respond to layout/state queries via
     // SysEx). Still drop timing + active-sense — those are noise for our use.
     m_in.ignore(Ignore::TimeAndActiveSense);
-    let ports = m_in.ports();
-    let port = ports
-        .iter()
-        .find(|p| m_in.port_name(p).map(|n| n == port_name).unwrap_or(false))
+    let port = resolve_input_port(&m_in, &port_name)
         .ok_or_else(|| format!("input port not found: {port_name}"))?;
     let cb_port = port_name.clone();
     let conn = m_in
         .connect(
-            port,
+            &port,
             "Sequence input",
             move |_ts, msg, _| {
                 let _ = app.emit(
@@ -128,13 +184,10 @@ pub fn midi_send(
     if !outputs.contains_key(&port_name) {
         let m_out =
             MidiOutput::new(CLIENT_NAME).map_err(|e| format!("MidiOutput::new: {e}"))?;
-        let ports = m_out.ports();
-        let port = ports
-            .iter()
-            .find(|p| m_out.port_name(p).map(|n| n == port_name).unwrap_or(false))
+        let port = resolve_output_port(&m_out, &port_name)
             .ok_or_else(|| format!("output port not found: {port_name}"))?;
         let conn = m_out
-            .connect(port, "Sequence output")
+            .connect(&port, "Sequence output")
             .map_err(|e| format!("connect: {e}"))?;
         outputs.insert(port_name.clone(), conn);
     }

@@ -44,6 +44,7 @@ interface PersistedState {
   tracks: Track[];
   lfos?: LFO[];
   midiOutDeviceId?: string | null;
+  midiRecInputPort?: string | null;
   viewSection?: TrackSection;
   density?: number;
   chaos?: number;
@@ -89,6 +90,7 @@ export function exportProject(): string {
     tracks: s.tracks,
     lfos: s.lfos,
     midiOutDeviceId: s.midiOutDeviceId,
+    midiRecInputPort: s.midiRecInputPort,
     viewSection: s.viewSection,
     density: s.density,
     chaos: s.chaos,
@@ -754,6 +756,10 @@ export function importProject(json: string): boolean {
     midiOutDeviceId:
       typeof data.midiOutDeviceId === 'string' || data.midiOutDeviceId === null
         ? data.midiOutDeviceId
+        : null,
+    midiRecInputPort:
+      typeof data.midiRecInputPort === 'string' || data.midiRecInputPort === null
+        ? data.midiRecInputPort
         : null,
     viewSection,
     density,

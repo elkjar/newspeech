@@ -67,11 +67,11 @@ import { initMIDIIn, getConnectedInputNames, onMIDIInputsChanged } from './midi/
 import { dispatchMidi } from './midi/midiMap';
 import { loadMidiMapLibrary } from './midi/midiMapLoader';
 import {
-  connectLaunchpad,
-  disconnectLaunchpad,
-  findLaunchpadPorts,
-  getConnectedPort,
-  isLaunchpadConnected,
+  disconnectAll as disconnectLaunchpads,
+  findAllLaunchpadPorts,
+  getConnectedCount,
+  getConnectedInputPorts,
+  syncLaunchpads,
 } from './midi/launchpad';
 import { attachLaunchpadBindings, detachLaunchpadBindings } from './midi/launchpadBindings';
 import { octaveDegrees } from './audio/scale';
@@ -264,29 +264,33 @@ export function App() {
     const tryConnectLaunchpad = async () => {
       const inputs = getConnectedInputNames();
       const outputs = getMIDIOutputs().map((o) => o.name);
-      // If we're connected to a port that's no longer enumerated, the device
-      // was unplugged. Tear down so the next call can re-detect and reconnect
-      // — without this, `isLaunchpadConnected()` stays true forever and
-      // replugging the same device silently does nothing.
-      const connectedPort = getConnectedPort();
-      if (connectedPort && !inputs.includes(connectedPort)) {
-        detachLaunchpadBindings();
-        await disconnectLaunchpad();
-      }
-      if (isLaunchpadConnected()) return;
-      const found = findLaunchpadPorts(inputs, outputs);
-      if (!found) return;
-      const ok = await connectLaunchpad(found.inputPort, found.outputPort);
-      if (ok) attachLaunchpadBindings();
+      // Reconcile the connected surfaces to exactly what's enumerated now.
+      // syncLaunchpads connects new pads, tears down unplugged ones, and keeps
+      // survivors in place — so this one call handles initial connect, the
+      // second pad arriving, and either being unplugged. No-op when the set is
+      // already correct.
+      const pairs = findAllLaunchpadPorts(inputs, outputs);
+      const before = getConnectedCount();
+      const connectedPorts = getConnectedInputPorts();
+      const sameSet =
+        connectedPorts.length === pairs.length &&
+        pairs.every((p, i) => connectedPorts[i] === p.inputPort);
+      if (sameSet) return;
+      const count = await syncLaunchpads(pairs);
+      // Bindings attach once any pad is present, detach when none remain.
+      // (The binding layer repaints on its own connection-change subscription
+      // when a pad is added/removed while already attached.)
+      if (count > 0 && before === 0) attachLaunchpadBindings();
+      else if (count === 0 && before > 0) detachLaunchpadBindings();
     };
     // Initial poke + watch for hot-plug on either side.
     void tryConnectLaunchpad();
     const offInputs = onMIDIInputsChanged(() => void tryConnectLaunchpad());
     const offOutputs = onMIDIOutputsChanged(() => void tryConnectLaunchpad());
     const onUnload = () => {
-      // Best-effort: return the device to Live Mode so it doesn't sit dark.
+      // Best-effort: return every device to Live Mode so it doesn't sit dark.
       detachLaunchpadBindings();
-      void disconnectLaunchpad();
+      void disconnectLaunchpads();
     };
     window.addEventListener('beforeunload', onUnload);
     return () => {

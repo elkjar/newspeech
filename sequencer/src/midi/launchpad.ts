@@ -27,11 +27,18 @@
 //   64..71  top row CCs left-to-right.            cc = 91 + (idx - 64)
 //   72..79  right column CCs top-to-bottom.       cc = 89 - (idx - 72)*10
 //
+// MULTI-DEVICE: we support N connected Launchpads (currently used as a pair —
+// see launchpadBindings.ts for the left/right "width" layout). Each physical
+// device is a `Surface` with its own port pair + diff buffer; the public API
+// takes a 0-based `device` index (enumeration order). Two Launchpad X units
+// report byte-identical CoreMIDI names, so the Rust layer de-dups port names
+// (" #2", "#3"…) — by the time we see them here they're unique strings.
+//
 // We bypass midiIn.ts's parsed listener and subscribe to the raw
 // `midi://message` Tauri event directly, filtering on port name. The
 // note-off + cc-release events would be dropped by midiIn's parser
 // (it filters velocity-0 note-ons), and we want the full bidirectional
-// stream so future hold gestures work.
+// stream so hold gestures work.
 
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -65,26 +72,40 @@ export interface LaunchpadEvent {
   velocity: number;
 }
 
-type EventListener = (e: LaunchpadEvent) => void;
+/** Listener receives the device index the event came from. */
+type EventListener = (device: number, e: LaunchpadEvent) => void;
 
-interface State {
+export interface LaunchpadPortPair {
   inputPort: string;
   outputPort: string;
-  unlisten: UnlistenFn | null;
+}
+
+interface Surface {
+  inputPort: string;
+  outputPort: string;
   /** Last-sent palette color per surface slot, 0-79. Drives diff sending. */
   lastColors: Uint8Array;
 }
 
-let state: State | null = null;
+// Physical surfaces in enumeration order; index = `device` id everywhere else.
+let surfaces: Surface[] = [];
+// Single shared listener on the raw MIDI stream; dispatches by port to the
+// owning surface. (One listener for all devices rather than one per device.)
+let messageUnlisten: UnlistenFn | null = null;
 const listeners = new Set<EventListener>();
 const connectionListeners = new Set<() => void>();
 
-export function isLaunchpadConnected(): boolean {
-  return state !== null;
+export function getConnectedCount(): number {
+  return surfaces.length;
 }
 
-export function getConnectedPort(): string | null {
-  return state ? state.inputPort : null;
+export function isLaunchpadConnected(): boolean {
+  return surfaces.length > 0;
+}
+
+/** Input port names of the connected devices, in device-index order. */
+export function getConnectedInputPorts(): string[] {
+  return surfaces.map((s) => s.inputPort);
 }
 
 export function onLaunchpadConnectionChange(cb: () => void): () => void {
@@ -101,29 +122,41 @@ function notifyConnectionChange(): void {
 // Match by port name substring. Launchpad X exposes TWO port pairs on
 // macOS: "LPX MIDI" (the standard programmer surface) and "LPX DAW" (a
 // proprietary handshake Ableton uses for its auto-mapping). We need the
-// MIDI pair — the DAW port doesn't relay pad presses to host the same
-// way. Prefer ports that contain " midi" over " daw"; fall back to any
-// "launchpad x" match if neither suffix is present.
+// MIDI pair — the DAW port doesn't relay pad presses to the host the same
+// way. Prefer ports that contain " midi" over " daw".
 const LAUNCHPAD_NAME_NEEDLE = 'launchpad x';
+const MIDI_TOKEN = /(?:^|[\s_-])midi(?:[\s_-]|#|$)/i;
+const DAW_TOKEN = /(?:^|[\s_-])daw(?:[\s_-]|#|$)/i;
 
-function pickLaunchpadPort(ports: string[]): string | undefined {
+/** All Launchpad MIDI-surface ports (not the DAW pair), in enumeration order. */
+function launchpadMidiPorts(ports: string[]): string[] {
   const matches = ports.filter((n) => n.toLowerCase().includes(LAUNCHPAD_NAME_NEEDLE));
-  if (matches.length === 0) return undefined;
-  const midi = matches.find((n) => /(?:^|[\s_-])midi(?:[\s_-]|$)/i.test(n));
-  if (midi) return midi;
-  // Avoid the DAW port if we have any other option.
-  const nonDaw = matches.find((n) => !/(?:^|[\s_-])daw(?:[\s_-]|$)/i.test(n));
-  return nonDaw ?? matches[0];
+  // Prefer the MIDI surface; if a device somehow exposes no explicitly-named
+  // MIDI port, fall back to any non-DAW port for it.
+  const midi = matches.filter((n) => MIDI_TOKEN.test(n));
+  if (midi.length > 0) return midi;
+  return matches.filter((n) => !DAW_TOKEN.test(n));
 }
 
-export function findLaunchpadPorts(
+/**
+ * Pair up every connected Launchpad's MIDI input + output ports. Inputs and
+ * outputs are matched by enumeration order: device A's in+out both come first,
+ * device B's both come second. (CoreMIDI lists endpoints per device in a
+ * consistent order; the de-dup suffixes assigned by the Rust layer line up
+ * because both lists are deduped the same way.) Returns one pair per device.
+ */
+export function findAllLaunchpadPorts(
   inputs: string[],
   outputs: string[]
-): { inputPort: string; outputPort: string } | null {
-  const inputPort = pickLaunchpadPort(inputs);
-  const outputPort = pickLaunchpadPort(outputs);
-  if (!inputPort || !outputPort) return null;
-  return { inputPort, outputPort };
+): LaunchpadPortPair[] {
+  const inPorts = launchpadMidiPorts(inputs);
+  const outPorts = launchpadMidiPorts(outputs);
+  const n = Math.min(inPorts.length, outPorts.length);
+  const pairs: LaunchpadPortPair[] = [];
+  for (let i = 0; i < n; i++) {
+    pairs.push({ inputPort: inPorts[i], outputPort: outPorts[i] });
+  }
+  return pairs;
 }
 
 // ---------- address ↔ MIDI conversion ----------
@@ -166,20 +199,21 @@ function slotForAddress(addr: LaunchpadAddress): number {
   return SIDE_COL_START + addr.index;
 }
 
-// ---------- color sending ----------
-
-function sendBytes(bytes: number[]): void {
-  if (!state) return;
-  // Fire-and-forget; midi_send retries internally if the port is stale.
-  invoke('midi_send', { portName: state.outputPort, bytes }).catch((err) => {
-    console.warn('[launchpad] send failed:', err);
-  });
-}
-
 function midiIndexFor(addr: LaunchpadAddress): number {
   if (addr.element === 'pad') return noteForPad(addr.index);
   if (addr.element === 'top') return ccForTop(addr.index);
   return ccForSide(addr.index);
+}
+
+// ---------- color sending ----------
+
+function sendBytes(device: number, bytes: number[]): void {
+  const surface = surfaces[device];
+  if (!surface) return;
+  // Fire-and-forget; midi_send retries internally if the port is stale.
+  invoke('midi_send', { portName: surface.outputPort, bytes }).catch((err) => {
+    console.warn('[launchpad] send failed:', err);
+  });
 }
 
 /**
@@ -187,26 +221,27 @@ function midiIndexFor(addr: LaunchpadAddress): number {
  * type-3 RGB SysEx with (level, level, level) so we get full 0-127 brightness
  * resolution instead of being limited to the palette's handful of whites.
  */
-export function setColor(addr: LaunchpadAddress, level: number): void {
-  if (!state) return;
+export function setColor(device: number, addr: LaunchpadAddress, level: number): void {
+  const surface = surfaces[device];
+  if (!surface) return;
   const slot = slotForAddress(addr);
   const v = Math.max(0, Math.min(127, level | 0));
-  if (state.lastColors[slot] === v) return;
-  state.lastColors[slot] = v;
+  if (surface.lastColors[slot] === v) return;
+  surface.lastColors[slot] = v;
   const idx = midiIndexFor(addr);
-  sendBytes([...SYSEX_HEADER, SYSEX_CMD_LED, 0x03, idx, v, v, v, ...SYSEX_FOOTER]);
+  sendBytes(device, [...SYSEX_HEADER, SYSEX_CMD_LED, 0x03, idx, v, v, v, ...SYSEX_FOOTER]);
 }
 
-export function setPadColor(index: number, level: number): void {
-  setColor({ element: 'pad', index }, level);
+export function setPadColor(device: number, index: number, level: number): void {
+  setColor(device, { element: 'pad', index }, level);
 }
 
-export function setTopColor(index: number, level: number): void {
-  setColor({ element: 'top', index }, level);
+export function setTopColor(device: number, index: number, level: number): void {
+  setColor(device, { element: 'top', index }, level);
 }
 
-export function setSideColor(index: number, level: number): void {
-  setColor({ element: 'side', index }, level);
+export function setSideColor(device: number, index: number, level: number): void {
+  setColor(device, { element: 'side', index }, level);
 }
 
 /**
@@ -217,20 +252,21 @@ export function setSideColor(index: number, level: number): void {
  * closest match for our monochrome surface. Invalidates the diff buffer so
  * the next static setColor re-sends.
  */
-export function setPulse(addr: LaunchpadAddress, paletteColor: number): void {
-  if (!state) return;
+export function setPulse(device: number, addr: LaunchpadAddress, paletteColor: number): void {
+  const surface = surfaces[device];
+  if (!surface) return;
   const slot = slotForAddress(addr);
   const idx = midiIndexFor(addr);
   const c = Math.max(0, Math.min(127, paletteColor | 0));
   const status = addr.element === 'pad' ? 0x92 : 0xb2;
-  sendBytes([status, idx, c]);
+  sendBytes(device, [status, idx, c]);
   // Sentinel above the static range; the next setColor diff-check will
   // always fail and re-send the desired static brightness.
-  state.lastColors[slot] = 0xff;
+  surface.lastColors[slot] = 0xff;
 }
 
-export function setTopPulse(index: number, paletteColor: number): void {
-  setPulse({ element: 'top', index }, paletteColor);
+export function setTopPulse(device: number, index: number, paletteColor: number): void {
+  setPulse(device, { element: 'top', index }, paletteColor);
 }
 
 /**
@@ -238,8 +274,9 @@ export function setTopPulse(index: number, paletteColor: number): void {
  * 0..127 for every slot 0..79; we emit each as a type-3 RGB triple of
  * (level, level, level) so the surface stays monochrome.
  */
-export function bulkRedraw(desired: Uint8Array): void {
-  if (!state) return;
+export function bulkRedraw(device: number, desired: Uint8Array): void {
+  const surface = surfaces[device];
+  if (!surface) return;
   if (desired.length !== SURFACE_SIZE) {
     console.warn('[launchpad] bulkRedraw expected', SURFACE_SIZE, 'levels, got', desired.length);
     return;
@@ -252,14 +289,14 @@ export function bulkRedraw(desired: Uint8Array): void {
     else if (slot < SIDE_COL_START) idx = ccForTop(slot - TOP_ROW_START);
     else idx = ccForSide(slot - SIDE_COL_START);
     specs.push(0x03, idx, v, v, v);
-    state.lastColors[slot] = v;
+    surface.lastColors[slot] = v;
   }
-  sendBytes([...SYSEX_HEADER, SYSEX_CMD_LED, ...specs, ...SYSEX_FOOTER]);
+  sendBytes(device, [...SYSEX_HEADER, SYSEX_CMD_LED, ...specs, ...SYSEX_FOOTER]);
 }
 
-export function clearAll(): void {
-  if (!state) return;
-  bulkRedraw(new Uint8Array(SURFACE_SIZE));
+export function clearAll(device: number): void {
+  if (!surfaces[device]) return;
+  bulkRedraw(device, new Uint8Array(SURFACE_SIZE));
 }
 
 // ---------- input parsing ----------
@@ -292,61 +329,110 @@ export function onLaunchpadEvent(cb: EventListener): () => void {
 
 // ---------- lifecycle ----------
 
-export async function connectLaunchpad(
-  inputPort: string,
-  outputPort: string
-): Promise<boolean> {
-  if (!TAURI) return false;
-  if (state && state.inputPort === inputPort && state.outputPort === outputPort) {
+async function ensureMessageListener(): Promise<boolean> {
+  if (messageUnlisten) return true;
+  try {
+    messageUnlisten = await listen<{ port: string; bytes: number[] }>(
+      'midi://message',
+      (event) => {
+        const device = surfaces.findIndex((s) => s.inputPort === event.payload.port);
+        if (device < 0) return;
+        const e = parseInput(event.payload.bytes);
+        if (!e) return;
+        for (const cb of listeners) cb(device, e);
+      }
+    );
     return true;
+  } catch (err) {
+    console.error('[launchpad] listen failed:', err);
+    return false;
   }
-  // Tear down any prior connection cleanly first.
-  await disconnectLaunchpad();
-  state = {
-    inputPort,
-    outputPort,
-    unlisten: null,
-    lastColors: new Uint8Array(SURFACE_SIZE),
-  };
+}
+
+async function connectOne(pair: LaunchpadPortPair): Promise<Surface | null> {
   // Subscribing midiIn.ts already opens the input port on the Rust side
   // for every connected input; we just need to filter messages for ours.
   // Belt-and-suspenders: explicit subscribe in case our connect lands
   // before the midiIn auto-subscribe poll runs.
   try {
-    await invoke('midi_subscribe_input', { portName: inputPort });
+    await invoke('midi_subscribe_input', { portName: pair.inputPort });
   } catch (err) {
     console.warn('[launchpad] subscribe input failed:', err);
   }
-  try {
-    state.unlisten = await listen<{ port: string; bytes: number[] }>(
-      'midi://message',
-      (event) => {
-        if (!state || event.payload.port !== state.inputPort) return;
-        const e = parseInput(event.payload.bytes);
-        if (!e) return;
-        for (const cb of listeners) cb(e);
-      }
-    );
-  } catch (err) {
-    console.error('[launchpad] listen failed:', err);
-    state = null;
-    return false;
-  }
-  // Enter Programmer Mode and wipe the surface.
-  sendBytes(PROGRAMMER_MODE_ON);
-  // The device needs a beat to swap modes before it accepts color updates;
-  // an immediate bulk redraw can land mid-swap and miss some LEDs. 30 ms is
-  // observed-safe.
-  await new Promise((r) => setTimeout(r, 30));
-  bulkRedraw(new Uint8Array(SURFACE_SIZE));
-  notifyConnectionChange();
-  return true;
+  const surface: Surface = {
+    inputPort: pair.inputPort,
+    outputPort: pair.outputPort,
+    lastColors: new Uint8Array(SURFACE_SIZE),
+  };
+  return surface;
 }
 
-export async function disconnectLaunchpad(): Promise<void> {
-  if (!state) return;
-  const prev = state;
-  state = null;
+function enterProgrammerMode(surface: Surface): void {
+  invoke('midi_send', { portName: surface.outputPort, bytes: PROGRAMMER_MODE_ON }).catch(
+    () => {}
+  );
+}
+
+/**
+ * Reconcile the connected surfaces to exactly `pairs` (device order = list
+ * order). Existing surfaces whose input port is no longer present are torn
+ * down; new pairs are connected; surviving ones are reused in place. Returns
+ * the resulting device count. Idempotent — safe to call on every hot-plug
+ * poll. Caller re-attaches bindings if the count changes.
+ */
+export async function syncLaunchpads(pairs: LaunchpadPortPair[]): Promise<number> {
+  if (!TAURI) return 0;
+  const desiredIn = new Set(pairs.map((p) => p.inputPort));
+  // Tear down surfaces no longer desired.
+  const removed = surfaces.filter((s) => !desiredIn.has(s.inputPort));
+  for (const s of removed) await teardownSurface(s);
+
+  // Build the new ordered list, reusing live surfaces, connecting the rest.
+  const byInput = new Map(surfaces.map((s) => [s.inputPort, s]));
+  const next: Surface[] = [];
+  const freshlyConnected: Surface[] = [];
+  for (const pair of pairs) {
+    const existing = byInput.get(pair.inputPort);
+    if (existing) {
+      // Output port could in principle have changed; keep it in sync.
+      existing.outputPort = pair.outputPort;
+      next.push(existing);
+      continue;
+    }
+    const surface = await connectOne(pair);
+    if (surface) {
+      next.push(surface);
+      freshlyConnected.push(surface);
+    }
+  }
+  surfaces = next;
+
+  if (surfaces.length > 0) {
+    const ok = await ensureMessageListener();
+    if (!ok) {
+      surfaces = [];
+      return 0;
+    }
+  }
+
+  // Enter Programmer Mode + wipe only the freshly-connected surfaces. The
+  // device needs a beat to swap modes before it accepts color updates; an
+  // immediate bulk redraw can land mid-swap and miss LEDs. 30 ms is
+  // observed-safe.
+  if (freshlyConnected.length > 0) {
+    for (const s of freshlyConnected) enterProgrammerMode(s);
+    await new Promise((r) => setTimeout(r, 30));
+    for (const s of freshlyConnected) {
+      const device = surfaces.indexOf(s);
+      if (device >= 0) bulkRedraw(device, new Uint8Array(SURFACE_SIZE));
+    }
+  }
+
+  notifyConnectionChange();
+  return surfaces.length;
+}
+
+async function teardownSurface(surface: Surface): Promise<void> {
   // Best-effort: clear LEDs + exit Programmer Mode. If the device is already
   // unplugged these will fail silently inside midi_send.
   try {
@@ -359,14 +445,24 @@ export async function disconnectLaunchpad(): Promise<void> {
       wipe.push(0x00, idx, 0);
     }
     await invoke('midi_send', {
-      portName: prev.outputPort,
+      portName: surface.outputPort,
       bytes: [...SYSEX_HEADER, SYSEX_CMD_LED, ...wipe, ...SYSEX_FOOTER],
     });
-    await invoke('midi_send', { portName: prev.outputPort, bytes: PROGRAMMER_MODE_OFF });
+    await invoke('midi_send', { portName: surface.outputPort, bytes: PROGRAMMER_MODE_OFF });
   } catch {
     // ignore
   }
-  if (prev.unlisten) prev.unlisten();
+}
+
+export async function disconnectAll(): Promise<void> {
+  if (surfaces.length === 0 && !messageUnlisten) return;
+  const prev = surfaces;
+  surfaces = [];
+  for (const s of prev) await teardownSurface(s);
+  if (messageUnlisten) {
+    messageUnlisten();
+    messageUnlisten = null;
+  }
   notifyConnectionChange();
 }
 
@@ -374,7 +470,7 @@ export async function disconnectLaunchpad(): Promise<void> {
 // subscriptions tied to the surface) outlive module reload and double up.
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    void disconnectLaunchpad();
+    void disconnectAll();
     listeners.clear();
     connectionListeners.clear();
   });

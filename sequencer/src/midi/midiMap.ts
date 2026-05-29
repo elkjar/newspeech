@@ -4,6 +4,7 @@
 import { useSequencerStore } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import type { MidiMessage } from './midiIn';
+import { tryRecordNote } from './recordInput';
 
 // Track knob targets carry a positional index (0..15) into `tracks[]`,
 // not a track id, so bindings survive across `.seq` files as long as
@@ -364,6 +365,11 @@ export function dispatchMidi(msg: MidiMessage): void {
   // skip normal dispatch so the twist binds without also moving the
   // bound parameter.
   if (learnHook && learnHook(msg)) return;
+  // Recording: note-on from the configured record port goes to the
+  // armed track's current step. Short-circuit so the same device's
+  // CC mappings still fire on knob twists, but a recorded note
+  // doesn't also trigger a binding on the same num.
+  if (tryRecordNote(msg)) return;
   const b = activeBindings.find(
     (x) => x.ch === msg.ch && x.msg === msg.msg && x.num === msg.num
   );

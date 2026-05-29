@@ -6,9 +6,9 @@ import { useMIDIInputs } from '../hooks/useMIDIInputs';
 import { midiOutStatus } from '../audio/midiOut';
 import { IconButton, DownloadIcon, ImportIcon } from './Transport';
 import {
-  isLaunchpadConnected,
+  getConnectedCount,
+  getConnectedInputPorts,
   onLaunchpadConnectionChange,
-  getConnectedPort,
 } from '../midi/launchpad';
 import { isTauri } from '@tauri-apps/api/core';
 
@@ -243,36 +243,42 @@ function MidiInSelector() {
 
 function MidiInDeviceSelector() {
   const inputs = useMIDIInputs();
+  const recPort = useSequencerStore((s) => s.midiRecInputPort);
+  const setRecPort = useSequencerStore((s) => s.setMidiRecInputPort);
   const empty = inputs.length === 0;
-  // Display-only — every connected input is auto-subscribed. The select is
-  // here so the user can see which controllers are talking; the chosen
-  // value doesn't gate anything yet (per-port routing is a v2 follow-up).
+  // CC mappings still auto-route from every connected input. This picker
+  // gates ONE thing only: which device's note-on messages feed the
+  // record-arm path (so a Launchpad pad press doesn't land in the
+  // armed track when both are connected).
+  // The selected port name is stored even if the device isn't currently
+  // connected — re-plugging restores recording without re-picking.
+  const showStale = recPort && !inputs.includes(recPort);
   return (
     <select
-      value=""
-      onChange={(e) => {
-        // No-op: changing the visible option is purely informational.
-        e.preventDefault();
-      }}
+      value={recPort ?? ''}
+      onChange={(e) => setRecPort(e.target.value || null)}
       className={`select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[180px] ${ROW_HEIGHT}`}
       title={
         empty
           ? 'no midi inputs detected'
-          : `${inputs.length} input${inputs.length === 1 ? '' : 's'} listening: ${inputs.join(', ')}`
+          : recPort
+            ? `recording from ${recPort}${showStale ? ' (disconnected)' : ''}`
+            : 'pick a device to record from (note-on writes to the armed track)'
       }
     >
       <option value="" className="bg-[#050505]">
-        {empty
-          ? 'no inputs'
-          : inputs.length === 1
-            ? inputs[0]
-            : `${inputs.length} inputs`}
+        {empty ? 'no inputs' : 'none'}
       </option>
       {inputs.map((name) => (
         <option key={name} value={name} className="bg-[#050505]">
           {name}
         </option>
       ))}
+      {showStale && (
+        <option value={recPort} className="bg-[#050505]">
+          {recPort} (disconnected)
+        </option>
+      )}
     </select>
   );
 }
@@ -343,27 +349,34 @@ function MidiInputCluster() {
 }
 
 function LaunchpadStatus() {
-  const [connected, setConnected] = useState(isLaunchpadConnected());
-  const [port, setPort] = useState(getConnectedPort());
+  const [count, setCount] = useState(getConnectedCount());
+  const [ports, setPorts] = useState<string[]>(getConnectedInputPorts());
   useEffect(() => {
     return onLaunchpadConnectionChange(() => {
-      setConnected(isLaunchpadConnected());
-      setPort(getConnectedPort());
+      setCount(getConnectedCount());
+      setPorts(getConnectedInputPorts());
     });
   }, []);
   if (!NATIVE) return null;
+  const connected = count > 0;
+  // Two dots = the left/right pair; each lights as its device connects. With
+  // one pad it acts as the left half (steps 1–8).
+  const title = connected
+    ? `launchpad ×${count} ready · ${ports.join(' · ')}`
+    : 'launchpad not detected';
   return (
     <div
       className={[
         'inline-flex items-center gap-2 px-2 text-[11px] uppercase tracking-widest border transition-colors',
         ROW_HEIGHT,
-        connected
-          ? 'border-white/40 text-white'
-          : 'border-white/10 text-white/30',
+        connected ? 'border-white/40 text-white' : 'border-white/10 text-white/30',
       ].join(' ')}
-      title={connected ? `launchpad ready · ${port}` : 'launchpad not detected'}
+      title={title}
     >
-      <span className={connected ? 'text-white' : 'text-white/30'}>●</span>
+      <span className="inline-flex gap-0.5">
+        <span className={count >= 1 ? 'text-white' : 'text-white/30'}>●</span>
+        <span className={count >= 2 ? 'text-white' : 'text-white/30'}>●</span>
+      </span>
       <span>launchpad</span>
     </div>
   );
