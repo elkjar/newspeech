@@ -74,6 +74,14 @@ import {
   syncLaunchpads,
 } from './midi/launchpad';
 import { attachLaunchpadBindings, detachLaunchpadBindings } from './midi/launchpadBindings';
+import {
+  connectXL3,
+  disconnectXL3,
+  findXL3Ports,
+  getXL3Port,
+  isXL3Connected,
+} from './midi/launchControlXL3';
+import { attachXL3Bindings, detachXL3Bindings } from './midi/launchControlXL3Bindings';
 import { octaveDegrees } from './audio/scale';
 import { sourceIsMelodic } from './instruments/library';
 import {
@@ -283,14 +291,40 @@ export function App() {
       if (count > 0 && before === 0) attachLaunchpadBindings();
       else if (count === 0 && before > 0) detachLaunchpadBindings();
     };
+    // Launch Control XL3 — native-only, same tiering as the Launchpad. Driven
+    // in DAW mode (the host can write encoder positions there → value-sync).
+    const tryConnectXL3 = async () => {
+      const inputs = getConnectedInputNames();
+      const outputs = getMIDIOutputs().map((o) => o.name);
+      const connectedPort = getXL3Port();
+      if (connectedPort && !inputs.includes(connectedPort)) {
+        detachXL3Bindings();
+        await disconnectXL3();
+      }
+      if (isXL3Connected()) return;
+      const found = findXL3Ports(inputs, outputs);
+      if (!found) return;
+      const ok = await connectXL3(found.inputPort, found.outputPort);
+      if (ok) attachXL3Bindings();
+    };
+
     // Initial poke + watch for hot-plug on either side.
     void tryConnectLaunchpad();
-    const offInputs = onMIDIInputsChanged(() => void tryConnectLaunchpad());
-    const offOutputs = onMIDIOutputsChanged(() => void tryConnectLaunchpad());
+    void tryConnectXL3();
+    const offInputs = onMIDIInputsChanged(() => {
+      void tryConnectLaunchpad();
+      void tryConnectXL3();
+    });
+    const offOutputs = onMIDIOutputsChanged(() => {
+      void tryConnectLaunchpad();
+      void tryConnectXL3();
+    });
     const onUnload = () => {
-      // Best-effort: return every device to Live Mode so it doesn't sit dark.
+      // Best-effort: return every device to its prior mode so it doesn't sit dark.
       detachLaunchpadBindings();
       void disconnectLaunchpads();
+      detachXL3Bindings();
+      void disconnectXL3();
     };
     window.addEventListener('beforeunload', onUnload);
     return () => {

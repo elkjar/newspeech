@@ -1,10 +1,147 @@
 // MIDI mapping target enum + dispatcher. Routes incoming MIDI messages
 // to store actions via a prefix-based dispatch.
 
-import { useSequencerStore } from '../state/store';
+import { useSequencerStore, type Track } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import type { MidiMessage } from './midiIn';
 import { tryRecordNote } from './recordInput';
+
+type StoreState = ReturnType<typeof useSequencerStore.getState>;
+
+// Resolve a `track:N:knob` or `track:view:N:knob` target to its track + knob.
+// View-relative targets pick the Nth track of the currently-viewed section
+// (drum vs melodic), resolved live so the control follows the on-screen page.
+function resolveTrackTarget(
+  s: StoreState,
+  target: string
+): { track: Track; knob: string } | null {
+  if (!target.startsWith('track:')) return null;
+  const rest = target.slice('track:'.length);
+  if (rest.startsWith('view:')) {
+    const r2 = rest.slice('view:'.length);
+    const sep = r2.indexOf(':');
+    if (sep < 0) return null;
+    const pos = Number(r2.slice(0, sep));
+    if (!Number.isFinite(pos)) return null;
+    const knob = r2.slice(sep + 1);
+    const track = s.tracks.filter((t) => t.section === s.viewSection)[pos];
+    return track ? { track, knob } : null;
+  }
+  const sep = rest.indexOf(':');
+  if (sep < 0) return null;
+  const idx = Number(rest.slice(0, sep));
+  if (!Number.isFinite(idx)) return null;
+  const knob = rest.slice(sep + 1);
+  const track = s.tracks[idx];
+  return track ? { track, knob } : null;
+}
+
+// Continuous per-track knobs (everything except the mute/solo button toggles).
+const TRACK_CONTINUOUS = new Set([
+  'mutation',
+  'rowRatchet',
+  'fxSend',
+  'pan',
+  'gain',
+  'filterCutoff',
+  'filterResonance',
+]);
+
+// Current value of a continuous track knob, normalized to 0..1 to match an
+// incoming CC value. gain stores 0..2 (unity at dial center) so halve it.
+function trackParam01(track: Track, knob: string): number {
+  switch (knob) {
+    case 'gain':
+      return Math.min(1, track.gain / 2);
+    case 'mutation':
+      return track.mutation;
+    case 'rowRatchet':
+      return track.rowRatchet;
+    case 'fxSend':
+      return track.fxSend;
+    case 'pan':
+      return track.pan;
+    case 'filterCutoff':
+      return track.filterCutoff;
+    case 'filterResonance':
+      return track.filterResonance;
+    default:
+      return 0;
+  }
+}
+
+// Soft-takeover (pickup) for view-relative continuous controls. The XL3
+// encoders/faders are absolute (Components exposes no relative mode), and a
+// view-relative target re-points to a different track when the rhythm/melody
+// page flips — so the control's physical position won't match the newly
+// addressed track's value. We hold the binding disengaged until the control
+// passes THROUGH the current value, then latch on and track from there, so a
+// page flip never yanks the parameter. Keyed by physical control; re-arms when
+// the resolved track changes. Scoped to `track:view:` so existing absolute
+// learn-mappings keep their direct-set behavior.
+const EPS = 0.5 / 127;
+const pickup = new Map<string, { trackId: string; engaged: boolean; lastIn: number }>();
+
+function pickupAllows(key: string, trackId: string, current01: number, incoming01: number): boolean {
+  let st = pickup.get(key);
+  if (!st || st.trackId !== trackId) {
+    // First sight / page flip → re-arm. Engage immediately if already at the
+    // value, else wait for a crossing move.
+    const engaged = Math.abs(incoming01 - current01) <= EPS;
+    pickup.set(key, { trackId, engaged, lastIn: incoming01 });
+    return engaged;
+  }
+  if (st.engaged) {
+    st.lastIn = incoming01;
+    return true;
+  }
+  const crossed =
+    Math.abs(incoming01 - current01) <= EPS ||
+    (st.lastIn < current01 && incoming01 >= current01) ||
+    (st.lastIn > current01 && incoming01 <= current01);
+  st.lastIn = incoming01;
+  if (crossed) st.engaged = true;
+  return crossed;
+}
+
+// Relative-emulation state. The XL3 encoders send absolute 0..127 only (no
+// true relative — confirmed; it's a known hardware limitation). We convert to
+// deltas in software: remember each control's last absolute value and apply
+// (now - last) to the target's current value. Result: turning nudges from
+// wherever the parameter currently is, so a page flip never jumps. Caveat —
+// absolute endless encoders clamp at 0/127, so one parked at an extreme can't
+// nudge further that way until turned back; REL_SENS is high enough that from
+// a mid position a fraction of a turn covers the full range, keeping clamps
+// out of the way in normal use.
+const REL_SENS = 1 / 40;
+const relLast = new Map<string, number>();
+
+// Current 0..1 value of any relative-able target (macros, master fx knobs,
+// per-track continuous knobs). Returns null for targets we can't read.
+function currentValue01(s: StoreState, target: string): number | null {
+  if (target.startsWith('macro:')) {
+    switch (target.slice('macro:'.length)) {
+      case 'density':
+        return s.density;
+      case 'chaos':
+        return s.chaos;
+      case 'motion':
+        return s.motion;
+      case 'drift':
+        return s.drift;
+      case 'tension':
+        return s.tension;
+      default:
+        return null;
+    }
+  }
+  if (target === 'fx:master.input') return s.master.input;
+  if (target === 'fx:master.drive') return s.master.drive;
+  if (target === 'fx:master.mix') return s.master.mix;
+  const tt = resolveTrackTarget(s, target);
+  if (tt && TRACK_CONTINUOUS.has(tt.knob)) return trackParam01(tt.track, tt.knob);
+  return null;
+}
 
 // Track knob targets carry a positional index (0..15) into `tracks[]`,
 // not a track id, so bindings survive across `.seq` files as long as
@@ -16,7 +153,14 @@ export type TrackKnobTargetName =
   | 'pan'
   | 'gain'
   | 'filterCutoff'
-  | 'filterResonance';
+  | 'filterResonance'
+  // mute/solo are booleans driven by a latching toggle button: the control
+  // sends 127 (latched) / 0 (unlatched) and we direct-set the flag from the
+  // value, so the controller's own latch state is the source of truth. (If a
+  // button is ever configured momentary instead, this would need to become a
+  // toggle-on-press — see dispatch.)
+  | 'mute'
+  | 'solo';
 export type FxKnobTargetName =
   | 'tape.position'
   | 'tape.length'
@@ -50,6 +194,11 @@ export type MidiTarget =
   | `macro:${'density' | 'chaos' | 'motion' | 'drift' | 'tension'}`
   | `bank:queue:${number}`
   | `track:${number}:${TrackKnobTargetName}`
+  // View-relative: addresses the Nth track (0-based) of the CURRENTLY VIEWED
+  // section (drum vs melodic), resolved live at dispatch. So a control row
+  // follows the on-screen rhythm/melody toggle instead of pinning to a fixed
+  // index — used by the Launch Control XL3 mixer preset.
+  | `track:view:${number}:${TrackKnobTargetName}`
   | `fx:${FxKnobTargetName}`
   | 'transport:play'
   | 'transport:freeze'
@@ -61,6 +210,13 @@ export interface MidiBinding {
   msg: 'cc' | 'note';
   num: number;
   target: MidiTarget;
+  // Relative-emulation: some controllers (e.g. Launch Control XL3 encoders)
+  // can only send ABSOLUTE 0..127, never true relative. When `relative` is
+  // set, the dispatcher treats consecutive absolute values as deltas and
+  // applies them to the target's CURRENT value — so the control never jumps
+  // when its target changes (e.g. a view-relative row following the rhythm/
+  // melody page). See the relative block in dispatchMidi.
+  relative?: boolean;
 }
 
 export const FX_KNOB_TARGETS: FxKnobTargetName[] = [
@@ -101,6 +257,8 @@ export const TRACK_KNOB_TARGETS: TrackKnobTargetName[] = [
   'gain',
   'filterCutoff',
   'filterResonance',
+  'mute',
+  'solo',
 ];
 
 // learnHook is set by the mapping store at boot. Bridges the
@@ -155,14 +313,9 @@ function dispatchTarget(target: string, value01: number): void {
   }
 
   if (target.startsWith('track:')) {
-    const rest = target.slice('track:'.length);
-    const sep = rest.indexOf(':');
-    if (sep < 0) return;
-    const idx = Number(rest.slice(0, sep));
-    const knob = rest.slice(sep + 1);
-    if (!Number.isFinite(idx)) return;
-    const track = s.tracks[idx];
-    if (!track) return;
+    const resolved = resolveTrackTarget(s, target);
+    if (!resolved) return;
+    const { track, knob } = resolved;
     switch (knob) {
       case 'mutation':
         s.setTrackMutation(track.id, value01);
@@ -185,6 +338,13 @@ function dispatchTarget(target: string, value01: number): void {
         return;
       case 'filterResonance':
         s.setTrackFilterResonance(track.id, value01);
+        return;
+      case 'mute':
+        // Direct-set from the latching toggle button's value (127/0).
+        s.setTrackMute(track.id, value01 >= 0.5);
+        return;
+      case 'solo':
+        s.setTrackSolo(track.id, value01 >= 0.5);
         return;
       default:
         return;
@@ -323,6 +483,16 @@ export function isValidTarget(t: string): boolean {
   }
   if (t.startsWith('track:')) {
     const rest = t.slice('track:'.length);
+    if (rest.startsWith('view:')) {
+      const r2 = rest.slice('view:'.length);
+      const sep = r2.indexOf(':');
+      if (sep < 0) return false;
+      const pos = Number(r2.slice(0, sep));
+      const knob = r2.slice(sep + 1);
+      return (
+        Number.isFinite(pos) && pos >= 0 && (TRACK_KNOB_TARGETS as string[]).includes(knob)
+      );
+    }
     const sep = rest.indexOf(':');
     if (sep < 0) return false;
     const idx = Number(rest.slice(0, sep));
@@ -375,6 +545,36 @@ export function dispatchMidi(msg: MidiMessage): void {
   );
   if (!b) return;
   const value01 = msg.msg === 'cc' ? msg.value / 127 : 1;
+
+  // Relative-emulation: apply the absolute control's change as a delta to the
+  // target's current value (see relLast / currentValue01). Must run before the
+  // pickup/momentary paths and before the absolute dispatch.
+  if (msg.msg === 'cc' && b.relative) {
+    const key = `${b.ch}:cc:${b.num}`;
+    const last = relLast.get(key);
+    relLast.set(key, msg.value);
+    if (last === undefined) return; // need a baseline before the first delta
+    const delta = msg.value - last;
+    if (delta === 0) return;
+    const s = useSequencerStore.getState();
+    const cur = currentValue01(s, b.target);
+    if (cur === null) return;
+    const next = Math.max(0, Math.min(1, cur + delta * REL_SENS));
+    dispatchTarget(b.target, next);
+    return;
+  }
+
+  // Soft-takeover for view-relative continuous controls (see pickupAllows):
+  // hold disengaged until the control crosses the addressed track's current
+  // value, so flipping rhythm/melody pages never jumps the parameter.
+  if (msg.msg === 'cc' && b.target.startsWith('track:view:')) {
+    const s = useSequencerStore.getState();
+    const tt = resolveTrackTarget(s, b.target);
+    if (tt && TRACK_CONTINUOUS.has(tt.knob)) {
+      const key = `${b.ch}:cc:${b.num}`;
+      if (!pickupAllows(key, tt.track.id, trackParam01(tt.track, tt.knob), value01)) return;
+    }
+  }
 
   // Rising-edge gate for momentary targets bound to CC buttons. Notes
   // skip this because Note Off / velocity-0 is filtered upstream in

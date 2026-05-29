@@ -11,10 +11,15 @@ import {
   onLaunchpadConnectionChange,
 } from '../midi/launchpad';
 import { isTauri } from '@tauri-apps/api/core';
+import {
+  launchControlXL3Bindings,
+  LAUNCH_CONTROL_XL3_PRESET_NAME,
+} from '../midi/controllerPresets';
 
 const NATIVE = isTauri();
 
 const CREATE_NEW_ID = '__new__';
+const CREATE_XL3_ID = '__xl3__';
 
 function downloadFile(filename: string, content: string): void {
   const blob = new Blob([content], { type: 'application/json' });
@@ -221,6 +226,12 @@ function MidiInSelector() {
           createUserMap(`Untitled ${entries.length + 1}`);
           return;
         }
+        if (v === CREATE_XL3_ID) {
+          // One-shot: build the whole XL3 surface as a fresh user map and
+          // make it active. Columns default to the melodic/lead tracks (8..15).
+          createUserMap(LAUNCH_CONTROL_XL3_PRESET_NAME, launchControlXL3Bindings());
+          return;
+        }
         setActiveMap(v || null);
       }}
       className={`select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[150px] ${ROW_HEIGHT}`}
@@ -236,6 +247,9 @@ function MidiInSelector() {
       ))}
       <option value={CREATE_NEW_ID} className="bg-[#050505]">
         + new mapping
+      </option>
+      <option value={CREATE_XL3_ID} className="bg-[#050505]">
+        + Launch Control XL3
       </option>
     </select>
   );

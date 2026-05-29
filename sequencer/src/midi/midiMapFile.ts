@@ -37,12 +37,16 @@ function validateBinding(x: unknown): MidiBinding | null {
   // Allow unknown targets to round-trip through save/load — dispatcher
   // silently ignores at runtime. This protects forward compatibility
   // when a `.midimap` is loaded on an older build.
-  return {
+  const binding: MidiBinding = {
     ch: Math.floor(ch),
     msg,
     num: Math.floor(num),
     target: migrated as MidiTarget,
   };
+  // Preserve the relative-emulation flag (controllers that only send absolute
+  // CC, treated as deltas at dispatch — e.g. Launch Control XL3 encoders).
+  if (x.relative === true) binding.relative = true;
+  return binding;
 }
 
 export function parseMidiMapFile(
