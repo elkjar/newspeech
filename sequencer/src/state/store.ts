@@ -9,6 +9,8 @@ import {
   defaultLFOs,
   freezeLFOs,
   unfreezeLFOs,
+  markManualOverride,
+  GLOBAL_TRACK_ID,
   type LFO,
   type LFODestination,
 } from '../audio/lfo';
@@ -897,6 +899,42 @@ export function cloneTrack(t: Track): Track {
   };
 }
 
+// On a fresh load (.seq / .seqcomp / .seqset) we reset every scene to its
+// first bank (bank 1) and the live state lands on scene 1 / bank 1 — a loaded
+// piece always starts from the top, not wherever it happened to be saved. This
+// resets a single scene's snapshot: active bank → 0 and its live tracks →
+// bank 0's content (so navigating to it later lands on bank 1, coherently).
+export function resetSceneToFirstBank(scene: Scene | null): Scene | null {
+  if (!scene) return scene;
+  const bank0 = scene.banks[0];
+  if (!bank0) return scene; // empty first slot — leave the scene untouched
+  return { ...scene, activeBank: 0, tracks: bank0.tracks.map(cloneTrack) };
+}
+
+// Reset a whole song to its top: every scene → bank 1, and the song's own live
+// state (the scene it loads with) → scene 1 / bank 1. Used on .seqset load so
+// EVERY song in the set starts from the top, not just the active one — when
+// you later switch to song N it lands on its scene 1 / bank 1.
+export function resetSongToFirstSceneBank(song: Song | null): Song | null {
+  if (!song) return song;
+  const scenes = song.scenes.map(resetSceneToFirstBank);
+  const scene0 = scenes[0];
+  if (scene0) {
+    return {
+      ...song,
+      scenes,
+      activeScene: 0,
+      activeBank: 0,
+      tracks: scene0.tracks.map(cloneTrack), // scene 1 / bank 1 content
+      banks: scene0.banks,
+    };
+  }
+  // No scenes — at least reset the song's own active bank to bank 1.
+  const bank0 = song.banks[0];
+  if (bank0) return { ...song, scenes, activeBank: 0, tracks: bank0.tracks.map(cloneTrack) };
+  return { ...song, scenes };
+}
+
 // Pad-slot indices 14 and 15 are the last two on the 1×16 pad row. Newly
 // snapped banks at those slots default to 'transition' kind so the user's
 // "transition pattern" convention requires no extra UI gesture.
@@ -1119,14 +1157,28 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setDensity: (v) => {
     // Notify ghost that the user touched density so its per-frame smoother
     // backs off for ~2 bars (lets the user hold the knob at a value without
-    // ghost immediately yanking it back).
+    // ghost immediately yanking it back). markManualOverride does the same for
+    // any LFO routed to density — the hand wins.
     noteDensityUserInput();
+    markManualOverride(GLOBAL_TRACK_ID, 'density');
     set({ density: clamp01(v) });
   },
-  setChaos: (v) => set({ chaos: clamp01(v) }),
-  setMotion: (v) => set({ motion: clamp01(v) }),
-  setDrift: (v) => set({ drift: clamp01(v) }),
-  setTension: (v) => set({ tension: clamp01(v) }),
+  setChaos: (v) => {
+    markManualOverride(GLOBAL_TRACK_ID, 'chaos');
+    set({ chaos: clamp01(v) });
+  },
+  setMotion: (v) => {
+    markManualOverride(GLOBAL_TRACK_ID, 'motion');
+    set({ motion: clamp01(v) });
+  },
+  setDrift: (v) => {
+    markManualOverride(GLOBAL_TRACK_ID, 'drift');
+    set({ drift: clamp01(v) });
+  },
+  setTension: (v) => {
+    markManualOverride(GLOBAL_TRACK_ID, 'tension');
+    set({ tension: clamp01(v) });
+  },
   setFreeze: (v) => {
     if (v) freezeLFOs(useSequencerStore.getState().lfos);
     else unfreezeLFOs();
@@ -1461,28 +1513,34 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   },
   setTrackMutation: (trackId, mutation) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(mutation) ? mutation : 0));
+    markManualOverride(trackId, 'mutation');
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, mutation: clamped } : t)),
     }));
   },
   setTrackGain: (trackId, gain) => {
     const clamped = Math.max(0, Math.min(2, Number.isFinite(gain) ? gain : 1));
+    markManualOverride(trackId, 'gain');
     set((state) => propagateTrackUpdate(state, trackId, { gain: clamped }));
   },
   setTrackFxSend: (trackId, fxSend) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(fxSend) ? fxSend : 0));
+    markManualOverride(trackId, 'fxSend');
     set((state) => propagateTrackUpdate(state, trackId, { fxSend: clamped }));
   },
   setTrackPan: (trackId, pan) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(pan) ? pan : 0.5));
+    markManualOverride(trackId, 'pan');
     set((state) => propagateTrackUpdate(state, trackId, { pan: clamped }));
   },
   setTrackFilterCutoff: (trackId, cutoff) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(cutoff) ? cutoff : 1));
+    markManualOverride(trackId, 'filterCutoff');
     set((state) => propagateTrackUpdate(state, trackId, { filterCutoff: clamped }));
   },
   setTrackFilterResonance: (trackId, resonance) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(resonance) ? resonance : 0));
+    markManualOverride(trackId, 'filterResonance');
     set((state) => propagateTrackUpdate(state, trackId, { filterResonance: clamped }));
   },
   setTrackRate: (trackId, rate) =>
@@ -1495,6 +1553,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     })),
   setTrackRowRatchet: (trackId, rowRatchet) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(rowRatchet) ? rowRatchet : 0));
+    markManualOverride(trackId, 'rowRatchet');
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, rowRatchet: clamped } : t)),
     }));
@@ -2098,14 +2157,29 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     });
     return idx;
   },
-  replacePerformance: (next) =>
+  replacePerformance: (next) => {
+    // Install the new performance slots.
     set({
-      performance: {
-        ...next,
-        pendingSong: null,
-        tailOutBarsRemaining: 0,
-      },
-    }),
+      performance: { ...next, pendingSong: null, tailOutBarsRemaining: 0 },
+    });
+    // Load the active song (or the first populated slot) into the live working
+    // state — without this, loading a .seqset never populated its first song.
+    // Saves serialize everything at scene 1 / bank 1 (see persist.ts), so a
+    // freshly-saved set lands at the top with no load-time reset needed.
+    let i = next.activeSong;
+    if (i === null || i < 0 || i >= next.songs.length || !next.songs[i]) {
+      i = next.songs.findIndex((s) => s !== null);
+    }
+    const song = i >= 0 ? next.songs[i] : null;
+    if (song) {
+      applySong(set, i, song, useSequencerStore.getState().globalStep);
+      // Fresh trackIds from the file → rebuild per-track filter graphs, same
+      // as importProject does on a .seq load (persist.ts).
+      void import('../audio/trackFilter')
+        .then((m) => m.resetTrackFilters())
+        .catch(() => {});
+    }
+  },
   // Insert-and-shift reorder for scenes — mirrors moveBank's semantics
   // exactly. Scenes between `from` and `to` slide one position to fill
   // the gap. activeScene + pendingScene follow the shift so the
@@ -2247,9 +2321,10 @@ function applyBankSlot(
   slot: BankSlot,
   atGlobalStep: number
 ): void {
-  // Atomic swap: tracks + macros + activeBank + pendingBank + freeze + the
-  // scene phase reference all land in one set() so the scheduler's onStep
-  // callback can never read mid-swap. sceneStartStep = scheduler's current
+  // Atomic swap: tracks + activeBank + pendingBank + freeze + the scene phase
+  // reference all land in one set() so the scheduler's onStep callback can
+  // never read mid-swap. (Macros are NOT swapped — they're global, see below.)
+  // sceneStartStep = scheduler's current
   // globalStep (passed in by caller, NOT read from store — the store's
   // globalStep is the AUDIBLE step which lags the scheduled step by the
   // lookahead). Each scene's tracks then start at their own step 0 from
@@ -2257,12 +2332,14 @@ function applyBankSlot(
   // which otherwise picks up mid-cycle at swap moments.
   //
   // Global-knob preservation: per-track mix knobs (gain / fxSend / pan /
-  // filterCutoff / filterResonance / octave) and hardware routing
-  // (output) carry forward from the current active tracks onto the swap
-  // target. The bank's stored values for those fields are ignored —
-  // these are band-global identity, not per-pattern state. Pattern
-  // fields (steps / length / mutation / rowRatchet / rate / lockTiming
-  // / euclidean) come from the bank as before.
+  // filterCutoff / filterResonance / octave), hardware routing (output),
+  // AND mutation carry forward from the current active tracks onto the swap
+  // target. The bank's stored values for those fields are ignored — these are
+  // band-global identity / live expression, not per-pattern state. mutation
+  // joined this set 2026-05-29: it's a global live control (rideable via the
+  // XL3 + the reworked mutation engine), not authored per pattern. Remaining
+  // pattern fields (steps / length / rowRatchet / rate / lockTiming /
+  // euclidean) come from the bank as before.
   const currentTracks = useSequencerStore.getState().tracks;
   const globalsById = new Map<string, Partial<Track>>();
   for (const t of currentTracks) {
@@ -2274,6 +2351,7 @@ function applyBankSlot(
       filterResonance: t.filterResonance,
       octave: t.octave,
       output: t.output,
+      mutation: t.mutation,
     });
   }
   const mergedTracks = slot.tracks.map((bankTrack) => {
@@ -2283,11 +2361,14 @@ function applyBankSlot(
   });
   set({
     tracks: mergedTracks,
-    density: slot.macros.density,
-    chaos: slot.macros.chaos,
-    motion: slot.macros.motion,
-    drift: slot.macros.drift,
-    tension: slot.macros.tension,
+    // Macros (density/chaos/motion/drift/tension) are GLOBAL live controls —
+    // NOT restored from the bank on swap (2026-05-29). Patterns are authored
+    // at their intended density; the macros are the runtime expression layer
+    // the user (XL3) and Ghost ride, so they persist across bank swaps. The
+    // bank still stores a macros snapshot for save-compat, but it's vestigial:
+    // never read back here, and bank entropy is step-based (entropy.ts), not
+    // macro-based. (Scenes/songs DO still load their macros — a scene/song is
+    // a deliberate composed section/piece, not a pattern swap.)
     activeBank: i,
     pendingBank: null,
     freeze: false,
@@ -2404,11 +2485,11 @@ function applyScene(
     ),
     activeBank: scene.activeBank,
     pendingBank: null,
-    density: scene.macros.density,
-    chaos: scene.macros.chaos,
-    motion: scene.macros.motion,
-    drift: scene.macros.drift,
-    tension: scene.macros.tension,
+    // Macros are GLOBAL — NOT restored on scene swap (2026-05-29), same as
+    // bank swap (applyBankSlot). The live macro layer (density/chaos/motion/
+    // drift/tension) persists across scenes; the scene's stored macros are
+    // vestigial save-compat data. Loading a project restores macros from the
+    // top-level persisted value (exportProject/importProject), not per-scene.
     // Ghost enabled is a session-level toggle, not per-scene state — preserve
     // the user's current on/off choice across scene loads regardless of what
     // was captured in the scene's snapshot.

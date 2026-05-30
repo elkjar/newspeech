@@ -14,6 +14,8 @@ import {
   type Performance,
   type SequencerState,
   banksWithLiveActiveBank,
+  resetSceneToFirstBank,
+  resetSongToFirstSceneBank,
 } from './store';
 import {
   ensureBothSections,
@@ -82,12 +84,22 @@ const CURRENT_VERSION = 3;
 
 export function exportProject(): string {
   const s = useSequencerStore.getState();
+  // Save at the top: the active bank/scene position is NOT persisted — a
+  // loaded piece always starts at scene 1 / bank 1 (2026-05-29). Every scene
+  // is reset to bank 1, and the top-level live state is serialized as scene 1 /
+  // bank 1's content so it loads coherently with no load-time reset.
+  const comp = compositionWithLiveActiveScene(s);
+  const resetScenes = comp.scenes.map(resetSceneToFirstBank);
+  const scene0 = resetScenes[0];
+  const liveBanks = banksWithLiveActiveBank(s);
+  const topTracks = scene0 ? scene0.tracks : liveBanks[0]?.tracks ?? s.tracks;
+  const topBanks = scene0 ? scene0.banks : liveBanks;
   const data: PersistedState = {
     version: CURRENT_VERSION,
     bpm: s.bpm,
     rootNote: s.rootNote,
     scale: s.scale,
-    tracks: s.tracks,
+    tracks: topTracks,
     lfos: s.lfos,
     midiOutDeviceId: s.midiOutDeviceId,
     midiRecInputPort: s.midiRecInputPort,
@@ -102,12 +114,10 @@ export function exportProject(): string {
     reverb: s.reverb,
     saturation: s.saturation,
     master: s.master,
-    // Fold the live pattern into the active bank slot so the top-level
-    // banks round-trip the on-screen pattern, not the stale snapshot.
-    banks: banksWithLiveActiveBank(s),
-    activeBank: s.activeBank,
+    banks: topBanks,
+    activeBank: 0,
     sceneGraph: s.sceneGraph,
-    composition: compositionWithLiveActiveScene(s),
+    composition: { ...comp, scenes: resetScenes, activeScene: scene0 ? 0 : comp.activeScene },
   };
   return JSON.stringify(data, null, 2);
 }
@@ -362,20 +372,22 @@ interface PersistedScene {
 
 export function exportSceneAsSeqscene(): string {
   const s = useSequencerStore.getState();
+  // Serialize at bank 1 — the active-bank position isn't persisted.
+  const scene = resetSceneToFirstBank({
+    tracks: s.tracks,
+    banks: banksWithLiveActiveBank(s),
+    activeBank: s.activeBank,
+    macros: { density: s.density, chaos: s.chaos, motion: s.motion, drift: s.drift, tension: s.tension },
+    sceneGraph: s.sceneGraph,
+  })!;
   const data: PersistedScene = {
     version: CURRENT_VERSION,
     kind: 'scene',
-    tracks: s.tracks,
-    banks: s.banks,
-    activeBank: s.activeBank,
-    macros: {
-      density: s.density,
-      chaos: s.chaos,
-      motion: s.motion,
-      drift: s.drift,
-      tension: s.tension,
-    },
-    sceneGraph: s.sceneGraph,
+    tracks: scene.tracks,
+    banks: scene.banks,
+    activeBank: scene.activeBank,
+    macros: scene.macros,
+    sceneGraph: scene.sceneGraph,
   };
   return JSON.stringify(data, null, 2);
 }
@@ -532,7 +544,9 @@ export function exportPerformance(): string {
   const data: PersistedPerformance = {
     version: CURRENT_VERSION,
     name: s.performance.name,
-    songs: songsWithLiveActiveSong(s),
+    // Don't persist any song's active scene/bank — every song is serialized at
+    // scene 1 / bank 1 so switching to any song on load starts it at the top.
+    songs: songsWithLiveActiveSong(s).map(resetSongToFirstSceneBank),
     activeSong: s.performance.activeSong,
     tailOutBars: s.performance.tailOutBars,
   };
