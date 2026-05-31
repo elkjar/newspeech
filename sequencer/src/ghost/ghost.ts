@@ -41,14 +41,25 @@ const SONG_FADE_SECS = 6;
 // cycle through the scheduler module.
 const STEPS_PER_BAR = 32;
 
+// Resting density — the value ghost holds between gestures and settles back to.
+// 0.5 is the bipolar neutral in macros.ts ("pattern as authored"; below thins,
+// above fills), so fills depart UP from 0.5 into fill territory and always
+// return to 0.5. There is no longer a per-pattern density baseline (macros went
+// global on 2026-05-29; bank swaps no longer restore density), so this flat
+// value is the resting point for everything. Capturing store.density as the
+// baseline (the old behavior) ratcheted upward forever, because each
+// pre-transition build inflated store.density just before the swap captured it —
+// density crept up and never came back down.
+const RESTING_DENSITY = 0.5;
+
 // Mid-scene fill — short density gesture fired probabilistically during
-// the scene. Each spike is 1 bar at +MID_FILL_BOOST above the bank's
-// saved density, then resolves back to the saved value. The arc envelope
-// is expressed via FREQUENCY of these gestures, not a sustained shift.
+// the scene. Each spike is 1 bar at +MID_FILL_BOOST above RESTING_DENSITY,
+// then resolves back to the resting value. The arc envelope is expressed via
+// FREQUENCY of these gestures, not a sustained shift.
 //
 // 2026-05-24 — heavy tone-down per user listening notes ("ghost is too
 // heavy-handed with density"). Spike magnitude + base rate both cut so
-// density mostly sits at bank-saved value with small occasional gestures;
+// density mostly sits at the resting value with small occasional gestures;
 // the other macros (chaos, motion, drift, tension) carry the variation.
 //
 // Probability per bar = BASE + shape_intensity * SHAPE_BONUS. BASE > 0
@@ -142,14 +153,13 @@ interface GhostRuntime {
   lerpTarget: BankMacros | null;
   lerpBarsTotal: number;
   lerpBarsElapsed: number;
-  // Density gesture state — independent of the color-macro lerp.
-  //   bankSavedDensity — baseline captured at scene entry; the resting value
-  //                      between fills (ghost never drifts it up or down)
+  // Density gesture state — independent of the color-macro lerp. The resting
+  // value is the module-level RESTING_DENSITY (0.5 = bipolar neutral), not a captured per-bank
+  // baseline, so only the live target + in-flight fill state live here.
   //   densityTarget — the actual destination the RAF smoother chases
   //   midFillBarsLeft — >0 while a mid-scene fill is in progress; the
   //                     per-bar tick decrements; pre-transition fill
   //                     cancels any active mid-fill on entry
-  bankSavedDensity: number;
   densityTarget: number;
   midFillBarsLeft: number;
   // Sustain-mode zig-zag state: sign of the last entropy delta, so the next
@@ -166,8 +176,7 @@ const state: GhostRuntime = {
   lerpTarget: null,
   lerpBarsTotal: 0,
   lerpBarsElapsed: 0,
-  bankSavedDensity: 0.5,
-  densityTarget: 0.5,
+  densityTarget: RESTING_DENSITY,
   midFillBarsLeft: 0,
   lastEntropySign: 1,
 };
@@ -430,15 +439,15 @@ function applyMidFill(): void {
     MID_FILL_BARS <= 1 ? 1 : elapsed / (MID_FILL_BARS - 1);
   state.densityTarget = Math.max(
     0,
-    Math.min(1, state.bankSavedDensity + MID_FILL_BOOST * progress)
+    Math.min(1, RESTING_DENSITY + MID_FILL_BOOST * progress)
   );
 }
 
 // Fill build — applies in the last FILL_BARS of a scene's dwell. Linear ramp:
 // 0% boost at fill-zone entry (barsRemaining = FILL_BARS) up to 100% at the
 // transition bar (barsRemaining = 0). Replaces normal density drift during
-// fill bars so the build's crank isn't fighting drift's pull toward
-// bankSavedDensity. Chaos is not smoothed — fill is short (2 bars) and
+// fill bars so the build's crank isn't fighting the pull back toward
+// RESTING_DENSITY. Chaos is not smoothed — fill is short (2 bars) and
 // chaos is visually less tied to the knob feel; if it becomes objectionable
 // we'll route it through the same smoother pattern.
 function applyFillBuild(barsRemaining: number): void {
@@ -446,7 +455,7 @@ function applyFillBuild(barsRemaining: number): void {
   const store = useSequencerStore.getState();
   state.densityTarget = Math.max(
     0,
-    Math.min(1, state.bankSavedDensity + FILL_DENSITY_BOOST * progress)
+    Math.min(1, RESTING_DENSITY + FILL_DENSITY_BOOST * progress)
   );
   const fillChaos = Math.min(1, store.chaos + FILL_CHAOS_BOOST * progress);
   store.setMacros({ chaos: fillChaos });
@@ -481,8 +490,8 @@ function tickDensity(globalStep: number, inFillZone: boolean): void {
     return;
   }
 
-  // No fill in flight — settle back to the bank's saved density.
-  state.densityTarget = state.bankSavedDensity;
+  // No fill in flight — settle back to the resting density (0.5, bipolar neutral).
+  state.densityTarget = RESTING_DENSITY;
 }
 
 // Per-frame density smoother. Runs only while ghost is enabled + playing.
@@ -542,8 +551,8 @@ export function resetGhost(): void {
   // Sustain-mode direction memory: reset to +1 so the first move biases up
   // from the current bank (arbitrary but deterministic; flips on first swap).
   state.lastEntropySign = 1;
-  // bankSavedDensity + densityTarget re-initialize from the live store value
-  // the next time the scene-change branch fires; no need to seed them here.
+  // densityTarget re-initializes to RESTING_DENSITY below; the per-frame
+  // smoother then glides store.density to the 0.5 neutral once playing.
   // Wipe the display fields too so stale "X bars remaining" doesn't linger
   // after a stop or a fresh enable. Restart the composition phase reference
   // from the current globalStep so toggling ghost mid-session starts a fresh
@@ -555,10 +564,10 @@ export function resetGhost(): void {
   // across stop / enable / disable transitions. FIFO ring buffer in the
   // store caps growth; treat it as a session-long history vs. transient
   // per-take state.
-  // Density target snaps to the live value so a fresh enable doesn't
-  // immediately jerk density toward a stale target. Fills set it again
+  // Density target rests at the 0.5 neutral on enable; the per-frame smoother
+  // glides store.density to it (no jerk) once playing. Fills set it again
   // on the next bar boundary.
-  state.densityTarget = store.density;
+  state.densityTarget = RESTING_DENSITY;
 }
 
 // Called from App.tsx's scheduler callback IMMEDIATELY BEFORE commitPendingBank().
@@ -673,12 +682,14 @@ export function tickBar(globalStep: number): void {
       store.setDwellOnLastBankChange(activeBank, state.dwellTargetBars);
     }
 
-    // Capture this bank's saved density as the resting value. applyBankSlot
-    // already wrote it to the store, so reading store.density gives us the
-    // authoritative value. Between fills, ghost holds density exactly here —
-    // no drift baseline rides underneath.
-    state.bankSavedDensity = store.density;
-    state.densityTarget = state.bankSavedDensity;
+    // Settle density back to the resting value (0) on every swap and cancel any
+    // in-flight fill. Density is NOT re-captured from store.density here: macros
+    // went global on 2026-05-29 (applyBankSlot no longer restores density per
+    // bank), so store.density at swap time is the live value — already inflated
+    // by this scene's pre-transition build. Capturing it ratcheted the baseline
+    // up forever ("density stuck up ~40%, never comes down"). There is no
+    // per-pattern baseline anymore; the resting value is a flat 0.5 for all banks.
+    state.densityTarget = RESTING_DENSITY;
     state.midFillBarsLeft = 0;
 
     // Color-macro lerp setup. Only if beforeBarCommit captured a source on
