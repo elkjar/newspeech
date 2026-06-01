@@ -162,6 +162,13 @@ interface GhostRuntime {
   //                     cancels any active mid-fill on entry
   densityTarget: number;
   midFillBarsLeft: number;
+  // The user's chaos value captured at pre-transition fill-zone entry, before
+  // the build boosts it. The boost rides on THIS (not the live store value, which
+  // would compound), and the swap's lerp settles chaos back down to it — so the
+  // build is a self-reverting gesture instead of a permanent climb. null = no
+  // fill build active. (Banks no longer carry macros since 2026-05-29, so the
+  // lerp has no per-bank chaos to settle toward; this is that target.)
+  chaosBeforeFill: number | null;
   // Sustain-mode zig-zag state: sign of the last entropy delta, so the next
   // pick prefers the opposite direction. Updated whenever a bank swap lands.
   // +1 = last move went up (so next prefers down); -1 = last move went down.
@@ -178,6 +185,7 @@ const state: GhostRuntime = {
   lerpBarsElapsed: 0,
   densityTarget: RESTING_DENSITY,
   midFillBarsLeft: 0,
+  chaosBeforeFill: null,
   lastEntropySign: 1,
 };
 
@@ -457,7 +465,12 @@ function applyFillBuild(barsRemaining: number): void {
     0,
     Math.min(1, RESTING_DENSITY + FILL_DENSITY_BOOST * progress)
   );
-  const fillChaos = Math.min(1, store.chaos + FILL_CHAOS_BOOST * progress);
+  // Capture the user's chaos once at fill-zone entry, then boost FROM that
+  // baseline — reading store.chaos each bar would compound the boost (the prior
+  // bar already wrote a boosted value back). The swap restores chaos to this
+  // baseline (see tickBar), so the build is a temporary climb, not a ratchet.
+  if (state.chaosBeforeFill === null) state.chaosBeforeFill = store.chaos;
+  const fillChaos = Math.min(1, state.chaosBeforeFill + FILL_CHAOS_BOOST * progress);
   store.setMacros({ chaos: fillChaos });
 }
 
@@ -547,6 +560,7 @@ export function resetGhost(): void {
   state.lerpBarsTotal = 0;
   state.lerpBarsElapsed = 0;
   state.midFillBarsLeft = 0;
+  state.chaosBeforeFill = null; // drop any in-flight pre-transition build baseline
   ghostLeadMut.clear(); // drop ghost's lead-mutation contribution immediately on stop / re-enable
   // Sustain-mode direction memory: reset to +1 so the first move biases up
   // from the current bank (arbitrary but deterministic; flips on first swap).
@@ -682,21 +696,32 @@ export function tickBar(globalStep: number): void {
       store.setDwellOnLastBankChange(activeBank, state.dwellTargetBars);
     }
 
-    // Settle density back to the resting value (0) on every swap and cancel any
-    // in-flight fill. Density is NOT re-captured from store.density here: macros
-    // went global on 2026-05-29 (applyBankSlot no longer restores density per
-    // bank), so store.density at swap time is the live value — already inflated
-    // by this scene's pre-transition build. Capturing it ratcheted the baseline
-    // up forever ("density stuck up ~40%, never comes down"). There is no
-    // per-pattern baseline anymore; the resting value is a flat 0.5 for all banks.
+    // Settle density back to the resting value (0.5 neutral) on every swap and
+    // cancel any in-flight fill. Density is NOT re-captured from store.density
+    // here: macros went global on 2026-05-29 (applyBankSlot no longer restores
+    // density per bank), so store.density at swap time is the live value —
+    // already inflated by this scene's pre-transition build. Capturing it
+    // ratcheted the baseline up forever ("density stuck up ~40%, never comes
+    // down"). There is no per-pattern baseline anymore; the resting value is a
+    // flat 0.5 for all banks.
     state.densityTarget = RESTING_DENSITY;
     state.midFillBarsLeft = 0;
+
+    // Chaos has the same hazard: the pre-transition build boosted store.chaos,
+    // and with macros global the lerp's target (snapshotMacros below) is that
+    // same boosted value — so chaos would never settle and would stack swap over
+    // swap. Settle it back to the pre-build baseline instead: hand that to the
+    // lerp as its chaos target when a transition lerp runs (so it ramps the build
+    // back down), else restore it directly.
+    const chaosRest = state.chaosBeforeFill;
+    state.chaosBeforeFill = null;
 
     // Color-macro lerp setup. Only if beforeBarCommit captured a source on
     // this bar — that already gated on enabled + transitionBars > 0, so we
     // trust the presence of lerpSource as the green light.
     if (state.lerpSource) {
       state.lerpTarget = snapshotMacros(store);
+      if (chaosRest !== null) state.lerpTarget.chaos = chaosRest;
       state.lerpBarsTotal = sceneGraph.transitionBars;
       state.lerpBarsElapsed = 0;
       // Apply step 0 immediately — overwrites the bank swap's macro write
@@ -705,6 +730,9 @@ export function tickBar(globalStep: number): void {
       // one-tick flash at the target.
       applyLerpStep();
     } else {
+      // No transition lerp — restore the pre-build chaos immediately so the
+      // build gesture doesn't persist into the next scene.
+      if (chaosRest !== null) store.setMacros({ chaos: chaosRest });
       state.lerpTarget = null;
       state.lerpBarsTotal = 0;
       state.lerpBarsElapsed = 0;
