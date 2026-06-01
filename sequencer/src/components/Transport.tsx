@@ -330,6 +330,31 @@ export function CountInButton() {
   );
 }
 
+// MetronomeButton — toggles the universal metronome: the same click voice as
+// the count-in, sounding on every beat for as long as transport runs. Labeled
+// circle modifier, same family as CountInButton. Native click is SECTION_NONE
+// so it plays live but stays out of recordings.
+export function MetronomeButton() {
+  const metronome = useSequencerStore((s) => s.metronome);
+  const toggleMetronome = useSequencerStore((s) => s.toggleMetronome);
+  return (
+    <button
+      onClick={toggleMetronome}
+      title={
+        metronome
+          ? 'metronome on — click on every beat (not recorded)'
+          : 'metronome off'
+      }
+      className={[
+        'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
+        metronome ? 'text-white' : 'text-white/40 hover:text-white',
+      ].join(' ')}
+    >
+      {metronome ? '●' : '○'} metro
+    </button>
+  );
+}
+
 // RecordButton — three visual states driven by (armed, playing):
 //   idle  (!armed)            — dim border, hollow circle, "rec"
 //   armed (armed, !playing)   — bright border, hollow circle, ready

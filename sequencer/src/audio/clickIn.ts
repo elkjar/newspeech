@@ -46,3 +46,10 @@ export function scheduleClickIn(startTime: number, bpm: number): number {
   }
   return startTime + beatsPerBar * beatDur;
 }
+
+// Single metronome click for the web path (same synth voice as the count-in).
+// The scheduler calls this on each beat while the metronome is on; `accent`
+// marks the bar downbeat. Native path uses `triggerSample` instead (see App).
+export function scheduleWebClick(when: number, accent: boolean): void {
+  scheduleOneClick(when, accent);
+}

@@ -369,6 +369,32 @@ function MixRoutingSection({
           ))}
         </select>
       </div>
+      <div className="flex flex-col gap-1 mt-2">
+        <span className="text-[10px] uppercase tracking-widest text-white/55">metronome output</span>
+        <select
+          value={`${mix.metronomeOutput.stereo ? 's' : 'm'}${mix.metronomeOutput.firstChannel}`}
+          onChange={(e) => {
+            const v = e.target.value;
+            const stereo = v.startsWith('s');
+            const firstChannel = parseInt(v.slice(1), 10);
+            if (!Number.isFinite(firstChannel)) return;
+            setNativeMix({ metronomeOutput: { firstChannel, stereo } });
+          }}
+          disabled={!isOpen || !mix.multiOut}
+          className="w-full bg-transparent border border-white/15 text-white/90 text-[12px] px-2 py-1 disabled:text-white/30"
+          title={
+            !mix.multiOut
+              ? 'multi-out is OFF — the metronome folds to 1-2 regardless of this setting.'
+              : 'where the metronome click lands when multi-out is ON — pick a dedicated cue channel to keep it out of the main mix.'
+          }
+        >
+          {outputOptions(nativeChannels, mix.metronomeOutput).map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }

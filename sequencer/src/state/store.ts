@@ -219,12 +219,17 @@ export interface NativeMix {
   multiOut: boolean;
   fxOutput: TrackOutput;
   fxBypass: boolean;
+  // Where the metronome click lands when multiOut is ON (folds to 1-2 when
+  // OFF, like every other voice). Defaults to mono — a click cue is typically
+  // a single dedicated channel (e.g. a performer's monitor send), not a pair.
+  metronomeOutput: TrackOutput;
 }
 
 export const DEFAULT_NATIVE_MIX: NativeMix = {
   multiOut: false,
   fxOutput: { firstChannel: 0, stereo: true },
   fxBypass: false,
+  metronomeOutput: { firstChannel: 0, stereo: false },
 };
 
 const LS_NATIVE_MIX = 'newspeech.sequencer.nativeMix';
@@ -235,17 +240,24 @@ function readPersistedNativeMix(): NativeMix {
     const raw = localStorage.getItem(LS_NATIVE_MIX);
     if (!raw) return { ...DEFAULT_NATIVE_MIX };
     const v = JSON.parse(raw) as Partial<NativeMix>;
-    const out = v.fxOutput && typeof v.fxOutput === 'object' ? v.fxOutput : DEFAULT_NATIVE_MIX.fxOutput;
+    const sanitizeOut = (
+      o: Partial<TrackOutput> | undefined,
+      fallback: TrackOutput,
+    ): TrackOutput => {
+      const src = o && typeof o === 'object' ? o : fallback;
+      return {
+        firstChannel:
+          typeof src.firstChannel === 'number' && src.firstChannel >= 0
+            ? Math.floor(src.firstChannel)
+            : fallback.firstChannel,
+        stereo: typeof src.stereo === 'boolean' ? src.stereo : fallback.stereo,
+      };
+    };
     return {
       multiOut: typeof v.multiOut === 'boolean' ? v.multiOut : DEFAULT_NATIVE_MIX.multiOut,
-      fxOutput: {
-        firstChannel:
-          typeof out.firstChannel === 'number' && out.firstChannel >= 0
-            ? Math.floor(out.firstChannel)
-            : DEFAULT_NATIVE_MIX.fxOutput.firstChannel,
-        stereo: typeof out.stereo === 'boolean' ? out.stereo : DEFAULT_NATIVE_MIX.fxOutput.stereo,
-      },
+      fxOutput: sanitizeOut(v.fxOutput, DEFAULT_NATIVE_MIX.fxOutput),
       fxBypass: typeof v.fxBypass === 'boolean' ? v.fxBypass : DEFAULT_NATIVE_MIX.fxBypass,
+      metronomeOutput: sanitizeOut(v.metronomeOutput, DEFAULT_NATIVE_MIX.metronomeOutput),
     };
   } catch {
     return { ...DEFAULT_NATIVE_MIX };
@@ -607,6 +619,13 @@ export interface SequencerState {
   clickIn: boolean;
   setClickIn: (v: boolean) => void;
   toggleClickIn: () => void;
+  // Universal metronome toggle. When true, the scheduler plays the same click
+  // voice as the count-in on every beat (accented on the bar downbeat) for as
+  // long as transport runs. Native path uses SECTION_NONE so it stays OUT of
+  // recordings (unlike the count-in). Session-only; not persisted to .seq.
+  metronome: boolean;
+  setMetronome: (v: boolean) => void;
+  toggleMetronome: () => void;
   // Recorder tap-point toggle. When false: recorder taps master output
   // (what the user hears, all FX baked in). When true: recorder taps
   // voicesBus pre-everything — raw sample audio with no master / tape /
@@ -1089,6 +1108,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   clickIn: false,
   setClickIn: (v) => set({ clickIn: v }),
   toggleClickIn: () => set((s) => ({ clickIn: !s.clickIn })),
+  metronome: false,
+  setMetronome: (v) => set({ metronome: v }),
+  toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
   recordRaw: false,
   setRecordRaw: (v) => set({ recordRaw: v }),
   toggleRecordRaw: () => set((s) => ({ recordRaw: !s.recordRaw })),
@@ -1134,10 +1156,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setNativeMix: (patch) =>
     set((state) => {
       const merged: NativeMix = { ...state.nativeMix, ...patch };
-      // Merge fxOutput deeply since partial patches may carry just one
-      // of its fields. The bool/scalar fields are flat-merged above.
+      // Merge nested outputs deeply since partial patches may carry just one
+      // of their fields. The bool/scalar fields are flat-merged above.
       if (patch.fxOutput) {
         merged.fxOutput = { ...state.nativeMix.fxOutput, ...patch.fxOutput };
+      }
+      if (patch.metronomeOutput) {
+        merged.metronomeOutput = { ...state.nativeMix.metronomeOutput, ...patch.metronomeOutput };
       }
       writePersistedNativeMix(merged);
       return { nativeMix: merged };

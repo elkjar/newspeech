@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PlayButton, RecordButton, CountInButton, RawRecordButton, SplitsButton, TransportControls, InitButton, SaveSongButton } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, MetronomeButton, RawRecordButton, SplitsButton, TransportControls, InitButton, SaveSongButton } from './components/Transport';
 import { PerformanceButton } from './components/PerformanceDialog';
 import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -101,6 +101,7 @@ import { runTick } from './engine/tick';
 import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
 import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMotion';
 import { togglePlayback } from './audio/transport';
+import { scheduleWebClick } from './audio/clickIn';
 import {
   initGhost,
   tickBar as ghostTickBar,
@@ -470,6 +471,30 @@ export function App() {
         }
       }
       const state = useSequencerStore.getState();
+      // Universal metronome — same click voice as the count-in, on every beat
+      // for as long as transport runs (independent of pattern content, so it
+      // ticks through tail-out and empty banks too). 32 steps/bar → 8 per beat;
+      // accent the bar downbeat. Native fires SECTION_NONE so the click plays
+      // out the main output but stays OUT of recording stems (the count-in,
+      // SECTION_CLICK, is intentionally captured — the metronome is not).
+      if (state.metronome && globalStep % 8 === 0) {
+        const accent = globalStep % 32 === 0;
+        if (isNativeAudioAvailable()) {
+          const delaySecs = Math.max(0, when - getAudioContext().currentTime);
+          const out = state.nativeMix.metronomeOutput;
+          void triggerSample(accent ? '__click_accent' : '__click_beat', {
+            gain: 1.0,
+            delaySecs,
+            section: 0,
+            // Routes to the chosen cue channel when multi-out is ON; the engine
+            // folds to 1-2 when it's OFF (same as every other voice).
+            outFirst: out.firstChannel,
+            outStereo: out.stereo,
+          });
+        } else {
+          scheduleWebClick(when, accent);
+        }
+      }
       // Harmonic motion is a cross-tick state machine — owned by the
       // dispatcher, not the engine. Engine consumes the resolved offset.
       // Freeze pins the offset at its current value so a captured cycle
@@ -1596,6 +1621,7 @@ export function App() {
                 <PlayButton />
                 <RecordButton />
                 <CountInButton />
+                <MetronomeButton />
                 <RawRecordButton />
                 <SplitsButton />
               </div>
