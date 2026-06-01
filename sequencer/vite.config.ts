@@ -8,6 +8,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 
+// Single source of truth for the app version: package.json. tauri.conf.json
+// reads it too (version: "../package.json"), so a release is one edit here.
+// Injected as the __APP_VERSION__ compile-time constant for UI display.
+const APP_VERSION = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'),
+).version as string;
+
 // Generates samples/index.json — the bundled-samples discovery index used
 // by the runtime to enumerate kits without a hardcoded list. Build time:
 // the index is emitted as an asset into dist/. Dev: a middleware serves a
@@ -69,6 +76,9 @@ function samplesIndex(): Plugin {
 export default defineConfig({
   base: isTauri ? './' : '/sequencer/',
   clearScreen: false,
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   server: {
     strictPort: true,
     port: isTauri ? 1420 : 5173,

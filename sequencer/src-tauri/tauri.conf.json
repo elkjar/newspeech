@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Sequence",
-  "version": "0.4.3",
+  "version": "../package.json",
   "identifier": "com.newspeechsound.sequencer",
   "build": {
     "frontendDist": "../dist",

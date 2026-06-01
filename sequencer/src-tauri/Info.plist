@@ -8,10 +8,9 @@
   <string>Sequence</string>
   <key>CFBundleDisplayName</key>
   <string>Sequence</string>
-  <key>CFBundleShortVersionString</key>
-  <string>0.4.3</string>
-  <key>CFBundleVersion</key>
-  <string>0.4.3</string>
+  <!-- Version keys intentionally omitted: Tauri injects CFBundleShortVersionString
+       / CFBundleVersion from the app version (tauri.conf.json → ../package.json),
+       so the release version lives in package.json only. -->
   <key>LSMinimumSystemVersion</key>
   <string>10.15</string>
   <key>NSHighResolutionCapable</key>

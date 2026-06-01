@@ -1,5 +1,8 @@
 [package]
 name = "sequence"
+# Rust crate version only — NOT the release version. The app/bundle version is
+# sourced from ../package.json via tauri.conf.json ("version": "../package.json"),
+# so releases are bumped in package.json alone. This number need not track it.
 version = "0.4.3"
 description = "Sequence — newspeech sequencer"
 authors = ["newspeech"]
