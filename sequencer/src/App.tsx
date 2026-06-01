@@ -787,6 +787,14 @@ export function App() {
         0,
         Math.floor((s.globalStep - s.ghostCompositionStartStep) / STEPS_PER_BAR),
       );
+      // Drummer count-in. A queued bank swap (pendingBank) commits on the next
+      // bar downbeat — the conductor sets it at the start of the bank's last
+      // dwell bar — so while it's pending we're in exactly the bar before the
+      // transition. Map the beat within that bar (8 steps/beat → 4 beats) to a
+      // 4·3·2·1 count that lands on the downbeat the swap fires.
+      const beatInBar = Math.floor((s.globalStep % STEPS_PER_BAR) / 8);
+      const transitionCountIn =
+        s.pendingBank !== null ? Math.max(1, Math.min(4, 4 - beatInBar)) : null;
       emitStreamEvents([
         {
           kind: 'state',
@@ -797,6 +805,7 @@ export function App() {
           tension: s.tension,
           activeBank: s.activeBank,
           pendingBank: s.pendingBank,
+          transitionCountIn,
           shape: s.sceneGraph.shape,
           phaseLength: s.sceneGraph.phaseLength,
           phase,

@@ -70,6 +70,10 @@ export type StreamEvent =
       // ghost — top-level
       activeBank: number | null;
       pendingBank: number | null;
+      // Drummer cue: beats remaining until a queued bank swap lands on the
+      // next downbeat (4..1 across the bar pendingBank is set), or null when no
+      // swap is pending. Drives the count-in overlay in the stream window.
+      transitionCountIn: number | null;
       shape: StreamShape;
       phaseLength: number;
       phase: number;
