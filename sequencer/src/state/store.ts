@@ -184,6 +184,12 @@ export interface Track {
   // others). Stripped on bank snapshot (cloneTrack zeroes it) so banks
   // never carry arm state — arming is purely a transient UI gesture.
   inputArmed?: boolean;
+  // Runtime-only: true when this track is the live-monitor input target —
+  // MIDI note-ons sound its voice (so you can play along over playback) but
+  // are NEVER written to steps. Mutually exclusive with inputArmed across all
+  // tracks (engaging either clears the other everywhere). Same transient,
+  // never-snapshotted lifecycle as inputArmed.
+  inputLive?: boolean;
   // Physical output assignment (Tauri app only — the web build's stereo
   // mix bus ignores this). 0-indexed firstChannel; stereo=true routes
   // L→firstChannel + R→firstChannel+1 with the track's pan applied;
@@ -719,10 +725,14 @@ export interface SequencerState {
   commitMutationOverlay: () => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
-  // MIDI recording — `inputArmed` is per-track but mutually exclusive
-  // (arming one disarms the rest). midiRecInputPort gates which device's
-  // note-on messages reach the recorder; null = recording off entirely.
+  // MIDI recording — `inputArmed` / `inputLive` are per-track but mutually
+  // exclusive across ALL tracks (engaging either on one track clears both
+  // everywhere else, and clears the sibling flag on the target). inputArmed
+  // records-while-playing + monitors; inputLive monitors only (play along, no
+  // writes). midiRecInputPort gates which device's note-on messages reach the
+  // recorder; null = recording off entirely.
   setTrackInputArmed: (trackId: string, armed: boolean) => void;
+  setTrackInputLive: (trackId: string, live: boolean) => void;
   midiRecInputPort: string | null;
   setMidiRecInputPort: (port: string | null) => void;
   setTrackLength: (trackId: string, length: number) => void;
@@ -915,6 +925,7 @@ export function cloneTrack(t: Track): Track {
     })),
     // Runtime UI state — never round-tripped through bank snapshots.
     inputArmed: false,
+    inputLive: false,
   };
 }
 
@@ -1624,10 +1635,20 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setTrackInputArmed: (trackId, armed) =>
     set((state) => ({
       tracks: state.tracks.map((t) => {
-        // Single-arm: arming one auto-disarms all others. Disarm only
-        // touches the target track.
-        if (armed) return { ...t, inputArmed: t.id === trackId };
+        // Single-target: arming record on one track clears record + live on
+        // every other track, and clears live on the target itself. Disarm
+        // only touches the target's record flag.
+        if (armed) return { ...t, inputArmed: t.id === trackId, inputLive: false };
         return t.id === trackId ? { ...t, inputArmed: false } : t;
+      }),
+    })),
+  setTrackInputLive: (trackId, live) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        // Mirror of setTrackInputArmed: engaging live on one track clears
+        // record + live everywhere else and clears record on the target.
+        if (live) return { ...t, inputLive: t.id === trackId, inputArmed: false };
+        return t.id === trackId ? { ...t, inputLive: false } : t;
       }),
     })),
   setMidiRecInputPort: (port) => set({ midiRecInputPort: port }),

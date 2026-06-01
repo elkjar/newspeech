@@ -1,6 +1,6 @@
 [package]
 name = "sequence"
-version = "0.4.2"
+version = "0.4.3"
 description = "Sequence — newspeech sequencer"
 authors = ["newspeech"]
 license = ""

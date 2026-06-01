@@ -64,6 +64,21 @@ class Scheduler {
     return audible;
   }
 
+  // Like getAudibleStep, but also returns the audible step's exact
+  // audioContext start time and the current global-step duration. The recorder
+  // uses these to measure how far a live note-on landed off the row grid (to
+  // capture "lazy"/pushed feel as per-step microTiming). HISTORY_S of past
+  // steps are retained, so the audible step's `when` is still in `scheduled`.
+  getAudibleStepTiming(): { index: number; when: number; stepDuration: number } | null {
+    const now = getAudioContext().currentTime;
+    let found: ScheduledStep | null = null;
+    for (const s of this.scheduled) {
+      if (s.when <= now) found = s;
+      else break;
+    }
+    return found ? { index: found.index, when: found.when, stepDuration: this.stepDuration() } : null;
+  }
+
   // firstStepTime: optional explicit audioContext-time for tick 0. Used by the
   // count-in path to push the first pattern step out one bar after the click
   // cues. Defaults to currentTime + 50ms (the regular play lookahead).
