@@ -59,6 +59,7 @@ import { getAudioContext } from './audio/audioContext';
 import {
   initMIDIOut,
   sendMIDINote,
+  sendMIDIControlChange,
   resolveDeviceId,
   getMIDIOutputs,
   onMIDIOutputsChanged,
@@ -937,6 +938,21 @@ export function App() {
       string,
       { cutoffNorm: number; resonance: number; fxSend: number }
     >();
+    // Last CC values (0..127 ints) sent out per instrument track, so we only
+    // emit on a real change — dedupes the rAF tick to ≤128 messages per full
+    // sweep instead of one per frame. See the instrument-CC block in tick.
+    const lastInstrumentCC = new Map<
+      string,
+      { cutoff: number; res: number; gain: number; pan: number }
+    >();
+    // Standard MIDI controllers most hardware maps out of the box: CC74/71 =
+    // filter cutoff / resonance (Sound Controllers), CC7 = channel volume,
+    // CC10 = pan. The per-track gain/pan/filter knobs mirror out as these so
+    // they drive the external synth (the knobs are otherwise internal-only).
+    const CC_FILTER_CUTOFF = 74;
+    const CC_FILTER_RESONANCE = 71;
+    const CC_VOLUME = 7;
+    const CC_PAN = 10;
     let lastReverb: {
       size: number;
       wetGain: number;
@@ -1001,6 +1017,44 @@ export function App() {
         if (changed) {
           updates.push({ trackId: t.id, cutoffNorm, resonance, fxSend });
           lastTrack.set(t.id, { cutoffNorm, resonance, fxSend });
+        }
+
+        // Instrument (external-MIDI) rows: mirror the filter / gain / pan knobs
+        // out as CC so they drive the hardware synth (these knobs are otherwise
+        // internal-voice-only). We send the LFO-MODULATED value (modulated() ===
+        // base when no LFO is routed), so this single path covers manual knob
+        // moves, MIDI-mapped (Launch Control XL3), macros, AND automated LFO
+        // sweeps. modulated() also honours the hand-override ramp, so a manual
+        // grab wins then eases back. Emit only when the 0..127 int changes —
+        // caps a sweep at ≤128 messages, not one per frame.
+        if (t.source.kind === 'instrument') {
+          const deviceId = resolveDeviceId(t.midi.portName, state.midiOutDeviceId);
+          if (deviceId) {
+            const ch = t.midi.channel;
+            const cutoff = Math.round(
+              modulated(cutoffNorm, state.lfos, t.id, 'filterCutoff') * 127
+            );
+            const res = Math.round(
+              modulated(resonance, state.lfos, t.id, 'filterResonance') * 127
+            );
+            const gain = Math.round(modulated(t.gain, state.lfos, t.id, 'gain') * 127);
+            // Pan is 0..1 store space (0.5 center) → CC10 0..127 (64 center).
+            const pan = Math.round(modulated(t.pan, state.lfos, t.id, 'pan') * 127);
+            const lastCC = lastInstrumentCC.get(t.id);
+            if (!lastCC || lastCC.cutoff !== cutoff) {
+              sendMIDIControlChange(deviceId, ch, CC_FILTER_CUTOFF, cutoff);
+            }
+            if (!lastCC || lastCC.res !== res) {
+              sendMIDIControlChange(deviceId, ch, CC_FILTER_RESONANCE, res);
+            }
+            if (!lastCC || lastCC.gain !== gain) {
+              sendMIDIControlChange(deviceId, ch, CC_VOLUME, gain);
+            }
+            if (!lastCC || lastCC.pan !== pan) {
+              sendMIDIControlChange(deviceId, ch, CC_PAN, pan);
+            }
+            lastInstrumentCC.set(t.id, { cutoff, res, gain, pan });
+          }
         }
       }
       if (updates.length > 0) void setTrackFiltersBulk(updates);

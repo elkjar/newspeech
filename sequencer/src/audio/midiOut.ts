@@ -171,6 +171,27 @@ export function sendMIDIProgram(deviceId: string, channel: number, program: numb
   out.send([PROGRAM_CHANGE | ch, p]);
 }
 
+// Send a Control Change immediately (no scheduling — these are knob-driven
+// param updates, not note-timed events). value is the raw 0..127 CC value.
+export function sendMIDIControlChange(
+  deviceId: string,
+  channel: number,
+  cc: number,
+  value: number
+) {
+  const ch = (channel | 0) & 0x0f;
+  const n = Math.max(0, Math.min(127, cc | 0));
+  const v = Math.max(0, Math.min(127, value | 0));
+  if (TAURI) {
+    tauriSend(deviceId, [CONTROL_CHANGE | ch, n, v]);
+    return;
+  }
+  if (!access) return;
+  const out = access.outputs.get(deviceId);
+  if (!out) return;
+  out.send([CONTROL_CHANGE | ch, n, v]);
+}
+
 export function sendPatchSelect(
   deviceId: string,
   channel: number,
