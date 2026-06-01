@@ -4,7 +4,7 @@
 import { useSequencerStore, type Track } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import type { MidiMessage } from './midiIn';
-import { tryRecordNote } from './recordInput';
+import { tryRecordNote, tryRecordNoteOff } from './recordInput';
 
 type StoreState = ReturnType<typeof useSequencerStore.getState>;
 
@@ -540,6 +540,8 @@ export function dispatchMidi(msg: MidiMessage): void {
   // CC mappings still fire on knob twists, but a recorded note
   // doesn't also trigger a binding on the same num.
   if (tryRecordNote(msg)) return;
+  // Note-off closes a held note → ties across the steps it spanned.
+  if (tryRecordNoteOff(msg)) return;
   const b = activeBindings.find(
     (x) => x.ch === msg.ch && x.msg === msg.msg && x.num === msg.num
   );

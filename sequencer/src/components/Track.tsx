@@ -18,8 +18,6 @@ import {
 } from '../instruments/library';
 import { NewInstrumentDialog } from './NewInstrumentDialog';
 import { VoicePickerDialog } from './VoicePickerDialog';
-import { getOverlay } from '../audio/mutationOverlay';
-import { effectiveTieToNext } from '../audio/mutationTie';
 import { GLOBAL_TRACK_ID } from '../audio/lfo';
 import { computeThinMul, computeFillProb } from '../audio/macros';
 import { useLFOValue } from '../hooks/useLFOValue';
@@ -35,26 +33,23 @@ function originatorIndex(track: TrackData, i: number): number {
   let originatorIdx = i;
   while (cur > 0) {
     const prev = cur - 1;
-    if (!effectiveTieToNext(track, prev)) break;
+    // Authored ties only — mutation's runtime tie-flips drive the audio but
+    // must not reshape the displayed chain (the grid shows authored intent).
+    if (!(track.steps[prev]?.tieToNext ?? false)) break;
     cur = prev;
     if (track.steps[prev]?.on) originatorIdx = prev;
   }
   return originatorIdx;
 }
 
-function displayStep(
-  track: TrackData,
-  i: number,
-  applyOverlay: boolean
-): Step | undefined {
-  const idx = originatorIndex(track, i);
-  const authored = track.steps[idx];
-  if (!authored) return authored;
-  if (applyOverlay) {
-    const ov = getOverlay(track.id, idx);
-    if (ov) return { ...authored, on: ov.on, velocity: ov.velocity, pitch: ov.pitch, gate: ov.gate };
-  }
-  return authored;
+// The grid always renders the AUTHORED pattern — what the user programmed or
+// recorded — never the live mutation/ghost overlay. Mutation still drives the
+// AUDIO (the overlay is computed per-tick in the engine and read by the
+// scheduler), but painting the grid with that computed variation hid
+// freshly-recorded notes until the next pass and obscured the real pattern.
+// Showing authored intent is more useful than showing the latest variation.
+function displayStep(track: TrackData, i: number): Step | undefined {
+  return track.steps[originatorIndex(track, i)];
 }
 
 
@@ -347,20 +342,8 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
             const stepIndex = viewPage * PAGE_SIZE + i;
             const idx = originatorIndex(track, stepIndex);
             const isTiedChain = idx !== stepIndex;
-            const display = displayStep(track, stepIndex, playing && track.mutation > 0);
+            const display = displayStep(track, stepIndex);
             const isCurrent = playing && playingPage === viewPage && stepInPage === i;
-            // "Currently firing this cycle" — drives the binary visual in note
-            // mode for both directions of the density knob: authored ON cells
-            // disappear when thinned out, authored OFF cells light up when
-            // filled in. Gated on `passed` so cells ahead of the playhead keep
-            // showing authored intent; the live outcome only "comes in" as the
-            // playhead reaches each step. Each cycle wrap resets the trail.
-            const passed = !playing || stepIndex <= localCurrent;
-            const ovForCycle = playing && passed ? getOverlay(track.id, idx) : undefined;
-            const cycleFired =
-              playing && passed
-                ? !!ovForCycle?.gated
-                : !!track.steps[idx]?.on;
             return (
               <StepButton
                 key={i}
@@ -389,7 +372,6 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
                 isTiedChain={isTiedChain}
                 tieEnabled={tieEnabled}
                 size={STEP_SIZE}
-                cycleFired={cycleFired}
               />
             );
           }

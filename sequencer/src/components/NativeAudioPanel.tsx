@@ -372,23 +372,22 @@ function MixRoutingSection({
       <div className="flex flex-col gap-1 mt-2">
         <span className="text-[10px] uppercase tracking-widest text-white/55">metronome output</span>
         <select
-          value={`${mix.metronomeOutput.stereo ? 's' : 'm'}${mix.metronomeOutput.firstChannel}`}
+          value={String(mix.metronomeOutput.firstChannel)}
           onChange={(e) => {
-            const v = e.target.value;
-            const stereo = v.startsWith('s');
-            const firstChannel = parseInt(v.slice(1), 10);
+            const firstChannel = parseInt(e.target.value, 10);
             if (!Number.isFinite(firstChannel)) return;
-            setNativeMix({ metronomeOutput: { firstChannel, stereo } });
+            // Metronome is always a single cue channel — mono only.
+            setNativeMix({ metronomeOutput: { firstChannel, stereo: false } });
           }}
           disabled={!isOpen || !mix.multiOut}
           className="w-full bg-transparent border border-white/15 text-white/90 text-[12px] px-2 py-1 disabled:text-white/30"
           title={
             !mix.multiOut
               ? 'multi-out is OFF — the metronome folds to 1-2 regardless of this setting.'
-              : 'where the metronome click lands when multi-out is ON — pick a dedicated cue channel to keep it out of the main mix.'
+              : 'which channel the metronome click lands on when multi-out is ON — pick a dedicated cue channel to keep it out of the main mix.'
           }
         >
-          {outputOptions(nativeChannels, mix.metronomeOutput).map((opt) => (
+          {monoOutputOptions(nativeChannels, mix.metronomeOutput.firstChannel).map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
@@ -421,6 +420,23 @@ function outputOptions(
         ? `${current.firstChannel + 1}-${current.firstChannel + 2}`
         : `${current.firstChannel + 1}`,
     });
+  }
+  return opts;
+}
+
+// Mono-only channel list for the metronome cue (always a single channel, so no
+// stereo pairs). Value is the bare channel index. Pins the saved channel at the
+// top if it falls outside the active device's channel count.
+function monoOutputOptions(
+  channels: number,
+  current: number,
+): Array<{ value: string; label: string }> {
+  const opts: Array<{ value: string; label: string }> = [];
+  for (let i = 0; i < channels; i++) {
+    opts.push({ value: String(i), label: `${i + 1}` });
+  }
+  if (!opts.some((o) => o.value === String(current))) {
+    opts.unshift({ value: String(current), label: `${current + 1}` });
   }
   return opts;
 }

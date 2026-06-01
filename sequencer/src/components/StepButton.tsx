@@ -32,12 +32,6 @@ interface StepButtonProps {
   // sample voices where tie carries no audible weight.
   tieEnabled: boolean;
   size: number;
-  // True when this step actually fired in the current cycle (overlay.gated).
-  // Drives the binary "currently firing" visual in note view: thinned-out
-  // authored ON cells go dark when not firing; filled-in authored OFF cells
-  // light up when they do. Chance view ignores this and keeps the gradient.
-  // Falls back to authored on/off when the sequencer isn't playing.
-  cycleFired: boolean;
 }
 
 const PITCH_COOLDOWN_MS = 80;
@@ -75,7 +69,6 @@ export function StepButton({
   isTiedChain,
   tieEnabled,
   size,
-  cycleFired,
 }: StepButtonProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const didDragRef = useRef(false);
@@ -275,7 +268,6 @@ export function StepButton({
     } else {
       if (editMode === 'velocity') fillOpacity = Math.max(0.15, velocity);
       else if (editMode === 'chance') fillOpacity = Math.max(0.15, probability / 100);
-      else if (editMode === 'live') fillOpacity = cycleFired ? 1 : 0;
       else fillOpacity = 1;
 
       if (editMode === 'ratchet') label = String(ratchet);
@@ -287,14 +279,13 @@ export function StepButton({
       }
     }
   } else if (editMode === 'chance') {
-    // Chance view shows the fill-in probability gradient regardless of whether
-    // the step actually fired this cycle — preserves "see the curve at a glance."
+    // Chance view shows the fill-in probability gradient so the density curve
+    // is legible at a glance — the one mode that still surfaces computed state.
     if (probability > 0) fillOpacity = probability / 100;
-  } else if (cycleFired) {
-    // Note / velocity / etc. views: keep the "authored = bright, OFF = dark"
-    // contract by only lighting filled steps when they actually fire this cycle.
-    fillOpacity = 1;
   }
+  // Authored OFF cells stay dark in every other mode. (They used to light up
+  // when mutation/density filled them in this cycle — that live overlay is
+  // gone; the grid shows authored intent, the playhead shows position.)
 
   const shadows: string[] = [];
   if (isCurrent) {

@@ -208,6 +208,8 @@ export { getActiveBindings };
 setLearnHook((msg) => {
   const state = useMidiMapStore.getState();
   if (!state.learnMode || !state.learnTarget) return false;
+  // Note-off is never a binding target — let it fall through to the recorder.
+  if (msg.msg === 'noteoff') return false;
   state.bindLearnTarget(msg);
   return true;
 });

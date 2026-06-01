@@ -2851,6 +2851,12 @@ struct Voice {
   // Sentinel < 0 = not yet captured (still pre-release). Set to the
   // current env_level on the first sample where elapsed >= hold_samples.
   env_release_start_level: f32,
+  // Voice handle for targeted release. 0 = untagged (the normal case —
+  // sequencer triggers never set it). Live MIDI input monitoring tags each
+  // held note with a unique id so the matching note-off can release THAT
+  // voice (a soft ramp) without touching the armed track's pattern voices,
+  // which share the same track_params Arc. See MixerCommand::ReleaseNote.
+  note_id: u64,
 }
 
 impl Default for Voice {
@@ -2883,6 +2889,7 @@ impl Default for Voice {
       is_texture: false,
       frozen_params: None,
       frames_played: 0,
+      note_id: 0,
     }
   }
 }
@@ -2939,8 +2946,19 @@ enum MixerCommand {
     // pending_triggers and fire sample-accurately when the deadline
     // falls within an audio block.
     delay_samples: u32,
+    // Voice handle (0 = untagged). Only live-input monitoring sets it.
+    note_id: u64,
   },
   StopAll,
+  // Release a single tagged voice (live-input monitoring note-off). Starts
+  // the per-voice release ramp (fade_frames) on the active voice carrying
+  // `note_id`, leaving every other voice — including the armed track's
+  // pattern voices on the same track_params Arc — untouched. Reuses the same
+  // release_remaining/release_total ramp as the monophonic choke.
+  ReleaseNote {
+    note_id: u64,
+    fade_frames: u32,
+  },
   // Transport-stop texture fade. ONLY texture-role voices get a release
   // ramp (fade_frames) so sustained material rings down gracefully on
   // stop. Every other voice — and the pending-trigger queue — is left
@@ -2987,6 +3005,7 @@ struct PendingTrigger {
   is_texture: bool,
   envelope: Option<EnvelopeSpec>,
   remaining_samples: i32,
+  note_id: u64,
 }
 
 // --- shared state ---
@@ -3218,6 +3237,7 @@ impl AudioEngine {
     section: u8,
     is_texture: bool,
     envelope: Option<EnvelopeSpec>,
+    note_id: u64,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -3253,6 +3273,7 @@ impl AudioEngine {
       is_texture,
       envelope,
       delay_samples,
+      note_id,
     };
     let mut guard = self
       .state
@@ -3668,6 +3689,37 @@ impl AudioEngine {
     Ok(())
   }
 
+  // Release a single tagged voice — live-input monitoring note-off. Fade
+  // time arrives in seconds; convert to frames at the device sample rate.
+  // A zero/non-finite fade falls back to a short default so a note-off
+  // never hard-cuts (which would click).
+  pub fn release_note(&self, note_id: u64, fade_secs: f32) -> Result<(), String> {
+    let sr = self.state.sample_rate.load(Ordering::Acquire);
+    let secs = if !fade_secs.is_finite() || fade_secs <= 0.0 {
+      0.08
+    } else {
+      fade_secs
+    };
+    let fade_frames = if sr == 0 {
+      0
+    } else {
+      (secs * sr as f32).round().max(1.0).min(u32::MAX as f32) as u32
+    };
+    let cmd = MixerCommand::ReleaseNote { note_id, fade_frames };
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(cmd)
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
+
   // Freeze in-flight voice DSP params (see MixerCommand::FreezeVoiceParams).
   // Called on every scene/bank/song swap.
   pub fn freeze_voice_params(&self) -> Result<(), String> {
@@ -3823,6 +3875,7 @@ fn claim_voice_slot(
   v.is_texture = p.is_texture;
   v.frozen_params = None;
   v.frames_played = 0;
+  v.note_id = p.note_id;
   if let Some(spec) = p.envelope {
     // Convert seconds → sample counts. attack/release/hold have a 1ms
     // floor so a zero-length phase doesn't divide by zero in the ramp.
@@ -4178,6 +4231,7 @@ fn build_stream(
               is_texture,
               envelope,
               delay_samples,
+              note_id,
             } => {
               let pan_clamped = pan.clamp(-1.0, 1.0);
               let angle =
@@ -4202,6 +4256,7 @@ fn build_stream(
                 is_texture,
                 envelope,
                 remaining_samples: delay_samples as i32,
+                note_id,
               };
               if delay_samples == 0 {
                 claim_voice_slot(
@@ -4232,6 +4287,20 @@ fn build_stream(
                 v.is_texture = false;
               }
               pending_triggers.clear();
+            }
+            MixerCommand::ReleaseNote { note_id, fade_frames } => {
+              if note_id != 0 && fade_frames > 0 {
+                for v in voices.iter_mut() {
+                  // Match the tagged voice only. Skip one already in
+                  // release (a re-issued note-off, or a monophonic choke
+                  // that beat us to it) so we never re-lengthen its ramp.
+                  if !v.active || v.note_id != note_id || v.release_remaining > 0 {
+                    continue;
+                  }
+                  v.release_remaining = fade_frames;
+                  v.release_total = fade_frames;
+                }
+              }
             }
             MixerCommand::FreezeVoiceParams => {
               for v in voices.iter_mut() {
@@ -5079,6 +5148,9 @@ pub fn audio_trigger_sample(
   envelope_sustain: Option<f32>,
   envelope_release: Option<f32>,
   envelope_hold: Option<f32>,
+  // Voice handle for targeted release (live-input monitoring). Omitted /
+  // 0 for every sequencer trigger.
+  note_id: Option<u64>,
 ) -> Result<(), String> {
   let envelope = match (
     envelope_attack,
@@ -5107,7 +5179,13 @@ pub fn audio_trigger_sample(
     section.unwrap_or(0),
     is_texture.unwrap_or(false),
     envelope,
+    note_id.unwrap_or(0),
   )
+}
+
+#[tauri::command]
+pub fn audio_release_note(note_id: u64, fade_secs: Option<f32>) -> Result<(), String> {
+  engine().release_note(note_id, fade_secs.unwrap_or(0.0))
 }
 
 // Phase 6: cutoff arrives normalized (0..1) so the LFO compute on the

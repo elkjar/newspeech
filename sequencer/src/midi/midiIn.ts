@@ -12,9 +12,12 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 // `port` is the source device's display name. Carried on every message
 // so per-feature routing (e.g. record-from-keyboard-only) can filter.
 // CC mapping ignores it; only the recording path inspects it today.
+// `noteoff` is consumed only by the recorder (held-note → tie capture); CC
+// bindings never match it, so it's harmless if it falls through.
 export type MidiMessage =
   | { ch: number; msg: 'cc'; num: number; value: number; port: string }
-  | { ch: number; msg: 'note'; num: number; value: number; port: string };
+  | { ch: number; msg: 'note'; num: number; value: number; port: string }
+  | { ch: number; msg: 'noteoff'; num: number; port: string };
 
 const TAURI = isTauri();
 
@@ -50,6 +53,14 @@ function parseMessage(data: Uint8Array | number[], port: string): MidiMessage | 
   }
   if (type === 0x90 && data.length >= 3 && data[2] > 0) {
     return { ch, msg: 'note', num: data[1], value: data[2], port };
+  }
+  // Note-off: explicit 0x80, or the running-status idiom of note-on with
+  // velocity 0 (what many keyboards actually send on key release).
+  if (type === 0x80 && data.length >= 2) {
+    return { ch, msg: 'noteoff', num: data[1], port };
+  }
+  if (type === 0x90 && data.length >= 3 && data[2] === 0) {
+    return { ch, msg: 'noteoff', num: data[1], port };
   }
   return null;
 }

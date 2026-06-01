@@ -145,6 +145,16 @@ const MODE_KEYS: Record<string, EditMode> = {
 };
 
 const MODES: EditMode[] = ['live', 'velocity', 'chance', 'ratchet', 'timing', 'gate'];
+// Display labels — the 'live' literal is kept for persistence compatibility,
+// but the mode now shows the static authored pattern, so it reads as "notes".
+const MODE_LABELS: Record<EditMode, string> = {
+  live: 'notes',
+  velocity: 'velocity',
+  chance: 'chance',
+  ratchet: 'ratchet',
+  timing: 'timing',
+  gate: 'gate',
+};
 
 const SECTIONS: { id: TrackSection; label: string }[] = [
   { id: 'drum', label: 'rhythm' },
@@ -218,7 +228,7 @@ function ModeSwitcher() {
               : 'border-white/15 text-white/60 hover:text-white hover:border-white',
           ].join(' ')}
         >
-          {m}
+          {MODE_LABELS[m]}
         </button>
       ))}
     </div>
@@ -473,26 +483,26 @@ export function App() {
       const state = useSequencerStore.getState();
       // Universal metronome — same click voice as the count-in, on every beat
       // for as long as transport runs (independent of pattern content, so it
-      // ticks through tail-out and empty banks too). 32 steps/bar → 8 per beat;
-      // accent the bar downbeat. Native fires SECTION_NONE so the click plays
-      // out the main output but stays OUT of recording stems (the count-in,
-      // SECTION_CLICK, is intentionally captured — the metronome is not).
+      // ticks through tail-out and empty banks too). 32 steps/bar → 8 per beat.
+      // Constant click, no downbeat accent (just a steady pulse to play to).
+      // Native fires SECTION_NONE so the click plays out the cue/main output
+      // but stays OUT of recording stems (the count-in, SECTION_CLICK, is
+      // intentionally captured — the metronome is not).
       if (state.metronome && globalStep % 8 === 0) {
-        const accent = globalStep % 32 === 0;
         if (isNativeAudioAvailable()) {
           const delaySecs = Math.max(0, when - getAudioContext().currentTime);
           const out = state.nativeMix.metronomeOutput;
-          void triggerSample(accent ? '__click_accent' : '__click_beat', {
+          void triggerSample('__click_beat', {
             gain: 1.0,
             delaySecs,
             section: 0,
-            // Routes to the chosen cue channel when multi-out is ON; the engine
-            // folds to 1-2 when it's OFF (same as every other voice).
+            // Mono cue channel when multi-out is ON; the engine folds to 1-2
+            // when it's OFF (same as every other voice).
             outFirst: out.firstChannel,
-            outStereo: out.stereo,
+            outStereo: false,
           });
         } else {
-          scheduleWebClick(when, accent);
+          scheduleWebClick(when, false);
         }
       }
       // Harmonic motion is a cross-tick state machine — owned by the

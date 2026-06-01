@@ -339,6 +339,7 @@ pub fn run() {
       audio::audio_load_sample_from_bytes,
       audio::audio_load_bundled_sample,
       audio::audio_trigger_sample,
+      audio::audio_release_note,
       audio::audio_set_track_filter,
       audio::audio_set_track_filters_bulk,
       audio::audio_set_reverb_params,

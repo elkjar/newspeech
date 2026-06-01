@@ -351,6 +351,10 @@ export async function triggerSample(
     envelopeSustain?: number;
     envelopeRelease?: number;
     envelopeHold?: number;
+    // Voice handle for targeted release. Only live-input monitoring sets it
+    // (so the matching note-off can release this exact voice). 0/undefined
+    // for every sequencer trigger.
+    noteId?: number;
   } = {},
 ): Promise<void> {
   await invoke<void>('audio_trigger_sample', {
@@ -370,6 +374,18 @@ export async function triggerSample(
     envelopeRelease: opts.envelopeRelease ?? null,
     envelopeHold: opts.envelopeHold ?? null,
     delaySecs: opts.delaySecs ?? null,
+    noteId: opts.noteId ?? null,
+  });
+}
+
+// Release a single voice tagged with `noteId` (live-input monitoring
+// note-off). Starts a soft release ramp; leaves every other voice — including
+// the armed track's pattern voices on the same trackId — untouched. fadeSecs
+// defaults to a short ramp Rust-side when omitted.
+export async function releaseNote(noteId: number, fadeSecs?: number): Promise<void> {
+  await invoke<void>('audio_release_note', {
+    noteId,
+    fadeSecs: fadeSecs ?? null,
   });
 }
 
