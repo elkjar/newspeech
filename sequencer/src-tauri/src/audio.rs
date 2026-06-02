@@ -2978,7 +2978,7 @@ enum MixerCommand {
 }
 
 #[derive(Clone, Copy)]
-struct EnvelopeSpec {
+pub(crate) struct EnvelopeSpec {
   attack_secs: f32,
   decay_secs: f32,
   sustain_level: f32,
@@ -3390,7 +3390,7 @@ impl AudioEngine {
     // Worker drains every 5ms so this is far more than ever needed
     // in practice; keeps the audio thread's push side from blocking.
     const QUEUE_SAMPLES: usize = 480_000;
-    let (prod, mut cons) = HeapRb::<i16>::new(QUEUE_SAMPLES).split();
+    let (prod, cons) = HeapRb::<i16>::new(QUEUE_SAMPLES).split();
 
     let spec = hound::WavSpec {
       channels: 2,
