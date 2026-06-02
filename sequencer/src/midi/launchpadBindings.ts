@@ -28,6 +28,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { useSequencerStore, RATE_STRIDE, type Track, type TrackSection } from '../state/store';
 import { scheduler } from '../audio/scheduler';
 import { togglePlayback } from '../audio/transport';
+import { resolveChord, type ChordVoicing } from '../audio/chords';
+import { octaveDegrees } from '../audio/scale';
+import { monitorChord } from '../audio/monitor';
 import {
   bulkRedraw,
   getConnectedCount,
@@ -70,6 +73,35 @@ const COL_BANK_EMPTY = 0;
 const COL_BANK_POPULATED = 25;
 const COL_BANK_ACTIVE = 127;
 const COL_BANK_PENDING_PALETTE = 3; // palette index 3 = bright white
+
+// Chord page (per-device mode). Columns 0..6 = scale degrees I..VII off the
+// scene key; column 7 reserved. Rows = an 8-rung voicing ladder, plainest at
+// the BOTTOM (grid row 7) climbing to richest/most-open at the TOP (row 0).
+const COL_CHORD_PRESSED = 127; // last-auditioned degree pad lights; rest stay dark
+const COL_MODE_OFF = 12; // side[4] in step mode — chord mode available (dim)
+const COL_MODE_ON = 110; // side[4] in chord mode — active (bright)
+const COL_OCTAVE_OFF = 0; // column-7 octave pad, unselected (off — only the
+// selected octave lights, so the active row reads at a glance)
+const COL_OCTAVE_SEL = 100; // column-7 octave pad, currently selected (bright)
+// Chord-page TOP ROW = chord-master step selector (the authoring target).
+const COL_STEP_EMPTY = 12; // step within length, no chord (dim)
+const COL_STEP_HAS = 45; // step has a chord authored (on) — medium
+const COL_STEP_SELECTED = 120; // step selected as the write target (bright)
+
+// Voicing ladder, index 0 = plainest. row r on the grid → ladder[7 - r], so
+// the bottom row is a plain triad and the top row an open 11th. Hand-curated
+// for 8 distinct rungs (the voicing-macro cascade only has ~6 distinct stages,
+// so it wouldn't quantize cleanly into 8). Tune freely.
+const CHORD_VOICING_LADDER: Array<Pick<ChordVoicing, 'extension' | 'inversion' | 'spread'>> = [
+  { extension: 'triad', inversion: 0, spread: 'close' },
+  { extension: 'triad', inversion: 1, spread: 'close' },
+  { extension: 'triad', inversion: 0, spread: 'open' },
+  { extension: '7', inversion: 0, spread: 'close' },
+  { extension: '7', inversion: 1, spread: 'close' },
+  { extension: '9', inversion: 0, spread: 'close' },
+  { extension: '9', inversion: 0, spread: 'open' },
+  { extension: '11', inversion: 0, spread: 'open' },
+];
 
 const SURFACE_SIZE = 80;
 const STEP_WIDTH = 16; // total step columns across the pair
@@ -120,6 +152,21 @@ let lastPlacedStep: { trackId: string; index: number } | null = null;
 // hold-source + tap-end tie gestures on the same track row — across both pads,
 // so a tie can span the 8/9 seam.
 const heldPads = new Set<number>();
+// Per-PHYSICAL-device page mode. Independent so one pad can be the chord
+// palette while the other stays a normal step half (user workflow). Indexed by
+// physical device (0/1), NOT logical half.
+const deviceMode: Array<'step' | 'chord'> = ['step', 'step'];
+// Per-device last-auditioned pad index (0..63), for bright press feedback on
+// the chord page. -1 = none.
+const lastAuditionPad: number[] = [-1, -1];
+// Per-device chord-page octave offset (octaves, applied on top of the chord
+// master's own octave). Set by the column-7 octave selector. 0 = no shift.
+const chordOctave: number[] = [0, 0];
+// Shared chord-page write target: the chord-master step index taps author into.
+// null = nothing selected → taps audition only (audition-before-program).
+// Selected via the top row; selecting a step IS arming. Stays put after a write
+// (no auto-advance) — pick the next step explicitly, per the first-pass spec.
+let chordWriteStep: number | null = null;
 let attached = false;
 let unsubs: Array<() => void> = [];
 
@@ -240,7 +287,7 @@ function buildSurfaceForHalf(half: 0 | 1): Uint8Array {
   out[72 + 1] = COL_PANIC;
   out[72 + 2] = state.viewSection === 'melodic' ? COL_SECTION_MELODIC : COL_SECTION_DRUM;
   out[72 + 3] = effectiveSwap() ? COL_SWAP_ON : COL_SWAP_OFF;
-  out[72 + 4] = COL_OFF;
+  out[72 + 4] = COL_MODE_OFF; // chord-mode toggle (dim = available)
   out[72 + 5] = COL_OFF;
   const pitchCol = lastPlacedStep ? COL_PITCH_READY : COL_PITCH_IDLE;
   out[72 + 6] = pitchCol;
@@ -248,21 +295,138 @@ function buildSurfaceForHalf(half: 0 | 1): Uint8Array {
   return out;
 }
 
-// Pulse the pending-bank slot on whichever pad owns its octave.
+// ---------- chord page ----------
+// Column 7 = octave selector. Top pad (row 0) is the highest octave, bottom
+// (row 7) the lowest; row 3 is 0 (no shift). Range +3..−4 — tune freely.
+function octaveForRow(row: number): number {
+  return 3 - row;
+}
+function rowForOctave(oct: number): number {
+  return 3 - oct;
+}
+
+// Base (unpressed) color for a chord-page pad. cols 0..6 = degrees I..VII
+// (tonic column brighter as a home reference); col 7 = octave selector (the
+// selected octave's pad is bright, the rest dim).
+function chordPadBase(device: number, padIndex: number): number {
+  const col = padIndex % 8;
+  if (col === 7) {
+    return octaveForRow(Math.floor(padIndex / 8)) === chordOctave[device]
+      ? COL_OCTAVE_SEL
+      : COL_OCTAVE_OFF;
+  }
+  return COL_OFF; // degree pads dark at rest — only the last-auditioned lights
+}
+
+// The chord master = first melodic track (degree-based chords author here).
+function chordMaster(): Track | undefined {
+  return useSequencerStore.getState().tracks.find((t) => t.section === 'melodic');
+}
+
+// Top-row (step selector) color for chord-master step `stepIdx`.
+function chordTopColor(stepIdx: number, cm: Track | undefined): number {
+  if (!cm || stepIdx >= cm.length) return COL_OFF;
+  if (stepIdx === chordWriteStep) return COL_STEP_SELECTED;
+  return cm.steps[stepIdx]?.on ? COL_STEP_HAS : COL_STEP_EMPTY;
+}
+
+// Repaint the top-row step selector on every chord-mode device (shared write
+// target, so all chord pages reflect the same selection/progression state).
+function repaintChordTops(): void {
+  const cm = chordMaster();
+  for (let d = 0; d < 2; d++) {
+    if (deviceMode[d] !== 'chord') continue;
+    for (let i = 0; i < 8; i++) setTopColor(d, i, chordTopColor(i, cm));
+  }
+}
+
+// Full 80-slot surface for a device in chord mode: the degree×voicing palette,
+// the column-7 octave selector, the top-row step selector, + a minimal side
+// rail (play / panic / mode-toggle-active).
+function buildChordSurface(device: number): Uint8Array {
+  const out = new Uint8Array(SURFACE_SIZE);
+  // Degree pads (cols 0..6) stay dark; only column 7's selected octave lights.
+  for (let row = 0; row < 8; row++) {
+    out[row * 8 + 7] =
+      octaveForRow(row) === chordOctave[device] ? COL_OCTAVE_SEL : COL_OCTAVE_OFF;
+  }
+  const last = lastAuditionPad[device];
+  if (last >= 0) out[last] = COL_CHORD_PRESSED;
+  const cm = chordMaster();
+  for (let i = 0; i < 8; i++) out[64 + i] = chordTopColor(i, cm);
+  out[72 + 0] = useSequencerStore.getState().playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
+  out[72 + 1] = COL_PANIC;
+  out[72 + 4] = COL_MODE_ON;
+  return out;
+}
+
+// Author the chord at grid (row, col) into the selected chord-master step:
+// writes the voicing plock, stores the octave as a degree-space pitch offset
+// (ChordVoicing has no octave field; one octave = octaveDegrees(scale) degrees),
+// and turns the step on so it sounds. No-op when nothing is selected.
+function authorChord(device: number, row: number, col: number): void {
+  if (chordWriteStep === null || col > 6) return;
+  const state = useSequencerStore.getState();
+  const cm = state.tracks.find((t) => t.section === 'melodic');
+  if (!cm || cm.source.kind !== 'voice') return;
+  const step = chordWriteStep;
+  if (step < 0 || step >= cm.length) return;
+  const rung = CHORD_VOICING_LADDER[7 - row];
+  const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
+  state.setStepChordVoicing(cm.id, step, voicing);
+  state.setStepPitch(cm.id, step, chordOctave[device] * octaveDegrees(state.scale));
+  state.setStepOn(cm.id, step, true);
+}
+
+// Resolve + audition the chord at grid (row, col): col → degree I..VII, row →
+// voicing ladder (bottom = plainest). Uses the scene root/scale + the chord
+// master's octave + the device's selected octave so the audition matches what
+// authoring will write. Fire-and-forget.
+function auditionCell(device: number, row: number, col: number): void {
+  if (col > 6) return;
+  const state = useSequencerStore.getState();
+  const cm = state.tracks.find((t) => t.section === 'melodic');
+  if (!cm || cm.source.kind !== 'voice') return;
+  const rung = CHORD_VOICING_LADDER[7 - row];
+  const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
+  const { root, intervals } = resolveChord(state.rootNote, state.scale, voicing, 0);
+  monitorChord(cm, root + (cm.octave + chordOctave[device]) * 12, intervals, 0.9);
+}
+
+// Repaint one physical device per its current mode.
+function repaintDevice(device: number): void {
+  if (deviceMode[device] === 'chord') {
+    bulkRedraw(device, buildChordSurface(device));
+    return;
+  }
+  bulkRedraw(device, buildSurfaceForHalf(halfForDevice(device)));
+}
+
+// Flip ONE device between step and chord pages, repaint just that device.
+function toggleDeviceMode(device: number): void {
+  deviceMode[device] = deviceMode[device] === 'chord' ? 'step' : 'chord';
+  lastAuditionPad[device] = -1;
+  chordWriteStep = null; // start in audition (nothing armed) on mode change
+  repaintDevice(device);
+  applyPendingPulse();
+}
+
+// Pulse the pending-bank slot on whichever pad owns its octave (skip if that
+// device is on the chord page — its top row is reserved).
 function applyPendingPulse(): void {
   const pending = useSequencerStore.getState().pendingBank;
   if (pending === null || pending < 0 || pending >= 16) return;
   const half: 0 | 1 = pending < 8 ? 0 : 1;
   const device = deviceForHalf(half);
+  if (deviceMode[device] === 'chord') return;
   setTopPulse(device, pending % 8, COL_BANK_PENDING_PALETTE);
 }
 
 // Paint both pads from scratch (full bulk redraw + pending pulse). Used on
-// attach, section/swap change, grid edits, and device hot-plug.
+// attach, section/swap change, grid edits, and device hot-plug. Each device is
+// painted per its own page mode, so a chord-mode pad is left alone.
 function repaintBoth(): void {
-  for (let half: 0 | 1 = 0; half <= 1; half = (half + 1) as 0 | 1) {
-    bulkRedraw(deviceForHalf(half), buildSurfaceForHalf(half));
-  }
+  for (let device = 0; device < 2; device++) repaintDevice(device);
   applyPendingPulse();
 }
 
@@ -271,6 +435,7 @@ function repaintCellAbs(row: number, absStep: number, onPlayhead: boolean): void
   const half: 0 | 1 = absStep < 8 ? 0 : 1;
   const col = absStep % 8;
   const device = deviceForHalf(half);
+  if (deviceMode[device] === 'chord') return; // chord page owns this device
   const track = visibleTracks(currentSection())[row];
   setPadColor(device, row * 8 + col, colorForCell(track, absStep, onPlayhead));
 }
@@ -340,7 +505,67 @@ function toggleSwap(): void {
   seedPlayhead();
 }
 
+// Event dispatcher. side[4] toggles THIS device's page mode (reachable from
+// either page); otherwise route to the device's current page handler.
 function handleEvent(device: number, e: LaunchpadEvent): void {
+  if (e.addr.element === 'side' && e.addr.index === 4) {
+    if (e.pressed) toggleDeviceMode(device);
+    return;
+  }
+  if (deviceMode[device] === 'chord') {
+    handleChordEvent(device, e);
+    return;
+  }
+  handleStepEvent(device, e);
+}
+
+// Chord page: pads audition the degree×voicing chord; play/panic stay live.
+function handleChordEvent(device: number, e: LaunchpadEvent): void {
+  if (!e.pressed) return;
+  if (e.addr.element === 'side') {
+    if (e.addr.index === 0) void togglePlayback();
+    else if (e.addr.index === 1) void invoke('midi_panic').catch(() => {});
+    return;
+  }
+  if (e.addr.element === 'top') {
+    // Step selector — pick the chord-master step to author into (toggle off to
+    // return to audition-only). Only steps within the track length are valid.
+    const step = e.addr.index;
+    const cm = chordMaster();
+    if (!cm || step >= cm.length) return;
+    chordWriteStep = chordWriteStep === step ? null : step;
+    repaintChordTops();
+    return;
+  }
+  if (e.addr.element !== 'pad') return;
+  const row = Math.floor(e.addr.index / 8);
+  const col = e.addr.index % 8;
+  if (col === 7) {
+    // Octave selector — pick this row's octave, re-light the column.
+    const oct = octaveForRow(row);
+    if (chordOctave[device] !== oct) {
+      const prevRow = rowForOctave(chordOctave[device]);
+      chordOctave[device] = oct;
+      if (prevRow >= 0 && prevRow < 8) setPadColor(device, prevRow * 8 + 7, COL_OCTAVE_OFF);
+      setPadColor(device, e.addr.index, COL_OCTAVE_SEL);
+    }
+    return;
+  }
+  auditionCell(device, row, col);
+  // If a step is selected, author the chord there too (select = arm). Refresh
+  // the top row so a newly-on step reads as populated.
+  if (chordWriteStep !== null) {
+    authorChord(device, row, col);
+    repaintChordTops();
+  }
+  // Bright press feedback on this device; restore the previously-lit pad.
+  const prev = lastAuditionPad[device];
+  lastAuditionPad[device] = e.addr.index;
+  if (prev >= 0 && prev !== e.addr.index) setPadColor(device, prev, chordPadBase(device, prev));
+  setPadColor(device, e.addr.index, COL_CHORD_PRESSED);
+}
+
+function handleStepEvent(device: number, e: LaunchpadEvent): void {
   // Track pad release for tie-gesture state. Other releases are no-ops.
   if (e.addr.element === 'pad' && !e.pressed) {
     heldPads.delete(encodeHeld(device, e.addr.index));
@@ -521,6 +746,7 @@ export function attachLaunchpadBindings(): void {
         prevBankSig = nextBankSig;
         for (let half: 0 | 1 = 0; half <= 1; half = (half + 1) as 0 | 1) {
           const device = deviceForHalf(half);
+          if (deviceMode[device] === 'chord') continue; // chord top row reserved
           const base = half * 8;
           for (let i = 0; i < 8; i++) {
             const slot = base + i;
@@ -559,6 +785,13 @@ export function detachLaunchpadBindings(): void {
   resetLastPlayheadAbs();
   lastPlacedStep = null;
   heldPads.clear();
+  deviceMode[0] = 'step';
+  deviceMode[1] = 'step';
+  lastAuditionPad[0] = -1;
+  lastAuditionPad[1] = -1;
+  chordOctave[0] = 0;
+  chordOctave[1] = 0;
+  chordWriteStep = null;
 }
 
 if (import.meta.hot) {

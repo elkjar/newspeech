@@ -178,7 +178,7 @@ export function composeSparse(ctx: ComposeContext): BankSlot {
   });
   return {
     tracks,
-    macros: { density: 0.25, chaos: 0.2, motion: 0.4, drift: 0.7, tension: 0.3 },
+    macros: { density: 0.25, chaos: 0.2, motion: 0.4, drift: 0.7, tension: 0.3, voicing: 0 },
     kind: 'scene',
   };
 }

@@ -22,6 +22,7 @@ import type { ChordContext } from '../audio/chordContext';
 import { chordToneMidi } from '../audio/chordContext';
 import {
   resolveChord,
+  applyVoicingMacro,
   dropChordTone,
   shuffleInversion,
   shiftSpread,
@@ -299,6 +300,9 @@ export function resolveStepMutation(inputs: MutationInputs): StepResolution {
 export interface ChordMasterInputs {
   track: Track;
   stepVoicing: ChordVoicing;
+  // Global voicing-macro amount (0..1, already LFO-modulated). Escalates the
+  // authored voicing's openness/richness before resolve; 0 = authored as-is.
+  voicingMacro: number;
   rootNote: number;
   scale: Scale;
   // mutated pitch (degree offset)
@@ -327,6 +331,11 @@ export interface ChordMasterResult {
   overlayChord:
     | { root: number; intervals: number[]; voicing: ChordVoicing }
     | null;
+  // True when chord-aware mutation OR pad voicing-drift altered the chord this
+  // trigger (dropped/borrowed/shuffled tone). The live-revoice tracker skips
+  // mutated chords — re-deriving their target from the authored voicing would
+  // fight the mutation. They simply revoice on the next un-mutated trigger.
+  mutated: boolean;
 }
 
 // Chord-master harmony with chord-aware mutation primitives and pad voicing
@@ -337,7 +346,8 @@ export function resolveChordMasterNote(
 ): ChordMasterResult {
   const {
     track,
-    stepVoicing,
+    stepVoicing: authoredVoicing,
+    voicingMacro,
     rootNote,
     scale,
     pitch,
@@ -348,10 +358,15 @@ export function resolveChordMasterNote(
     frozenChord,
     padDriftCount,
   } = inputs;
+  // The global voicing macro opens/enriches the authored chord before resolve.
+  // All downstream voicing math (mutation, pad drift, publish) builds on this
+  // effective voicing so followers + overlay inherit the macro for free.
+  const stepVoicing = applyVoicingMacro(authoredVoicing, voicingMacro);
   let chordRoot: number;
   let chordIntervals: number[];
   let audibleIntervals: number[];
   let publishedVoicing = stepVoicing;
+  let mutated = false;
   if (frozenChord) {
     chordRoot = frozenChord.root;
     chordIntervals = frozenChord.intervals;
@@ -377,6 +392,7 @@ export function resolveChordMasterNote(
         track.source.kind === 'voice' && isPadVoice(track.source.id);
       const picks = isPad ? [0, 2, 3] : [0, 1, 2, 3];
       const pick = picks[Math.floor(Math.random() * picks.length)];
+      mutated = true;
       if (pick === 0) {
         droppedIntervals = dropChordTone(authored.intervals);
       } else if (pick === 1) {
@@ -421,6 +437,7 @@ export function resolveChordMasterNote(
           chord = resolveChord(rootNote, scale, v, pitch + harmonicShift);
           droppedIntervals = null;
           publishedVoicing = v;
+          mutated = true;
         }
       }
     }
@@ -437,7 +454,7 @@ export function resolveChordMasterNote(
   const overlayChord = !freeze
     ? { root: chordRoot, intervals: audibleIntervals, voicing: publishedVoicing }
     : null;
-  return { rootMidi: chordRoot, voiceIntervals, publishedChord, overlayChord };
+  return { rootMidi: chordRoot, voiceIntervals, publishedChord, overlayChord, mutated };
 }
 
 export interface FollowerInputs {
@@ -551,6 +568,17 @@ export type TickEvent =
       // Track section — routed by the dispatcher into the rhythm or melody
       // recorder bus so stems output can split sample audio by section.
       section: TrackSection;
+      // Live-revoice context — present only for sustaining (pad) chord-master
+      // triggers. Lets the dispatcher tag each chord-tone voice with a note_id
+      // and recompute the target chord at any later voicing-macro value, so a
+      // held chord can be re-voiced (re-pitch moved tones, bloom in added
+      // extensions) under the voicing knob / its LFO. See voicingRevoice.ts.
+      revoice?: {
+        authoredVoicing: ChordVoicing;
+        rootNote: number;
+        scale: Scale;
+        pitchOffset: number;
+      };
     };
 
 export interface TickContext {
@@ -576,6 +604,9 @@ export interface TickInputs {
   density: number;
   chaos: number;
   tension: number;
+  // Global chord-voicing openness (0..1). Applied to the chord-master's
+  // voicing before resolve (audible immediately on the next chord trigger).
+  voicing: number;
   freeze: boolean;
   // Ghost-driven per-lead melodic-development amount, ADDED to a lead track's
   // tree depth (treePos). Per-track (staggered spotlight) — call with the track
@@ -622,6 +653,17 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     inputs.lfos,
     GLOBAL_TRACK_ID,
     'tension',
+    undefined,
+    1,
+  );
+  // Voicing macro — LFO-modulatable so a slow LFO breathes the chord open and
+  // closed across a held pad bed (see applyVoicingMacro). Read per tick and
+  // handed to the chord master below.
+  const modVoicing = modulated(
+    inputs.voicing,
+    inputs.lfos,
+    GLOBAL_TRACK_ID,
+    'voicing',
     undefined,
     1,
   );
@@ -780,6 +822,12 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
 
     let rootMidi: number | undefined;
     let voiceIntervals: number[] = [0];
+    // Set only for sustaining (pad) chord-master triggers — carries the
+    // authored voicing + scene root/scale so the dispatcher can live-revoice
+    // the held chord under the voicing macro (see voicingRevoice.ts).
+    let revoiceCtx:
+      | { authoredVoicing: ChordVoicing; rootNote: number; scale: Scale; pitchOffset: number }
+      | undefined;
     if (melodic) {
       if (isChordMaster) {
         let padDriftCount: number | null = null;
@@ -800,6 +848,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
         const cm = resolveChordMasterNote({
           track,
           stepVoicing,
+          voicingMacro: modVoicing,
           rootNote: inputs.rootNote,
           scale: inputs.scale,
           pitch,
@@ -812,6 +861,23 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
         });
         rootMidi = cm.rootMidi;
         voiceIntervals = cm.voiceIntervals;
+        // Tag for live revoicing only when the chord is sustaining (pad) and
+        // actually a chord (degree > 0) and not frozen. authoredVoicing is the
+        // pre-macro voicing so the dispatcher can re-derive at any macro value.
+        if (
+          !inputs.freeze &&
+          !cm.mutated &&
+          track.source.kind === 'voice' &&
+          isPadVoice(track.source.id) &&
+          stepVoicing.degree > 0
+        ) {
+          revoiceCtx = {
+            authoredVoicing: stepVoicing,
+            rootNote: inputs.rootNote,
+            scale: inputs.scale,
+            pitchOffset: pitch + harmonicShift,
+          };
+        }
         if (cm.publishedChord) {
           // Update the local shadow FIRST so followers later in this tick
           // see the new chord; emit the event so the global gets updated
@@ -892,6 +958,10 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
           // bass tracks loaded from .seq files that predate the composer.
           monophonic: track.monophonic || isBass,
           section: track.section,
+          // Only present on the first ratchet of a sustaining chord-master
+          // trigger — revoicing a ratchet burst makes no sense. revoiceCtx is
+          // undefined for every other voice.
+          revoice: r === 0 ? revoiceCtx : undefined,
         });
       }
     }

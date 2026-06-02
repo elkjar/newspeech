@@ -23,6 +23,7 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   drift: 'drift',
   chaos: 'chaos',
   tension: 'tension',
+  voicing: 'voicing',
   tapePosition: 'tape pos',
   tapeLength: 'tape len',
   tapeMix: 'tape mix',

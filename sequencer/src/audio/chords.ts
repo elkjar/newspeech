@@ -150,6 +150,55 @@ export function resolveChord(
   return { root, intervals: result };
 }
 
+// Global "voicing" macro — a single continuous openness control (0..1) that
+// re-voices the chord without touching the authored notes (Telepathic Orchid's
+// voicing dial). Two bands, monotonic, non-destructive:
+//   SIMPLE  (lower half) — reposition the chord: one inversion, then open
+//           the spread. No new tones, always consonant.
+//   ADVANCED(upper half) — stack diatonic color tones (triad → 7 → 9 → 11).
+// At amount 0 (or degree 0 = single note) the authored voicing is returned
+// untouched, so existing patterns are unchanged until the knob is turned. The
+// macro only ever ESCALATES past the authored voicing (max with authored), so
+// per-step authored voicing variation survives as a floor the macro lifts.
+// sus2/sus4 keep their suspension — only their position is moved, not stacked.
+//
+// Bounded UPWARD reach. Each axis (inversion, spread, extension) raises pitch,
+// and they compound: a 2nd inversion + 'wide' spread (raise the top +8ve) on an
+// 11th sent the top voice ~+28 semitones (≈2.5 octaves) above the root — the
+// chord "jumped 2 octaves" as the knob rose. So the cascade caps inversion at 1
+// and spread at 'open' (drops the MIDDLE down rather than raising the top up).
+// That holds the top to ~+14 — just over an octave of total opening, no leap.
+export function applyVoicingMacro(voicing: ChordVoicing, amount: number): ChordVoicing {
+  if (amount <= 0 || voicing.degree === 0) return voicing;
+  const a = Math.min(1, amount);
+
+  // SIMPLE: a single inversion, then open the spread. Capped at inversion 1 +
+  // 'open' so the voicing opens without translating up the keyboard (see above).
+  let inv = voicing.inversion as number;
+  if (a >= 0.12 && inv < 1) inv = 1;
+
+  let sprIdx = CHORD_SPREADS.indexOf(voicing.spread);
+  if (a >= 0.3 && sprIdx < 1) sprIdx = 1; // open (drop the middle down)
+
+  // ADVANCED: fold in diatonic extensions. Leave sus voicings' tone-stack alone.
+  let extension = voicing.extension;
+  if (extension !== 'sus2' && extension !== 'sus4') {
+    const RICHNESS: ChordExtension[] = ['triad', '7', '9', '11'];
+    let richIdx = Math.max(0, RICHNESS.indexOf(extension));
+    if (a >= 0.58 && richIdx < 1) richIdx = 1; // 7th
+    if (a >= 0.76 && richIdx < 2) richIdx = 2; // 9th
+    if (a >= 0.92 && richIdx < 3) richIdx = 3; // 11th
+    extension = RICHNESS[richIdx];
+  }
+
+  return {
+    degree: voicing.degree,
+    extension,
+    inversion: inv as ChordInversion,
+    spread: CHORD_SPREADS[sprIdx],
+  };
+}
+
 // Parallel-mode pairing for `borrowChord`. Major and minor swap; pentatonic
 // and chromatic have no idiomatic parallel and are intentionally omitted —
 // callers fall through to the authored chord when this lookup misses.

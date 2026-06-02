@@ -95,7 +95,7 @@ export function composeDrumsOnly(ctx: ComposeContext): BankSlot {
   });
   return {
     tracks,
-    macros: { density: 0.6, chaos: 0.55, motion: 0.3, drift: 0.6, tension: 0.55 },
+    macros: { density: 0.6, chaos: 0.55, motion: 0.3, drift: 0.6, tension: 0.55, voicing: 0 },
     kind: 'transition',
   };
 }

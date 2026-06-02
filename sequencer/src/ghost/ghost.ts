@@ -404,6 +404,7 @@ function snapshotMacros(s: ReturnType<typeof useSequencerStore.getState>): BankM
     motion: s.motion,
     drift: s.drift,
     tension: s.tension,
+    voicing: s.voicing,
   };
 }
 

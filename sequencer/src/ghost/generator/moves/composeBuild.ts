@@ -104,7 +104,7 @@ export function composeBuild(ctx: ComposeContext): BankSlot {
     tracks,
     // High tension (the build's defining macro), low chaos (straight time),
     // low motion (rhythm carries the arc, not modulation).
-    macros: { density: 0.4, chaos: 0.15, motion: 0.3, drift: 0.5, tension: 0.7 },
+    macros: { density: 0.4, chaos: 0.15, motion: 0.3, drift: 0.5, tension: 0.7, voicing: 0 },
     kind: 'scene',
   };
 }

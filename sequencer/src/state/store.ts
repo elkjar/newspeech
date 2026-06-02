@@ -312,6 +312,10 @@ export interface BankMacros {
   motion: number;
   drift: number;
   tension: number;
+  // Global chord-voicing openness (0..1). 0 = authored voicing untouched;
+  // higher opens/inverts the chord then stacks diatonic color tones. See
+  // applyVoicingMacro in audio/chords.ts.
+  voicing: number;
 }
 
 // Bank kind — scene banks are full-length musical sections (dwell governed
@@ -612,6 +616,7 @@ export interface SequencerState {
   motion: number;
   drift: number;
   tension: number;
+  voicing: number;
   freeze: boolean;
   // Recorder arm state. The audio recorder (`audio/recorder.ts`) subscribes
   // to the store and records when `armed && playing`. Auto-disarms when a
@@ -675,6 +680,7 @@ export interface SequencerState {
   setMotion: (v: number) => void;
   setDrift: (v: number) => void;
   setTension: (v: number) => void;
+  setVoicing: (v: number) => void;
   setFreeze: (v: boolean) => void;
   toggleFreeze: () => void;
   setViewSection: (section: TrackSection) => void;
@@ -978,6 +984,7 @@ function snapshotBank(
     motion: number;
     drift: number;
     tension: number;
+    voicing: number;
   },
   slotIndex: number
 ): BankSlot {
@@ -989,6 +996,7 @@ function snapshotBank(
       motion: state.motion,
       drift: state.drift,
       tension: state.tension,
+      voicing: state.voicing,
     },
     kind: slotIndex >= TRANSITION_SLOT_START ? 'transition' : 'scene',
   };
@@ -1040,6 +1048,7 @@ const initialMacros: BankMacros = {
   motion: clamp01((defaultPreset as { motion?: unknown }).motion, 0.5),
   drift: clamp01((defaultPreset as { drift?: unknown }).drift, 1),
   tension: clamp01((defaultPreset as { tension?: unknown }).tension),
+  voicing: clamp01((defaultPreset as { voicing?: unknown }).voicing),
 };
 
 // Hydrate banks from the preset when provided. Fallback seeder runs when
@@ -1109,6 +1118,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   motion: initialMacros.motion,
   drift: initialMacros.drift,
   tension: initialMacros.tension,
+  voicing: initialMacros.voicing,
   banks: initialBanks,
   activeBank: initialActiveBank,
   pendingBank: null,
@@ -1215,6 +1225,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     markManualOverride(GLOBAL_TRACK_ID, 'tension');
     set({ tension: clamp01(v) });
   },
+  setVoicing: (v) => {
+    markManualOverride(GLOBAL_TRACK_ID, 'voicing');
+    set({ voicing: clamp01(v) });
+  },
   setFreeze: (v) => {
     if (v) freezeLFOs(useSequencerStore.getState().lfos);
     else unfreezeLFOs();
@@ -1303,6 +1317,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       motion: 0.5,
       drift: 1,
       tension: 0.5,
+      voicing: 0,
       banks: Array.from({ length: BANK_SLOT_COUNT }, () => null),
       activeBank: 0,
       pendingBank: null,
@@ -1809,6 +1824,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       motion: 0.5,
       drift: 1,
       tension: 0.5,
+      voicing: 0,
     };
     const newSlot: BankSlot = {
       tracks: blankTracks,
@@ -1921,6 +1937,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           motion: state.motion,
           drift: state.drift,
           tension: state.tension,
+          voicing: state.voicing,
         },
         sceneGraph: { ...state.sceneGraph },
       };
@@ -2028,6 +2045,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           motion: state.motion,
           drift: state.drift,
           tension: state.tension,
+          voicing: state.voicing,
         },
         sceneGraph: { ...state.sceneGraph },
         scenes: liveScenes.map((sc) =>
@@ -2347,12 +2365,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   // Manual UI knobs keep using the individual setDensity/setMotion/etc.
   // setters; this is ghost-side machinery.
   setMacros: (m) => {
-    const next: Partial<Pick<SequencerState, 'density' | 'chaos' | 'motion' | 'drift' | 'tension'>> = {};
+    const next: Partial<Pick<SequencerState, 'density' | 'chaos' | 'motion' | 'drift' | 'tension' | 'voicing'>> = {};
     if (m.density !== undefined) next.density = clamp01(m.density);
     if (m.chaos !== undefined) next.chaos = clamp01(m.chaos);
     if (m.motion !== undefined) next.motion = clamp01(m.motion, 0.5);
     if (m.drift !== undefined) next.drift = clamp01(m.drift, 1);
     if (m.tension !== undefined) next.tension = clamp01(m.tension);
+    if (m.voicing !== undefined) next.voicing = clamp01(m.voicing);
     set(next);
   },
 }));
@@ -2580,6 +2599,7 @@ function composeLiveActiveScene(state: SequencerState): (Scene | null)[] {
       motion: state.motion,
       drift: state.drift,
       tension: state.tension,
+      voicing: state.voicing,
     },
     sceneGraph: state.sceneGraph,
   };
@@ -2614,6 +2634,7 @@ function applySong(
     motion: song.macros.motion,
     drift: song.macros.drift,
     tension: song.macros.tension,
+    voicing: song.macros.voicing ?? 0,
     // Ghost enabled is session-level, not per-song — preserve the user's
     // current on/off choice across song loads.
     sceneGraph: { ...song.sceneGraph, enabled: state.sceneGraph.enabled },

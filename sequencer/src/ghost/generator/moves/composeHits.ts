@@ -148,7 +148,7 @@ export function composeHits(ctx: ComposeContext): BankSlot {
     // High density + higher chaos (the riff is the chaos), moderate motion,
     // low drift (hits should land where authored, no density-fill ghosts),
     // high tension.
-    macros: { density: 0.6, chaos: 0.35, motion: 0.4, drift: 0.3, tension: 0.75 },
+    macros: { density: 0.6, chaos: 0.35, motion: 0.4, drift: 0.3, tension: 0.75, voicing: 0 },
     kind: 'scene',
   };
 }

@@ -36,6 +36,8 @@ function sectionCode(section: 'drum' | 'melodic' | undefined): number {
 import {
   isNativeAudioAvailable,
   triggerSample,
+  releaseNote,
+  repitchNote,
   setTrackFiltersBulk,
   setReverbParams,
   setSaturationParams,
@@ -56,6 +58,15 @@ import {
   type LfoDestKind,
 } from './audio/nativeEngine';
 import { getAudioContext } from './audio/audioContext';
+import {
+  allocRevoiceNoteId,
+  registerChord,
+  clearAllChords,
+  soundingChords,
+  targetMidisFor,
+  diffChord,
+  type ChordToneVoice,
+} from './audio/voicingRevoice';
 import {
   initMIDIOut,
   sendMIDINote,
@@ -541,6 +552,7 @@ export function App() {
               density: state.density,
               chaos: state.chaos,
               tension: state.tension,
+              voicing: state.voicing,
               freeze: state.freeze,
               ghostLeadMutation: getGhostLeadMutation,
               sceneStartStep: state.sceneStartStep,
@@ -690,11 +702,20 @@ export function App() {
               const delaySecs = Math.max(0, ev.when - getAudioContext().currentTime);
               const env = voiceEnvelope(ev.voice);
               const holdSecs = env ? ev.gate * ev.stepDuration : undefined;
+              // Sustaining chord-master triggers carry a `revoice` context — tag
+              // each chord tone with a note_id and register the sounding chord so
+              // the voicing-macro loop (below) can re-voice it while it rings.
+              const reVoiceable = ev.revoice !== undefined;
+              const tones: ChordToneVoice[] = [];
               for (const interval of intervals) {
                 const targetMidi =
                   ev.midi !== undefined ? ev.midi + interval : undefined;
                 const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
                 if (!pick) continue;
+                const noteId =
+                  reVoiceable && targetMidi !== undefined
+                    ? allocRevoiceNoteId()
+                    : undefined;
                 void triggerSample(pick.path, {
                   gain: ev.velocity * pick.voiceGain * trackGain,
                   pan,
@@ -718,6 +739,38 @@ export function App() {
                   envelopeSustain: env?.sustain,
                   envelopeRelease: env?.release,
                   envelopeHold: holdSecs,
+                  noteId,
+                });
+                if (noteId !== undefined && targetMidi !== undefined) {
+                  tones.push({ noteId, midi: targetMidi });
+                }
+              }
+              if (reVoiceable && ev.revoice && tones.length > 0) {
+                registerChord({
+                  trackId: ev.trackId,
+                  voice: ev.voice,
+                  authoredVoicing: ev.revoice.authoredVoicing,
+                  rootNote: ev.revoice.rootNote,
+                  scale: ev.revoice.scale,
+                  pitchOffset: ev.revoice.pitchOffset,
+                  baseMidi: ev.midi as number,
+                  tones,
+                  velocity: ev.velocity,
+                  trackGain,
+                  pan,
+                  outFirst: out?.firstChannel ?? 0,
+                  outStereo: out?.stereo ?? true,
+                  section: sectionCode(ev.section),
+                  isTexture,
+                  env: env
+                    ? {
+                        attack: env.attack,
+                        decay: env.decay,
+                        sustain: env.sustain,
+                        release: env.release,
+                        hold: holdSecs,
+                      }
+                    : undefined,
                 });
               }
             } else {
@@ -742,6 +795,73 @@ export function App() {
       }
       if (streamBatch.length > 0) emitStreamEvents(streamBatch);
     });
+  }, []);
+
+  // Live chord re-voicing for the voicing macro (Increment 2). Native only —
+  // `repitchNote` has no Web Audio analogue. ~30ms cadence: the macro quantizes
+  // into discrete voicing stages, so even under a fast LFO this fires a handful
+  // of voice-leading diffs across a sweep, not a stream of micro-edits. Each
+  // diff re-pitches the tones that moved (inversion/spread), blooms in added
+  // extensions as fresh voices, and fades out removed ones. When nothing has
+  // moved the diff is empty and no IPC is issued. See voicingRevoice.ts.
+  useEffect(() => {
+    if (!isNativeAudioAvailable()) return;
+    const id = window.setInterval(() => {
+      const s = useSequencerStore.getState();
+      if (!s.playing) {
+        clearAllChords();
+        return;
+      }
+      const chords = soundingChords();
+      if (chords.length === 0) return;
+      const modVoicing = modulated(
+        s.voicing,
+        s.lfos,
+        GLOBAL_TRACK_ID,
+        'voicing',
+        undefined,
+        1,
+      );
+      for (const chord of chords) {
+        const target = targetMidisFor(chord, modVoicing);
+        const plan = diffChord(chord.tones, target);
+        if (
+          plan.repitch.length === 0 &&
+          plan.removeNoteIds.length === 0 &&
+          plan.addMidis.length === 0
+        ) {
+          continue;
+        }
+        for (const rp of plan.repitch) void repitchNote(rp.noteId, rp.ratio);
+        for (const noteId of plan.removeNoteIds) void releaseNote(noteId, 0.12);
+        const nextTones = [...plan.keptTones];
+        for (const midi of plan.addMidis) {
+          const pick = samplePlayer.pickNativeSample(chord.voice, midi);
+          if (!pick) continue;
+          const noteId = allocRevoiceNoteId();
+          void triggerSample(pick.path, {
+            gain: chord.velocity * pick.voiceGain * chord.trackGain,
+            pan: chord.pan,
+            pitch: pick.pitch,
+            outFirst: chord.outFirst,
+            outStereo: chord.outStereo,
+            trackId: chord.trackId,
+            monophonic: false,
+            section: chord.section,
+            isTexture: chord.isTexture,
+            envelopeAttack: chord.env?.attack,
+            envelopeDecay: chord.env?.decay,
+            envelopeSustain: chord.env?.sustain,
+            envelopeRelease: chord.env?.release,
+            envelopeHold: chord.env?.hold,
+            noteId,
+          });
+          nextTones.push({ noteId, midi });
+        }
+        chord.tones = nextTones;
+      }
+    }, 30);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {

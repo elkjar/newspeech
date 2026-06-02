@@ -389,6 +389,17 @@ export async function releaseNote(noteId: number, fadeSecs?: number): Promise<vo
   });
 }
 
+// Live re-pitch of a tagged, in-flight voice. `ratio` is the playback-rate
+// multiplier (2^(semitones/12)) — the voice's pitch scales by it from its
+// current read position, no retrigger. Used by the voicing macro to slide a
+// held chord's tones to a new inversion/spread. No-op if the voice has ended.
+export async function repitchNote(noteId: number, ratio: number): Promise<void> {
+  await invoke<void>('audio_repitch_note', {
+    noteId,
+    ratio,
+  });
+}
+
 // Per-track filter params (cutoff normalized 0..1 over the same log
 // curve as `cutoffNormToHz`, resonance 0..1). Phase 6: cutoff travels
 // as norm so the Rust LFO compute can modulate in the same space as

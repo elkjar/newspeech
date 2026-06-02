@@ -2775,6 +2775,15 @@ struct Voice {
   sample: Option<Arc<SampleData>>,
   position: f64,
   rate: f64,
+  // Rate glide (portamento) for live re-voicing. RepitchNote ramps `rate`
+  // toward `rate_target` by `rate_glide_inc` per frame over the remaining
+  // frame count, rather than snapping — an instantaneous rate change is a
+  // waveform slope discontinuity that ticks (audible when the voicing macro
+  // is cranked and tones move by large intervals). remaining == 0 means steady
+  // (rate has reached rate_target).
+  rate_target: f64,
+  rate_glide_inc: f64,
+  rate_glide_remaining: u32,
   gain: f32,
   pan_left: f32,
   pan_right: f32,
@@ -2865,6 +2874,9 @@ impl Default for Voice {
       sample: None,
       position: 0.0,
       rate: 1.0,
+      rate_target: 1.0,
+      rate_glide_inc: 0.0,
+      rate_glide_remaining: 0,
       gain: 0.0,
       pan_left: 0.0,
       pan_right: 0.0,
@@ -2958,6 +2970,19 @@ enum MixerCommand {
   ReleaseNote {
     note_id: u64,
     fade_frames: u32,
+  },
+  // Live re-pitch of a tagged, in-flight voice. Multiplies the matched
+  // voice's playback `rate` by `ratio` (= 2^(semitones/12), computed JS-side
+  // from the tracked old→new MIDI of that chord tone). Used by the voicing
+  // macro to slide a held chord's inversion/spread tones to their new pitch
+  // without retriggering. Pitch IS `rate` here (position += rate per sample),
+  // so this is a clean frequency change from the current read position — no
+  // amplitude discontinuity. v1 snaps; a future glide ramps `rate` over N
+  // frames. Skips frozen + already-releasing voices like ReleaseNote.
+  RepitchNote {
+    note_id: u64,
+    ratio: f32,
+    glide_frames: u32,
   },
   // Transport-stop texture fade. ONLY texture-role voices get a release
   // ramp (fade_frames) so sustained material rings down gracefully on
@@ -3720,6 +3745,33 @@ impl AudioEngine {
     Ok(())
   }
 
+  // Live re-pitch of a tagged voice (see MixerCommand::RepitchNote). `ratio`
+  // is the playback-rate multiplier (2^(semitones/12)). No-op if the device
+  // is closed or the voice has already ended.
+  pub fn repitch_note(&self, note_id: u64, ratio: f32) -> Result<(), String> {
+    // ~20ms portamento glide so the re-pitch doesn't tick. Computed here (like
+    // ReleaseNote's fade_frames) since the audio thread doesn't own the SR.
+    let sr = self.state.sample_rate.load(Ordering::Acquire);
+    let glide_frames = if sr == 0 {
+      0
+    } else {
+      (sr as f32 * 0.02).round().max(1.0).min(u32::MAX as f32) as u32
+    };
+    let cmd = MixerCommand::RepitchNote { note_id, ratio, glide_frames };
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(cmd)
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
+
   // Freeze in-flight voice DSP params (see MixerCommand::FreezeVoiceParams).
   // Called on every scene/bank/song swap.
   pub fn freeze_voice_params(&self) -> Result<(), String> {
@@ -3860,6 +3912,9 @@ fn claim_voice_slot(
   v.sample = Some(p.sample);
   v.position = 0.0;
   v.rate = p.rate;
+  v.rate_target = p.rate;
+  v.rate_glide_inc = 0.0;
+  v.rate_glide_remaining = 0;
   v.gain = p.gain;
   v.pan_left = p.pan_left;
   v.pan_right = p.pan_right;
@@ -4302,6 +4357,38 @@ fn build_stream(
                 }
               }
             }
+            MixerCommand::RepitchNote { note_id, ratio, glide_frames } => {
+              if note_id != 0 && ratio.is_finite() && ratio > 0.0 {
+                for v in voices.iter_mut() {
+                  // Match the tagged voice only; skip frozen tails (belong to
+                  // an outgoing scene) and voices already releasing.
+                  if !v.active
+                    || v.note_id != note_id
+                    || v.release_remaining > 0
+                    || v.frozen_params.is_some()
+                  {
+                    continue;
+                  }
+                  // Base the new target on the IN-FLIGHT target (not the
+                  // mid-glide rate) so chained re-pitches compose correctly —
+                  // the JS side tracks tone pitch target-to-target, so each
+                  // ratio is relative to the last target, not wherever the
+                  // glide currently sits.
+                  let base = if v.rate_glide_remaining > 0 { v.rate_target } else { v.rate };
+                  let target = base * ratio as f64;
+                  if glide_frames == 0 {
+                    v.rate = target;
+                    v.rate_target = target;
+                    v.rate_glide_remaining = 0;
+                    v.rate_glide_inc = 0.0;
+                  } else {
+                    v.rate_target = target;
+                    v.rate_glide_remaining = glide_frames;
+                    v.rate_glide_inc = (target - v.rate) / glide_frames as f64;
+                  }
+                }
+              }
+            }
             MixerCommand::FreezeVoiceParams => {
               for v in voices.iter_mut() {
                 if !v.active || v.frozen_params.is_some() {
@@ -4673,6 +4760,16 @@ fn build_stream(
               buf[frame * n_ch + route_first] += mono * v.gain * dry_scale;
             }
             v.position += v.rate;
+            // Advance the rate glide (portamento) one frame. Linear ramp of
+            // `rate` toward `rate_target` — spreads a re-pitch over ~20ms so
+            // there's no slope-discontinuity tick.
+            if v.rate_glide_remaining > 0 {
+              v.rate += v.rate_glide_inc;
+              v.rate_glide_remaining -= 1;
+              if v.rate_glide_remaining == 0 {
+                v.rate = v.rate_target;
+              }
+            }
             v.frames_played = v.frames_played.saturating_add(1);
             // Decrement release counter at frame-end. Hitting zero ends
             // the voice cleanly — no more samples emitted this block.
@@ -5186,6 +5283,11 @@ pub fn audio_trigger_sample(
 #[tauri::command]
 pub fn audio_release_note(note_id: u64, fade_secs: Option<f32>) -> Result<(), String> {
   engine().release_note(note_id, fade_secs.unwrap_or(0.0))
+}
+
+#[tauri::command]
+pub fn audio_repitch_note(note_id: u64, ratio: f32) -> Result<(), String> {
+  engine().repitch_note(note_id, ratio)
 }
 
 // Phase 6: cutoff arrives normalized (0..1) so the LFO compute on the

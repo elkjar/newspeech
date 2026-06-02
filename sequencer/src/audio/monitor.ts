@@ -90,6 +90,65 @@ export function monitorNote(
   );
 }
 
+// Audition a CHORD on a track's voice (fire-and-forget). Used by the Launchpad
+// chord page — tap a pad, hear the chord, nothing to release (tapping a
+// progression rings each chord for ~AUDITION window then decays). One voice per
+// interval, NOT monophonic so the tones sound together. `rootMidi` is the
+// chord root the intervals are offsets from (already octave-applied by the
+// caller); section 0 keeps auditions out of recording stems.
+const AUDITION_HOLD_SECS = 1.0;
+export function monitorChord(
+  track: Track,
+  rootMidi: number,
+  intervals: number[],
+  velocity: number,
+): void {
+  if (track.source.kind !== 'voice') return;
+  const voice = track.source.id;
+  const env = voiceEnvelope(voice);
+
+  if (isNativeAudioAvailable()) {
+    const out = track.output;
+    const pan = ((track.pan ?? 0.5) - 0.5) * 2;
+    for (const interval of intervals) {
+      const pick = samplePlayer.pickNativeSample(voice, rootMidi + interval);
+      if (!pick) continue;
+      void triggerSample(pick.path, {
+        gain: velocity * pick.voiceGain * (track.gain ?? 1),
+        pan,
+        pitch: pick.pitch,
+        outFirst: out?.firstChannel ?? 0,
+        outStereo: out?.stereo ?? true,
+        trackId: track.id,
+        delaySecs: 0,
+        monophonic: false,
+        section: 0,
+        envelopeAttack: env?.attack,
+        envelopeDecay: env?.decay,
+        envelopeSustain: env?.sustain,
+        envelopeRelease: env?.release,
+        envelopeHold: env ? AUDITION_HOLD_SECS : undefined,
+      });
+    }
+    return;
+  }
+
+  // Web build — fire-and-forget chord audition.
+  samplePlayer.trigger(
+    voice,
+    getAudioContext().currentTime,
+    velocity,
+    rootMidi,
+    1,
+    AUDITION_HOLD_SECS,
+    intervals,
+    track.pan,
+    track.id,
+    false,
+    undefined,
+  );
+}
+
 // Release a held monitor voice on note-off. Native only — ramps the tagged
 // voice down over the voice's own release time (clean, no click). No-op on the
 // web build, where the audition already fired and ended on its own.

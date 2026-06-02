@@ -53,6 +53,7 @@ interface PersistedState {
   motion?: number;
   drift?: number;
   tension?: number;
+  voicing?: number;
   tape?: TapeParams;
   glitch?: GlitchParams;
   reverb?: ReverbParams;
@@ -109,6 +110,7 @@ export function exportProject(): string {
     motion: s.motion,
     drift: s.drift,
     tension: s.tension,
+    voicing: s.voicing,
     tape: s.tape,
     glitch: s.glitch,
     reverb: s.reverb,
@@ -147,6 +149,7 @@ function compositionWithLiveActiveScene(s: SequencerState): Composition {
       motion: s.motion,
       drift: s.drift,
       tension: s.tension,
+      voicing: s.voicing,
     },
     sceneGraph: s.sceneGraph,
   };
@@ -237,7 +240,7 @@ function hydrateScene(
   if (tracks.length === 0) return null;
   const macros = (o.macros && typeof o.macros === 'object'
     ? o.macros
-    : {}) as Partial<{ density: number; chaos: number; motion: number; drift: number; tension: number }>;
+    : {}) as Partial<{ density: number; chaos: number; motion: number; drift: number; tension: number; voicing: number }>;
   const banks = hydrateBanks(o.banks, () => ({
     tracks,
     macros: {
@@ -246,6 +249,7 @@ function hydrateScene(
       motion: clamp01(macros.motion, 0.5),
       drift: clamp01(macros.drift, 1),
       tension: clamp01(macros.tension),
+      voicing: clamp01(macros.voicing),
     },
   }));
   const activeBank =
@@ -263,6 +267,7 @@ function hydrateScene(
       motion: clamp01(macros.motion, 0.5),
       drift: clamp01(macros.drift, 1),
       tension: clamp01(macros.tension),
+      voicing: clamp01(macros.voicing),
     },
     sceneGraph: hydrateSceneGraph(o.sceneGraph),
   };
@@ -296,9 +301,10 @@ export function parseSceneFromSeq(json: string): Scene | null {
   const motion = clamp01(data.motion, 0.5);
   const drift = clamp01(data.drift, 1);
   const tension = clamp01(data.tension);
+  const voicing = clamp01(data.voicing);
   const banks = hydrateBanks(data.banks, () => ({
     tracks,
-    macros: { density, chaos, motion, drift, tension },
+    macros: { density, chaos, motion, drift, tension, voicing },
   }));
   const requestedActive =
     typeof data.activeBank === 'number' && Number.isFinite(data.activeBank)
@@ -312,7 +318,7 @@ export function parseSceneFromSeq(json: string): Scene | null {
     tracks,
     banks,
     activeBank,
-    macros: { density, chaos, motion, drift, tension },
+    macros: { density, chaos, motion, drift, tension, voicing },
     sceneGraph: hydrateSceneGraph(data.sceneGraph),
   };
 }
@@ -366,7 +372,7 @@ interface PersistedScene {
   tracks: Track[];
   banks: (BankSlot | null)[];
   activeBank: number | null;
-  macros: { density: number; chaos: number; motion: number; drift: number; tension: number };
+  macros: { density: number; chaos: number; motion: number; drift: number; tension: number; voicing: number };
   sceneGraph: SceneGraphConfig;
 }
 
@@ -377,7 +383,7 @@ export function exportSceneAsSeqscene(): string {
     tracks: s.tracks,
     banks: banksWithLiveActiveBank(s),
     activeBank: s.activeBank,
-    macros: { density: s.density, chaos: s.chaos, motion: s.motion, drift: s.drift, tension: s.tension },
+    macros: { density: s.density, chaos: s.chaos, motion: s.motion, drift: s.drift, tension: s.tension, voicing: s.voicing },
     sceneGraph: s.sceneGraph,
   })!;
   const data: PersistedScene = {
@@ -421,15 +427,17 @@ export function parseSceneFromSeqscene(json: string): Scene | null {
     motion: number;
     drift: number;
     tension: number;
+    voicing: number;
   }>;
   const density = clamp01(macros.density);
   const chaos = clamp01(macros.chaos);
   const motion = clamp01(macros.motion, 0.5);
   const drift = clamp01(macros.drift, 1);
   const tension = clamp01(macros.tension);
+  const voicing = clamp01(macros.voicing);
   const banks = hydrateBanks(data.banks, () => ({
     tracks,
-    macros: { density, chaos, motion, drift, tension },
+    macros: { density, chaos, motion, drift, tension, voicing },
   }));
   const requestedActive =
     typeof data.activeBank === 'number' && Number.isFinite(data.activeBank)
@@ -444,7 +452,7 @@ export function parseSceneFromSeqscene(json: string): Scene | null {
     tracks,
     banks,
     activeBank,
-    macros: { density, chaos, motion, drift, tension },
+    macros: { density, chaos, motion, drift, tension, voicing },
     sceneGraph: hydrateSceneGraph(data.sceneGraph),
   };
 }
@@ -480,9 +488,10 @@ export function parseSongFromSeq(json: string): Song | null {
   const motion = clamp01(data.motion, 0.5);
   const drift = clamp01(data.drift, 1);
   const tension = clamp01(data.tension);
+  const voicing = clamp01(data.voicing);
   const banks = hydrateBanks(data.banks, () => ({
     tracks,
-    macros: { density, chaos, motion, drift, tension },
+    macros: { density, chaos, motion, drift, tension, voicing },
   }));
   const requestedActive =
     typeof data.activeBank === 'number' && Number.isFinite(data.activeBank)
@@ -516,7 +525,7 @@ export function parseSongFromSeq(json: string): Song | null {
     tracks,
     banks,
     activeBank,
-    macros: { density, chaos, motion, drift, tension },
+    macros: { density, chaos, motion, drift, tension, voicing },
     sceneGraph,
     scenes: composition.scenes,
     activeScene: composition.activeScene,
@@ -575,6 +584,7 @@ function songsWithLiveActiveSong(s: SequencerState): (Song | null)[] {
       motion: s.motion,
       drift: s.drift,
       tension: s.tension,
+      voicing: s.voicing,
     },
     sceneGraph: s.sceneGraph,
     scenes: compositionWithLiveActiveScene(s).scenes,
@@ -747,10 +757,11 @@ export function importProject(json: string): boolean {
   const motion = clamp01(data.motion, 0.5);
   const drift = clamp01(data.drift, 1);
   const tension = clamp01(data.tension);
+  const voicing = clamp01(data.voicing);
 
   const banks = hydrateBanks(data.banks, () => ({
     tracks,
-    macros: { density, chaos, motion, drift, tension },
+    macros: { density, chaos, motion, drift, tension, voicing },
   }));
   const requestedActive =
     typeof data.activeBank === 'number' && Number.isFinite(data.activeBank)
@@ -781,6 +792,7 @@ export function importProject(json: string): boolean {
     motion,
     drift,
     tension,
+    voicing,
     tape: hydrateTape(data.tape),
     glitch: hydrateGlitch(data.glitch),
     reverb: hydrateReverb(data.reverb),

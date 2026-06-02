@@ -9,7 +9,7 @@ export type LFODestKnobTrack =
   | 'filterCutoff'
   | 'filterResonance';
 export type LFODestKnobGlobal =
-  | 'density' | 'motion' | 'drift' | 'chaos' | 'tension'
+  | 'density' | 'motion' | 'drift' | 'chaos' | 'tension' | 'voicing'
   | 'tapePosition' | 'tapeLength' | 'tapeMix' | 'tapeGrainRate' | 'tapeGrainMix'
   | 'glitchChance' | 'glitchMix'
   | 'reverbSize' | 'reverbMix' | 'reverbDiffusion' | 'reverbDamping'

@@ -191,7 +191,7 @@ export type FxKnobTargetName =
   | 'master.bypass';
 
 export type MidiTarget =
-  | `macro:${'density' | 'chaos' | 'motion' | 'drift' | 'tension'}`
+  | `macro:${'density' | 'chaos' | 'motion' | 'drift' | 'tension' | 'voicing'}`
   | `bank:queue:${number}`
   | `track:${number}:${TrackKnobTargetName}`
   // View-relative: addresses the Nth track (0-based) of the CURRENTLY VIEWED

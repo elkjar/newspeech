@@ -133,11 +133,13 @@ export function MacroStrip() {
   const drift = useSequencerStore((s) => s.drift);
   const chaos = useSequencerStore((s) => s.chaos);
   const tension = useSequencerStore((s) => s.tension);
+  const voicing = useSequencerStore((s) => s.voicing);
   const setDensity = useSequencerStore((s) => s.setDensity);
   const setMotion = useSequencerStore((s) => s.setMotion);
   const setDrift = useSequencerStore((s) => s.setDrift);
   const setChaos = useSequencerStore((s) => s.setChaos);
   const setTension = useSequencerStore((s) => s.setTension);
+  const setVoicing = useSequencerStore((s) => s.setVoicing);
 
   return (
     <div className="flex items-center gap-6">
@@ -191,6 +193,15 @@ export function MacroStrip() {
           learnTarget="macro:tension"
         />
       </div>
+      <span className="w-px self-stretch bg-white/15" />
+      <MacroKnob
+        knob="voicing"
+        value={voicing}
+        onChange={setVoicing}
+        size={MACRO_SIZE}
+        label="voicing"
+        learnTarget="macro:voicing"
+      />
     </div>
   );
 }

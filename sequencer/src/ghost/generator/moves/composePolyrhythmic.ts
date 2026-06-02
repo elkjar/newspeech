@@ -223,7 +223,7 @@ export function composePolyrhythmic(ctx: ComposeContext): BankSlot {
   });
   return {
     tracks,
-    macros: { density: 0.4, chaos: 0.55, motion: 0.5, drift: 0.8, tension: 0.6 },
+    macros: { density: 0.4, chaos: 0.55, motion: 0.5, drift: 0.8, tension: 0.6, voicing: 0 },
     kind: 'scene',
   };
 }

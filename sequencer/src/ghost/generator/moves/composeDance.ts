@@ -144,7 +144,7 @@ export function composeDance(ctx: ComposeContext): BankSlot {
     // Steady energy — full but repetitive. Chaos low (driving = clean
     // pulse), motion moderate (chord arc carries), drift moderate so
     // density-fill can add subtle variation across bars.
-    macros: { density: 0.5, chaos: 0.2, motion: 0.5, drift: 0.5, tension: 0.5 },
+    macros: { density: 0.5, chaos: 0.2, motion: 0.5, drift: 0.5, tension: 0.5, voicing: 0 },
     kind: 'scene',
   };
 }

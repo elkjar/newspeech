@@ -115,7 +115,7 @@ export function composeMelodic(ctx: ComposeContext): BankSlot {
   });
   return {
     tracks,
-    macros: { density: 0.5, chaos: 0.3, motion: 0.65, drift: 0.7, tension: 0.5 },
+    macros: { density: 0.5, chaos: 0.3, motion: 0.65, drift: 0.7, tension: 0.5, voicing: 0 },
     kind: 'scene',
   };
 }

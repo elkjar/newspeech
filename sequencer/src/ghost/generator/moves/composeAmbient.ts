@@ -114,7 +114,7 @@ export function composeAmbient(ctx: ComposeContext): BankSlot {
     // Low density (no fill), low chaos (clean), high motion (harmonic drift),
     // moderate drift / tension. The ambient feel comes from sustained voices
     // + chord changes, not from rhythmic activity.
-    macros: { density: 0.2, chaos: 0.1, motion: 0.7, drift: 0.6, tension: 0.4 },
+    macros: { density: 0.2, chaos: 0.1, motion: 0.7, drift: 0.6, tension: 0.4, voicing: 0 },
     kind: 'scene',
   };
 }

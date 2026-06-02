@@ -115,7 +115,7 @@ export function composeHalftime(ctx: ComposeContext): BankSlot {
     // High tension (heavy feel), moderate density, low chaos (clean and
     // big). Drift low so density-fill doesn't ghost in extra hits between
     // the deliberately-sparse kick/snare.
-    macros: { density: 0.4, chaos: 0.15, motion: 0.5, drift: 0.3, tension: 0.7 },
+    macros: { density: 0.4, chaos: 0.15, motion: 0.5, drift: 0.3, tension: 0.7, voicing: 0 },
     kind: 'scene',
   };
 }

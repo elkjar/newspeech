@@ -459,6 +459,7 @@ function hydrateBankMacros(saved: unknown, fallback: BankMacros): BankMacros {
     motion: clamp01(m.motion, fallback.motion),
     drift: clamp01(m.drift, fallback.drift),
     tension: clamp01(m.tension, fallback.tension),
+    voicing: clamp01(m.voicing, fallback.voicing),
   };
 }
 

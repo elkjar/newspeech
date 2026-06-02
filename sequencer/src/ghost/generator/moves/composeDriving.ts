@@ -124,7 +124,7 @@ export function composeDriving(ctx: ComposeContext): BankSlot {
     // High tension (heavy primal feel), low chaos (clean repetition),
     // moderate density. Drift low so density-fill doesn't ghost in extra
     // hits between the deliberate quarter-note pound.
-    macros: { density: 0.5, chaos: 0.15, motion: 0.4, drift: 0.3, tension: 0.7 },
+    macros: { density: 0.5, chaos: 0.15, motion: 0.4, drift: 0.3, tension: 0.7, voicing: 0 },
     kind: 'scene',
   };
 }
