@@ -49,7 +49,26 @@ export function tryRecordNote(msg: MidiMessage): boolean {
   // The input target is whichever track is record-armed OR live. Mutual
   // exclusivity is enforced in the store, so at most one matches.
   const target = state.tracks.find((t) => t.inputArmed || t.inputLive);
-  if (!target) return false;
+
+  // Silent pinned step-edit. With NO track armed/live, the keyboard normally
+  // has nowhere to route — but if a step is pinned in the inspector we still
+  // honor it as a retune target. This is the lighter, monitor-less sibling of
+  // the armed pinned-edit below: arming is what buys the audible monitor voice,
+  // so without it the note lands on the pinned step's pitch silently — pin a
+  // step, play a key, the step takes the played pitch (no sound). Only fires
+  // when nothing is armed/live, so the armed path's "hear what you edit"
+  // behavior is untouched. Pitch only, same scaleDegreeOf conversion as the
+  // recorder. Consumed (return true) so the keyboard note never also fires a
+  // CC binding.
+  if (!target) {
+    if (state.tieAnchor) {
+      const snappedPin = snapToScale(msg.num, state.rootNote, state.scale);
+      const degree = scaleDegreeOf(snappedPin, state.rootNote, state.scale) ?? 0;
+      state.setStepPitch(state.tieAnchor.trackId, state.tieAnchor.index, degree);
+      return true;
+    }
+    return false;
+  }
 
   // Snap incoming MIDI to the nearest in-scale tone. Default-on quantization:
   // off-key accidentals get pulled to the current scene's scale so a recorded
@@ -74,10 +93,11 @@ export function tryRecordNote(msg: MidiMessage): boolean {
   monitorNote(target, soundingMidi, msg.value / 127, noteId);
 
   // Held-note bookkeeping: track the press so note-off can release the monitor
-  // voice. Writing the step is RECORD-armed only (live mode never writes) and
-  // realtime-quantize, so it also needs the transport running — when stopped we
-  // still monitor, but there's no playhead to write under (step-entry while
-  // stopped is a future mode).
+  // voice. Writing the step has two modes: realtime overdub (RECORD-armed +
+  // transport running — quantizes under the playhead) and pinned step-edit
+  // (a step pinned in the inspector — retunes that step, works while stopped).
+  // They're mutually exclusive: while armed-and-playing the playhead recorder
+  // owns the note; otherwise a pinned step on the target track catches it.
   const held: HeldNote = { trackId: target.id, noteId };
 
   if (state.playing && target.inputArmed) {
@@ -131,6 +151,21 @@ export function tryRecordNote(msg: MidiMessage): boolean {
       state.setStepMicroTiming(target.id, localStep, micro);
       state.setStepOn(target.id, localStep, true);
     }
+  } else if (state.tieAnchor && state.tieAnchor.trackId === target.id) {
+    // Pinned step-edit. When a step on the input-target track is pinned in the
+    // inspector (the white anchor square, set by clicking the step), an incoming
+    // note RETUNES that step rather than recording under a playhead — the
+    // "edit while stopped" path the realtime recorder above can't reach. Pin a
+    // step, play a key: the monitor already sounded it (line 74), and the step
+    // takes the played pitch. Pitch only — velocity / probability / timing /
+    // on-state stay as authored, so this is a surgical retune, not a re-record.
+    // Same scaleDegreeOf conversion as the recorder, so on playback the engine
+    // re-applies the track octave identically. Guarded to the target track:
+    // a pin on some other row is left alone (its voice wouldn't match the
+    // monitor anyway). Keyed off tieAnchor (the explicit click-pin), not
+    // hover-driven selectedStep, so a grazed cell can't catch the note.
+    const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
+    state.setStepPitch(target.id, state.tieAnchor.index, degree);
   }
 
   // Re-pressing a still-held note just resets the anchor (its old monitor
