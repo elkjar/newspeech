@@ -8,76 +8,91 @@ mod samples;
 #[cfg(target_os = "macos")]
 mod media_permission {
   // WKWebView auto-denies getUserMedia and media-device enumeration when no
-  // WKUIDelegate is set. We register a delegate class at runtime that
-  // always grants the request, so `navigator.mediaDevices.getUserMedia` and
-  // the subsequent `enumerateDevices()` return full device lists. Without
-  // this the audio-output picker can only see "default".
+  // WKUIDelegate is set. We register a delegate class that always grants the
+  // request, so `navigator.mediaDevices.getUserMedia` and the subsequent
+  // `enumerateDevices()` return full device lists. Without this the
+  // audio-output picker can only see "default".
   //
   // The delegate also requires NSMicrophoneUsageDescription in the app's
   // Info.plist for the bundled release; tauri-build's embedded dev plist
   // currently has enough for the dev binary to proceed.
+  //
+  // Ported from hand-rolled objc/cocoa FFI to the supported objc2 crates: the
+  // delegate is now a proper `define_class!` type conforming to the typed
+  // WKUIDelegate protocol, and the decisionHandler block is invoked through
+  // block2 instead of a raw libdispatch-ABI `transmute`.
 
-  use cocoa::base::{id, nil};
-  use objc::declare::ClassDecl;
-  use objc::runtime::{Class, Object, Sel};
-  use objc::{class, msg_send, sel, sel_impl};
+  use block2::Block;
+  use objc2::rc::Retained;
+  use objc2::runtime::{NSObject, ProtocolObject};
+  use objc2::{define_class, msg_send, MainThreadMarker, MainThreadOnly};
+  use objc2_foundation::NSObjectProtocol;
+  use objc2_web_kit::{
+    WKFrameInfo, WKMediaCaptureType, WKPermissionDecision, WKSecurityOrigin, WKUIDelegate,
+    WKWebView,
+  };
   use std::ffi::c_void;
-  use std::sync::Once;
 
-  static REGISTER: Once = Once::new();
-  static mut DELEGATE_CLASS: *const Class = std::ptr::null();
+  define_class!(
+    // Main-thread-only because WKUIDelegate methods are delivered there and the
+    // delegate is created/installed from the Tauri setup hook (main thread).
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "SequenceMediaPermissionDelegate"]
+    struct MediaPermissionDelegate;
 
-  // ObjC block invocation. Layout per libdispatch ABI:
-  //   offset 0  isa
-  //   offset 8  flags
-  //   offset 12 reserved
-  //   offset 16 invoke (fn pointer)
-  //   offset 24 descriptor
-  unsafe fn call_decision_handler(block: id, decision: i64) {
-    let invoke_ptr = *((block as *const u8).add(16) as *const *mut c_void);
-    let invoke: extern "C" fn(id, i64) = std::mem::transmute(invoke_ptr);
-    invoke(block, decision);
+    unsafe impl NSObjectProtocol for MediaPermissionDelegate {}
+
+    unsafe impl WKUIDelegate for MediaPermissionDelegate {
+      #[unsafe(method(webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:))]
+      fn grant_media_capture(
+        &self,
+        _webview: &WKWebView,
+        _origin: &WKSecurityOrigin,
+        _frame: &WKFrameInfo,
+        _capture_type: WKMediaCaptureType,
+        decision_handler: &Block<dyn Fn(WKPermissionDecision)>,
+      ) {
+        // Always grant — see WKPermissionDecision (Grant = 1).
+        (*decision_handler).call((WKPermissionDecision::Grant,));
+      }
+    }
+  );
+
+  impl MediaPermissionDelegate {
+    fn new(mtm: MainThreadMarker) -> Retained<Self> {
+      // No ivars and no custom init, so a plain (non-super) `init` send on the
+      // allocated instance runs NSObject's inherited initializer — a super send
+      // would require a PartialInit receiver we don't produce.
+      let this = mtm.alloc::<Self>();
+      unsafe { msg_send![this, init] }
+    }
   }
 
-  extern "C" fn grant_media_capture(
-    _this: &Object,
-    _sel: Sel,
-    _webview: id,
-    _origin: id,
-    _frame: id,
-    _capture_type: i64,
-    decision_handler: id,
-  ) {
-    // WKPermissionDecisionGrant = 1
-    unsafe { call_decision_handler(decision_handler, 1) };
-  }
-
-  pub fn install_on_webview(webview: id) {
-    if webview == nil {
+  pub fn install_on_webview(webview_ptr: *mut c_void) {
+    if webview_ptr.is_null() {
       return;
     }
+    // Delegate creation + install must happen on the main thread; the setup
+    // hook and with_webview callbacks both run there. Bail if somehow not.
+    let Some(mtm) = MainThreadMarker::new() else {
+      return;
+    };
+    // SAFETY: wry's PlatformWebview::inner() returns the underlying WKWebView
+    // NSObject pointer, valid for the window's lifetime. We only borrow it for
+    // the duration of this call.
+    let webview: &WKWebView = unsafe { &*(webview_ptr as *const WKWebView) };
+    let delegate = MediaPermissionDelegate::new(mtm);
+    let proto: &ProtocolObject<dyn WKUIDelegate> = ProtocolObject::from_ref(&*delegate);
+    // SAFETY: standard WebKit call. NOTE: -setUIDelegate: holds a WEAK
+    // reference, so the delegate must outlive the webview. WebKit won't retain
+    // it, so we deliberately leak it (one per window — main + stream). This
+    // matches the old objc code, which likewise never released its alloc/init'd
+    // delegate.
     unsafe {
-      REGISTER.call_once(|| {
-        let superclass = class!(NSObject);
-        let mut decl = match ClassDecl::new("SequenceMediaPermissionDelegate", superclass) {
-          Some(d) => d,
-          None => return,
-        };
-        decl.add_method(
-          sel!(webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:),
-          grant_media_capture
-            as extern "C" fn(&Object, Sel, id, id, id, i64, id),
-        );
-        DELEGATE_CLASS = decl.register();
-      });
-      if DELEGATE_CLASS.is_null() {
-        return;
-      }
-      let cls = DELEGATE_CLASS;
-      let delegate: id = msg_send![cls, alloc];
-      let delegate: id = msg_send![delegate, init];
-      let _: () = msg_send![webview, setUIDelegate: delegate];
+      webview.setUIDelegate(Some(proto));
     }
+    std::mem::forget(delegate);
   }
 }
 
@@ -86,20 +101,26 @@ fn set_dock_icon() {
   // Programmatic Dock icon binding bypasses macOS IconServices caching of
   // the dev binary — the cache otherwise sticks to whatever icon resource
   // was resolved first against this binary path.
-  use cocoa::base::{id, nil};
-  use objc::{class, msg_send, sel, sel_impl};
+  use objc2::{AnyThread, MainThreadMarker};
+  use objc2_app_kit::{NSApplication, NSImage};
+  use objc2_foundation::NSData;
   static ICON_BYTES: &[u8] = include_bytes!("../icons/icon.png");
-  unsafe {
-    let data: id = msg_send![
-      class!(NSData),
-      dataWithBytes: ICON_BYTES.as_ptr() as *const std::ffi::c_void
-      length: ICON_BYTES.len() as u64
-    ];
-    let image_alloc: id = msg_send![class!(NSImage), alloc];
-    let image: id = msg_send![image_alloc, initWithData: data];
-    if image != nil {
-      let app: id = msg_send![class!(NSApplication), sharedApplication];
-      let _: () = msg_send![app, setApplicationIconImage: image];
+  let Some(mtm) = MainThreadMarker::new() else {
+    return;
+  };
+  // SAFETY: ICON_BYTES is a valid 'static slice; dataWithBytes:length: copies
+  // it, so the resulting NSData owns its bytes.
+  let data = unsafe {
+    NSData::dataWithBytes_length(
+      ICON_BYTES.as_ptr() as *const std::ffi::c_void,
+      ICON_BYTES.len(),
+    )
+  };
+  if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+    let app = NSApplication::sharedApplication(mtm);
+    // SAFETY: standard AppKit call with a valid NSImage.
+    unsafe {
+      app.setApplicationIconImage(Some(&image));
     }
   }
 }
@@ -268,13 +289,14 @@ async fn toggle_stream_window(app: tauri::AppHandle) -> Result<(), String> {
       // above NSMainMenuWindowLevel (24).
       #[cfg(target_os = "macos")]
       {
-        let _ = win.with_webview(|webview| unsafe {
-          use cocoa::base::{id, nil};
-          use objc::{msg_send, sel, sel_impl};
-          let wk: id = webview.inner() as id;
-          let ns_window: id = msg_send![wk, window];
-          if ns_window != nil {
-            let _: () = msg_send![ns_window, setLevel: 25_i64];
+        let _ = win.with_webview(|webview| {
+          // SAFETY: inner() is the underlying WKWebView NSObject pointer.
+          let wk: &objc2_web_kit::WKWebView =
+            unsafe { &*(webview.inner() as *const objc2_web_kit::WKWebView) };
+          if let Some(ns_window) = wk.window() {
+            // NSStatusWindowLevel (25) sits one notch above NSMainMenuWindow-
+            // Level (24), so the stream window clears the menu bar.
+            ns_window.setLevel(25);
           }
         });
       }
@@ -293,8 +315,7 @@ async fn toggle_stream_window(app: tauri::AppHandle) -> Result<(), String> {
   #[cfg(target_os = "macos")]
   {
     let _ = window.with_webview(|webview| {
-      let wk: cocoa::base::id = webview.inner() as cocoa::base::id;
-      media_permission::install_on_webview(wk);
+      media_permission::install_on_webview(webview.inner());
     });
   }
 
@@ -373,10 +394,9 @@ pub fn run() {
         set_dock_icon();
         if let Some(window) = app.get_webview_window("main") {
           let _ = window.with_webview(|webview| {
-            // wry's PlatformWebview on macOS exposes the underlying
-            // WKWebView via .inner() as a *mut c_void (NSObject pointer).
-            let wk: cocoa::base::id = webview.inner() as cocoa::base::id;
-            media_permission::install_on_webview(wk);
+            // wry's PlatformWebview on macOS exposes the underlying WKWebView
+            // via .inner() as a *mut c_void (NSObject pointer).
+            media_permission::install_on_webview(webview.inner());
           });
         }
       }

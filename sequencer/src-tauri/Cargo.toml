@@ -36,5 +36,27 @@ rand = { version = "0.8", default-features = false, features = ["small_rng"] }
 arc-swap = "1.7"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.26"
-objc = "0.2"
+# objc2 family — the supported successor to the (now EOL) cocoa/objc crates.
+# Versions track what tauri/wry already pull into the lockfile so the graph
+# stays single-version. Per-crate feature flags gate the exact ObjC classes we
+# touch: NSData (dock icon bytes), NSImage/NSApplication (dock icon), NSView/
+# NSWindow (stream-window level), and the WKUIDelegate media-capture method
+# (which itself requires WKFrameInfo + WKSecurityOrigin + block2).
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSData"] }
+objc2-app-kit = { version = "0.3", features = [
+  "NSApplication",
+  "NSImage",
+  "NSResponder",
+  "NSView",
+  "NSWindow",
+] }
+objc2-web-kit = { version = "0.3", features = [
+  "WKWebView",
+  "WKUIDelegate",
+  "WKFrameInfo",
+  "WKSecurityOrigin",
+  "block2",
+  "objc2-app-kit",
+] }
+block2 = "0.6"
