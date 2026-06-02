@@ -935,6 +935,25 @@ export function cloneTrack(t: Track): Track {
   };
 }
 
+// MIDI input monitor/record arm (`inputArmed` = record-while-playing,
+// `inputLive` = monitor-only) is GLOBAL rig state, not per-pattern: a performer
+// arms a track once and expects it to stay armed across bank/scene/song swaps.
+// But every swap rebuilds `tracks` via cloneTrack (which clears the flags so
+// they never bake into snapshots/saves), so the arm would be lost on each
+// pattern change. This carries the live arm forward onto the swap target,
+// matched by stable trackId (mutual exclusivity preserved). No-op when nothing
+// is armed, or when the armed track has no counterpart in the incoming set.
+function withInputArm(prevTracks: Track[], newTracks: Track[]): Track[] {
+  const armId = prevTracks.find((t) => t.inputArmed)?.id;
+  const liveId = prevTracks.find((t) => t.inputLive)?.id;
+  if (!armId && !liveId) return newTracks;
+  return newTracks.map((t) => {
+    if (t.id === armId) return { ...t, inputArmed: true, inputLive: false };
+    if (t.id === liveId) return { ...t, inputArmed: false, inputLive: true };
+    return t;
+  });
+}
+
 // On a fresh load (.seq / .seqcomp / .seqset) we reset every scene to its
 // first bank (bank 1) and the live state lands on scene 1 / bank 1 — a loaded
 // piece always starts from the top, not wherever it happened to be saved. This
@@ -2425,7 +2444,7 @@ function applyBankSlot(
     return globals ? { ...cloned, ...globals } : cloned;
   });
   set({
-    tracks: mergedTracks,
+    tracks: withInputArm(currentTracks, mergedTracks),
     // Macros (density/chaos/motion/drift/tension) are GLOBAL live controls —
     // NOT restored from the bank on swap (2026-05-29). Patterns are authored
     // at their intended density; the macros are the runtime expression layer
@@ -2542,7 +2561,7 @@ function applyScene(
   atGlobalStep: number
 ): void {
   set((state) => ({
-    tracks: scene.tracks.map(cloneTrack),
+    tracks: withInputArm(state.tracks, scene.tracks.map(cloneTrack)),
     banks: scene.banks.map((b) =>
       b
         ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
@@ -2621,7 +2640,7 @@ function applySong(
   atGlobalStep: number,
 ): void {
   set((state) => ({
-    tracks: song.tracks.map(cloneTrack),
+    tracks: withInputArm(state.tracks, song.tracks.map(cloneTrack)),
     banks: song.banks.map((b) =>
       b
         ? { ...b, tracks: b.tracks.map(cloneTrack), macros: { ...b.macros } }
