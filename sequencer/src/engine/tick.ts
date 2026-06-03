@@ -15,7 +15,7 @@
 //   - resolveFollowerNote   — root-follow / chord-tone / scale-tone / semitones
 
 import type { Step, Track, TrackSection } from '../state/store';
-import { RATE_STRIDE } from '../state/store';
+import { RATE_STRIDE, MAX_STEPS } from '../state/store';
 import type { MutationProfile } from '../audio/voices';
 import { isPadVoice, voicePadConfig } from '../audio/voices';
 import type { ChordContext } from '../audio/chordContext';
@@ -268,7 +268,11 @@ export function resolveStepMutation(inputs: MutationInputs): StepResolution {
   const gateBias = mut > 0 ? mut * profile.gateBias : 0;
   const gateJitter =
     mut > 0 ? (Math.random() - 0.5) * 2 * mut * profile.gateSpread : 0;
-  const gate = Math.max(0.1, Math.min(3, step.gate + gateBias + gateJitter));
+  // Upper bound is MAX_STEPS (the longest pattern) rather than 3 so recorded
+  // note length lives entirely in the gate — a held note sounds as long as it
+  // was played, no tie chain needed. Mutation's small gateBias/jitter still
+  // ride on top; only the ceiling moved.
+  const gate = Math.max(0.1, Math.min(MAX_STEPS, step.gate + gateBias + gateJitter));
   const tied = isSilencedByTie(track, localStep);
   let gated = on && !tied;
   if (gated) {

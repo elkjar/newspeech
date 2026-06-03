@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useSequencerStore, type EditMode } from '../state/store';
+import { useSequencerStore, MAX_STEPS, type EditMode } from '../state/store';
 
 function effectiveMode(
   e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean },
@@ -47,7 +47,10 @@ const TIMING_MIN = -0.5;
 const TIMING_MAX = 0.5;
 const GATE_STEP = 0.05;
 const GATE_MIN = 0.1;
-const GATE_MAX = 2;
+// Matches the engine gate ceiling (MAX_STEPS) so manual gate-edit never clamps a
+// recorded long note down. Fine 0.05 steps still suit the common short range;
+// long gates are set by playing/recording, not dragging.
+const GATE_MAX = MAX_STEPS;
 const DRAG_THRESHOLD_PX = 4;
 const VEL_DRAG_PX_PER_UNIT = 100;
 const PITCH_DRAG_PX_PER_DEGREE = 8;

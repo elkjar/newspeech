@@ -33,7 +33,7 @@ import { togglePlayback } from '../audio/transport';
 import { resolveChord, type ChordVoicing } from '../audio/chords';
 import { octaveDegrees, quantize } from '../audio/scale';
 import { monitorChord, monitorNote, monitorRelease } from '../audio/monitor';
-import { writeRecordedNote } from './recordInput';
+import { writeRecordedNote, finalizeRecordedNote, type RecordedOverdub } from './recordInput';
 import {
   bulkRedraw,
   getConnectedCount,
@@ -173,8 +173,9 @@ const heldPads = new Set<number>();
 type DeviceMode = 'step' | 'chord' | 'session' | 'keyboard';
 const deviceMode: DeviceMode[] = ['step', 'step'];
 // Keyboard page: notes held down on each device, keyed device*64+padIndex →
-// the target track + monitor voice id, so a release can ramp THAT voice down.
-const kbHeld = new Map<number, { trackId: string; noteId: number }>();
+// the target track + monitor voice id (so a release ramps THAT voice down) +
+// the overdub it recorded (so the release finalizes that step's gate).
+const kbHeld = new Map<number, { trackId: string; noteId: number; overdub: RecordedOverdub | null }>();
 // Monitor voice-handle source for the launchpad keyboard. Based high to dodge
 // recordInput's counter (from 1) and the chord-revoice namespace (1e9).
 let nextKbNoteId = 2_000_000_000;
@@ -811,6 +812,9 @@ function handleKeyboardEvent(device: number, e: LaunchpadEvent): void {
     if (held) {
       const t = useSequencerStore.getState().tracks.find((tr) => tr.id === held.trackId);
       if (t) monitorRelease(t, held.noteId);
+      // Write the recorded note's length from how long the pad was held — gate
+      // for short notes, a tie chain for longer ones. Shared with the MIDI keyboard.
+      if (held.overdub) finalizeRecordedNote(held.overdub);
       kbHeld.delete(code);
     }
     const row = Math.floor(e.addr.index / 8);
@@ -827,13 +831,14 @@ function handleKeyboardEvent(device: number, e: LaunchpadEvent): void {
   const midi = kbMidi(row, col, s.rootNote, s.scale);
   const noteId = nextKbNoteId++;
   monitorNote(t, midi, Math.max(0.05, e.velocity / 127), noteId);
-  kbHeld.set(code, { trackId: t.id, noteId });
-  setPadColor(device, e.addr.index, COL_KB_HELD);
   // Record into the channel when its record arm is on — same write path as the
   // MIDI keyboard. The keyboard plays ABSOLUTE octaves (track octave not
   // applied), so subtract it: the engine re-adds track.octave on playback, and
-  // the stored degree then reproduces the pitch just heard.
-  if (t.inputArmed) writeRecordedNote(t, midi - t.octave * 12, e.velocity / 127);
+  // the stored degree then reproduces the pitch just heard. The returned
+  // overdub lets the pad release finalize that step's gate (note length).
+  const overdub = t.inputArmed ? writeRecordedNote(t, midi - t.octave * 12, e.velocity / 127) : null;
+  kbHeld.set(code, { trackId: t.id, noteId, overdub });
+  setPadColor(device, e.addr.index, COL_KB_HELD);
 }
 
 // Session page: pads fire songs/scenes; play/panic stay live on the side rail.

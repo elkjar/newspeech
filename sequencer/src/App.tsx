@@ -700,8 +700,17 @@ export function App() {
               const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
               const trackGain = evTrack?.gain ?? 1;
               const delaySecs = Math.max(0, ev.when - getAudioContext().currentTime);
-              const env = voiceEnvelope(ev.voice);
-              const holdSecs = env ? ev.gate * ev.stepDuration : undefined;
+              // Melodic voices honor note length even without a hand-authored
+              // ADSR: mirror the live monitor (which releases the voice on
+              // key-up) by synthesizing a gate-driven hold + short release.
+              // This is what makes a recorded note's length actually sound —
+              // a flat sample otherwise plays full regardless of gate. Drums
+              // stay one-shots (full sample); voices with an explicit envelope
+              // keep it.
+              const playEnv =
+                voiceEnvelope(ev.voice) ??
+                (ev.section === 'melodic' ? { attack: 0.003, release: 0.05 } : undefined);
+              const holdSecs = playEnv ? ev.gate * ev.stepDuration : undefined;
               // Sustaining chord-master triggers carry a `revoice` context — tag
               // each chord tone with a note_id and register the sounding chord so
               // the voicing-macro loop (below) can re-voice it while it rings.
@@ -734,10 +743,10 @@ export function App() {
                   // web `samplePlayer.trigger` envelope). Voices without
                   // an envelope config (drums, leads) pass nothing here
                   // and run at flat gain in native.
-                  envelopeAttack: env?.attack,
-                  envelopeDecay: env?.decay,
-                  envelopeSustain: env?.sustain,
-                  envelopeRelease: env?.release,
+                  envelopeAttack: playEnv?.attack,
+                  envelopeDecay: playEnv?.decay,
+                  envelopeSustain: playEnv?.sustain,
+                  envelopeRelease: playEnv?.release,
                   envelopeHold: holdSecs,
                   noteId,
                 });
@@ -762,12 +771,12 @@ export function App() {
                   outStereo: out?.stereo ?? true,
                   section: sectionCode(ev.section),
                   isTexture,
-                  env: env
+                  env: playEnv
                     ? {
-                        attack: env.attack,
-                        decay: env.decay,
-                        sustain: env.sustain,
-                        release: env.release,
+                        attack: playEnv.attack,
+                        decay: playEnv.decay,
+                        sustain: playEnv.sustain,
+                        release: playEnv.release,
                         hold: holdSecs,
                       }
                     : undefined,
