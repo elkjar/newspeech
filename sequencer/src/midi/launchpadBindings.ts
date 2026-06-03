@@ -175,11 +175,12 @@ const lastAuditionPad: number[] = [-1, -1];
 // Per-device chord-page octave offset (octaves, applied on top of the chord
 // master's own octave). Set by the column-7 octave selector. 0 = no shift.
 const chordOctave: number[] = [0, 0];
-// Shared chord-page write target: the chord-master step index taps author into.
-// null = nothing selected → taps audition only (audition-before-program).
-// Selected via the top row; selecting a step IS arming. Stays put after a write
-// (no auto-advance) — pick the next step explicitly, per the first-pass spec.
-let chordWriteStep: number | null = null;
+// Chord-page write target = the PINNED step (`tieAnchor`) on the chord master,
+// mirroring the MIDI-keyboard pinned step-edit in recordInput.ts: select a step
+// on the grid (or via the top row, which also pins), then a degree-pad tap
+// binds the chord to THAT step. No internal cursor / no auto-advance — the live
+// grid selection is the target, so it tracks clicks the moment they happen.
+// Nothing pinned on the chord master → taps audition only.
 let attached = false;
 let unsubs: Array<() => void> = [];
 
@@ -336,10 +337,26 @@ function chordMaster(): Track | undefined {
   return useSequencerStore.getState().tracks.find((t) => t.section === 'melodic');
 }
 
+// Top-row step selector reaches steps 0..7; the pin can sit beyond that (set via
+// the grid), in which case it just isn't shown on the top row.
+const CHORD_TOP_STEPS = 8;
+
+// The currently-PINNED chord-master step (`tieAnchor`), or null if nothing on
+// the chord master is pinned. This is the chord page's write target — the exact
+// pin the keyboard pinned step-edit uses (recordInput.ts), so a step clicked on
+// the grid is immediately the target for both note (keyboard) and chord (pad).
+function pinnedChordStep(): number | null {
+  const s = useSequencerStore.getState();
+  const cm = s.tracks.find((t) => t.section === 'melodic');
+  const pin = s.tieAnchor;
+  if (cm && pin && pin.trackId === cm.id && pin.index < cm.length) return pin.index;
+  return null;
+}
+
 // Top-row (step selector) color for chord-master step `stepIdx`.
 function chordTopColor(stepIdx: number, cm: Track | undefined): number {
   if (!cm || stepIdx >= cm.length) return COL_OFF;
-  if (stepIdx === chordWriteStep) return COL_STEP_SELECTED;
+  if (stepIdx === pinnedChordStep()) return COL_STEP_SELECTED;
   return cm.steps[stepIdx]?.on ? COL_STEP_HAS : COL_STEP_EMPTY;
 }
 
@@ -450,19 +467,23 @@ function applySessionPulses(device: number): void {
 // Author the chord at grid (row, col) into the selected chord-master step:
 // writes the voicing plock, stores the octave as a degree-space pitch offset
 // (ChordVoicing has no octave field; one octave = octaveDegrees(scale) degrees),
-// and turns the step on so it sounds. No-op when nothing is selected.
-function authorChord(device: number, row: number, col: number): void {
-  if (chordWriteStep === null || col > 6) return;
+// and turns the step on so it sounds. Targets the PINNED chord-master step
+// (`tieAnchor`) — select a step on the grid, hit a chord, it binds there.
+// Returns true if a chord was written (false = no pinned chord-master step / no
+// valid chord master), so the caller knows whether to refresh the selector.
+function authorChord(device: number, row: number, col: number): boolean {
+  if (col > 6) return false;
+  const step = pinnedChordStep();
+  if (step === null) return false;
   const state = useSequencerStore.getState();
   const cm = state.tracks.find((t) => t.section === 'melodic');
-  if (!cm || cm.source.kind !== 'voice') return;
-  const step = chordWriteStep;
-  if (step < 0 || step >= cm.length) return;
+  if (!cm || cm.source.kind !== 'voice') return false;
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
   state.setStepChordVoicing(cm.id, step, voicing);
   state.setStepPitch(cm.id, step, chordOctave[device] * octaveDegrees(state.scale));
   state.setStepOn(cm.id, step, true);
+  return true;
 }
 
 // Resolve + audition the chord at grid (row, col): col → degree I..VII, row →
@@ -498,9 +519,11 @@ function repaintDevice(device: number): void {
 // repaint just that device. side[4] → chord, side[5] → session, each acting as
 // an on/off toggle from any page.
 function setDeviceMode(device: number, mode: DeviceMode): void {
-  deviceMode[device] = deviceMode[device] === mode ? 'step' : mode;
+  const next: DeviceMode = deviceMode[device] === mode ? 'step' : mode;
+  deviceMode[device] = next;
   lastAuditionPad[device] = -1;
-  chordWriteStep = null; // start in audition (nothing armed) on mode change
+  // No cursor to reset — the chord page authors into the live `tieAnchor` pin,
+  // so whatever step is selected on the grid carries straight into chord mode.
   repaintDevice(device);
   applyPendingPulse();
 }
@@ -609,6 +632,17 @@ function sessionSignature(): string {
   return sig;
 }
 
+// Signature of what the chord-page top row (step selector) draws: the pinned
+// step + the chord master's on-mask over the displayed range. Lets a grid click
+// (which moves `tieAnchor`) or a chord-master edit refresh the selector on the
+// chord pads even though the chord page isn't tied to the viewed section.
+function chordTopSignature(): string {
+  const cm = chordMaster();
+  let sig = `${pinnedChordStep() ?? '_'}/${cm?.id ?? ''}/${cm?.length ?? 0}`;
+  if (cm) for (let i = 0; i < Math.min(cm.length, CHORD_TOP_STEPS); i++) sig += cm.steps[i]?.on ? '1' : '0';
+  return sig;
+}
+
 function toggleSwap(): void {
   swapped = !swapped;
   persistSwapped();
@@ -674,12 +708,21 @@ function handleChordEvent(device: number, e: LaunchpadEvent): void {
     return;
   }
   if (e.addr.element === 'top') {
-    // Step selector — pick the chord-master step to author into (toggle off to
-    // return to audition-only). Only steps within the track length are valid.
+    // Step selector — pin a chord-master step as the write target (the same
+    // `tieAnchor` pin a grid click sets; tap again to unpin → audition-only).
+    // The launchpad-native way to select; the grid does the same thing.
     const step = e.addr.index;
     const cm = chordMaster();
     if (!cm || step >= cm.length) return;
-    chordWriteStep = chordWriteStep === step ? null : step;
+    const store = useSequencerStore.getState();
+    if (pinnedChordStep() === step) {
+      store.setTieAnchor(null);
+      store.setSelectedStep(null);
+    } else {
+      const sel = { trackId: cm.id, index: step };
+      store.setTieAnchor(sel);
+      store.setSelectedStep(sel);
+    }
     repaintChordTops();
     return;
   }
@@ -698,10 +741,10 @@ function handleChordEvent(device: number, e: LaunchpadEvent): void {
     return;
   }
   auditionCell(device, row, col);
-  // If a step is selected, author the chord there too (select = arm). Refresh
-  // the top row so a newly-on step reads as populated.
-  if (chordWriteStep !== null) {
-    authorChord(device, row, col);
+  // If a chord-master step is pinned, bind the chord to THAT step (like playing
+  // a note onto a pinned step with the keyboard). No advance — pick the next
+  // step yourself (grid click or top row). Nothing pinned → audition only.
+  if (authorChord(device, row, col)) {
     repaintChordTops();
   }
   // Bright press feedback on this device; restore the previously-lit pad.
@@ -869,6 +912,7 @@ export function attachLaunchpadBindings(): void {
   let prevView = useSequencerStore.getState().viewSection;
   let prevBankSig = bankSignature();
   let prevSessionSig = sessionSignature();
+  let prevChordTopSig = chordTopSignature();
   unsubs.push(
     useSequencerStore.subscribe((state) => {
       // Play state flip → repaint transport button on both pads + force
@@ -912,6 +956,14 @@ export function attachLaunchpadBindings(): void {
           if (deviceMode[d] === 'session') repaintDevice(d);
         }
       }
+      // Pinned step moved (grid click) or chord-master content changed →
+      // refresh the chord-page step selector. repaintChordTops only touches the
+      // top row, so the lit degree/octave pads underneath are left intact.
+      const nextChordTopSig = chordTopSignature();
+      if (nextChordTopSig !== prevChordTopSig) {
+        prevChordTopSig = nextChordTopSig;
+        repaintChordTops();
+      }
       // viewSection toggled (from on-screen UI or our own side button) →
       // repaint both pads with the new section's tracks.
       if (state.viewSection !== prevView) {
@@ -948,7 +1000,6 @@ export function detachLaunchpadBindings(): void {
   lastAuditionPad[1] = -1;
   chordOctave[0] = 0;
   chordOctave[1] = 0;
-  chordWriteStep = null;
 }
 
 if (import.meta.hot) {
