@@ -13,8 +13,9 @@
 // Side rails are SYMMETRIC — the same controls on both pads so transport is
 // reachable from whichever grid your hand is near (top→bottom):
 //   [0] play/pause   [1] panic   [2] section toggle   [3] swap L/R devices
-//   [4] chord page   [5] session page   [6] pitch up   [7] pitch down
-// (side[4]/side[5] toggle per-device page modes — see the Page system below.)
+//   [4] chord page   [5] session page   [6] keyboard page   [7] drum (reserved)
+// (side[4..6] toggle per-device page modes — see the Page system below. Pitch
+//  nudge was removed; set pitch via keyboard mode instead.)
 //
 // Device assignment is by enumeration order (device 0 = left, 1 = right);
 // `swapped` flips that mapping (persisted) for when the units come up
@@ -30,8 +31,8 @@ import { useSequencerStore, RATE_STRIDE, type Track, type TrackSection } from '.
 import { scheduler } from '../audio/scheduler';
 import { togglePlayback } from '../audio/transport';
 import { resolveChord, type ChordVoicing } from '../audio/chords';
-import { octaveDegrees } from '../audio/scale';
-import { monitorChord } from '../audio/monitor';
+import { octaveDegrees, quantize } from '../audio/scale';
+import { monitorChord, monitorNote, monitorRelease } from '../audio/monitor';
 import {
   bulkRedraw,
   getConnectedCount,
@@ -60,8 +61,11 @@ const COL_TIE_HELD_PH = COL_HELD_PH;
 const COL_PLAY_PLAYING = 96;
 const COL_PLAY_STOPPED = 12;
 const COL_PANIC = 50;
-const COL_PITCH_READY = 96;
-const COL_PITCH_IDLE = 12;
+// Keyboard page: a scale-degree grid. Root degrees read brighter so home is
+// always findable; other in-scale degrees dim; a held pad lights brightest.
+const COL_KB_ROOT = 50;
+const COL_KB_NOTE = 16;
+const COL_KB_HELD = 120;
 // Section toggle reflects the live section (so you can read state off the
 // pad): bright = melodic, dim = drum. Swap shows brighter when engaged.
 const COL_SECTION_MELODIC = 96;
@@ -117,8 +121,6 @@ const CHORD_VOICING_LADDER: Array<Pick<ChordVoicing, 'extension' | 'inversion' |
 
 const SURFACE_SIZE = 80;
 const STEP_WIDTH = 16; // total step columns across the pair
-const PITCH_MIN = -36;
-const PITCH_MAX = 36;
 const SWAP_KEY = 'newspeech.launchpad.swapped';
 
 // ---------- device ↔ logical-half mapping ----------
@@ -159,16 +161,22 @@ function halfForDevice(device: number): 0 | 1 {
 // Per-row absolute step column (0..15) of the last painted playhead. -1 = no
 // playhead currently drawn on that row (track absent, paused, or off-grid).
 const lastPlayheadAbs: number[] = new Array(8).fill(-1);
-let lastPlacedStep: { trackId: string; index: number } | null = null;
 // Currently-held grid pads, encoded as device*64 + padIndex. Used to detect
 // hold-source + tap-end tie gestures on the same track row — across both pads,
 // so a tie can span the 8/9 seam.
 const heldPads = new Set<number>();
 // Per-PHYSICAL-device page mode. Independent so one pad can be the chord
-// palette (or the session launcher) while the other stays a normal step half
-// (user workflow). Indexed by physical device (0/1), NOT logical half.
-type DeviceMode = 'step' | 'chord' | 'session';
+// palette / session launcher / keyboard while the other stays a normal step
+// half (user workflow). Indexed by physical device (0/1), NOT logical half.
+// ('drum' is reserved — planned next page, side[7].)
+type DeviceMode = 'step' | 'chord' | 'session' | 'keyboard';
 const deviceMode: DeviceMode[] = ['step', 'step'];
+// Keyboard page: notes held down on each device, keyed device*64+padIndex →
+// the target track + monitor voice id, so a release can ramp THAT voice down.
+const kbHeld = new Map<number, { trackId: string; noteId: number }>();
+// Monitor voice-handle source for the launchpad keyboard. Based high to dodge
+// recordInput's counter (from 1) and the chord-revoice namespace (1e9).
+let nextKbNoteId = 2_000_000_000;
 // Per-device last-auditioned pad index (0..63), for bright press feedback on
 // the chord page. -1 = none.
 const lastAuditionPad: number[] = [-1, -1];
@@ -303,9 +311,8 @@ function buildSurfaceForHalf(half: 0 | 1): Uint8Array {
   out[72 + 3] = effectiveSwap() ? COL_SWAP_ON : COL_SWAP_OFF;
   out[72 + 4] = COL_MODE_OFF; // chord-mode toggle (dim = available)
   out[72 + 5] = COL_MODE_OFF; // session-mode toggle (dim = available)
-  const pitchCol = lastPlacedStep ? COL_PITCH_READY : COL_PITCH_IDLE;
-  out[72 + 6] = pitchCol;
-  out[72 + 7] = pitchCol;
+  out[72 + 6] = COL_MODE_OFF; // keyboard-mode toggle (dim = available)
+  out[72 + 7] = COL_MODE_OFF; // drum-mode toggle (reserved — page not built yet)
   return out;
 }
 
@@ -356,10 +363,10 @@ function pinnedVoiceTrack(): Track | undefined {
   return t && t.section === 'melodic' && t.source.kind === 'voice' ? t : undefined;
 }
 
-// The chord page's current target track: the pinned melodic voice track, else
-// the chord master as the default (so the top row shows something sensible with
-// nothing pinned). The whole page operates on this track.
-function chordTargetTrack(): Track | undefined {
+// The melodic track the chord + keyboard pages operate on: the pinned melodic
+// voice track (selected step), else the first melodic track as the default.
+// "Select a step, then author/play that channel" — shared by both pages.
+function targetMelodicTrack(): Track | undefined {
   return pinnedVoiceTrack() ?? chordMaster();
 }
 
@@ -384,7 +391,7 @@ function chordTopColor(stepIdx: number, cm: Track | undefined): number {
 // of the current TARGET track (the pinned melodic voice track, else the chord
 // master), so the selector follows whichever channel you're authoring chords on.
 function repaintChordTops(): void {
-  const t = chordTargetTrack();
+  const t = targetMelodicTrack();
   for (let d = 0; d < 2; d++) {
     if (deviceMode[d] !== 'chord') continue;
     for (let i = 0; i < 8; i++) setTopColor(d, i, chordTopColor(i, t));
@@ -403,7 +410,7 @@ function buildChordSurface(device: number): Uint8Array {
   }
   const last = lastAuditionPad[device];
   if (last >= 0) out[last] = COL_CHORD_PRESSED;
-  const t = chordTargetTrack();
+  const t = targetMelodicTrack();
   for (let i = 0; i < 8; i++) out[64 + i] = chordTopColor(i, t);
   out[72 + 0] = useSequencerStore.getState().playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
   out[72 + 1] = COL_PANIC;
@@ -485,6 +492,65 @@ function applySessionPulses(device: number): void {
   }
 }
 
+// ---------- keyboard page ----------
+// A scale-quantized note grid for live play. CLEAN OCTAVE ROWS: each row is one
+// octave, root-to-root — a diatonic (7-note) scale fills all 8 columns
+// (degrees 1..7 + the octave), so roots line up vertically on columns 0 and 7.
+// Scales with fewer notes (pentatonic) light only their degrees + the octave;
+// the trailing columns are DEAD (unlit, unplayable) rather than spilling into
+// the next octave. The BOTTOM row is OCTAVE 1, each row UP adds an octave
+// (octave 1..8), anchored absolutely (C1 = MIDI 24) off the scene root's pitch
+// class — independent of the track octave; the row IS the octave. Plays the
+// live monitor voice of the TARGET track (the selected step's track),
+// velocity-sensitive. (Recording via the per-track record arm is the follow-up.)
+type KbScale = ReturnType<typeof useSequencerStore.getState>['scale'];
+
+// Scale-degree above the root for a pad: bottom row = octave 1 (degree 0..N),
+// each row up adds octaveDegrees. Columns 0..N are valid (N = the octave note);
+// columns > N are dead for that scale.
+function kbDegree(row: number, col: number, scale: KbScale): number {
+  return (7 - row) * octaveDegrees(scale) + col;
+}
+
+// Absolute MIDI for a keyboard pad. Anchored so the bottom row sounds at octave
+// 1 (root pitch class at C1 = MIDI 24) regardless of the scene root's own octave
+// or the track octave — the row IS the octave.
+function kbMidi(row: number, col: number, rootNote: number, scale: KbScale): number {
+  const pc = ((rootNote % 12) + 12) % 12;
+  return quantize(24 + pc, scale, kbDegree(row, col, scale));
+}
+
+// Resting color for a keyboard pad: dead (off) past the scale's last column so
+// e.g. pentatonic rows don't spill; roots (octave boundaries) brighter; other
+// in-scale degrees dim.
+function kbBaseColor(row: number, col: number, scale: KbScale): number {
+  const n = octaveDegrees(scale);
+  if (col > n) return COL_OFF; // dead key — scale is narrower than 8 root-to-root
+  return kbDegree(row, col, scale) % n === 0 ? COL_KB_ROOT : COL_KB_NOTE;
+}
+
+// Full 80-slot keyboard surface: the scale grid + held-note highlight for this
+// device + a minimal side rail (play / panic / page toggles).
+function buildKeyboardSurface(device: number): Uint8Array {
+  const out = new Uint8Array(SURFACE_SIZE);
+  const { scale, playing } = useSequencerStore.getState();
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) out[row * 8 + col] = kbBaseColor(row, col, scale);
+  }
+  // Light any pads currently held DOWN on this device.
+  for (const code of kbHeld.keys()) {
+    const { device: d, padIndex } = decodeHeld(code);
+    if (d === device) out[padIndex] = COL_KB_HELD;
+  }
+  out[72 + 0] = playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
+  out[72 + 1] = COL_PANIC;
+  out[72 + 4] = COL_MODE_OFF; // chord available
+  out[72 + 5] = COL_MODE_OFF; // session available
+  out[72 + 6] = COL_MODE_ON; // keyboard active
+  out[72 + 7] = COL_MODE_OFF; // drum reserved
+  return out;
+}
+
 // Author the chord at grid (row, col) into the pinned step on the TARGET track:
 // writes the voicing plock, stores the octave as a degree-space pitch offset
 // (ChordVoicing has no octave field; one octave = octaveDegrees(scale) degrees),
@@ -515,7 +581,7 @@ function authorChord(device: number, row: number, col: number): boolean {
 function auditionCell(device: number, row: number, col: number): void {
   if (col > 6) return;
   const state = useSequencerStore.getState();
-  const t = chordTargetTrack();
+  const t = targetMelodicTrack();
   if (!t || t.source.kind !== 'voice') return;
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
@@ -534,14 +600,32 @@ function repaintDevice(device: number): void {
     applySessionPulses(device);
     return;
   }
+  if (deviceMode[device] === 'keyboard') {
+    bulkRedraw(device, buildKeyboardSurface(device));
+    return;
+  }
   bulkRedraw(device, buildSurfaceForHalf(halfForDevice(device)));
 }
 
+// Release every keyboard note a device is holding (its monitor voices ramp
+// down). Used when leaving keyboard mode or detaching so notes never hang.
+function releaseKbNotes(device: number): void {
+  const tracks = useSequencerStore.getState().tracks;
+  for (const [code, held] of kbHeld) {
+    if (decodeHeld(code).device !== device) continue;
+    const t = tracks.find((tr) => tr.id === held.trackId);
+    if (t) monitorRelease(t, held.noteId);
+    kbHeld.delete(code);
+  }
+}
+
 // Set ONE device's page mode (toggling back to 'step' if it's already there),
-// repaint just that device. side[4] → chord, side[5] → session, each acting as
-// an on/off toggle from any page.
+// repaint just that device. side[4] → chord, side[5] → session, side[6] →
+// keyboard; each acts as an on/off toggle from any page.
 function setDeviceMode(device: number, mode: DeviceMode): void {
   const next: DeviceMode = deviceMode[device] === mode ? 'step' : mode;
+  // Leaving keyboard mode: release any notes this device is still holding.
+  if (deviceMode[device] === 'keyboard' && next !== 'keyboard') releaseKbNotes(device);
   deviceMode[device] = next;
   lastAuditionPad[device] = -1;
   // No cursor to reset — the chord page authors into the live `tieAnchor` pin,
@@ -598,15 +682,6 @@ function seedPlayhead(): void {
   }
 }
 
-// Repaint just the pitch-ready side buttons on both pads.
-function repaintPitchButtons(): void {
-  const col = lastPlacedStep ? COL_PITCH_READY : COL_PITCH_IDLE;
-  for (let device = 0; device < getConnectedCount(); device++) {
-    setSideColor(device, 6, col);
-    setSideColor(device, 7, col);
-  }
-}
-
 // Signature of the visible section — collapses tracks×steps to a string so we
 // can cheaply detect "the grid changed" without diffing pad-by-pad. Hashes
 // the FULL track because tie-held coloring of any step depends on tieToNext
@@ -660,10 +735,19 @@ function sessionSignature(): string {
 // edit refresh the selector on the chord pads even though the chord page isn't
 // tied to the viewed section.
 function chordTopSignature(): string {
-  const t = chordTargetTrack();
+  const t = targetMelodicTrack();
   let sig = `${pinnedChordStep() ?? '_'}/${t?.id ?? ''}/${t?.length ?? 0}`;
   if (t) for (let i = 0; i < Math.min(t.length, CHORD_TOP_STEPS); i++) sig += t.steps[i]?.on ? '1' : '0';
   return sig;
+}
+
+// Signature of what the keyboard grid draws: scale + root drive the in-key
+// layout, root highlight, and dead-key columns. (Octaves are anchored
+// absolutely, so the track octave doesn't affect the layout.) A change repaints
+// keyboard-mode devices.
+function kbSignature(): string {
+  const s = useSequencerStore.getState();
+  return `${s.scale}/${s.rootNote}`;
 }
 
 function toggleSwap(): void {
@@ -674,8 +758,9 @@ function toggleSwap(): void {
   seedPlayhead();
 }
 
-// Event dispatcher. side[4]/side[5] toggle THIS device's page mode (reachable
-// from any page); otherwise route to the device's current page handler.
+// Event dispatcher. side[4]/[5]/[6] toggle THIS device's page mode (chord /
+// session / keyboard — reachable from any page); side[7] is reserved for the
+// planned drum page. Otherwise route to the device's current page handler.
 function handleEvent(device: number, e: LaunchpadEvent): void {
   if (e.addr.element === 'side' && e.addr.index === 4) {
     if (e.pressed) setDeviceMode(device, 'chord');
@@ -685,6 +770,13 @@ function handleEvent(device: number, e: LaunchpadEvent): void {
     if (e.pressed) setDeviceMode(device, 'session');
     return;
   }
+  if (e.addr.element === 'side' && e.addr.index === 6) {
+    if (e.pressed) setDeviceMode(device, 'keyboard');
+    return;
+  }
+  if (e.addr.element === 'side' && e.addr.index === 7) {
+    return; // reserved for the drum page (not built yet)
+  }
   if (deviceMode[device] === 'chord') {
     handleChordEvent(device, e);
     return;
@@ -693,7 +785,49 @@ function handleEvent(device: number, e: LaunchpadEvent): void {
     handleSessionEvent(device, e);
     return;
   }
+  if (deviceMode[device] === 'keyboard') {
+    handleKeyboardEvent(device, e);
+    return;
+  }
   handleStepEvent(device, e);
+}
+
+// Keyboard page: scale-quantized live play. Pad press → monitor the target
+// track's voice (velocity-sensitive); release → ramp that voice down. Side rail
+// keeps play / panic live. Top row unused (octave shift is a later option — the
+// 8 rows already span 8 octaves). Recording via the per-track arm is planned.
+function handleKeyboardEvent(device: number, e: LaunchpadEvent): void {
+  if (e.addr.element === 'side') {
+    if (!e.pressed) return;
+    if (e.addr.index === 0) void togglePlayback();
+    else if (e.addr.index === 1) void invoke('midi_panic').catch(() => {});
+    return;
+  }
+  if (e.addr.element !== 'pad') return;
+  const code = encodeHeld(device, e.addr.index);
+  if (!e.pressed) {
+    const held = kbHeld.get(code);
+    if (held) {
+      const t = useSequencerStore.getState().tracks.find((tr) => tr.id === held.trackId);
+      if (t) monitorRelease(t, held.noteId);
+      kbHeld.delete(code);
+    }
+    const row = Math.floor(e.addr.index / 8);
+    const col = e.addr.index % 8;
+    setPadColor(device, e.addr.index, kbBaseColor(row, col, useSequencerStore.getState().scale));
+    return;
+  }
+  const t = targetMelodicTrack();
+  if (!t || t.source.kind !== 'voice') return;
+  const s = useSequencerStore.getState();
+  const row = Math.floor(e.addr.index / 8);
+  const col = e.addr.index % 8;
+  if (col > octaveDegrees(s.scale)) return; // dead key — outside the scale
+  const midi = kbMidi(row, col, s.rootNote, s.scale);
+  const noteId = nextKbNoteId++;
+  monitorNote(t, midi, Math.max(0.05, e.velocity / 127), noteId);
+  kbHeld.set(code, { trackId: t.id, noteId });
+  setPadColor(device, e.addr.index, COL_KB_HELD);
 }
 
 // Session page: pads fire songs/scenes; play/panic stay live on the side rail.
@@ -736,7 +870,7 @@ function handleChordEvent(device: number, e: LaunchpadEvent): void {
     // only). Pins on the current target track, so to author chords on a non-
     // master channel, pin one of its steps from the grid / step-page first.
     const step = e.addr.index;
-    const t = chordTargetTrack();
+    const t = targetMelodicTrack();
     if (!t || step >= t.length) return;
     const store = useSequencerStore.getState();
     if (pinnedChordStep() === step) {
@@ -831,25 +965,19 @@ function handleStepEvent(device: number, e: LaunchpadEvent): void {
 
     const wasOn = !!track.steps[stepIdx]?.on;
     store.toggleStep(track.id, stepIdx);
+    const pin = store.tieAnchor;
     if (!wasOn) {
-      // OFF→ON: this is the step the pitch buttons will nudge. Pin via
-      // tieAnchor so the inspector survives mouse-leave (selectedStep alone
-      // is hover-cleared by TrackGrid). Mirror selectedStep too.
+      // OFF→ON: pin this step so the inspector + chord/keyboard target follow
+      // it. tieAnchor survives mouse-leave (selectedStep alone is hover-cleared
+      // by TrackGrid); mirror selectedStep too.
       const sel = { trackId: track.id, index: stepIdx };
-      lastPlacedStep = sel;
       store.setTieAnchor(sel);
       store.setSelectedStep(sel);
-    } else if (
-      lastPlacedStep &&
-      lastPlacedStep.trackId === track.id &&
-      lastPlacedStep.index === stepIdx
-    ) {
-      // ON→OFF on the same step: release the pitch target + unpin.
-      lastPlacedStep = null;
+    } else if (pin && pin.trackId === track.id && pin.index === stepIdx) {
+      // ON→OFF on the pinned step: unpin.
       store.setTieAnchor(null);
       store.setSelectedStep(null);
     }
-    repaintPitchButtons();
     heldPads.add(encodeHeld(device, e.addr.index));
     return;
   }
@@ -884,24 +1012,9 @@ function handleStepEvent(device: number, e: LaunchpadEvent): void {
       case 3:
         toggleSwap();
         return;
-      case 6:
-      case 7: {
-        // Pitch nudge on the most recently placed step.
-        if (!lastPlacedStep) return;
-        const { trackId, index } = lastPlacedStep;
-        const track = store.tracks.find((t) => t.id === trackId);
-        if (!track) return;
-        const current = track.steps[index]?.pitch ?? 0;
-        const delta = e.addr.index === 6 ? +1 : -1;
-        const nextPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, current + delta));
-        if (nextPitch !== current) store.setStepPitch(trackId, index, nextPitch);
-        // Re-pin the inspector (acts as the "toggle" — every pitch press
-        // resurfaces the inspector if the user closed it).
-        const sel = { trackId, index };
-        store.setTieAnchor(sel);
-        store.setSelectedStep(sel);
-        return;
-      }
+      // side[6] (keyboard) / side[7] (drum, reserved) are intercepted by the
+      // dispatcher before routing here — pitch nudge was removed (use keyboard
+      // mode to set pitch instead).
       default:
         return;
     }
@@ -937,6 +1050,7 @@ export function attachLaunchpadBindings(): void {
   let prevBankSig = bankSignature();
   let prevSessionSig = sessionSignature();
   let prevChordTopSig = chordTopSignature();
+  let prevKbSig = kbSignature();
   unsubs.push(
     useSequencerStore.subscribe((state) => {
       // Play state flip → repaint transport button on both pads + force
@@ -988,6 +1102,16 @@ export function attachLaunchpadBindings(): void {
         prevChordTopSig = nextChordTopSig;
         repaintChordTops();
       }
+      // Scale / root / target-octave changed → repaint any keyboard-mode pad so
+      // the in-key layout + root highlight track the scene. Held notes survive
+      // (buildKeyboardSurface re-lights them from kbHeld).
+      const nextKbSig = kbSignature();
+      if (nextKbSig !== prevKbSig) {
+        prevKbSig = nextKbSig;
+        for (let d = 0; d < getConnectedCount(); d++) {
+          if (deviceMode[d] === 'keyboard') repaintDevice(d);
+        }
+      }
       // viewSection toggled (from on-screen UI or our own side button) →
       // repaint both pads with the new section's tracks.
       if (state.viewSection !== prevView) {
@@ -1016,7 +1140,9 @@ export function detachLaunchpadBindings(): void {
   unsubs = [];
   attached = false;
   resetLastPlayheadAbs();
-  lastPlacedStep = null;
+  releaseKbNotes(0);
+  releaseKbNotes(1);
+  kbHeld.clear();
   heldPads.clear();
   deviceMode[0] = 'step';
   deviceMode[1] = 'step';
