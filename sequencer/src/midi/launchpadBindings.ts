@@ -33,6 +33,7 @@ import { togglePlayback } from '../audio/transport';
 import { resolveChord, type ChordVoicing } from '../audio/chords';
 import { octaveDegrees, quantize } from '../audio/scale';
 import { monitorChord, monitorNote, monitorRelease } from '../audio/monitor';
+import { writeRecordedNote } from './recordInput';
 import {
   bulkRedraw,
   getConnectedCount,
@@ -828,6 +829,11 @@ function handleKeyboardEvent(device: number, e: LaunchpadEvent): void {
   monitorNote(t, midi, Math.max(0.05, e.velocity / 127), noteId);
   kbHeld.set(code, { trackId: t.id, noteId });
   setPadColor(device, e.addr.index, COL_KB_HELD);
+  // Record into the channel when its record arm is on — same write path as the
+  // MIDI keyboard. The keyboard plays ABSOLUTE octaves (track octave not
+  // applied), so subtract it: the engine re-adds track.octave on playback, and
+  // the stored degree then reproduces the pitch just heard.
+  if (t.inputArmed) writeRecordedNote(t, midi - t.octave * 12, e.velocity / 127);
 }
 
 // Session page: pads fire songs/scenes; play/panic stay live on the side rail.

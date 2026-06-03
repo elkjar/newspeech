@@ -13,7 +13,7 @@
 // may also be CC-mapped, and we don't want a knob twist on a keyboard to fire
 // twice.
 
-import { useSequencerStore, RATE_STRIDE } from '../state/store';
+import { useSequencerStore, RATE_STRIDE, type Track } from '../state/store';
 import { scheduler } from '../audio/scheduler';
 import { getAudioContext } from '../audio/audioContext';
 import { snapToScale, scaleDegreeOf } from '../audio/scale';
@@ -100,79 +100,65 @@ export function tryRecordNote(msg: MidiMessage): boolean {
   // owns the note; otherwise a pinned step on the target track catches it.
   const held: HeldNote = { trackId: target.id, noteId };
 
-  if (state.playing && target.inputArmed) {
-    const aud = scheduler.getAudibleStepTiming();
-    if (aud !== null) {
-      const stride = RATE_STRIDE[target.rate];
-
-      // Which ROW step is sounding, and where that row step started — both as a
-      // global-step index and an audioContext time. A row step spans `stride`
-      // global (32nd-note) ticks, so the audible global step can be partway
-      // into the span; back out to the row-step boundary.
-      const raw = Math.floor((aud.index - state.sceneStartStep) / stride);
-      const rowStartGlobal = state.sceneStartStep + raw * stride;
-      const rowStepDur = stride * aud.stepDuration;
-      const rowStartTime = aud.when - (aud.index - rowStartGlobal) * aud.stepDuration;
-
-      // Capture "lazy"/pushed feel instead of hard-quantizing: measure how far
-      // into the row step the key was actually pressed, then snap to the
-      // NEAREST row-step boundary and store the signed remainder as microTiming
-      // (a fraction of the row step, the engine's own unit). Rounding to the
-      // nearest boundary — not flooring — means a note played slightly EARLY
-      // lands on the step it was aiming at with a small negative offset, rather
-      // than dumping onto the previous step and clamping at +0.5.
-      const frac = (getAudioContext().currentTime - rowStartTime) / rowStepDur; // [0,1)
-      let rowIndex = raw;
-      let micro = frac;
-      if (frac > 0.5) {
-        rowIndex = raw + 1; // pushed early — belongs to the upcoming step
-        micro = frac - 1; // negative: ahead of that step's grid position
-      }
-      micro = Math.max(-0.5, Math.min(0.5, micro));
-      const localStep = ((rowIndex % target.length) + target.length) % target.length;
-
-      // `step.pitch` is a SCALE-DEGREE offset from the scene tonic, not an
-      // absolute MIDI note — the engine resolves it with quantize(rootNote,
-      // scale, pitch) on semitones ("ignore") tracks. So convert the played
-      // note to its degree (the exact inverse of that quantize) before
-      // storing; on playback the engine re-applies the octave offset,
-      // reproducing the pitch we just monitored. snapToScale guarantees an
-      // in-scale note, so scaleDegreeOf won't return null (0 fallback is
-      // belt-and-suspenders). Best on a semitones/"ignore" track; follower
-      // interps reinterpret the degree against the chord context.
-      const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
-
-      // Overdub semantics: never clear; write pitch + velocity + on + the
-      // captured micro-timing. Each press records a single step — holds are NOT
-      // captured as ties (that added more glitches than it was worth); tie
-      // notes manually after.
-      state.setStepPitch(target.id, localStep, degree);
-      state.setStepVelocity(target.id, localStep, msg.value / 127);
-      state.setStepMicroTiming(target.id, localStep, micro);
-      state.setStepOn(target.id, localStep, true);
-    }
-  } else if (state.tieAnchor && state.tieAnchor.trackId === target.id) {
-    // Pinned step-edit. When a step on the input-target track is pinned in the
-    // inspector (the white anchor square, set by clicking the step), an incoming
-    // note RETUNES that step rather than recording under a playhead — the
-    // "edit while stopped" path the realtime recorder above can't reach. Pin a
-    // step, play a key: the monitor already sounded it (line 74), and the step
-    // takes the played pitch. Pitch only — velocity / probability / timing /
-    // on-state stay as authored, so this is a surgical retune, not a re-record.
-    // Same scaleDegreeOf conversion as the recorder, so on playback the engine
-    // re-applies the track octave identically. Guarded to the target track:
-    // a pin on some other row is left alone (its voice wouldn't match the
-    // monitor anyway). Keyed off tieAnchor (the explicit click-pin), not
-    // hover-driven selectedStep, so a grazed cell can't catch the note.
-    const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
-    state.setStepPitch(target.id, state.tieAnchor.index, degree);
-  }
+  // Write the note onto the track (overdub under the playhead while armed +
+  // playing, or pinned step-edit while stopped). Shared with the Launchpad
+  // keyboard page so both controllers record identically. `snapped` is the
+  // pre-track-octave, in-scale MIDI note.
+  writeRecordedNote(target, snapped, msg.value / 127);
 
   // Re-pressing a still-held note just resets the anchor (its old monitor
   // voice, if monophonic, was already choked by this trigger).
   heldNotes.set(msg.num, held);
 
   return true;
+}
+
+// Write a played note onto `track` — the shared record path for both the MIDI
+// keyboard (above) and the Launchpad keyboard page. `snapped` is the in-scale
+// MIDI note BEFORE the track octave (the engine re-applies track.octave on
+// playback, so callers that monitor at an absolute pitch must subtract it).
+// Two modes, mutually exclusive:
+//   - armed + playing → realtime overdub quantized under the playhead, with the
+//     press's "lazy/pushed" offset captured as microTiming.
+//   - else, a step pinned on this track (`tieAnchor`) → surgical pitch retune of
+//     that step (the edit-while-stopped path). Pitch only; on/velocity/timing
+//     stay as authored.
+// No-op if neither applies (e.g. stopped with nothing pinned).
+export function writeRecordedNote(track: Track, snapped: number, velocity: number): void {
+  const state = useSequencerStore.getState();
+  if (state.playing && track.inputArmed) {
+    const aud = scheduler.getAudibleStepTiming();
+    if (aud === null) return;
+    const stride = RATE_STRIDE[track.rate];
+    // Back out to the sounding row-step boundary (a row step spans `stride`
+    // 32nd-note ticks; the audible global step can be partway in).
+    const raw = Math.floor((aud.index - state.sceneStartStep) / stride);
+    const rowStartGlobal = state.sceneStartStep + raw * stride;
+    const rowStepDur = stride * aud.stepDuration;
+    const rowStartTime = aud.when - (aud.index - rowStartGlobal) * aud.stepDuration;
+    // Snap to the NEAREST row-step boundary; store the signed remainder as
+    // microTiming so an early press keeps its pushed feel rather than dumping
+    // onto the previous step.
+    const frac = (getAudioContext().currentTime - rowStartTime) / rowStepDur; // [0,1)
+    let rowIndex = raw;
+    let micro = frac;
+    if (frac > 0.5) {
+      rowIndex = raw + 1;
+      micro = frac - 1;
+    }
+    micro = Math.max(-0.5, Math.min(0.5, micro));
+    const localStep = ((rowIndex % track.length) + track.length) % track.length;
+    // step.pitch is a SCALE-DEGREE offset from the tonic; convert (inverse of
+    // the engine's quantize) so playback reproduces the monitored pitch.
+    const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
+    state.setStepPitch(track.id, localStep, degree);
+    state.setStepVelocity(track.id, localStep, velocity);
+    state.setStepMicroTiming(track.id, localStep, micro);
+    state.setStepOn(track.id, localStep, true);
+  } else if (state.tieAnchor && state.tieAnchor.trackId === track.id) {
+    const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
+    state.setStepPitch(track.id, state.tieAnchor.index, degree);
+  }
 }
 
 // Close a held note: release the sustaining monitor voice. Holds are NOT
