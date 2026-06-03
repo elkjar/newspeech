@@ -13,7 +13,8 @@
 // Side rails are SYMMETRIC — the same controls on both pads so transport is
 // reachable from whichever grid your hand is near (top→bottom):
 //   [0] play/pause   [1] panic   [2] section toggle   [3] swap L/R devices
-//   [4] ·  [5] ·     [6] pitch up   [7] pitch down
+//   [4] chord page   [5] session page   [6] pitch up   [7] pitch down
+// (side[4]/side[5] toggle per-device page modes — see the Page system below.)
 //
 // Device assignment is by enumeration order (device 0 = left, 1 = right);
 // `swapped` flips that mapping (persisted) for when the units come up
@@ -37,6 +38,7 @@ import {
   onLaunchpadConnectionChange,
   onLaunchpadEvent,
   setPadColor,
+  setPulse,
   setSideColor,
   setTopColor,
   setTopPulse,
@@ -87,6 +89,16 @@ const COL_OCTAVE_SEL = 100; // column-7 octave pad, currently selected (bright)
 const COL_STEP_EMPTY = 12; // step within length, no chord (dim)
 const COL_STEP_HAS = 45; // step has a chord authored (on) — medium
 const COL_STEP_SELECTED = 120; // step selected as the write target (bright)
+
+// Session page (per-device mode). 8×8 matrix: rows = performance song slots
+// 0..7, cols = scene slots 0..7 within each song. Lighting separates state by
+// brightness alone (monochrome): empty, a populated scene, a non-active song's
+// resume scene (where it'll come in), and the one live cell. Pending swaps
+// (queued scene / queued song) pulse via palette like the bank pending.
+const COL_SESS_SCENE = 25; // a populated scene slot at rest
+const COL_SESS_RESUME = 60; // a non-active song's saved activeScene (resume point)
+const COL_SESS_LIVE = 127; // active song + active scene — playing now
+const COL_SESS_PENDING_PALETTE = 3; // palette index 3 = bright white (pulse)
 
 // Voicing ladder, index 0 = plainest. row r on the grid → ladder[7 - r], so
 // the bottom row is a plain triad and the top row an open 11th. Hand-curated
@@ -153,9 +165,10 @@ let lastPlacedStep: { trackId: string; index: number } | null = null;
 // so a tie can span the 8/9 seam.
 const heldPads = new Set<number>();
 // Per-PHYSICAL-device page mode. Independent so one pad can be the chord
-// palette while the other stays a normal step half (user workflow). Indexed by
-// physical device (0/1), NOT logical half.
-const deviceMode: Array<'step' | 'chord'> = ['step', 'step'];
+// palette (or the session launcher) while the other stays a normal step half
+// (user workflow). Indexed by physical device (0/1), NOT logical half.
+type DeviceMode = 'step' | 'chord' | 'session';
+const deviceMode: DeviceMode[] = ['step', 'step'];
 // Per-device last-auditioned pad index (0..63), for bright press feedback on
 // the chord page. -1 = none.
 const lastAuditionPad: number[] = [-1, -1];
@@ -288,7 +301,7 @@ function buildSurfaceForHalf(half: 0 | 1): Uint8Array {
   out[72 + 2] = state.viewSection === 'melodic' ? COL_SECTION_MELODIC : COL_SECTION_DRUM;
   out[72 + 3] = effectiveSwap() ? COL_SWAP_ON : COL_SWAP_OFF;
   out[72 + 4] = COL_MODE_OFF; // chord-mode toggle (dim = available)
-  out[72 + 5] = COL_OFF;
+  out[72 + 5] = COL_MODE_OFF; // session-mode toggle (dim = available)
   const pitchCol = lastPlacedStep ? COL_PITCH_READY : COL_PITCH_IDLE;
   out[72 + 6] = pitchCol;
   out[72 + 7] = pitchCol;
@@ -357,7 +370,81 @@ function buildChordSurface(device: number): Uint8Array {
   out[72 + 0] = useSequencerStore.getState().playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
   out[72 + 1] = COL_PANIC;
   out[72 + 4] = COL_MODE_ON;
+  out[72 + 5] = COL_MODE_OFF; // session available from the chord page
   return out;
+}
+
+// ---------- session page ----------
+// 8×8 matrix navigator over the performance/composition hierarchy: rows =
+// performance song slots, cols = scene slots within each song. The active
+// song's row shows the LIVE composition (its activeScene = the bright live
+// cell); other rows show that song's snapshot (its saved activeScene marked as
+// the resume point). Banks deliberately stay on the step page — this surface
+// is for navigating songs + scenes, the two layers with no hardware face.
+//
+// Fire semantics (the row decides the cost, no mode button):
+//   - tap a cell in the ACTIVE song's row  → loadScene(col)  (scene jump)
+//   - tap a cell in ANOTHER song's row      → loadSong(row)   (song swap,
+//     tail-out when playing). v1 lands on the song's own saved scene; the
+//     column is informational. Landing on a specific scene of another song
+//     needs after-swap scene cueing — deferred with the ghost-lens page.
+// Both go through the store's orchestrated helpers (stopped→immediate,
+// playing→queue + auto-save), never raw setters — see feedback-hardware-via-helper.
+
+// Resolve a row's scene array + its active-scene index. The active song reads
+// the live composition; every other song reads its stored snapshot.
+function sessionRow(
+  device_state: ReturnType<typeof useSequencerStore.getState>,
+  row: number
+): { scenes: (unknown | null)[]; activeScene: number | null } | null {
+  if (row === device_state.performance.activeSong) {
+    return {
+      scenes: device_state.composition.scenes,
+      activeScene: device_state.composition.activeScene,
+    };
+  }
+  const song = device_state.performance.songs[row];
+  if (!song) return null;
+  return { scenes: song.scenes, activeScene: song.activeScene };
+}
+
+function buildSessionSurface(_device: number): Uint8Array {
+  const out = new Uint8Array(SURFACE_SIZE);
+  const state = useSequencerStore.getState();
+  const activeSong = state.performance.activeSong;
+  for (let row = 0; row < 8; row++) {
+    const info = sessionRow(state, row);
+    if (!info) continue; // empty song slot → whole row off
+    for (let col = 0; col < 8; col++) {
+      if (!info.scenes[col]) continue; // empty scene slot → off
+      if (row === activeSong && col === info.activeScene) out[row * 8 + col] = COL_SESS_LIVE;
+      else if (col === info.activeScene) out[row * 8 + col] = COL_SESS_RESUME;
+      else out[row * 8 + col] = COL_SESS_SCENE;
+    }
+  }
+  out[72 + 0] = state.playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
+  out[72 + 1] = COL_PANIC;
+  out[72 + 4] = COL_MODE_OFF; // chord available from the session page
+  out[72 + 5] = COL_MODE_ON; // session active
+  return out;
+}
+
+// Pulse the cued swap targets on a session device (over the static fallback
+// already painted by buildSessionSurface). pendingScene pulses within the
+// active song's row; pendingSong pulses the target song's resume cell.
+function applySessionPulses(device: number): void {
+  const state = useSequencerStore.getState();
+  const pScene = state.composition.pendingScene;
+  if (pScene !== null && state.performance.activeSong !== null) {
+    const idx = state.performance.activeSong * 8 + pScene;
+    setPulse(device, { element: 'pad', index: idx }, COL_SESS_PENDING_PALETTE);
+  }
+  const pSong = state.performance.pendingSong;
+  if (pSong !== null) {
+    const song = state.performance.songs[pSong];
+    const col = song?.activeScene ?? 0;
+    setPulse(device, { element: 'pad', index: pSong * 8 + col }, COL_SESS_PENDING_PALETTE);
+  }
 }
 
 // Author the chord at grid (row, col) into the selected chord-master step:
@@ -399,12 +486,19 @@ function repaintDevice(device: number): void {
     bulkRedraw(device, buildChordSurface(device));
     return;
   }
+  if (deviceMode[device] === 'session') {
+    bulkRedraw(device, buildSessionSurface(device));
+    applySessionPulses(device);
+    return;
+  }
   bulkRedraw(device, buildSurfaceForHalf(halfForDevice(device)));
 }
 
-// Flip ONE device between step and chord pages, repaint just that device.
-function toggleDeviceMode(device: number): void {
-  deviceMode[device] = deviceMode[device] === 'chord' ? 'step' : 'chord';
+// Set ONE device's page mode (toggling back to 'step' if it's already there),
+// repaint just that device. side[4] → chord, side[5] → session, each acting as
+// an on/off toggle from any page.
+function setDeviceMode(device: number, mode: DeviceMode): void {
+  deviceMode[device] = deviceMode[device] === mode ? 'step' : mode;
   lastAuditionPad[device] = -1;
   chordWriteStep = null; // start in audition (nothing armed) on mode change
   repaintDevice(device);
@@ -418,7 +512,7 @@ function applyPendingPulse(): void {
   if (pending === null || pending < 0 || pending >= 16) return;
   const half: 0 | 1 = pending < 8 ? 0 : 1;
   const device = deviceForHalf(half);
-  if (deviceMode[device] === 'chord') return;
+  if (deviceMode[device] !== 'step') return; // chord/session own their top row
   setTopPulse(device, pending % 8, COL_BANK_PENDING_PALETTE);
 }
 
@@ -435,7 +529,7 @@ function repaintCellAbs(row: number, absStep: number, onPlayhead: boolean): void
   const half: 0 | 1 = absStep < 8 ? 0 : 1;
   const col = absStep % 8;
   const device = deviceForHalf(half);
-  if (deviceMode[device] === 'chord') return; // chord page owns this device
+  if (deviceMode[device] !== 'step') return; // chord/session pages own this device
   const track = visibleTracks(currentSection())[row];
   setPadColor(device, row * 8 + col, colorForCell(track, absStep, onPlayhead));
 }
@@ -497,6 +591,24 @@ function bankSignature(): string {
   return sig;
 }
 
+// Signature of everything the session matrix draws: which song/scene is live or
+// pending, plus each slot's populated mask + saved active scene. The active
+// song's row reflects the LIVE composition (its scene mask + activeScene), so
+// that's hashed separately from the snapshots.
+function sessionSignature(): string {
+  const s = useSequencerStore.getState();
+  let sig = `${s.performance.activeSong ?? '_'}/${s.performance.pendingSong ?? '_'}`;
+  sig += `/${s.composition.activeScene ?? '_'}/${s.composition.pendingScene ?? '_'}`;
+  sig += '#' + s.composition.scenes.map((sc) => (sc ? '1' : '0')).join('');
+  for (let r = 0; r < 8; r++) {
+    const song = s.performance.songs[r];
+    sig += song
+      ? `|${song.activeScene ?? '_'}:${song.scenes.map((sc) => (sc ? '1' : '0')).join('')}`
+      : '|.';
+  }
+  return sig;
+}
+
 function toggleSwap(): void {
   swapped = !swapped;
   persistSwapped();
@@ -505,18 +617,52 @@ function toggleSwap(): void {
   seedPlayhead();
 }
 
-// Event dispatcher. side[4] toggles THIS device's page mode (reachable from
-// either page); otherwise route to the device's current page handler.
+// Event dispatcher. side[4]/side[5] toggle THIS device's page mode (reachable
+// from any page); otherwise route to the device's current page handler.
 function handleEvent(device: number, e: LaunchpadEvent): void {
   if (e.addr.element === 'side' && e.addr.index === 4) {
-    if (e.pressed) toggleDeviceMode(device);
+    if (e.pressed) setDeviceMode(device, 'chord');
+    return;
+  }
+  if (e.addr.element === 'side' && e.addr.index === 5) {
+    if (e.pressed) setDeviceMode(device, 'session');
     return;
   }
   if (deviceMode[device] === 'chord') {
     handleChordEvent(device, e);
     return;
   }
+  if (deviceMode[device] === 'session') {
+    handleSessionEvent(device, e);
+    return;
+  }
   handleStepEvent(device, e);
+}
+
+// Session page: pads fire songs/scenes; play/panic stay live on the side rail.
+function handleSessionEvent(_device: number, e: LaunchpadEvent): void {
+  if (!e.pressed) return;
+  if (e.addr.element === 'side') {
+    if (e.addr.index === 0) void togglePlayback();
+    else if (e.addr.index === 1) void invoke('midi_panic').catch(() => {});
+    return;
+  }
+  if (e.addr.element !== 'pad') return; // top row unused in v1
+  const row = Math.floor(e.addr.index / 8); // song slot
+  const col = e.addr.index % 8; // scene slot
+  const store = useSequencerStore.getState();
+  if (row === store.performance.activeSong) {
+    // Scene jump within the live composition. No-op on the live cell or empty
+    // scene slots; loadScene handles stopped→immediate / playing→pendingScene.
+    if (!store.composition.scenes[col]) return;
+    if (col === store.composition.activeScene) return;
+    store.loadScene(col);
+    return;
+  }
+  // Another song's row → swap songs (tail-out when playing). v1 lands on the
+  // song's own saved scene regardless of which column was tapped.
+  if (!store.performance.songs[row]) return; // empty song slot
+  store.loadSong(row);
 }
 
 // Chord page: pads audition the degree×voicing chord; play/panic stay live.
@@ -722,6 +868,7 @@ export function attachLaunchpadBindings(): void {
   let prevPlaying = useSequencerStore.getState().playing;
   let prevView = useSequencerStore.getState().viewSection;
   let prevBankSig = bankSignature();
+  let prevSessionSig = sessionSignature();
   unsubs.push(
     useSequencerStore.subscribe((state) => {
       // Play state flip → repaint transport button on both pads + force
@@ -746,7 +893,7 @@ export function attachLaunchpadBindings(): void {
         prevBankSig = nextBankSig;
         for (let half: 0 | 1 = 0; half <= 1; half = (half + 1) as 0 | 1) {
           const device = deviceForHalf(half);
-          if (deviceMode[device] === 'chord') continue; // chord top row reserved
+          if (deviceMode[device] !== 'step') continue; // chord/session own their top row
           const base = half * 8;
           for (let i = 0; i < 8; i++) {
             const slot = base + i;
@@ -754,6 +901,16 @@ export function attachLaunchpadBindings(): void {
           }
         }
         applyPendingPulse();
+      }
+      // Performance/composition state changed (song/scene swap, queue, commit,
+      // populate, clear) → repaint any session-mode pad. Cheap when no pad is
+      // in session mode (the loop body never runs).
+      const nextSessionSig = sessionSignature();
+      if (nextSessionSig !== prevSessionSig) {
+        prevSessionSig = nextSessionSig;
+        for (let d = 0; d < getConnectedCount(); d++) {
+          if (deviceMode[d] === 'session') repaintDevice(d);
+        }
       }
       // viewSection toggled (from on-screen UI or our own side button) →
       // repaint both pads with the new section's tracks.
