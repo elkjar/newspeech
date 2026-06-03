@@ -332,7 +332,8 @@ function chordPadBase(device: number, padIndex: number): number {
   return COL_OFF; // degree pads dark at rest — only the last-auditioned lights
 }
 
-// The chord master = first melodic track (degree-based chords author here).
+// First melodic track — the default chord target when nothing's pinned (and the
+// engine's chord MASTER: melodic slot 0 sets the chord context followers read).
 function chordMaster(): Track | undefined {
   return useSequencerStore.getState().tracks.find((t) => t.section === 'melodic');
 }
@@ -341,15 +342,34 @@ function chordMaster(): Track | undefined {
 // the grid), in which case it just isn't shown on the top row.
 const CHORD_TOP_STEPS = 8;
 
-// The currently-PINNED chord-master step (`tieAnchor`), or null if nothing on
-// the chord master is pinned. This is the chord page's write target — the exact
-// pin the keyboard pinned step-edit uses (recordInput.ts), so a step clicked on
-// the grid is immediately the target for both note (keyboard) and chord (pad).
-function pinnedChordStep(): number | null {
+// The melodic VOICE track a launchpad-pinned `tieAnchor` points to — null if the
+// pin isn't on a melodic voice track. Chords can be authored onto ANY melodic
+// voice track, not just the chord master: the engine plays the full chord from a
+// step's chordVoicing for tracks in 'semitones' (UI "ignore") mode — the default
+// for new melodic tracks (resolveFollowerNote in tick.ts). chord-tone/scale-tone/
+// root-follow tracks store the voicing but sound a single derived note by design.
+function pinnedVoiceTrack(): Track | undefined {
   const s = useSequencerStore.getState();
-  const cm = s.tracks.find((t) => t.section === 'melodic');
   const pin = s.tieAnchor;
-  if (cm && pin && pin.trackId === cm.id && pin.index < cm.length) return pin.index;
+  if (!pin) return undefined;
+  const t = s.tracks.find((tr) => tr.id === pin.trackId);
+  return t && t.section === 'melodic' && t.source.kind === 'voice' ? t : undefined;
+}
+
+// The chord page's current target track: the pinned melodic voice track, else
+// the chord master as the default (so the top row shows something sensible with
+// nothing pinned). The whole page operates on this track.
+function chordTargetTrack(): Track | undefined {
+  return pinnedVoiceTrack() ?? chordMaster();
+}
+
+// The pinned step index on the current target track, or null if nothing valid is
+// pinned. The chord page's write target — the same `tieAnchor` pin a grid click
+// or step-page pad sets, so selecting a step is immediately the chord target.
+function pinnedChordStep(): number | null {
+  const t = pinnedVoiceTrack();
+  const pin = useSequencerStore.getState().tieAnchor;
+  if (t && pin && pin.index < t.length) return pin.index;
   return null;
 }
 
@@ -360,13 +380,14 @@ function chordTopColor(stepIdx: number, cm: Track | undefined): number {
   return cm.steps[stepIdx]?.on ? COL_STEP_HAS : COL_STEP_EMPTY;
 }
 
-// Repaint the top-row step selector on every chord-mode device (shared write
-// target, so all chord pages reflect the same selection/progression state).
+// Repaint the top-row step selector on every chord-mode device. Shows the steps
+// of the current TARGET track (the pinned melodic voice track, else the chord
+// master), so the selector follows whichever channel you're authoring chords on.
 function repaintChordTops(): void {
-  const cm = chordMaster();
+  const t = chordTargetTrack();
   for (let d = 0; d < 2; d++) {
     if (deviceMode[d] !== 'chord') continue;
-    for (let i = 0; i < 8; i++) setTopColor(d, i, chordTopColor(i, cm));
+    for (let i = 0; i < 8; i++) setTopColor(d, i, chordTopColor(i, t));
   }
 }
 
@@ -382,8 +403,8 @@ function buildChordSurface(device: number): Uint8Array {
   }
   const last = lastAuditionPad[device];
   if (last >= 0) out[last] = COL_CHORD_PRESSED;
-  const cm = chordMaster();
-  for (let i = 0; i < 8; i++) out[64 + i] = chordTopColor(i, cm);
+  const t = chordTargetTrack();
+  for (let i = 0; i < 8; i++) out[64 + i] = chordTopColor(i, t);
   out[72 + 0] = useSequencerStore.getState().playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
   out[72 + 1] = COL_PANIC;
   out[72 + 4] = COL_MODE_ON;
@@ -464,41 +485,42 @@ function applySessionPulses(device: number): void {
   }
 }
 
-// Author the chord at grid (row, col) into the selected chord-master step:
+// Author the chord at grid (row, col) into the pinned step on the TARGET track:
 // writes the voicing plock, stores the octave as a degree-space pitch offset
 // (ChordVoicing has no octave field; one octave = octaveDegrees(scale) degrees),
-// and turns the step on so it sounds. Targets the PINNED chord-master step
-// (`tieAnchor`) — select a step on the grid, hit a chord, it binds there.
-// Returns true if a chord was written (false = no pinned chord-master step / no
-// valid chord master), so the caller knows whether to refresh the selector.
+// and turns the step on so it sounds. Targets the PINNED step (`tieAnchor`) on
+// the pinned melodic voice track — works on ANY melodic track, not just the
+// chord master (the engine plays the chord for 'semitones'-mode tracks). Returns
+// true if a chord was written (false = nothing valid pinned), so the caller
+// knows whether to refresh the selector.
 function authorChord(device: number, row: number, col: number): boolean {
   if (col > 6) return false;
   const step = pinnedChordStep();
-  if (step === null) return false;
+  const t = pinnedVoiceTrack();
+  if (step === null || !t) return false;
   const state = useSequencerStore.getState();
-  const cm = state.tracks.find((t) => t.section === 'melodic');
-  if (!cm || cm.source.kind !== 'voice') return false;
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
-  state.setStepChordVoicing(cm.id, step, voicing);
-  state.setStepPitch(cm.id, step, chordOctave[device] * octaveDegrees(state.scale));
-  state.setStepOn(cm.id, step, true);
+  state.setStepChordVoicing(t.id, step, voicing);
+  state.setStepPitch(t.id, step, chordOctave[device] * octaveDegrees(state.scale));
+  state.setStepOn(t.id, step, true);
   return true;
 }
 
 // Resolve + audition the chord at grid (row, col): col → degree I..VII, row →
-// voicing ladder (bottom = plainest). Uses the scene root/scale + the chord
-// master's octave + the device's selected octave so the audition matches what
+// voicing ladder (bottom = plainest). Auditions on the current TARGET track's
+// voice (the pinned track, else the chord master) at the scene root/scale + the
+// track's octave + the device's selected octave, so the audition matches what
 // authoring will write. Fire-and-forget.
 function auditionCell(device: number, row: number, col: number): void {
   if (col > 6) return;
   const state = useSequencerStore.getState();
-  const cm = state.tracks.find((t) => t.section === 'melodic');
-  if (!cm || cm.source.kind !== 'voice') return;
+  const t = chordTargetTrack();
+  if (!t || t.source.kind !== 'voice') return;
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
   const { root, intervals } = resolveChord(state.rootNote, state.scale, voicing, 0);
-  monitorChord(cm, root + (cm.octave + chordOctave[device]) * 12, intervals, 0.9);
+  monitorChord(t, root + (t.octave + chordOctave[device]) * 12, intervals, 0.9);
 }
 
 // Repaint one physical device per its current mode.
@@ -633,13 +655,14 @@ function sessionSignature(): string {
 }
 
 // Signature of what the chord-page top row (step selector) draws: the pinned
-// step + the chord master's on-mask over the displayed range. Lets a grid click
-// (which moves `tieAnchor`) or a chord-master edit refresh the selector on the
-// chord pads even though the chord page isn't tied to the viewed section.
+// step + the TARGET track's id + on-mask over the displayed range. Lets a grid
+// click (which moves `tieAnchor`, and so the target track) or a target-track
+// edit refresh the selector on the chord pads even though the chord page isn't
+// tied to the viewed section.
 function chordTopSignature(): string {
-  const cm = chordMaster();
-  let sig = `${pinnedChordStep() ?? '_'}/${cm?.id ?? ''}/${cm?.length ?? 0}`;
-  if (cm) for (let i = 0; i < Math.min(cm.length, CHORD_TOP_STEPS); i++) sig += cm.steps[i]?.on ? '1' : '0';
+  const t = chordTargetTrack();
+  let sig = `${pinnedChordStep() ?? '_'}/${t?.id ?? ''}/${t?.length ?? 0}`;
+  if (t) for (let i = 0; i < Math.min(t.length, CHORD_TOP_STEPS); i++) sig += t.steps[i]?.on ? '1' : '0';
   return sig;
 }
 
@@ -708,18 +731,19 @@ function handleChordEvent(device: number, e: LaunchpadEvent): void {
     return;
   }
   if (e.addr.element === 'top') {
-    // Step selector — pin a chord-master step as the write target (the same
-    // `tieAnchor` pin a grid click sets; tap again to unpin → audition-only).
-    // The launchpad-native way to select; the grid does the same thing.
+    // Step selector — pin a step on the TARGET track as the write target (the
+    // same `tieAnchor` pin a grid click sets; tap again to unpin → audition-
+    // only). Pins on the current target track, so to author chords on a non-
+    // master channel, pin one of its steps from the grid / step-page first.
     const step = e.addr.index;
-    const cm = chordMaster();
-    if (!cm || step >= cm.length) return;
+    const t = chordTargetTrack();
+    if (!t || step >= t.length) return;
     const store = useSequencerStore.getState();
     if (pinnedChordStep() === step) {
       store.setTieAnchor(null);
       store.setSelectedStep(null);
     } else {
-      const sel = { trackId: cm.id, index: step };
+      const sel = { trackId: t.id, index: step };
       store.setTieAnchor(sel);
       store.setSelectedStep(sel);
     }

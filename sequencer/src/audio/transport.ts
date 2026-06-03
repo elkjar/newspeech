@@ -2,6 +2,7 @@ import { ensureAudioRunning } from './audioContext';
 import { scheduler } from './scheduler';
 import { midiPanic } from './midiOut';
 import { useSequencerStore } from '../state/store';
+import { clearOverlay } from './mutationOverlay';
 
 // Tap-tempo: averages the gaps between recent taps. A gap > TAP_RESET_MS
 // resets the buffer so a long pause starts a fresh measurement.
@@ -45,7 +46,12 @@ export async function togglePlayback(): Promise<void> {
       void fadeTextures(TEXTURE_STOP_FADE_SECS);
     }
     store.setPlaying(false);
-    store.commitMutationOverlay();
+    // Stop REVERTS to the authored pattern: discard the transient mutation
+    // variation rather than baking it in. Mutation is a runtime overlay (the
+    // grid always shows the authored steps), so the knob value is kept and a
+    // fresh variation regenerates on the next play. The `commitMutationOverlay`
+    // store action remains for a future explicit "print" control.
+    clearOverlay();
   } else {
     await ensureAudioRunning();
     // Native (Tauri) build skips the entire WebAudio FX chain. All
