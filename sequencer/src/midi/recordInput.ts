@@ -1,11 +1,15 @@
-// Route MIDI note-on to the input-target track: always monitor its voice, and
-// when that track is RECORD-armed (not live-only) and the transport is running,
-// write the note onto the current step. Note-off releases the monitor voice.
+// Route MIDI note-on to the input-target track and ALWAYS monitor its voice;
+// recording (writing steps) is gated by the per-track record arm. Note-off
+// releases the monitor voice.
 //
-// A track can be the input target in one of two modes: record-armed
-// (inputArmed — monitors + records while playing) or live (inputLive — monitors
-// only, never writes, even mid-playback). The two are mutually exclusive across
-// all tracks; only one track is ever the target.
+// Functional model: MONITORING is live all the time — playing a key sounds the
+// target's voice with no toggle. RECORDING is the only toggle (the per-track
+// arm). The target is the RECORD-armed track, else the track whose step is
+// pinned in the inspector (`tieAnchor`) — so with nothing armed you still
+// monitor (and pitch-edit) the SELECTED step's voice, mirroring the Launchpad
+// keyboard page. Writes: armed + playing → realtime overdub under the playhead;
+// a pinned step → that step's pitch is set from the played note. The old
+// monitor-only `inputLive` toggle was dropped — monitoring is now free.
 //
 // Called from dispatchMidi BEFORE the binding lookup. Returns true if the
 // message was consumed (port matches + a track is the input target) so the
@@ -47,29 +51,20 @@ export function tryRecordNote(msg: MidiMessage): boolean {
     return false;
   }
 
-  // The input target is whichever track is record-armed OR live. Mutual
-  // exclusivity is enforced in the store, so at most one matches.
-  const target = state.tracks.find((t) => t.inputArmed || t.inputLive);
-
-  // Silent pinned step-edit. With NO track armed/live, the keyboard normally
-  // has nowhere to route — but if a step is pinned in the inspector we still
-  // honor it as a retune target. This is the lighter, monitor-less sibling of
-  // the armed pinned-edit below: arming is what buys the audible monitor voice,
-  // so without it the note lands on the pinned step's pitch silently — pin a
-  // step, play a key, the step takes the played pitch (no sound). Only fires
-  // when nothing is armed/live, so the armed path's "hear what you edit"
-  // behavior is untouched. Pitch only, same scaleDegreeOf conversion as the
-  // recorder. Consumed (return true) so the keyboard note never also fires a
-  // CC binding.
-  if (!target) {
-    if (state.tieAnchor) {
-      const snappedPin = snapToScale(msg.num, state.rootNote, state.scale);
-      const degree = scaleDegreeOf(snappedPin, state.rootNote, state.scale) ?? 0;
-      state.setStepPitch(state.tieAnchor.trackId, state.tieAnchor.index, degree);
-      return true;
-    }
-    return false;
-  }
+  // The input target is the armed MELODIC track, else the track whose step is
+  // pinned in the inspector (`tieAnchor`). Scoped to melodic because drum
+  // channels arm independently (multi) for the Launchpad drum page — they must
+  // not hijack the MIDI keyboard, which plays melodically. The pinned-track
+  // fallback lets the keyboard MONITOR + edit the SELECTED step's voice without
+  // arming — the same select-a-step model as the Launchpad keyboard page. With
+  // neither an armed melodic track nor a pin, the note falls through (return
+  // false) to any CC binding on this device.
+  const target =
+    state.tracks.find((t) => t.inputArmed && t.section === 'melodic') ??
+    (state.tieAnchor
+      ? state.tracks.find((t) => t.id === state.tieAnchor!.trackId)
+      : undefined);
+  if (!target) return false;
 
   // Snap incoming MIDI to the nearest in-scale tone. Default-on quantization:
   // off-key accidentals get pulled to the current scene's scale so a recorded
@@ -83,13 +78,13 @@ export function tryRecordNote(msg: MidiMessage): boolean {
   // live audition matches the recorded result.
   const soundingMidi = snapped + target.octave * 12;
 
-  // Live monitoring — targeting a track (record-armed OR live) makes its voice
-  // audible the moment a key is pressed, whether or not the transport is
-  // running. You can't record a line you can't hear, and live mode is monitor
-  // -only by design. The voice is tagged with a fresh note id so the matching
-  // note-off can release THIS voice (sustains until then). The note is consumed
-  // (return true below) regardless, so the device's note-ons never also fire a
-  // CC/note binding.
+  // Live monitoring — ALWAYS sounds the target's voice the moment a key is
+  // pressed, whether the target is armed or just the selected (pinned) step's
+  // track, and whether or not the transport is running. Monitoring is free; the
+  // arm only gates recording (below). The voice is tagged with a fresh note id
+  // so the matching note-off can release THIS voice (sustains until then). The
+  // note is consumed (return true below) regardless, so the device's note-ons
+  // never also fire a CC/note binding.
   const noteId = nextNoteId++;
   monitorNote(target, soundingMidi, msg.value / 127, noteId);
 
@@ -143,40 +138,71 @@ export function writeRecordedNote(
 ): RecordedOverdub | null {
   const state = useSequencerStore.getState();
   if (state.playing && track.inputArmed) {
-    const aud = scheduler.getAudibleStepTiming();
-    if (aud === null) return null;
-    const stride = RATE_STRIDE[track.rate];
-    // Back out to the sounding row-step boundary (a row step spans `stride`
-    // 32nd-note ticks; the audible global step can be partway in).
-    const raw = Math.floor((aud.index - state.sceneStartStep) / stride);
-    const rowStartGlobal = state.sceneStartStep + raw * stride;
-    const rowStepDur = stride * aud.stepDuration;
-    const rowStartTime = aud.when - (aud.index - rowStartGlobal) * aud.stepDuration;
-    // Snap to the NEAREST row-step boundary; store the signed remainder as
-    // microTiming so an early press keeps its pushed feel rather than dumping
-    // onto the previous step.
-    const frac = (getAudioContext().currentTime - rowStartTime) / rowStepDur; // [0,1)
-    let rowIndex = raw;
-    let micro = frac;
-    if (frac > 0.5) {
-      rowIndex = raw + 1;
-      micro = frac - 1;
-    }
-    micro = Math.max(-0.5, Math.min(0.5, micro));
-    const localStep = ((rowIndex % track.length) + track.length) % track.length;
+    const q = quantizedOverdubStep(track);
+    if (q === null) return null;
     // step.pitch is a SCALE-DEGREE offset from the tonic; convert (inverse of
     // the engine's quantize) so playback reproduces the monitored pitch.
     const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
-    state.setStepPitch(track.id, localStep, degree);
-    state.setStepVelocity(track.id, localStep, velocity);
-    state.setStepMicroTiming(track.id, localStep, micro);
-    state.setStepOn(track.id, localStep, true);
-    return { trackId: track.id, localStep, rowStepDur, t0: getAudioContext().currentTime };
+    state.setStepPitch(track.id, q.localStep, degree);
+    state.setStepVelocity(track.id, q.localStep, velocity);
+    state.setStepMicroTiming(track.id, q.localStep, q.micro);
+    state.setStepOn(track.id, q.localStep, true);
+    return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: getAudioContext().currentTime };
   } else if (state.tieAnchor && state.tieAnchor.trackId === track.id) {
     const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
     state.setStepPitch(track.id, state.tieAnchor.index, degree);
   }
   return null;
+}
+
+// Quantize "now" to the nearest row-step boundary of `track` under the live
+// playhead, capturing the signed remainder as microTiming (so an early press
+// keeps its pushed feel rather than dumping onto the previous step). Shared by
+// the melodic recorder and the drum-page hit recorder. Returns null if the
+// transport timing isn't available yet. rowStepDur is returned for callers that
+// finalize a held gate later.
+function quantizedOverdubStep(
+  track: Track
+): { localStep: number; micro: number; rowStepDur: number } | null {
+  const state = useSequencerStore.getState();
+  const aud = scheduler.getAudibleStepTiming();
+  if (aud === null) return null;
+  const stride = RATE_STRIDE[track.rate];
+  // Back out to the sounding row-step boundary (a row step spans `stride`
+  // 32nd-note ticks; the audible global step can be partway in).
+  const raw = Math.floor((aud.index - state.sceneStartStep) / stride);
+  const rowStartGlobal = state.sceneStartStep + raw * stride;
+  const rowStepDur = stride * aud.stepDuration;
+  const rowStartTime = aud.when - (aud.index - rowStartGlobal) * aud.stepDuration;
+  const frac = (getAudioContext().currentTime - rowStartTime) / rowStepDur; // [0,1)
+  let rowIndex = raw;
+  let micro = frac;
+  if (frac > 0.5) {
+    rowIndex = raw + 1;
+    micro = frac - 1;
+  }
+  micro = Math.max(-0.5, Math.min(0.5, micro));
+  const localStep = ((rowIndex % track.length) + track.length) % track.length;
+  return { localStep, micro, rowStepDur };
+}
+
+// Record a live drum hit (from the Launchpad drum page) onto a channel under the
+// playhead — same quantize + microtiming capture as the melodic recorder, but
+// writes on/velocity/microtiming/RATCHET (no pitch: drums aren't pitched). Drums
+// are one-shots, so there's no held gate to finalize on release. Records only
+// when the channel is armed (`inputArmed` — the drum page's top-row toggles it,
+// which is multi for drums) and the transport is running (overdub quantizes
+// under the playhead). `ratchet` is the drum page's per-channel ladder selection
+// (1 = single, 2..8 = roll).
+export function writeDrumHit(track: Track, velocity: number, ratchet: number): void {
+  const state = useSequencerStore.getState();
+  if (!(state.playing && track.inputArmed)) return;
+  const q = quantizedOverdubStep(track);
+  if (q === null) return;
+  state.setStepVelocity(track.id, q.localStep, velocity);
+  state.setStepMicroTiming(track.id, q.localStep, q.micro);
+  state.setStepRatchet(track.id, q.localStep, Math.max(1, Math.min(8, Math.floor(ratchet))));
+  state.setStepOn(track.id, q.localStep, true);
 }
 
 // Finalize a recorded note's LENGTH from how long the key was held: gate =

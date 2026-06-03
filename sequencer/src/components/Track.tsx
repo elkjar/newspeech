@@ -89,7 +89,6 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
   const clearTrack = useSequencerStore((s) => s.clearTrack);
   const setTrackLockTiming = useSequencerStore((s) => s.setTrackLockTiming);
   const setTrackInputArmed = useSequencerStore((s) => s.setTrackInputArmed);
-  const setTrackInputLive = useSequencerStore((s) => s.setTrackInputLive);
   const midiRecInputPort = useSequencerStore((s) => s.midiRecInputPort);
 
   const [panelOpen, setPanelOpen] = useState(false);
@@ -148,7 +147,11 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
     !(track.section === 'drum' && track.source.kind === 'voice');
 
   return (
-    <div className="flex items-center" style={{ gap: `${STEP_GAP}px` }}>
+    // justify-between pins the control cluster left and the step grid right, so
+    // the grid stays nested against the right edge (aligned with the BankPad row
+    // above) no matter what controls are added/removed on the left — it
+    // self-corrects rather than needing a hand-tuned spacer.
+    <div className="flex items-center justify-between" style={{ gap: `${STEP_GAP}px` }}>
       <div className="flex items-center gap-3">
       <div className="flex items-center gap-2">
         <button
@@ -209,56 +212,32 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
             />
           )}
         </div>
-        {/* Record-arm + live-monitor dots read as one paired control, so they
-            cluster tighter than the gap-2 row rhythm. */}
-        <div className="flex items-center" style={{ width: STEP_SIZE }}>
-          <button
-            type="button"
-            onClick={() => setTrackInputArmed(track.id, !track.inputArmed)}
-            style={{ width: STEP_SIZE / 2, height: STEP_SIZE }}
-            className="flex items-center justify-center bg-transparent transition-colors group"
-            title={
-              !midiRecInputPort
-                ? 'pick a midi input port in the MIDI bar to record'
-                : track.inputArmed
-                  ? 'armed for midi recording — click to disarm'
-                  : 'click to arm for midi recording (overdub on the current step)'
+        {/* Record arm. Monitoring is covered by the Launchpad keyboard page
+            (tracks the selected step) and by arming while stopped, so the old
+            monitor-only toggle that used to sit beside this was removed. */}
+        <button
+          type="button"
+          onClick={() => setTrackInputArmed(track.id, !track.inputArmed)}
+          style={{ width: STEP_SIZE, height: STEP_SIZE }}
+          className="flex items-center justify-center bg-transparent transition-colors group"
+          title={
+            !midiRecInputPort
+              ? 'pick a midi input port in the MIDI bar to record'
+              : track.inputArmed
+                ? 'armed for midi recording — click to disarm'
+                : 'click to arm for midi recording (overdub on the current step)'
+          }
+          aria-pressed={!!track.inputArmed}
+          aria-label="record arm"
+        >
+          <span
+            className={
+              track.inputArmed
+                ? 'w-3 h-3 rounded-full bg-white'
+                : 'w-3 h-3 rounded-full border border-white/30 group-hover:border-white/70 transition-colors'
             }
-            aria-pressed={!!track.inputArmed}
-            aria-label="record arm"
-          >
-            <span
-              className={
-                track.inputArmed
-                  ? 'w-3 h-3 rounded-full bg-white'
-                  : 'w-3 h-3 rounded-full border border-white/30 group-hover:border-white/70 transition-colors'
-              }
-            />
-          </button>
-          <button
-            type="button"
-            onClick={() => setTrackInputLive(track.id, !track.inputLive)}
-            style={{ width: STEP_SIZE / 2, height: STEP_SIZE }}
-            className="flex items-center justify-center bg-transparent transition-colors group"
-            title={
-              !midiRecInputPort
-                ? 'pick a midi input port in the MIDI bar to monitor'
-                : track.inputLive
-                  ? 'live input (monitor only) — click to stop'
-                  : 'click for live input (play along, monitor only — never recorded)'
-            }
-            aria-pressed={!!track.inputLive}
-            aria-label="live input (monitor only)"
-          >
-            <span
-              className={
-                track.inputLive
-                  ? 'w-3 h-3 rounded-full border-2 border-white'
-                  : 'w-3 h-3 rounded-full border border-dotted border-white/40 group-hover:border-white/70 transition-colors'
-              }
-            />
-          </button>
-        </div>
+          />
+        </button>
         {(['gain', 'pan', 'filterCutoff', 'filterResonance', 'fxSend', 'mutation'] as const).map((knob) => (
           <TrackKnob
             key={knob}

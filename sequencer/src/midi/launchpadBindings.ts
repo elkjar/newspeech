@@ -32,8 +32,13 @@ import { scheduler } from '../audio/scheduler';
 import { togglePlayback } from '../audio/transport';
 import { resolveChord, type ChordVoicing } from '../audio/chords';
 import { octaveDegrees, quantize } from '../audio/scale';
-import { monitorChord, monitorNote, monitorRelease } from '../audio/monitor';
-import { writeRecordedNote, finalizeRecordedNote, type RecordedOverdub } from './recordInput';
+import { monitorChord, monitorDrum, monitorNote, monitorRelease } from '../audio/monitor';
+import {
+  writeDrumHit,
+  writeRecordedNote,
+  finalizeRecordedNote,
+  type RecordedOverdub,
+} from './recordInput';
 import {
   bulkRedraw,
   getConnectedCount,
@@ -67,6 +72,16 @@ const COL_PANIC = 50;
 const COL_KB_ROOT = 50;
 const COL_KB_NOTE = 16;
 const COL_KB_HELD = 120;
+// Drum page: bottom row = per-channel base-sample trigger pads (L→R = drum
+// channels 1..8); brighter when that channel is record-armed so you can see
+// which one captures. Rows above = a vertical ratchet ladder per channel.
+const COL_DRUM_TRIG = 40; // trigger pad at rest
+const COL_DRUM_TRIG_ARMED = 96; // trigger pad whose track is record-armed
+const COL_DRUM_HIT = 127; // flash on tap
+const COL_DRUM_LADDER = 20; // ratchet ladder, filled rung
+const COL_DRUM_LADDER_SEL = 80; // ratchet ladder, the selected (top) rung
+const COL_DRUM_REC_ON = 110; // top-row record arm, channel armed
+const COL_DRUM_REC_OFF = 12; // top-row record arm, channel present but disarmed
 // Section toggle reflects the live section (so you can read state off the
 // pad): bright = melodic, dim = drum. Swap shows brighter when engaged.
 const COL_SECTION_MELODIC = 96;
@@ -170,8 +185,16 @@ const heldPads = new Set<number>();
 // palette / session launcher / keyboard while the other stays a normal step
 // half (user workflow). Indexed by physical device (0/1), NOT logical half.
 // ('drum' is reserved — planned next page, side[7].)
-type DeviceMode = 'step' | 'chord' | 'session' | 'keyboard';
+type DeviceMode = 'step' | 'chord' | 'session' | 'keyboard' | 'drum';
 const deviceMode: DeviceMode[] = ['step', 'step'];
+// Drum page: per-channel (0..7, L→R) ratchet ladder selection baked into
+// recorded hits. 1 = single hit (default, no ladder lit); 2..8 = roll. GLOBAL
+// (a channel-authoring setting, shared if both pads show the drum page).
+const drumRatchet: number[] = new Array(8).fill(1);
+// Drum-page record arm is the store's per-track `inputArmed` (the TOP ROW
+// toggles it), NOT a launchpad-local flag — so arming a channel from the pad
+// also lights that track's record dot in the app UI. Drum arm is MULTI (see
+// setTrackInputArmed: melodic single-target, drum multi).
 // Keyboard page: notes held down on each device, keyed device*64+padIndex →
 // the target track + monitor voice id (so a release ramps THAT voice down) +
 // the overdub it recorded (so the release finalizes that step's gate).
@@ -591,22 +614,13 @@ function auditionCell(device: number, row: number, col: number): void {
   monitorChord(t, root + (t.octave + chordOctave[device]) * 12, intervals, 0.9);
 }
 
-// Repaint one physical device per its current mode.
+// Repaint one physical device per its current mode: bulk-redraw the page's
+// surface, then let the page paint any transient overlay (pulses). Registry-
+// driven — adding a page needs no edit here.
 function repaintDevice(device: number): void {
-  if (deviceMode[device] === 'chord') {
-    bulkRedraw(device, buildChordSurface(device));
-    return;
-  }
-  if (deviceMode[device] === 'session') {
-    bulkRedraw(device, buildSessionSurface(device));
-    applySessionPulses(device);
-    return;
-  }
-  if (deviceMode[device] === 'keyboard') {
-    bulkRedraw(device, buildKeyboardSurface(device));
-    return;
-  }
-  bulkRedraw(device, buildSurfaceForHalf(halfForDevice(device)));
+  const page = PAGES[deviceMode[device]];
+  bulkRedraw(device, page.buildSurface(device));
+  page.applyOverlay?.(device);
 }
 
 // Release every keyboard note a device is holding (its monitor voices ramp
@@ -626,8 +640,8 @@ function releaseKbNotes(device: number): void {
 // keyboard; each acts as an on/off toggle from any page.
 function setDeviceMode(device: number, mode: DeviceMode): void {
   const next: DeviceMode = deviceMode[device] === mode ? 'step' : mode;
-  // Leaving keyboard mode: release any notes this device is still holding.
-  if (deviceMode[device] === 'keyboard' && next !== 'keyboard') releaseKbNotes(device);
+  // Let the outgoing page clean up (e.g. keyboard releases held notes).
+  PAGES[deviceMode[device]].onLeave?.(device);
   deviceMode[device] = next;
   lastAuditionPad[device] = -1;
   // No cursor to reset — the chord page authors into the live `tieAnchor` pin,
@@ -760,38 +774,24 @@ function toggleSwap(): void {
   seedPlayhead();
 }
 
-// Event dispatcher. side[4]/[5]/[6] toggle THIS device's page mode (chord /
-// session / keyboard — reachable from any page); side[7] is reserved for the
-// planned drum page. Otherwise route to the device's current page handler.
+// Side-rail buttons that toggle a device's page mode (reachable from ANY page —
+// press again to return to 'step').
+const SIDE_PAGE_TOGGLE: Record<number, DeviceMode> = {
+  4: 'chord',
+  5: 'session',
+  6: 'keyboard',
+  7: 'drum',
+};
+
+// Event dispatcher. A page-toggle side button flips this device's mode; every
+// other event routes to the device's current page handler from the registry.
 function handleEvent(device: number, e: LaunchpadEvent): void {
-  if (e.addr.element === 'side' && e.addr.index === 4) {
-    if (e.pressed) setDeviceMode(device, 'chord');
+  const toggle = e.addr.element === 'side' ? SIDE_PAGE_TOGGLE[e.addr.index] : undefined;
+  if (toggle) {
+    if (e.pressed) setDeviceMode(device, toggle);
     return;
   }
-  if (e.addr.element === 'side' && e.addr.index === 5) {
-    if (e.pressed) setDeviceMode(device, 'session');
-    return;
-  }
-  if (e.addr.element === 'side' && e.addr.index === 6) {
-    if (e.pressed) setDeviceMode(device, 'keyboard');
-    return;
-  }
-  if (e.addr.element === 'side' && e.addr.index === 7) {
-    return; // reserved for the drum page (not built yet)
-  }
-  if (deviceMode[device] === 'chord') {
-    handleChordEvent(device, e);
-    return;
-  }
-  if (deviceMode[device] === 'session') {
-    handleSessionEvent(device, e);
-    return;
-  }
-  if (deviceMode[device] === 'keyboard') {
-    handleKeyboardEvent(device, e);
-    return;
-  }
-  handleStepEvent(device, e);
+  PAGES[deviceMode[device]].handleEvent(device, e);
 }
 
 // Keyboard page: scale-quantized live play. Pad press → monitor the target
@@ -1032,46 +1032,175 @@ function handleStepEvent(device: number, e: LaunchpadEvent): void {
   }
 }
 
-export function attachLaunchpadBindings(): void {
-  if (attached) return;
-  attached = true;
-  repaintBoth();
-  seedPlayhead();
+// ---------- drum page ----------
+// Vertical finger-drum surface, mapped from the BOTTOM: the bottom row (row 7)
+// is 8 base-sample trigger pads, L→R = drum channels 1..8 (the drum-section
+// tracks, independent of the step pad's viewed section). Tap a trigger pad →
+// monitor that voice at natural pitch (velocity from pad pressure) + record the
+// hit into the channel if it's record-armed and the transport is running.
+// The 7 rows ABOVE each channel are its authoring column — v1 is a ratchet
+// ladder: tap a height to set the ratchet (row 6 = ×2 climbing to row 0 = ×8)
+// baked into that channel's recorded hits; tap the lit rung again to clear back
+// to ×1. (Room here for more per-channel authoring later — probability,
+// euclidean fills, etc.)
+// The TOP ROW = per-channel RECORD ARM (one pad per channel). Multi: arm any
+// subset (or all) and every armed channel captures its hits in one pass — drum
+// recording isn't single-target like the melodic arm. Monitoring is always live
+// regardless; the arm only gates whether a hit writes to the channel.
 
-  unsubs.push(onLaunchpadEvent(handleEvent));
+// The 8 drum-section voice tracks (column c → channel c+1). Independent of the
+// step pad's viewSection, like the chord/keyboard pages target melodic.
+function drumTracks(): Track[] {
+  return useSequencerStore
+    .getState()
+    .tracks.filter((t) => t.section === 'drum')
+    .slice(0, 8);
+}
 
-  // Per-step playhead. Cheaper than relying on the store subscription (which
-  // fires on every globalStep write, not all of which matter).
-  unsubs.push(scheduler.onStep('launchpad:playhead', () => updatePlayhead()));
+// Ratchet (1..8) for the ladder row in a channel column: row 6 (just above the
+// trigger) = ×2, climbing to row 0 = ×8. Row 7 (the trigger) maps to ×1.
+function ratchetForRow(row: number): number {
+  return 8 - row;
+}
+function rowForRatchet(ratchet: number): number {
+  return 8 - ratchet;
+}
 
-  // Hot-plug of a second (or first) pad → repaint everything so the newly
-  // present surface gets drawn and swap re-resolves with the new count.
-  unsubs.push(
-    onLaunchpadConnectionChange(() => {
-      resetLastPlayheadAbs();
-      repaintBoth();
-      seedPlayhead();
-    })
-  );
+function buildDrumSurface(_device: number): Uint8Array {
+  const out = new Uint8Array(SURFACE_SIZE);
+  const tracks = drumTracks();
+  for (let col = 0; col < 8; col++) {
+    const track = tracks[col];
+    if (!track) continue; // no channel here → whole column dark
+    // Top row = per-channel record arm; the trigger pad also brightens when its
+    // channel is armed so the record set reads at a glance from either end.
+    out[64 + col] = track.inputArmed ? COL_DRUM_REC_ON : COL_DRUM_REC_OFF;
+    out[7 * 8 + col] = track.inputArmed ? COL_DRUM_TRIG_ARMED : COL_DRUM_TRIG;
+    const r = drumRatchet[col];
+    if (r > 1) {
+      const selRow = rowForRatchet(r); // 0..6
+      for (let row = selRow; row <= 6; row++) {
+        out[row * 8 + col] = row === selRow ? COL_DRUM_LADDER_SEL : COL_DRUM_LADDER;
+      }
+    }
+  }
+  const playing = useSequencerStore.getState().playing;
+  out[72 + 0] = playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
+  out[72 + 1] = COL_PANIC;
+  out[72 + 4] = COL_MODE_OFF; // chord available
+  out[72 + 5] = COL_MODE_OFF; // session available
+  out[72 + 6] = COL_MODE_OFF; // keyboard available
+  out[72 + 7] = COL_MODE_ON; // drum active
+  return out;
+}
 
-  // Coarse-grained: detect grid edits + section/playing/bank changes.
+// Drum page: bottom row triggers + records; rows above set the ratchet ladder.
+function handleDrumEvent(device: number, e: LaunchpadEvent): void {
+  if (e.addr.element === 'side') {
+    if (!e.pressed) return;
+    if (e.addr.index === 0) void togglePlayback();
+    else if (e.addr.index === 1) void invoke('midi_panic').catch(() => {});
+    return;
+  }
+  if (e.addr.element === 'top') {
+    // Top row = per-channel record arm (multi for drums). Toggle the store's
+    // inputArmed via the same setter the app UI uses, so the record dot lights
+    // there too; the drumSignature subscription repaints the pad.
+    if (!e.pressed) return;
+    const t = drumTracks()[e.addr.index];
+    if (!t) return; // no channel here
+    useSequencerStore.getState().setTrackInputArmed(t.id, !t.inputArmed);
+    return;
+  }
+  if (e.addr.element !== 'pad') return;
+  const row = Math.floor(e.addr.index / 8);
+  const col = e.addr.index % 8;
+  const track = drumTracks()[col];
+  if (!track) return; // empty channel column
+
+  if (row === 7) {
+    // Trigger pad: ALWAYS monitor the voice; record the hit only if this channel
+    // is armed (writeDrumHit then no-ops unless the transport is running). Flash
+    // bright on press, restore on release.
+    if (e.pressed) {
+      const vel = Math.max(0.05, e.velocity / 127);
+      monitorDrum(track, vel);
+      writeDrumHit(track, e.velocity / 127, drumRatchet[col]); // no-ops unless armed + playing
+      setPadColor(device, e.addr.index, COL_DRUM_HIT);
+    } else {
+      setPadColor(device, e.addr.index, track.inputArmed ? COL_DRUM_TRIG_ARMED : COL_DRUM_TRIG);
+    }
+    return;
+  }
+
+  // Ratchet ladder (rows 0..6): set this channel's ratchet, toggling back to ×1
+  // if you tap the already-selected rung. Global state, so repaint every drum
+  // pad (cheap — a single bulk redraw, and ratchet taps are infrequent).
+  if (!e.pressed) return;
+  const r = ratchetForRow(row);
+  drumRatchet[col] = drumRatchet[col] === r ? 1 : r;
+  for (let d = 0; d < getConnectedCount(); d++) {
+    if (deviceMode[d] === 'drum') repaintDevice(d);
+  }
+}
+
+// Drum page reactivity: repaint when the drum track set changes (a channel
+// added/removed → columns shift) OR any drum channel's record arm flips — the
+// arm lives in the store now, so a tap (this pad, the other pad, or the app UI)
+// repaints the trigger + top-row indicators here. Playing is the cross-page
+// side[0] sub.
+function drumSignature(): string {
+  let s = '';
+  for (const t of drumTracks()) s += `|${t.id}:${t.inputArmed ? '1' : '0'}`;
+  return s;
+}
+function drumAttach(): () => void {
+  let prev = drumSignature();
+  return useSequencerStore.subscribe(() => {
+    const next = drumSignature();
+    if (next !== prev) {
+      prev = next;
+      for (let d = 0; d < getConnectedCount(); d++) {
+        if (deviceMode[d] === 'drum') repaintDevice(d);
+      }
+    }
+  });
+}
+
+// ---------- page registry ----------
+// Each page mode is one self-contained object: how to paint a device showing
+// it (buildSurface + optional transient applyOverlay), how to handle its
+// events, how to clean up when a device leaves it (onLeave), and how to wire
+// its own reactive repaints (attach → cleanup). The dispatcher, repaint, and
+// mode-switch above are all driven off this map, so a new page (drum, ghost-
+// lens) is added by writing one object + registering it here — no central
+// branch to edit. Each `attach` keeps its own prev-signature so it repaints
+// only when the slice it cares about changes.
+interface LaunchpadPage {
+  id: DeviceMode;
+  buildSurface: (device: number) => Uint8Array;
+  applyOverlay?: (device: number) => void;
+  handleEvent: (device: number, e: LaunchpadEvent) => void;
+  onLeave?: (device: number) => void;
+  attach?: () => () => void;
+}
+
+// Step page reactivity: the per-step playhead (incremental, via scheduler.onStep
+// — cheaper than a store sub which fires on every globalStep) plus a store sub
+// for playhead-clear-on-stop, bank top rows, section toggle, and grid edits.
+function stepAttach(): () => void {
+  const subs: Array<() => void> = [];
+  subs.push(scheduler.onStep('launchpad:playhead', () => updatePlayhead()));
   let prevSig = visibleSignature();
   let prevPlaying = useSequencerStore.getState().playing;
   let prevView = useSequencerStore.getState().viewSection;
   let prevBankSig = bankSignature();
-  let prevSessionSig = sessionSignature();
-  let prevChordTopSig = chordTopSignature();
-  let prevKbSig = kbSignature();
-  unsubs.push(
+  subs.push(
     useSequencerStore.subscribe((state) => {
-      // Play state flip → repaint transport button on both pads + force
-      // playhead refresh (when stopping we clear the columns; onStep has
-      // stopped firing).
+      // Stop → clear the playhead columns (onStep has stopped firing). The
+      // play-button itself is repainted globally (every page shows it).
       if (state.playing !== prevPlaying) {
         prevPlaying = state.playing;
-        for (let d = 0; d < getConnectedCount(); d++) {
-          setSideColor(d, 0, state.playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED);
-        }
         if (!state.playing) {
           for (let row = 0; row < 8; row++) {
             repaintCellAbs(row, lastPlayheadAbs[row], false);
@@ -1095,36 +1224,9 @@ export function attachLaunchpadBindings(): void {
         }
         applyPendingPulse();
       }
-      // Performance/composition state changed (song/scene swap, queue, commit,
-      // populate, clear) → repaint any session-mode pad. Cheap when no pad is
-      // in session mode (the loop body never runs).
-      const nextSessionSig = sessionSignature();
-      if (nextSessionSig !== prevSessionSig) {
-        prevSessionSig = nextSessionSig;
-        for (let d = 0; d < getConnectedCount(); d++) {
-          if (deviceMode[d] === 'session') repaintDevice(d);
-        }
-      }
-      // Pinned step moved (grid click) or chord-master content changed →
-      // refresh the chord-page step selector. repaintChordTops only touches the
-      // top row, so the lit degree/octave pads underneath are left intact.
-      const nextChordTopSig = chordTopSignature();
-      if (nextChordTopSig !== prevChordTopSig) {
-        prevChordTopSig = nextChordTopSig;
-        repaintChordTops();
-      }
-      // Scale / root / target-octave changed → repaint any keyboard-mode pad so
-      // the in-key layout + root highlight track the scene. Held notes survive
-      // (buildKeyboardSurface re-lights them from kbHeld).
-      const nextKbSig = kbSignature();
-      if (nextKbSig !== prevKbSig) {
-        prevKbSig = nextKbSig;
-        for (let d = 0; d < getConnectedCount(); d++) {
-          if (deviceMode[d] === 'keyboard') repaintDevice(d);
-        }
-      }
       // viewSection toggled (from on-screen UI or our own side button) →
-      // repaint both pads with the new section's tracks.
+      // repaint both pads with the new section's tracks. Returns early so a
+      // section toggle doesn't double-fire the grid-edit branch below.
       if (state.viewSection !== prevView) {
         prevView = state.viewSection;
         resetLastPlayheadAbs();
@@ -1143,6 +1245,126 @@ export function attachLaunchpadBindings(): void {
       }
     })
   );
+  return () => subs.forEach((u) => u());
+}
+
+// Chord page reactivity: a pinned-step move (grid click) or chord-master content
+// change refreshes the top-row step selector. repaintChordTops only touches the
+// top row, so the lit degree/octave pads underneath are left intact.
+function chordAttach(): () => void {
+  let prevChordTopSig = chordTopSignature();
+  return useSequencerStore.subscribe(() => {
+    const next = chordTopSignature();
+    if (next !== prevChordTopSig) {
+      prevChordTopSig = next;
+      repaintChordTops();
+    }
+  });
+}
+
+// Session page reactivity: song/scene swap/queue/commit/populate/clear repaints
+// any session-mode pad. Cheap when none is in session mode (loop body skipped).
+function sessionAttach(): () => void {
+  let prevSessionSig = sessionSignature();
+  return useSequencerStore.subscribe(() => {
+    const next = sessionSignature();
+    if (next !== prevSessionSig) {
+      prevSessionSig = next;
+      for (let d = 0; d < getConnectedCount(); d++) {
+        if (deviceMode[d] === 'session') repaintDevice(d);
+      }
+    }
+  });
+}
+
+// Keyboard page reactivity: scale / root change repaints any keyboard-mode pad
+// so the in-key layout + root highlight track the scene. Held notes survive
+// (buildKeyboardSurface re-lights them from kbHeld).
+function keyboardAttach(): () => void {
+  let prevKbSig = kbSignature();
+  return useSequencerStore.subscribe(() => {
+    const next = kbSignature();
+    if (next !== prevKbSig) {
+      prevKbSig = next;
+      for (let d = 0; d < getConnectedCount(); d++) {
+        if (deviceMode[d] === 'keyboard') repaintDevice(d);
+      }
+    }
+  });
+}
+
+const PAGES: Record<DeviceMode, LaunchpadPage> = {
+  step: {
+    id: 'step',
+    buildSurface: (device) => buildSurfaceForHalf(halfForDevice(device)),
+    handleEvent: handleStepEvent,
+    attach: stepAttach,
+  },
+  chord: {
+    id: 'chord',
+    buildSurface: buildChordSurface,
+    handleEvent: handleChordEvent,
+    attach: chordAttach,
+  },
+  session: {
+    id: 'session',
+    buildSurface: buildSessionSurface,
+    applyOverlay: applySessionPulses,
+    handleEvent: handleSessionEvent,
+    attach: sessionAttach,
+  },
+  keyboard: {
+    id: 'keyboard',
+    buildSurface: buildKeyboardSurface,
+    handleEvent: handleKeyboardEvent,
+    onLeave: releaseKbNotes,
+    attach: keyboardAttach,
+  },
+  drum: {
+    id: 'drum',
+    buildSurface: buildDrumSurface,
+    handleEvent: handleDrumEvent,
+    attach: drumAttach,
+  },
+};
+
+export function attachLaunchpadBindings(): void {
+  if (attached) return;
+  attached = true;
+  repaintBoth();
+  seedPlayhead();
+
+  unsubs.push(onLaunchpadEvent(handleEvent));
+
+  // Cross-page: the play/pause button (side[0]) shows on every page, so its
+  // state is repainted globally regardless of each device's mode.
+  let prevPlaying = useSequencerStore.getState().playing;
+  unsubs.push(
+    useSequencerStore.subscribe((state) => {
+      if (state.playing !== prevPlaying) {
+        prevPlaying = state.playing;
+        for (let d = 0; d < getConnectedCount(); d++) {
+          setSideColor(d, 0, state.playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED);
+        }
+      }
+    })
+  );
+
+  // Hot-plug of a second (or first) pad → repaint everything so the newly
+  // present surface gets drawn and swap re-resolves with the new count.
+  unsubs.push(
+    onLaunchpadConnectionChange(() => {
+      resetLastPlayheadAbs();
+      repaintBoth();
+      seedPlayhead();
+    })
+  );
+
+  // Each page wires its own reactive repaints and returns a cleanup.
+  for (const page of Object.values(PAGES)) {
+    const cleanup = page.attach?.();
+    if (cleanup) unsubs.push(cleanup);
+  }
 }
 
 export function detachLaunchpadBindings(): void {
@@ -1161,6 +1383,7 @@ export function detachLaunchpadBindings(): void {
   lastAuditionPad[1] = -1;
   chordOctave[0] = 0;
   chordOctave[1] = 0;
+  drumRatchet.fill(1);
 }
 
 if (import.meta.hot) {

@@ -184,12 +184,6 @@ export interface Track {
   // others). Stripped on bank snapshot (cloneTrack zeroes it) so banks
   // never carry arm state — arming is purely a transient UI gesture.
   inputArmed?: boolean;
-  // Runtime-only: true when this track is the live-monitor input target —
-  // MIDI note-ons sound its voice (so you can play along over playback) but
-  // are NEVER written to steps. Mutually exclusive with inputArmed across all
-  // tracks (engaging either clears the other everywhere). Same transient,
-  // never-snapshotted lifecycle as inputArmed.
-  inputLive?: boolean;
   // Physical output assignment (Tauri app only — the web build's stereo
   // mix bus ignores this). 0-indexed firstChannel; stereo=true routes
   // L→firstChannel + R→firstChannel+1 with the track's pan applied;
@@ -731,14 +725,17 @@ export interface SequencerState {
   commitMutationOverlay: () => void;
   setTrackMute: (trackId: string, mute: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
-  // MIDI recording — `inputArmed` / `inputLive` are per-track but mutually
-  // exclusive across ALL tracks (engaging either on one track clears both
-  // everywhere else, and clears the sibling flag on the target). inputArmed
-  // records-while-playing + monitors; inputLive monitors only (play along, no
-  // writes). midiRecInputPort gates which device's note-on messages reach the
-  // recorder; null = recording off entirely.
+  // MIDI recording — `inputArmed` is per-track. Melodic arm is single-target
+  // (the MIDI keyboard records one melodic track); drum arm is multi (the
+  // Launchpad drum page records many channels at once). Armed + playing
+  // records-while-monitoring; armed + stopped monitors only (so play-along
+  // without recording = arm + don't run transport). Monitoring also comes from
+  // the Launchpad keyboard page, which tracks the selected step's voice —
+  // that's why the old monitor-only `inputLive` toggle was dropped. The drum
+  // page's top-row arms drive this same flag, so the per-track record dot in the
+  // app UI lights up. midiRecInputPort gates which device's note-on messages
+  // reach the recorder; null = recording off entirely.
   setTrackInputArmed: (trackId: string, armed: boolean) => void;
-  setTrackInputLive: (trackId: string, live: boolean) => void;
   midiRecInputPort: string | null;
   setMidiRecInputPort: (port: string | null) => void;
   setTrackLength: (trackId: string, length: number) => void;
@@ -931,27 +928,20 @@ export function cloneTrack(t: Track): Track {
     })),
     // Runtime UI state — never round-tripped through bank snapshots.
     inputArmed: false,
-    inputLive: false,
   };
 }
 
-// MIDI input monitor/record arm (`inputArmed` = record-while-playing,
-// `inputLive` = monitor-only) is GLOBAL rig state, not per-pattern: a performer
-// arms a track once and expects it to stay armed across bank/scene/song swaps.
-// But every swap rebuilds `tracks` via cloneTrack (which clears the flags so
-// they never bake into snapshots/saves), so the arm would be lost on each
-// pattern change. This carries the live arm forward onto the swap target,
-// matched by stable trackId (mutual exclusivity preserved). No-op when nothing
-// is armed, or when the armed track has no counterpart in the incoming set.
+// The MIDI record arm (`inputArmed`) is GLOBAL rig state, not per-pattern: a
+// performer arms a track once and expects it to stay armed across bank/scene/
+// song swaps. But every swap rebuilds `tracks` via cloneTrack (which clears the
+// flag so it never bakes into snapshots/saves), so the arm would be lost on each
+// pattern change. This carries the arm forward onto the swap target, matched by
+// stable trackId. No-op when nothing is armed, or when the armed track has no
+// counterpart in the incoming set.
 function withInputArm(prevTracks: Track[], newTracks: Track[]): Track[] {
-  const armId = prevTracks.find((t) => t.inputArmed)?.id;
-  const liveId = prevTracks.find((t) => t.inputLive)?.id;
-  if (!armId && !liveId) return newTracks;
-  return newTracks.map((t) => {
-    if (t.id === armId) return { ...t, inputArmed: true, inputLive: false };
-    if (t.id === liveId) return { ...t, inputArmed: false, inputLive: true };
-    return t;
-  });
+  const armedIds = new Set(prevTracks.filter((t) => t.inputArmed).map((t) => t.id));
+  if (armedIds.size === 0) return newTracks;
+  return newTracks.map((t) => (armedIds.has(t.id) ? { ...t, inputArmed: true } : t));
 }
 
 // On a fresh load (.seq / .seqcomp / .seqset) we reset every scene to its
@@ -1667,24 +1657,23 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, solo } : t)),
     })),
   setTrackInputArmed: (trackId, armed) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) => {
-        // Single-target: arming record on one track clears record + live on
-        // every other track, and clears live on the target itself. Disarm
-        // only touches the target's record flag.
-        if (armed) return { ...t, inputArmed: t.id === trackId, inputLive: false };
-        return t.id === trackId ? { ...t, inputArmed: false } : t;
-      }),
-    })),
-  setTrackInputLive: (trackId, live) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) => {
-        // Mirror of setTrackInputArmed: engaging live on one track clears
-        // record + live everywhere else and clears record on the target.
-        if (live) return { ...t, inputLive: t.id === trackId, inputArmed: false };
-        return t.id === trackId ? { ...t, inputLive: false } : t;
-      }),
-    })),
+    set((state) => {
+      const section = state.tracks.find((t) => t.id === trackId)?.section;
+      return {
+        tracks: state.tracks.map((t) => {
+          if (t.id === trackId) return { ...t, inputArmed: armed };
+          // Melodic arm is SINGLE-target — the MIDI keyboard records one melodic
+          // track, so arming one disarms the other melodic tracks. Drum arm is
+          // MULTI — the Launchpad drum page finger-drums many channels at once,
+          // so arming a drum leaves other drums alone. The two sections never
+          // interfere with each other's arm state.
+          if (armed && section === 'melodic' && t.section === 'melodic') {
+            return t.inputArmed ? { ...t, inputArmed: false } : t;
+          }
+          return t;
+        }),
+      };
+    }),
   setMidiRecInputPort: (port) => set({ midiRecInputPort: port }),
   setTrackLength: (trackId, length) => {
     const safe = Number.isFinite(length) ? Math.floor(length) : DEFAULT_LENGTH;

@@ -149,6 +149,50 @@ export function monitorChord(
   );
 }
 
+// Trigger a drum/one-shot voice at its NATURAL pitch — fire-and-forget, no
+// note id (one-shots ring their sample length, nothing to release). Passing no
+// MIDI note makes pickNativeSample (and the web player) pick the base bank at
+// pitch 1.0, so a pad hit sounds exactly like a sequenced drum step. Used by the
+// Launchpad drum page for finger-drumming; velocity comes from pad pressure.
+export function monitorDrum(track: Track, velocity: number): void {
+  if (track.source.kind !== 'voice') return;
+  const voice = track.source.id;
+
+  if (isNativeAudioAvailable()) {
+    const pick = samplePlayer.pickNativeSample(voice, undefined);
+    if (!pick) return;
+    const out = track.output;
+    const pan = ((track.pan ?? 0.5) - 0.5) * 2;
+    void triggerSample(pick.path, {
+      gain: velocity * pick.voiceGain * (track.gain ?? 1),
+      pan,
+      pitch: pick.pitch,
+      outFirst: out?.firstChannel ?? 0,
+      outStereo: out?.stereo ?? true,
+      trackId: track.id,
+      delaySecs: 0,
+      monophonic: track.monophonic === true,
+      section: 0, // SECTION_NONE — auditions stay out of recording stems
+    });
+    return;
+  }
+
+  // Web build — fire-and-forget one-shot at natural pitch (no midi note).
+  samplePlayer.trigger(
+    voice,
+    getAudioContext().currentTime,
+    velocity,
+    undefined,
+    1,
+    MONITOR_HOLD_SECS,
+    [0],
+    track.pan,
+    track.id,
+    track.monophonic,
+    undefined,
+  );
+}
+
 // Release a held monitor voice on note-off. Native only — ramps the tagged
 // voice down over the voice's own release time (clean, no click). No-op on the
 // web build, where the audition already fired and ended on its own.
