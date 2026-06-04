@@ -22,6 +22,7 @@ import { scheduler } from '../audio/scheduler';
 import { getAudioContext } from '../audio/audioContext';
 import { snapToScale, scaleDegreeOf } from '../audio/scale';
 import { monitorNote, monitorRelease } from '../audio/monitor';
+import type { ChordVoicing } from '../audio/chords';
 import type { MidiMessage } from './midiIn';
 
 // Notes currently held down on the record device, keyed by raw MIDI note
@@ -151,6 +152,44 @@ export function writeRecordedNote(
   } else if (state.tieAnchor && state.tieAnchor.trackId === track.id) {
     const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
     state.setStepPitch(track.id, state.tieAnchor.index, degree);
+  }
+  return null;
+}
+
+// Write a played CHORD onto `track` — the chord sibling of writeRecordedNote,
+// for the Launchpad chord page. Stores the exact `voicing` plock (degree +
+// extension/inversion/spread) plus `pitchDegrees` (the chord page's selected
+// octave expressed in scale-degree space; the engine re-applies track.octave on
+// playback, so callers monitor at +track.octave to match). NO chord detection —
+// the voicing IS the pad you pressed. Same two mutually-exclusive modes as
+// writeRecordedNote:
+//   - armed + playing → realtime overdub quantized under the playhead. Returns a
+//     RecordedOverdub so the pad release can finalize the GATE (chord length)
+//     from how long it was held, exactly like a recorded note.
+//   - else, a step pinned on this track (`tieAnchor`) → author the chord onto
+//     that pinned step (the edit-while-stopped path the chord page already had).
+// Returns null when nothing was written (stopped + nothing pinned → audition
+// only) or after a pinned write (no gate to finalize while stopped).
+export function writeRecordedChord(
+  track: Track,
+  voicing: ChordVoicing,
+  pitchDegrees: number,
+  velocity: number
+): RecordedOverdub | null {
+  const state = useSequencerStore.getState();
+  if (state.playing && track.inputArmed) {
+    const q = quantizedOverdubStep(track);
+    if (q === null) return null;
+    state.setStepChordVoicing(track.id, q.localStep, voicing);
+    state.setStepPitch(track.id, q.localStep, pitchDegrees);
+    state.setStepVelocity(track.id, q.localStep, velocity);
+    state.setStepMicroTiming(track.id, q.localStep, q.micro);
+    state.setStepOn(track.id, q.localStep, true);
+    return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: getAudioContext().currentTime };
+  } else if (state.tieAnchor && state.tieAnchor.trackId === track.id) {
+    state.setStepChordVoicing(track.id, state.tieAnchor.index, voicing);
+    state.setStepPitch(track.id, state.tieAnchor.index, pitchDegrees);
+    state.setStepOn(track.id, state.tieAnchor.index, true);
   }
   return null;
 }

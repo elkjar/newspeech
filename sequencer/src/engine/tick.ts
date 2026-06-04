@@ -504,12 +504,12 @@ export function resolveFollowerNote(inputs: FollowerInputs): FollowerResult {
         : quantize(chordContext.root, scale, pitch);
     return { rootMidi, voiceIntervals: [0] };
   }
-  // semitones — independent, no chord-context follow.
+  // semitones — independent, no chord-context follow. Both voice and instrument
+  // (external-MIDI) rows carry the full chord intervals; the dispatch loop emits
+  // a note per tone (one sample voice, or one MIDI note-on each). A fixed
+  // track.midi.note collapses back to a single note in the instrument branch.
   const chord = resolveChord(rootNote, scale, stepVoicing, pitch + harmonicShift);
-  return {
-    rootMidi: chord.root,
-    voiceIntervals: track.source.kind === 'voice' ? chord.intervals : [0],
-  };
+  return { rootMidi: chord.root, voiceIntervals: chord.intervals };
 }
 
 // -----------------------------------------------------------------------------
@@ -926,19 +926,33 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     for (let r = 0; r < ratchet; r++) {
       const t = baseTime + r * subDur;
       if (isInstrument) {
-        let outNote: number;
-        if (track.midi.note !== null) outNote = track.midi.note;
-        else if (rootMidi !== undefined) outNote = rootMidi;
-        else continue;
-        events.push({
-          kind: 'midi',
-          portName: track.midi.portName,
-          channel: track.midi.channel,
-          note: outNote,
-          velocity: v,
-          when: t,
-          durationS: midiNoteDuration,
-        });
+        // A fixed track.midi.note (drum-style mapping) always sounds that one
+        // note. Otherwise the row is pitched: emit one note-on per chord tone
+        // (rootMidi + each interval) so authored chords play out as real MIDI
+        // chords — voiceIntervals is [0] for a single note, so this covers both.
+        if (track.midi.note !== null) {
+          events.push({
+            kind: 'midi',
+            portName: track.midi.portName,
+            channel: track.midi.channel,
+            note: track.midi.note,
+            velocity: v,
+            when: t,
+            durationS: midiNoteDuration,
+          });
+        } else if (rootMidi !== undefined) {
+          for (const interval of voiceIntervals) {
+            events.push({
+              kind: 'midi',
+              portName: track.midi.portName,
+              channel: track.midi.channel,
+              note: rootMidi + interval,
+              velocity: v,
+              when: t,
+              durationS: midiNoteDuration,
+            });
+          }
+        }
       } else if (track.source.kind === 'voice') {
         // Gain stores 0..2 with unity at the dial center, but the LFO
         // pipeline clamps inside 0..1. Halve before modulating, restore

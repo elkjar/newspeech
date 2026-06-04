@@ -36,6 +36,7 @@ import { monitorChord, monitorDrum, monitorNote, monitorRelease } from '../audio
 import {
   writeDrumHit,
   writeRecordedNote,
+  writeRecordedChord,
   finalizeRecordedNote,
   type RecordedOverdub,
 } from './recordInput';
@@ -123,15 +124,17 @@ const COL_SESS_PENDING_PALETTE = 3; // palette index 3 = bright white (pulse)
 // Voicing ladder, index 0 = plainest. row r on the grid → ladder[7 - r], so
 // the bottom row is a plain triad and the top row an open 11th. Hand-curated
 // for 8 distinct rungs (the voicing-macro cascade only has ~6 distinct stages,
-// so it wouldn't quantize cleanly into 8). Tune freely.
+// so it wouldn't quantize cleanly into 8). Bottom three rungs walk the triad
+// through its inversions (root → 1st → 2nd) so the inversions are reachable as a
+// clean climb; rungs above add extension + spread richness. Tune freely.
 const CHORD_VOICING_LADDER: Array<Pick<ChordVoicing, 'extension' | 'inversion' | 'spread'>> = [
   { extension: 'triad', inversion: 0, spread: 'close' },
   { extension: 'triad', inversion: 1, spread: 'close' },
+  { extension: 'triad', inversion: 2, spread: 'close' },
   { extension: 'triad', inversion: 0, spread: 'open' },
   { extension: '7', inversion: 0, spread: 'close' },
   { extension: '7', inversion: 1, spread: 'close' },
   { extension: '9', inversion: 0, spread: 'close' },
-  { extension: '9', inversion: 0, spread: 'open' },
   { extension: '11', inversion: 0, spread: 'open' },
 ];
 
@@ -199,6 +202,11 @@ const drumRatchet: number[] = new Array(8).fill(1);
 // the target track + monitor voice id (so a release ramps THAT voice down) +
 // the overdub it recorded (so the release finalizes that step's gate).
 const kbHeld = new Map<number, { trackId: string; noteId: number; overdub: RecordedOverdub | null }>();
+// Chord page: pads held down on each device that recorded a live overdub, keyed
+// device*64+padIndex → the overdub, so the pad release finalizes the chord's
+// gate (length) from how long it was held. Only populated while armed + playing
+// (a non-recording tap stashes nothing → release is a no-op).
+const chordHeld = new Map<number, RecordedOverdub>();
 // Monitor voice-handle source for the launchpad keyboard. Based high to dodge
 // recordInput's counter (from 1) and the chord-revoice namespace (1e9).
 let nextKbNoteId = 2_000_000_000;
@@ -374,32 +382,47 @@ function chordMaster(): Track | undefined {
 // the grid), in which case it just isn't shown on the top row.
 const CHORD_TOP_STEPS = 8;
 
-// The melodic VOICE track a launchpad-pinned `tieAnchor` points to — null if the
-// pin isn't on a melodic voice track. Chords can be authored onto ANY melodic
-// voice track, not just the chord master: the engine plays the full chord from a
-// step's chordVoicing for tracks in 'semitones' (UI "ignore") mode — the default
-// for new melodic tracks (resolveFollowerNote in tick.ts). chord-tone/scale-tone/
-// root-follow tracks store the voicing but sound a single derived note by design.
-function pinnedVoiceTrack(): Track | undefined {
+// The melodic track a launchpad-pinned `tieAnchor` points to — null if the pin
+// isn't on a melodic row. ANY source kind: voice rows audition/play their
+// sample, instrument (external-MIDI) rows play out their port — monitor.ts
+// routes by kind, and the engine emits the authored chord either way. Chords can
+// be authored onto ANY melodic track, not just the chord master: the engine
+// plays the full chord from a step's chordVoicing for tracks in 'semitones' (UI
+// "ignore") mode — the default for new melodic tracks (resolveFollowerNote in
+// tick.ts). chord-tone/scale-tone/root-follow tracks store the voicing but sound
+// a single derived note by design.
+function pinnedMelodicTrack(): Track | undefined {
   const s = useSequencerStore.getState();
   const pin = s.tieAnchor;
   if (!pin) return undefined;
   const t = s.tracks.find((tr) => tr.id === pin.trackId);
-  return t && t.section === 'melodic' && t.source.kind === 'voice' ? t : undefined;
+  return t && t.section === 'melodic' ? t : undefined;
 }
 
 // The melodic track the chord + keyboard pages operate on: the pinned melodic
-// voice track (selected step), else the first melodic track as the default.
-// "Select a step, then author/play that channel" — shared by both pages.
+// track (selected step), else the first melodic track as the default. "Select a
+// step, then author/play that channel" — shared by both pages.
 function targetMelodicTrack(): Track | undefined {
-  return pinnedVoiceTrack() ?? chordMaster();
+  return pinnedMelodicTrack() ?? chordMaster();
+}
+
+// The track a chord pad AUDITIONS + WRITES to. When a melodic channel is armed
+// for recording, that channel wins — so tapping a chord pad while armed + playing
+// overdubs the voicing under the playhead on ANY channel (writeRecordedChord
+// decides overdub-vs-pinned). With nothing armed it falls back to the pinned /
+// master target, preserving the stopped-authoring + audition-only behavior.
+function chordTarget(): Track | undefined {
+  const armed = useSequencerStore
+    .getState()
+    .tracks.find((t) => t.inputArmed && t.section === 'melodic');
+  return armed ?? targetMelodicTrack();
 }
 
 // The pinned step index on the current target track, or null if nothing valid is
 // pinned. The chord page's write target — the same `tieAnchor` pin a grid click
 // or step-page pad sets, so selecting a step is immediately the chord target.
 function pinnedChordStep(): number | null {
-  const t = pinnedVoiceTrack();
+  const t = pinnedMelodicTrack();
   const pin = useSequencerStore.getState().tieAnchor;
   if (t && pin && pin.index < t.length) return pin.index;
   return null;
@@ -581,33 +604,44 @@ function buildKeyboardSurface(device: number): Uint8Array {
 // (ChordVoicing has no octave field; one octave = octaveDegrees(scale) degrees),
 // and turns the step on so it sounds. Targets the PINNED step (`tieAnchor`) on
 // the pinned melodic voice track — works on ANY melodic track, not just the
-// chord master (the engine plays the chord for 'semitones'-mode tracks). Returns
-// true if a chord was written (false = nothing valid pinned), so the caller
-// knows whether to refresh the selector.
-function authorChord(device: number, row: number, col: number): boolean {
-  if (col > 6) return false;
-  const step = pinnedChordStep();
-  const t = pinnedVoiceTrack();
-  if (step === null || !t) return false;
+// chord master (the engine plays the chord for 'semitones'-mode tracks). Two
+// write modes via writeRecordedChord: armed + playing → realtime overdub under
+// the playhead on the armed channel (returns an overdub handle so the pad
+// release finalizes the chord's GATE from hold); else a pinned step on the
+// target → author onto that step. Returns the overdub handle (or null), plus
+// whether anything was written so the caller can refresh the selector.
+function authorChord(
+  device: number,
+  row: number,
+  col: number,
+  velocity: number
+): { wrote: boolean; overdub: RecordedOverdub | null } {
+  if (col > 6) return { wrote: false, overdub: null };
+  const t = chordTarget();
+  if (!t || t.source.kind === 'empty') return { wrote: false, overdub: null };
   const state = useSequencerStore.getState();
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
-  state.setStepChordVoicing(t.id, step, voicing);
-  state.setStepPitch(t.id, step, chordOctave[device] * octaveDegrees(state.scale));
-  state.setStepOn(t.id, step, true);
-  return true;
+  const pitchDegrees = chordOctave[device] * octaveDegrees(state.scale);
+  const overdub = writeRecordedChord(t, voicing, pitchDegrees, velocity);
+  // overdub != null → recorded under the playhead. Otherwise a pinned write may
+  // still have happened; treat a live-armed target OR an existing pin as "wrote".
+  const wrote =
+    overdub !== null ||
+    (!!state.tieAnchor && state.tieAnchor.trackId === t.id);
+  return { wrote, overdub };
 }
 
 // Resolve + audition the chord at grid (row, col): col → degree I..VII, row →
-// voicing ladder (bottom = plainest). Auditions on the current TARGET track's
-// voice (the pinned track, else the chord master) at the scene root/scale + the
-// track's octave + the device's selected octave, so the audition matches what
-// authoring will write. Fire-and-forget.
+// voicing ladder (bottom = plainest). Auditions on the chord TARGET (the armed
+// channel if recording, else the pinned track / chord master) at the scene
+// root/scale + the track's octave + the device's selected octave, so the
+// audition matches what authoring/recording will write. Fire-and-forget.
 function auditionCell(device: number, row: number, col: number): void {
   if (col > 6) return;
   const state = useSequencerStore.getState();
-  const t = targetMelodicTrack();
-  if (!t || t.source.kind !== 'voice') return;
+  const t = chordTarget();
+  if (!t || t.source.kind === 'empty') return;
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
   const { root, intervals } = resolveChord(state.rootNote, state.scale, voicing, 0);
@@ -632,6 +666,17 @@ function releaseKbNotes(device: number): void {
     const t = tracks.find((tr) => tr.id === held.trackId);
     if (t) monitorRelease(t, held.noteId);
     kbHeld.delete(code);
+  }
+}
+
+// Finalize every chord overdub a device is still holding (so a pad still down
+// when leaving the chord page writes its gate rather than hanging open). No
+// monitor voice to release — chord auditions are fire-and-forget.
+function releaseChordHolds(device: number): void {
+  for (const [code, overdub] of chordHeld) {
+    if (decodeHeld(code).device !== device) continue;
+    finalizeRecordedNote(overdub);
+    chordHeld.delete(code);
   }
 }
 
@@ -823,7 +868,7 @@ function handleKeyboardEvent(device: number, e: LaunchpadEvent): void {
     return;
   }
   const t = targetMelodicTrack();
-  if (!t || t.source.kind !== 'voice') return;
+  if (!t || t.source.kind === 'empty') return;
   const s = useSequencerStore.getState();
   const row = Math.floor(e.addr.index / 8);
   const col = e.addr.index % 8;
@@ -869,6 +914,18 @@ function handleSessionEvent(_device: number, e: LaunchpadEvent): void {
 
 // Chord page: pads audition the degree×voicing chord; play/panic stay live.
 function handleChordEvent(device: number, e: LaunchpadEvent): void {
+  // Pad release: if this pad recorded a live overdub, finalize its GATE (chord
+  // length) from how long it was held — same as a recorded note. Other releases
+  // are no-ops (audition-only taps stash nothing).
+  if (e.addr.element === 'pad' && !e.pressed) {
+    const code = encodeHeld(device, e.addr.index);
+    const overdub = chordHeld.get(code);
+    if (overdub) {
+      finalizeRecordedNote(overdub);
+      chordHeld.delete(code);
+    }
+    return;
+  }
   if (!e.pressed) return;
   if (e.addr.element === 'side') {
     if (e.addr.index === 0) void togglePlayback();
@@ -910,12 +967,12 @@ function handleChordEvent(device: number, e: LaunchpadEvent): void {
     return;
   }
   auditionCell(device, row, col);
-  // If a chord-master step is pinned, bind the chord to THAT step (like playing
-  // a note onto a pinned step with the keyboard). No advance — pick the next
-  // step yourself (grid click or top row). Nothing pinned → audition only.
-  if (authorChord(device, row, col)) {
-    repaintChordTops();
-  }
+  // Write the chord: armed + playing → overdub under the playhead on the armed
+  // channel (the returned handle lets the pad release finalize the gate); else a
+  // pinned step on the target catches it. Nothing armed/pinned → audition only.
+  const { wrote, overdub } = authorChord(device, row, col, Math.max(0.05, e.velocity / 127));
+  if (overdub) chordHeld.set(encodeHeld(device, e.addr.index), overdub);
+  if (wrote) repaintChordTops();
   // Bright press feedback on this device; restore the previously-lit pad.
   const prev = lastAuditionPad[device];
   lastAuditionPad[device] = e.addr.index;
@@ -1304,6 +1361,7 @@ const PAGES: Record<DeviceMode, LaunchpadPage> = {
     id: 'chord',
     buildSurface: buildChordSurface,
     handleEvent: handleChordEvent,
+    onLeave: releaseChordHolds,
     attach: chordAttach,
   },
   session: {

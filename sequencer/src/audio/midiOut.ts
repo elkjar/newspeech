@@ -158,6 +158,42 @@ export function sendMIDINote(
   out.send([NOTE_OFF | ch, n, 0], offMs);
 }
 
+// Immediate note-on / note-off pair for LIVE play (keyboard monitor). Unlike
+// sendMIDINote, the off isn't scheduled — duration is unknown at press time, so
+// the caller sends the off when the key is released. Sent now (no audio-clock
+// scheduling): live play wants the lowest latency, not sample-accurate timing.
+export function sendMIDINoteOn(
+  deviceId: string,
+  channel: number,
+  note: number,
+  velocity: number
+) {
+  const ch = (channel | 0) & 0x0f;
+  const n = Math.max(0, Math.min(127, note | 0));
+  const v = Math.max(1, Math.min(127, Math.round(velocity * 127)));
+  if (TAURI) {
+    tauriSend(deviceId, [NOTE_ON | ch, n, v]);
+    return;
+  }
+  if (!access) return;
+  const out = access.outputs.get(deviceId);
+  if (!out) return;
+  out.send([NOTE_ON | ch, n, v]);
+}
+
+export function sendMIDINoteOff(deviceId: string, channel: number, note: number) {
+  const ch = (channel | 0) & 0x0f;
+  const n = Math.max(0, Math.min(127, note | 0));
+  if (TAURI) {
+    tauriSend(deviceId, [NOTE_OFF | ch, n, 0]);
+    return;
+  }
+  if (!access) return;
+  const out = access.outputs.get(deviceId);
+  if (!out) return;
+  out.send([NOTE_OFF | ch, n, 0]);
+}
+
 export function sendMIDIProgram(deviceId: string, channel: number, program: number) {
   const ch = ((channel | 0) & 0x0f);
   const p = Math.max(0, Math.min(127, program | 0));

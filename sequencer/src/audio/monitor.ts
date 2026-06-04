@@ -24,7 +24,8 @@ import { isNativeAudioAvailable, triggerSample, releaseNote } from './nativeEngi
 import { getAudioContext } from './audioContext';
 import { samplePlayer } from './samplePlayer';
 import { voiceEnvelope } from './voices';
-import type { Track } from '../state/store';
+import { resolveDeviceId, sendMIDINote, sendMIDINoteOn, sendMIDINoteOff } from './midiOut';
+import { useSequencerStore, type Track } from '../state/store';
 
 // Web audition window (fire-and-forget). Native sustains instead.
 const MONITOR_HOLD_SECS = 0.25;
@@ -33,15 +34,45 @@ const MONITOR_HOLD_SECS = 0.25;
 // without an off it auto-releases here instead of ringing forever.
 const MONITOR_MAX_HOLD_SECS = 30;
 
+// Held MIDI-out monitor notes, keyed by the same noteId the caller hands to
+// monitorRelease. An instrument row has no audio voice to release — instead we
+// remember which (port, channel, note) we sent note-on for, so note-off can
+// close exactly that note on exactly that port. Module-level: a key release can
+// land many ticks after the press, and across pattern swaps.
+interface HeldMidiMonitor {
+  deviceId: string;
+  channel: number;
+  note: number;
+}
+const heldMidiMonitors = new Map<number, HeldMidiMonitor>();
+
+// Resolve the MIDI output port an instrument row sends to: its own portName,
+// else the rig-wide default device. Null if neither resolves (no port → no
+// monitor). Shared by every instrument-row monitor branch below.
+function instrumentDevice(track: Track): string | null {
+  const { midiOutDeviceId } = useSequencerStore.getState();
+  return resolveDeviceId(track.midi.portName, midiOutDeviceId);
+}
+
 export function monitorNote(
   track: Track,
   soundingMidi: number,
   velocity: number,
   noteId: number,
 ): void {
-  // Internal voices only. Instrument (external-MIDI) rows would need a
-  // note-on/off pair sent to the hardware port — deferred until there's a
-  // workflow that records into a MIDI-out row.
+  // Instrument (external-MIDI) rows: send a live note-on to the track's port
+  // and remember it so monitorRelease sends the matching note-off when the key
+  // lifts. Mirrors the engine's outNote rule (tick.ts): a fixed track.midi.note
+  // (drum-style mapping) overrides the played pitch, else the keyboard's
+  // sounding MIDI note plays through.
+  if (track.source.kind === 'instrument') {
+    const deviceId = instrumentDevice(track);
+    if (!deviceId) return;
+    const note = track.midi.note !== null ? track.midi.note : soundingMidi;
+    sendMIDINoteOn(deviceId, track.midi.channel, note, velocity);
+    heldMidiMonitors.set(noteId, { deviceId, channel: track.midi.channel, note });
+    return;
+  }
   if (track.source.kind !== 'voice') return;
   const voice = track.source.id;
   const env = voiceEnvelope(voice);
@@ -103,6 +134,21 @@ export function monitorChord(
   intervals: number[],
   velocity: number,
 ): void {
+  // Instrument row: fire the chord out the port as a scheduled on/off burst per
+  // tone. Fire-and-forget (chord auditions have no release handle), so the offs
+  // are scheduled AUDITION_HOLD_SECS out via sendMIDINote — matching the ring of
+  // the sample audition. A fixed track.midi.note (rare on a chord row) collapses
+  // every tone onto it; normally note is null so each interval sounds.
+  if (track.source.kind === 'instrument') {
+    const deviceId = instrumentDevice(track);
+    if (!deviceId) return;
+    const now = getAudioContext().currentTime;
+    for (const interval of intervals) {
+      const note = track.midi.note !== null ? track.midi.note : rootMidi + interval;
+      sendMIDINote(deviceId, track.midi.channel, note, velocity, now, AUDITION_HOLD_SECS);
+    }
+    return;
+  }
   if (track.source.kind !== 'voice') return;
   const voice = track.source.id;
   const env = voiceEnvelope(voice);
@@ -155,6 +201,23 @@ export function monitorChord(
 // pitch 1.0, so a pad hit sounds exactly like a sequenced drum step. Used by the
 // Launchpad drum page for finger-drumming; velocity comes from pad pressure.
 export function monitorDrum(track: Track, velocity: number): void {
+  // Instrument row: a short scheduled on/off hit on the row's mapped drum note
+  // (track.midi.note — the kit-note wiring; see the hardware kit maps). No
+  // pitch to derive, so a row with no mapped note can't drum out — skip it.
+  if (track.source.kind === 'instrument') {
+    if (track.midi.note === null) return;
+    const deviceId = instrumentDevice(track);
+    if (!deviceId) return;
+    sendMIDINote(
+      deviceId,
+      track.midi.channel,
+      track.midi.note,
+      velocity,
+      getAudioContext().currentTime,
+      MONITOR_HOLD_SECS,
+    );
+    return;
+  }
   if (track.source.kind !== 'voice') return;
   const voice = track.source.id;
 
@@ -197,6 +260,15 @@ export function monitorDrum(track: Track, velocity: number): void {
 // voice down over the voice's own release time (clean, no click). No-op on the
 // web build, where the audition already fired and ended on its own.
 export function monitorRelease(track: Track, noteId: number): void {
+  // Instrument rows: close the live note we opened on note-on. Works on both
+  // the native and web builds (MIDI out is available on both), so this runs
+  // before the native-audio gate below.
+  const held = heldMidiMonitors.get(noteId);
+  if (held) {
+    heldMidiMonitors.delete(noteId);
+    sendMIDINoteOff(held.deviceId, held.channel, held.note);
+    return;
+  }
   if (!isNativeAudioAvailable()) return;
   if (track.source.kind !== 'voice') return;
   const release = voiceEnvelope(track.source.id)?.release;
