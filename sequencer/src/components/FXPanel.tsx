@@ -511,10 +511,13 @@ function MasterPresetSelect() {
   );
 }
 
-export function FXPanel() {
-  // Master controls are hidden by default — the section is 14+ knobs and
-  // overwhelms the upstream-FX row otherwise. Audio routing is unaffected
-  // by the toggle; only the UI is collapsed.
+// `section` selects which half renders: 'fx' = pre/tape/glitch/reverb,
+// 'master' = the master output chain. Each is a mode of the top ChannelScreen
+// (2026-06-05). 'all' keeps the legacy single-panel layout (master behind an
+// expand toggle) for any caller that still wants the combined view.
+export function FXPanel({ section = 'all' }: { section?: 'fx' | 'master' | 'all' }) {
+  // Legacy 'all'-mode toggle: master is hidden by default since it's 14+ knobs.
+  // In the dedicated 'master' mode it's always shown (its own screen tab).
   const [masterExpanded, setMasterExpanded] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(MASTER_EXPANDED_KEY) === 'true';
@@ -524,9 +527,14 @@ export function FXPanel() {
     window.localStorage.setItem(MASTER_EXPANDED_KEY, String(masterExpanded));
   }, [masterExpanded]);
 
+  const showFx = section === 'fx' || section === 'all';
+  const showMaster =
+    section === 'master' || (section === 'all' && masterExpanded);
+
   return (
     <div className="flex flex-col items-stretch gap-6 px-4 py-4">
-      <div className="flex flex-wrap items-start justify-end gap-5">
+      {showFx && (
+      <div className="flex flex-wrap items-start justify-center gap-5">
       <StageDivider label="pre" />
       <SaturationKnob
         field="preDrive"
@@ -605,6 +613,7 @@ export function FXPanel() {
         lfoKnob="reverbDamping"
         midiTarget="fx:reverb.damping"
       />
+        {section === 'all' && (
         <div className="flex flex-col items-stretch gap-2 self-center text-xs uppercase tracking-widest opacity-70">
           <MasterPresetSelect />
           <button
@@ -615,9 +624,16 @@ export function FXPanel() {
             master {masterExpanded ? '▴' : '▾'}
           </button>
         </div>
+        )}
       </div>
-      {masterExpanded && (
-      <div className="flex flex-wrap items-start justify-end gap-5">
+      )}
+      {showMaster && (
+      <div className="flex flex-wrap items-start justify-center gap-5">
+      {section === 'master' && (
+        <div className="self-center text-xs uppercase tracking-widest opacity-70">
+          <MasterPresetSelect />
+        </div>
+      )}
       <StageDivider label="master" />
       <MasterKnob
         field="input"

@@ -1,6 +1,12 @@
+import { useEffect, useState } from 'react';
 import { useSequencerStore, type Track, type Step } from '../state/store';
 import { midiToName, quantize, octaveDegrees } from '../audio/scale';
 import { sourceIsMelodic, sourceLabel } from '../instruments/library';
+import {
+  peekStepAccRung,
+  type AccumulatorCfg,
+  type AccumulatorShape,
+} from '../audio/accumulator';
 import {
   CHORD_DEGREES,
   CHORD_EXTENSIONS,
@@ -19,6 +25,19 @@ import {
 import { getChordContext } from '../audio/chordContext';
 
 const PANEL = 'border border-white/15 px-4 py-3 w-[320px] min-h-24 flex flex-col';
+
+// Per-step accumulator authoring. Curated step set (degrees per rung); range
+// 1..8; shape wrap/bounce/hold. Defaults applied when a step gains a plock.
+const ACC_STEPS = [-2, -1, 1, 2, 3, 4, 5, 7];
+const ACC_RANGES = [1, 2, 3, 4, 5, 6, 7, 8];
+const ACC_SHAPES: AccumulatorShape[] = ['wrap', 'bounce', 'hold'];
+const ACC_SHAPE_LABELS: Record<AccumulatorShape, string> = {
+  wrap: 'wrap',
+  bounce: 'bnce',
+  hold: 'hold',
+};
+const ACC_DEFAULT: AccumulatorCfg = { step: 1, range: 4, shape: 'wrap' };
+const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 
 // Music-theory names for chord-tone indices, used by chord-mode tracks
 // so step.pitch reads as the chord position the user authored rather than
@@ -70,6 +89,7 @@ export function StepInspector() {
   const rootNote = useSequencerStore((s) => s.rootNote);
   const scale = useSequencerStore((s) => s.scale);
   const setStepChordVoicing = useSequencerStore((s) => s.setStepChordVoicing);
+  const setStepAccumulator = useSequencerStore((s) => s.setStepAccumulator);
 
   // tieAnchor (the white square in the grid) acts as a click-pin: once set,
   // the inspector locks to that step so hover/mouse-leave can't yank it away
@@ -172,6 +192,20 @@ export function StepInspector() {
     setStepChordVoicing(track.id, activeSelection.index, undefined);
   };
 
+  // Per-step accumulator — available on any melodic step. S sets degrees-per-
+  // rung (and toggles the plock on/off); R/shape are live once plocked.
+  const showAcc = track !== null && step !== null && sourceIsMelodic(track.source);
+  const accPlocked = !!step?.accumulator;
+  const effectiveAcc: AccumulatorCfg = step?.accumulator ?? ACC_DEFAULT;
+  const updateAcc = (next: AccumulatorCfg) => {
+    if (!track || !activeSelection) return;
+    setStepAccumulator(track.id, activeSelection.index, next);
+  };
+  const clearAcc = () => {
+    if (!track || !activeSelection) return;
+    setStepAccumulator(track.id, activeSelection.index, undefined);
+  };
+
   return (
     <div className={`${PANEL} ${dim ? 'opacity-50' : ''}`}>
       <div className="flex items-center gap-4">
@@ -272,7 +306,118 @@ export function StepInspector() {
           )}
         </div>
       )}
+      {showAcc && (
+        <div
+          className={`flex items-center gap-2 mt-3 pt-2 border-t border-white/10 text-[10px] uppercase tracking-widest ${
+            accPlocked ? '' : 'opacity-50'
+          }`}
+        >
+          <span className="text-white/40">acc</span>
+          <LabeledSelect
+            label="S"
+            value={accPlocked ? String(effectiveAcc.step) : 'off'}
+            onChange={(v) =>
+              v === 'off' ? clearAcc() : updateAcc({ ...effectiveAcc, step: Number(v) })
+            }
+            plocked={accPlocked}
+            title="accumulator — degrees per rung each fire (— = off)"
+          >
+            <option value="off" className="bg-[#050505]">
+              —
+            </option>
+            {ACC_STEPS.map((n) => (
+              <option key={n} value={n} className="bg-[#050505]">
+                {signed(n)}
+              </option>
+            ))}
+          </LabeledSelect>
+          <LabeledSelect
+            label="R"
+            value={String(effectiveAcc.range)}
+            onChange={(v) => updateAcc({ ...effectiveAcc, range: Number(v) })}
+            plocked={accPlocked}
+            disabled={!accPlocked}
+            title="range — rungs before it turns / resets"
+          >
+            {ACC_RANGES.map((n) => (
+              <option key={n} value={n} className="bg-[#050505]">
+                {n}
+              </option>
+            ))}
+          </LabeledSelect>
+          <LabeledSelect
+            label="⟳"
+            value={effectiveAcc.shape}
+            onChange={(v) => updateAcc({ ...effectiveAcc, shape: v as AccumulatorShape })}
+            plocked={accPlocked}
+            disabled={!accPlocked}
+            title="shape — wrap (saw) / bounce (triangle) / hold (climb + stay)"
+          >
+            {ACC_SHAPES.map((s) => (
+              <option key={s} value={s} className="bg-[#050505]">
+                {ACC_SHAPE_LABELS[s]}
+              </option>
+            ))}
+          </LabeledSelect>
+          {accPlocked && track && activeSelection && (
+            <AccRungReadout
+              trackId={track.id}
+              index={activeSelection.index}
+              cfg={effectiveAcc}
+            />
+          )}
+          {accPlocked && (
+            <button
+              type="button"
+              onClick={clearAcc}
+              className="ml-auto text-white/40 hover:text-white text-[10px] uppercase tracking-widest"
+              title="clear per-step accumulator"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+// Live current-rung / degree-offset readout for the selected step's
+// accumulator. Polls the ephemeral counter (not in the store) via RAF while
+// playing; static otherwise. Isolated so it doesn't re-render the inspector.
+function AccRungReadout({
+  trackId,
+  index,
+  cfg,
+}: {
+  trackId: string;
+  index: number;
+  cfg: AccumulatorCfg;
+}) {
+  const playing = useSequencerStore((s) => s.playing);
+  const [rung, setRung] = useState(0);
+  useEffect(() => {
+    if (!playing) {
+      setRung(peekStepAccRung(trackId, index, cfg));
+      return;
+    }
+    let raf = 0;
+    let stopped = false;
+    const tick = () => {
+      setRung(peekStepAccRung(trackId, index, cfg));
+      if (!stopped) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [playing, trackId, index, cfg.range, cfg.shape, cfg.step]);
+  const offset = cfg.step * rung;
+  return (
+    <span className="text-white/55 tabular-nums" title="current rung · degree offset">
+      {rung}·{signed(offset)}
+    </span>
   );
 }
 

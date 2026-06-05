@@ -10,6 +10,10 @@ export interface OverlayValue {
   // / row-ratchet randomness lock to the previous cycle rather than re-rolling.
   gated: boolean;
   ratchet: number;
+  // Per-tick harmonic-motion offset (scale degrees, from motion/drift) applied
+  // to melodic pitch at dispatch. The `chord` field's root already bakes this
+  // in; this carries it for non-chord rows so the roll can show motion/drift.
+  harmonicShift?: number;
   // Stage 7: chord-master rows capture their resolved (and possibly mutated)
   // chord so freeze replays the same harmony + intervals. `intervals` is the
   // post-drop audible set; the chord context publishes the same set on freeze

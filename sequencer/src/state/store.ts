@@ -5,6 +5,7 @@ import { euclidean } from '../audio/euclidean';
 import { getOverlay, clearOverlay } from '../audio/mutationOverlay';
 import { resetPadDrift } from '../audio/padState';
 import { resetBranchWalk } from '../audio/treeState';
+import { resetStepAccumulators, type AccumulatorCfg } from '../audio/accumulator';
 import {
   defaultLFOs,
   freezeLFOs,
@@ -12,6 +13,7 @@ import {
   markManualOverride,
   GLOBAL_TRACK_ID,
   type LFO,
+  type LFOShape,
   type LFODestination,
 } from '../audio/lfo';
 import {
@@ -44,6 +46,11 @@ import { resetChordContext } from '../audio/chordContext';
 
 export type EditMode = 'live' | 'velocity' | 'chance' | 'ratchet' | 'timing' | 'gate';
 
+// Which view the top multi-mode screen is showing. Ephemeral UI state (not
+// persisted) — mirrors editMode. ROLL = focused-channel piano roll (default),
+// LFO/FX/MASTER = the relocated control panels.
+export type ScreenMode = 'roll' | 'lfo' | 'fx' | 'master';
+
 export interface StepSelection {
   trackId: string;
   index: number;
@@ -63,6 +70,10 @@ export interface Step {
   // that's a sparse override rather than a direct field — kept as a clean
   // pattern for any future plocks.
   chordVoicing?: ChordVoicing;
+  // Optional per-step accumulator: a deterministic pitch ladder that climbs by
+  // `step` scale-degrees each time this step fires (see audio/accumulator.ts).
+  // Undefined → no climb. Sparse plock, same shape as chordVoicing.
+  accumulator?: AccumulatorCfg;
 }
 
 export interface EuclideanParams {
@@ -603,6 +614,7 @@ export interface SequencerState {
   sceneStartStep: number;
   playing: boolean;
   editMode: EditMode;
+  screenMode: ScreenMode;
   midiOutDeviceId: string | null;
   viewSection: TrackSection;
   density: number;
@@ -686,11 +698,18 @@ export interface SequencerState {
   setTrackMidi: (trackId: string, patch: Partial<TrackMidi>) => void;
   fireTrackProgram: (trackId: string) => void;
   setEditMode: (mode: EditMode) => void;
+  setScreenMode: (mode: ScreenMode) => void;
   selectedStep: StepSelection | null;
   setSelectedStep: (sel: StepSelection | null) => void;
   tieAnchor: StepSelection | null;
   setTieAnchor: (sel: StepSelection | null) => void;
+  // Sticky channel focus for the ROLL screen — the track the piano roll
+  // follows. Set when a step is selected/pinned (below); held when nothing is
+  // hovered so the roll doesn't snap away. null → fall back to first melodic.
+  focusedTrackId: string | null;
+  setFocusedTrackId: (id: string | null) => void;
   setLFODepth: (id: number, depth: number) => void;
+  setLFOShape: (id: number, shape: LFOShape) => void;
   toggleLFODestination: (id: number, destination: LFODestination) => void;
   clearLFODestinations: (id: number) => void;
   setSelectingLFO: (id: number | null) => void;
@@ -707,6 +726,7 @@ export interface SequencerState {
   setStepGate: (trackId: string, index: number, gate: number) => void;
   setStepTie: (trackId: string, index: number, tied: boolean) => void;
   setStepChordVoicing: (trackId: string, index: number, voicing: ChordVoicing | undefined) => void;
+  setStepAccumulator: (trackId: string, index: number, cfg: AccumulatorCfg | undefined) => void;
   setTrackDefaultChordVoicing: (trackId: string, voicing: ChordVoicing) => void;
   setTrackPitchInterp: (trackId: string, pitchInterp: PitchInterp) => void;
   setTrackOctave: (trackId: string, octave: number) => void;
@@ -1113,12 +1133,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   rootNote: defaultPreset.rootNote,
   scale: defaultPreset.scale as Scale,
   tracks: presetTracks,
-  lfos: hydrateLFOs((defaultPreset as { lfos?: LFO[] }).lfos),
+  lfos: hydrateLFOs((defaultPreset as unknown as { lfos?: LFO[] }).lfos),
   selectingLFO: null,
   globalStep: 0,
   sceneStartStep: 0,
   playing: false,
   editMode: 'live',
+  screenMode: 'roll',
+  focusedTrackId: null,
   midiOutDeviceId: null,
   midiRecInputPort: null,
   viewSection: 'drum',
@@ -1376,16 +1398,30 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     if (track) fireTrackProgramChange(track, state.midiOutDeviceId);
   },
   setEditMode: (editMode) => set({ editMode }),
+  setScreenMode: (screenMode) => set({ screenMode }),
   selectedStep: null,
-  setSelectedStep: (selectedStep) => set({ selectedStep }),
+  // Selecting a step (click-driven now, not hover) focuses its channel, so the
+  // ROLL screen + StepInspector stay locked to the same channel.
+  setSelectedStep: (selectedStep) =>
+    set(
+      selectedStep
+        ? { selectedStep, focusedTrackId: selectedStep.trackId }
+        : { selectedStep },
+    ),
   tieAnchor: null,
-  setTieAnchor: (tieAnchor) => set({ tieAnchor }),
+  setTieAnchor: (tieAnchor) =>
+    set(tieAnchor ? { tieAnchor, focusedTrackId: tieAnchor.trackId } : { tieAnchor }),
+  setFocusedTrackId: (focusedTrackId) => set({ focusedTrackId }),
   setLFODepth: (id, depth) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(depth) ? depth : 0));
     set((state) => ({
       lfos: state.lfos.map((l) => (l.id === id ? { ...l, depth: clamped } : l)),
     }));
   },
+  setLFOShape: (id, shape) =>
+    set((state) => ({
+      lfos: state.lfos.map((l) => (l.id === id ? { ...l, shape } : l)),
+    })),
   toggleLFODestination: (id, destination) => {
     // Capture add-vs-remove before the set so the stream label can show
     // which way the toggle went without diffing destinations arrays.
@@ -1554,6 +1590,18 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         // undefined → strip the plock; otherwise overwrite the existing voicing.
         const { chordVoicing: _omit, ...rest } = cur;
         steps[index] = voicing === undefined ? rest : { ...rest, chordVoicing: voicing };
+        return { ...t, steps };
+      }),
+    })),
+  setStepAccumulator: (trackId, index, cfg) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const steps = t.steps.slice();
+        const cur = steps[index];
+        // undefined → strip the plock; otherwise overwrite.
+        const { accumulator: _omit, ...rest } = cur;
+        steps[index] = cfg === undefined ? rest : { ...rest, accumulator: cfg };
         return { ...t, steps };
       }),
     })),
@@ -2457,6 +2505,7 @@ function applyBankSlot(
   // previous pattern's trigger count.
   resetPadDrift();
   resetBranchWalk();
+  resetStepAccumulators();
   // Per-track filter graphs intentionally KEEP across bank swaps. trackIds
   // are stable (compose / variant preserve t.id), and fxModulation's RAF
   // loop slews cutoff/resonance/fxSend to the new bank's per-track values
@@ -2580,6 +2629,7 @@ function applyScene(
   unfreezeLFOs();
   resetPadDrift();
   resetBranchWalk();
+  resetStepAccumulators();
   useSequencerStore.getState().pushGhostPickEvent({
     kind: 'scene',
     globalStep: atGlobalStep,
@@ -2684,6 +2734,7 @@ function applySong(
   unfreezeLFOs();
   resetPadDrift();
   resetBranchWalk();
+  resetStepAccumulators();
   // Re-seed chord context against the new song's root + scale so root/
   // chord-tone followers latch onto the new key immediately rather than
   // carrying the prior song's harmony until the chord master plays its

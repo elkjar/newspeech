@@ -259,9 +259,10 @@ export function StepButton({
     }
   };
 
-  const handleMouseEnter = HOVER_CAPABLE
-    ? () => useSequencerStore.getState().setSelectedStep({ trackId, index })
-    : undefined;
+  // Selection is click-driven, not hover-driven: the ROLL screen + inspector
+  // lock to the clicked step/channel, and a large panel shouldn't chase the
+  // cursor. (Hover no longer sets selectedStep.)
+  const handleMouseEnter = undefined;
 
   let fillOpacity = 0;
   let label = '';

@@ -26,11 +26,33 @@ export interface LFODestination {
   knob: LFODestKnob;
 }
 
+export type LFOShape = 'sine' | 'triangle' | 'saw' | 'square';
+export const LFO_SHAPES: LFOShape[] = ['sine', 'triangle', 'saw', 'square'];
+
 export interface LFO {
   id: number;
   rate: number;
   depth: number;
   destinations: LFODestination[];
+  shape: LFOShape;
+}
+
+// Bipolar [-1,1] value for a shape at `cycles` (= rate * time, unwrapped).
+// Triangle/square are phase-aligned to sine (peak at quarter-cycle); saw ramps
+// −1→1 across the cycle.
+export function lfoShapeValue(shape: LFOShape, cycles: number): number {
+  const p = cycles - Math.floor(cycles); // [0,1)
+  switch (shape) {
+    case 'triangle':
+      return (2 / Math.PI) * Math.asin(Math.sin(2 * Math.PI * p));
+    case 'saw':
+      return 2 * p - 1;
+    case 'square':
+      return p < 0.5 ? 1 : -1;
+    case 'sine':
+    default:
+      return Math.sin(2 * Math.PI * p);
+  }
 }
 
 // 8 OCHD-style detuned slow rates (Hz). Slowest ~120s/cycle, fastest ~7s/cycle.
@@ -47,12 +69,13 @@ export function defaultLFOs(): LFO[] {
     rate,
     depth: 0,
     destinations: [],
+    shape: 'sine' as LFOShape,
   }));
 }
 
 export function lfoOutput(lfo: LFO, time?: number): number {
   const t = time ?? getAudioContext().currentTime;
-  return Math.sin(2 * Math.PI * lfo.rate * t);
+  return lfoShapeValue(lfo.shape, lfo.rate * t);
 }
 
 // Freeze snapshot: when set, modulated() and useLFOValue read these stable
@@ -63,7 +86,7 @@ export function freezeLFOs(lfos: LFO[], time?: number): void {
   const t = time ?? getAudioContext().currentTime;
   const snap = new Map<number, number>();
   for (const l of lfos) {
-    snap.set(l.id, Math.sin(2 * Math.PI * l.rate * t));
+    snap.set(l.id, lfoShapeValue(l.shape, l.rate * t));
   }
   frozenLFOOutputs = snap;
 }
@@ -163,7 +186,7 @@ export function modulated(
   for (const l of routed) {
     const o = frozen
       ? frozen.get(l.id) ?? 0
-      : Math.sin(2 * Math.PI * l.rate * rateMul * t);
+      : lfoShapeValue(l.shape, l.rate * rateMul * t);
     summed += o * l.depth;
   }
   const out = summed / totalDepth;

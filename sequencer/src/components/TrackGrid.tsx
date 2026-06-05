@@ -4,11 +4,6 @@ import { useSequencerStore } from '../state/store';
 import { scheduler } from '../audio/scheduler';
 import { Track } from './Track';
 
-const HOVER_CAPABLE =
-  typeof window !== 'undefined' &&
-  typeof window.matchMedia === 'function' &&
-  window.matchMedia('(hover: hover)').matches;
-
 export function TrackGrid() {
   // Encode {id, trackIndex} as a single string per visible row so useShallow
   // can compare element-wise via Object.is and skip parent re-render on
@@ -24,7 +19,6 @@ export function TrackGrid() {
     )
   );
   const setGlobalStep = useSequencerStore((s) => s.setGlobalStep);
-  const setSelectedStep = useSequencerStore((s) => s.setSelectedStep);
 
   useEffect(() => {
     let raf = 0;
@@ -39,10 +33,8 @@ export function TrackGrid() {
     return () => cancelAnimationFrame(raf);
   }, [setGlobalStep]);
 
-  const handleMouseLeave = HOVER_CAPABLE ? () => setSelectedStep(null) : undefined;
-
   return (
-    <div className="flex flex-col gap-2" onMouseLeave={handleMouseLeave}>
+    <div className="flex flex-col gap-2">
       {visibleKeys.map((key) => {
         const sep = key.lastIndexOf(':');
         const id = key.slice(0, sep);

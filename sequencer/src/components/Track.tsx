@@ -62,6 +62,9 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
   const globalStep = useSequencerStore((s) => s.globalStep);
   const sceneStartStep = useSequencerStore((s) => s.sceneStartStep);
   const playing = useSequencerStore((s) => s.playing);
+  // Focused channel = the one the ROLL screen + StepInspector are locked to.
+  // Brighten this row's name button so it's obvious which channel they reflect.
+  const isFocused = useSequencerStore((s) => s.focusedTrackId === trackId);
   const density = useSequencerStore((s) => s.density);
   const anySolo = useSequencerStore((s) => s.tracks.some((t) => t.solo));
   // Live density value for chance-mode opacity. Mirrors the gate the dispatch
@@ -158,7 +161,10 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
           type="button"
           onClick={() => setPickerOpen(true)}
           style={{ height: STEP_SIZE }}
-          className="w-[114px] bg-transparent border border-white/15 text-[11px] uppercase tracking-widest text-white px-3 text-left truncate hover:border-white focus:outline-none focus:border-white transition-colors"
+          className={[
+            'w-[114px] border text-[11px] uppercase tracking-widest text-white px-3 text-left truncate hover:border-white focus:outline-none focus:border-white transition-colors',
+            isFocused ? 'border-white/70 bg-white/10' : 'border-white/15 bg-transparent',
+          ].join(' ')}
           title={
             track.source.kind === 'empty'
               ? 'pick a source — voice or midi instrument'

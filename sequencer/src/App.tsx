@@ -4,16 +4,12 @@ import { PerformanceButton } from './components/PerformanceDialog';
 import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TrackGrid } from './components/TrackGrid';
-import { StepInspector } from './components/StepInspector';
-import { LFOPanel } from './components/LFOPanel';
+import { ChannelScreen, ScreenModeTabs } from './components/ChannelScreen';
 import { MacroStrip } from './components/MacroStrip';
-import { GhostDebug } from './components/GhostDebug';
 import { Toasts } from './components/Toasts';
 import { BankPad } from './components/BankPad';
 import { ScenePad } from './components/ScenePad';
 import { GhostPanel } from './components/GhostPanel';
-import { FXPanel } from './components/FXPanel';
-import { Scope } from './components/Scope';
 import {
   useSequencerStore,
   type EditMode,
@@ -106,6 +102,7 @@ import { registerKit, type SampleKitEntry, type ExtendedSampleManifest } from '.
 import { scanAndLoadUserSamples } from './instruments/userSamplesDir';
 import { tickPadDrift } from './audio/padState';
 import { consumeBranchLeaf } from './audio/treeState';
+import { consumeStepAccRung, consumeAutoMutationRung } from './audio/accumulator';
 import type { ChordDegree } from './audio/chords';
 import { getChordContext, setChordContext } from './audio/chordContext';
 import { getOverlay, setOverlay, attachChordToOverlay } from './audio/mutationOverlay';
@@ -566,6 +563,8 @@ export function App() {
               readOverlay: getOverlay,
               consumePadDrift: tickPadDrift,
               consumeBranchLeaf,
+              consumeStepAccRung,
+              consumeAutoMutationRung,
             },
           );
       const streamBatch: StreamEvent[] = [];
@@ -1729,6 +1728,7 @@ export function App() {
           }
         >
           <div className="flex justify-between items-center gap-8">
+            <div className="flex flex-col gap-4 items-start">
             <div className="flex items-center gap-2">
               <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
                 {NATIVE ? (
@@ -1794,17 +1794,14 @@ export function App() {
                 </button>
               )}
             </div>
-            <GhostDebug />
+            <ScreenModeTabs />
+            </div>
             <MacroStrip />
           </div>
+          {/* Multi-mode screen. Mode tabs live in the title row above (beside
+              the logo); this is the body. Scope + GhostDebug removed. */}
+          <ChannelScreen />
           <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-          <div className="flex justify-between items-start gap-8">
-            <div className="flex flex-row items-start gap-3">
-              <Scope />
-              <StepInspector />
-            </div>
-            <LFOPanel />
-          </div>
           <div className="flex justify-between items-center gap-8 -my-4">
             <div className="flex items-center gap-2">
               <InitButton />
@@ -1838,7 +1835,6 @@ export function App() {
               <GhostPanel />
             </div>
           </div>
-          <FXPanel />
         </div>
       </main>
       <Toasts />

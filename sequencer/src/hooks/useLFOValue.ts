@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getAudioContext } from '../audio/audioContext';
-import { applyLFO, getFrozenLFOOutput, isLFOFrozen, type LFO } from '../audio/lfo';
+import { applyLFO, getFrozenLFOOutput, isLFOFrozen, lfoShapeValue, type LFO } from '../audio/lfo';
 
 // Drives a value at RAF rate from a base + a list of routed LFOs. Mirrors what
 // `modulated()` does in the audio dispatch, but in a React-rendering form so
@@ -40,7 +40,7 @@ export function useLFOValue(
           for (const l of list) {
             const o = frozen
               ? getFrozenLFOOutput(l.id)
-              : Math.sin(2 * Math.PI * l.rate * rm * t);
+              : lfoShapeValue(l.shape, l.rate * rm * t);
             summed += o * l.depth;
           }
           next = applyLFO(b, totalDepth, summed / totalDepth);

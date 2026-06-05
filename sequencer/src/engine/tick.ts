@@ -30,6 +30,7 @@ import {
   type ChordVoicing,
 } from '../audio/chords';
 import type { OverlayValue } from '../audio/mutationOverlay';
+import type { AccumulatorCfg } from '../audio/accumulator';
 import { effectiveTieToNext } from '../audio/mutationTie';
 import { deriveVariation } from '../audio/mutationTree';
 import {
@@ -596,6 +597,23 @@ export interface TickContext {
   // advance=true at a track's loop boundary takes one Markov walk step. treePos
   // gates how many forks the walk may flip (see mutationTree.markovStep).
   consumeBranchLeaf(trackId: string, advance: boolean, treePos: number): number;
+  // Per-step accumulator ladder. Returns the current rung for (track,step) and
+  // advances that step's fire-counter when `advance` is true (the step actually
+  // fired and we're not frozen). See audio/accumulator.ts.
+  consumeStepAccRung(
+    trackId: string,
+    index: number,
+    cfg: AccumulatorCfg,
+    advance: boolean,
+  ): number;
+  // mutate-driven auto-accumulator (leads): degree offset (0..+2) for this
+  // placement at the given mutate amount; advances the counter when `advance`.
+  consumeAutoMutationRung(
+    trackId: string,
+    index: number,
+    amount: number,
+    advance: boolean,
+  ): number;
 }
 
 export interface TickInputs {
@@ -746,10 +764,14 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     let treeFlip = false;
     let treePitchJump = 0;
     let treeClampMax = 14;
+    // Combined mutate amount (knob + ghost) for leads — also drives the
+    // auto-accumulator coverage below. Hoisted so it's live after resolution.
+    let leadMutAmount = 0;
     if (useTree) {
       // Ghost adds an arc-shaped melodic-development amount on top of the
       // user's mutation control (additive — never overwrites their knob/LFO).
       const treePos = Math.min(1, Math.max(0, mutControl + inputs.ghostLeadMutation(track.id)));
+      leadMutAmount = treePos;
       if (treePos > 0) {
         // Advance the branch walk once per loop whenever mutation is on. The
         // walk (markovStep) stays or flips one open fork; treePos gates how many
@@ -799,6 +821,27 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
           treeClampMax,
         });
 
+    // Per-step accumulator: add a deterministic scale-degree climb on top of
+    // the resolved pitch (alongside treePitchJump), in scale-degree space —
+    // quantized downstream like all pitch. Mutates resolution.pitch BEFORE the
+    // overlay is emitted so the roll's deviation layer shows the ladder. Counter
+    // advances only when the step actually fires (gated) and we're not frozen.
+    if (melodic && resolution.on) {
+      const advance = resolution.gated && !inputs.freeze;
+      if (step.accumulator) {
+        // Authored per-step accumulator (Phase 1) — full step*rung climb.
+        const rung = ctx.consumeStepAccRung(track.id, localStep, step.accumulator, advance);
+        if (rung !== 0) resolution.pitch += step.accumulator.step * rung;
+      } else if (useTree && leadMutAmount > 0) {
+        // mutate-DRIVEN auto-accumulator (leads, layered on top of the tree):
+        // a capped (+2) climb with a per-placement varied loop length; coverage
+        // scales with the combined mutate amount (knob + ghost), so turning up
+        // spreads ladders to as many placements as possible. No authoring.
+        const off = ctx.consumeAutoMutationRung(track.id, localStep, leadMutAmount, advance);
+        if (off !== 0) resolution.pitch += off;
+      }
+    }
+
     if (!inputs.freeze) {
       events.push({
         kind: 'overlay',
@@ -811,6 +854,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
           gate: resolution.gate,
           gated: resolution.gated,
           ratchet: resolution.ratchet,
+          harmonicShift: melodic ? inputs.harmonicOffset : 0,
         },
       });
     }

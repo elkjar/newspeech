@@ -21,11 +21,14 @@ import {
 import {
   defaultLFOs,
   LFO_RATES,
+  LFO_SHAPES,
   type LFO,
+  type LFOShape,
   type LFODestKnob,
   type LFODestination,
 } from '../audio/lfo';
 import { getInstrument, type TrackSource } from '../instruments/library';
+import { parseAccumulator } from '../audio/accumulator';
 import {
   DEFAULT_CHORD_VOICING,
   CHORD_MASTER_DEFAULT,
@@ -60,6 +63,7 @@ function validDest(d: unknown): LFODestination | null {
 
 export function hydrateStep(saved: Partial<Step>): Step {
   const chord = parseChordVoicing((saved as { chordVoicing?: unknown }).chordVoicing);
+  const acc = parseAccumulator((saved as { accumulator?: unknown }).accumulator);
   return {
     on: saved.on ?? false,
     velocity: saved.velocity ?? 1,
@@ -70,6 +74,7 @@ export function hydrateStep(saved: Partial<Step>): Step {
     gate: saved.gate ?? 1,
     tieToNext: saved.tieToNext ?? false,
     ...(chord ? { chordVoicing: chord } : {}),
+    ...(acc ? { accumulator: acc } : {}),
   };
 }
 
@@ -88,11 +93,13 @@ export function hydrateLFOs(saved: LFO[] | undefined): LFO[] {
       const v = validDest(s.destination);
       if (v) destinations = [v];
     }
+    const shape = LFO_SHAPES.includes(s.shape as LFOShape) ? (s.shape as LFOShape) : 'sine';
     return {
       id: i,
       rate: LFO_RATES[i] ?? d.rate,
       depth: typeof s.depth === 'number' ? Math.max(0, Math.min(1, s.depth)) : 0,
       destinations,
+      shape,
     };
   });
 }

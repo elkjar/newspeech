@@ -34,6 +34,7 @@ import { DEFAULT_MASTER_PARAMS, type MasterParams } from '../audio/master';
 import { resetChordContext } from '../audio/chordContext';
 import { resetPadDrift } from '../audio/padState';
 import { resetBranchWalk } from '../audio/treeState';
+import { resetStepAccumulators } from '../audio/accumulator';
 // resetTrackFilters lives in the WebAudio chain (`./audio/trackFilter`).
 // Loaded via dynamic import below so the Tauri build (where per-track
 // filters are in Rust) doesn't statically bundle it.
@@ -822,6 +823,7 @@ export function importProject(json: string): boolean {
   // reuse track ids but the drift cadence shouldn't carry across loads.
   resetPadDrift();
   resetBranchWalk();
+  resetStepAccumulators();
   // Per-track filter graphs keyed by trackId — same reasoning. Disconnect +
   // clear so the loaded project starts with fresh filters rather than
   // inheriting cutoff/resonance/ring from the prior session's audio graph.

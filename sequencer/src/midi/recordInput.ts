@@ -128,10 +128,11 @@ export interface RecordedOverdub {
 //   - armed + playing → realtime overdub quantized under the playhead, with the
 //     press's "lazy/pushed" offset captured as microTiming. Returns a
 //     RecordedOverdub so note-off can write the GATE from how long it was held.
-//   - else, a step pinned on this track (`tieAnchor`) → surgical pitch retune of
-//     that step (the edit-while-stopped path). Pitch only; on/velocity/timing
-//     stay as authored. Returns null.
-// Returns null if neither applies (e.g. stopped with nothing pinned).
+//   - else, ARMED + a step pinned on this track (`tieAnchor`) → surgical pitch
+//     retune of that step (the edit-while-stopped path). Pitch only;
+//     on/velocity/timing stay as authored. Returns null. Gated on the arm so a
+//     merely-selected (focused) channel doesn't catch retunes.
+// Returns null if neither applies (not armed, or stopped with nothing pinned).
 export function writeRecordedNote(
   track: Track,
   snapped: number,
@@ -149,7 +150,7 @@ export function writeRecordedNote(
     state.setStepMicroTiming(track.id, q.localStep, q.micro);
     state.setStepOn(track.id, q.localStep, true);
     return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: getAudioContext().currentTime };
-  } else if (state.tieAnchor && state.tieAnchor.trackId === track.id) {
+  } else if (track.inputArmed && state.tieAnchor && state.tieAnchor.trackId === track.id) {
     const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
     state.setStepPitch(track.id, state.tieAnchor.index, degree);
   }
@@ -166,10 +167,12 @@ export function writeRecordedNote(
 //   - armed + playing → realtime overdub quantized under the playhead. Returns a
 //     RecordedOverdub so the pad release can finalize the GATE (chord length)
 //     from how long it was held, exactly like a recorded note.
-//   - else, a step pinned on this track (`tieAnchor`) → author the chord onto
-//     that pinned step (the edit-while-stopped path the chord page already had).
-// Returns null when nothing was written (stopped + nothing pinned → audition
-// only) or after a pinned write (no gate to finalize while stopped).
+//   - else, ARMED + a step pinned on this track (`tieAnchor`) → author the chord
+//     onto that pinned step (the edit-while-stopped path). Gated on the arm too:
+//     clicking a step now selects/focuses its channel (and sets tieAnchor), so
+//     without this an unarmed "selected" channel would catch chord writes.
+// Returns null when nothing was written (not armed, or stopped + nothing pinned →
+// audition only) or after a pinned write (no gate to finalize while stopped).
 export function writeRecordedChord(
   track: Track,
   voicing: ChordVoicing,
@@ -186,7 +189,7 @@ export function writeRecordedChord(
     state.setStepMicroTiming(track.id, q.localStep, q.micro);
     state.setStepOn(track.id, q.localStep, true);
     return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: getAudioContext().currentTime };
-  } else if (state.tieAnchor && state.tieAnchor.trackId === track.id) {
+  } else if (track.inputArmed && state.tieAnchor && state.tieAnchor.trackId === track.id) {
     state.setStepChordVoicing(track.id, state.tieAnchor.index, voicing);
     state.setStepPitch(track.id, state.tieAnchor.index, pitchDegrees);
     state.setStepOn(track.id, state.tieAnchor.index, true);
