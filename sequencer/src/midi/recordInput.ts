@@ -3,13 +3,17 @@
 // releases the monitor voice.
 //
 // Functional model: MONITORING is live all the time — playing a key sounds the
-// target's voice with no toggle. RECORDING is the only toggle (the per-track
-// arm). The target is the RECORD-armed track, else the track whose step is
-// pinned in the inspector (`tieAnchor`) — so with nothing armed you still
-// monitor (and pitch-edit) the SELECTED step's voice, mirroring the Launchpad
-// keyboard page. Writes: armed + playing → realtime overdub under the playhead;
-// a pinned step → that step's pitch is set from the played note. The old
-// monitor-only `inputLive` toggle was dropped — monitoring is now free.
+// target channel's voice with no toggle. The target channel is the RECORD-armed
+// melodic track, else the HOVERED step's track, else the focused/selected
+// channel. WRITING is cursor-driven: while stopped, a played note is authored
+// onto the step the mouse is HOVERING (placement) — move the cursor off the grid
+// and you play/audition freely with nothing written. Selecting/pinning a step no
+// longer catches keyboard writes (that made stopped monitoring impossible: every
+// audition note overwrote the selected step). Writes: armed + playing → realtime
+// overdub under the playhead; stopped + hovering a step → that step is authored
+// from the played note. The Launchpad has no hover, so its keyboard/chord pages
+// pass the PINNED step (`tieAnchor`) as the write target instead (see
+// launchpadBindings). The old monitor-only `inputLive` toggle was dropped.
 //
 // Called from dispatchMidi BEFORE the binding lookup. Returns true if the
 // message was consumed (port matches + a track is the input target) so the
@@ -40,6 +44,35 @@ const heldNotes = new Map<number, HeldNote>();
 // native engine). A double makes ~9e15 ids — never realistically exhausted.
 let nextNoteId = 1;
 
+// The channel a played note targets + the step it writes to — SHARED by every
+// note source (external MIDI keyboard AND the Launchpad keyboard/chord pages) so
+// they behave identically. There is intentionally no per-device differentiation:
+// a Launchpad in keyboard mode IS a MIDI keyboard.
+//   - track: the voice to MONITOR + author on — the armed MELODIC track, else the
+//     HOVERED step's track, else the focused channel (last clicked). Melodic-only
+//     for the armed case so the Launchpad drum page's multi-arm can't hijack it.
+//   - writeIndex: the step a note is authored onto while STOPPED — the hovered
+//     step. Cursor off the grid (or transport playing) → null → monitor only.
+// Returns null when no channel has been engaged at all.
+export interface InputTarget {
+  track: Track;
+  writeIndex: number | null;
+}
+export function resolveInputTarget(): InputTarget | null {
+  const state = useSequencerStore.getState();
+  const byId = (id: string | null | undefined) =>
+    id ? state.tracks.find((t) => t.id === id) : undefined;
+  const hov = state.playing ? null : state.hoveredStep;
+  const track =
+    state.tracks.find((t) => t.inputArmed && t.section === 'melodic') ??
+    byId(hov?.trackId) ??
+    byId(state.focusedTrackId);
+  if (!track) return null;
+  const writeIndex =
+    hov && hov.trackId === track.id && hov.index < track.length ? hov.index : null;
+  return { track, writeIndex };
+}
+
 export function tryRecordNote(msg: MidiMessage): boolean {
   if (msg.msg !== 'note') return false;
 
@@ -52,20 +85,12 @@ export function tryRecordNote(msg: MidiMessage): boolean {
     return false;
   }
 
-  // The input target is the armed MELODIC track, else the track whose step is
-  // pinned in the inspector (`tieAnchor`). Scoped to melodic because drum
-  // channels arm independently (multi) for the Launchpad drum page — they must
-  // not hijack the MIDI keyboard, which plays melodically. The pinned-track
-  // fallback lets the keyboard MONITOR + edit the SELECTED step's voice without
-  // arming — the same select-a-step model as the Launchpad keyboard page. With
-  // neither an armed melodic track nor a pin, the note falls through (return
-  // false) to any CC binding on this device.
-  const target =
-    state.tracks.find((t) => t.inputArmed && t.section === 'melodic') ??
-    (state.tieAnchor
-      ? state.tracks.find((t) => t.id === state.tieAnchor!.trackId)
-      : undefined);
-  if (!target) return false;
+  // Resolve the target channel + write step — the SAME logic the Launchpad pages
+  // use (see resolveInputTarget). Falls through (return false → CC bindings) when
+  // no channel has been engaged.
+  const resolved = resolveInputTarget();
+  if (!resolved) return false;
+  const target = resolved.track;
 
   // Snap incoming MIDI to the nearest in-scale tone. Default-on quantization:
   // off-key accidentals get pulled to the current scene's scale so a recorded
@@ -89,18 +114,11 @@ export function tryRecordNote(msg: MidiMessage): boolean {
   const noteId = nextNoteId++;
   monitorNote(target, soundingMidi, msg.value / 127, noteId);
 
-  // Held-note bookkeeping: track the press so note-off can release the monitor
-  // voice. Writing the step has two modes: realtime overdub (RECORD-armed +
-  // transport running — quantizes under the playhead) and pinned step-edit
-  // (a step pinned in the inspector — retunes that step, works while stopped).
-  // They're mutually exclusive: while armed-and-playing the playhead recorder
-  // owns the note; otherwise a pinned step on the target track catches it.
-  // Write the note onto the track (overdub under the playhead while armed +
-  // playing, or pinned step-edit while stopped). Shared with the Launchpad
-  // keyboard page so both controllers record identically. `snapped` is the
-  // pre-track-octave, in-scale MIDI note. The returned overdub (if any) lets
-  // note-off finalize the GATE from the held duration.
-  const overdub = writeRecordedNote(target, snapped, msg.value / 127);
+  // Author the note. `snapped` is the pre-track-octave, in-scale MIDI note.
+  // Writing has two modes (mutually exclusive): armed + playing → realtime
+  // overdub quantized under the playhead; else a hovered step (resolved.writeIndex)
+  // → author it. The returned overdub (if any) lets note-off finalize the GATE.
+  const overdub = writeRecordedNote(target, snapped, msg.value / 127, resolved.writeIndex);
 
   // Re-pressing a still-held note just resets the anchor (its old monitor
   // voice, if monophonic, was already choked by this trigger).
@@ -128,15 +146,19 @@ export interface RecordedOverdub {
 //   - armed + playing → realtime overdub quantized under the playhead, with the
 //     press's "lazy/pushed" offset captured as microTiming. Returns a
 //     RecordedOverdub so note-off can write the GATE from how long it was held.
-//   - else, ARMED + a step pinned on this track (`tieAnchor`) → surgical pitch
-//     retune of that step (the edit-while-stopped path). Pitch only;
-//     on/velocity/timing stay as authored. Returns null. Gated on the arm so a
-//     merely-selected (focused) channel doesn't catch retunes.
-// Returns null if neither applies (not armed, or stopped with nothing pinned).
+//   - else, when `writeIndex` is non-null (the HOVERED step from the MIDI
+//     keyboard, or the PINNED step from the Launchpad) → author that step.
+//     Placing on an OFF step turns it on + sets pitch + velocity (a new note);
+//     retuning an already-ON step sets pitch only, preserving its velocity/feel.
+//     Returns null.
+// `writeIndex` is resolved by the caller (hover for the keyboard, tieAnchor for
+// the Launchpad) so the same write path serves both. Returns null if neither
+// mode applies (stopped with nothing hovered/pinned → monitor only).
 export function writeRecordedNote(
   track: Track,
   snapped: number,
-  velocity: number
+  velocity: number,
+  writeIndex: number | null
 ): RecordedOverdub | null {
   const state = useSequencerStore.getState();
   if (state.playing && track.inputArmed) {
@@ -150,9 +172,15 @@ export function writeRecordedNote(
     state.setStepMicroTiming(track.id, q.localStep, q.micro);
     state.setStepOn(track.id, q.localStep, true);
     return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: getAudioContext().currentTime };
-  } else if (track.inputArmed && state.tieAnchor && state.tieAnchor.trackId === track.id) {
+  } else if (writeIndex !== null) {
     const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
-    state.setStepPitch(track.id, state.tieAnchor.index, degree);
+    const wasOn = !!track.steps[writeIndex]?.on;
+    state.setStepPitch(track.id, writeIndex, degree);
+    if (!wasOn) {
+      // New note placed by hover/pin — capture the played velocity + turn it on.
+      state.setStepVelocity(track.id, writeIndex, velocity);
+      state.setStepOn(track.id, writeIndex, true);
+    }
   }
   return null;
 }
@@ -167,17 +195,19 @@ export function writeRecordedNote(
 //   - armed + playing → realtime overdub quantized under the playhead. Returns a
 //     RecordedOverdub so the pad release can finalize the GATE (chord length)
 //     from how long it was held, exactly like a recorded note.
-//   - else, ARMED + a step pinned on this track (`tieAnchor`) → author the chord
-//     onto that pinned step (the edit-while-stopped path). Gated on the arm too:
-//     clicking a step now selects/focuses its channel (and sets tieAnchor), so
-//     without this an unarmed "selected" channel would catch chord writes.
-// Returns null when nothing was written (not armed, or stopped + nothing pinned →
-// audition only) or after a pinned write (no gate to finalize while stopped).
+//   - else, when `writeIndex` is non-null (the PINNED step from the Launchpad
+//     chord page) → author the chord onto that step. Sets voicing + pitch + on;
+//     captures velocity only when placing on an OFF step (preserves an existing
+//     note's dynamics on retune).
+// `writeIndex` is resolved by the caller. Returns null when nothing was written
+// (stopped + nothing pinned → audition only) or after a stopped write (no gate
+// to finalize).
 export function writeRecordedChord(
   track: Track,
   voicing: ChordVoicing,
   pitchDegrees: number,
-  velocity: number
+  velocity: number,
+  writeIndex: number | null
 ): RecordedOverdub | null {
   const state = useSequencerStore.getState();
   if (state.playing && track.inputArmed) {
@@ -189,10 +219,12 @@ export function writeRecordedChord(
     state.setStepMicroTiming(track.id, q.localStep, q.micro);
     state.setStepOn(track.id, q.localStep, true);
     return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: getAudioContext().currentTime };
-  } else if (track.inputArmed && state.tieAnchor && state.tieAnchor.trackId === track.id) {
-    state.setStepChordVoicing(track.id, state.tieAnchor.index, voicing);
-    state.setStepPitch(track.id, state.tieAnchor.index, pitchDegrees);
-    state.setStepOn(track.id, state.tieAnchor.index, true);
+  } else if (writeIndex !== null) {
+    const wasOn = !!track.steps[writeIndex]?.on;
+    state.setStepChordVoicing(track.id, writeIndex, voicing);
+    state.setStepPitch(track.id, writeIndex, pitchDegrees);
+    state.setStepOn(track.id, writeIndex, true);
+    if (!wasOn) state.setStepVelocity(track.id, writeIndex, velocity);
   }
   return null;
 }

@@ -703,6 +703,13 @@ export interface SequencerState {
   setSelectedStep: (sel: StepSelection | null) => void;
   tieAnchor: StepSelection | null;
   setTieAnchor: (sel: StepSelection | null) => void;
+  // The step the mouse is currently over (hover-capable devices only). Drives
+  // the MIDI-keyboard WRITE target while stopped: a played note lands on the
+  // hovered step. Cursor off the grid → null → monitor-only (no write). Kept
+  // separate from selectedStep/tieAnchor on purpose — hover must NOT move the
+  // inspector/roll focus or change the monitored channel.
+  hoveredStep: StepSelection | null;
+  setHoveredStep: (sel: StepSelection | null) => void;
   // Sticky channel focus for the ROLL screen — the track the piano roll
   // follows. Set when a step is selected/pinned (below); held when nothing is
   // hovered so the roll doesn't snap away. null → fall back to first melodic.
@@ -1411,6 +1418,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   tieAnchor: null,
   setTieAnchor: (tieAnchor) =>
     set(tieAnchor ? { tieAnchor, focusedTrackId: tieAnchor.trackId } : { tieAnchor }),
+  // Hover does NOT touch focusedTrackId — purely the write target.
+  hoveredStep: null,
+  setHoveredStep: (hoveredStep) => set({ hoveredStep }),
   setFocusedTrackId: (focusedTrackId) => set({ focusedTrackId }),
   setLFODepth: (id, depth) => {
     const clamped = Math.max(0, Math.min(1, Number.isFinite(depth) ? depth : 0));

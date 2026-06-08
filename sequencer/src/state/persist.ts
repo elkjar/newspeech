@@ -807,6 +807,7 @@ export function importProject(json: string): boolean {
     sceneStartStep: 0,
     selectedStep: null,
     tieAnchor: null,
+    hoveredStep: null,
     sceneGraph: hydrateSceneGraph(data.sceneGraph),
     ghostBarsRemaining: 0,
     ghostTargetBars: 0,

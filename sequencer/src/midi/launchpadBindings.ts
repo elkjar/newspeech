@@ -38,6 +38,7 @@ import {
   writeRecordedNote,
   writeRecordedChord,
   finalizeRecordedNote,
+  resolveInputTarget,
   type RecordedOverdub,
 } from './recordInput';
 import {
@@ -405,18 +406,8 @@ function pinnedMelodicTrack(): Track | undefined {
 function targetMelodicTrack(): Track | undefined {
   return pinnedMelodicTrack() ?? chordMaster();
 }
-
-// The track a chord pad AUDITIONS + WRITES to. When a melodic channel is armed
-// for recording, that channel wins — so tapping a chord pad while armed + playing
-// overdubs the voicing under the playhead on ANY channel (writeRecordedChord
-// decides overdub-vs-pinned). With nothing armed it falls back to the pinned /
-// master target, preserving the stopped-authoring + audition-only behavior.
-function chordTarget(): Track | undefined {
-  const armed = useSequencerStore
-    .getState()
-    .tracks.find((t) => t.inputArmed && t.section === 'melodic');
-  return armed ?? targetMelodicTrack();
-}
+// Chord audition + write target is now resolveInputTarget() (shared with the
+// keyboard + external MIDI keyboard) — armed channel, else hovered/focused track.
 
 // The pinned step index on the current target track, or null if nothing valid is
 // pinned. The chord page's write target — the same `tieAnchor` pin a grid click
@@ -617,31 +608,33 @@ function authorChord(
   velocity: number
 ): { wrote: boolean; overdub: RecordedOverdub | null } {
   if (col > 6) return { wrote: false, overdub: null };
-  const t = chordTarget();
-  if (!t || t.source.kind === 'empty') return { wrote: false, overdub: null };
+  // Same target resolution as the keyboard / external MIDI keyboard — author onto
+  // the HOVERED step, no per-device differentiation.
+  const resolved = resolveInputTarget();
+  if (!resolved || resolved.track.source.kind === 'empty') return { wrote: false, overdub: null };
+  const t = resolved.track;
   const state = useSequencerStore.getState();
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
   const pitchDegrees = chordOctave[device] * octaveDegrees(state.scale);
-  const overdub = writeRecordedChord(t, voicing, pitchDegrees, velocity);
-  // overdub != null → recorded under the playhead. Otherwise a pinned write may
-  // still have happened; treat a live-armed target OR an existing pin as "wrote".
-  const wrote =
-    overdub !== null ||
-    (!!state.tieAnchor && state.tieAnchor.trackId === t.id);
+  const overdub = writeRecordedChord(t, voicing, pitchDegrees, velocity, resolved.writeIndex);
+  // overdub != null → recorded under the playhead; else a hovered-step write
+  // happened when writeIndex was non-null. Either way the selector should refresh.
+  const wrote = overdub !== null || resolved.writeIndex !== null;
   return { wrote, overdub };
 }
 
 // Resolve + audition the chord at grid (row, col): col → degree I..VII, row →
-// voicing ladder (bottom = plainest). Auditions on the chord TARGET (the armed
-// channel if recording, else the pinned track / chord master) at the scene
-// root/scale + the track's octave + the device's selected octave, so the
+// voicing ladder (bottom = plainest). Auditions on the same target authoring
+// uses (resolveInputTarget — armed channel, else hovered/focused track) at the
+// scene root/scale + the track's octave + the device's selected octave, so the
 // audition matches what authoring/recording will write. Fire-and-forget.
 function auditionCell(device: number, row: number, col: number): void {
   if (col > 6) return;
   const state = useSequencerStore.getState();
-  const t = chordTarget();
-  if (!t || t.source.kind === 'empty') return;
+  const resolved = resolveInputTarget();
+  if (!resolved || resolved.track.source.kind === 'empty') return;
+  const t = resolved.track;
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
   const { root, intervals } = resolveChord(state.rootNote, state.scale, voicing, 0);
@@ -867,8 +860,11 @@ function handleKeyboardEvent(device: number, e: LaunchpadEvent): void {
     setPadColor(device, e.addr.index, kbBaseColor(row, col, useSequencerStore.getState().scale));
     return;
   }
-  const t = targetMelodicTrack();
-  if (!t || t.source.kind === 'empty') return;
+  // Resolve channel + write step with the SAME logic the external MIDI keyboard
+  // uses — a Launchpad in keyboard mode IS a MIDI keyboard, no differentiation.
+  const resolved = resolveInputTarget();
+  if (!resolved || resolved.track.source.kind === 'empty') return;
+  const t = resolved.track;
   const s = useSequencerStore.getState();
   const row = Math.floor(e.addr.index / 8);
   const col = e.addr.index % 8;
@@ -876,12 +872,13 @@ function handleKeyboardEvent(device: number, e: LaunchpadEvent): void {
   const midi = kbMidi(row, col, s.rootNote, s.scale);
   const noteId = nextKbNoteId++;
   monitorNote(t, midi, Math.max(0.05, e.velocity / 127), noteId);
-  // Record into the channel when its record arm is on — same write path as the
-  // MIDI keyboard. The keyboard plays ABSOLUTE octaves (track octave not
-  // applied), so subtract it: the engine re-adds track.octave on playback, and
-  // the stored degree then reproduces the pitch just heard. The returned
-  // overdub lets the pad release finalize that step's gate (note length).
-  const overdub = t.inputArmed ? writeRecordedNote(t, midi - t.octave * 12, e.velocity / 127) : null;
+  // Author onto the HOVERED step (resolved.writeIndex), exactly like the external
+  // keyboard: armed + playing → overdub under the playhead; else hovered step →
+  // place/retune it; else (off the grid) → monitor only. The keyboard plays
+  // ABSOLUTE octaves (track octave not applied), so subtract it: the engine
+  // re-adds track.octave on playback. The returned overdub lets the pad release
+  // finalize that step's gate (note length).
+  const overdub = writeRecordedNote(t, midi - t.octave * 12, e.velocity / 127, resolved.writeIndex);
   kbHeld.set(code, { trackId: t.id, noteId, overdub });
   setPadColor(device, e.addr.index, COL_KB_HELD);
 }

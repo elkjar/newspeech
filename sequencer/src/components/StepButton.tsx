@@ -82,6 +82,9 @@ export function StepButton({
   const isAnchor = useSequencerStore(
     (s) => s.tieAnchor?.trackId === trackId && s.tieAnchor?.index === index
   );
+  const isHovered = useSequencerStore(
+    (s) => s.hoveredStep?.trackId === trackId && s.hoveredStep?.index === index
+  );
   const editMode = useSequencerStore((s) => s.editMode);
 
   useEffect(() => {
@@ -259,10 +262,22 @@ export function StepButton({
     }
   };
 
-  // Selection is click-driven, not hover-driven: the ROLL screen + inspector
-  // lock to the clicked step/channel, and a large panel shouldn't chase the
-  // cursor. (Hover no longer sets selectedStep.)
-  const handleMouseEnter = undefined;
+  // Hover sets the WRITE target (hover-capable devices only): while stopped, a
+  // played MIDI note lands on the hovered step. It deliberately does NOT touch
+  // selectedStep/tieAnchor — the ROLL screen + inspector stay locked to the
+  // CLICKED step and never chase the cursor. Leaving the step (incl. moving off
+  // the grid entirely) clears the target → play freely, monitor-only.
+  const handleMouseEnter = HOVER_CAPABLE
+    ? () => useSequencerStore.getState().setHoveredStep({ trackId, index })
+    : undefined;
+  const handleMouseLeave = HOVER_CAPABLE
+    ? () => {
+        const s = useSequencerStore.getState();
+        if (s.hoveredStep?.trackId === trackId && s.hoveredStep?.index === index) {
+          s.setHoveredStep(null);
+        }
+      }
+    : undefined;
 
   let fillOpacity = 0;
   let label = '';
@@ -299,12 +314,18 @@ export function StepButton({
   if (isSelected) {
     shadows.push('0 0 0 1px rgba(255,255,255,0.4)');
   }
+  // Hover target ring — where a played note will land (brighter than the
+  // selected-step ring so the write target reads as distinct from focus).
+  if (isHovered) {
+    shadows.push('0 0 0 1.5px rgba(255,255,255,0.85)');
+  }
 
   return (
     <button
       ref={ref}
       onMouseDown={handleMouseDown}
       onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onClick={handleClick}
       aria-label={`step ${index + 1}`}
       className="step-button relative overflow-hidden flex items-center justify-center transition-shadow focus:outline-none"
