@@ -11,9 +11,9 @@
 // longer catches keyboard writes (that made stopped monitoring impossible: every
 // audition note overwrote the selected step). Writes: armed + playing → realtime
 // overdub under the playhead; stopped + hovering a step → that step is authored
-// from the played note. The Launchpad has no hover, so its keyboard/chord pages
-// pass the PINNED step (`tieAnchor`) as the write target instead (see
-// launchpadBindings). The old monitor-only `inputLive` toggle was dropped.
+// from the played note. EVERY note source (external MIDI keyboard AND the
+// Launchpad keyboard/chord pages) shares this via resolveInputTarget — no
+// per-device differentiation. The old monitor-only `inputLive` toggle was dropped.
 //
 // Called from dispatchMidi BEFORE the binding lookup. Returns true if the
 // message was consumed (port matches + a track is the input target) so the
@@ -146,14 +146,13 @@ export interface RecordedOverdub {
 //   - armed + playing → realtime overdub quantized under the playhead, with the
 //     press's "lazy/pushed" offset captured as microTiming. Returns a
 //     RecordedOverdub so note-off can write the GATE from how long it was held.
-//   - else, when `writeIndex` is non-null (the HOVERED step from the MIDI
-//     keyboard, or the PINNED step from the Launchpad) → author that step.
+//   - else, when `writeIndex` is non-null (the HOVERED step — every note source
+//     resolves it the same way via resolveInputTarget) → author that step.
 //     Placing on an OFF step turns it on + sets pitch + velocity (a new note);
 //     retuning an already-ON step sets pitch only, preserving its velocity/feel.
 //     Returns null.
-// `writeIndex` is resolved by the caller (hover for the keyboard, tieAnchor for
-// the Launchpad) so the same write path serves both. Returns null if neither
-// mode applies (stopped with nothing hovered/pinned → monitor only).
+// Returns null if neither mode applies (stopped with nothing hovered → monitor
+// only).
 export function writeRecordedNote(
   track: Track,
   snapped: number,
@@ -195,13 +194,12 @@ export function writeRecordedNote(
 //   - armed + playing → realtime overdub quantized under the playhead. Returns a
 //     RecordedOverdub so the pad release can finalize the GATE (chord length)
 //     from how long it was held, exactly like a recorded note.
-//   - else, when `writeIndex` is non-null (the PINNED step from the Launchpad
-//     chord page) → author the chord onto that step. Sets voicing + pitch + on;
-//     captures velocity only when placing on an OFF step (preserves an existing
-//     note's dynamics on retune).
-// `writeIndex` is resolved by the caller. Returns null when nothing was written
-// (stopped + nothing pinned → audition only) or after a stopped write (no gate
-// to finalize).
+//   - else, when `writeIndex` is non-null (the HOVERED step, from the chord page
+//     via resolveInputTarget) → author the chord onto that step. Sets voicing +
+//     pitch + on; captures velocity only when placing on an OFF step (preserves
+//     an existing note's dynamics on retune).
+// Returns null when nothing was written (stopped + nothing hovered → audition
+// only) or after a stopped write (no gate to finalize).
 export function writeRecordedChord(
   track: Track,
   voicing: ChordVoicing,

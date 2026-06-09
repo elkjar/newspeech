@@ -324,7 +324,6 @@ async fn toggle_stream_window(app: tauri::AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  #[cfg(target_os = "macos")]
   use tauri::Manager;
 
   tauri::Builder::default()
@@ -427,6 +426,17 @@ pub fn run() {
 
       Ok(())
     })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|app_handle, event| {
+      // On quit, flush an all-notes-off to every MIDI output before the process
+      // tears down the CoreMIDI client — otherwise notes left on external gear
+      // (e.g. the Mutant Brain) sustain forever. Same message as the panic button.
+      if let tauri::RunEvent::ExitRequested { .. } = event {
+        let registry = app_handle.state::<midi::MidiRegistry>();
+        midi::panic_all(registry.inner());
+        // Give CoreMIDI a moment to push the bytes out before we exit.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+      }
+    });
 }

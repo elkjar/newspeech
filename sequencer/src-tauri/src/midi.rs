@@ -200,13 +200,23 @@ pub fn midi_send(
     Ok(())
 }
 
-#[tauri::command]
-pub fn midi_panic(state: State<MidiRegistry>) -> Result<(), String> {
-    let mut outputs = state.outputs.lock().map_err(|e| format!("lock: {e}"))?;
+// Send All Notes Off (CC 123) on all 16 channels to every open output. Best-
+// effort + infallible so it can run both from the `midi_panic` command (panic
+// button / transport stop) and from the app-quit hook in lib.rs, which flushes
+// this before CoreMIDI tears down so notes left on external gear don't hang.
+pub fn panic_all(registry: &MidiRegistry) {
+    let Ok(mut outputs) = registry.outputs.lock() else {
+        return;
+    };
     for conn in outputs.values_mut() {
         for ch in 0u8..16 {
             let _ = conn.send(&[0xB0 | ch, 123, 0]); // All Notes Off
         }
     }
+}
+
+#[tauri::command]
+pub fn midi_panic(state: State<MidiRegistry>) -> Result<(), String> {
+    panic_all(state.inner());
     Ok(())
 }

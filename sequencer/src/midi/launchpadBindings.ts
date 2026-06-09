@@ -107,10 +107,6 @@ const COL_MODE_ON = 110; // side[4] in chord mode — active (bright)
 const COL_OCTAVE_OFF = 0; // column-7 octave pad, unselected (off — only the
 // selected octave lights, so the active row reads at a glance)
 const COL_OCTAVE_SEL = 100; // column-7 octave pad, currently selected (bright)
-// Chord-page TOP ROW = chord-master step selector (the authoring target).
-const COL_STEP_EMPTY = 12; // step within length, no chord (dim)
-const COL_STEP_HAS = 45; // step has a chord authored (on) — medium
-const COL_STEP_SELECTED = 120; // step selected as the write target (bright)
 
 // Session page (per-device mode). 8×8 matrix: rows = performance song slots
 // 0..7, cols = scene slots 0..7 within each song. Lighting separates state by
@@ -217,12 +213,10 @@ const lastAuditionPad: number[] = [-1, -1];
 // Per-device chord-page octave offset (octaves, applied on top of the chord
 // master's own octave). Set by the column-7 octave selector. 0 = no shift.
 const chordOctave: number[] = [0, 0];
-// Chord-page write target = the PINNED step (`tieAnchor`) on the chord master,
-// mirroring the MIDI-keyboard pinned step-edit in recordInput.ts: select a step
-// on the grid (or via the top row, which also pins), then a degree-pad tap
-// binds the chord to THAT step. No internal cursor / no auto-advance — the live
-// grid selection is the target, so it tracks clicks the moment they happen.
-// Nothing pinned on the chord master → taps audition only.
+// Chord-page write target = the HOVERED step (resolveInputTarget, shared with the
+// keyboard + external MIDI keyboard). Hover a grid step with the mouse, then a
+// degree-pad tap binds the chord to THAT step. No internal cursor / no
+// auto-advance. Cursor off the grid → taps audition only.
 let attached = false;
 let unsubs: Array<() => void> = [];
 
@@ -373,73 +367,16 @@ function chordPadBase(device: number, padIndex: number): number {
   return COL_OFF; // degree pads dark at rest — only the last-auditioned lights
 }
 
-// First melodic track — the default chord target when nothing's pinned (and the
-// engine's chord MASTER: melodic slot 0 sets the chord context followers read).
-function chordMaster(): Track | undefined {
-  return useSequencerStore.getState().tracks.find((t) => t.section === 'melodic');
-}
-
-// Top-row step selector reaches steps 0..7; the pin can sit beyond that (set via
-// the grid), in which case it just isn't shown on the top row.
-const CHORD_TOP_STEPS = 8;
-
-// The melodic track a launchpad-pinned `tieAnchor` points to — null if the pin
-// isn't on a melodic row. ANY source kind: voice rows audition/play their
-// sample, instrument (external-MIDI) rows play out their port — monitor.ts
-// routes by kind, and the engine emits the authored chord either way. Chords can
-// be authored onto ANY melodic track, not just the chord master: the engine
-// plays the full chord from a step's chordVoicing for tracks in 'semitones' (UI
-// "ignore") mode — the default for new melodic tracks (resolveFollowerNote in
-// tick.ts). chord-tone/scale-tone/root-follow tracks store the voicing but sound
-// a single derived note by design.
-function pinnedMelodicTrack(): Track | undefined {
-  const s = useSequencerStore.getState();
-  const pin = s.tieAnchor;
-  if (!pin) return undefined;
-  const t = s.tracks.find((tr) => tr.id === pin.trackId);
-  return t && t.section === 'melodic' ? t : undefined;
-}
-
-// The melodic track the chord + keyboard pages operate on: the pinned melodic
-// track (selected step), else the first melodic track as the default. "Select a
-// step, then author/play that channel" — shared by both pages.
-function targetMelodicTrack(): Track | undefined {
-  return pinnedMelodicTrack() ?? chordMaster();
-}
-// Chord audition + write target is now resolveInputTarget() (shared with the
-// keyboard + external MIDI keyboard) — armed channel, else hovered/focused track.
-
-// The pinned step index on the current target track, or null if nothing valid is
-// pinned. The chord page's write target — the same `tieAnchor` pin a grid click
-// or step-page pad sets, so selecting a step is immediately the chord target.
-function pinnedChordStep(): number | null {
-  const t = pinnedMelodicTrack();
-  const pin = useSequencerStore.getState().tieAnchor;
-  if (t && pin && pin.index < t.length) return pin.index;
-  return null;
-}
-
-// Top-row (step selector) color for chord-master step `stepIdx`.
-function chordTopColor(stepIdx: number, cm: Track | undefined): number {
-  if (!cm || stepIdx >= cm.length) return COL_OFF;
-  if (stepIdx === pinnedChordStep()) return COL_STEP_SELECTED;
-  return cm.steps[stepIdx]?.on ? COL_STEP_HAS : COL_STEP_EMPTY;
-}
-
-// Repaint the top-row step selector on every chord-mode device. Shows the steps
-// of the current TARGET track (the pinned melodic voice track, else the chord
-// master), so the selector follows whichever channel you're authoring chords on.
-function repaintChordTops(): void {
-  const t = targetMelodicTrack();
-  for (let d = 0; d < 2; d++) {
-    if (deviceMode[d] !== 'chord') continue;
-    for (let i = 0; i < 8; i++) setTopColor(d, i, chordTopColor(i, t));
-  }
-}
+// Chord-page target = resolveInputTarget() (shared with the keyboard + external
+// MIDI keyboard) — armed channel, else hovered/focused track. The old chord-page
+// top-row step selector and its tieAnchor-pin helpers (chordMaster /
+// pinnedMelodicTrack / targetMelodicTrack / pinnedChordStep / chordTopColor /
+// repaintChordTops) were removed: chords author onto the hovered step like
+// everything else, so the selector no longer drove anything.
 
 // Full 80-slot surface for a device in chord mode: the degree×voicing palette,
-// the column-7 octave selector, the top-row step selector, + a minimal side
-// rail (play / panic / mode-toggle-active).
+// the column-7 octave selector, + a minimal side rail (play / panic /
+// mode-toggle-active). The top row is unused (left dark).
 function buildChordSurface(device: number): Uint8Array {
   const out = new Uint8Array(SURFACE_SIZE);
   // Degree pads (cols 0..6) stay dark; only column 7's selected octave lights.
@@ -449,8 +386,6 @@ function buildChordSurface(device: number): Uint8Array {
   }
   const last = lastAuditionPad[device];
   if (last >= 0) out[last] = COL_CHORD_PRESSED;
-  const t = targetMelodicTrack();
-  for (let i = 0; i < 8; i++) out[64 + i] = chordTopColor(i, t);
   out[72 + 0] = useSequencerStore.getState().playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
   out[72 + 1] = COL_PANIC;
   out[72 + 4] = COL_MODE_ON;
@@ -590,38 +525,32 @@ function buildKeyboardSurface(device: number): Uint8Array {
   return out;
 }
 
-// Author the chord at grid (row, col) into the pinned step on the TARGET track:
-// writes the voicing plock, stores the octave as a degree-space pitch offset
+// Author the chord at grid (row, col) onto the resolveInputTarget step: writes
+// the voicing plock, stores the octave as a degree-space pitch offset
 // (ChordVoicing has no octave field; one octave = octaveDegrees(scale) degrees),
-// and turns the step on so it sounds. Targets the PINNED step (`tieAnchor`) on
-// the pinned melodic voice track — works on ANY melodic track, not just the
+// and turns the step on so it sounds. Works on ANY melodic track, not just the
 // chord master (the engine plays the chord for 'semitones'-mode tracks). Two
 // write modes via writeRecordedChord: armed + playing → realtime overdub under
 // the playhead on the armed channel (returns an overdub handle so the pad
-// release finalizes the chord's GATE from hold); else a pinned step on the
-// target → author onto that step. Returns the overdub handle (or null), plus
-// whether anything was written so the caller can refresh the selector.
+// release finalizes the chord's GATE from hold); else the hovered step → author
+// onto that step. Returns the overdub handle (or null).
 function authorChord(
   device: number,
   row: number,
   col: number,
   velocity: number
-): { wrote: boolean; overdub: RecordedOverdub | null } {
-  if (col > 6) return { wrote: false, overdub: null };
+): RecordedOverdub | null {
+  if (col > 6) return null;
   // Same target resolution as the keyboard / external MIDI keyboard — author onto
   // the HOVERED step, no per-device differentiation.
   const resolved = resolveInputTarget();
-  if (!resolved || resolved.track.source.kind === 'empty') return { wrote: false, overdub: null };
+  if (!resolved || resolved.track.source.kind === 'empty') return null;
   const t = resolved.track;
   const state = useSequencerStore.getState();
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
   const pitchDegrees = chordOctave[device] * octaveDegrees(state.scale);
-  const overdub = writeRecordedChord(t, voicing, pitchDegrees, velocity, resolved.writeIndex);
-  // overdub != null → recorded under the playhead; else a hovered-step write
-  // happened when writeIndex was non-null. Either way the selector should refresh.
-  const wrote = overdub !== null || resolved.writeIndex !== null;
-  return { wrote, overdub };
+  return writeRecordedChord(t, voicing, pitchDegrees, velocity, resolved.writeIndex);
 }
 
 // Resolve + audition the chord at grid (row, col): col → degree I..VII, row →
@@ -682,8 +611,8 @@ function setDeviceMode(device: number, mode: DeviceMode): void {
   PAGES[deviceMode[device]].onLeave?.(device);
   deviceMode[device] = next;
   lastAuditionPad[device] = -1;
-  // No cursor to reset — the chord page authors into the live `tieAnchor` pin,
-  // so whatever step is selected on the grid carries straight into chord mode.
+  // No cursor to reset — the chord page authors onto the live hovered step
+  // (resolveInputTarget), so the mouse cursor's grid position is the target.
   repaintDevice(device);
   applyPendingPulse();
 }
@@ -780,18 +709,6 @@ function sessionSignature(): string {
       ? `|${song.activeScene ?? '_'}:${song.scenes.map((sc) => (sc ? '1' : '0')).join('')}`
       : '|.';
   }
-  return sig;
-}
-
-// Signature of what the chord-page top row (step selector) draws: the pinned
-// step + the TARGET track's id + on-mask over the displayed range. Lets a grid
-// click (which moves `tieAnchor`, and so the target track) or a target-track
-// edit refresh the selector on the chord pads even though the chord page isn't
-// tied to the viewed section.
-function chordTopSignature(): string {
-  const t = targetMelodicTrack();
-  let sig = `${pinnedChordStep() ?? '_'}/${t?.id ?? ''}/${t?.length ?? 0}`;
-  if (t) for (let i = 0; i < Math.min(t.length, CHORD_TOP_STEPS); i++) sig += t.steps[i]?.on ? '1' : '0';
   return sig;
 }
 
@@ -929,26 +846,7 @@ function handleChordEvent(device: number, e: LaunchpadEvent): void {
     else if (e.addr.index === 1) void invoke('midi_panic').catch(() => {});
     return;
   }
-  if (e.addr.element === 'top') {
-    // Step selector — pin a step on the TARGET track as the write target (the
-    // same `tieAnchor` pin a grid click sets; tap again to unpin → audition-
-    // only). Pins on the current target track, so to author chords on a non-
-    // master channel, pin one of its steps from the grid / step-page first.
-    const step = e.addr.index;
-    const t = targetMelodicTrack();
-    if (!t || step >= t.length) return;
-    const store = useSequencerStore.getState();
-    if (pinnedChordStep() === step) {
-      store.setTieAnchor(null);
-      store.setSelectedStep(null);
-    } else {
-      const sel = { trackId: t.id, index: step };
-      store.setTieAnchor(sel);
-      store.setSelectedStep(sel);
-    }
-    repaintChordTops();
-    return;
-  }
+  if (e.addr.element === 'top') return; // top row unused on the chord page
   if (e.addr.element !== 'pad') return;
   const row = Math.floor(e.addr.index / 8);
   const col = e.addr.index % 8;
@@ -965,11 +863,10 @@ function handleChordEvent(device: number, e: LaunchpadEvent): void {
   }
   auditionCell(device, row, col);
   // Write the chord: armed + playing → overdub under the playhead on the armed
-  // channel (the returned handle lets the pad release finalize the gate); else a
-  // pinned step on the target catches it. Nothing armed/pinned → audition only.
-  const { wrote, overdub } = authorChord(device, row, col, Math.max(0.05, e.velocity / 127));
+  // channel (the returned handle lets the pad release finalize the gate); else the
+  // hovered step catches it. Nothing armed/hovered → audition only.
+  const overdub = authorChord(device, row, col, Math.max(0.05, e.velocity / 127));
   if (overdub) chordHeld.set(encodeHeld(device, e.addr.index), overdub);
-  if (wrote) repaintChordTops();
   // Bright press feedback on this device; restore the previously-lit pad.
   const prev = lastAuditionPad[device];
   lastAuditionPad[device] = e.addr.index;
@@ -1032,9 +929,10 @@ function handleStepEvent(device: number, e: LaunchpadEvent): void {
     store.toggleStep(track.id, stepIdx);
     const pin = store.tieAnchor;
     if (!wasOn) {
-      // OFF→ON: pin this step so the inspector + chord/keyboard target follow
-      // it. tieAnchor survives mouse-leave (selectedStep alone is hover-cleared
-      // by TrackGrid); mirror selectedStep too.
+      // OFF→ON: pin this step so the inspector + channel focus follow it (focus
+      // drives the monitor voice + piano roll; note/chord WRITES follow the mouse
+      // hover, not this pin). tieAnchor survives mouse-leave (selectedStep alone
+      // is hover-cleared by TrackGrid); mirror selectedStep too.
       const sel = { trackId: track.id, index: stepIdx };
       store.setTieAnchor(sel);
       store.setSelectedStep(sel);
@@ -1302,20 +1200,6 @@ function stepAttach(): () => void {
   return () => subs.forEach((u) => u());
 }
 
-// Chord page reactivity: a pinned-step move (grid click) or chord-master content
-// change refreshes the top-row step selector. repaintChordTops only touches the
-// top row, so the lit degree/octave pads underneath are left intact.
-function chordAttach(): () => void {
-  let prevChordTopSig = chordTopSignature();
-  return useSequencerStore.subscribe(() => {
-    const next = chordTopSignature();
-    if (next !== prevChordTopSig) {
-      prevChordTopSig = next;
-      repaintChordTops();
-    }
-  });
-}
-
 // Session page reactivity: song/scene swap/queue/commit/populate/clear repaints
 // any session-mode pad. Cheap when none is in session mode (loop body skipped).
 function sessionAttach(): () => void {
@@ -1359,7 +1243,6 @@ const PAGES: Record<DeviceMode, LaunchpadPage> = {
     buildSurface: buildChordSurface,
     handleEvent: handleChordEvent,
     onLeave: releaseChordHolds,
-    attach: chordAttach,
   },
   session: {
     id: 'session',
