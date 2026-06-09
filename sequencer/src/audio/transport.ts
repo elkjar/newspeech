@@ -1,6 +1,7 @@
 import { ensureAudioRunning } from './audioContext';
 import { scheduler } from './scheduler';
 import { midiPanic } from './midiOut';
+import { clockTransportStart, clockTransportStop } from './midiClock';
 import { useSequencerStore } from '../state/store';
 import { clearOverlay } from './mutationOverlay';
 
@@ -41,6 +42,7 @@ export async function togglePlayback(): Promise<void> {
   const store = useSequencerStore.getState();
   if (store.playing) {
     scheduler.stop();
+    clockTransportStop();
     midiPanic();
     if (isNativeAudioAvailable()) {
       void fadeTextures(TEXTURE_STOP_FADE_SECS);
@@ -89,6 +91,9 @@ export async function togglePlayback(): Promise<void> {
       }
     }
     scheduler.start(firstStepTime);
+    // Sequence is the clock master: announce transport to followers. The
+    // pulse stream itself flows from the scheduler step subscriber in App.tsx.
+    clockTransportStart();
     store.setPlaying(true);
   }
 }

@@ -284,6 +284,30 @@ function writePersistedNativeMix(v: NativeMix): void {
   }
 }
 
+// Clock-out port is rig routing (which interface receives the master clock),
+// so it persists across launches independently of any project — same
+// reasoning as the native-mix config above.
+const LS_MIDI_CLOCK_OUT = 'newspeech.sequencer.midiClockOutPort';
+
+function readPersistedClockOut(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    return localStorage.getItem(LS_MIDI_CLOCK_OUT) || null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedClockOut(v: string | null): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (v) localStorage.setItem(LS_MIDI_CLOCK_OUT, v);
+    else localStorage.removeItem(LS_MIDI_CLOCK_OUT);
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
   channel: 0,
   portName: null,
@@ -616,6 +640,13 @@ export interface SequencerState {
   editMode: EditMode;
   screenMode: ScreenMode;
   midiOutDeviceId: string | null;
+  // MIDI clock-out destination (Sequence is the rig clock master). The app
+  // emits 24-PPQN clock + Start/Stop on this one output port; null = clock
+  // off. Persisted to localStorage as rig routing that survives launches —
+  // deliberately NOT baked into .seq files, which carry musical content, not
+  // physical-interface config.
+  midiClockOutPort: string | null;
+  setMidiClockOutPort: (port: string | null) => void;
   viewSection: TrackSection;
   density: number;
   chaos: number;
@@ -1149,6 +1180,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   screenMode: 'roll',
   focusedTrackId: null,
   midiOutDeviceId: null,
+  midiClockOutPort: readPersistedClockOut(),
   midiRecInputPort: null,
   viewSection: 'drum',
   density: initialMacros.density,
@@ -1280,6 +1312,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   },
   setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
+  setMidiClockOutPort: (midiClockOutPort) => {
+    writePersistedClockOut(midiClockOutPort);
+    set({ midiClockOutPort });
+  },
   setTrackSource: (trackId, source) => {
     // Voice changes propagate band-wide: active tracks AND every saved bank
     // get the same voice update applied to the matching trackId. Voice =

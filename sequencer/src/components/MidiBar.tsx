@@ -338,6 +338,58 @@ function MidiOutSelector() {
   );
 }
 
+// Sequence is the rig clock master — this picks which output port receives the
+// 24-PPQN clock + Start/Stop. Clock is port-level (channel-less realtime
+// messages broadcast on the whole port), so this is a destination picker, not
+// a channel. Independent of the note/CC output above so the clock can run to a
+// different interface than the notes if the rig wants it. 'none' = clock off.
+function MidiClockOutSelector() {
+  const outputs = useMIDIOutputs();
+  const port = useSequencerStore((s) => s.midiClockOutPort);
+  const setPort = useSequencerStore((s) => s.setMidiClockOutPort);
+  const status = midiOutStatus();
+  const noOutputs = outputs.length === 0;
+  // Persisted across launches and may name a port that isn't plugged in this
+  // session — keep it selectable so re-plugging restores the clock route.
+  const showStale = !!port && !outputs.some((o) => o.id === port);
+
+  return (
+    <select
+      value={port ?? ''}
+      onChange={(e) => setPort(e.target.value || null)}
+      disabled={status !== 'ready' || (noOutputs && !port)}
+      className={`select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[180px] ${ROW_HEIGHT}`}
+      title={
+        status === 'unsupported'
+          ? 'web midi not supported in this browser'
+          : status === 'denied'
+            ? 'midi access denied'
+            : port
+              ? `24-PPQN clock + start/stop → ${port}${showStale ? ' (disconnected)' : ''}`
+              : 'send midi clock out (sequence as clock master)'
+      }
+    >
+      <option value="" className="bg-[#050505]">
+        {status === 'unsupported'
+          ? 'unsupported'
+          : status === 'denied'
+            ? 'denied'
+            : 'off'}
+      </option>
+      {outputs.map((o) => (
+        <option key={o.id} value={o.id} className="bg-[#050505]">
+          {o.name}
+        </option>
+      ))}
+      {showStale && (
+        <option value={port} className="bg-[#050505]">
+          {port} (disconnected)
+        </option>
+      )}
+    </select>
+  );
+}
+
 function MidiInputCluster() {
   const activeId = useMidiMapStore((s) => s.activeMidiMapId);
   const [renaming, setRenaming] = useState(false);
@@ -408,6 +460,10 @@ export function MidiBar() {
       <div className="flex items-center gap-2">
         <span className={labelCls}>out</span>
         <MidiOutSelector />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={labelCls}>clock</span>
+        <MidiClockOutSelector />
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <span className={labelCls}>mapping</span>

@@ -17,6 +17,7 @@ import {
   type TrackOutput,
 } from './state/store';
 import { scheduler } from './audio/scheduler';
+import { emitClockForStep, setClockBpm } from './audio/midiClock';
 import { samplePlayer } from './audio/samplePlayer';
 import { voiceEnvelope, voiceRole } from './audio/voices';
 
@@ -874,7 +875,21 @@ export function App() {
 
   useEffect(() => {
     scheduler.setBpm(bpm);
+    // Keep the native clock-master thread's tempo in sync with the transport.
+    setClockBpm(bpm);
   }, [bpm]);
+
+  // MIDI clock master: emit the 24-PPQN pulse stream from the scheduler's
+  // step callback, where we get each step's exact audio time + duration. A
+  // dedicated named subscriber keeps it independent of the main dispatcher and
+  // HMR-safe (re-registration evicts the prior one by key). The port + on/off
+  // is read live from the store inside emitClockForStep, so changing the
+  // clock-out target takes effect without a remount.
+  useEffect(() => {
+    return scheduler.onStep('app:midi-clock', (_step, when, stepDuration) => {
+      emitClockForStep(when, stepDuration);
+    });
+  }, []);
 
   // Periodic state snapshot for the stream window. 10Hz matches
   // GhostDebug's DensityTrace sample rate so Datafeed reads identically

@@ -9,7 +9,10 @@
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
 const CLIENT_NAME: &str = "Sequence";
@@ -218,5 +221,155 @@ pub fn panic_all(registry: &MidiRegistry) {
 #[tauri::command]
 pub fn midi_panic(state: State<MidiRegistry>) -> Result<(), String> {
     panic_all(state.inner());
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// MIDI clock master
+//
+// Sequence is the rig clock master. The clock pulse stream (24 PPQN) lives on
+// a dedicated native thread rather than being scheduled from JS, because the
+// WebView's setTimeout is far too coarse/jittery for a 24-PPQN stream — Pam's
+// New Workout (and any PLL) reads that jitter as an unstable tempo. The thread
+// owns its OWN output connection to the target port (independent of the
+// per-note connections in MidiRegistry — CoreMIDI allows multiple senders to
+// one destination), so note traffic and clock never contend.
+//
+// JS only sets tempo + start/stop; the thread does the timing, anchoring each
+// tick to a monotonic Instant and busy-spinning the final stretch so spacing
+// stays sub-millisecond regardless of event-loop load.
+
+const PPQN: f64 = 24.0;
+
+pub struct ClockState {
+    running: Arc<AtomicBool>,
+    // bpm × 1000, so tempo updates are a lock-free atomic store the thread
+    // re-reads every tick (mid-stream tempo changes apply going forward).
+    bpm_milli: Arc<AtomicU32>,
+    handle: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl Default for ClockState {
+    fn default() -> Self {
+        Self {
+            running: Arc::new(AtomicBool::new(false)),
+            bpm_milli: Arc::new(AtomicU32::new(120_000)),
+            handle: Mutex::new(None),
+        }
+    }
+}
+
+fn pulse_interval(bpm_milli: u32) -> Duration {
+    let bpm = (bpm_milli as f64 / 1000.0).max(1.0);
+    Duration::from_secs_f64(60.0 / bpm / PPQN)
+}
+
+// Wait until `target`: sleep most of the way (cheap), then busy-spin the last
+// ~1ms (tight). The spin burns a sliver of one core per pulse but keeps the
+// pulse landing within tens of microseconds of its target — which is the whole
+// point of moving the clock off the JS timer.
+fn precise_wait_until(target: Instant) {
+    loop {
+        let now = Instant::now();
+        if now >= target {
+            return;
+        }
+        let remaining = target - now;
+        if remaining > Duration::from_micros(1500) {
+            thread::sleep(remaining - Duration::from_micros(1000));
+        } else {
+            std::hint::spin_loop();
+        }
+    }
+}
+
+// Stop a running clock thread (send Stop + join). Shared by the stop command
+// and the app-quit hook. Safe to call when nothing is running.
+pub fn clock_stop_blocking(clock: &ClockState) {
+    clock.running.store(false, Ordering::Relaxed);
+    if let Ok(mut h) = clock.handle.lock() {
+        if let Some(handle) = h.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+#[tauri::command]
+pub fn midi_clock_start(
+    clock: State<ClockState>,
+    port_name: String,
+    bpm: f64,
+) -> Result<(), String> {
+    clock
+        .bpm_milli
+        .store((bpm.max(1.0) * 1000.0) as u32, Ordering::Relaxed);
+    // Restart cleanly if already running (e.g. port changed mid-session).
+    clock_stop_blocking(clock.inner());
+
+    let running = clock.running.clone();
+    let bpm_milli = clock.bpm_milli.clone();
+    running.store(true, Ordering::Relaxed);
+
+    let handle = thread::Builder::new()
+        .name("midi-clock".into())
+        .spawn(move || {
+            let m_out = match MidiOutput::new(CLIENT_NAME) {
+                Ok(o) => o,
+                Err(_) => {
+                    running.store(false, Ordering::Relaxed);
+                    return;
+                }
+            };
+            let Some(port) = resolve_output_port(&m_out, &port_name) else {
+                running.store(false, Ordering::Relaxed);
+                return;
+            };
+            let mut conn = match m_out.connect(&port, "Sequence clock") {
+                Ok(c) => c,
+                Err(_) => {
+                    running.store(false, Ordering::Relaxed);
+                    return;
+                }
+            };
+            // Start: followers reset to bar 1, then the pulse stream begins.
+            let _ = conn.send(&[0xFA]);
+            let mut next = Instant::now() + pulse_interval(bpm_milli.load(Ordering::Relaxed));
+            while running.load(Ordering::Relaxed) {
+                precise_wait_until(next);
+                if !running.load(Ordering::Relaxed) {
+                    break;
+                }
+                let _ = conn.send(&[0xF8]);
+                let iv = pulse_interval(bpm_milli.load(Ordering::Relaxed));
+                next += iv;
+                // If we fell behind (system stall / huge tempo drop), resync to
+                // now rather than firing a burst to "catch up".
+                let now = Instant::now();
+                if next < now {
+                    next = now + iv;
+                }
+            }
+            // Stop: followers freeze their playhead.
+            let _ = conn.send(&[0xFC]);
+        })
+        .map_err(|e| format!("clock thread spawn: {e}"))?;
+
+    if let Ok(mut h) = clock.handle.lock() {
+        *h = Some(handle);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn midi_clock_set_bpm(clock: State<ClockState>, bpm: f64) -> Result<(), String> {
+    clock
+        .bpm_milli
+        .store((bpm.max(1.0) * 1000.0) as u32, Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn midi_clock_stop(clock: State<ClockState>) -> Result<(), String> {
+    clock_stop_blocking(clock.inner());
     Ok(())
 }

@@ -331,6 +331,7 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .manage(recording::RecordingRegistry::default())
     .manage(midi::MidiRegistry::default())
+    .manage(midi::ClockState::default())
     .invoke_handler(tauri::generate_handler![
       recording::recording_start,
       recording::recording_write_chunk,
@@ -346,6 +347,9 @@ pub fn run() {
       midi::midi_unsubscribe_all_inputs,
       midi::midi_send,
       midi::midi_panic,
+      midi::midi_clock_start,
+      midi::midi_clock_set_bpm,
+      midi::midi_clock_stop,
       samples::list_sample_kits,
       samples::get_user_samples_dir,
       samples::read_audio_file,
@@ -433,6 +437,10 @@ pub fn run() {
       // tears down the CoreMIDI client — otherwise notes left on external gear
       // (e.g. the Mutant Brain) sustain forever. Same message as the panic button.
       if let tauri::RunEvent::ExitRequested { .. } = event {
+        // Stop the clock master first (sends MIDI Stop + joins the thread) so
+        // followers don't free-run after we're gone, then all-notes-off.
+        let clock = app_handle.state::<midi::ClockState>();
+        midi::clock_stop_blocking(clock.inner());
         let registry = app_handle.state::<midi::MidiRegistry>();
         midi::panic_all(registry.inner());
         // Give CoreMIDI a moment to push the bytes out before we exit.

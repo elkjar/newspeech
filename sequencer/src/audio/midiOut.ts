@@ -110,6 +110,12 @@ const NOTE_OFF = 0x80;
 const CONTROL_CHANGE = 0xb0;
 const PROGRAM_CHANGE = 0xc0;
 const ALL_NOTES_OFF_CC = 0xb0;
+// System realtime messages — single byte, no channel, broadcast on the whole
+// port. Used by the clock-out master (Sequence drives the rig clock).
+const MIDI_CLOCK = 0xf8;
+const MIDI_START = 0xfa;
+const MIDI_CONTINUE = 0xfb;
+const MIDI_STOP = 0xfc;
 const CC_BANK_MSB = 0;
 const CC_BANK_LSB = 32;
 
@@ -275,6 +281,46 @@ export function midiPanic() {
       out.send([ALL_NOTES_OFF_CC | ch, 123, 0]);
     }
   });
+}
+
+// Schedule a single 24-PPQN clock pulse (0xF8) at audioContext time `when`.
+// Goes through the same audio-clock → perf-time path as note timing so the
+// pulse stream stays evenly spaced — jitter here shows up as audible wobble on
+// the downstream gear locked to it.
+export function sendMIDIClockPulse(deviceId: string, when: number) {
+  const ms = audioToPerfMs(when);
+  if (TAURI) {
+    scheduleTauri(deviceId, [MIDI_CLOCK], ms);
+    return;
+  }
+  if (!access) return;
+  const out = access.outputs.get(deviceId);
+  if (out) out.send([MIDI_CLOCK], ms);
+}
+
+// Transport realtime messages, sent immediately (no scheduling) — they bracket
+// the pulse stream on the play/stop action. Start resets followers to bar 1;
+// Continue resumes without resetting.
+function sendRealtimeNow(deviceId: string, byte: number) {
+  if (TAURI) {
+    tauriSend(deviceId, [byte]);
+    return;
+  }
+  if (!access) return;
+  const out = access.outputs.get(deviceId);
+  if (out) out.send([byte]);
+}
+
+export function sendMIDIStart(deviceId: string) {
+  sendRealtimeNow(deviceId, MIDI_START);
+}
+
+export function sendMIDIStop(deviceId: string) {
+  sendRealtimeNow(deviceId, MIDI_STOP);
+}
+
+export function sendMIDIContinue(deviceId: string) {
+  sendRealtimeNow(deviceId, MIDI_CONTINUE);
 }
 
 // HMR cleanup — without this, the Tauri hot-plug polling setInterval gets
