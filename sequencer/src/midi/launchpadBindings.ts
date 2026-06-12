@@ -6,9 +6,12 @@
 // rail). This replaces the single-pad quadrant fold: there are no quadrants,
 // just a section and the full step width spread across two grids.
 //
-// Top rows = bank select, split across the pair:
-//   left pad  top → banks 1..8   (slots 0..7)
-//   right pad top → banks 9..16  (slots 8..15)
+// Top rows are asymmetric:
+//   left pad  top → bank select, banks 1..8 (slots 0..7)
+//   right pad top → TRACK SELECT — col i focuses the i-th visible track of the
+//     focused section (same active-track change as clicking that row on the
+//     grid). Banks 9..16 lose their hardware top-row slot as a result; reach
+//     them from the session page or the app.
 //
 // Side rails are SYMMETRIC — the same controls on both pads so transport is
 // reachable from whichever grid your hand is near (top→bottom):
@@ -97,6 +100,13 @@ const COL_BANK_EMPTY = 0;
 const COL_BANK_POPULATED = 25;
 const COL_BANK_ACTIVE = 127;
 const COL_BANK_PENDING_PALETTE = 3; // palette index 3 = bright white
+// Track-select top row (the SECOND pad's top row — logical half 1). Picks the
+// active track from the 8 visible rows of the focused section, mirroring a grid
+// click. Focused track reads brightest; a present-but-unfocused track dim; an
+// empty row slot off. Same brightness ladder semantics as the bank row.
+const COL_TRACK_FOCUSED = 127;
+const COL_TRACK_PRESENT = 25;
+const COL_TRACK_EMPTY = 0;
 
 // Chord page (per-device mode). Columns 0..6 = scale degrees I..VII off the
 // scene key; column 7 reserved. Rows = an 8-rung voicing ladder, plainest at
@@ -296,6 +306,13 @@ function colorForCell(track: Track | undefined, stepIdx: number, onPlayhead: boo
   return COL_OFF;
 }
 
+// Resting color for a track-select top-row pad: the focused track brightest, a
+// present-but-unfocused track dim, an empty row slot off.
+function trackTopColor(track: Track | undefined, focusedId: string | null): number {
+  if (!track) return COL_TRACK_EMPTY;
+  return track.id === focusedId ? COL_TRACK_FOCUSED : COL_TRACK_PRESENT;
+}
+
 function bankLevel(
   slot: unknown,
   index: number,
@@ -326,11 +343,14 @@ function buildSurfaceForHalf(half: 0 | 1): Uint8Array {
       out[row * 8 + col] = colorForCell(track, absStep, absStep === phAbs);
     }
   }
-  // Top row: bank select. Left pad → banks 0..7, right pad → 8..15.
-  const bankBase = half * 8;
-  for (let i = 0; i < 8; i++) {
-    const slotIdx = bankBase + i;
-    out[64 + i] = bankLevel(state.banks[slotIdx] ?? null, slotIdx, state.activeBank, state.pendingBank);
+  // Top row: left pad (half 0) = bank select (banks 0..7); right pad (half 1) =
+  // track select (focus the col-i visible track).
+  if (half === 1) {
+    for (let i = 0; i < 8; i++) out[64 + i] = trackTopColor(tracks[i], state.focusedTrackId);
+  } else {
+    for (let i = 0; i < 8; i++) {
+      out[64 + i] = bankLevel(state.banks[i] ?? null, i, state.activeBank, state.pendingBank);
+    }
   }
   // Side rail (symmetric on both pads).
   out[72 + 0] = state.playing ? COL_PLAY_PLAYING : COL_PLAY_STOPPED;
@@ -623,6 +643,7 @@ function applyPendingPulse(): void {
   const pending = useSequencerStore.getState().pendingBank;
   if (pending === null || pending < 0 || pending >= 16) return;
   const half: 0 | 1 = pending < 8 ? 0 : 1;
+  if (half === 1) return; // right pad top row is track-select — no bank to pulse
   const device = deviceForHalf(half);
   if (deviceMode[device] !== 'step') return; // chord/session own their top row
   setTopPulse(device, pending % 8, COL_BANK_PENDING_PALETTE);
@@ -946,9 +967,15 @@ function handleStepEvent(device: number, e: LaunchpadEvent): void {
   }
 
   if (e.addr.element === 'top' && e.addr.index >= 0 && e.addr.index < 8) {
-    // Top row → queue a bank. Left pad addresses slots 0..7, right pad 8..15.
-    const slot = halfForDevice(device) * 8 + e.addr.index;
-    store.queueBank(slot);
+    if (halfForDevice(device) === 1) {
+      // Right pad top row → select the active track (same focus change as
+      // clicking that row on the grid). No-op on an empty row slot.
+      const track = visibleTracks(store.viewSection)[e.addr.index];
+      if (track) store.setFocusedTrackId(track.id);
+      return;
+    }
+    // Left pad top row → queue a bank (slots 0..7).
+    store.queueBank(e.addr.index);
     return;
   }
 
@@ -1147,6 +1174,7 @@ function stepAttach(): () => void {
   let prevPlaying = useSequencerStore.getState().playing;
   let prevView = useSequencerStore.getState().viewSection;
   let prevBankSig = bankSignature();
+  let prevFocus = useSequencerStore.getState().focusedTrackId;
   subs.push(
     useSequencerStore.subscribe((state) => {
       // Stop → clear the playhead columns (onStep has stopped firing). The
@@ -1165,16 +1193,27 @@ function stepAttach(): () => void {
       const nextBankSig = bankSignature();
       if (nextBankSig !== prevBankSig) {
         prevBankSig = nextBankSig;
-        for (let half: 0 | 1 = 0; half <= 1; half = (half + 1) as 0 | 1) {
-          const device = deviceForHalf(half);
-          if (deviceMode[device] !== 'step') continue; // chord/session own their top row
-          const base = half * 8;
+        // Only the left pad (half 0) shows banks now; half 1 is track-select.
+        const device = deviceForHalf(0);
+        if (deviceMode[device] === 'step') {
           for (let i = 0; i < 8; i++) {
-            const slot = base + i;
-            setTopColor(device, i, bankLevel(state.banks[slot] ?? null, slot, state.activeBank, state.pendingBank));
+            setTopColor(device, i, bankLevel(state.banks[i] ?? null, i, state.activeBank, state.pendingBank));
           }
         }
         applyPendingPulse();
+      }
+      // Active track changed (grid click, app UI, or our own top-row press) →
+      // repaint the right pad's track-select top row. The track SET changing
+      // (add/remove) flows through visibleSignature → repaintBoth below.
+      if (state.focusedTrackId !== prevFocus) {
+        prevFocus = state.focusedTrackId;
+        const tDevice = deviceForHalf(1);
+        if (deviceMode[tDevice] === 'step') {
+          const tracks = visibleTracks(state.viewSection);
+          for (let i = 0; i < 8; i++) {
+            setTopColor(tDevice, i, trackTopColor(tracks[i], state.focusedTrackId));
+          }
+        }
       }
       // viewSection toggled (from on-screen UI or our own side button) →
       // repaint both pads with the new section's tracks. Returns early so a
