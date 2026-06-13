@@ -194,6 +194,11 @@ export function setPlayLed(level: number): void {
   setLed(PLAY_CC, level);
 }
 
+/** Light the record button (e.g. to show the focused channel's record arm). */
+export function setRecordLed(level: number): void {
+  setLed(RECORD_CC, level);
+}
+
 /** Light the Track ◀ / ▶ buttons (e.g. to show the active section). */
 export function setTrackLeftLed(level: number): void {
   setLed(TRACK_LEFT_CC, level);

@@ -9,6 +9,10 @@
 //   faders             → per-channel volume (gain) — physical, soft-takeover
 //   top button row     → per-channel mute   (toggle; LED white = muted)
 //   bottom button row  → per-channel solo   (toggle; LED white = soloed)
+//   transport play     → start/stop
+//   transport record   → arm the FOCUSED (selected) channel for MIDI recording
+//                        (LED white = focused channel armed)
+//   transport ◀ / ▶    → select rhythm (drum) / melody view
 //
 // VALUE-SYNC is the trick that makes the absolute, can't-do-relative encoders
 // usable: we keep each encoder's device-side position written to match its
@@ -27,10 +31,12 @@ import {
   setEncoderLed,
   setButtonLed,
   setPlayLed,
+  setRecordLed,
   setTrackLeftLed,
   setTrackRightLed,
   type XL3Event,
 } from './launchControlXL3';
+import { sourceIsMelodic } from '../instruments/library';
 
 type StoreState = ReturnType<typeof useSequencerStore.getState>;
 
@@ -72,6 +78,7 @@ const lastEncPos: number[] = new Array(ENC_COUNT).fill(-1);
 const lastEncLed: number[] = new Array(ENC_COUNT).fill(-1);
 const lastBtnLed: number[] = new Array(BTN_COUNT).fill(-1);
 let lastPlayLed = -1;
+let lastRecordLed = -1;
 let lastTrackLeftLed = -1;
 let lastTrackRightLed = -1;
 // Fader soft-takeover: engage only once the fader crosses the live value.
@@ -80,6 +87,23 @@ const faderPickup: Array<{ trackId: string; engaged: boolean; lastIn: number } |
 
 function viewTracks(s: StoreState): Track[] {
   return s.tracks.filter((t) => t.section === s.viewSection).slice(0, 8);
+}
+
+// The "selected" channel the Record button arms — same channel the on-screen
+// piano roll / step inspector reflect (focusedTrackId, the target the Launchpad
+// channel switcher sets). Mirrors PianoRoll.resolveFocusedTrack's fallback so a
+// press is never a dead no-op before anything's been explicitly focused.
+function focusedTrack(s: StoreState): Track | null {
+  if (s.focusedTrackId) {
+    const t = s.tracks.find((t) => t.id === s.focusedTrackId);
+    if (t) return t;
+  }
+  return (
+    s.tracks.find((t) => sourceIsMelodic(t.source)) ??
+    s.tracks.find((t) => t.source.kind !== 'empty') ??
+    s.tracks[0] ??
+    null
+  );
 }
 
 // Base 0..1 value for each encoder index (the stored param, pre-LFO). null =
@@ -169,6 +193,13 @@ function syncButtonLeds(): void {
     setPlayLed(playLed);
     lastPlayLed = playLed;
   }
+  // Record button reflects the focused (selected) channel's arm state.
+  const ft = focusedTrack(s);
+  const recordLed = ft?.inputArmed ? LED_ON : LED_OFF;
+  if (recordLed !== lastRecordLed) {
+    setRecordLed(recordLed);
+    lastRecordLed = recordLed;
+  }
   // Track ◀/▶ show the active section: ◀ lit on rhythm (drum), ▶ on melody.
   const leftLed = s.viewSection === 'drum' ? LED_ON : LED_OFF;
   const rightLed = s.viewSection === 'melodic' ? LED_ON : LED_OFF;
@@ -225,6 +256,14 @@ function handleEvent(e: XL3Event): void {
     if (!e.pressed) return; // momentary; act on press
     // Play through the same helper the UI uses (full audio/scheduler lifecycle).
     if (e.transport === 'play') void togglePlayback();
+    // Record → toggle the focused (selected) channel's MIDI record arm — the
+    // same arm the Track-row dot + Launchpad drum top row drive (single-target
+    // for melodic, multi for drums; setTrackInputArmed handles that). Lets you
+    // arm the live-playing channel from the controller, no laptop.
+    else if (e.transport === 'record') {
+      const t = focusedTrack(s);
+      if (t) s.setTrackInputArmed(t.id, !t.inputArmed);
+    }
     // Track ◀ / ▶ → select rhythm (drum) / melody view. Drives the same
     // viewSection the on-screen toggle + per-channel rows follow.
     else if (e.transport === 'trackLeft') s.setViewSection('drum');
@@ -247,6 +286,10 @@ function surfaceSignature(): string {
   const s = useSequencerStore.getState();
   let sig = `${s.playing ? 'P' : 's'}|${s.viewSection}|${s.density},${s.chaos},${s.motion},${s.drift},${s.tension}`;
   sig += `|${s.tape.mix},${s.glitch.mix},${s.reverb.mix}|`;
+  // Focused channel + its arm state drive the Record LED. The focused track may
+  // be in the other section (viewTracks won't cover it), so track it explicitly.
+  const ft = focusedTrack(s);
+  sig += `R${ft?.id ?? '-'}:${ft?.inputArmed ? 1 : 0}|`;
   for (const t of viewTracks(s)) {
     sig += `${t.id}:${t.mutation},${t.filterCutoff},${t.gain},${t.mute ? 1 : 0},${t.solo ? 1 : 0};`;
   }
@@ -298,6 +341,7 @@ function resetState(): void {
   }
   for (let i = 0; i < BTN_COUNT; i++) lastBtnLed[i] = -1;
   lastPlayLed = -1;
+  lastRecordLed = -1;
   lastTrackLeftLed = -1;
   lastTrackRightLed = -1;
   for (let i = 0; i < 8; i++) faderPickup[i] = null;
