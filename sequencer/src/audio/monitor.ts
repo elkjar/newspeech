@@ -121,32 +121,38 @@ export function monitorNote(
   );
 }
 
-// Audition a CHORD on a track's voice (fire-and-forget). Used by the Launchpad
-// chord page — tap a pad, hear the chord, nothing to release (tapping a
-// progression rings each chord for ~AUDITION window then decays). One voice per
-// interval, NOT monophonic so the tones sound together. `rootMidi` is the
-// chord root the intervals are offsets from (already octave-applied by the
+// Audition a CHORD on a track's voice. Used by the Launchpad chord page — press
+// a pad, hear the chord, and it SUSTAINS while the pad is held (native path),
+// exactly like a keyboard-page note. The caller hands one monitor `noteId` per
+// interval (parallel array); each tone is tagged with its id and triggered with
+// a long hold, and the pad release ramps each id down via monitorChordRelease —
+// without touching the track's pattern voices, which share the same trackId. One
+// voice per interval, NOT monophonic so the tones sound together. `rootMidi` is
+// the chord root the intervals are offsets from (already octave-applied by the
 // caller); section 0 keeps auditions out of recording stems.
+//
+// Web build: no targeted release exists on the Web Audio sample player, so it
+// stays a short fire-and-forget audition (the native engine is the target).
 const AUDITION_HOLD_SECS = 1.0;
 export function monitorChord(
   track: Track,
   rootMidi: number,
   intervals: number[],
   velocity: number,
+  noteIds: number[],
 ): void {
-  // Instrument row: fire the chord out the port as a scheduled on/off burst per
-  // tone. Fire-and-forget (chord auditions have no release handle), so the offs
-  // are scheduled AUDITION_HOLD_SECS out via sendMIDINote — matching the ring of
-  // the sample audition. A fixed track.midi.note (rare on a chord row) collapses
-  // every tone onto it; normally note is null so each interval sounds.
+  // Instrument row: open a live note per tone and remember each (port, channel,
+  // note) under its noteId so monitorRelease sends the matching note-off when the
+  // pad lifts. A fixed track.midi.note (rare on a chord row) collapses every tone
+  // onto it; normally note is null so each interval sounds.
   if (track.source.kind === 'instrument') {
     const deviceId = instrumentDevice(track);
     if (!deviceId) return;
-    const now = getAudioContext().currentTime;
-    for (const interval of intervals) {
+    intervals.forEach((interval, i) => {
       const note = track.midi.note !== null ? track.midi.note : rootMidi + interval;
-      sendMIDINote(deviceId, track.midi.channel, note, velocity, now, AUDITION_HOLD_SECS);
-    }
+      sendMIDINoteOn(deviceId, track.midi.channel, note, velocity);
+      heldMidiMonitors.set(noteIds[i], { deviceId, channel: track.midi.channel, note });
+    });
     return;
   }
   if (track.source.kind !== 'voice') return;
@@ -156,9 +162,9 @@ export function monitorChord(
   if (isNativeAudioAvailable()) {
     const out = track.output;
     const pan = ((track.pan ?? 0.5) - 0.5) * 2;
-    for (const interval of intervals) {
+    intervals.forEach((interval, i) => {
       const pick = samplePlayer.pickNativeSample(voice, rootMidi + interval);
-      if (!pick) continue;
+      if (!pick) return;
       void triggerSample(pick.path, {
         gain: velocity * pick.voiceGain * (track.gain ?? 1),
         pan,
@@ -173,13 +179,16 @@ export function monitorChord(
         envelopeDecay: env?.decay,
         envelopeSustain: env?.sustain,
         envelopeRelease: env?.release,
-        envelopeHold: env ? AUDITION_HOLD_SECS : undefined,
+        // Long hold so each tone sustains at its sustain level until the pad
+        // release ramps it down (flat-gain voices ring their sample length).
+        envelopeHold: env ? MONITOR_MAX_HOLD_SECS : undefined,
+        noteId: noteIds[i],
       });
-    }
+    });
     return;
   }
 
-  // Web build — fire-and-forget chord audition.
+  // Web build — fire-and-forget chord audition (no targeted release available).
   samplePlayer.trigger(
     voice,
     getAudioContext().currentTime,
@@ -193,6 +202,13 @@ export function monitorChord(
     false,
     undefined,
   );
+}
+
+// Release every tone of a held chord audition (native path) — ramps each tagged
+// voice down over the voice's own release time. Mirrors monitorRelease, one call
+// per chord tone. No-op per id on the web build (the audition already ended).
+export function monitorChordRelease(track: Track, noteIds: number[]): void {
+  for (const id of noteIds) monitorRelease(track, id);
 }
 
 // Trigger a drum/one-shot voice at its NATURAL pitch — fire-and-forget, no

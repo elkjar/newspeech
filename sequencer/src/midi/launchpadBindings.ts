@@ -35,7 +35,13 @@ import { scheduler } from '../audio/scheduler';
 import { togglePlayback } from '../audio/transport';
 import { resolveChord, type ChordVoicing } from '../audio/chords';
 import { octaveDegrees, quantize } from '../audio/scale';
-import { monitorChord, monitorDrum, monitorNote, monitorRelease } from '../audio/monitor';
+import {
+  monitorChord,
+  monitorChordRelease,
+  monitorDrum,
+  monitorNote,
+  monitorRelease,
+} from '../audio/monitor';
 import {
   writeDrumHit,
   writeRecordedNote,
@@ -209,11 +215,16 @@ const drumRatchet: number[] = new Array(8).fill(1);
 // the target track + monitor voice id (so a release ramps THAT voice down) +
 // the overdub it recorded (so the release finalizes that step's gate).
 const kbHeld = new Map<number, { trackId: string; noteId: number; overdub: RecordedOverdub | null }>();
-// Chord page: pads held down on each device that recorded a live overdub, keyed
-// device*64+padIndex → the overdub, so the pad release finalizes the chord's
-// gate (length) from how long it was held. Only populated while armed + playing
-// (a non-recording tap stashes nothing → release is a no-op).
-const chordHeld = new Map<number, RecordedOverdub>();
+// Chord page: pads held down on each device, keyed device*64+padIndex → the
+// target track + the per-tone monitor voice ids (so the pad release ramps each
+// chord tone down, sustaining while held like the keyboard page) + the overdub
+// it recorded, if any (so the release finalizes that step's gate from how long
+// it was held). Populated on every pad press over a valid target; overdub is
+// null for audition-only taps (not armed/playing), but the voices still sustain.
+const chordHeld = new Map<
+  number,
+  { trackId: string; noteIds: number[]; overdub: RecordedOverdub | null }
+>();
 // Monitor voice-handle source for the launchpad keyboard. Based high to dodge
 // recordInput's counter (from 1) and the chord-revoice namespace (1e9).
 let nextKbNoteId = 2_000_000_000;
@@ -577,17 +588,29 @@ function authorChord(
 // voicing ladder (bottom = plainest). Auditions on the same target authoring
 // uses (resolveInputTarget — armed channel, else hovered/focused track) at the
 // scene root/scale + the track's octave + the device's selected octave, so the
-// audition matches what authoring/recording will write. Fire-and-forget.
-function auditionCell(device: number, row: number, col: number): void {
-  if (col > 6) return;
+// audition matches what authoring/recording will write. The chord SUSTAINS while
+// the pad is held: returns the target track + one monitor voice id per tone so
+// the pad release can ramp each tone down (monitorChordRelease). Null if no valid
+// target resolved.
+function auditionCell(
+  device: number,
+  row: number,
+  col: number,
+  velocity: number
+): { trackId: string; noteIds: number[] } | null {
+  if (col > 6) return null;
   const state = useSequencerStore.getState();
   const resolved = resolveInputTarget();
-  if (!resolved || resolved.track.source.kind === 'empty') return;
+  if (!resolved || resolved.track.source.kind === 'empty') return null;
   const t = resolved.track;
   const rung = CHORD_VOICING_LADDER[7 - row];
   const voicing: ChordVoicing = { degree: (col + 1) as ChordVoicing['degree'], ...rung };
   const { root, intervals } = resolveChord(state.rootNote, state.scale, voicing, 0);
-  monitorChord(t, root + (t.octave + chordOctave[device]) * 12, intervals, 0.9);
+  // One monitor voice id per chord tone so the pad release ramps each tone down
+  // — shares the keyboard's note-id counter (any unique handle works).
+  const noteIds = intervals.map(() => nextKbNoteId++);
+  monitorChord(t, root + (t.octave + chordOctave[device]) * 12, intervals, velocity, noteIds);
+  return { trackId: t.id, noteIds };
 }
 
 // Repaint one physical device per its current mode: bulk-redraw the page's
@@ -611,13 +634,16 @@ function releaseKbNotes(device: number): void {
   }
 }
 
-// Finalize every chord overdub a device is still holding (so a pad still down
-// when leaving the chord page writes its gate rather than hanging open). No
-// monitor voice to release — chord auditions are fire-and-forget.
+// Release every chord a device is still holding (its monitor voices ramp down)
+// and finalize any overdub's gate (so a pad still down when leaving the chord
+// page writes its length rather than hanging open).
 function releaseChordHolds(device: number): void {
-  for (const [code, overdub] of chordHeld) {
+  const tracks = useSequencerStore.getState().tracks;
+  for (const [code, held] of chordHeld) {
     if (decodeHeld(code).device !== device) continue;
-    finalizeRecordedNote(overdub);
+    const t = tracks.find((tr) => tr.id === held.trackId);
+    if (t) monitorChordRelease(t, held.noteIds);
+    if (held.overdub) finalizeRecordedNote(held.overdub);
     chordHeld.delete(code);
   }
 }
@@ -849,14 +875,16 @@ function handleSessionEvent(_device: number, e: LaunchpadEvent): void {
 
 // Chord page: pads audition the degree×voicing chord; play/panic stay live.
 function handleChordEvent(device: number, e: LaunchpadEvent): void {
-  // Pad release: if this pad recorded a live overdub, finalize its GATE (chord
-  // length) from how long it was held — same as a recorded note. Other releases
-  // are no-ops (audition-only taps stash nothing).
+  // Pad release: ramp this pad's held chord tones down (sustained while held,
+  // like the keyboard page), and if it recorded a live overdub, finalize its
+  // GATE (chord length) from how long it was held. Other releases are no-ops.
   if (e.addr.element === 'pad' && !e.pressed) {
     const code = encodeHeld(device, e.addr.index);
-    const overdub = chordHeld.get(code);
-    if (overdub) {
-      finalizeRecordedNote(overdub);
+    const held = chordHeld.get(code);
+    if (held) {
+      const t = useSequencerStore.getState().tracks.find((tr) => tr.id === held.trackId);
+      if (t) monitorChordRelease(t, held.noteIds);
+      if (held.overdub) finalizeRecordedNote(held.overdub);
       chordHeld.delete(code);
     }
     return;
@@ -882,12 +910,15 @@ function handleChordEvent(device: number, e: LaunchpadEvent): void {
     }
     return;
   }
-  auditionCell(device, row, col);
+  const vel = Math.max(0.05, e.velocity / 127);
+  const held = auditionCell(device, row, col, vel);
   // Write the chord: armed + playing → overdub under the playhead on the armed
   // channel (the returned handle lets the pad release finalize the gate); else the
   // hovered step catches it. Nothing armed/hovered → audition only.
-  const overdub = authorChord(device, row, col, Math.max(0.05, e.velocity / 127));
-  if (overdub) chordHeld.set(encodeHeld(device, e.addr.index), overdub);
+  const overdub = authorChord(device, row, col, vel);
+  // Track the held voices (+ overdub, if any) so the pad release ramps each tone
+  // down and finalizes the gate. held is non-null for any valid target.
+  if (held) chordHeld.set(encodeHeld(device, e.addr.index), { ...held, overdub });
   // Bright press feedback on this device; restore the previously-lit pad.
   const prev = lastAuditionPad[device];
   lastAuditionPad[device] = e.addr.index;
