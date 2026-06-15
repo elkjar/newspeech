@@ -28,9 +28,19 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 const TAURI = isTauri();
 
+// Capture aid: when true, logs DAW-port messages we don't yet map (e.g. to grab
+// a new side/template button CC). Off in normal use; flip on when capturing.
+const XL3_DEBUG = false;
+
 const SYSEX_HEADER = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x15];
 const SYSEX_FOOTER = [0xf7];
 const SYSEX_LED = [0x01, 0x53];
+const SYSEX_CONFIG_DISPLAY = 0x04; // F0..15 04 <target> <config> F7
+const SYSEX_SET_TEXT = 0x06; // F0..15 06 <target> <field> <ascii…> F7
+const SYSEX_BITMAP = 0x09; // F0..15 09 <target> <1216 bytes> F7
+const DISPLAY_TARGET_STATIONARY = 0x20; // bitmap target: persistent display
+const DISPLAY_CFG_STATIONARY = 0x35; // configure-display target: stationary
+const BITMAP_BYTES = 1216; // 19 bytes/row × 64 rows, 7px/byte (MSB = leftmost)
 const DAW_MODE_ON = [0x9f, 0x0c, 0x7f];
 const DAW_MODE_OFF = [0x9f, 0x0c, 0x00];
 
@@ -48,9 +58,11 @@ const PLAY_CC = 116;
 const RECORD_CC = 118;
 const TRACK_LEFT_CC = 103; // Track ◀
 const TRACK_RIGHT_CC = 102; // Track ▶
+const PAGE_DOWN_CC = 107; // page-down side button → Mixer page
+const PAGE_UP_CC = 106; // page-up side button → Sequence page
 
 export type XL3ControlKind = 'encoder' | 'fader' | 'button' | 'transport';
-export type XL3Transport = 'play' | 'record' | 'trackLeft' | 'trackRight';
+export type XL3Transport = 'play' | 'record' | 'trackLeft' | 'trackRight' | 'pageUp' | 'pageDown';
 
 export interface XL3Event {
   kind: XL3ControlKind;
@@ -152,6 +164,62 @@ export function setEncoderLed(index: number, level: number): void {
   setLed(ENC_CC_BASE + index, level);
 }
 
+/** Draw a 128×64 1bpp bitmap to a display target. `data` must be exactly 1216
+ *  bytes (19/row × 64 rows; 7px/byte, MSB = leftmost pixel). Defaults to the
+ *  stationary (persistent) display. The device acks `…09 7F F7` when it's ready
+ *  for the next frame — we don't gate on it for static pages. */
+export function setDisplayBitmap(
+  data: readonly number[],
+  target = DISPLAY_TARGET_STATIONARY
+): void {
+  if (!state) return;
+  if (data.length !== BITMAP_BYTES) {
+    console.warn(`[xl3] bitmap must be ${BITMAP_BYTES} bytes, got ${data.length}`);
+    return;
+  }
+  sendBytes([...SYSEX_HEADER, SYSEX_BITMAP, target, ...data, ...SYSEX_FOOTER]);
+}
+
+/** Configure a display target (config 0x00 cancels, 0x7F shows current). */
+export function configureDisplay(target: number, config: number): void {
+  if (!state) return;
+  sendBytes([...SYSEX_HEADER, SYSEX_CONFIG_DISPLAY, target, config, ...SYSEX_FOOTER]);
+}
+
+/** Fill a text field on a configured display. `target` e.g. 0x35 (stationary);
+ *  `field` = 0/1/2 (F0/F1/F2 in the arrangement). Text is ASCII 0x20–0x7E;
+ *  unsupported chars become spaces. (Glyphs: 0x1B box, 0x1C filled, 0x1D flat,
+ *  0x1E heart — pass them as raw codepoints if wanted.) */
+export function setDisplayText(target: number, field: number, text: string): void {
+  if (!state) return;
+  const bytes: number[] = [];
+  for (const ch of text) {
+    const c = ch.charCodeAt(0);
+    bytes.push((c >= 0x20 && c <= 0x7e) || (c >= 0x1b && c <= 0x1e) ? c : 0x20);
+  }
+  sendBytes([...SYSEX_HEADER, SYSEX_SET_TEXT, target, field, ...bytes, ...SYSEX_FOOTER]);
+}
+
+/** Cancel the custom stationary bitmap, returning to the device default. */
+export function clearDisplay(): void {
+  configureDisplay(DISPLAY_CFG_STATIONARY, 0x00);
+}
+
+// --- dev-only: live display-protocol probe from the devtools console ---
+// Kept for ongoing screen work (mixer labels, etc.); excluded from release builds.
+//   __xl3.configure(0x35, 0x7f) → trigger the stationary display
+//   __xl3.text(0, "HELLO")      → write field 0 of the stationary display
+//   __xl3.raw([0xf0, ...])      → send arbitrary bytes
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __xl3?: unknown }).__xl3 = {
+    connected: () => isXL3Connected(),
+    configure: (t: number, c: number) => configureDisplay(t, c),
+    text: (field: number, str: string, target = 0x35) => setDisplayText(target, field, str),
+    clear: () => clearDisplay(),
+    raw: (bytes: number[]) => sendBytes(bytes),
+  };
+}
+
 // ---------- input parsing ----------
 
 function parseInput(bytes: number[]): XL3Event | null {
@@ -184,6 +252,12 @@ function parseInput(bytes: number[]): XL3Event | null {
     if (cc === TRACK_RIGHT_CC) {
       return { kind: 'transport', index: 0, value, pressed: value > 0, transport: 'trackRight' };
     }
+    if (cc === PAGE_DOWN_CC) {
+      return { kind: 'transport', index: 0, value, pressed: value > 0, transport: 'pageDown' };
+    }
+    if (cc === PAGE_UP_CC) {
+      return { kind: 'transport', index: 0, value, pressed: value > 0, transport: 'pageUp' };
+    }
     return null;
   }
   return null;
@@ -207,6 +281,14 @@ export function setTrackRightLed(level: number): void {
   setLed(TRACK_RIGHT_CC, level);
 }
 
+/** Light the page-up / page-down buttons (the one matching the active page). */
+export function setPageUpLed(level: number): void {
+  setLed(PAGE_UP_CC, level);
+}
+export function setPageDownLed(level: number): void {
+  setLed(PAGE_DOWN_CC, level);
+}
+
 export function onXL3Event(cb: EventListener): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
@@ -228,7 +310,19 @@ export async function connectXL3(inputPort: string, outputPort: string): Promise
     state.unlisten = await listen<{ port: string; bytes: number[] }>('midi://message', (event) => {
       if (!state || event.payload.port !== state.inputPort) return;
       const e = parseInput(event.payload.bytes);
-      if (!e) return;
+      if (!e) {
+        // Unmapped message — log it (skip only active-sensing). We WANT to see
+        // SysEx here right now: a bitmap ack `f0 00 20 29 02 15 09 7f f7` tells
+        // us the device accepted a frame. See XL3_DEBUG.
+        const st = event.payload.bytes[0];
+        if (XL3_DEBUG && st !== 0xfe) {
+          console.log(
+            '[xl3] unmapped:',
+            event.payload.bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ')
+          );
+        }
+        return;
+      }
       for (const cb of listeners) cb(e);
     });
   } catch (err) {

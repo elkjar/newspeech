@@ -34,9 +34,13 @@ import {
   setRecordLed,
   setTrackLeftLed,
   setTrackRightLed,
+  setPageUpLed,
+  setPageDownLed,
+  configureDisplay,
+  setDisplayText,
   type XL3Event,
 } from './launchControlXL3';
-import { sourceIsMelodic } from '../instruments/library';
+import { sourceIsMelodic, sourceLabel } from '../instruments/library';
 
 type StoreState = ReturnType<typeof useSequencerStore.getState>;
 
@@ -69,6 +73,24 @@ const TOP_TARGETS: GlobalTarget[] = [
   { get: (s) => s.reverb.mix, set: (s, v) => s.setReverb({ mix: v }), lfoKnob: 'reverbMix' },
 ];
 
+// Which surface the controller is driving. 'sequence' = the existing sequencer
+// strip (macros / mutation / cutoff / mute-solo). 'mixer' = the Bluebox mixer
+// page (Bluebox CC emission lands in the next increment, once it's wired). The
+// page-flip button (transport 'page') toggles between them; the page button LED
+// shows which we're on (lit = mixer).
+export type SurfaceMode = 'sequence' | 'mixer';
+let surfaceMode: SurfaceMode = 'sequence';
+const surfaceModeListeners = new Set<(m: SurfaceMode) => void>();
+
+export function getSurfaceMode(): SurfaceMode {
+  return surfaceMode;
+}
+
+export function onSurfaceModeChange(cb: (m: SurfaceMode) => void): () => void {
+  surfaceModeListeners.add(cb);
+  return () => surfaceModeListeners.delete(cb);
+}
+
 let attached = false;
 let unsubs: Array<() => void> = [];
 // Last position we believe each encoder holds (sent OR received). Drives the
@@ -81,6 +103,11 @@ let lastPlayLed = -1;
 let lastRecordLed = -1;
 let lastTrackLeftLed = -1;
 let lastTrackRightLed = -1;
+let lastPageUpLed = -1;
+let lastPageDownLed = -1;
+// Which page's bitmap is currently on the screen — pushed only on change (a
+// full 1216-byte frame, so we don't resend it on every store tick).
+let lastDisplayMode: SurfaceMode | null = null;
 // Fader soft-takeover: engage only once the fader crosses the live value.
 const faderPickup: Array<{ trackId: string; engaged: boolean; lastIn: number } | null> =
   new Array(8).fill(null);
@@ -164,6 +191,7 @@ function syncEncoders(): void {
 // LIVE (LFO-modulated) value, so an assigned LFO makes the light breathe.
 // Diffed so static encoders send nothing; unused slots stay dark. ~30 Hz.
 function tickEncoderLeds(): void {
+  if (surfaceMode !== 'sequence') return; // mixer page owns its own LEDs
   const s = useSequencerStore.getState();
   for (let i = 0; i < ENC_COUNT; i++) {
     const v01 = encoderLiveValue01(s, i);
@@ -214,12 +242,125 @@ function syncButtonLeds(): void {
 }
 
 function syncSurface(): void {
-  syncEncoders();
-  syncButtonLeds();
+  // The page button matching the active page is lit (up = sequence, down = mixer).
+  const upLed = surfaceMode === 'sequence' ? LED_ON : LED_OFF;
+  const downLed = surfaceMode === 'mixer' ? LED_ON : LED_OFF;
+  if (upLed !== lastPageUpLed) {
+    setPageUpLed(upLed);
+    lastPageUpLed = upLed;
+  }
+  if (downLed !== lastPageDownLed) {
+    setPageDownLed(downLed);
+    lastPageDownLed = downLed;
+  }
+  if (surfaceMode === 'sequence') {
+    syncEncoders();
+    syncButtonLeds();
+  }
+  // Mixer page: sequencer LEDs stay dark (its surface arrives with Bluebox routing).
+}
+
+// Turn off every LED the sequence surface lights, so flipping to another page
+// doesn't leave stale sequencer state showing. Play LED is left alone — it
+// reflects global transport, which is page-independent.
+function darkSurface(): void {
+  for (let i = 0; i < ENC_COUNT; i++) setEncoderLed(i, LED_OFF);
+  for (let i = 0; i < BTN_COUNT; i++) setButtonLed(i, LED_OFF);
+  setRecordLed(LED_OFF);
+  setTrackLeftLed(LED_OFF);
+  setTrackRightLed(LED_OFF);
+}
+
+// Stationary-display constants (confirmed on-device 2026-06-15).
+const DISPLAY_STATIONARY = 0x35; // configure/text target
+const DISPLAY_ARRANGEMENT_3LINE = 0x02; // arrangement 2: Title / Name / Value
+const DISPLAY_TRIGGER = 0x7f; // bits0-4 = 31 → bring the display up with current contents
+// Three-line page banner: [Title, Name, Value].
+const PAGE_BANNER: Record<SurfaceMode, readonly [string, string, string]> = {
+  sequence: ['[newspeech]', 'SEQUENCE', `v${__APP_VERSION__}`],
+  mixer: ['[newspeech]', 'MIXER', 'ctrl.'],
+};
+
+// Show the current page's banner on the stationary display — only on page
+// change. Set the arrangement, fill the three fields, then trigger (the device
+// buffers fields and only shows them on the trigger).
+function syncDisplay(): void {
+  if (lastDisplayMode === surfaceMode) return;
+  lastDisplayMode = surfaceMode;
+  const [title, name, value] = PAGE_BANNER[surfaceMode];
+  configureDisplay(DISPLAY_STATIONARY, DISPLAY_ARRANGEMENT_3LINE);
+  setDisplayText(DISPLAY_STATIONARY, 0, title);
+  setDisplayText(DISPLAY_STATIONARY, 1, name);
+  setDisplayText(DISPLAY_STATIONARY, 2, value);
+  configureDisplay(DISPLAY_STATIONARY, DISPLAY_TRIGGER);
+}
+
+// --- per-control names ("NAME / value" when a control is moved) ---
+// Per-control display targets mirror the CC indices: faders 0x05..0x0C,
+// encoders 0x0D..0x24. We set each control's name; the device auto-appends the
+// live value on touch. Sequence page only (mixer labels arrive with the routing).
+const CTRL_FADER_TARGET = 0x05;
+const CTRL_ENC_TARGET = 0x0d;
+const MACRO_NAMES = ['DENSITY', 'MOTION', 'DRIFT', 'CHAOS', 'TENSION', 'TAPE', 'GLITCH', 'REVERB'];
+
+function clip(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n) : s;
+}
+
+// Encoder 0..7 = global macros/FX; 8..15 = per-channel mutation; 16..23 = cutoff.
+function encoderName(s: StoreState, i: number): string {
+  if (i < 8) return MACRO_NAMES[i];
+  const track = viewTracks(s)[(i - 8) % 8];
+  if (!track) return '';
+  const label = clip(sourceLabel(track.source).toUpperCase(), 5);
+  return i < 16 ? `${label} MUT` : `${label} CUT`;
+}
+
+function faderName(s: StoreState, i: number): string {
+  const track = viewTracks(s)[i];
+  if (!track) return '';
+  return `${clip(sourceLabel(track.source).toUpperCase(), 5)} VOL`;
+}
+
+// Push all per-control names. Diffed (lastLabelSig) so it only resends when the
+// names actually change (page section flip, track source change).
+let lastLabelSig = '';
+function syncControlLabels(): void {
+  if (surfaceMode !== 'sequence') return;
+  const s = useSequencerStore.getState();
+  let sig = '';
+  for (let i = 0; i < ENC_COUNT; i++) sig += encoderName(s, i) + '|';
+  for (let i = 0; i < 8; i++) sig += faderName(s, i) + '|';
+  if (sig === lastLabelSig) return;
+  lastLabelSig = sig;
+  for (let i = 0; i < ENC_COUNT; i++) setDisplayText(CTRL_ENC_TARGET + i, 0, encoderName(s, i));
+  for (let i = 0; i < 8; i++) setDisplayText(CTRL_FADER_TARGET + i, 0, faderName(s, i));
+}
+
+function setSurfaceMode(mode: SurfaceMode): void {
+  if (mode === surfaceMode) return;
+  surfaceMode = mode;
+  resetState();
+  if (mode === 'mixer') darkSurface(); // clear the now-stale sequence LEDs
+  syncSurface();
+  syncDisplay();
+  syncControlLabels();
+  for (const cb of surfaceModeListeners) cb(mode);
 }
 
 function handleEvent(e: XL3Event): void {
   const s = useSequencerStore.getState();
+  // Page-flip button toggles the surface, regardless of which page we're on.
+  if (e.kind === 'transport' && (e.transport === 'pageUp' || e.transport === 'pageDown')) {
+    if (e.pressed) setSurfaceMode(e.transport === 'pageUp' ? 'sequence' : 'mixer');
+    return;
+  }
+  // Other pages don't drive the sequencer surface yet (mixer → Bluebox is the
+  // next increment). Transport play stays global so start/stop works anywhere.
+  if (surfaceMode !== 'sequence') {
+    if (e.kind === 'transport' && e.transport === 'play' && e.pressed) void togglePlayback();
+    return;
+  }
   if (e.kind === 'encoder') {
     // Record the reported position so syncEncoders won't write it back, then
     // apply 1:1. Value-sync keeps device + param aligned, so no jump. The LED
@@ -291,7 +432,8 @@ function surfaceSignature(): string {
   const ft = focusedTrack(s);
   sig += `R${ft?.id ?? '-'}:${ft?.inputArmed ? 1 : 0}|`;
   for (const t of viewTracks(s)) {
-    sig += `${t.id}:${t.mutation},${t.filterCutoff},${t.gain},${t.mute ? 1 : 0},${t.solo ? 1 : 0};`;
+    const src = t.source.kind === 'empty' ? '-' : sourceLabel(t.source);
+    sig += `${t.id}@${src}:${t.mutation},${t.filterCutoff},${t.gain},${t.mute ? 1 : 0},${t.solo ? 1 : 0};`;
   }
   return sig;
 }
@@ -302,6 +444,8 @@ export function attachXL3Bindings(): void {
   // Full sync on attach so the hardware matches current state immediately.
   resetState();
   syncSurface();
+  syncDisplay();
+  syncControlLabels();
 
   unsubs.push(onXL3Event(handleEvent));
 
@@ -318,6 +462,7 @@ export function attachXL3Bindings(): void {
       // On a page flip the addressed tracks change, so fader pickup must re-arm.
       if (sectionChanged) for (let i = 0; i < 8; i++) faderPickup[i] = null;
       syncSurface();
+      syncControlLabels();
     })
   );
 
@@ -326,6 +471,8 @@ export function attachXL3Bindings(): void {
     onXL3ConnectionChange(() => {
       resetState();
       syncSurface();
+      syncDisplay();
+      syncControlLabels();
     })
   );
 
@@ -344,6 +491,10 @@ function resetState(): void {
   lastRecordLed = -1;
   lastTrackLeftLed = -1;
   lastTrackRightLed = -1;
+  lastPageUpLed = -1;
+  lastPageDownLed = -1;
+  lastDisplayMode = null;
+  lastLabelSig = '';
   for (let i = 0; i < 8; i++) faderPickup[i] = null;
 }
 
