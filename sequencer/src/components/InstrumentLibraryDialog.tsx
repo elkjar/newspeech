@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { Instrument, InstrumentRole } from '../instruments/library';
 import { useUserInstrumentsStore } from '../instruments/userInstrumentsStore';
 import { NewInstrumentDialog } from './NewInstrumentDialog';
+
+// Tauri's WebView won't surface a picker for a hidden <input type="file">, so
+// import goes through the native open() dialog + read_text_file there (same
+// path as project load); the <input> stays as the web fallback. Export uses an
+// <a download> blob, which the WebView does handle — so it's left alone.
+const INSTRUMENT_IMPORT_FILTER = [
+  { name: 'newspeech instruments', extensions: ['midilibrary', 'midiinstrument', 'json'] },
+];
 
 // Library management modal — list of user instruments grouped by role
 // with per-row edit / export / delete, plus top-bar export-all / import
@@ -83,6 +92,25 @@ export function InstrumentLibraryDialog({
     }
   };
 
+  // Native: pick + read through Tauri (the <input> picker doesn't open in the
+  // WebView). Web: fall back to clicking the hidden file input.
+  const handleImportClick = async () => {
+    if (isTauri()) {
+      try {
+        const { open: pickFile } = await import('@tauri-apps/plugin-dialog');
+        const picked = await pickFile({ multiple: false, filters: INSTRUMENT_IMPORT_FILTER });
+        if (!picked || typeof picked !== 'string') return;
+        const text = await invoke<string>('read_text_file', { path: picked });
+        const result = importLibraryOrInstrumentFromJson(text);
+        if (!result.ok) console.warn('[instruments] import failed:', result.error);
+      } catch (err) {
+        console.error('[instruments] import failed:', err);
+      }
+      return;
+    }
+    importRef.current?.click();
+  };
+
   const grouped: Record<InstrumentRole, Instrument[]> = {
     lead: [],
     bass: [],
@@ -137,7 +165,7 @@ export function InstrumentLibraryDialog({
             </button>
             <button
               type="button"
-              onClick={() => importRef.current?.click()}
+              onClick={() => void handleImportClick()}
               className="px-3 py-1 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors"
               title="import a .midilibrary or .midiinstrument file"
             >

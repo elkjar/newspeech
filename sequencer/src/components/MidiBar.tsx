@@ -338,19 +338,108 @@ function MidiOutSelector() {
   );
 }
 
-// Sequence is the rig clock master — this picks which output port receives the
+// Sequence is the rig clock master — this picks which output ports receive the
 // 24-PPQN clock + Start/Stop. Clock is port-level (channel-less realtime
-// messages broadcast on the whole port), so this is a destination picker, not
-// a channel. Independent of the note/CC output above so the clock can run to a
-// different interface than the notes if the rig wants it. 'none' = clock off.
+// messages broadcast on the whole port), so each is a destination, not a
+// channel. One dropdown per destination + a "+ add output" to layer a second:
+// the rack follows via the Mutant Brain while the Bluebox arms record-sync off
+// the same Start. Independent of the note/CC output above. Nothing = clock off.
 function MidiClockOutSelector() {
   const outputs = useMIDIOutputs();
-  const port = useSequencerStore((s) => s.midiClockOutPort);
-  const setPort = useSequencerStore((s) => s.setMidiClockOutPort);
+  const ports = useSequencerStore((s) => s.midiClockOutPorts);
+  const setPorts = useSequencerStore((s) => s.setMidiClockOutPorts);
+  const status = midiOutStatus();
+  // Transient empty slot for picking the next destination (not yet committed).
+  const [adding, setAdding] = useState(false);
+
+  if (status !== 'ready') {
+    return (
+      <span
+        className={`inline-flex items-center px-2 text-[11px] uppercase tracking-widest text-white/30 ${ROW_HEIGHT}`}
+      >
+        {status === 'unsupported' ? 'unsupported' : 'denied'}
+      </span>
+    );
+  }
+
+  const known = (id: string) => outputs.some((o) => o.id === id);
+
+  // Set the destination at `idx` (append when idx is past the end); empty value
+  // removes that slot. De-dupes defensively so a port can't land twice.
+  const setSlot = (idx: number, value: string) => {
+    const next = ports.slice();
+    if (!value) next.splice(idx, 1);
+    else if (idx >= next.length) next.push(value);
+    else next[idx] = value;
+    setPorts(next.filter((p, i) => next.indexOf(p) === i));
+    setAdding(false);
+  };
+
+  const renderSelect = (idx: number, current: string) => {
+    const stale = !!current && !known(current);
+    // Offer outputs not already taken by another slot (plus this slot's own).
+    const taken = new Set(ports.filter((_, i) => i !== idx));
+    const opts = outputs.filter((o) => !taken.has(o.id));
+    return (
+      <select
+        key={`${idx}:${current}`}
+        value={current}
+        onChange={(e) => setSlot(idx, e.target.value)}
+        className={`select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[180px] ${ROW_HEIGHT}`}
+        title={
+          current
+            ? `24-PPQN clock + start/stop → ${current}${stale ? ' (disconnected)' : ''}`
+            : 'send midi clock out (sequence as clock master)'
+        }
+      >
+        <option value="" className="bg-[#050505]">
+          {current ? '— remove —' : 'off'}
+        </option>
+        {opts.map((o) => (
+          <option key={o.id} value={o.id} className="bg-[#050505]">
+            {o.name}
+          </option>
+        ))}
+        {stale && (
+          <option value={current} className="bg-[#050505]">
+            {current} (disconnected)
+          </option>
+        )}
+      </select>
+    );
+  };
+
+  const canAddMore = ports.length < outputs.length;
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {ports.length === 0
+        ? renderSelect(0, '')
+        : ports.map((p, i) => renderSelect(i, p))}
+      {ports.length > 0 && adding && renderSelect(ports.length, '')}
+      {ports.length > 0 && !adding && canAddMore && (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className={`inline-flex items-center px-2 text-[11px] uppercase tracking-widest text-white/45 hover:text-white transition-colors focus:outline-none ${ROW_HEIGHT}`}
+          title="add a second clock destination (e.g. bluebox record-sync)"
+        >
+          + add output
+        </button>
+      )}
+    </div>
+  );
+}
+
+// The MIDI output the XL3 mixer page emits Bluebox mixer CC to. One device =
+// one port, so this is a plain single-select (unlike clock-out, which fans to
+// several followers). Independent of the note/CC + clock destinations above.
+function BlueboxPortSelector() {
+  const outputs = useMIDIOutputs();
+  const port = useSequencerStore((s) => s.blueboxPort);
+  const setPort = useSequencerStore((s) => s.setBlueboxPort);
   const status = midiOutStatus();
   const noOutputs = outputs.length === 0;
-  // Persisted across launches and may name a port that isn't plugged in this
-  // session — keep it selectable so re-plugging restores the clock route.
   const showStale = !!port && !outputs.some((o) => o.id === port);
 
   return (
@@ -365,16 +454,12 @@ function MidiClockOutSelector() {
           : status === 'denied'
             ? 'midi access denied'
             : port
-              ? `24-PPQN clock + start/stop → ${port}${showStale ? ' (disconnected)' : ''}`
-              : 'send midi clock out (sequence as clock master)'
+              ? `xl3 mixer page → bluebox cc → ${port}${showStale ? ' (disconnected)' : ''}`
+              : 'midi port the xl3 mixer page sends bluebox cc to'
       }
     >
       <option value="" className="bg-[#050505]">
-        {status === 'unsupported'
-          ? 'unsupported'
-          : status === 'denied'
-            ? 'denied'
-            : 'off'}
+        {status === 'unsupported' ? 'unsupported' : status === 'denied' ? 'denied' : 'off'}
       </option>
       {outputs.map((o) => (
         <option key={o.id} value={o.id} className="bg-[#050505]">
@@ -464,6 +549,10 @@ export function MidiBar() {
       <div className="flex items-center gap-2">
         <span className={labelCls}>clock</span>
         <MidiClockOutSelector />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={labelCls}>bluebox</span>
+        <BlueboxPortSelector />
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <span className={labelCls}>mapping</span>

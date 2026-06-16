@@ -41,6 +41,17 @@ import {
   type XL3Event,
 } from './launchControlXL3';
 import { sourceIsMelodic, sourceLabel } from '../instruments/library';
+import {
+  BLUEBOX_CHANNELS,
+  BLUEBOX_CH_COUNT,
+  blueboxChannel,
+  setBlueboxLevel,
+  setBlueboxReverb,
+  setBlueboxDelay,
+  setBlueboxPan,
+  toggleBlueboxMute,
+  toggleBlueboxSolo,
+} from './bluebox';
 
 type StoreState = ReturnType<typeof useSequencerStore.getState>;
 
@@ -75,9 +86,10 @@ const TOP_TARGETS: GlobalTarget[] = [
 
 // Which surface the controller is driving. 'sequence' = the existing sequencer
 // strip (macros / mutation / cutoff / mute-solo). 'mixer' = the Bluebox mixer
-// page (Bluebox CC emission lands in the next increment, once it's wired). The
-// page-flip button (transport 'page') toggles between them; the page button LED
-// shows which we're on (lit = mixer).
+// page (faders → channel levels, encoder rows → reverb/delay/pan sends, buttons
+// → mute/solo, emitted as CC to the configured Bluebox port — see the mixer-page
+// section below + bluebox.ts). The page-flip button (transport 'page') toggles
+// between them; the page button LED shows which we're on (lit = mixer).
 export type SurfaceMode = 'sequence' | 'mixer';
 let surfaceMode: SurfaceMode = 'sequence';
 const surfaceModeListeners = new Set<(m: SurfaceMode) => void>();
@@ -111,6 +123,12 @@ let lastDisplayMode: SurfaceMode | null = null;
 // Fader soft-takeover: engage only once the fader crosses the live value.
 const faderPickup: Array<{ trackId: string; engaged: boolean; lastIn: number } | null> =
   new Array(8).fill(null);
+// Same idea for the mixer page's level faders, keyed by Bluebox channel index
+// (the faders are physical, shared with the sequence page, so a flip must not
+// jump a Bluebox level until the fader catches up to it).
+const mixerFaderPickup: Array<{ engaged: boolean; lastIn: number } | null> = new Array(8).fill(
+  null
+);
 
 function viewTracks(s: StoreState): Track[] {
   return s.tracks.filter((t) => t.section === s.viewSection).slice(0, 8);
@@ -256,8 +274,9 @@ function syncSurface(): void {
   if (surfaceMode === 'sequence') {
     syncEncoders();
     syncButtonLeds();
+  } else {
+    syncMixerSurface();
   }
-  // Mixer page: sequencer LEDs stay dark (its surface arrives with Bluebox routing).
 }
 
 // Turn off every LED the sequence surface lights, so flipping to another page
@@ -278,7 +297,7 @@ const DISPLAY_TRIGGER = 0x7f; // bits0-4 = 31 → bring the display up with curr
 // Three-line page banner: [Title, Name, Value].
 const PAGE_BANNER: Record<SurfaceMode, readonly [string, string, string]> = {
   sequence: ['[newspeech]', 'SEQUENCE', `v${__APP_VERSION__}`],
-  mixer: ['[newspeech]', 'MIXER', 'ctrl.'],
+  mixer: ['[newspeech]', 'MIXER', 'bluebox'],
 };
 
 // Show the current page's banner on the stationary display — only on page
@@ -298,7 +317,7 @@ function syncDisplay(): void {
 // --- per-control names ("NAME / value" when a control is moved) ---
 // Per-control display targets mirror the CC indices: faders 0x05..0x0C,
 // encoders 0x0D..0x24. We set each control's name; the device auto-appends the
-// live value on touch. Sequence page only (mixer labels arrive with the routing).
+// live value on touch. Both pages use these — see syncControlLabels.
 const CTRL_FADER_TARGET = 0x05;
 const CTRL_ENC_TARGET = 0x0d;
 const MACRO_NAMES = ['DENSITY', 'MOTION', 'DRIFT', 'CHAOS', 'TENSION', 'TAPE', 'GLITCH', 'REVERB'];
@@ -323,18 +342,158 @@ function faderName(s: StoreState, i: number): string {
 }
 
 // Push all per-control names. Diffed (lastLabelSig) so it only resends when the
-// names actually change (page section flip, track source change).
+// names actually change (page flip, track source change). The mixer page's
+// names are static, so its signature is constant and pushes once per entry.
 let lastLabelSig = '';
 function syncControlLabels(): void {
-  if (surfaceMode !== 'sequence') return;
   const s = useSequencerStore.getState();
-  let sig = '';
-  for (let i = 0; i < ENC_COUNT; i++) sig += encoderName(s, i) + '|';
-  for (let i = 0; i < 8; i++) sig += faderName(s, i) + '|';
+  let sig = surfaceMode + '|';
+  if (surfaceMode === 'sequence') {
+    for (let i = 0; i < ENC_COUNT; i++) sig += encoderName(s, i) + '|';
+    for (let i = 0; i < 8; i++) sig += faderName(s, i) + '|';
+  }
   if (sig === lastLabelSig) return;
   lastLabelSig = sig;
-  for (let i = 0; i < ENC_COUNT; i++) setDisplayText(CTRL_ENC_TARGET + i, 0, encoderName(s, i));
-  for (let i = 0; i < 8; i++) setDisplayText(CTRL_FADER_TARGET + i, 0, faderName(s, i));
+  if (surfaceMode === 'sequence') {
+    for (let i = 0; i < ENC_COUNT; i++) setDisplayText(CTRL_ENC_TARGET + i, 0, encoderName(s, i));
+    for (let i = 0; i < 8; i++) setDisplayText(CTRL_FADER_TARGET + i, 0, faderName(s, i));
+  } else {
+    syncMixerLabels();
+  }
+}
+
+// --- mixer page (Bluebox) ---------------------------------------------------
+// Physical layout → Bluebox params, 6 role channels in column order:
+//   faders 0..5        → channel level     (pickup; CC 21..26)
+//   encoder row 1 (top)→ reverb send       (value-sync; CC 31..36)
+//   encoder row 2 (mid)→ delay send        (value-sync; CC 41..46)
+//   encoder row 3 (bot)→ pan               (value-sync; CC 51..56)
+//   button row 1 (top) → mute toggle       (LED = muted; CC 61..66)
+//   button row 2 (bot) → solo toggle       (LED = soloed; CC 71..76)
+// Columns 6..7 (faders 6-7, the 3rd of each control trio, buttons 6-7/14-15)
+// are unused and stay dark. CC numbers live in bluebox.ts.
+
+type MixerEncKind = 'reverb' | 'delay' | 'pan';
+
+// Encoder index → which channel + param, or null for an unused column.
+function mixerEncoder(i: number): { ch: number; kind: MixerEncKind } | null {
+  const col = i % 8;
+  if (col >= BLUEBOX_CH_COUNT) return null;
+  const row = Math.floor(i / 8); // 0 top, 1 mid, 2 bottom
+  if (row === 0) return { ch: col, kind: 'reverb' };
+  if (row === 1) return { ch: col, kind: 'delay' };
+  if (row === 2) return { ch: col, kind: 'pan' };
+  return null;
+}
+
+// Button index → channel + mute/solo, or null for an unused column.
+function mixerButton(i: number): { ch: number; solo: boolean } | null {
+  const col = i % 8;
+  if (col >= BLUEBOX_CH_COUNT) return null;
+  return { ch: col, solo: i >= 8 };
+}
+
+function mixerEncValue(m: { ch: number; kind: MixerEncKind }): number {
+  const ch = blueboxChannel(m.ch);
+  if (!ch) return 0;
+  return m.kind === 'reverb' ? ch.reverb : m.kind === 'delay' ? ch.delay : ch.pan;
+}
+
+// Push the mixer page's LEDs + encoder positions (diffed against the shared
+// last* arrays). Encoder rings show send/pan brightness; buttons show mute/solo.
+function syncMixerSurface(): void {
+  for (let i = 0; i < ENC_COUNT; i++) {
+    const m = mixerEncoder(i);
+    if (!m) continue; // unused column → leave dark
+    const val = mixerEncValue(m);
+    if (Math.abs(val - lastEncPos[i]) > 1) {
+      setEncoderValue(i, val);
+      lastEncPos[i] = val;
+    }
+    if (val !== lastEncLed[i]) {
+      setEncoderLed(i, val);
+      lastEncLed[i] = val;
+    }
+  }
+  for (let i = 0; i < BTN_COUNT; i++) {
+    const m = mixerButton(i);
+    let level = LED_OFF;
+    if (m) {
+      const ch = blueboxChannel(m.ch);
+      if (ch) level = (m.solo ? ch.solo : ch.mute) ? LED_ON : LED_OFF;
+    }
+    if (level === lastBtnLed[i]) continue;
+    setButtonLed(i, level);
+    lastBtnLed[i] = level;
+  }
+  const playLed = useSequencerStore.getState().playing ? LED_ON : LED_OFF;
+  if (playLed !== lastPlayLed) {
+    setPlayLed(playLed);
+    lastPlayLed = playLed;
+  }
+}
+
+// Per-control names for the mixer page (static — channel names don't change).
+function syncMixerLabels(): void {
+  for (let i = 0; i < ENC_COUNT; i++) {
+    const m = mixerEncoder(i);
+    const suffix = m ? (m.kind === 'reverb' ? 'RVB' : m.kind === 'delay' ? 'DLY' : 'PAN') : '';
+    setDisplayText(CTRL_ENC_TARGET + i, 0, m ? `${BLUEBOX_CHANNELS[m.ch]} ${suffix}` : '');
+  }
+  for (let i = 0; i < 8; i++) {
+    setDisplayText(CTRL_FADER_TARGET + i, 0, i < BLUEBOX_CH_COUNT ? `${BLUEBOX_CHANNELS[i]} LVL` : '');
+  }
+}
+
+// Fader → Bluebox level with the same soft-takeover as the sequence page, but
+// against the channel's app-side level (open-loop; the Bluebox can't report).
+function handleMixerFader(e: XL3Event): void {
+  const c = e.index;
+  const ch = blueboxChannel(c);
+  if (!ch) return; // fader 6/7 → no channel
+  const cur01 = ch.level / 127;
+  const in01 = e.value / 127;
+  let st = mixerFaderPickup[c];
+  if (!st) {
+    const engaged = Math.abs(in01 - cur01) <= PICKUP_EPS;
+    mixerFaderPickup[c] = { engaged, lastIn: in01 };
+    if (!engaged) return;
+  } else if (!st.engaged) {
+    const crossed =
+      Math.abs(in01 - cur01) <= PICKUP_EPS ||
+      (st.lastIn < cur01 && in01 >= cur01) ||
+      (st.lastIn > cur01 && in01 <= cur01);
+    st.lastIn = in01;
+    if (!crossed) return;
+    st.engaged = true;
+  } else {
+    st.lastIn = in01;
+  }
+  setBlueboxLevel(c, e.value);
+}
+
+function handleMixerEncoder(e: XL3Event): void {
+  const m = mixerEncoder(e.index);
+  if (!m) return;
+  // Record the reported position so syncMixerSurface won't fight the turn.
+  lastEncPos[e.index] = e.value;
+  if (m.kind === 'reverb') setBlueboxReverb(m.ch, e.value);
+  else if (m.kind === 'delay') setBlueboxDelay(m.ch, e.value);
+  else setBlueboxPan(m.ch, e.value);
+  if (e.value !== lastEncLed[e.index]) {
+    setEncoderLed(e.index, e.value);
+    lastEncLed[e.index] = e.value;
+  }
+}
+
+function handleMixerButton(e: XL3Event): void {
+  if (!e.pressed) return; // momentary; act on press
+  const m = mixerButton(e.index);
+  if (!m) return;
+  const on = m.solo ? toggleBlueboxSolo(m.ch) : toggleBlueboxMute(m.ch);
+  const level = on ? LED_ON : LED_OFF;
+  setButtonLed(e.index, level);
+  lastBtnLed[e.index] = level;
 }
 
 function setSurfaceMode(mode: SurfaceMode): void {
@@ -355,10 +514,13 @@ function handleEvent(e: XL3Event): void {
     if (e.pressed) setSurfaceMode(e.transport === 'pageUp' ? 'sequence' : 'mixer');
     return;
   }
-  // Other pages don't drive the sequencer surface yet (mixer → Bluebox is the
-  // next increment). Transport play stays global so start/stop works anywhere.
-  if (surfaceMode !== 'sequence') {
-    if (e.kind === 'transport' && e.transport === 'play' && e.pressed) void togglePlayback();
+  // Mixer page: faders/encoders/buttons drive the Bluebox via CC out. Transport
+  // play stays global so start/stop works from either page.
+  if (surfaceMode === 'mixer') {
+    if (e.kind === 'fader') handleMixerFader(e);
+    else if (e.kind === 'encoder') handleMixerEncoder(e);
+    else if (e.kind === 'button') handleMixerButton(e);
+    else if (e.kind === 'transport' && e.transport === 'play' && e.pressed) void togglePlayback();
     return;
   }
   if (e.kind === 'encoder') {
@@ -495,7 +657,10 @@ function resetState(): void {
   lastPageDownLed = -1;
   lastDisplayMode = null;
   lastLabelSig = '';
-  for (let i = 0; i < 8; i++) faderPickup[i] = null;
+  for (let i = 0; i < 8; i++) {
+    faderPickup[i] = null;
+    mixerFaderPickup[i] = null;
+  }
 }
 
 export function detachXL3Bindings(): void {

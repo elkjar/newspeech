@@ -289,20 +289,53 @@ function writePersistedNativeMix(v: NativeMix): void {
 // reasoning as the native-mix config above.
 const LS_MIDI_CLOCK_OUT = 'newspeech.sequencer.midiClockOutPort';
 
-function readPersistedClockOut(): string | null {
+// Stored as a JSON array of destination port names/ids: Sequence broadcasts the
+// master clock to EVERY listed port (e.g. Mutant Brain for the rack + Bluebox
+// for record-sync). Reads migrate the pre-multi single-string value forward to
+// a one-element list so existing installs keep their clock route.
+function readPersistedClockOut(): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LS_MIDI_CLOCK_OUT);
+    if (!raw) return [];
+    if (raw.startsWith('[')) {
+      const arr: unknown = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter((v): v is string => typeof v === 'string') : [];
+    }
+    return [raw]; // legacy single-port value
+  } catch {
+    return [];
+  }
+}
+
+function writePersistedClockOut(v: string[]): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (v.length) localStorage.setItem(LS_MIDI_CLOCK_OUT, JSON.stringify(v));
+    else localStorage.removeItem(LS_MIDI_CLOCK_OUT);
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
+// The MIDI output the XL3 mixer page emits Bluebox CC to (one device, one port).
+// Rig routing like the clock-out port: persisted across launches, not in .seq.
+const LS_BLUEBOX_PORT = 'newspeech.sequencer.blueboxPort';
+
+function readPersistedBlueboxPort(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
-    return localStorage.getItem(LS_MIDI_CLOCK_OUT) || null;
+    return localStorage.getItem(LS_BLUEBOX_PORT) || null;
   } catch {
     return null;
   }
 }
 
-function writePersistedClockOut(v: string | null): void {
+function writePersistedBlueboxPort(v: string | null): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    if (v) localStorage.setItem(LS_MIDI_CLOCK_OUT, v);
-    else localStorage.removeItem(LS_MIDI_CLOCK_OUT);
+    if (v) localStorage.setItem(LS_BLUEBOX_PORT, v);
+    else localStorage.removeItem(LS_BLUEBOX_PORT);
   } catch {
     /* quota / private mode — silent */
   }
@@ -640,13 +673,17 @@ export interface SequencerState {
   editMode: EditMode;
   screenMode: ScreenMode;
   midiOutDeviceId: string | null;
-  // MIDI clock-out destination (Sequence is the rig clock master). The app
-  // emits 24-PPQN clock + Start/Stop on this one output port; null = clock
-  // off. Persisted to localStorage as rig routing that survives launches —
-  // deliberately NOT baked into .seq files, which carry musical content, not
-  // physical-interface config.
-  midiClockOutPort: string | null;
-  setMidiClockOutPort: (port: string | null) => void;
+  // MIDI clock-out destinations (Sequence is the rig clock master). The app
+  // emits 24-PPQN clock + Start/Stop to EVERY listed output port; empty =
+  // clock off. Multiple destinations let one Start downbeat drive the rack
+  // (Mutant Brain) and arm the Bluebox record-sync at once. Persisted to
+  // localStorage as rig routing that survives launches — deliberately NOT
+  // baked into .seq files, which carry musical content, not interface config.
+  midiClockOutPorts: string[];
+  setMidiClockOutPorts: (ports: string[]) => void;
+  // MIDI output the XL3 mixer page sends Bluebox mixer CC to; null = unset.
+  blueboxPort: string | null;
+  setBlueboxPort: (port: string | null) => void;
   viewSection: TrackSection;
   density: number;
   chaos: number;
@@ -1180,7 +1217,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   screenMode: 'roll',
   focusedTrackId: null,
   midiOutDeviceId: null,
-  midiClockOutPort: readPersistedClockOut(),
+  midiClockOutPorts: readPersistedClockOut(),
+  blueboxPort: readPersistedBlueboxPort(),
   midiRecInputPort: null,
   viewSection: 'drum',
   density: initialMacros.density,
@@ -1312,9 +1350,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   },
   setViewSection: (viewSection) => set({ viewSection }),
   setMidiOutDeviceId: (midiOutDeviceId) => set({ midiOutDeviceId }),
-  setMidiClockOutPort: (midiClockOutPort) => {
-    writePersistedClockOut(midiClockOutPort);
-    set({ midiClockOutPort });
+  setMidiClockOutPorts: (midiClockOutPorts) => {
+    writePersistedClockOut(midiClockOutPorts);
+    set({ midiClockOutPorts });
+  },
+  setBlueboxPort: (blueboxPort) => {
+    writePersistedBlueboxPort(blueboxPort);
+    set({ blueboxPort });
   },
   setTrackSource: (trackId, source) => {
     // Voice changes propagate band-wide: active tracks AND every saved bank

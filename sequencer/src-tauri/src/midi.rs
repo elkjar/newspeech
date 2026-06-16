@@ -297,13 +297,13 @@ pub fn clock_stop_blocking(clock: &ClockState) {
 #[tauri::command]
 pub fn midi_clock_start(
     clock: State<ClockState>,
-    port_name: String,
+    port_names: Vec<String>,
     bpm: f64,
 ) -> Result<(), String> {
     clock
         .bpm_milli
         .store((bpm.max(1.0) * 1000.0) as u32, Ordering::Relaxed);
-    // Restart cleanly if already running (e.g. port changed mid-session).
+    // Restart cleanly if already running (e.g. ports changed mid-session).
     clock_stop_blocking(clock.inner());
 
     let running = clock.running.clone();
@@ -313,33 +313,39 @@ pub fn midi_clock_start(
     let handle = thread::Builder::new()
         .name("midi-clock".into())
         .spawn(move || {
-            let m_out = match MidiOutput::new(CLIENT_NAME) {
-                Ok(o) => o,
-                Err(_) => {
-                    running.store(false, Ordering::Relaxed);
-                    return;
+            // One connection per destination — the same pulse stream is
+            // broadcast to all (e.g. Mutant Brain + Bluebox). midir's connect()
+            // consumes the MidiOutput, so each port needs its own MidiOutput.
+            let mut conns = Vec::new();
+            for name in &port_names {
+                let Ok(m_out) = MidiOutput::new(CLIENT_NAME) else {
+                    continue;
+                };
+                let Some(port) = resolve_output_port(&m_out, name) else {
+                    continue;
+                };
+                if let Ok(c) = m_out.connect(&port, "Sequence clock") {
+                    conns.push(c);
                 }
-            };
-            let Some(port) = resolve_output_port(&m_out, &port_name) else {
+            }
+            // No destination resolved (all unplugged / busy) — nothing to drive.
+            if conns.is_empty() {
                 running.store(false, Ordering::Relaxed);
                 return;
-            };
-            let mut conn = match m_out.connect(&port, "Sequence clock") {
-                Ok(c) => c,
-                Err(_) => {
-                    running.store(false, Ordering::Relaxed);
-                    return;
-                }
-            };
+            }
             // Start: followers reset to bar 1, then the pulse stream begins.
-            let _ = conn.send(&[0xFA]);
+            for c in &mut conns {
+                let _ = c.send(&[0xFA]);
+            }
             let mut next = Instant::now() + pulse_interval(bpm_milli.load(Ordering::Relaxed));
             while running.load(Ordering::Relaxed) {
                 precise_wait_until(next);
                 if !running.load(Ordering::Relaxed) {
                     break;
                 }
-                let _ = conn.send(&[0xF8]);
+                for c in &mut conns {
+                    let _ = c.send(&[0xF8]);
+                }
                 let iv = pulse_interval(bpm_milli.load(Ordering::Relaxed));
                 next += iv;
                 // If we fell behind (system stall / huge tempo drop), resync to
@@ -350,7 +356,9 @@ pub fn midi_clock_start(
                 }
             }
             // Stop: followers freeze their playhead.
-            let _ = conn.send(&[0xFC]);
+            for c in &mut conns {
+                let _ = c.send(&[0xFC]);
+            }
         })
         .map_err(|e| format!("clock thread spawn: {e}"))?;
 
