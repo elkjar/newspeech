@@ -36,6 +36,7 @@ import {
   setTrackRightLed,
   setPageUpLed,
   setPageDownLed,
+  setLedTint,
   configureDisplay,
   setDisplayText,
   type XL3Event,
@@ -260,6 +261,11 @@ function syncButtonLeds(): void {
 }
 
 function syncSurface(): void {
+  // Tint the whole surface per page: yellow on the mixer page, white on the
+  // sequence page — a clear at-a-glance signal for which page you're on. A page
+  // flip calls resetState() before this, so every LED re-sends with the new tint.
+  if (surfaceMode === 'mixer') setLedTint(1, 1, 0);
+  else setLedTint(1, 1, 1);
   // The page button matching the active page is lit (up = sequence, down = mixer).
   const upLed = surfaceMode === 'sequence' ? LED_ON : LED_OFF;
   const downLed = surfaceMode === 'mixer' ? LED_ON : LED_OFF;
@@ -322,6 +328,13 @@ const CTRL_FADER_TARGET = 0x05;
 const CTRL_ENC_TARGET = 0x0d;
 const MACRO_NAMES = ['DENSITY', 'MOTION', 'DRIFT', 'CHAOS', 'TENSION', 'TAPE', 'GLITCH', 'REVERB'];
 
+// Per-control display: single-line name in field 0. The device auto-appends the
+// live value on touch — only in this default arrangement, so we must NOT switch
+// these targets to the 3-line layout (that hides the value).
+function setCtrlLabel(target: number, name: string): void {
+  setDisplayText(target, 0, name);
+}
+
 function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) : s;
 }
@@ -355,8 +368,8 @@ function syncControlLabels(): void {
   if (sig === lastLabelSig) return;
   lastLabelSig = sig;
   if (surfaceMode === 'sequence') {
-    for (let i = 0; i < ENC_COUNT; i++) setDisplayText(CTRL_ENC_TARGET + i, 0, encoderName(s, i));
-    for (let i = 0; i < 8; i++) setDisplayText(CTRL_FADER_TARGET + i, 0, faderName(s, i));
+    for (let i = 0; i < ENC_COUNT; i++) setCtrlLabel(CTRL_ENC_TARGET + i, encoderName(s, i));
+    for (let i = 0; i < 8; i++) setCtrlLabel(CTRL_FADER_TARGET + i, faderName(s, i));
   } else {
     syncMixerLabels();
   }
@@ -438,10 +451,10 @@ function syncMixerLabels(): void {
   for (let i = 0; i < ENC_COUNT; i++) {
     const m = mixerEncoder(i);
     const suffix = m ? (m.kind === 'reverb' ? 'RVB' : m.kind === 'delay' ? 'DLY' : 'PAN') : '';
-    setDisplayText(CTRL_ENC_TARGET + i, 0, m ? `${BLUEBOX_CHANNELS[m.ch]} ${suffix}` : '');
+    setCtrlLabel(CTRL_ENC_TARGET + i, m ? `${BLUEBOX_CHANNELS[m.ch]} ${suffix}` : '');
   }
   for (let i = 0; i < 8; i++) {
-    setDisplayText(CTRL_FADER_TARGET + i, 0, i < BLUEBOX_CH_COUNT ? `${BLUEBOX_CHANNELS[i]} LVL` : '');
+    setCtrlLabel(CTRL_FADER_TARGET + i, i < BLUEBOX_CH_COUNT ? `${BLUEBOX_CHANNELS[i]} LVL` : '');
   }
 }
 

@@ -145,11 +145,24 @@ export function setEncoderValue(index: number, value: number): void {
   sendBytes([ENC_STATUS, ENC_CC_BASE + index, v]);
 }
 
-/** Set any control's LED to a monochrome white level 0..127 (0 = off). */
+// Per-channel tint (0..1) applied to every LED level, so a whole page can be
+// colored without touching call sites. Default white; the mixer page sets it
+// yellow (blue = 0) so you can tell the pages apart at a glance.
+let ledTint: readonly [number, number, number] = [1, 1, 1];
+
+/** Tint every subsequent setLed: e.g. (1,1,0) = yellow, (1,1,1) = white. */
+export function setLedTint(r: number, g: number, b: number): void {
+  ledTint = [r, g, b];
+}
+
+/** Set any control's LED to `level` 0..127 (0 = off), scaled by the active tint. */
 export function setLed(controlIndex: number, level: number): void {
   if (!state) return;
   const v = Math.max(0, Math.min(127, level | 0));
-  sendBytes([...SYSEX_HEADER, ...SYSEX_LED, controlIndex, v, v, v, ...SYSEX_FOOTER]);
+  const r = Math.round(v * ledTint[0]);
+  const g = Math.round(v * ledTint[1]);
+  const b = Math.round(v * ledTint[2]);
+  sendBytes([...SYSEX_HEADER, ...SYSEX_LED, controlIndex, r, g, b, ...SYSEX_FOOTER]);
 }
 
 /** LED for a button by 0..15 index (maps to control index = CC). */
