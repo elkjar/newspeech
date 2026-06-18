@@ -8,13 +8,23 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   useVoiceEditsStore,
+  DEFAULT_AMP_ENV,
+  DEFAULT_FILTER_LFO,
+  LFO_DIVISIONS,
+  lfoDivisionToHz,
   type LoopMode,
   type FilterType,
+  type AmpEnvEdit,
+  type FilterLfoEdit,
+  type LfoShape,
 } from '../instruments/voiceEditsStore';
+import { useSequencerStore } from '../state/store';
 import { voiceLabel } from '../audio/voices';
 import { monitorNote, monitorRelease } from '../audio/monitor';
 import { setMonitorVoice, getMonitorPlayhead } from '../audio/nativeEngine';
 import { Waveform } from './Waveform';
+import { EnvelopeGraph } from './EnvelopeGraph';
+import { LfoShapePlot } from './LfoShapePlot';
 import { Knob } from './Knob';
 import type { Track } from '../state/store';
 
@@ -36,6 +46,9 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
   const previewId = useRef(0);
   const pollRef = useRef<number | null>(null);
   const [playhead, setPlayhead] = useState<number | null>(null);
+  // Live transport tempo for the LFO division → Hz hint. Must be read here
+  // (with the other hooks) — never after the early return below.
+  const bpm = useSequencerStore((s) => s.bpm);
 
   useEffect(() => {
     if (!open) return;
@@ -73,6 +86,15 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
   const filterType = edit?.filterType ?? 'off';
   const cutoff = edit?.cutoff ?? 1;
   const resonance = edit?.resonance ?? 0;
+  const ampEnv = edit?.ampEnv;
+  const envOn = ampEnv?.on ?? false;
+  const setEnv = (patch: Partial<AmpEnvEdit>) =>
+    setVoiceEdit(voiceId, { ampEnv: { ...(ampEnv ?? DEFAULT_AMP_ENV), ...patch } });
+  const filterLfo = edit?.filterLfo;
+  const lfoOn = filterLfo?.on ?? false;
+  const lfo = filterLfo ?? DEFAULT_FILTER_LFO;
+  const setLfo = (patch: Partial<FilterLfoEdit>) =>
+    setVoiceEdit(voiceId, { filterLfo: { ...(filterLfo ?? DEFAULT_FILTER_LFO), ...patch } });
 
   const startPreview = () => {
     const id = ++previewId.current;
@@ -191,8 +213,112 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
               display={`${(resonance * 100).toFixed(0)}%`}
               onChange={(v) => setVoiceEdit(voiceId, { resonance: v })}
             />
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-[10px] uppercase tracking-widest text-white/50 w-14">
+                cutoff lfo
+              </span>
+              <button
+                type="button"
+                onClick={() => setLfo({ on: !lfoOn })}
+                className={`text-[10px] uppercase tracking-widest transition-colors ${
+                  lfoOn ? 'text-white' : 'text-white/40 hover:text-white/70'
+                }`}
+                title="modulate the cutoff with a free-running LFO"
+              >
+                {lfoOn ? '● on' : '○ off'}
+              </button>
+            </div>
+            {lfoOn && (
+              <>
+                {/* shape + speed option stacks on the left, visualizer on the
+                    right at matching height (items-stretch). */}
+                <div className="flex items-stretch gap-2 mb-1">
+                  <div className="flex gap-1">
+                    <div className="flex flex-col gap-1">
+                      {(['revsaw', 'saw', 'tri', 'square', 'random'] as LfoShape[]).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setLfo({ shape: s })}
+                          className={`w-12 flex-1 px-1 py-1 text-[9px] uppercase tracking-widest border transition-colors ${
+                            lfo.shape === s
+                              ? 'border-white text-white'
+                              : 'border-white/15 text-white/40 hover:text-white/70'
+                          }`}
+                        >
+                          {s === 'revsaw' ? 'rsaw' : s === 'square' ? 'sqr' : s === 'random' ? 'rnd' : s}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {LFO_DIVISIONS.map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setLfo({ division: d })}
+                          className={`w-12 flex-1 px-1 py-1 text-[9px] tabular-nums tracking-widest border transition-colors ${
+                            lfo.division === d
+                              ? 'border-white text-white'
+                              : 'border-white/15 text-white/40 hover:text-white/70'
+                          }`}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <LfoShapePlot
+                      shape={lfo.shape}
+                      rateHz={lfoDivisionToHz(lfo.division, bpm)}
+                      depth={lfo.depth}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end text-[9px] tabular-nums text-white/40 mb-2 pr-1">
+                  {lfo.division} · ≈{lfoDivisionToHz(lfo.division, bpm).toFixed(1)} Hz
+                </div>
+                <KnobField
+                  label="depth"
+                  value={lfo.depth}
+                  display={`${(lfo.depth * 100).toFixed(0)}%`}
+                  onChange={(v) => setLfo({ depth: v })}
+                />
+              </>
+            )}
           </>
         )}
+
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-[10px] uppercase tracking-widest text-white/50 w-14">amp env</span>
+          <button
+            type="button"
+            onClick={() => setEnv({ on: !envOn })}
+            className={`text-[10px] uppercase tracking-widest transition-colors ${
+              envOn ? 'text-white' : 'text-white/40 hover:text-white/70'
+            }`}
+            title="per-instrument amplitude envelope — overrides the manifest envelope"
+          >
+            {envOn ? '● on' : '○ off'}
+          </button>
+        </div>
+        {envOn &&
+          (() => {
+            const e = ampEnv ?? DEFAULT_AMP_ENV;
+            const ms = (s: number) => `${Math.round(s * 1000)}`;
+            return (
+              <>
+                <EnvelopeGraph env={e} onChange={(patch) => setEnv(patch)} />
+                <div className="flex justify-between text-[9px] uppercase tracking-widest text-white/40 tabular-nums mb-3 px-1">
+                  <span>dly {ms(e.delay)}</span>
+                  <span>atk {ms(e.attack)}</span>
+                  <span>dcy {ms(e.decay)}</span>
+                  <span>sus {(e.sustain * 100).toFixed(0)}%</span>
+                  <span>rel {ms(e.release)}</span>
+                </div>
+              </>
+            );
+          })()}
 
         <div className="flex items-center justify-between mt-5">
           <button

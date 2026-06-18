@@ -12,6 +12,8 @@
 // them. Later slices extend VoiceEdit with filter, granular.
 
 import { create } from 'zustand';
+import { voiceEnvelope } from '../audio/voices';
+import { useSequencerStore } from '../state/store';
 
 const LS_VOICE_EDITS = 'newspeech.sequencer.voiceedits';
 
@@ -38,6 +40,82 @@ export const FILTER_TYPE_CODE: Record<FilterType, number> = {
   bp: 3,
 };
 
+// Per-instrument amplitude envelope (editor B2). A DADSR — the leading
+// `delay` mirrors the `.pti` envelope's delay stage (silent gap before
+// attack). Times are seconds for our engine; the .pti export converts to
+// integer ms. `on` gates it: when true it OVERRIDES the manifest envelope,
+// when false the voice keeps its manifest/flat behavior (values retained so
+// toggling off doesn't lose the shape).
+export interface AmpEnvEdit {
+  on: boolean;
+  delay: number; // seconds before attack begins (>= 0)
+  attack: number; // seconds
+  decay: number; // seconds
+  sustain: number; // 0..1 fraction of peak
+  release: number; // seconds
+}
+
+export const DEFAULT_AMP_ENV: AmpEnvEdit = {
+  on: true,
+  delay: 0,
+  attack: 0.005,
+  decay: 0.12,
+  sustain: 0.7,
+  release: 0.15,
+};
+
+// Per-instrument filter LFO (editor B2). Tempo-synced cyclic modulation of the
+// instrument filter cutoff: the rate is a musical division (one cycle per that
+// note value), so it locks to the transport — matching the Tracker's synced
+// LFO. The engine still takes a plain Hz rate; we derive it from BPM × division
+// at trigger time (phase resets per note). shape codes match `.pti` LFO_SHAPE.
+export type LfoShape = 'revsaw' | 'saw' | 'tri' | 'square' | 'random';
+
+export const LFO_SHAPE_CODE: Record<LfoShape, number> = {
+  revsaw: 0,
+  saw: 1,
+  tri: 2,
+  square: 3,
+  random: 4,
+};
+
+// One LFO cycle per this note value. Maps by name to the `.pti` LFO_SPEED
+// divisions on export (exact, no Hz guess). Beats-per-cycle drives the local
+// Hz derivation (4/4 assumed: a 1/4 = one beat).
+export type LfoDivision = '1/1' | '1/2' | '1/4' | '1/8' | '1/16' | '1/32';
+
+export const LFO_DIVISIONS: LfoDivision[] = ['1/1', '1/2', '1/4', '1/8', '1/16', '1/32'];
+
+const LFO_DIVISION_BEATS: Record<LfoDivision, number> = {
+  '1/1': 4,
+  '1/2': 2,
+  '1/4': 1,
+  '1/8': 0.5,
+  '1/16': 0.25,
+  '1/32': 0.125,
+};
+
+// Hz for a division at a given tempo, clamped to a sane engine range.
+export function lfoDivisionToHz(division: LfoDivision, bpm: number): number {
+  const beats = LFO_DIVISION_BEATS[division] ?? 1;
+  const hz = bpm / 60 / beats;
+  return Math.max(0.01, Math.min(40, hz));
+}
+
+export interface FilterLfoEdit {
+  on: boolean;
+  shape: LfoShape;
+  division: LfoDivision; // tempo-synced rate (one cycle per this note value)
+  depth: number; // 0..1, bipolar sweep of cutoff around its base
+}
+
+export const DEFAULT_FILTER_LFO: FilterLfoEdit = {
+  on: true,
+  shape: 'tri',
+  division: '1/4',
+  depth: 0.4,
+};
+
 export interface VoiceEdit {
   gain?: number; // multiplier on the manifest gain; default 1 (unchanged)
   tune?: number; // semitones, -24..24; default 0
@@ -47,6 +125,36 @@ export interface VoiceEdit {
   filterType?: FilterType; // per-instrument filter; default 'off'
   cutoff?: number; // filter cutoff, normalized 0..1; default 1 (fully open)
   resonance?: number; // filter resonance, normalized 0..1; default 0
+  filterLfo?: FilterLfoEdit; // cutoff LFO; only meaningful when filterType != off
+  ampEnv?: AmpEnvEdit; // per-instrument amplitude DADSR; overrides manifest when on
+}
+
+// Resolved amplitude envelope for a voice: the authored edit (when enabled)
+// overrides the manifest envelope; otherwise the manifest value passes through
+// with delay 0. Undefined = no envelope at all (flat-gain voice, e.g. a drum
+// with no authored env) — the engine then plays at flat gain as before.
+export interface ResolvedEnvelope {
+  delay: number;
+  attack: number;
+  decay?: number;
+  sustain?: number;
+  release: number;
+}
+
+export function resolveVoiceEnvelope(voiceId: string): ResolvedEnvelope | undefined {
+  const e = useVoiceEditsStore.getState().voiceEdits[voiceId]?.ampEnv;
+  if (e?.on) {
+    return {
+      delay: Math.max(0, e.delay),
+      attack: e.attack,
+      decay: e.decay,
+      sustain: e.sustain,
+      release: e.release,
+    };
+  }
+  const m = voiceEnvelope(voiceId);
+  if (!m) return undefined;
+  return { delay: 0, attack: m.attack, decay: m.decay, sustain: m.sustain, release: m.release };
 }
 
 interface VoiceEditsState {
@@ -140,5 +248,28 @@ export function voiceFilter(voiceId: string): {
     type: FILTER_TYPE_CODE[e?.filterType ?? 'off'],
     cutoff: e?.cutoff ?? 1,
     resonance: e?.resonance ?? 0,
+  };
+}
+
+// Cutoff LFO, resolved for the audio path. Only active when the filter itself
+// is on (it has nothing to modulate otherwise). shape is the native/.pti code;
+// rateHz free-running; depth 0..1. Returns off (depth 0) when disabled.
+export function voiceFilterLfo(voiceId: string): {
+  shape: number;
+  rateHz: number;
+  depth: number;
+  division: LfoDivision;
+} {
+  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const lfo = e?.filterLfo;
+  const filterOn = (e?.filterType ?? 'off') !== 'off';
+  const division = lfo?.division ?? '1/4';
+  if (!lfo?.on || !filterOn) return { shape: 0, rateHz: 0, depth: 0, division };
+  const bpm = useSequencerStore.getState().bpm || 120;
+  return {
+    shape: LFO_SHAPE_CODE[lfo.shape],
+    rateHz: lfoDivisionToHz(division, bpm),
+    depth: Math.max(0, Math.min(1, lfo.depth)),
+    division,
   };
 }

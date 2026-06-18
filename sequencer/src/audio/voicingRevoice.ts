@@ -53,6 +53,7 @@ export interface SoundingChord {
   section: number;
   isTexture: boolean;
   env?: {
+    delay?: number;
     attack?: number;
     decay?: number;
     sustain?: number;

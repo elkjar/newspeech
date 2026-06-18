@@ -280,6 +280,81 @@ sweep that note (re-press to hear the change). Live cutoff sweep would need per-
 (essentially the automations layer / Phase B2-3); deferred. `tsc` + `cargo check` clean. Reload the app
 (engine rebuild). NEXT in Phase B: per-instrument **envelope + LFO** (the `automations[]` layer).
 
+## B2 (envelope) — per-instrument amplitude DADSR — BUILT 2026-06-18 (pending app test)
+
+First slice of the modulation/automation layer: a per-instrument **amplitude envelope** with a
+**DADSR** shape — the leading `delay` mirrors the `.pti` envelope's delay stage (which, notably, the
+Tracker's *hardware UI doesn't expose* — Chris's catch; see the probe below).
+
+- **Store:** `VoiceEdit.ampEnv: { on, delay, attack, decay, sustain, release }` (seconds; `DEFAULT_AMP_ENV`
+  for the toggle-on shape). `resolveVoiceEnvelope(voiceId)` returns the authored env when `on`, else the
+  manifest envelope (delay 0), else undefined (flat voice). This **overrides** the manifest envelope
+  globally.
+- **Call sites:** every `voiceEnvelope(...)` trigger site (App.tsx arp + main + chord-register;
+  monitor.ts note + chord + release-fade) now calls `resolveVoiceEnvelope`, and each trigger forwards
+  `envelopeDelay`. `triggerSample`/`audio_trigger_sample` gained `envelopeDelay`/`envelope_delay`.
+- **Engine (`audio.rs`):** `EnvelopeSpec` + `Voice` gained `delay`; `claim_voice_slot` converts to
+  `env_delay_samples`; the envelope state machine got a **leading delay stage** (level 0 until
+  `delay_end`, then attack ramps from there). `hold_end` stays the absolute (gate-derived) release
+  start — so a delay longer than the gate yields a short/silent note. **The sample clock advances
+  during the delay** (position += rate runs regardless of env), so a delayed amp env = silence, then
+  the sample heard *from `delay` seconds in* — standard DADSR behavior.
+- **Export:** `automations[0]` (Volume, envelope mode) written from the resolved env — `delay/attack/
+  decay/release` as integer **ms**, `sustain` 0..1, `amount` 1. (createInstrument already enables
+  slot 0.) Flat voices keep the lib default.
+- **Editor:** "amp env" ○/● toggle + delay/attack/decay/sustain/release sliders (ms / %).
+
+### The delay probe (settles Chris's hardware-UI-vs-format question)
+
+`delay` is in the `.pti` format but **not on the Tracker's envelope page**. Open question: does the
+firmware *honor* it on playback (hidden-but-live), or ignore it (vestigial)? **Test:** author an amp
+env with `delay` cranked (e.g. 500ms) on a **sustained / long sample** (NOT a short one-shot — the
+sample clock runs during the delay, so a short hit finishes before the delay ends → silent), export,
+load on the Tracker, trigger. Audible gap before the sound = firmware honors it (the interesting case —
+a param the device can play but can't author). Re-saving on-device and reading back tells us if it
+round-trips. Either way, our local voice honors `delay`.
+
+`tsc` + `cargo check` clean. Reload the app (engine rebuild).
+
+## B2 (cutoff LFO) — per-instrument filter LFO — BUILT 2026-06-18 (pending app test)
+
+A free-running LFO modulating the per-instrument filter cutoff — the first LFO primitive + the live
+per-voice cutoff-modulation path (which a filter *envelope* will reuse). Only meaningful with the
+filter on (it modulates that cutoff).
+
+- **Store:** `VoiceEdit.filterLfo: { on, shape, division, depth }` (shape `revsaw|saw|tri|square|random`
+  = `.pti` LFO_SHAPE codes; **`division`** = a tempo-synced musical rate `1/1…1/32`, one cycle per that
+  note value; depth 0..1 bipolar). `voiceFilterLfo()` derives the engine Hz via
+  `lfoDivisionToHz(division, BPM)` (reads the live transport BPM) and returns it + the division. Off
+  (depth 0) unless both the LFO and filter are on.
+- **Plumbing:** `pickNativeSample` → `lfoShape/lfoRateHz/lfoDepth` → 6 trigger sites → `triggerSample`
+  → `audio_trigger_sample`. The engine stays Hz-based — only the *source* of the Hz changed (BPM ×
+  division at trigger), so the tempo-sync is a pure JS-side derivation; no engine change.
+- **Engine:** `Voice` carries the LFO + the base filter params (`inst_filter_type/inst_cutoff_norm/
+  inst_q`) so it can **recompute** the biquad. Per sample the LFO phase advances (`lfo_eval` →
+  revsaw/saw/tri/square/random S&H); every `LFO_RECOMPUTE_SAMPLES` (32) the coefficients are rebuilt
+  from `cutoff_norm + depth × lfo` (coeffs only — the delay line keeps running, click-free). Gated by
+  `lfo_on` (filter on + depth/rate > 0); zero cost otherwise. This is also the live-cutoff path B1
+  lacked.
+- **Export:** `automations[2]` (Cutoff), LFO mode — shape 1:1, depth → amount, **division → LFO_SPEED
+  by name** (`DIVISION_TO_SPEED`: `1/4`→`S1_4`, etc.). Now **exact**, not a Hz guess — both sides are
+  "one cycle per this note value".
+- **Editor:** under the filter block — ○/● toggle, a **live shape plot** (`LfoShapePlot.tsx`, same
+  visual language as the global LFO panel's WaveformPlot — gridlines + bold one-cycle curve + phase dot
+  at the synced rate, amplitude scaled by depth; built fresh rather than reusing that component, which
+  is bound to the global LFO store + sine/tri/saw/square set), shape selector, **rate as a division
+  selector** (`1/1…1/32`) with a live `≈X.X Hz` hint at the current BPM, depth knob.
+
+**Tempo-synced (updated 2026-06-18 per Chris — faithfulness).** Rate is a musical division locked to
+the transport; the local Hz is derived from BPM × division at trigger, so it matches the Tracker's
+synced LFO and the `.pti` speed transfers by name. **Caveats:** (1) rate is baked at trigger — a BPM
+change mid-note won't retune that note's LFO; (2) phase resets per note (note-synced), not locked to
+absolute bar position — true transport-phase-lock would need the engine to know song position (a later
+refinement if cross-voice phase alignment ever matters).
+
+`tsc` + `cargo check` clean. Reload the app. NEXT in B: a **filter envelope** (cutoff swept by a DADSR,
+reusing this live-cutoff path + the EnvelopeGraph UI) and **pitch** modulation.
+
 ## Phase A — execution plan (mapped 2026-06-18, ready to build)
 
 Slice order within Phase A (smallest audible first; build-and-test each with Chris):

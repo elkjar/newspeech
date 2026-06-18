@@ -17,6 +17,7 @@ import {
   voiceGainOverride,
   voiceTrim,
   voiceFilter,
+  voiceFilterLfo,
 } from '../instruments/voiceEditsStore';
 
 // Slice-2 pad pan motion. Per-tone slow LFO sweeps the panner around its
@@ -595,6 +596,9 @@ class SamplePlayer {
     filterType: number;
     cutoff: number;
     resonance: number;
+    lfoShape: number;
+    lfoRateHz: number;
+    lfoDepth: number;
   } | null {
     const data = this.voices.get(voice);
     if (!data || data.banks.length === 0) return null;
@@ -631,6 +635,8 @@ class SamplePlayer {
     const trim = voiceTrim(voice);
     // Per-instrument filter (B1). type 0 = off (engine bypasses).
     const filter = voiceFilter(voice);
+    // Cutoff LFO (B2). depth 0 = off.
+    const lfo = voiceFilterLfo(voice);
     return {
       path,
       pitch,
@@ -641,6 +647,9 @@ class SamplePlayer {
       filterType: filter.type,
       cutoff: filter.cutoff,
       resonance: filter.resonance,
+      lfoShape: lfo.shape,
+      lfoRateHz: lfo.rateHz,
+      lfoDepth: lfo.depth,
     };
   }
 

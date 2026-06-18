@@ -346,6 +346,9 @@ export async function triggerSample(
     // and deactivates the voice once the release tail completes.
     // Skipping any of attack/release/hold leaves the voice on flat
     // gain (drums, leads without an envelope config).
+    // Pre-attack delay (seconds) — the DADSR delay stage; the voice stays
+    // silent for this long before the attack ramp. Default 0 = plain ADSR.
+    envelopeDelay?: number;
     envelopeAttack?: number;
     envelopeDecay?: number;
     envelopeSustain?: number;
@@ -367,6 +370,12 @@ export async function triggerSample(
     filterType?: number;
     cutoff?: number;
     resonance?: number;
+    // Per-instrument cutoff LFO (editor B2). lfoShape 0 revsaw · 1 saw · 2 tri
+    // · 3 square · 4 random; rate in Hz (free-running); depth 0..1 bipolar.
+    // depth 0 = off.
+    lfoShape?: number;
+    lfoRateHz?: number;
+    lfoDepth?: number;
   } = {},
 ): Promise<void> {
   await invoke<void>('audio_trigger_sample', {
@@ -380,6 +389,7 @@ export async function triggerSample(
     monophonic: opts.monophonic ?? null,
     section: opts.section ?? null,
     isTexture: opts.isTexture ?? null,
+    envelopeDelay: opts.envelopeDelay ?? null,
     envelopeAttack: opts.envelopeAttack ?? null,
     envelopeDecay: opts.envelopeDecay ?? null,
     envelopeSustain: opts.envelopeSustain ?? null,
@@ -393,6 +403,9 @@ export async function triggerSample(
     instFilterType: opts.filterType ?? null,
     instCutoff: opts.cutoff ?? null,
     instResonance: opts.resonance ?? null,
+    lfoShape: opts.lfoShape ?? null,
+    lfoRateHz: opts.lfoRateHz ?? null,
+    lfoDepth: opts.lfoDepth ?? null,
   });
 }
 

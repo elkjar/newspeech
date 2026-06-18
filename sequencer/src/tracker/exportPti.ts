@@ -11,6 +11,8 @@ import Tracker, {
   AudioUtil,
   InstrumentPlayMode,
   InstrumentFilterType,
+  LFO_SHAPE,
+  LFO_SPEED,
 } from '@polyend/tracker-lib';
 import { invoke } from '@tauri-apps/api/core';
 import { getRegisteredKits } from '../instruments/manifestRegistry';
@@ -19,7 +21,21 @@ import {
   voiceTune,
   voiceTrim,
   voiceFilter,
+  voiceFilterLfo,
+  resolveVoiceEnvelope,
+  type LfoDivision,
 } from '../instruments/voiceEditsStore';
+
+// Our tempo-synced division → the Tracker's LFO_SPEED, matched by name (both
+// are "one cycle per this note value"), so the synced rate transfers exactly.
+const DIVISION_TO_SPEED: Record<LfoDivision, LFO_SPEED> = {
+  '1/1': LFO_SPEED.S1,
+  '1/2': LFO_SPEED.S1_2,
+  '1/4': LFO_SPEED.S1_4,
+  '1/8': LFO_SPEED.S1_8,
+  '1/16': LFO_SPEED.S1_16,
+  '1/32': LFO_SPEED.S1_32,
+};
 
 const PTI_MAX_RESONANCE = 4.3; // .pti resonance ceiling (our 0..1 maps onto it)
 
@@ -147,6 +163,36 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
             : InstrumentFilterType.BandPass;
       inst.cutoff = Math.max(0, Math.min(1, filter.cutoff));
       inst.resonance = Math.max(0, Math.min(1, filter.resonance)) * PTI_MAX_RESONANCE;
+    }
+    // Cutoff LFO → automations[2] (Cutoff), LFO mode. shape codes match
+    // LFO_SHAPE 1:1; depth → amount; rate → nearest synced division
+    // (approximate — see hzToLfoSpeed). Only when filter + LFO are active.
+    const lfo = voiceFilterLfo(voiceId);
+    if (lfo.depth > 0 && inst.automations[2]) {
+      inst.automations[2].enabled = true;
+      inst.automations[2].isLFO = true;
+      inst.automations[2].lfo = {
+        shape: lfo.shape as LFO_SHAPE,
+        speed: DIVISION_TO_SPEED[lfo.division],
+        amount: Math.max(0, Math.min(1, lfo.depth)),
+      };
+    }
+    // Amplitude envelope → automations[0] (Volume), envelope mode. Times are
+    // integer ms in the .pti; sustain is 0..1; amount 1 = full depth. Only
+    // written when the voice actually has an envelope (authored edit or
+    // manifest); flat voices keep createInstrument's default.
+    const env = resolveVoiceEnvelope(voiceId);
+    if (env && inst.automations[0]) {
+      inst.automations[0].enabled = true;
+      inst.automations[0].isLFO = false;
+      inst.automations[0].envelope = {
+        amount: 1,
+        delay: Math.max(0, Math.round(env.delay * 1000)),
+        attack: Math.max(0, Math.round(env.attack * 1000)),
+        decay: Math.max(0, Math.round((env.decay ?? 0) * 1000)),
+        sustain: Math.max(0, Math.min(1, env.sustain ?? 1)),
+        release: Math.max(0, Math.round(env.release * 1000)),
+      };
     }
     const name = sanitizeName(resolved.label);
     inst.sample.filename = name;

@@ -19,7 +19,8 @@ import {
 import { scheduler } from './audio/scheduler';
 import { emitClockForStep, setClockBpm } from './audio/midiClock';
 import { samplePlayer } from './audio/samplePlayer';
-import { voiceEnvelope, voiceRole } from './audio/voices';
+import { voiceRole } from './audio/voices';
+import { resolveVoiceEnvelope } from './instruments/voiceEditsStore';
 
 // TrackSection string → native section code (matches SECTION_* in
 // `src-tauri/src/audio.rs`). 0 = none (no splits write), 1 = drum,
@@ -640,7 +641,7 @@ export function App() {
                     ev.midi !== undefined ? ev.midi + interval : undefined;
                   const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
                   if (!pick) continue;
-                  const arpEnv = voiceEnvelope(ev.voice);
+                  const arpEnv = resolveVoiceEnvelope(ev.voice);
                   void triggerSample(pick.path, {
                     gain: ev.velocity * pick.voiceGain * trackGain,
                     pan,
@@ -657,6 +658,7 @@ export function App() {
                     isTexture,
                     // Per-arp-tone hold = sub-step duration × gate.
                     // Envelope follows the voice's configured shape.
+                    envelopeDelay: arpEnv?.delay,
                     envelopeAttack: arpEnv?.attack,
                     envelopeDecay: arpEnv?.decay,
                     envelopeSustain: arpEnv?.sustain,
@@ -668,6 +670,9 @@ export function App() {
                     filterType: pick.filterType,
                     cutoff: pick.cutoff,
                     resonance: pick.resonance,
+                    lfoShape: pick.lfoShape,
+                    lfoRateHz: pick.lfoRateHz,
+                    lfoDepth: pick.lfoDepth,
                   });
                 }
               } else {
@@ -714,8 +719,10 @@ export function App() {
               // stay one-shots (full sample); voices with an explicit envelope
               // keep it.
               const playEnv =
-                voiceEnvelope(ev.voice) ??
-                (ev.section === 'melodic' ? { attack: 0.003, release: 0.05 } : undefined);
+                resolveVoiceEnvelope(ev.voice) ??
+                (ev.section === 'melodic'
+                  ? { delay: 0, attack: 0.003, release: 0.05 }
+                  : undefined);
               const holdSecs = playEnv ? ev.gate * ev.stepDuration : undefined;
               // Sustaining chord-master triggers carry a `revoice` context — tag
               // each chord tone with a note_id and register the sounding chord so
@@ -749,6 +756,7 @@ export function App() {
                   // web `samplePlayer.trigger` envelope). Voices without
                   // an envelope config (drums, leads) pass nothing here
                   // and run at flat gain in native.
+                  envelopeDelay: playEnv?.delay,
                   envelopeAttack: playEnv?.attack,
                   envelopeDecay: playEnv?.decay,
                   envelopeSustain: playEnv?.sustain,
@@ -761,6 +769,9 @@ export function App() {
                   filterType: pick.filterType,
                   cutoff: pick.cutoff,
                   resonance: pick.resonance,
+                  lfoShape: pick.lfoShape,
+                  lfoRateHz: pick.lfoRateHz,
+                  lfoDepth: pick.lfoDepth,
                 });
                 if (noteId !== undefined && targetMidi !== undefined) {
                   tones.push({ noteId, midi: targetMidi });
@@ -785,6 +796,7 @@ export function App() {
                   isTexture,
                   env: playEnv
                     ? {
+                        delay: playEnv.delay,
                         attack: playEnv.attack,
                         decay: playEnv.decay,
                         sustain: playEnv.sustain,
@@ -870,6 +882,7 @@ export function App() {
             monophonic: false,
             section: chord.section,
             isTexture: chord.isTexture,
+            envelopeDelay: chord.env?.delay,
             envelopeAttack: chord.env?.attack,
             envelopeDecay: chord.env?.decay,
             envelopeSustain: chord.env?.sustain,
@@ -882,6 +895,9 @@ export function App() {
             filterType: pick.filterType,
             cutoff: pick.cutoff,
             resonance: pick.resonance,
+            lfoShape: pick.lfoShape,
+            lfoRateHz: pick.lfoRateHz,
+            lfoDepth: pick.lfoDepth,
           });
           nextTones.push({ noteId, midi });
         }

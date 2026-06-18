@@ -23,7 +23,7 @@
 import { isNativeAudioAvailable, triggerSample, releaseNote } from './nativeEngine';
 import { getAudioContext } from './audioContext';
 import { samplePlayer } from './samplePlayer';
-import { voiceEnvelope } from './voices';
+import { resolveVoiceEnvelope } from '../instruments/voiceEditsStore';
 import { resolveDeviceId, sendMIDINote, sendMIDINoteOn, sendMIDINoteOff } from './midiOut';
 import { useSequencerStore, type Track } from '../state/store';
 
@@ -75,7 +75,7 @@ export function monitorNote(
   }
   if (track.source.kind !== 'voice') return;
   const voice = track.source.id;
-  const env = voiceEnvelope(voice);
+  const env = resolveVoiceEnvelope(voice);
 
   if (isNativeAudioAvailable()) {
     const pick = samplePlayer.pickNativeSample(voice, soundingMidi);
@@ -92,6 +92,7 @@ export function monitorNote(
       delaySecs: 0,
       monophonic: track.monophonic === true,
       section: 0,
+      envelopeDelay: env?.delay,
       envelopeAttack: env?.attack,
       envelopeDecay: env?.decay,
       envelopeSustain: env?.sustain,
@@ -107,6 +108,9 @@ export function monitorNote(
       filterType: pick.filterType,
       cutoff: pick.cutoff,
       resonance: pick.resonance,
+      lfoShape: pick.lfoShape,
+      lfoRateHz: pick.lfoRateHz,
+      lfoDepth: pick.lfoDepth,
     });
     return;
   }
@@ -163,7 +167,7 @@ export function monitorChord(
   }
   if (track.source.kind !== 'voice') return;
   const voice = track.source.id;
-  const env = voiceEnvelope(voice);
+  const env = resolveVoiceEnvelope(voice);
 
   if (isNativeAudioAvailable()) {
     const out = track.output;
@@ -181,6 +185,7 @@ export function monitorChord(
         delaySecs: 0,
         monophonic: false,
         section: 0,
+        envelopeDelay: env?.delay,
         envelopeAttack: env?.attack,
         envelopeDecay: env?.decay,
         envelopeSustain: env?.sustain,
@@ -195,6 +200,9 @@ export function monitorChord(
         filterType: pick.filterType,
         cutoff: pick.cutoff,
         resonance: pick.resonance,
+        lfoShape: pick.lfoShape,
+        lfoRateHz: pick.lfoRateHz,
+        lfoDepth: pick.lfoDepth,
       });
     });
     return;
@@ -270,6 +278,9 @@ export function monitorDrum(track: Track, velocity: number): void {
       filterType: pick.filterType,
       cutoff: pick.cutoff,
       resonance: pick.resonance,
+      lfoShape: pick.lfoShape,
+      lfoRateHz: pick.lfoRateHz,
+      lfoDepth: pick.lfoDepth,
     });
     return;
   }
@@ -305,6 +316,6 @@ export function monitorRelease(track: Track, noteId: number): void {
   }
   if (!isNativeAudioAvailable()) return;
   if (track.source.kind !== 'voice') return;
-  const release = voiceEnvelope(track.source.id)?.release;
+  const release = resolveVoiceEnvelope(track.source.id)?.release;
   void releaseNote(noteId, release);
 }

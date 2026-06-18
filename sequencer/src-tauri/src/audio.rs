@@ -1331,6 +1331,26 @@ fn rand_unit(state: &mut u32) -> f32 {
   (xorshift32(state) as f32) / (u32::MAX as f32 + 1.0)
 }
 
+// New bipolar (-1..1) sample for the Random LFO shape's sample-&-hold.
+#[inline]
+fn lfo_rand_bipolar(state: &mut u32) -> f32 {
+  rand_unit(state) * 2.0 - 1.0
+}
+
+// Cutoff-LFO shape evaluation, bipolar (-1..1). phase ∈ [0,1). Random returns
+// the held value (refreshed on phase wrap by the caller). 0 revsaw · 1 saw ·
+// 2 tri · 3 square · 4 random.
+#[inline]
+fn lfo_eval(shape: u8, phase: f32, rand_val: f32) -> f32 {
+  match shape {
+    0 => 1.0 - 2.0 * phase,            // revsaw: 1 → -1
+    1 => 2.0 * phase - 1.0,            // saw:   -1 → 1
+    2 => 1.0 - 4.0 * (phase - 0.5).abs(), // triangle: peak at center
+    3 => if phase < 0.5 { 1.0 } else { -1.0 }, // square
+    _ => rand_val,                     // random: sample & hold
+  }
+}
+
 impl TapeBuffer {
   fn new(sample_rate: u32) -> Self {
     let len = (sample_rate as usize) * 8;
@@ -2822,6 +2842,11 @@ static MONITOR_POS: AtomicU32 = AtomicU32::new(0); // f32 bits; <0 = none
 // short loops still crossfade.
 const LOOP_XFADE_SECS: f32 = 0.02;
 
+// Cutoff-LFO coefficient recompute interval (samples). The LFO phase advances
+// every sample, but recomputing the biquad every ~32 samples (~0.7ms at 44.1k)
+// is smooth enough and keeps the per-sample cost down.
+const LFO_RECOMPUTE_SAMPLES: u32 = 32;
+
 #[derive(Clone)]
 struct Voice {
   sample: Option<Arc<SampleData>>,
@@ -2904,6 +2929,9 @@ struct Voice {
   env_active: bool,
   env_level: f32,
   env_elapsed: u32,
+  // DADSR pre-attack delay: voice holds at level 0 for this many samples
+  // (counted from env start) before the attack ramp begins. 0 = plain ADSR.
+  env_delay_samples: u32,
   env_attack_samples: u32,
   env_decay_samples: u32,
   env_hold_samples: u32,
@@ -2934,6 +2962,22 @@ struct Voice {
   inst_filter_on: bool,
   inst_filter_l: Biquad,
   inst_filter_r: Biquad,
+  // Cutoff LFO (editor B2). When lfo_on, the instrument filter's coefficients
+  // are recomputed every LFO_RECOMPUTE samples from inst_cutoff_norm offset by
+  // the LFO, so the cutoff sweeps live. Base params (type/cutoff/q) are kept
+  // so the recompute has something to modulate around. lfo_phase advances per
+  // sample; lfo_rand holds the sample-&-hold value for the Random shape.
+  inst_filter_type: u8,
+  inst_cutoff_norm: f32,
+  inst_q: f32,
+  lfo_on: bool,
+  lfo_shape: u8,
+  lfo_rate_hz: f32,
+  lfo_depth: f32,
+  lfo_phase: f32,
+  lfo_recompute_ctr: u32,
+  lfo_rand: f32,
+  lfo_rng: u32,
 }
 
 impl Default for Voice {
@@ -2959,6 +3003,7 @@ impl Default for Voice {
       env_active: false,
       env_level: 1.0,
       env_elapsed: 0,
+      env_delay_samples: 0,
       env_attack_samples: 0,
       env_decay_samples: 0,
       env_hold_samples: 0,
@@ -2977,6 +3022,17 @@ impl Default for Voice {
       inst_filter_on: false,
       inst_filter_l: Biquad::new_unity(),
       inst_filter_r: Biquad::new_unity(),
+      inst_filter_type: 0,
+      inst_cutoff_norm: 1.0,
+      inst_q: 0.707,
+      lfo_on: false,
+      lfo_shape: 0,
+      lfo_rate_hz: 0.0,
+      lfo_depth: 0.0,
+      lfo_phase: 0.0,
+      lfo_recompute_ctr: 0,
+      lfo_rand: 0.0,
+      lfo_rng: 0x9e37_79b9,
     }
   }
 }
@@ -3045,6 +3101,11 @@ enum MixerCommand {
     inst_filter_type: u8,
     inst_cutoff: f32,
     inst_resonance: f32,
+    // Cutoff LFO: shape 0 revsaw · 1 saw · 2 tri · 3 square · 4 random; rate
+    // in Hz; depth 0..1 bipolar. depth 0 (or filter off) = no modulation.
+    lfo_shape: u8,
+    lfo_rate_hz: f32,
+    lfo_depth: f32,
   },
   StopAll,
   // Release a single tagged voice (live-input monitoring note-off). Starts
@@ -3089,6 +3150,7 @@ enum MixerCommand {
 
 #[derive(Clone, Copy)]
 pub(crate) struct EnvelopeSpec {
+  delay_secs: f32, // DADSR pre-attack delay: voice stays silent this long
   attack_secs: f32,
   decay_secs: f32,
   sustain_level: f32,
@@ -3126,6 +3188,17 @@ struct PendingTrigger {
   // at queue time so the audio thread just copies them into the voice).
   inst_filter_on: bool,
   inst_filter: Biquad,
+  // Base filter params kept for live LFO recompute (type 1 lp · 2 hp · 3 bp;
+  // cutoff normalized 0..1; q the resolved biquad Q). When the LFO is active
+  // the voice recomputes coefficients from cutoff_norm + LFO offset.
+  inst_filter_type: u8,
+  inst_cutoff_norm: f32,
+  inst_q: f32,
+  // Cutoff LFO: on flag + shape + rate (Hz) + depth (0..1 bipolar).
+  lfo_on: bool,
+  lfo_shape: u8,
+  lfo_rate_hz: f32,
+  lfo_depth: f32,
 }
 
 // --- shared state ---
@@ -3364,6 +3437,9 @@ impl AudioEngine {
     inst_filter_type: u8,
     inst_cutoff: f32,
     inst_resonance: f32,
+    lfo_shape: u8,
+    lfo_rate_hz: f32,
+    lfo_depth: f32,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -3406,6 +3482,9 @@ impl AudioEngine {
       inst_filter_type,
       inst_cutoff,
       inst_resonance,
+      lfo_shape,
+      lfo_rate_hz,
+      lfo_depth,
     };
     let mut guard = self
       .state
@@ -4033,6 +4112,20 @@ fn claim_voice_slot(
   v.inst_filter_r = p.inst_filter;
   v.inst_filter_l.reset_state();
   v.inst_filter_r.reset_state();
+  // Cutoff LFO + base filter params for live recompute. Phase resets per note
+  // (note-synced); rng seeded off the slot so different voices don't lock to
+  // the same Random sequence.
+  v.inst_filter_type = p.inst_filter_type;
+  v.inst_cutoff_norm = p.inst_cutoff_norm;
+  v.inst_q = p.inst_q;
+  v.lfo_on = p.lfo_on;
+  v.lfo_shape = p.lfo_shape;
+  v.lfo_rate_hz = p.lfo_rate_hz;
+  v.lfo_depth = p.lfo_depth;
+  v.lfo_phase = 0.0;
+  v.lfo_recompute_ctr = 0;
+  v.lfo_rng = 0x9e37_79b9 ^ (slot as u32).wrapping_mul(2654435761);
+  v.lfo_rand = lfo_rand_bipolar(&mut v.lfo_rng);
   v.rate = p.rate;
   v.rate_target = p.rate;
   v.rate_glide_inc = 0.0;
@@ -4060,9 +4153,11 @@ fn claim_voice_slot(
     let release_secs = spec.release_secs.max(0.001);
     let decay_secs = spec.decay_secs.max(0.0);
     let hold_secs = spec.hold_secs.max(0.001);
+    let delay_secs = spec.delay_secs.max(0.0);
     v.env_active = true;
     v.env_level = 0.0;
     v.env_elapsed = 0;
+    v.env_delay_samples = (delay_secs * sample_rate_f) as u32;
     v.env_attack_samples = (attack_secs * sample_rate_f).max(1.0) as u32;
     v.env_decay_samples = (decay_secs * sample_rate_f) as u32;
     v.env_hold_samples = (hold_secs * sample_rate_f).max(1.0) as u32;
@@ -4415,6 +4510,9 @@ fn build_stream(
               inst_filter_type,
               inst_cutoff,
               inst_resonance,
+              lfo_shape,
+              lfo_rate_hz,
+              lfo_depth,
             } => {
               let pan_clamped = pan.clamp(-1.0, 1.0);
               let angle =
@@ -4441,16 +4539,20 @@ fn build_stream(
               // Per-instrument filter — build the biquad once here so the
               // audio thread just copies coefficients into the voice.
               let inst_filter_on = inst_filter_type >= 1 && inst_filter_type <= 3;
+              let inst_q = resonance_norm_to_q(inst_resonance);
               let mut inst_filter = Biquad::new_unity();
               if inst_filter_on {
                 let fc_hz = cutoff_norm_to_hz(inst_cutoff);
-                let q = resonance_norm_to_q(inst_resonance);
                 match inst_filter_type {
-                  1 => inst_filter.set_lowpass(sr_f32, fc_hz, q),
-                  2 => inst_filter.set_highpass(sr_f32, fc_hz, q),
-                  _ => inst_filter.set_bandpass(sr_f32, fc_hz, q),
+                  1 => inst_filter.set_lowpass(sr_f32, fc_hz, inst_q),
+                  2 => inst_filter.set_highpass(sr_f32, fc_hz, inst_q),
+                  _ => inst_filter.set_bandpass(sr_f32, fc_hz, inst_q),
                 }
               }
+              // Cutoff LFO only runs when the filter is on and depth/rate are
+              // meaningful — otherwise there's nothing to modulate.
+              let lfo_on =
+                inst_filter_on && lfo_depth > 0.0001 && lfo_rate_hz > 0.0001;
               let pending = PendingTrigger {
                 sample,
                 rate,
@@ -4471,6 +4573,13 @@ fn build_stream(
                 loop_mode,
                 inst_filter_on,
                 inst_filter,
+                inst_filter_type,
+                inst_cutoff_norm: inst_cutoff,
+                inst_q,
+                lfo_on,
+                lfo_shape,
+                lfo_rate_hz,
+                lfo_depth,
               };
               if delay_samples == 0 {
                 claim_voice_slot(
@@ -4821,6 +4930,41 @@ fn build_stream(
             // sample, ahead of the per-track mixer ladder below, so it's part
             // of the instrument's voice rather than the channel strip.
             if v.inst_filter_on {
+              // Cutoff LFO (B2): advance phase per sample; every
+              // LFO_RECOMPUTE_SAMPLES recompute the biquad coefficients from
+              // the base cutoff offset (bipolar) by the LFO — coeffs only, the
+              // delay line keeps running so the sweep is click-free.
+              if v.lfo_on {
+                v.lfo_phase += v.lfo_rate_hz / sr_f32;
+                if v.lfo_phase >= 1.0 {
+                  v.lfo_phase -= v.lfo_phase.floor();
+                  v.lfo_rand = lfo_rand_bipolar(&mut v.lfo_rng);
+                }
+                if v.lfo_recompute_ctr == 0 {
+                  let m = lfo_eval(v.lfo_shape, v.lfo_phase, v.lfo_rand);
+                  let mod_norm =
+                    (v.inst_cutoff_norm + v.lfo_depth * m).clamp(0.0, 1.0);
+                  let fc_hz = cutoff_norm_to_hz(mod_norm);
+                  match v.inst_filter_type {
+                    1 => {
+                      v.inst_filter_l.set_lowpass(sr_f32, fc_hz, v.inst_q);
+                      v.inst_filter_r.set_lowpass(sr_f32, fc_hz, v.inst_q);
+                    }
+                    2 => {
+                      v.inst_filter_l.set_highpass(sr_f32, fc_hz, v.inst_q);
+                      v.inst_filter_r.set_highpass(sr_f32, fc_hz, v.inst_q);
+                    }
+                    _ => {
+                      v.inst_filter_l.set_bandpass(sr_f32, fc_hz, v.inst_q);
+                      v.inst_filter_r.set_bandpass(sr_f32, fc_hz, v.inst_q);
+                    }
+                  }
+                }
+                v.lfo_recompute_ctr += 1;
+                if v.lfo_recompute_ctr >= LFO_RECOMPUTE_SAMPLES {
+                  v.lfo_recompute_ctr = 0;
+                }
+              }
               ls = v.inst_filter_l.process(ls);
               rs = v.inst_filter_r.process(rs);
             }
@@ -4841,13 +4985,20 @@ fn build_stream(
             // tail. Release ramps from whatever level was captured on
             // entering release (handles gates that end mid-attack).
             if v.env_active {
-              let attack_end = v.env_attack_samples;
+              // DADSR: a leading delay stage (level 0) shifts attack/decay
+              // forward; hold_end (gate-derived) stays the absolute release
+              // start, so a delay longer than the gate just yields a short/
+              // silent note (release captures the level reached, which is 0).
+              let delay_end = v.env_delay_samples;
+              let attack_end = delay_end + v.env_attack_samples;
               let decay_end = attack_end + v.env_decay_samples;
               let hold_end = v.env_hold_samples;
               let release_end = hold_end + v.env_release_samples;
-              if v.env_elapsed < attack_end {
-                v.env_level = (v.env_elapsed + 1) as f32
-                  / attack_end.max(1) as f32;
+              if v.env_elapsed < delay_end {
+                v.env_level = 0.0;
+              } else if v.env_elapsed < attack_end {
+                v.env_level = (v.env_elapsed - delay_end + 1) as f32
+                  / v.env_attack_samples.max(1) as f32;
               } else if v.env_elapsed < decay_end && v.env_decay_samples > 0 {
                 let t = (v.env_elapsed - attack_end + 1) as f32
                   / v.env_decay_samples as f32;
@@ -5491,6 +5642,8 @@ pub fn audio_trigger_sample(
   envelope_sustain: Option<f32>,
   envelope_release: Option<f32>,
   envelope_hold: Option<f32>,
+  // Optional DADSR pre-attack delay (seconds); defaults to 0 (plain ADSR).
+  envelope_delay: Option<f32>,
   // Voice handle for targeted release (live-input monitoring). Omitted /
   // 0 for every sequencer trigger.
   note_id: Option<u64>,
@@ -5505,6 +5658,12 @@ pub fn audio_trigger_sample(
   inst_filter_type: Option<u8>,
   inst_cutoff: Option<f32>,
   inst_resonance: Option<f32>,
+  // Per-instrument cutoff LFO (editor B2). shape 0 revsaw · 1 saw · 2 tri · 3
+  // square · 4 random; rate in Hz (free-running); depth 0..1 bipolar. depth 0
+  // (or filter off) = no modulation.
+  lfo_shape: Option<u8>,
+  lfo_rate_hz: Option<f32>,
+  lfo_depth: Option<f32>,
 ) -> Result<(), String> {
   let envelope = match (
     envelope_attack,
@@ -5512,6 +5671,7 @@ pub fn audio_trigger_sample(
     envelope_hold,
   ) {
     (Some(attack), Some(release), Some(hold)) => Some(EnvelopeSpec {
+      delay_secs: envelope_delay.unwrap_or(0.0).max(0.0),
       attack_secs: attack,
       decay_secs: envelope_decay.unwrap_or(0.0),
       sustain_level: envelope_sustain.unwrap_or(1.0),
@@ -5540,6 +5700,9 @@ pub fn audio_trigger_sample(
     inst_filter_type.unwrap_or(0),
     inst_cutoff.unwrap_or(1.0),
     inst_resonance.unwrap_or(0.0),
+    lfo_shape.unwrap_or(0),
+    lfo_rate_hz.unwrap_or(0.0),
+    lfo_depth.unwrap_or(0.0),
   )
 }
 
