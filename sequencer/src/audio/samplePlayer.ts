@@ -12,6 +12,7 @@ import {
   voicePadConfig,
 } from './voices';
 import type { PadConfig } from './voices';
+import { voiceTune, voiceGainOverride } from '../instruments/voiceEditsStore';
 
 // Slice-2 pad pan motion. Per-tone slow LFO sweeps the panner around its
 // base (positional-spread) value over the full audible lifetime of the tone.
@@ -604,7 +605,13 @@ class SamplePlayer {
     if (midiNote !== undefined && bank.root !== null) {
       pitch = Math.pow(2, (midiNote - bank.root) / 12);
     }
-    return { path, pitch, voiceGain: data.gain };
+    // Per-voice instrument edits (global, app-only) fold in here — the single
+    // chokepoint every native trigger flows through (playback dispatch in
+    // App.tsx + preview in monitor.ts). tune shifts pitch uniformly (works for
+    // melodic + drums); gain override multiplies the manifest gain.
+    const tune = voiceTune(voice);
+    if (tune !== 0) pitch *= Math.pow(2, tune / 12);
+    return { path, pitch, voiceGain: data.gain * voiceGainOverride(voice) };
   }
 
   // Eagerly loads every sample in every bank of a voice into the native

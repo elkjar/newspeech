@@ -1,5 +1,6 @@
-import { useEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
+import { exportVoiceToPti, voiceIsExportable } from '../tracker/exportPti';
 import {
   useSequencerStore,
   STEP_RATES,
@@ -38,9 +39,10 @@ interface RowPanelProps {
   track: TrackData;
   onClose: () => void;
   triggerRef: RefObject<HTMLElement>;
+  onOpenEditor: () => void;
 }
 
-export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
+export function RowPanel({ track, onClose, triggerRef, onOpenEditor }: RowPanelProps) {
   const setTrackLength = useSequencerStore((s) => s.setTrackLength);
   const setTrackEuclidean = useSequencerStore((s) => s.setTrackEuclidean);
   const setTrackRate = useSequencerStore((s) => s.setTrackRate);
@@ -58,6 +60,7 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
   const globalDeviceId = useSequencerStore((s) => s.midiOutDeviceId);
   const instrumentId = track.source.kind === 'instrument' ? track.source.id : null;
   const instrument = instrumentId ? getInstrument(instrumentId) : undefined;
+  const voiceId = track.source.kind === 'voice' ? track.source.id : null;
   const outputs = useMIDIOutputs();
   const isMelodic = sourceIsMelodic(track.source);
   const availableRates = track.section === 'melodic' ? STEP_RATES : DRUM_STEP_RATES;
@@ -218,7 +221,7 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
           )}
         </>
       )}
-      {isTauri() && track.source.kind === 'voice' && (
+      {isTauri() && voiceId && (
         <>
           <div className="self-stretch w-px bg-white/15 mx-1" />
           <label className="flex flex-col items-start gap-1">
@@ -260,9 +263,60 @@ export function RowPanel({ track, onClose, triggerRef }: RowPanelProps) {
               ))}
             </select>
           </label>
+          <label className="flex flex-col items-start gap-1">
+            <span className="text-[9px] uppercase tracking-widest text-white/40">edit</span>
+            <button
+              type="button"
+              onClick={onOpenEditor}
+              style={{ height: CELL }}
+              className="px-2 border border-white/15 hover:border-white text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors"
+              title="edit instrument — volume, tune (more coming)"
+            >
+              edit
+            </button>
+          </label>
+          <ExportPtiButton voiceId={voiceId} />
         </>
       )}
     </div>
+  );
+}
+
+// Export the track's voice to a Polyend Tracker instrument (.pti). Lives in the
+// instrument-details menu next to the native-only output picker. Disabled for
+// voices with no sample (e.g. the synth bass). Brief inline ✓/✗ feedback since
+// the file just downloads — no modal.
+function ExportPtiButton({ voiceId }: { voiceId: string }) {
+  const [status, setStatus] = useState<'idle' | 'working' | 'done' | 'error'>('idle');
+  const exportable = voiceIsExportable(voiceId);
+  const onClick = async () => {
+    if (!exportable || status === 'working') return;
+    setStatus('working');
+    const res = await exportVoiceToPti(voiceId);
+    if (!res.ok) console.error('pti export failed:', res.error);
+    setStatus(res.ok ? 'done' : 'error');
+    setTimeout(() => setStatus('idle'), 2000);
+  };
+  const label =
+    status === 'working' ? '…' : status === 'done' ? '✓' : status === 'error' ? '✗' : '.pti';
+  return (
+    <label className="flex flex-col items-start gap-1">
+      <span className="text-[9px] uppercase tracking-widest text-white/40">tracker</span>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!exportable}
+        style={{ height: CELL, minWidth: 56 }}
+        className="px-2 border border-white/15 hover:border-white text-[10px] uppercase tracking-widest text-center text-white/60 hover:text-white transition-colors disabled:opacity-30 disabled:hover:border-white/15"
+        title={
+          exportable
+            ? 'export this voice as a Polyend Tracker instrument (.pti) — median multisample root, resampled to 44.1k 16-bit'
+            : 'no sample to export for this voice'
+        }
+      >
+        {label}
+      </button>
+    </label>
   );
 }
 

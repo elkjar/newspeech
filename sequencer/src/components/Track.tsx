@@ -18,6 +18,7 @@ import {
 } from '../instruments/library';
 import { NewInstrumentDialog } from './NewInstrumentDialog';
 import { VoicePickerDialog } from './VoicePickerDialog';
+import { InstrumentEditorDialog } from './InstrumentEditorDialog';
 import { GLOBAL_TRACK_ID } from '../audio/lfo';
 import { computeThinMul, computeFillProb } from '../audio/macros';
 import { useLFOValue } from '../hooks/useLFOValue';
@@ -98,6 +99,7 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
   const [newInstrumentDefaultRole, setNewInstrumentDefaultRole] =
     useState<InstrumentRole | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Defensive guard: trackId comes from TrackGrid's shallow-compared key list,
@@ -215,9 +217,18 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
               track={track}
               onClose={() => setPanelOpen(false)}
               triggerRef={triggerRef}
+              onOpenEditor={() => {
+                setPanelOpen(false);
+                setEditorOpen(true);
+              }}
             />
           )}
         </div>
+        <InstrumentEditorDialog
+          open={editorOpen}
+          track={track}
+          onClose={() => setEditorOpen(false)}
+        />
         {/* Record arm. Monitoring is covered by the Launchpad keyboard page
             (tracks the selected step) and by arming while stopped, so the old
             monitor-only toggle that used to sit beside this was removed. */}
