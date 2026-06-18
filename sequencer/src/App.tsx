@@ -658,7 +658,6 @@ export function App() {
                     isTexture,
                     // Per-arp-tone hold = sub-step duration × gate.
                     // Envelope follows the voice's configured shape.
-                    envelopeDelay: arpEnv?.delay,
                     envelopeAttack: arpEnv?.attack,
                     envelopeDecay: arpEnv?.decay,
                     envelopeSustain: arpEnv?.sustain,
@@ -720,9 +719,7 @@ export function App() {
               // keep it.
               const playEnv =
                 resolveVoiceEnvelope(ev.voice) ??
-                (ev.section === 'melodic'
-                  ? { delay: 0, attack: 0.003, release: 0.05 }
-                  : undefined);
+                (ev.section === 'melodic' ? { attack: 0.003, release: 0.05 } : undefined);
               const holdSecs = playEnv ? ev.gate * ev.stepDuration : undefined;
               // Sustaining chord-master triggers carry a `revoice` context — tag
               // each chord tone with a note_id and register the sounding chord so
@@ -756,7 +753,6 @@ export function App() {
                   // web `samplePlayer.trigger` envelope). Voices without
                   // an envelope config (drums, leads) pass nothing here
                   // and run at flat gain in native.
-                  envelopeDelay: playEnv?.delay,
                   envelopeAttack: playEnv?.attack,
                   envelopeDecay: playEnv?.decay,
                   envelopeSustain: playEnv?.sustain,
@@ -796,7 +792,6 @@ export function App() {
                   isTexture,
                   env: playEnv
                     ? {
-                        delay: playEnv.delay,
                         attack: playEnv.attack,
                         decay: playEnv.decay,
                         sustain: playEnv.sustain,
@@ -882,7 +877,6 @@ export function App() {
             monophonic: false,
             section: chord.section,
             isTexture: chord.isTexture,
-            envelopeDelay: chord.env?.delay,
             envelopeAttack: chord.env?.attack,
             envelopeDecay: chord.env?.decay,
             envelopeSustain: chord.env?.sustain,

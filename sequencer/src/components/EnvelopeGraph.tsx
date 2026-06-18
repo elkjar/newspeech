@@ -1,7 +1,6 @@
-// DADSR envelope editor — a draggable curve instead of five sliders. The shape
-// reads left→right: a flat delay at zero, attack ramp to peak, decay to the
-// sustain level, the sustain hold, then release back to zero. Four handles:
-//   • delay end   (baseline)      — drag X → delay
+// ADSR envelope editor — a draggable curve instead of sliders. The shape reads
+// left→right: attack ramp from the left edge to peak, decay to the sustain
+// level, the sustain hold, then release back to zero. Three handles:
 //   • attack peak (top)           — drag X → attack
 //   • sustain corner              — drag X → decay, drag Y → sustain level
 //   • release end (baseline)      — drag X → release
@@ -21,23 +20,20 @@ const PAD_TOP = 12;
 const PAD_BOT = 12;
 // Per-stage max seconds (match the editor's slider ranges) + the lane budget
 // each gets. Sustain has no duration — it's a fixed display hold.
-const DELAY_MAX = 2;
 const ATTACK_MAX = 2;
 const DECAY_MAX = 2;
 const RELEASE_MAX = 3;
-const LANES = { delay: 2, attack: 2, decay: 2, sustain: 1.2, release: 3 };
-const LANE_SUM = LANES.delay + LANES.attack + LANES.decay + LANES.sustain + LANES.release;
+const LANES = { attack: 2, decay: 2, sustain: 1.2, release: 3 };
+const LANE_SUM = LANES.attack + LANES.decay + LANES.sustain + LANES.release;
 
 interface Geom {
   baseline: number;
   top: number;
-  delayEndX: number;
   attackEndX: number;
   decayEndX: number;
   sustainEndX: number;
   releaseEndX: number;
   sustainY: number;
-  wd: number;
   wa: number;
   wc: number;
   wr: number;
@@ -47,21 +43,19 @@ function geometry(env: AmpEnvEdit, width: number): Geom {
   const top = PAD_TOP;
   const baseline = HEIGHT - PAD_BOT;
   const unit = (width - 2 * PAD_X) / LANE_SUM;
-  const wd = unit * LANES.delay;
   const wa = unit * LANES.attack;
   const wc = unit * LANES.decay;
   const ws = unit * LANES.sustain;
   const wr = unit * LANES.release;
-  const delayEndX = PAD_X + (env.delay / DELAY_MAX) * wd;
-  const attackEndX = delayEndX + (env.attack / ATTACK_MAX) * wa;
+  const attackEndX = PAD_X + (env.attack / ATTACK_MAX) * wa;
   const decayEndX = attackEndX + (env.decay / DECAY_MAX) * wc;
   const sustainEndX = decayEndX + ws;
   const releaseEndX = sustainEndX + (env.release / RELEASE_MAX) * wr;
   const sustainY = top + (1 - env.sustain) * (baseline - top);
-  return { baseline, top, delayEndX, attackEndX, decayEndX, sustainEndX, releaseEndX, sustainY, wd, wa, wc, wr };
+  return { baseline, top, attackEndX, decayEndX, sustainEndX, releaseEndX, sustainY, wa, wc, wr };
 }
 
-type Handle = 'delay' | 'attack' | 'sustain' | 'release';
+type Handle = 'attack' | 'sustain' | 'release';
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export function EnvelopeGraph({ env, onChange }: Props) {
@@ -97,10 +91,9 @@ export function EnvelopeGraph({ env, onChange }: Props) {
     ctx.clearRect(0, 0, width, HEIGHT);
     const g = geometry(env, width);
 
-    // Curve: flat delay → attack peak → decay to sustain → hold → release.
+    // Curve: attack peak → decay to sustain → hold → release.
     const pts: [number, number][] = [
       [PAD_X, g.baseline],
-      [g.delayEndX, g.baseline],
       [g.attackEndX, g.top],
       [g.decayEndX, g.sustainY],
       [g.sustainEndX, g.sustainY],
@@ -124,7 +117,6 @@ export function EnvelopeGraph({ env, onChange }: Props) {
 
     // Handles.
     const handles: [number, number][] = [
-      [g.delayEndX, g.baseline],
       [g.attackEndX, g.top],
       [g.decayEndX, g.sustainY],
       [g.releaseEndX, g.baseline],
@@ -143,7 +135,6 @@ export function EnvelopeGraph({ env, onChange }: Props) {
     const y = clientY - rect.top;
     const g = geometry(envRef.current, widthRef.current);
     const targets: [Handle, number, number][] = [
-      ['delay', g.delayEndX, g.baseline],
       ['attack', g.attackEndX, g.top],
       ['sustain', g.decayEndX, g.sustainY],
       ['release', g.releaseEndX, g.baseline],
@@ -166,11 +157,8 @@ export function EnvelopeGraph({ env, onChange }: Props) {
     const y = clientY - rect.top;
     const g = geometry(envRef.current, widthRef.current);
     switch (handle) {
-      case 'delay':
-        onChange({ delay: clamp(((x - PAD_X) / g.wd) * DELAY_MAX, 0, DELAY_MAX) });
-        break;
       case 'attack':
-        onChange({ attack: clamp(((x - g.delayEndX) / g.wa) * ATTACK_MAX, 0, ATTACK_MAX) });
+        onChange({ attack: clamp(((x - PAD_X) / g.wa) * ATTACK_MAX, 0, ATTACK_MAX) });
         break;
       case 'sustain':
         onChange({

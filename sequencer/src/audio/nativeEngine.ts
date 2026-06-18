@@ -346,9 +346,6 @@ export async function triggerSample(
     // and deactivates the voice once the release tail completes.
     // Skipping any of attack/release/hold leaves the voice on flat
     // gain (drums, leads without an envelope config).
-    // Pre-attack delay (seconds) — the DADSR delay stage; the voice stays
-    // silent for this long before the attack ramp. Default 0 = plain ADSR.
-    envelopeDelay?: number;
     envelopeAttack?: number;
     envelopeDecay?: number;
     envelopeSustain?: number;
@@ -389,7 +386,6 @@ export async function triggerSample(
     monophonic: opts.monophonic ?? null,
     section: opts.section ?? null,
     isTexture: opts.isTexture ?? null,
-    envelopeDelay: opts.envelopeDelay ?? null,
     envelopeAttack: opts.envelopeAttack ?? null,
     envelopeDecay: opts.envelopeDecay ?? null,
     envelopeSustain: opts.envelopeSustain ?? null,

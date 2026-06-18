@@ -2929,9 +2929,6 @@ struct Voice {
   env_active: bool,
   env_level: f32,
   env_elapsed: u32,
-  // DADSR pre-attack delay: voice holds at level 0 for this many samples
-  // (counted from env start) before the attack ramp begins. 0 = plain ADSR.
-  env_delay_samples: u32,
   env_attack_samples: u32,
   env_decay_samples: u32,
   env_hold_samples: u32,
@@ -3003,7 +3000,6 @@ impl Default for Voice {
       env_active: false,
       env_level: 1.0,
       env_elapsed: 0,
-      env_delay_samples: 0,
       env_attack_samples: 0,
       env_decay_samples: 0,
       env_hold_samples: 0,
@@ -3150,7 +3146,6 @@ enum MixerCommand {
 
 #[derive(Clone, Copy)]
 pub(crate) struct EnvelopeSpec {
-  delay_secs: f32, // DADSR pre-attack delay: voice stays silent this long
   attack_secs: f32,
   decay_secs: f32,
   sustain_level: f32,
@@ -4153,11 +4148,9 @@ fn claim_voice_slot(
     let release_secs = spec.release_secs.max(0.001);
     let decay_secs = spec.decay_secs.max(0.0);
     let hold_secs = spec.hold_secs.max(0.001);
-    let delay_secs = spec.delay_secs.max(0.0);
     v.env_active = true;
     v.env_level = 0.0;
     v.env_elapsed = 0;
-    v.env_delay_samples = (delay_secs * sample_rate_f) as u32;
     v.env_attack_samples = (attack_secs * sample_rate_f).max(1.0) as u32;
     v.env_decay_samples = (decay_secs * sample_rate_f) as u32;
     v.env_hold_samples = (hold_secs * sample_rate_f).max(1.0) as u32;
@@ -4985,20 +4978,13 @@ fn build_stream(
             // tail. Release ramps from whatever level was captured on
             // entering release (handles gates that end mid-attack).
             if v.env_active {
-              // DADSR: a leading delay stage (level 0) shifts attack/decay
-              // forward; hold_end (gate-derived) stays the absolute release
-              // start, so a delay longer than the gate just yields a short/
-              // silent note (release captures the level reached, which is 0).
-              let delay_end = v.env_delay_samples;
-              let attack_end = delay_end + v.env_attack_samples;
+              let attack_end = v.env_attack_samples;
               let decay_end = attack_end + v.env_decay_samples;
               let hold_end = v.env_hold_samples;
               let release_end = hold_end + v.env_release_samples;
-              if v.env_elapsed < delay_end {
-                v.env_level = 0.0;
-              } else if v.env_elapsed < attack_end {
-                v.env_level = (v.env_elapsed - delay_end + 1) as f32
-                  / v.env_attack_samples.max(1) as f32;
+              if v.env_elapsed < attack_end {
+                v.env_level = (v.env_elapsed + 1) as f32
+                  / attack_end.max(1) as f32;
               } else if v.env_elapsed < decay_end && v.env_decay_samples > 0 {
                 let t = (v.env_elapsed - attack_end + 1) as f32
                   / v.env_decay_samples as f32;
@@ -5642,8 +5628,6 @@ pub fn audio_trigger_sample(
   envelope_sustain: Option<f32>,
   envelope_release: Option<f32>,
   envelope_hold: Option<f32>,
-  // Optional DADSR pre-attack delay (seconds); defaults to 0 (plain ADSR).
-  envelope_delay: Option<f32>,
   // Voice handle for targeted release (live-input monitoring). Omitted /
   // 0 for every sequencer trigger.
   note_id: Option<u64>,
@@ -5671,7 +5655,6 @@ pub fn audio_trigger_sample(
     envelope_hold,
   ) {
     (Some(attack), Some(release), Some(hold)) => Some(EnvelopeSpec {
-      delay_secs: envelope_delay.unwrap_or(0.0).max(0.0),
       attack_secs: attack,
       decay_secs: envelope_decay.unwrap_or(0.0),
       sustain_level: envelope_sustain.unwrap_or(1.0),

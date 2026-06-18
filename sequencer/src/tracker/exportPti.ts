@@ -187,7 +187,7 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
       inst.automations[0].isLFO = false;
       inst.automations[0].envelope = {
         amount: 1,
-        delay: Math.max(0, Math.round(env.delay * 1000)),
+        delay: 0, // the Tracker ignores the envelope delay field — always 0
         attack: Math.max(0, Math.round(env.attack * 1000)),
         decay: Math.max(0, Math.round((env.decay ?? 0) * 1000)),
         sustain: Math.max(0, Math.min(1, env.sustain ?? 1)),

@@ -40,15 +40,14 @@ export const FILTER_TYPE_CODE: Record<FilterType, number> = {
   bp: 3,
 };
 
-// Per-instrument amplitude envelope (editor B2). A DADSR — the leading
-// `delay` mirrors the `.pti` envelope's delay stage (silent gap before
-// attack). Times are seconds for our engine; the .pti export converts to
-// integer ms. `on` gates it: when true it OVERRIDES the manifest envelope,
-// when false the voice keeps its manifest/flat behavior (values retained so
-// toggling off doesn't lose the shape).
+// Per-instrument amplitude envelope (editor B2). An ADSR. Times are seconds
+// for our engine; the .pti export converts to integer ms. `on` gates it: when
+// true it OVERRIDES the manifest envelope, when false the voice keeps its
+// manifest/flat behavior (values retained so toggling off doesn't lose the
+// shape). (A pre-attack `delay` stage was tried but removed 2026-06-18 — the
+// Tracker firmware ignores the .pti delay field, so it had no hardware use.)
 export interface AmpEnvEdit {
   on: boolean;
-  delay: number; // seconds before attack begins (>= 0)
   attack: number; // seconds
   decay: number; // seconds
   sustain: number; // 0..1 fraction of peak
@@ -57,7 +56,6 @@ export interface AmpEnvEdit {
 
 export const DEFAULT_AMP_ENV: AmpEnvEdit = {
   on: true,
-  delay: 0,
   attack: 0.005,
   decay: 0.12,
   sustain: 0.7,
@@ -134,7 +132,6 @@ export interface VoiceEdit {
 // with delay 0. Undefined = no envelope at all (flat-gain voice, e.g. a drum
 // with no authored env) — the engine then plays at flat gain as before.
 export interface ResolvedEnvelope {
-  delay: number;
   attack: number;
   decay?: number;
   sustain?: number;
@@ -144,17 +141,11 @@ export interface ResolvedEnvelope {
 export function resolveVoiceEnvelope(voiceId: string): ResolvedEnvelope | undefined {
   const e = useVoiceEditsStore.getState().voiceEdits[voiceId]?.ampEnv;
   if (e?.on) {
-    return {
-      delay: Math.max(0, e.delay),
-      attack: e.attack,
-      decay: e.decay,
-      sustain: e.sustain,
-      release: e.release,
-    };
+    return { attack: e.attack, decay: e.decay, sustain: e.sustain, release: e.release };
   }
   const m = voiceEnvelope(voiceId);
   if (!m) return undefined;
-  return { delay: 0, attack: m.attack, decay: m.decay, sustain: m.sustain, release: m.release };
+  return { attack: m.attack, decay: m.decay, sustain: m.sustain, release: m.release };
 }
 
 interface VoiceEditsState {

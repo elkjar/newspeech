@@ -310,7 +310,6 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
               <>
                 <EnvelopeGraph env={e} onChange={(patch) => setEnv(patch)} />
                 <div className="flex justify-between text-[9px] uppercase tracking-widest text-white/40 tabular-nums mb-3 px-1">
-                  <span>dly {ms(e.delay)}</span>
                   <span>atk {ms(e.attack)}</span>
                   <span>dcy {ms(e.decay)}</span>
                   <span>sus {(e.sustain * 100).toFixed(0)}%</span>

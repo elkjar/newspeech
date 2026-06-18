@@ -280,39 +280,34 @@ sweep that note (re-press to hear the change). Live cutoff sweep would need per-
 (essentially the automations layer / Phase B2-3); deferred. `tsc` + `cargo check` clean. Reload the app
 (engine rebuild). NEXT in Phase B: per-instrument **envelope + LFO** (the `automations[]` layer).
 
-## B2 (envelope) — per-instrument amplitude DADSR — BUILT 2026-06-18 (pending app test)
+## B2 (envelope) — per-instrument amplitude ADSR — BUILT 2026-06-18
 
-First slice of the modulation/automation layer: a per-instrument **amplitude envelope** with a
-**DADSR** shape — the leading `delay` mirrors the `.pti` envelope's delay stage (which, notably, the
-Tracker's *hardware UI doesn't expose* — Chris's catch; see the probe below).
+First slice of the modulation/automation layer: a per-instrument **amplitude envelope** (ADSR) that
+overrides the manifest envelope.
 
-- **Store:** `VoiceEdit.ampEnv: { on, delay, attack, decay, sustain, release }` (seconds; `DEFAULT_AMP_ENV`
+- **Store:** `VoiceEdit.ampEnv: { on, attack, decay, sustain, release }` (seconds; `DEFAULT_AMP_ENV`
   for the toggle-on shape). `resolveVoiceEnvelope(voiceId)` returns the authored env when `on`, else the
-  manifest envelope (delay 0), else undefined (flat voice). This **overrides** the manifest envelope
-  globally.
+  manifest envelope, else undefined (flat voice). This **overrides** the manifest envelope globally.
 - **Call sites:** every `voiceEnvelope(...)` trigger site (App.tsx arp + main + chord-register;
-  monitor.ts note + chord + release-fade) now calls `resolveVoiceEnvelope`, and each trigger forwards
-  `envelopeDelay`. `triggerSample`/`audio_trigger_sample` gained `envelopeDelay`/`envelope_delay`.
-- **Engine (`audio.rs`):** `EnvelopeSpec` + `Voice` gained `delay`; `claim_voice_slot` converts to
-  `env_delay_samples`; the envelope state machine got a **leading delay stage** (level 0 until
-  `delay_end`, then attack ramps from there). `hold_end` stays the absolute (gate-derived) release
-  start — so a delay longer than the gate yields a short/silent note. **The sample clock advances
-  during the delay** (position += rate runs regardless of env), so a delayed amp env = silence, then
-  the sample heard *from `delay` seconds in* — standard DADSR behavior.
-- **Export:** `automations[0]` (Volume, envelope mode) written from the resolved env — `delay/attack/
-  decay/release` as integer **ms**, `sustain` 0..1, `amount` 1. (createInstrument already enables
-  slot 0.) Flat voices keep the lib default.
-- **Editor:** "amp env" ○/● toggle + delay/attack/decay/sustain/release sliders (ms / %).
+  monitor.ts note + chord + release-fade) calls `resolveVoiceEnvelope`.
+- **Engine (`audio.rs`):** standard ADSR state machine (attack ramp → decay → sustain hold → release),
+  `hold_end` = gate-derived release start.
+- **Export:** `automations[0]` (Volume, envelope mode) written from the resolved env — attack/decay/
+  release as integer **ms**, `sustain` 0..1, `amount` 1, **delay 0** (see below). Flat voices keep the
+  lib default.
+- **Editor:** "amp env" ○/● toggle + **draggable ADSR graph** (`EnvelopeGraph.tsx`) + a compact ms/%
+  readout.
 
-### The delay probe (settles Chris's hardware-UI-vs-format question)
+### Delay probe RESOLVED + delay REMOVED (2026-06-18)
 
-`delay` is in the `.pti` format but **not on the Tracker's envelope page**. Open question: does the
-firmware *honor* it on playback (hidden-but-live), or ignore it (vestigial)? **Test:** author an amp
-env with `delay` cranked (e.g. 500ms) on a **sustained / long sample** (NOT a short one-shot — the
-sample clock runs during the delay, so a short hit finishes before the delay ends → silent), export,
-load on the Tracker, trigger. Audible gap before the sound = firmware honors it (the interesting case —
-a param the device can play but can't author). Re-saving on-device and reading back tells us if it
-round-trips. Either way, our local voice honors `delay`.
+The `.pti` envelope has a `delay` field that's **not on the Tracker's UI** — open question was whether
+the firmware honors it. **Answer (hardware-tested by Chris): it does NOT** — the exported instrument
+maps correctly but the delay does nothing on the device (vestigial / internal field). It *did* work
+locally in Sequence (DADSR), but Chris saw no use for a Sequence-only delay, so **the delay stage was
+removed entirely** — `AmpEnvEdit`, the engine `EnvelopeSpec`/`Voice` delay state + state-machine stage,
+the IPC `envelopeDelay`, the editor handle/readout, all stripped; the export writes `delay: 0`. The
+envelope is now a plain **ADSR**. (Lesson logged: a correct-looking `.pti` map does NOT prove a field
+is honored — non-UI fields need a listen-test.)
 
 `tsc` + `cargo check` clean. Reload the app (engine rebuild).
 
