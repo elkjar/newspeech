@@ -12,7 +12,12 @@ import {
   voicePadConfig,
 } from './voices';
 import type { PadConfig } from './voices';
-import { voiceTune, voiceGainOverride } from '../instruments/voiceEditsStore';
+import {
+  voiceTune,
+  voiceGainOverride,
+  voiceTrim,
+  voiceFilter,
+} from '../instruments/voiceEditsStore';
 
 // Slice-2 pad pan motion. Per-tone slow LFO sweeps the panner around its
 // base (positional-spread) value over the full audible lifetime of the tone.
@@ -580,7 +585,17 @@ class SamplePlayer {
   pickNativeSample(
     voice: SampleId,
     midiNote?: number
-  ): { path: string; pitch: number; voiceGain: number } | null {
+  ): {
+    path: string;
+    pitch: number;
+    voiceGain: number;
+    start: number;
+    end: number;
+    loop: number;
+    filterType: number;
+    cutoff: number;
+    resonance: number;
+  } | null {
     const data = this.voices.get(voice);
     if (!data || data.banks.length === 0) return null;
     let bankIdx = 0;
@@ -611,7 +626,22 @@ class SamplePlayer {
     // melodic + drums); gain override multiplies the manifest gain.
     const tune = voiceTune(voice);
     if (tune !== 0) pitch *= Math.pow(2, tune / 12);
-    return { path, pitch, voiceGain: data.gain * voiceGainOverride(voice) };
+    // Sample window + loop (A3). start/end as 0..1 fractions, loop as the
+    // native loop_mode code; defaults (0/1/off) leave playback unchanged.
+    const trim = voiceTrim(voice);
+    // Per-instrument filter (B1). type 0 = off (engine bypasses).
+    const filter = voiceFilter(voice);
+    return {
+      path,
+      pitch,
+      voiceGain: data.gain * voiceGainOverride(voice),
+      start: trim.start,
+      end: trim.end,
+      loop: trim.loop,
+      filterType: filter.type,
+      cutoff: filter.cutoff,
+      resonance: filter.resonance,
+    };
   }
 
   // Eagerly loads every sample in every bank of a voice into the native

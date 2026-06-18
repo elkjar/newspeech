@@ -365,6 +365,8 @@ pub fn run() {
       audio::audio_trigger_sample,
       audio::audio_release_note,
       audio::audio_repitch_note,
+      audio::audio_set_monitor_voice,
+      audio::audio_monitor_playhead,
       audio::audio_set_track_filter,
       audio::audio_set_track_filters_bulk,
       audio::audio_set_reverb_params,

@@ -180,6 +180,13 @@ fn cutoff_norm_to_hz(norm: f32) -> f32 {
   CUTOFF_MIN_HZ * (CUTOFF_MAX_HZ / CUTOFF_MIN_HZ).powf(n)
 }
 
+// Per-instrument filter resonance: norm 0..1 → biquad Q. Butterworth-flat
+// (0.707) at the bottom up to a screaming ~25 at the top so the extreme is
+// genuinely resonant, not just "musical" (per the broken-ranges intent).
+fn resonance_norm_to_q(norm: f32) -> f32 {
+  0.707 * 2.0_f32.powf(norm.clamp(0.0, 1.0) * 5.13)
+}
+
 impl TrackParams {
   fn new() -> Self {
     Self {
@@ -1114,6 +1121,7 @@ const TAPE_HPF_Q: f32 = 0.707;
 // One-channel biquad. State = two previous inputs + two previous
 // outputs (Direct Form I). Coefficients are fixed at construction for
 // the tape HPF since both fc and Q are constants.
+#[derive(Clone, Copy)]
 struct Biquad {
   b0: f32,
   b1: f32,
@@ -1182,6 +1190,33 @@ impl Biquad {
     self.b2 = b2 / a0;
     self.a1 = a1 / a0;
     self.a2 = a2 / a0;
+  }
+
+  fn set_bandpass(&mut self, sample_rate: f32, fc: f32, q: f32) {
+    // RBJ Audio EQ Cookbook — BPF (constant 0 dB peak gain).
+    let w0 = std::f32::consts::TAU * fc / sample_rate;
+    let cos_w0 = w0.cos();
+    let alpha = w0.sin() / (2.0 * q).max(1e-6);
+    let a0 = 1.0 + alpha;
+    let b0 = alpha;
+    let b1 = 0.0;
+    let b2 = -alpha;
+    let a1 = -2.0 * cos_w0;
+    let a2 = 1.0 - alpha;
+    self.b0 = b0 / a0;
+    self.b1 = b1 / a0;
+    self.b2 = b2 / a0;
+    self.a1 = a1 / a0;
+    self.a2 = a2 / a0;
+  }
+
+  // Zero the delay line (call on retrigger so a reused voice slot doesn't
+  // carry the previous note's filter state into the attack).
+  fn reset_state(&mut self) {
+    self.x1 = 0.0;
+    self.x2 = 0.0;
+    self.y1 = 0.0;
+    self.y2 = 0.0;
   }
 
   fn set_highshelf(&mut self, sample_rate: f32, fc: f32, gain_db: f32) {
@@ -2770,6 +2805,23 @@ const PENDING_TRIGGERS_CAP: usize = 512;
 static PENDING_TRIGGER_DROPS: std::sync::atomic::AtomicU32 =
   std::sync::atomic::AtomicU32::new(0);
 
+// Editor playhead readback. The instrument editor sets MONITOR_NOTE_ID to
+// the note_id of its preview voice; the audio thread publishes that voice's
+// normalized read position (0..1 over the whole sample) into MONITOR_POS
+// once per block. A negative value means "no active monitored voice" — set
+// on the voice's deactivation or when the editor clears the id (note_id 0).
+// Read over IPC by the waveform playhead. Lock-free, single producer.
+static MONITOR_NOTE_ID: std::sync::atomic::AtomicU64 =
+  std::sync::atomic::AtomicU64::new(0);
+static MONITOR_POS: AtomicU32 = AtomicU32::new(0); // f32 bits; <0 = none
+
+// Loop-seam crossfade length. fwd/bwd loops jump from play_end→play_start
+// (or vice-versa), so the waveform is discontinuous at the seam and clicks
+// without a blend; this equal-power crossfade smooths it. Pingpong reverses
+// continuously (no jump) so it's exempt. Capped at half the loop span so
+// short loops still crossfade.
+const LOOP_XFADE_SECS: f32 = 0.02;
+
 #[derive(Clone)]
 struct Voice {
   sample: Option<Arc<SampleData>>,
@@ -2866,6 +2918,22 @@ struct Voice {
   // voice (a soft ramp) without touching the armed track's pattern voices,
   // which share the same track_params Arc. See MixerCommand::ReleaseNote.
   note_id: u64,
+  // Per-instrument sample window + loop (editor A3). play_start/play_end
+  // are read positions in sample frames; loop_mode is 0 off · 1 fwd · 2
+  // bwd · 3 pingpong; play_dir is the read direction (+1/-1), flipped at
+  // the window edges for pingpong and held at -1 for backward loops.
+  // Defaults (0 / frame_count / 0 / +1) reproduce a full-length one-shot.
+  play_start: f64,
+  play_end: f64,
+  loop_mode: u8,
+  play_dir: f64,
+  // Per-instrument filter (editor B1) — DISTINCT from the per-track mixer
+  // ladder `filter` above. inst_filter_on gates it; the L/R biquads carry
+  // the same coefficients (set at trigger) with independent delay lines.
+  // Bypassed (no-op) for every voice that didn't author a filter.
+  inst_filter_on: bool,
+  inst_filter_l: Biquad,
+  inst_filter_r: Biquad,
 }
 
 impl Default for Voice {
@@ -2902,6 +2970,13 @@ impl Default for Voice {
       frozen_params: None,
       frames_played: 0,
       note_id: 0,
+      play_start: 0.0,
+      play_end: 0.0,
+      loop_mode: 0,
+      play_dir: 1.0,
+      inst_filter_on: false,
+      inst_filter_l: Biquad::new_unity(),
+      inst_filter_r: Biquad::new_unity(),
     }
   }
 }
@@ -2960,6 +3035,16 @@ enum MixerCommand {
     delay_samples: u32,
     // Voice handle (0 = untagged). Only live-input monitoring sets it.
     note_id: u64,
+    // Per-instrument sample window (0..1 fractions of the sample) + loop
+    // mode (0 off · 1 fwd · 2 bwd · 3 pingpong). 0/1/0 = full one-shot.
+    start_frac: f32,
+    end_frac: f32,
+    loop_mode: u8,
+    // Per-instrument filter: type 0 off · 1 lp · 2 hp · 3 bp; cutoff +
+    // resonance normalized 0..1. type 0 bypasses.
+    inst_filter_type: u8,
+    inst_cutoff: f32,
+    inst_resonance: f32,
   },
   StopAll,
   // Release a single tagged voice (live-input monitoring note-off). Starts
@@ -3031,6 +3116,16 @@ struct PendingTrigger {
   envelope: Option<EnvelopeSpec>,
   remaining_samples: i32,
   note_id: u64,
+  // Sample window in frames (resolved from the 0..1 fractions at queue
+  // time) + loop mode (0 off · 1 fwd · 2 bwd · 3 pingpong). play_end is
+  // the read position the voice stops/loops at; play_start the start.
+  play_start: f64,
+  play_end: f64,
+  loop_mode: u8,
+  // Per-instrument filter: on flag + prebuilt biquad coefficients (computed
+  // at queue time so the audio thread just copies them into the voice).
+  inst_filter_on: bool,
+  inst_filter: Biquad,
 }
 
 // --- shared state ---
@@ -3263,6 +3358,12 @@ impl AudioEngine {
     is_texture: bool,
     envelope: Option<EnvelopeSpec>,
     note_id: u64,
+    start_frac: f32,
+    end_frac: f32,
+    loop_mode: u8,
+    inst_filter_type: u8,
+    inst_cutoff: f32,
+    inst_resonance: f32,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -3299,6 +3400,12 @@ impl AudioEngine {
       envelope,
       delay_samples,
       note_id,
+      start_frac,
+      end_frac,
+      loop_mode,
+      inst_filter_type,
+      inst_cutoff,
+      inst_resonance,
     };
     let mut guard = self
       .state
@@ -3910,7 +4017,22 @@ fn claim_voice_slot(
     });
   let v = &mut voices[slot];
   v.sample = Some(p.sample);
-  v.position = 0.0;
+  // Sample window + loop. Backward loops start at the window end and read
+  // toward the start; everything else starts at the window start. play_dir
+  // is the per-frame read direction (multiplies rate); pingpong flips it at
+  // the edges, backward holds -1, forward/one-shot hold +1.
+  v.play_start = p.play_start;
+  v.play_end = p.play_end;
+  v.loop_mode = p.loop_mode;
+  v.play_dir = if p.loop_mode == 2 { -1.0 } else { 1.0 };
+  v.position = if p.loop_mode == 2 { p.play_end } else { p.play_start };
+  // Per-instrument filter: copy the prebuilt coefficients into both channels
+  // and clear their delay lines so a reused slot doesn't carry stale state.
+  v.inst_filter_on = p.inst_filter_on;
+  v.inst_filter_l = p.inst_filter;
+  v.inst_filter_r = p.inst_filter;
+  v.inst_filter_l.reset_state();
+  v.inst_filter_r.reset_state();
   v.rate = p.rate;
   v.rate_target = p.rate;
   v.rate_glide_inc = 0.0;
@@ -4287,6 +4409,12 @@ fn build_stream(
               envelope,
               delay_samples,
               note_id,
+              start_frac,
+              end_frac,
+              loop_mode,
+              inst_filter_type,
+              inst_cutoff,
+              inst_resonance,
             } => {
               let pan_clamped = pan.clamp(-1.0, 1.0);
               let angle =
@@ -4297,6 +4425,32 @@ fn build_stream(
               let cents_jitter: f64 = rng.gen_range(-3.0..3.0);
               let jitter_mul = 2.0_f64.powf(cents_jitter / 1200.0);
               let rate = base_rate * (pitch.max(0.001) as f64) * jitter_mul;
+              // Resolve the 0..1 window fractions to frame positions. Clamp
+              // so the interpolator stays in bounds (it reads i0+1) and so
+              // start < end with at least a 1-frame span.
+              // Clamp the window so the read head — including a backward
+              // loop that *starts* at play_end — never trips the
+              // interpolator's `i0 + 1 >= frame_count` bound (it reads
+              // i0+1 and i0+2). Hence play_end <= fc - 2.
+              let fc = sample.frame_count() as f64;
+              let last = (fc - 2.0).max(0.0);
+              let play_start =
+                (start_frac.clamp(0.0, 1.0) as f64 * fc).clamp(0.0, last);
+              let play_end = (end_frac.clamp(0.0, 1.0) as f64 * fc)
+                .clamp(play_start + 1.0, last.max(play_start + 1.0));
+              // Per-instrument filter — build the biquad once here so the
+              // audio thread just copies coefficients into the voice.
+              let inst_filter_on = inst_filter_type >= 1 && inst_filter_type <= 3;
+              let mut inst_filter = Biquad::new_unity();
+              if inst_filter_on {
+                let fc_hz = cutoff_norm_to_hz(inst_cutoff);
+                let q = resonance_norm_to_q(inst_resonance);
+                match inst_filter_type {
+                  1 => inst_filter.set_lowpass(sr_f32, fc_hz, q),
+                  2 => inst_filter.set_highpass(sr_f32, fc_hz, q),
+                  _ => inst_filter.set_bandpass(sr_f32, fc_hz, q),
+                }
+              }
               let pending = PendingTrigger {
                 sample,
                 rate,
@@ -4312,6 +4466,11 @@ fn build_stream(
                 envelope,
                 remaining_samples: delay_samples as i32,
                 note_id,
+                play_start,
+                play_end,
+                loop_mode,
+                inst_filter_on,
+                inst_filter,
               };
               if delay_samples == 0 {
                 claim_voice_slot(
@@ -4549,35 +4708,25 @@ fn build_stream(
             (s.frames.as_slice(), s.channels, s.frame_count())
           };
           let track_params_ref = v.track_params.as_ref();
-          // Honor sample-accurate dispatch — voice may have been queued
-          // to start partway into this block. Reset start_frame after
-          // the loop so subsequent blocks emit from frame 0.
-          let start = v.start_frame;
-          let mut deactivate = false;
-          for frame in start..frames {
-            let pos = v.position;
-            let i0 = pos.floor() as usize;
-            if i0 + 1 >= frame_count {
-              deactivate = true;
-              break;
-            }
-            let frac = (pos - i0 as f64) as f32;
-            // Catmull-Rom needs the two outer neighbours i0-1 and i0+2.
-            // Clamp them at the sample's edges (repeat the boundary frame)
-            // so the curve degrades to near-linear at start/end rather
-            // than reading out of bounds. The i0+1 < frame_count guard
-            // above already protects the inner pair.
+          // Catmull-Rom read at an arbitrary fractional position. Captures
+          // frames_slice (an immutable borrow of v.sample, disjoint from the
+          // v.position/env mutations below) so it can serve both the primary
+          // read head and the loop-seam crossfade head. Clamps i0 so the
+          // inner pair stays in bounds; outer neighbours repeat the edge.
+          let read_at = |p: f64| -> (f32, f32) {
+            let i0 = (p.floor() as usize).min(frame_count.saturating_sub(2));
+            let frac = (p - i0 as f64) as f32;
             let im1 = if i0 >= 1 { i0 - 1 } else { i0 };
             let ip2 = if i0 + 2 < frame_count { i0 + 2 } else { i0 + 1 };
-            let (mut ls, mut rs) = if sample_channels == 1 {
-              let interp = catmull(
+            if sample_channels == 1 {
+              let s = catmull(
                 frames_slice[im1],
                 frames_slice[i0],
                 frames_slice[i0 + 1],
                 frames_slice[ip2],
                 frac,
               );
-              (interp, interp)
+              (s, s)
             } else {
               let l = catmull(
                 frames_slice[im1 * 2],
@@ -4594,7 +4743,87 @@ fn build_stream(
                 frac,
               );
               (l, r)
-            };
+            }
+          };
+          // Loop geometry is constant across the block. xf = seam crossfade
+          // length, capped at half the span so short loops still blend.
+          let span = v.play_end - v.play_start;
+          let xf = ((sr_f32 * LOOP_XFADE_SECS) as f64).min(span * 0.5).max(0.0);
+          // Honor sample-accurate dispatch — voice may have been queued
+          // to start partway into this block. Reset start_frame after
+          // the loop so subsequent blocks emit from frame 0.
+          let start = v.start_frame;
+          let mut deactivate = false;
+          for frame in start..frames {
+            // Loop-window handling (A3). Keep the read position inside
+            // [play_start, play_end]: forward/backward loops wrap to the
+            // opposite edge, pingpong bounces (flipping play_dir). One-shot
+            // (loop_mode 0) never wraps — it runs to play_end and stops.
+            if v.loop_mode != 0 && span > 1.0 {
+              if v.loop_mode == 3 {
+                if v.position >= v.play_end {
+                  v.position = v.play_end;
+                  v.play_dir = -1.0;
+                } else if v.position <= v.play_start {
+                  v.position = v.play_start;
+                  v.play_dir = 1.0;
+                }
+              } else if v.play_dir > 0.0 {
+                while v.position >= v.play_end {
+                  v.position -= span;
+                }
+              } else {
+                while v.position <= v.play_start {
+                  v.position += span;
+                }
+              }
+            }
+            let pos = v.position;
+            let i0 = pos.floor() as usize;
+            // Terminate one-shots at the window end (or the sample's last
+            // interpolatable frame, as a safety bound). Looped voices stay
+            // alive — the wrap above keeps them in range.
+            if i0 + 1 >= frame_count || (v.loop_mode == 0 && pos >= v.play_end) {
+              deactivate = true;
+              break;
+            }
+            let (mut ls, mut rs) = read_at(pos);
+            // Loop-seam crossfade — fwd/bwd loops jump at the seam, so blend
+            // the tail (approaching the jump edge) with the material we're
+            // about to wrap to, over `xf` frames, equal-power (constant
+            // energy). Pingpong (mode 3) reverses continuously — no jump, no
+            // blend. One-shots (mode 0) never reach here. This is what keeps
+            // loops from clicking when start/end aren't on zero crossings.
+            if xf > 1.0 && (v.loop_mode == 1 || v.loop_mode == 2) {
+              // t = 0 at the zone entry (pure tail) → 1 at the seam (pure head).
+              let t = if v.loop_mode == 1 {
+                // forward: seam at play_end, head is one span back
+                ((pos - (v.play_end - xf)) / xf).clamp(0.0, 1.0)
+              } else {
+                // backward: seam at play_start, head is one span forward
+                (((v.play_start + xf) - pos) / xf).clamp(0.0, 1.0)
+              };
+              if t > 0.0 {
+                let head_pos = if v.loop_mode == 1 {
+                  (pos - span).max(0.0)
+                } else {
+                  (pos + span).min(frame_count as f64 - 2.0)
+                };
+                let (hl, hr) = read_at(head_pos);
+                // Equal-power: tail cos, head sin over the quarter circle.
+                let angle = (t as f32) * std::f32::consts::FRAC_PI_2;
+                let (tail_g, head_g) = (angle.cos(), angle.sin());
+                ls = ls * tail_g + hl * head_g;
+                rs = rs * tail_g + hr * head_g;
+              }
+            }
+            // Per-instrument filter (B1) — applied on the reconstructed
+            // sample, ahead of the per-track mixer ladder below, so it's part
+            // of the instrument's voice rather than the channel strip.
+            if v.inst_filter_on {
+              ls = v.inst_filter_l.process(ls);
+              rs = v.inst_filter_r.process(rs);
+            }
             // Filter coefficients: frozen snapshot (detached on a swap) if
             // present, else live from track_params.
             let filt_coeffs = match v.frozen_params {
@@ -4660,8 +4889,14 @@ fn build_stream(
             if !v.env_active {
               let declick = (sr_f32 * 0.001).max(1.0);
               let fade_in = (v.frames_played as f32 / declick).min(1.0);
-              let to_end =
-                (((frame_count as f64 - 1.0 - pos) / v.rate) as f32).max(0.0);
+              // Fade toward the window end for one-shots; looped voices have
+              // no natural end, so they skip the out-fade (the loop wrap is
+              // continuous and a fade there would dip on every pass).
+              let to_end = if v.loop_mode == 0 {
+                (((v.play_end - pos) / v.rate.max(1e-9)) as f32).max(0.0)
+              } else {
+                f32::INFINITY
+              };
               let fade_out = (to_end / declick).min(1.0);
               let g = fade_in.min(fade_out);
               ls *= g;
@@ -4759,7 +4994,7 @@ fn build_stream(
               let mono = 0.5 * (ls + rs);
               buf[frame * n_ch + route_first] += mono * v.gain * dry_scale;
             }
-            v.position += v.rate;
+            v.position += v.rate * v.play_dir;
             // Advance the rate glide (portamento) one frame. Linear ramp of
             // `rate` toward `rate_target` — spreads a re-pitch over ~20ms so
             // there's no slope-discontinuity tick.
@@ -4785,6 +5020,17 @@ fn build_stream(
           }
           // Block-end reset — subsequent blocks emit from frame 0.
           v.start_frame = 0;
+          // Editor playhead: publish this voice's normalized read position
+          // once per block if it's the one the instrument editor is
+          // monitoring. -1 on deactivation so the UI knows the note ended.
+          if v.note_id != 0 && v.note_id == MONITOR_NOTE_ID.load(Ordering::Relaxed) {
+            let norm = if deactivate || frame_count <= 1 {
+              -1.0_f32
+            } else {
+              (v.position / (frame_count as f64 - 1.0)).clamp(0.0, 1.0) as f32
+            };
+            MONITOR_POS.store(norm.to_bits(), Ordering::Relaxed);
+          }
           // Deferred deactivation: cleared here so the borrows of
           // v.sample / v.track_params don't conflict with the per-frame
           // loop's reads. Either the sample ran past its end OR a
@@ -5248,6 +5494,17 @@ pub fn audio_trigger_sample(
   // Voice handle for targeted release (live-input monitoring). Omitted /
   // 0 for every sequencer trigger.
   note_id: Option<u64>,
+  // Per-instrument sample window + loop (editor A3). start/end are 0..1
+  // fractions of the sample; loop_mode is 0 off · 1 fwd · 2 bwd · 3
+  // pingpong. None/defaults (0 / 1 / 0) = full-length one-shot (unchanged).
+  start_frac: Option<f32>,
+  end_frac: Option<f32>,
+  loop_mode: Option<u8>,
+  // Per-instrument filter (editor B1). inst_filter_type 0 off · 1 lp · 2 hp
+  // · 3 bp; cutoff/resonance normalized 0..1. None/0 = bypass.
+  inst_filter_type: Option<u8>,
+  inst_cutoff: Option<f32>,
+  inst_resonance: Option<f32>,
 ) -> Result<(), String> {
   let envelope = match (
     envelope_attack,
@@ -5277,12 +5534,36 @@ pub fn audio_trigger_sample(
     is_texture.unwrap_or(false),
     envelope,
     note_id.unwrap_or(0),
+    start_frac.unwrap_or(0.0),
+    end_frac.unwrap_or(1.0),
+    loop_mode.unwrap_or(0),
+    inst_filter_type.unwrap_or(0),
+    inst_cutoff.unwrap_or(1.0),
+    inst_resonance.unwrap_or(0.0),
   )
 }
 
 #[tauri::command]
 pub fn audio_release_note(note_id: u64, fade_secs: Option<f32>) -> Result<(), String> {
   engine().release_note(note_id, fade_secs.unwrap_or(0.0))
+}
+
+// Editor playhead. The instrument editor sets the note_id of its preview
+// voice so the audio thread publishes that voice's read position; clearing
+// (note_id 0) also resets the published position to "none" (-1).
+#[tauri::command]
+pub fn audio_set_monitor_voice(note_id: u64) {
+  MONITOR_NOTE_ID.store(note_id, Ordering::Relaxed);
+  if note_id == 0 {
+    MONITOR_POS.store((-1.0_f32).to_bits(), Ordering::Relaxed);
+  }
+}
+
+// Normalized read position (0..1 over the whole sample) of the monitored
+// voice, or a negative value when none is playing. Polled by the waveform.
+#[tauri::command]
+pub fn audio_monitor_playhead() -> f32 {
+  f32::from_bits(MONITOR_POS.load(Ordering::Relaxed))
 }
 
 #[tauri::command]

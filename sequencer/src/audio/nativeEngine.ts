@@ -355,6 +355,18 @@ export async function triggerSample(
     // (so the matching note-off can release this exact voice). 0/undefined
     // for every sequencer trigger.
     noteId?: number;
+    // Per-instrument sample window + loop (editor A3). start/end are 0..1
+    // fractions of the sample; loopMode is 0 off · 1 fwd · 2 bwd · 3 pingpong.
+    // Defaults (0 / 1 / 0) make the voice a full-length one-shot — unchanged.
+    start?: number;
+    end?: number;
+    loopMode?: number;
+    // Per-instrument filter (editor B1). filterType 0 off · 1 lp · 2 hp · 3 bp;
+    // cutoff/resonance normalized 0..1. Default (0) bypasses — distinct from
+    // the per-track mixer filter.
+    filterType?: number;
+    cutoff?: number;
+    resonance?: number;
   } = {},
 ): Promise<void> {
   await invoke<void>('audio_trigger_sample', {
@@ -375,6 +387,12 @@ export async function triggerSample(
     envelopeHold: opts.envelopeHold ?? null,
     delaySecs: opts.delaySecs ?? null,
     noteId: opts.noteId ?? null,
+    startFrac: opts.start ?? null,
+    endFrac: opts.end ?? null,
+    loopMode: opts.loopMode ?? null,
+    instFilterType: opts.filterType ?? null,
+    instCutoff: opts.cutoff ?? null,
+    instResonance: opts.resonance ?? null,
   });
 }
 
@@ -387,6 +405,18 @@ export async function releaseNote(noteId: number, fadeSecs?: number): Promise<vo
     noteId,
     fadeSecs: fadeSecs ?? null,
   });
+}
+
+// Instrument-editor playhead. Tell the engine which preview voice (by
+// noteId) to publish a read position for; pass 0 to stop publishing.
+export async function setMonitorVoice(noteId: number): Promise<void> {
+  await invoke<void>('audio_set_monitor_voice', { noteId });
+}
+
+// Normalized read position (0..1 over the whole sample) of the monitored
+// voice, or a negative value when none is playing. Polled while previewing.
+export async function getMonitorPlayhead(): Promise<number> {
+  return invoke<number>('audio_monitor_playhead');
 }
 
 // Live re-pitch of a tagged, in-flight voice. `ratio` is the playback-rate

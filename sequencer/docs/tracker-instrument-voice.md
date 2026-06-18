@@ -176,6 +176,110 @@ sends align Sequence's engine with the instrument format. Design when Phase A–
 [[reference-bank-swap-filter-graphs]] — per-track filter graphs are stable/persistent; per-instrument
 sends should follow that stability discipline.)
 
+## A3 — start/end trim + loop modes — BUILT 2026-06-18 (pending app test)
+
+Slice A3 adds a per-instrument **sample window** (start/end) + **loop mode** (off/fwd/bwd/pingpong),
+auditioned through the native engine and serialized to `.pti`. App-only, like A1/A2.
+
+- **Store (`voiceEditsStore.ts`):** `VoiceEdit` gains `start?` / `end?` (0..1 fractions, default 0/1)
+  + `loopMode?: LoopMode` (`'off'|'fwd'|'bwd'|'pingpong'`, default `'off'`). `LOOP_MODE_CODE` maps
+  those to the native/`.pti` codes (off 0 · fwd 1 · bwd 2 · pingpong 3 — identical to
+  `InstrumentPlayMode`). New `voiceTrim(voiceId) → { start, end, loop }` accessor.
+- **Chokepoint (`samplePlayer.pickNativeSample`):** also returns `{ start, end, loop }`. All six
+  native trigger sites (3 in `App.tsx` playback, 3 in `monitor.ts` preview/chord) forward them to
+  `triggerSample` as `start`/`end`/`loopMode` opts → `audio_trigger_sample` as `startFrac`/`endFrac`/
+  `loopMode` (nullable; defaults 0/1/0 = unchanged full one-shot).
+- **Native engine (`audio.rs`):** `Trigger` cmd + `PendingTrigger` + `Voice` carry `play_start`/
+  `play_end` (frames, resolved from the fractions at queue time) + `loop_mode` + `play_dir` (±1 read
+  direction). `claim_voice_slot` seeds position at the window start (or `play_end` for backward loops,
+  dir −1). The per-frame loop wraps (fwd/bwd) or bounces (pingpong, flipping `play_dir`) inside
+  `[play_start, play_end]`; one-shots terminate at `play_end`. Advance is `position += rate * play_dir`.
+  Declick out-fade targets `play_end` for one-shots and is **skipped for loops** (a fade at each wrap
+  would dip). `play_end` clamps to `frame_count − 2` so a backward loop starting at the end can't trip
+  the interpolator's `i0+1 >= frame_count` bound.
+- **Editor (`InstrumentEditorDialog.tsx`):** start/end sliders (0–100%, mutually clamped 0.1% apart)
+  + a 4-way loop segmented toggle (off/fwd/bwd/ping). Preview button + live play already honor edits
+  via the chokepoint.
+- **Export (`exportPti.ts`):** now feeds **effective params** — `inst.playmode = trim.loop`,
+  `volume = voiceGainOverride`, `tune = voiceTune` (clamped ±24), `startPoint`/`endPoint` =
+  `round(frac × min(frames−1, 65535))`, `loopPoint1/2` pinned to start/end. Samples > 65535 frames
+  clamp (the device's 16-bit point addressing — the known long-sample limit).
+
+**⚠️ Known caveat (flag to Chris, iterate if it bites):** a **flat (non-enveloped) voice** with loop
+on never self-terminates — melodic voices stop at their envelope/gate and editor preview stops on
+note-off, but a looped **drum** in pattern playback drones until the voice pool steals its slot
+(self-limiting, no lockup). Loop is meant for sustained/held/enveloped sources. If flat looped drums
+need bounding, synthesize a gate from the step length (follow-up).
+
+### Waveform display + live playhead (added same session, 2026-06-18)
+
+Editing trim/loop blind is rough, so the editor now shows the waveform with draggable handles + a
+live playhead reflecting the real read direction.
+- **`src/tracker/waveformPeaks.ts`** — `loadVoicePeaks(voiceId, columns)` resolves the same sample
+  the export uses (`resolveExportSample`/`readBytes`, now exported from `exportPti.ts`), decodes via a
+  throwaway `OfflineAudioContext`, reduces to per-column min/max (mono downmix). Cached by
+  `voiceId@columns`.
+- **`src/components/Waveform.tsx`** — canvas (ResizeObserver → ~1 column/px). Dims outside
+  `[start,end]`, draws start/end handles with grab tabs (pointer-drag → `onChange`, mutually clamped),
+  overlays the playhead + a direction caret. **Direction is inferred from the position delta** so the
+  caret is correct for fwd/bwd AND pingpong (sign flips at the turns; native only reports position,
+  not direction).
+- **Native playhead readback** — `audio.rs` statics `MONITOR_NOTE_ID` + `MONITOR_POS` (f32 bits, <0 =
+  none). The editor sets the preview voice's `note_id` via `audio_set_monitor_voice`; the audio thread
+  publishes that voice's normalized read position **once per block** (−1 on deactivation).
+  `audio_monitor_playhead` reads it; `nativeEngine.ts` wraps both. Editor polls at ~30Hz
+  (`setInterval`) only while the preview button is held; clears the monitor voice on release/close.
+
+### Loop-seam crossfade (the click/pop fix, 2026-06-18)
+
+Chris flagged that trimmed loop points click unless start/end land on zero crossings. Fixed with an
+**equal-power crossfade at the loop seam** in `audio.rs` (`LOOP_XFADE_SECS = 0.02`, capped at half the
+loop span). The per-frame read was refactored into a `read_at(pos)` closure (captures `frames_slice`,
+disjoint from the `&mut v` field writes) serving both the primary head and the crossfade head. In the
+last `xf` frames before the jump edge, the tail blends (cos/sin) into the material one span away —
+`sample[pos − span]` for forward, `sample[pos + span]` for backward — so at the seam the output is
+exactly the wrap target and playback is continuous. **Pingpong is exempt** (it reverses continuously —
+no jump, no click). One-shots never reach it. This means trim points no longer need to be on zero
+crossings.
+
+`tsc` + `cargo check` both clean. **PENDING:** Chris reload-the-app test (samplePlayer + audio.rs edits
+need a full Tauri rebuild, not just HMR — see reference-engine-hmr-stale). Then: hear trim/loop on
+playback + preview, watch the playhead track fwd/bwd/ping, confirm loops don't click on off-zero trim
+points, and re-export a trimmed/looped voice to confirm the `.pti` carries the window + playmode on
+hardware.
+
+## B1 — per-instrument filter — BUILT 2026-06-18 (pending app test)
+
+First slice of Phase B: a per-instrument **LP / HP / BP filter** with cutoff + resonance, authored in
+the editor, auditioned through the native engine, serialized to `.pti`. **Distinct from the per-track
+mixer ladder filter** (`trackFilter`/`TrackParams`) — this one lives on the voice, ahead of the
+channel strip. App-only, same plumbing shape as trim/loop.
+
+- **Store:** `VoiceEdit` gains `filterType` (`'off'|'lp'|'hp'|'bp'`, default off) + `cutoff` (0..1,
+  default 1 = open) + `resonance` (0..1, default 0). `FILTER_TYPE_CODE` maps to native codes (0 off ·
+  1 lp · 2 hp · 3 bp) and to `.pti` `InstrumentFilterType` (LowPass/HighPass/BandPass). `voiceFilter()`
+  accessor.
+- **Chokepoint/IPC:** `pickNativeSample` returns `{filterType, cutoff, resonance}`; the 6 trigger
+  sites forward them → `triggerSample` (`filterType`/`cutoff`/`resonance`) → `audio_trigger_sample`
+  (`instFilterType`/`instCutoff`/`instResonance`, nullable; defaults off).
+- **Native (`audio.rs`):** the existing RBJ `Biquad` got `#[derive(Clone, Copy)]`, a `set_bandpass`,
+  and `reset_state`. `cutoff_norm_to_hz` (50–18k log, shared with the track filter) maps cutoff;
+  `resonance_norm_to_q` maps res 0..1 → Q 0.707..~25 (extreme end is genuinely screaming, per
+  broken-ranges). Coefficients are built **once at queue time** in the `Trigger` handler and stored on
+  `PendingTrigger`; `claim_voice_slot` copies them into the voice's stereo `inst_filter_l/r` (delay
+  lines cleared). The read loop applies them right after sample reconstruction (post-crossfade,
+  pre-ladder). Bypassed (no-op) when `inst_filter_on` is false.
+- **Export:** `exportPti.ts` sets `filterEnabled`/`filterType`/`cutoff` (0..1 direct)/`resonance`
+  (our 0..1 × 4.3 → the `.pti` ceiling).
+- **Editor:** filter type segmented toggle (off/lp/hp/bp) + cutoff + reso sliders (shown only when a
+  type is selected).
+
+**⚠️ Known limitation (flag, iterate if wanted):** like trim/loop, the filter **bakes at trigger** —
+coefficients are fixed when the note fires, so dragging cutoff/reso during a *held* preview note won't
+sweep that note (re-press to hear the change). Live cutoff sweep would need per-voiceId shared atomics
+(essentially the automations layer / Phase B2-3); deferred. `tsc` + `cargo check` clean. Reload the app
+(engine rebuild). NEXT in Phase B: per-instrument **envelope + LFO** (the `automations[]` layer).
+
 ## Phase A — execution plan (mapped 2026-06-18, ready to build)
 
 Slice order within Phase A (smallest audible first; build-and-test each with Chris):

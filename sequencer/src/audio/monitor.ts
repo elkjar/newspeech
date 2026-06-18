@@ -101,6 +101,12 @@ export function monitorNote(
       // ring for their sample length and the note-off ramp fades that.
       envelopeHold: env ? MONITOR_MAX_HOLD_SECS : undefined,
       noteId,
+      start: pick.start,
+      end: pick.end,
+      loopMode: pick.loop,
+      filterType: pick.filterType,
+      cutoff: pick.cutoff,
+      resonance: pick.resonance,
     });
     return;
   }
@@ -183,6 +189,12 @@ export function monitorChord(
         // release ramps it down (flat-gain voices ring their sample length).
         envelopeHold: env ? MONITOR_MAX_HOLD_SECS : undefined,
         noteId: noteIds[i],
+        start: pick.start,
+        end: pick.end,
+        loopMode: pick.loop,
+        filterType: pick.filterType,
+        cutoff: pick.cutoff,
+        resonance: pick.resonance,
       });
     });
     return;
@@ -252,6 +264,12 @@ export function monitorDrum(track: Track, velocity: number): void {
       delaySecs: 0,
       monophonic: track.monophonic === true,
       section: 0, // SECTION_NONE — auditions stay out of recording stems
+      start: pick.start,
+      end: pick.end,
+      loopMode: pick.loop,
+      filterType: pick.filterType,
+      cutoff: pick.cutoff,
+      resonance: pick.resonance,
     });
     return;
   }

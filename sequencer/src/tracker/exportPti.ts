@@ -7,11 +7,25 @@
 // transposes by played note, not by the sample's recorded pitch (validated on
 // hardware 2026-06-18; see docs/tracker-instrument-voice.md). The Tracker wants
 // 16-bit 44.1k; Sequence samples are 48k, so we resample on the way out.
-import Tracker, { AudioUtil, InstrumentPlayMode } from '@polyend/tracker-lib';
+import Tracker, {
+  AudioUtil,
+  InstrumentPlayMode,
+  InstrumentFilterType,
+} from '@polyend/tracker-lib';
 import { invoke } from '@tauri-apps/api/core';
 import { getRegisteredKits } from '../instruments/manifestRegistry';
+import {
+  voiceGainOverride,
+  voiceTune,
+  voiceTrim,
+  voiceFilter,
+} from '../instruments/voiceEditsStore';
 
-interface ResolvedSample {
+const PTI_MAX_RESONANCE = 4.3; // .pti resonance ceiling (our 0..1 maps onto it)
+
+const PTI_MAX_POINT = 65535; // 16-bit frame addressing ceiling
+
+export interface ResolvedSample {
   url: string; // `${baseUrl}/${file}` — a URL for bundled kits, a filesystem path for user kits
   source: 'bundled' | 'user';
   label: string;
@@ -20,7 +34,8 @@ interface ResolvedSample {
 // Find the voice in the registered kits and pick the sample file to export:
 // the median root for multisampled voices, else the first flat file (drums /
 // one-shots). Returns null for voices with no sample (e.g. the synth `bass`).
-function resolveExportSample(voiceId: string): ResolvedSample | null {
+// Exported so the waveform display resolves the same file the export does.
+export function resolveExportSample(voiceId: string): ResolvedSample | null {
   for (const kit of getRegisteredKits()) {
     const voice = kit.manifest.voices[voiceId];
     if (!voice) continue;
@@ -42,7 +57,7 @@ export function voiceIsExportable(voiceId: string): boolean {
   return resolveExportSample(voiceId) !== null;
 }
 
-async function readBytes(s: ResolvedSample): Promise<ArrayBuffer> {
+export async function readBytes(s: ResolvedSample): Promise<ArrayBuffer> {
   if (s.source === 'user') {
     // user kits live on disk; the native command returns raw file bytes
     const bytes = await invoke<number[]>('read_audio_file', { path: s.url });
@@ -57,7 +72,9 @@ async function readBytes(s: ResolvedSample): Promise<ArrayBuffer> {
 // context's sample-rate, so decoding inside a 44.1k OfflineAudioContext yields
 // a 44.1k buffer (browser-quality resampler, no custom DSP). Returns
 // interleaved Float32 + the source channel count (mono stays mono).
-async function decodeResample(ab: ArrayBuffer): Promise<{ inter: Float32Array; channels: number }> {
+async function decodeResample(
+  ab: ArrayBuffer,
+): Promise<{ inter: Float32Array; channels: number; frames: number }> {
   const octx = new OfflineAudioContext(2, 1, 44100);
   const buf = await octx.decodeAudioData(ab);
   const channels = buf.numberOfChannels;
@@ -68,7 +85,7 @@ async function decodeResample(ab: ArrayBuffer): Promise<{ inter: Float32Array; c
   for (let i = 0; i < frames; i++) {
     for (let c = 0; c < channels; c++) inter[i * channels + c] = chans[c][i];
   }
-  return { inter, channels };
+  return { inter, channels, frames };
 }
 
 // Tracker shows the instrument name from sample.filename (≤32 bytes); an empty
@@ -89,16 +106,48 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
     const resolved = resolveExportSample(voiceId);
     if (!resolved) return { ok: false, error: 'no sample to export for this voice' };
     const ab = await readBytes(resolved);
-    const { inter, channels } = await decodeResample(ab);
+    const { inter, channels, frames } = await decodeResample(ab);
     const wav = AudioUtil.createWavFile(inter, {
       numChannels: channels,
       sampleRate: 44100,
       bitsPerSample: 16,
     });
     const inst = Tracker.createInstrument(wav);
-    inst.playmode = InstrumentPlayMode.OneShot;
-    inst.volume = 1.0;
-    inst.tune = 0;
+    // Carry the authored instrument edits (the same global voiceEdits the
+    // local engine plays) into the file. Defaults (gain 1 / tune 0 / window
+    // 0..1 / loop off) reproduce the prior full-length one-shot export.
+    const trim = voiceTrim(voiceId);
+    inst.playmode = trim.loop as InstrumentPlayMode; // codes match the enum 1:1
+    inst.volume = voiceGainOverride(voiceId);
+    inst.tune = Math.max(-24, Math.min(24, Math.round(voiceTune(voiceId))));
+    // Window fractions → frame points. The Tracker addresses points with a
+    // 16-bit value, so samples longer than 65535 frames clamp here (the
+    // device can only seek into the first 65535 frames).
+    const last = Math.max(0, Math.min(frames - 1, PTI_MAX_POINT));
+    const startPt = Math.round(trim.start * last);
+    const endPt = Math.max(startPt, Math.round(trim.end * last));
+    inst.startPoint = startPt;
+    inst.endPoint = endPt;
+    // Loop region tracks the trim window so a looped export loops the same
+    // span you auditioned (the .pti has separate loop points; we pin them
+    // to start/end — no independent loop-point control in this slice).
+    inst.loopPoint1 = startPt;
+    inst.loopPoint2 = endPt;
+    // Per-instrument filter. type 0 = off; 1/2/3 → LowPass/HighPass/BandPass.
+    // cutoff is normalized 0..1 in both models; resonance maps our 0..1 onto
+    // the .pti 0..4.3 range.
+    const filter = voiceFilter(voiceId);
+    inst.filterEnabled = filter.type !== 0;
+    if (filter.type !== 0) {
+      inst.filterType =
+        filter.type === 1
+          ? InstrumentFilterType.LowPass
+          : filter.type === 2
+            ? InstrumentFilterType.HighPass
+            : InstrumentFilterType.BandPass;
+      inst.cutoff = Math.max(0, Math.min(1, filter.cutoff));
+      inst.resonance = Math.max(0, Math.min(1, filter.resonance)) * PTI_MAX_RESONANCE;
+    }
     const name = sanitizeName(resolved.label);
     inst.sample.filename = name;
     // Browser write path builds a Blob + <a download> (works in the app's

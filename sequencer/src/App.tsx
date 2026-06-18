@@ -662,6 +662,12 @@ export function App() {
                     envelopeSustain: arpEnv?.sustain,
                     envelopeRelease: arpEnv?.release,
                     envelopeHold: arpEnv ? ev.gate * sub : undefined,
+                    start: pick.start,
+                    end: pick.end,
+                    loopMode: pick.loop,
+                    filterType: pick.filterType,
+                    cutoff: pick.cutoff,
+                    resonance: pick.resonance,
                   });
                 }
               } else {
@@ -749,6 +755,12 @@ export function App() {
                   envelopeRelease: playEnv?.release,
                   envelopeHold: holdSecs,
                   noteId,
+                  start: pick.start,
+                  end: pick.end,
+                  loopMode: pick.loop,
+                  filterType: pick.filterType,
+                  cutoff: pick.cutoff,
+                  resonance: pick.resonance,
                 });
                 if (noteId !== undefined && targetMidi !== undefined) {
                   tones.push({ noteId, midi: targetMidi });
@@ -864,6 +876,12 @@ export function App() {
             envelopeRelease: chord.env?.release,
             envelopeHold: chord.env?.hold,
             noteId,
+            start: pick.start,
+            end: pick.end,
+            loopMode: pick.loop,
+            filterType: pick.filterType,
+            cutoff: pick.cutoff,
+            resonance: pick.resonance,
           });
           nextTones.push({ noteId, midi });
         }
