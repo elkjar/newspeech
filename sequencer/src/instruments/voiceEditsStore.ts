@@ -54,8 +54,12 @@ export interface AmpEnvEdit {
   release: number; // seconds
 }
 
+// `on: false` — these defaults are what a control shows for an UNCONFIGURED
+// instrument (no stored edit), so it must read as off. Toggling the section on
+// sets `on: true` explicitly (merged over these defaults), which is what
+// actually creates/activates the edit.
 export const DEFAULT_AMP_ENV: AmpEnvEdit = {
-  on: true,
+  on: false,
   attack: 0.005,
   decay: 0.12,
   sustain: 0.7,
@@ -108,11 +112,62 @@ export interface FilterLfoEdit {
 }
 
 export const DEFAULT_FILTER_LFO: FilterLfoEdit = {
-  on: true,
+  on: false,
   shape: 'tri',
   division: '1/4',
   depth: 0.4,
 };
+
+// Generic modulators (editor B2 full grid). Each modulation TARGET (volume,
+// pan, cutoff, pitch) can carry an envelope and/or an LFO; they sum onto the
+// target's base value in the engine. Two existing specials are NOT folded in
+// here: the volume ENVELOPE is the amp envelope (`ampEnv` — it overrides the
+// manifest env + drives the engine's amplitude ADSR), and the cutoff LFO is
+// `filterLfo`. Everything else flows through these generic mods + the engine's
+// fixed `MOD_SLOT` roles. depth meaning is per-target (see voiceMods).
+export interface EnvMod {
+  on: boolean;
+  attack: number; // seconds
+  decay: number; // seconds
+  sustain: number; // 0..1
+  release: number; // seconds
+  depth: number; // target-scaled amount (see voiceMods)
+}
+
+export interface LfoMod {
+  on: boolean;
+  shape: LfoShape;
+  division: LfoDivision; // tempo-synced
+  depth: number; // target-scaled amount (see voiceMods)
+}
+
+export const DEFAULT_ENV_MOD: EnvMod = {
+  on: false,
+  attack: 0.01,
+  decay: 0.2,
+  sustain: 0.5,
+  release: 0.2,
+  depth: 0.5,
+};
+
+export const DEFAULT_LFO_MOD: LfoMod = {
+  on: false,
+  shape: 'tri',
+  division: '1/4',
+  depth: 0.5,
+};
+
+// Fixed engine slot roles for the generic `mods` array. JS + Rust agree on
+// these indices. (Vol-env = ampEnv and cutoff-lfo = filterLfo are handled
+// separately, so they're absent here.)
+export const MOD_SLOT = {
+  volLfo: 0, // tremolo (amplitude)
+  panEnv: 1,
+  panLfo: 2,
+  cutoffEnv: 3,
+  pitchEnv: 4,
+  pitchLfo: 5,
+} as const;
 
 export interface VoiceEdit {
   gain?: number; // multiplier on the manifest gain; default 1 (unchanged)
@@ -123,8 +178,77 @@ export interface VoiceEdit {
   filterType?: FilterType; // per-instrument filter; default 'off'
   cutoff?: number; // filter cutoff, normalized 0..1; default 1 (fully open)
   resonance?: number; // filter resonance, normalized 0..1; default 0
-  filterLfo?: FilterLfoEdit; // cutoff LFO; only meaningful when filterType != off
-  ampEnv?: AmpEnvEdit; // per-instrument amplitude DADSR; overrides manifest when on
+  filterLfo?: FilterLfoEdit; // cutoff LFO (special — bespoke engine path)
+  ampEnv?: AmpEnvEdit; // volume envelope (special — overrides manifest env)
+  // Generic-mod grid:
+  volLfo?: LfoMod; // tremolo
+  panEnv?: EnvMod;
+  panLfo?: LfoMod;
+  cutoffEnv?: EnvMod;
+  pitchEnv?: EnvMod; // depth in semitones
+  pitchLfo?: LfoMod; // depth in semitones (vibrato)
+}
+
+// One modulator, resolved for the audio path. slot = MOD_SLOT role; isLfo
+// picks env vs lfo params; rateHz is derived from the division at the current
+// BPM (lfo only). Sent to the engine as the `mods` trigger array.
+export interface ModSpec {
+  slot: number;
+  isLfo: boolean;
+  depth: number;
+  attack: number;
+  decay: number;
+  sustain: number;
+  release: number;
+  shape: number;
+  rateHz: number;
+}
+
+function envSpec(slot: number, m: EnvMod | undefined): ModSpec | null {
+  if (!m?.on) return null;
+  return {
+    slot,
+    isLfo: false,
+    depth: m.depth,
+    attack: m.attack,
+    decay: m.decay,
+    sustain: m.sustain,
+    release: m.release,
+    shape: 0,
+    rateHz: 0,
+  };
+}
+
+function lfoSpec(slot: number, m: LfoMod | undefined, bpm: number): ModSpec | null {
+  if (!m?.on) return null;
+  return {
+    slot,
+    isLfo: true,
+    depth: m.depth,
+    attack: 0,
+    decay: 0,
+    sustain: 0,
+    release: 0,
+    shape: LFO_SHAPE_CODE[m.shape],
+    rateHz: lfoDivisionToHz(m.division, bpm),
+  };
+}
+
+// All active generic modulators for a voice, ready for the trigger. Empty when
+// none are on (the engine then does no extra modulation).
+export function voiceMods(voiceId: string): ModSpec[] {
+  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  if (!e) return [];
+  const bpm = useSequencerStore.getState().bpm || 120;
+  const out: (ModSpec | null)[] = [
+    lfoSpec(MOD_SLOT.volLfo, e.volLfo, bpm),
+    envSpec(MOD_SLOT.panEnv, e.panEnv),
+    lfoSpec(MOD_SLOT.panLfo, e.panLfo, bpm),
+    envSpec(MOD_SLOT.cutoffEnv, e.cutoffEnv),
+    envSpec(MOD_SLOT.pitchEnv, e.pitchEnv),
+    lfoSpec(MOD_SLOT.pitchLfo, e.pitchLfo, bpm),
+  ];
+  return out.filter((m): m is ModSpec => m !== null);
 }
 
 // Resolved amplitude envelope for a voice: the authored edit (when enabled)

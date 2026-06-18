@@ -7,14 +7,22 @@
 // Each stage has a fixed horizontal "lane" scaled to its max time, so handles
 // track the cursor directly (no rescale-as-you-drag). Monochrome to match.
 import { useEffect, useRef, useState } from 'react';
-import type { AmpEnvEdit } from '../instruments/voiceEditsStore';
 
-interface Props {
-  env: AmpEnvEdit;
-  onChange: (patch: Partial<AmpEnvEdit>) => void;
+// Any ADSR-shaped value (AmpEnvEdit, EnvMod, …). Decoupled from a specific type
+// so the graph drives the amp envelope and every generic envelope modulator.
+export interface EnvShape {
+  attack: number;
+  decay: number;
+  sustain: number;
+  release: number;
 }
 
-const HEIGHT = 120;
+interface Props {
+  env: EnvShape;
+  onChange: (patch: Partial<EnvShape>) => void;
+}
+
+const HEIGHT = 96;
 const PAD_X = 8;
 const PAD_TOP = 12;
 const PAD_BOT = 12;
@@ -39,7 +47,7 @@ interface Geom {
   wr: number;
 }
 
-function geometry(env: AmpEnvEdit, width: number): Geom {
+function geometry(env: EnvShape, width: number): Geom {
   const top = PAD_TOP;
   const baseline = HEIGHT - PAD_BOT;
   const unit = (width - 2 * PAD_X) / LANE_SUM;

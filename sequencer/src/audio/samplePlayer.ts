@@ -18,6 +18,8 @@ import {
   voiceTrim,
   voiceFilter,
   voiceFilterLfo,
+  voiceMods,
+  type ModSpec,
 } from '../instruments/voiceEditsStore';
 
 // Slice-2 pad pan motion. Per-tone slow LFO sweeps the panner around its
@@ -599,6 +601,7 @@ class SamplePlayer {
     lfoShape: number;
     lfoRateHz: number;
     lfoDepth: number;
+    mods: ModSpec[];
   } | null {
     const data = this.voices.get(voice);
     if (!data || data.banks.length === 0) return null;
@@ -650,6 +653,7 @@ class SamplePlayer {
       lfoShape: lfo.shape,
       lfoRateHz: lfo.rateHz,
       lfoDepth: lfo.depth,
+      mods: voiceMods(voice),
     };
   }
 

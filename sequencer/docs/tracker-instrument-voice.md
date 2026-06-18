@@ -350,6 +350,32 @@ refinement if cross-voice phase alignment ever matters).
 `tsc` + `cargo check` clean. Reload the app. NEXT in B: a **filter envelope** (cutoff swept by a DADSR,
 reusing this live-cutoff path + the EnvelopeGraph UI) and **pitch** modulation.
 
+## B2 (full grid) — generic modulation + all controls revealed — BUILT 2026-06-18
+
+Chris chose the **full automation grid**: each renderable `.pti` target (Vol/Pan/Cutoff/Pitch) carries
+an envelope and/or an LFO. Built on a **generic `Modulator`** (env OR lfo) over a fixed 6-slot array
+(`MOD_SLOTS`): `0 vol-LFO(tremolo) · 1 pan-env · 2 pan-LFO · 3 cutoff-env · 4 pitch-env · 5 pitch-LFO`.
+The two originals stay separate, NOT in the array: **vol-ENV = the amp envelope**, **cutoff-LFO = the
+bespoke `filterLfo`**.
+
+- **Store:** `EnvMod`/`LfoMod` + the six slots on `VoiceEdit`; `voiceMods(voiceId) → ModSpec[]`
+  (resolves LFO Hz from BPM). `MOD_SLOT` index map shared with Rust.
+- **IPC (no param explosion):** a single `mods` array on `audio_trigger_sample` (`ModSpecIpc`, serde
+  camelCase) → built into a `[Modulator; 6]` **on the command thread** (Copy, so the audio thread only
+  copies — no heap on the realtime path) → `MixerCommand`/`PendingTrigger`/`Voice`.
+- **Engine:** per sample, tick all mods then accumulate per target — tremolo (amp ×), pan offset
+  (recompute pan gains around a new `pan_base`), cutoff offset (folds into the existing cutoff
+  recompute), pitch semitones (`2^(±/12)` on the position advance). Mod envelopes clock off
+  `frames_played` + `mod_hold_samples` (= amp-env hold, else sustain).
+- **Editor:** reusable `ModEnvSection` / `ModLfoSection` (`ModSection.tsx`) reuse the EnvelopeGraph +
+  LfoShapePlot; `EnvelopeGraph` decoupled to a structural `EnvShape`. **All conditional hiding removed**
+  (the `filterType`/`lfoOn`/`envOn` guards) so every control is visible for the Figma screenshot.
+
+**⚠️ Export NOT wired for the 6 new mods.** `exportPti` still writes only amp-env→`automations[0]` and
+cutoff-LFO→`automations[2]`. pan→[1] / pitch→[5] / tremolo / cutoff-env are unserialized; slots 0 and 2
+are env-XOR-LFO so need pick logic. **Deferred until hardware-verified** — per the delay lesson, some
+`.pti` automation slots may be vestigial, so prove each on the device before trusting the export.
+
 ## Phase A — execution plan (mapped 2026-06-18, ready to build)
 
 Slice order within Phase A (smallest audible first; build-and-test each with Chris):

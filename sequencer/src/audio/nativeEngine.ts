@@ -373,6 +373,20 @@ export async function triggerSample(
     lfoShape?: number;
     lfoRateHz?: number;
     lfoDepth?: number;
+    // Generic modulator grid (editor B2 full grid): vol-LFO / pan-env / pan-LFO
+    // / cutoff-env / pitch-env / pitch-LFO. Each carries a fixed slot role +
+    // env-or-LFO params; the engine sums them onto the target. Omitted = none.
+    mods?: Array<{
+      slot: number;
+      isLfo: boolean;
+      depth: number;
+      attack: number;
+      decay: number;
+      sustain: number;
+      release: number;
+      shape: number;
+      rateHz: number;
+    }>;
   } = {},
 ): Promise<void> {
   await invoke<void>('audio_trigger_sample', {
@@ -402,6 +416,7 @@ export async function triggerSample(
     lfoShape: opts.lfoShape ?? null,
     lfoRateHz: opts.lfoRateHz ?? null,
     lfoDepth: opts.lfoDepth ?? null,
+    mods: opts.mods && opts.mods.length > 0 ? opts.mods : null,
   });
 }
 

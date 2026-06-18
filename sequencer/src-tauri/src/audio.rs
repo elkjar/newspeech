@@ -26,7 +26,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::reverb::ReverbBus;
 
@@ -1349,6 +1349,143 @@ fn lfo_eval(shape: u8, phase: f32, rand_val: f32) -> f32 {
     3 => if phase < 0.5 { 1.0 } else { -1.0 }, // square
     _ => rand_val,                     // random: sample & hold
   }
+}
+
+// Number of generic modulator slots (editor B2 full grid). Fixed roles, agreed
+// with the JS MOD_SLOT map: 0 vol-LFO (tremolo) · 1 pan-env · 2 pan-LFO ·
+// 3 cutoff-env · 4 pitch-env · 5 pitch-LFO. (Vol-env = the amp envelope and
+// cutoff-LFO = the bespoke filter LFO live outside this array.)
+const MOD_SLOTS: usize = 6;
+
+// One generic modulator: an envelope OR an LFO whose output (× depth) is summed
+// onto a target. Pure scalars → Copy, so it crosses the command queue and seeds
+// a voice with no heap on the audio thread. depth meaning is per-target and
+// applied at the read site (tremolo amount / pan offset / cutoff-norm offset /
+// pitch semitones).
+#[derive(Clone, Copy)]
+struct Modulator {
+  on: bool,
+  is_lfo: bool,
+  depth: f32,
+  // envelope stage lengths in samples (sustain is a level 0..1)
+  attack: u32,
+  decay: u32,
+  sustain: f32,
+  release: u32,
+  // lfo
+  shape: u8,
+  rate_hz: f32,
+  // runtime
+  phase: f32,
+  rand: f32,
+  rng: u32,
+}
+
+impl Modulator {
+  fn off() -> Self {
+    Self {
+      on: false,
+      is_lfo: false,
+      depth: 0.0,
+      attack: 0,
+      decay: 0,
+      sustain: 1.0,
+      release: 0,
+      shape: 0,
+      rate_hz: 0.0,
+      phase: 0.0,
+      rand: 0.0,
+      rng: 0x9e37_79b9,
+    }
+  }
+
+  fn from_ipc(s: &ModSpecIpc, sr: f32, seed: u32) -> Self {
+    Self {
+      on: true,
+      is_lfo: s.is_lfo,
+      depth: s.depth,
+      attack: (s.attack * sr).max(1.0) as u32,
+      decay: (s.decay * sr).max(0.0) as u32,
+      sustain: s.sustain.clamp(0.0, 1.0),
+      release: (s.release * sr).max(1.0) as u32,
+      shape: s.shape,
+      rate_hz: s.rate_hz,
+      phase: 0.0,
+      rand: 0.0,
+      rng: 0x9e37_79b9 ^ seed.wrapping_mul(2_654_435_761),
+    }
+  }
+
+  // Advance the LFO phase one sample (no-op for envelopes / off slots).
+  #[inline]
+  fn tick(&mut self, sr: f32) {
+    if !self.on || !self.is_lfo {
+      return;
+    }
+    self.phase += self.rate_hz / sr;
+    if self.phase >= 1.0 {
+      self.phase -= self.phase.floor();
+      self.rand = lfo_rand_bipolar(&mut self.rng);
+    }
+  }
+
+  // Current output × depth. Envelopes use `elapsed` output-frames + the note
+  // `hold` (samples) for the sustain→release transition; LFOs use the phase.
+  #[inline]
+  fn value(&self, elapsed: u32, hold: u32) -> f32 {
+    if !self.on {
+      return 0.0;
+    }
+    let raw = if self.is_lfo {
+      lfo_eval(self.shape, self.phase, self.rand)
+    } else {
+      let attack_end = self.attack;
+      let decay_end = attack_end + self.decay;
+      let release_end = hold.saturating_add(self.release);
+      if elapsed < attack_end {
+        (elapsed + 1) as f32 / attack_end.max(1) as f32
+      } else if elapsed < decay_end && self.decay > 0 {
+        let t = (elapsed - attack_end + 1) as f32 / self.decay as f32;
+        1.0 + t * (self.sustain - 1.0)
+      } else if elapsed < hold {
+        self.sustain
+      } else if elapsed < release_end {
+        let t = (elapsed - hold + 1) as f32 / self.release.max(1) as f32;
+        self.sustain * (1.0 - t.min(1.0))
+      } else {
+        0.0
+      }
+    };
+    raw * self.depth
+  }
+}
+
+// IPC shape for one modulator (matches the JS ModSpec; camelCase over the wire).
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ModSpecIpc {
+  slot: u8,
+  is_lfo: bool,
+  depth: f32,
+  attack: f32,
+  decay: f32,
+  sustain: f32,
+  release: f32,
+  shape: u8,
+  rate_hz: f32,
+}
+
+// Build the fixed slot array from the IPC list (off where unspecified). Done on
+// the command thread so the audio thread only copies a Copy array.
+fn build_mod_array(specs: &[ModSpecIpc], sr: f32) -> [Modulator; MOD_SLOTS] {
+  let mut arr = [Modulator::off(); MOD_SLOTS];
+  for (i, s) in specs.iter().enumerate() {
+    let slot = s.slot as usize;
+    if slot < MOD_SLOTS {
+      arr[slot] = Modulator::from_ipc(s, sr, (slot as u32) ^ (i as u32).wrapping_mul(0x85eb_ca6b));
+    }
+  }
+  arr
 }
 
 impl TapeBuffer {
@@ -2864,6 +3001,9 @@ struct Voice {
   gain: f32,
   pan_left: f32,
   pan_right: f32,
+  // Base pan (-1..1) kept so a pan modulator can offset it and recompute
+  // pan_left/right each frame around this center.
+  pan_base: f32,
   // Output routing. out_first is the first physical channel (0-indexed).
   // out_stereo=true uses out_first + out_first+1 (L/R with pan applied).
   // out_stereo=false sums L+R*0.5 into out_first only (pan ignored — pan is
@@ -2975,6 +3115,13 @@ struct Voice {
   lfo_recompute_ctr: u32,
   lfo_rand: f32,
   lfo_rng: u32,
+  // Generic modulator grid (editor B2). Fixed slot roles (see MOD_SLOTS). Each
+  // ticks per sample and its value is summed onto its target (tremolo / pan /
+  // cutoff / pitch). All-off by default → no extra work.
+  mods: [Modulator; MOD_SLOTS],
+  // Note hold in samples for mod-envelope release (= amp env hold when present,
+  // else u32::MAX = sustain until the voice ends).
+  mod_hold_samples: u32,
 }
 
 impl Default for Voice {
@@ -2989,6 +3136,7 @@ impl Default for Voice {
       gain: 0.0,
       pan_left: 0.0,
       pan_right: 0.0,
+      pan_base: 0.0,
       out_first: 0,
       out_stereo: true,
       track_params: None,
@@ -3029,6 +3177,8 @@ impl Default for Voice {
       lfo_recompute_ctr: 0,
       lfo_rand: 0.0,
       lfo_rng: 0x9e37_79b9,
+      mods: [Modulator::off(); MOD_SLOTS],
+      mod_hold_samples: u32::MAX,
     }
   }
 }
@@ -3102,6 +3252,8 @@ enum MixerCommand {
     lfo_shape: u8,
     lfo_rate_hz: f32,
     lfo_depth: f32,
+    // Generic modulator grid (prebuilt on the command thread — no heap here).
+    mods: [Modulator; MOD_SLOTS],
   },
   StopAll,
   // Release a single tagged voice (live-input monitoring note-off). Starts
@@ -3164,6 +3316,7 @@ struct PendingTrigger {
   gain: f32,
   pan_left: f32,
   pan_right: f32,
+  pan_base: f32,
   out_first: usize,
   out_stereo: bool,
   track_params: Option<Arc<TrackParams>>,
@@ -3194,6 +3347,8 @@ struct PendingTrigger {
   lfo_shape: u8,
   lfo_rate_hz: f32,
   lfo_depth: f32,
+  // Generic modulator grid.
+  mods: [Modulator; MOD_SLOTS],
 }
 
 // --- shared state ---
@@ -3435,6 +3590,7 @@ impl AudioEngine {
     lfo_shape: u8,
     lfo_rate_hz: f32,
     lfo_depth: f32,
+    mod_specs: Vec<ModSpecIpc>,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -3457,6 +3613,10 @@ impl AudioEngine {
     } else {
       (delay_secs * sr as f32).round().max(0.0).min(u32::MAX as f32) as u32
     };
+    // Build the generic modulator array here (command thread) so env stage
+    // lengths are resolved to samples and the audio thread just copies a Copy
+    // array — no heap on the realtime path.
+    let mods = build_mod_array(&mod_specs, if sr == 0 { 48_000.0 } else { sr as f32 });
     let cmd = MixerCommand::Trigger {
       sample,
       gain,
@@ -3480,6 +3640,7 @@ impl AudioEngine {
       lfo_shape,
       lfo_rate_hz,
       lfo_depth,
+      mods,
     };
     let mut guard = self
       .state
@@ -4127,6 +4288,7 @@ fn claim_voice_slot(
   v.rate_glide_remaining = 0;
   v.gain = p.gain;
   v.pan_left = p.pan_left;
+  v.pan_base = p.pan_base;
   v.pan_right = p.pan_right;
   v.out_first = p.out_first;
   v.out_stereo = p.out_stereo;
@@ -4163,6 +4325,11 @@ fn claim_voice_slot(
     v.env_elapsed = 0;
     v.env_release_start_level = -1.0;
   }
+  // Generic modulators: copy the prebuilt slot array. Mod envelopes release
+  // on the same note hold as the amp env when there is one; otherwise they
+  // sustain until the voice ends (u32::MAX).
+  v.mods = p.mods;
+  v.mod_hold_samples = if v.env_active { v.env_hold_samples } else { u32::MAX };
 }
 
 fn build_stream(
@@ -4506,6 +4673,7 @@ fn build_stream(
               lfo_shape,
               lfo_rate_hz,
               lfo_depth,
+              mods,
             } => {
               let pan_clamped = pan.clamp(-1.0, 1.0);
               let angle =
@@ -4552,6 +4720,7 @@ fn build_stream(
                 gain,
                 pan_left,
                 pan_right,
+                pan_base: pan_clamped,
                 out_first: out_first as usize,
                 out_stereo,
                 track_params,
@@ -4573,6 +4742,7 @@ fn build_stream(
                 lfo_shape,
                 lfo_rate_hz,
                 lfo_depth,
+                mods,
               };
               if delay_samples == 0 {
                 claim_voice_slot(
@@ -4919,24 +5089,57 @@ fn build_stream(
                 rs = rs * tail_g + hr * head_g;
               }
             }
+            // Generic modulators (B2 grid): advance LFO phases, then read each
+            // target's offset. Envelope mods clock off frames_played + the note
+            // hold; LFO mods off their phase. Slots: 0 vol-LFO (tremolo) ·
+            // 1 pan-env · 2 pan-LFO · 3 cutoff-env · 4 pitch-env · 5 pitch-LFO.
+            for m in v.mods.iter_mut() {
+              m.tick(sr_f32);
+            }
+            let mod_elapsed = v.frames_played;
+            let mod_hold = v.mod_hold_samples;
+            let mod_tremolo = 1.0 + v.mods[0].value(mod_elapsed, mod_hold);
+            let mod_pan = v.mods[1].value(mod_elapsed, mod_hold)
+              + v.mods[2].value(mod_elapsed, mod_hold);
+            let mod_cutoff = v.mods[3].value(mod_elapsed, mod_hold);
+            let cutoff_mod_on = v.mods[3].on;
+            let mod_pitch_semis = v.mods[4].value(mod_elapsed, mod_hold)
+              + v.mods[5].value(mod_elapsed, mod_hold);
+            let pitch_factor = if mod_pitch_semis != 0.0 {
+              2.0_f64.powf((mod_pitch_semis / 12.0) as f64)
+            } else {
+              1.0
+            };
+            // Pan modulation: recompute equal-power gains around the base pan.
+            if mod_pan != 0.0 {
+              let pan_eff = (v.pan_base + mod_pan).clamp(-1.0, 1.0);
+              let angle = (pan_eff + 1.0) * 0.5 * std::f32::consts::FRAC_PI_2;
+              v.pan_left = angle.cos();
+              v.pan_right = angle.sin();
+            }
             // Per-instrument filter (B1) — applied on the reconstructed
             // sample, ahead of the per-track mixer ladder below, so it's part
-            // of the instrument's voice rather than the channel strip.
+            // of the instrument's voice rather than the channel strip. Cutoff
+            // is swept live by the cutoff LFO (B2, bespoke) and/or the cutoff
+            // envelope (generic slot 3), recomputed every LFO_RECOMPUTE_SAMPLES
+            // — coeffs only, so the delay line keeps running (click-free).
             if v.inst_filter_on {
-              // Cutoff LFO (B2): advance phase per sample; every
-              // LFO_RECOMPUTE_SAMPLES recompute the biquad coefficients from
-              // the base cutoff offset (bipolar) by the LFO — coeffs only, the
-              // delay line keeps running so the sweep is click-free.
-              if v.lfo_on {
-                v.lfo_phase += v.lfo_rate_hz / sr_f32;
-                if v.lfo_phase >= 1.0 {
-                  v.lfo_phase -= v.lfo_phase.floor();
-                  v.lfo_rand = lfo_rand_bipolar(&mut v.lfo_rng);
+              if v.lfo_on || cutoff_mod_on {
+                if v.lfo_on {
+                  v.lfo_phase += v.lfo_rate_hz / sr_f32;
+                  if v.lfo_phase >= 1.0 {
+                    v.lfo_phase -= v.lfo_phase.floor();
+                    v.lfo_rand = lfo_rand_bipolar(&mut v.lfo_rng);
+                  }
                 }
                 if v.lfo_recompute_ctr == 0 {
-                  let m = lfo_eval(v.lfo_shape, v.lfo_phase, v.lfo_rand);
+                  let lfo_amt = if v.lfo_on {
+                    v.lfo_depth * lfo_eval(v.lfo_shape, v.lfo_phase, v.lfo_rand)
+                  } else {
+                    0.0
+                  };
                   let mod_norm =
-                    (v.inst_cutoff_norm + v.lfo_depth * m).clamp(0.0, 1.0);
+                    (v.inst_cutoff_norm + lfo_amt + mod_cutoff).clamp(0.0, 1.0);
                   let fc_hz = cutoff_norm_to_hz(mod_norm);
                   match v.inst_filter_type {
                     1 => {
@@ -4961,6 +5164,9 @@ fn build_stream(
               ls = v.inst_filter_l.process(ls);
               rs = v.inst_filter_r.process(rs);
             }
+            // Tremolo (vol-LFO, slot 0) — amplitude scale around unity.
+            ls *= mod_tremolo;
+            rs *= mod_tremolo;
             // Filter coefficients: frozen snapshot (detached on a swap) if
             // present, else live from track_params.
             let filt_coeffs = match v.frozen_params {
@@ -5131,7 +5337,7 @@ fn build_stream(
               let mono = 0.5 * (ls + rs);
               buf[frame * n_ch + route_first] += mono * v.gain * dry_scale;
             }
-            v.position += v.rate * v.play_dir;
+            v.position += v.rate * pitch_factor * v.play_dir;
             // Advance the rate glide (portamento) one frame. Linear ramp of
             // `rate` toward `rate_target` — spreads a re-pitch over ~20ms so
             // there's no slope-discontinuity tick.
@@ -5648,6 +5854,9 @@ pub fn audio_trigger_sample(
   lfo_shape: Option<u8>,
   lfo_rate_hz: Option<f32>,
   lfo_depth: Option<f32>,
+  // Generic modulator grid (editor B2 full grid). Each entry carries a fixed
+  // slot role + env-or-LFO params; omitted/empty = no extra modulation.
+  mods: Option<Vec<ModSpecIpc>>,
 ) -> Result<(), String> {
   let envelope = match (
     envelope_attack,
@@ -5686,6 +5895,7 @@ pub fn audio_trigger_sample(
     lfo_shape.unwrap_or(0),
     lfo_rate_hz.unwrap_or(0.0),
     lfo_depth.unwrap_or(0.0),
+    mods.unwrap_or_default(),
   )
 }
 
