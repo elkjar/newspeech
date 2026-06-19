@@ -394,6 +394,20 @@ is 192px, so [params] fits but [automation]'s env-graph/lfo-plot columns need to
 that area too. The `[...]` "edit" entry could become a shortcut that focuses the params tab, or go away.
 Lean: worth doing — discoverability is the main weakness of the current modal.
 
+**Secondary idea (Chris, 2026-06-18) — instrument params as APP LFO destinations, export degrades to base.**
+Once the params live in the main tabbed area, make the new per-instrument functions (grain **length**,
+**position**, scatter, etc.) selectable **LFO/modulation destinations inside the app**, while the `.pti`
+export keeps writing only the **base level** (the static value + the Tracker's fixed automation slots).
+Principle: **app modulation destinations ⊇ `.pti` automation targets** — the app can modulate anything
+(it's its own instrument/engine), and on export anything the Tracker can't automate projects down to its
+base value (or the nearest supported `automations[]` slot). This is the same "app-only enrichment,
+faithful-where-it-can-be" stance as the per-grain scatter and the live cutoff LFO. Grain-length
+modulation especially (rhythmic grain-size sweeps) is classic granular and currently has no destination.
+Path when picked up: the per-voice mod grid already exists and already targets granular **position**
+(`automations[4]`); extend it to grain **length** + expose these as destinations in the automation tab,
+and/or let the GLOBAL LFO system (NativeLfo) route to per-instrument params (the bigger, macro-able
+version, consistent with [[reference-global-expression-layer]]).
+
 ## Phase C — GRANULAR playmode — BUILT 2026-06-18 (app-only, pending reload-test)
 
 The granular playmode + its single windowed read-head DSP + the playmode selector are in. Chris chose
