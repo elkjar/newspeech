@@ -376,6 +376,24 @@ cutoff-LFO→`automations[2]`. pan→[1] / pitch→[5] / tremolo / cutoff-env ar
 are env-XOR-LFO so need pick logic. **Deferred until hardware-verified** — per the delay lesson, some
 `.pti` automation slots may be vestigial, so prove each on the device before trusting the export.
 
+## FUTURE IDEA — surface the editor in the main tabbed area (Chris, 2026-06-18, parked)
+
+The instrument editor is powerful but **hidden** — buried in the RowPanel `[...]` gear menu.
+Idea: split it into **[params]** and **[automation]** and add them to the main `ChannelScreen`
+tabbed view (today `roll / lfo / fx / master` — see `ScreenModeTabs`). The channel screen is already
+scoped to the *focused track*, and the editor is per-focused-voice, so it fits that context and would
+be always-visible + discoverable instead of modal.
+
+- **[params]** = the header half: waveform + playmode selector + volume/tune/trim/loop/filter/granular.
+- **[automation]** = the modulation grid (env/lfo per target).
+- Natural split — it's already the editor's two visual halves.
+
+Open considerations when picked up: the channel screen body is a fixed `h-[280px]`; the waveform alone
+is 192px, so [params] fits but [automation]'s env-graph/lfo-plot columns need to lay out within 280px
+(they're ~64px each now — plausible side-by-side). Save / Save As / Revert + preview would move into
+that area too. The `[...]` "edit" entry could become a shortcut that focuses the params tab, or go away.
+Lean: worth doing — discoverability is the main weakness of the current modal.
+
 ## Phase C — GRANULAR playmode — BUILT 2026-06-18 (app-only, pending reload-test)
 
 The granular playmode + its single windowed read-head DSP + the playmode selector are in. Chris chose
