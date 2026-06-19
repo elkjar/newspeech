@@ -14,6 +14,7 @@
 import { create } from 'zustand';
 import { voiceEnvelope } from '../audio/voices';
 import { useSequencerStore } from '../state/store';
+import { getRegisteredKits } from './manifestRegistry';
 
 const LS_VOICE_EDITS = 'newspeech.sequencer.voiceedits';
 
@@ -305,7 +306,7 @@ function lfoSpec(slot: number, m: LfoMod | undefined, bpm: number): ModSpec | nu
 // All active generic modulators for a voice, ready for the trigger. Empty when
 // none are on (the engine then does no extra modulation).
 export function voiceMods(voiceId: string): ModSpec[] {
-  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const e = resolvedVoiceEdit(voiceId);
   if (!e) return [];
   const bpm = useSequencerStore.getState().bpm || 120;
   const out: (ModSpec | null)[] = [
@@ -338,7 +339,7 @@ export function voiceGranular(voiceId: string): {
   direction: number;
   spray: number;
 } {
-  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const e = resolvedVoiceEdit(voiceId);
   const on = (e?.playmode ?? 'sample') === 'granular';
   const g = e?.granular ?? DEFAULT_GRANULAR;
   return {
@@ -363,7 +364,7 @@ export interface ResolvedEnvelope {
 }
 
 export function resolveVoiceEnvelope(voiceId: string): ResolvedEnvelope | undefined {
-  const e = useVoiceEditsStore.getState().voiceEdits[voiceId]?.ampEnv;
+  const e = resolvedVoiceEdit(voiceId)?.ampEnv;
   if (e?.on) {
     return { attack: e.attack, decay: e.decay, sustain: e.sustain, release: e.release };
   }
@@ -421,14 +422,43 @@ export const useVoiceEditsStore = create<VoiceEditsState>((set) => ({
     }),
 }));
 
+// SAVED editable params baked into the voice's manifest entry (the committed
+// truth) — found by scanning the registered kits for the voiceId.
+function manifestEdit(voiceId: string): VoiceEdit | undefined {
+  for (const kit of getRegisteredKits()) {
+    const v = kit.manifest.voices[voiceId];
+    if (v) return v.edits;
+  }
+  return undefined;
+}
+
+// Effective edit for a voice = the SAVED manifest edits overlaid by the UNSAVED
+// working edit (localStorage); the working layer wins per-field. Undefined when
+// neither exists (stock instrument). Every audio-path accessor + the .pti export
+// reads through this, so playback / preview / export all honor saved +
+// in-progress edits identically.
+export function resolvedVoiceEdit(voiceId: string): VoiceEdit | undefined {
+  const working = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const saved = manifestEdit(voiceId);
+  if (!working && !saved) return undefined;
+  return { ...(saved ?? {}), ...(working ?? {}) };
+}
+
+// True when a voice has an unsaved working edit (drives the editor's "unsaved"
+// indicator + Revert). Cleared by Save, which flushes the working layer into
+// the manifest.
+export function hasUnsavedVoiceEdit(voiceId: string): boolean {
+  return useVoiceEditsStore.getState().voiceEdits[voiceId] !== undefined;
+}
+
 // Non-React accessors for the audio path (samplePlayer.pickNativeSample).
 export function voiceGainOverride(voiceId: string): number {
-  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const e = resolvedVoiceEdit(voiceId);
   return e?.gain ?? 1;
 }
 
 export function voiceTune(voiceId: string): number {
-  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const e = resolvedVoiceEdit(voiceId);
   return e?.tune ?? 0;
 }
 
@@ -440,7 +470,7 @@ export function voiceTrim(voiceId: string): {
   end: number;
   loop: number;
 } {
-  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const e = resolvedVoiceEdit(voiceId);
   const start = e?.start ?? 0;
   const end = e?.end ?? 1;
   return {
@@ -458,7 +488,7 @@ export function voiceFilter(voiceId: string): {
   cutoff: number;
   resonance: number;
 } {
-  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const e = resolvedVoiceEdit(voiceId);
   return {
     type: FILTER_TYPE_CODE[e?.filterType ?? 'off'],
     cutoff: e?.cutoff ?? 1,
@@ -475,7 +505,7 @@ export function voiceFilterLfo(voiceId: string): {
   depth: number;
   division: LfoDivision;
 } {
-  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const e = resolvedVoiceEdit(voiceId);
   const lfo = e?.filterLfo;
   const filterOn = (e?.filterType ?? 'off') !== 'off';
   const division = lfo?.division ?? '1/4';

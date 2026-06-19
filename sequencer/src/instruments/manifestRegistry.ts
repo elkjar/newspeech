@@ -24,6 +24,9 @@ import type {
   PadConfig,
   MutationProfile,
 } from '../audio/voices';
+// Type-only (erased at compile) so there's no runtime import cycle —
+// voiceEditsStore imports getRegisteredKits from here for its resolver.
+import type { VoiceEdit } from './voiceEditsStore';
 import {
   DEFAULT_MUTATION,
   DRUM_MUTATION,
@@ -108,6 +111,12 @@ export interface ManifestVoiceMeta {
   // more than one category — e.g. a mono synth that's usable as both a
   // melodic lead and a bass voice.
   pickerCategories?: string[];
+  // SAVED editable-instrument params (volume/tune/trim/loop/filter/env/LFOs/
+  // granular/scatter) — the committed state of the in-app instrument editor.
+  // This is the source of truth: the editor's live `voiceEditsStore` is just
+  // the unsaved working layer overlaid on top (see resolvedVoiceEdit). Written
+  // by Save / Save As; absent for an unedited instrument.
+  edits?: VoiceEdit;
 }
 
 export type ManifestVoice = SampleVoiceDef & ManifestVoiceMeta;
@@ -187,15 +196,23 @@ export function registerKit(
 // through to synthMelodic at trigger time. User has to re-pick the
 // voice on those tracks once. The fix is worth the one-time hiccup
 // because the bug it solves is silent / mis-routing samples.
+// The id prefix a user kit's voices get namespaced under (so user-kit "kick"
+// doesn't collide with bundled "kick"). Derived from the `user/<kit_path>`
+// kit path. Exported so the instrument-save path can map a registry voice id
+// (`<prefix>-<bareId>`) back to the bare id used in the on-disk manifest.
+export function namespacePrefix(kitPath: string): string {
+  return kitPath
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 export function withNamespacedVoiceIds(
   kitPath: string,
   manifest: ExtendedSampleManifest,
 ): ExtendedSampleManifest {
   if (!kitPath.startsWith('user/')) return manifest;
-  const prefix = kitPath
-    .replace(/[^A-Za-z0-9_-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+  const prefix = namespacePrefix(kitPath);
   const namespacedVoices: Record<string, ManifestVoice> = {};
   for (const [id, voice] of Object.entries(manifest.voices)) {
     namespacedVoices[`${prefix}-${id}`] = voice;

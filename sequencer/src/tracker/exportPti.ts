@@ -26,7 +26,7 @@ import {
   voiceFilterLfo,
   voiceGranular,
   resolveVoiceEnvelope,
-  useVoiceEditsStore,
+  resolvedVoiceEdit,
   LFO_SHAPE_CODE,
   LFO_DIVISIONS,
   type LfoDivision,
@@ -217,8 +217,9 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
         type: gran.direction as GranularType,
       };
       // Granular-position automation → automations[4]. The slot is env-XOR-LFO;
-      // prefer the LFO when on, else the envelope. depth/amount 0..1.
-      const edit = useVoiceEditsStore.getState().voiceEdits[voiceId];
+      // prefer the LFO when on, else the envelope. depth/amount 0..1. Read
+      // through the resolver so saved + unsaved edits both export.
+      const edit = resolvedVoiceEdit(voiceId);
       const posLfo = edit?.granPosLfo;
       const posEnv = edit?.granPosEnv;
       if (inst.automations[4]) {

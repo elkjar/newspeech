@@ -39,6 +39,7 @@ const DEPTH_SEMIS: DepthCfg = {
   format: (d) => `${d > 0 ? '+' : ''}${d.toFixed(1)}st`,
 };
 import { voiceLabel } from '../audio/voices';
+import { saveVoiceInline, saveVoiceAs, voiceIsSaveable } from '../instruments/saveInstrument';
 import { monitorNote, monitorRelease } from '../audio/monitor';
 import { setMonitorVoice, getMonitorPlayhead } from '../audio/nativeEngine';
 import { Waveform } from './Waveform';
@@ -61,6 +62,11 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
   const voiceId = track.source.kind === 'voice' ? track.source.id : null;
   const edit = useVoiceEditsStore((s) => (voiceId ? s.voiceEdits[voiceId] : undefined));
   const setVoiceEdit = useVoiceEditsStore((s) => s.setVoiceEdit);
+  const resetVoiceEdit = useVoiceEditsStore((s) => s.resetVoiceEdit);
+  const setTrackSource = useSequencerStore((s) => s.setTrackSource);
+  const [saveState, setSaveState] = useState<'idle' | 'working' | 'ok' | 'err'>('idle');
+  const [saveAsMode, setSaveAsMode] = useState(false);
+  const [saveAsName, setSaveAsName] = useState('');
   const previewId = useRef(0);
   const pollRef = useRef<number | null>(null);
   const [playhead, setPlayhead] = useState<number | null>(null);
@@ -172,6 +178,38 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
     }
     window.setTimeout(() => setExportState('idle'), 2000);
   };
+  // Save (inline): flush the working edits into the instrument's library
+  // manifest entry — permanent + global. Clears the unsaved working layer.
+  const doSave = async () => {
+    if (!voiceId) return;
+    setSaveState('working');
+    const res = await saveVoiceInline(voiceId);
+    setSaveState(res.ok ? 'ok' : 'err');
+    window.setTimeout(() => setSaveState('idle'), 2000);
+  };
+  // Save As: fork a new library instrument (same samples, new name + the dialed
+  // params) and repoint this track to it so the sound you made stays put.
+  const doSaveAs = async () => {
+    if (!voiceId) return;
+    const name = saveAsName.trim();
+    if (!name) return;
+    setSaveState('working');
+    const res = await saveVoiceAs(voiceId, name);
+    if (res.ok && res.newVoiceId) {
+      setTrackSource(track.id, { kind: 'voice', id: res.newVoiceId });
+      setSaveAsMode(false);
+      setSaveAsName('');
+      setSaveState('ok');
+    } else {
+      setSaveState('err');
+    }
+    window.setTimeout(() => setSaveState('idle'), 2000);
+  };
+  const doRevert = () => {
+    if (voiceId) resetVoiceEdit(voiceId);
+  };
+  const saveable = voiceId ? voiceIsSaveable(voiceId) : false;
+  const isUnsaved = edit !== undefined;
 
   return createPortal(
     <div
@@ -493,13 +531,94 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
                     : 'export .pti'}
             </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-white/15 hover:border-white text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors"
-          >
-            close
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Save group — writes to the global library (never the .seq).
+                Save = update this instrument everywhere; Save As = fork a new
+                named instrument off the same samples. Only for user-kit voices. */}
+            {saveable && isUnsaved && (
+              <span className="text-[9px] uppercase tracking-widest text-white/50 select-none">
+                ● unsaved
+              </span>
+            )}
+            {saveable && isUnsaved && (
+              <button
+                type="button"
+                onClick={doRevert}
+                className="px-3 py-2 border border-white/15 hover:border-white text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors"
+                title="discard unsaved changes (back to the saved instrument)"
+              >
+                revert
+              </button>
+            )}
+            {saveable && !saveAsMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={doSave}
+                  disabled={!isUnsaved || saveState === 'working'}
+                  className="px-4 py-2 border border-white/30 hover:border-white disabled:opacity-30 disabled:hover:border-white/30 text-[10px] uppercase tracking-widest text-white/80 hover:text-white transition-colors"
+                  title="save changes to this instrument, globally"
+                >
+                  {saveState === 'working'
+                    ? '…'
+                    : saveState === 'ok'
+                      ? '✓ saved'
+                      : saveState === 'err'
+                        ? '✗ save'
+                        : 'save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaveAsName(`${voiceLabel(voiceId)} var`);
+                    setSaveAsMode(true);
+                  }}
+                  className="px-4 py-2 border border-white/30 hover:border-white text-[10px] uppercase tracking-widest text-white/80 hover:text-white transition-colors"
+                  title="fork a new instrument off the same samples"
+                >
+                  save as
+                </button>
+              </>
+            )}
+            {saveable && saveAsMode && (
+              <>
+                <input
+                  type="text"
+                  value={saveAsName}
+                  autoFocus
+                  onChange={(e) => setSaveAsName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void doSaveAs();
+                    if (e.key === 'Escape') setSaveAsMode(false);
+                  }}
+                  placeholder="new instrument name"
+                  className="px-2 py-2 w-44 bg-transparent border border-white/30 focus:outline-none focus:border-white text-[11px] text-white/90 placeholder:text-white/30"
+                />
+                <button
+                  type="button"
+                  onClick={doSaveAs}
+                  disabled={!saveAsName.trim() || saveState === 'working'}
+                  className="px-3 py-2 border border-white/30 hover:border-white disabled:opacity-30 text-[10px] uppercase tracking-widest text-white/80 hover:text-white transition-colors"
+                >
+                  {saveState === 'working' ? '…' : '✓'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSaveAsMode(false)}
+                  className="px-3 py-2 border border-white/15 hover:border-white text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-white/15 hover:border-white text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors"
+            >
+              close
+            </button>
+          </div>
         </div>
       </div>
     </div>,
