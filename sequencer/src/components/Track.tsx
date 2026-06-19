@@ -18,7 +18,6 @@ import {
 } from '../instruments/library';
 import { NewInstrumentDialog } from './NewInstrumentDialog';
 import { VoicePickerDialog } from './VoicePickerDialog';
-import { InstrumentEditorDialog } from './InstrumentEditorDialog';
 import { GLOBAL_TRACK_ID } from '../audio/lfo';
 import { computeThinMul, computeFillProb } from '../audio/macros';
 import { useLFOValue } from '../hooks/useLFOValue';
@@ -93,13 +92,14 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
   const clearTrack = useSequencerStore((s) => s.clearTrack);
   const setTrackLockTiming = useSequencerStore((s) => s.setTrackLockTiming);
   const setTrackInputArmed = useSequencerStore((s) => s.setTrackInputArmed);
+  const setScreenMode = useSequencerStore((s) => s.setScreenMode);
+  const setFocusedTrackId = useSequencerStore((s) => s.setFocusedTrackId);
   const midiRecInputPort = useSequencerStore((s) => s.midiRecInputPort);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [newInstrumentDefaultRole, setNewInstrumentDefaultRole] =
     useState<InstrumentRole | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Defensive guard: trackId comes from TrackGrid's shallow-compared key list,
@@ -218,17 +218,16 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
               onClose={() => setPanelOpen(false)}
               triggerRef={triggerRef}
               onOpenEditor={() => {
+                // The editor now lives in the main ChannelScreen as the
+                // params/automation tabs (per focused track) instead of a
+                // modal — focus this track and jump to the params tab.
                 setPanelOpen(false);
-                setEditorOpen(true);
+                setFocusedTrackId(track.id);
+                setScreenMode('params');
               }}
             />
           )}
         </div>
-        <InstrumentEditorDialog
-          open={editorOpen}
-          track={track}
-          onClose={() => setEditorOpen(false)}
-        />
         {/* Record arm. Monitoring is covered by the Launchpad keyboard page
             (tracks the selected step) and by arming while stopped, so the old
             monitor-only toggle that used to sit beside this was removed. */}

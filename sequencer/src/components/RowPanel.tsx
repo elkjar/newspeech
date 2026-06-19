@@ -270,7 +270,7 @@ export function RowPanel({ track, onClose, triggerRef, onOpenEditor }: RowPanelP
               onClick={onOpenEditor}
               style={{ height: CELL }}
               className="px-2 border border-white/15 hover:border-white text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors"
-              title="edit instrument — volume, tune (more coming)"
+              title="edit instrument — focus this track + open the params tab"
             >
               edit
             </button>

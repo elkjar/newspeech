@@ -20,9 +20,12 @@ export interface EnvShape {
 interface Props {
   env: EnvShape;
   onChange: (patch: Partial<EnvShape>) => void;
+  // Canvas height. Defaults to the standard 64 (matches the LFO plot); the
+  // channel-screen automation tab passes a shorter value to fit 280px.
+  height?: number;
 }
 
-const HEIGHT = 64; // matches the LFO shape plot (h-16)
+const DEFAULT_HEIGHT = 64; // matches the LFO shape plot (h-16)
 const PAD_X = 8;
 const PAD_TOP = 10;
 const PAD_BOT = 10;
@@ -47,9 +50,9 @@ interface Geom {
   wr: number;
 }
 
-function geometry(env: EnvShape, width: number): Geom {
+function geometry(env: EnvShape, width: number, height: number): Geom {
   const top = PAD_TOP;
-  const baseline = HEIGHT - PAD_BOT;
+  const baseline = height - PAD_BOT;
   const unit = (width - 2 * PAD_X) / LANE_SUM;
   const wa = unit * LANES.attack;
   const wc = unit * LANES.decay;
@@ -66,7 +69,8 @@ function geometry(env: EnvShape, width: number): Geom {
 type Handle = 'attack' | 'sustain' | 'release';
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-export function EnvelopeGraph({ env, onChange }: Props) {
+export function EnvelopeGraph({ env, onChange, height = DEFAULT_HEIGHT }: Props) {
+  const HEIGHT = height;
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(0);
@@ -97,7 +101,7 @@ export function EnvelopeGraph({ env, onChange }: Props) {
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, HEIGHT);
-    const g = geometry(env, width);
+    const g = geometry(env, width, HEIGHT);
 
     // Curve: attack peak → decay to sustain → hold → release.
     const pts: [number, number][] = [
@@ -135,13 +139,13 @@ export function EnvelopeGraph({ env, onChange }: Props) {
       ctx.arc(x, y, 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
-  }, [env, width]);
+  }, [env, width, HEIGHT]);
 
   const pick = (clientX: number, clientY: number): Handle | null => {
     const rect = canvasRef.current!.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    const g = geometry(envRef.current, widthRef.current);
+    const g = geometry(envRef.current, widthRef.current, HEIGHT);
     const targets: [Handle, number, number][] = [
       ['attack', g.attackEndX, g.top],
       ['sustain', g.decayEndX, g.sustainY],
@@ -163,7 +167,7 @@ export function EnvelopeGraph({ env, onChange }: Props) {
     const rect = canvasRef.current!.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    const g = geometry(envRef.current, widthRef.current);
+    const g = geometry(envRef.current, widthRef.current, HEIGHT);
     switch (handle) {
       case 'attack':
         onChange({ attack: clamp(((x - PAD_X) / g.wa) * ATTACK_MAX, 0, ATTACK_MAX) });

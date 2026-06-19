@@ -4,12 +4,17 @@ import { LFOPanel } from './LFOPanel';
 import { FXPanel } from './FXPanel';
 import { StepInspector } from './StepInspector';
 import { PianoRoll } from './PianoRoll';
+import { InstrumentEditor } from './InstrumentEditor';
 
-// The top multi-mode "screen" — ROLL / LFO / FX / MASTER. The mode tabs
-// (`ScreenModeTabs`) live in the app title row beside the logo; `ChannelScreen`
-// is just the body. UI-only — no Launchpad / hardware wiring.
+// The top multi-mode "screen" — ROLL / LFO / FX / MASTER / PARAMS / AUTOMATION.
+// The mode tabs (`ScreenModeTabs`) live in the app title row beside the logo;
+// `ChannelScreen` is just the body. PARAMS + AUTOMATION are the focused voice's
+// instrument editor (the two halves of the old modal). UI-only — no Launchpad /
+// hardware wiring.
 
 const MODES: { id: ScreenMode; label: string }[] = [
+  { id: 'params', label: 'params' },
+  { id: 'automation', label: 'automation' },
   { id: 'roll', label: 'roll' },
   { id: 'lfo', label: 'lfo' },
   { id: 'fx', label: 'fx' },
@@ -83,6 +88,12 @@ export function ChannelScreen() {
           <div className="h-full flex items-center justify-center">
             <FXPanel section="master" />
           </div>
+        )}
+        {/* PARAMS + AUTOMATION share one mounted editor (so a held preview
+            survives switching between the two halves); the `view` prop selects
+            which half renders. */}
+        {(screenMode === 'params' || screenMode === 'automation') && (
+          <InstrumentEditor view={screenMode} />
         )}
       </div>
   );

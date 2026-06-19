@@ -93,18 +93,21 @@ export function ModEnvSection({
   value,
   depthCfg,
   onChange,
+  compact = false,
 }: {
   label: string;
   value: EnvMod;
   depthCfg: DepthCfg;
   onChange: (patch: Partial<EnvMod>) => void;
+  // Shorter graph + tighter spacing for the channel-screen automation tab.
+  compact?: boolean;
 }) {
   const ms = (s: number) => `${Math.round(s * 1000)}`;
   return (
-    <div className="mb-5">
+    <div className={compact ? 'mb-2' : 'mb-5'}>
       <ModHeader label={label} on={value.on} onToggle={() => onChange({ on: !value.on })} />
       <div className={value.on ? '' : 'opacity-50'}>
-        <EnvelopeGraph env={value} onChange={(p) => onChange(p)} />
+        <EnvelopeGraph env={value} onChange={(p) => onChange(p)} height={compact ? 44 : undefined} />
       </div>
       <div className="flex justify-between text-[9px] uppercase tracking-widest text-white/40 tabular-nums mb-2 px-1">
         <span>atk {ms(value.attack)}</span>
@@ -123,18 +126,21 @@ export function ModLfoSection({
   depthCfg,
   bpm,
   onChange,
+  compact = false,
 }: {
   label: string;
   value: LfoMod;
   depthCfg: DepthCfg;
   bpm: number;
   onChange: (patch: Partial<LfoMod>) => void;
+  // Shorter plot + tighter spacing for the channel-screen automation tab.
+  compact?: boolean;
 }) {
   return (
-    <div className="mb-5">
+    <div className={compact ? 'mb-2' : 'mb-5'}>
       <ModHeader label={label} on={value.on} onToggle={() => onChange({ on: !value.on })} />
       {/* shape plot on top; shape + rate dropdowns below it (no labels). */}
-      <div className={`h-16 mb-1 ${value.on ? '' : 'opacity-50'}`}>
+      <div className={`${compact ? 'h-11' : 'h-16'} mb-1 ${value.on ? '' : 'opacity-50'}`}>
         <LfoShapePlot
           shape={value.shape}
           rateHz={lfoDivisionToHz(value.division, bpm)}

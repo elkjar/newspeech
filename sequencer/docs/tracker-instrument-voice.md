@@ -376,28 +376,63 @@ cutoff-LFO→`automations[2]`. pan→[1] / pitch→[5] / tremolo / cutoff-env ar
 are env-XOR-LFO so need pick logic. **Deferred until hardware-verified** — per the delay lesson, some
 `.pti` automation slots may be vestigial, so prove each on the device before trusting the export.
 
-## NEXT UP (Chris, 2026-06-18) — surface the editor in the main tabbed area, then play with it
+## Editor in the tabbed area — BUILT 2026-06-19 (app, pending reload-test)
 
-Chris wants to build this next session and then live with it for a bit. Build the
-[params]/[automation] tab integration first (below); the secondary LFO-destinations idea follows once
-the params live in the tabbed area.
+The instrument editor moved out of the RowPanel `[...]` modal and into the main `ChannelScreen` as two
+always-visible tabs, **[params]** and **[automation]**, alongside `roll / lfo / fx / master`. The channel
+screen is scoped to the focused track and the editor is per-focused-voice, so it fits that context and is
+now discoverable instead of buried. **The modal is gone.**
 
+**Decisions (Chris, 2026-06-19):**
+- **Replace the modal** (not keep both). The RowPanel `edit` button now focuses that track
+  (`setFocusedTrackId`) + jumps the screen to the params tab (`setScreenMode('params')`) — no dialog.
+- **Automation layout = stacked** (LFO over ENV per target, NOT side-by-side), visualizers **shrunk to
+  fit** the 280px, and **per target the LFO and ENV are MUTUALLY EXCLUSIVE** — enabling one disables the
+  other (one modulator at a time; also matches the `.pti` env-XOR-lfo slot model). Chris: crowding is
+  expected; "look at having another UI element afterwards if this is too crowded" → iterate later.
 
-The instrument editor is powerful but **hidden** — buried in the RowPanel `[...]` gear menu.
-Idea: split it into **[params]** and **[automation]** and add them to the main `ChannelScreen`
-tabbed view (today `roll / lfo / fx / master` — see `ScreenModeTabs`). The channel screen is already
-scoped to the *focused track*, and the editor is per-focused-voice, so it fits that context and would
-be always-visible + discoverable instead of modal.
+**Files:**
+- **`InstrumentEditor.tsx`** (renamed from `InstrumentEditorDialog.tsx`, modal chrome stripped) — resolves
+  the focused voice track itself (`resolveEditorTrack`: focused track if it's a `kind:'voice'`, else first
+  voice track; placeholder if the focused track isn't a voice). Takes a `view: 'params' | 'automation'`
+  prop and renders that half + a shared compact **action bar** (preview · export .pti · unsaved · revert ·
+  save · save as) at the bottom of both. `setMutex(lfoKey, envKey)` builds the per-target XOR handlers;
+  cutoff handlers also `ensureFilterOn()`. Preview cleanup keyed on `voiceId` (stops a held note when the
+  focused instrument changes), holds the started-on track in a ref so release survives a focus change.
+- **`ChannelScreen.tsx`** — `params` + `automation` added to `MODES`; both render ONE mounted
+  `<InstrumentEditor view={screenMode}/>` (single slot so a held preview survives switching the two halves).
+- **`store.ts`** — `ScreenMode` += `'params' | 'automation'`.
+- **`Track.tsx`** — dropped the `<InstrumentEditorDialog>` render + `editorOpen` state; `onOpenEditor` →
+  focus + params tab.
+- **`EnvelopeGraph.tsx`** — optional `height` prop (default 64; threaded through `geometry`); **`ModSection.tsx`**
+  — `compact` prop on both sections (h-11 plot / 44px graph + tighter margins) for the 280px tab.
 
-- **[params]** = the header half: waveform + playmode selector + volume/tune/trim/loop/filter/granular.
-- **[automation]** = the modulation grid (env/lfo per target).
-- Natural split — it's already the editor's two visual halves.
+`tsc` clean. **PENDING:** Chris reload-test (a source FILE was deleted — `InstrumentEditorDialog.tsx` — so
+the Tauri app needs a full reload, NOT just HMR, per [[reference-vite-cache-deletions]]). Then eyeball the
+280px fit (automation may scroll ~30px — tighten or add the "another UI element" if too crowded) and
+confirm the `edit` button + tabs feel right. **NEXT:** the secondary LFO-destinations idea (below) now that
+params live in the tabbed area.
 
-Open considerations when picked up: the channel screen body is a fixed `h-[280px]`; the waveform alone
-is 192px, so [params] fits but [automation]'s env-graph/lfo-plot columns need to lay out within 280px
-(they're ~64px each now — plausible side-by-side). Save / Save As / Revert + preview would move into
-that area too. The `[...]` "edit" entry could become a shortcut that focuses the params tab, or go away.
-Lean: worth doing — discoverability is the main weakness of the current modal.
+**Params-tab layout iterated to final (2026-06-19, Chris-approved):** left→right —
+1. **waveform** (`flex-[6]`),
+2. **playmode** vertical button stack (`PlaymodeTabs vertical`), label on top, directly right of the visualizer,
+3. **control columns** (`flex-[7]`), vertical stacks separated by `<Divider/>` rules, fixed order
+   **level · filter · mode-specific** so the first two columns don't move when the playmode changes:
+   - **level** — `volume` + `tune` knobs (`ControlStack`, knob-over-label).
+   - **filter** — `LabeledStack` (label on top): off/lp/hp/bp row, then `cutoff` + `reso` knobs side-by-side.
+   - **mode-specific:** sample → **loop** (`LabeledStack`, off/fwd/bwd/ping buttons stacked vertically);
+     granular → **direction** (`LabeledStack`, fwd/bwd/ping stacked) · **grain** (`LabeledStack`: shape
+     row + scatter knob).
+   Helpers added in-file: `ControlStack` (centered col), `LabeledStack` (label-on-top col), `Divider`
+   (vertical rule), `SegButton`. The instrument-name label was removed from this tab (was truncating).
+   Two label conventions coexist: single-selector columns put the name on top (the header *is* the label);
+   knob/grouped columns keep per-control labels underneath.
+
+**Granular direction — CONFIRMED wired + audible (2026-06-19):** answering "does direction do anything" —
+yes. `audio.rs:5225-5231` flips the per-grain read offset sign (fwd reads `[base, base+grain_len]`, bwd
+reads the same span reversed, ping alternates per grain via `gran_ping_fwd`). The grain *window* is always
+applied forward (symmetric gauss/tri → identical amplitude envelope all 3 modes), so it's a per-grain
+content reversal, **subtle at the 80ms default, obvious toward the 1s max grain.** Not a transport reversal.
 
 **Secondary idea (Chris, 2026-06-18) — instrument params as APP LFO destinations, export degrades to base.**
 Once the params live in the main tabbed area, make the new per-instrument functions (grain **length**,
