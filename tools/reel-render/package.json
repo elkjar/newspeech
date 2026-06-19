@@ -1,0 +1,14 @@
+{
+  "name": "reel-render",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline renderer: drive a newspeech visualizer headless + deterministic, feed audio features, mux frames+audio to a 1080x1920 reel via ffmpeg.",
+  "bin": { "reel-render": "render.mjs" },
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

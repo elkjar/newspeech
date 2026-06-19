@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>reel-render studio</title>
+<style>
+  :root { --ink: #050505; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ink); color: rgba(255,255,255,0.9);
+    font: 12px/1.5 -apple-system, system-ui, sans-serif; height: 100vh; overflow: hidden;
+    display: flex;
+  }
+  .rail {
+    width: 300px; flex: 0 0 300px; height: 100vh; overflow-y: auto;
+    border-right: 1px solid rgba(255,255,255,0.15); padding: 20px; display: flex; flex-direction: column; gap: 18px;
+  }
+  .params-rail {
+    width: 270px; flex: 0 0 270px; height: 100vh; overflow-y: auto;
+    border-right: 1px solid rgba(255,255,255,0.15); padding: 20px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .params-rail button { width: 100%; }
+  .params-rail button.on { border-color: #fff; color: #fff; }
+  .title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.2em; color: rgba(255,255,255,0.5); }
+  label { display: flex; flex-direction: column; gap: 5px; }
+  label .name { font-size: 9px; text-transform: uppercase; letter-spacing: 0.15em; color: rgba(255,255,255,0.45); }
+  select, input[type="number"] {
+    background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 7px 8px;
+    font: inherit; outline: none;
+  }
+  select:focus, input:focus { border-color: #fff; }
+  option { background: #0a0a0a; }
+  .row { display: flex; gap: 10px; }
+  .row > label { flex: 1; }
+  button {
+    background: transparent; border: 1px solid rgba(255,255,255,0.3); color: rgba(255,255,255,0.85);
+    padding: 9px 12px; font: inherit; text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px;
+    cursor: pointer; transition: border-color .15s, color .15s;
+  }
+  button:hover { border-color: #fff; color: #fff; }
+  button.primary { border-color: rgba(255,255,255,0.55); }
+  button:disabled { opacity: 0.35; cursor: default; }
+  .btns { display: flex; gap: 8px; }
+  .hint { font-size: 10px; color: rgba(255,255,255,0.4); line-height: 1.6; }
+  #params { display: flex; flex-direction: column; gap: 11px; }
+  #params .pname { font-size: 9px; text-transform: uppercase; letter-spacing: 0.13em; color: rgba(255,255,255,0.45); display: flex; justify-content: space-between; }
+  #params .pname .pval { color: rgba(255,255,255,0.75); font-variant-numeric: tabular-nums; }
+  #params input[type="range"] { width: 100%; accent-color: #fff; }
+  #params .subhead { font-size: 9px; text-transform: uppercase; letter-spacing: 0.18em; color: rgba(255,255,255,0.3); margin-top: 4px; }
+  #params .tele-rows { display: flex; flex-direction: column; gap: 5px; }
+  #params .tele-rows button { text-align: left; }
+  .status { font-size: 10px; color: rgba(255,255,255,0.6); white-space: pre-wrap; word-break: break-word; min-height: 18px; }
+  .status a { color: rgba(180,220,255,0.95); }
+  .stage { flex: 1; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #000; }
+  .frame { position: relative; box-shadow: 0 0 0 1px rgba(255,255,255,0.12); }
+  iframe { border: 0; display: block; background: var(--ink); transform-origin: top left; }
+  hr { border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 2px 0; }
+</style>
+</head>
+<body>
+  <div class="rail">
+    <div class="title">reel-render · studio</div>
+
+    <label>
+      <span class="name">visualizer</span>
+      <select id="page"></select>
+    </label>
+    <label>
+      <span class="name">audio</span>
+      <select id="audio"></select>
+    </label>
+
+    <div class="row">
+      <label><span class="name">scale</span><input id="scale" type="number" min="1" max="4" step="0.5" value="2" /></label>
+      <label><span class="name">gain</span><input id="gain" type="number" min="0.1" max="5" step="0.1" value="1" /></label>
+    </div>
+    <div class="row">
+      <label><span class="name">seconds</span><input id="seconds" type="number" min="1" max="600" step="1" value="30" /></label>
+      <label><span class="name">fps</span><input id="fps" type="number" min="12" max="60" step="1" value="30" /></label>
+    </div>
+    <label style="flex-direction:row; align-items:center; gap:8px;">
+      <input id="jpeg" type="checkbox" checked />
+      <span class="name">fast frames (jpeg) — uncheck for lossless png</span>
+    </label>
+
+    <div class="btns">
+      <button id="play">▶ play</button>
+      <button id="stop">■ stop</button>
+    </div>
+
+    <p class="hint">Audio / MIDI dialog: click the preview and press <b>9</b>.</p>
+
+    <hr />
+    <button id="render" class="primary">● render reel</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="params-rail">
+    <div class="title">parameters</div>
+    <div id="params"></div>
+  </div>
+
+  <div class="stage">
+    <div class="frame" id="frame">
+      <iframe id="viz"></iframe>
+    </div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const W = 1080, H = 1920;
+
+// ---- audio analysis (mirrors core.js tickAudio: 1024 fft, 8/25/60% bands,
+//      smoothing lerps, peak/onset detector) ----
+let actx = null, analyser = null, srcNode = null, fftBuf = null, raf = 0, playing = false;
+const sm = { level: 0, low: 0, mid: 0, high: 0 };
+const peak = { low: 1e-3, mid: 1e-3, high: 1e-3 };
+const cool = { low: 0, mid: 0, high: 0 };
+let lastT = 0;
+const PEAK_DECAY = 0.995, ONSET_RISE = 0.06, ONSET_COOL_MS = 80;
+
+function vizWin() { return $('viz').contentWindow; }
+
+function feedFrame(t) {
+  if (!playing) return;
+  const dtMs = lastT ? t - lastT : 16; lastT = t;
+  analyser.getByteFrequencyData(fftBuf);
+  const N = fftBuf.length;
+  const lowEnd = Math.max(1, Math.floor(N * 0.08));
+  const midEnd = Math.max(lowEnd + 1, Math.floor(N * 0.25));
+  const highEnd = Math.max(midEnd + 1, Math.floor(N * 0.6));
+  let sa = 0, sl = 0, smi = 0, sh = 0;
+  for (let i = 0; i < highEnd; i++) {
+    const v = fftBuf[i] / 255; sa += v;
+    if (i < lowEnd) sl += v; else if (i < midEnd) smi += v; else sh += v;
+  }
+  const overall = sa / highEnd, low = sl / lowEnd, mid = smi / (midEnd - lowEnd), high = sh / (highEnd - midEnd);
+  sm.level += (overall - sm.level) * 0.25;
+  sm.low += (low - sm.low) * 0.35; sm.mid += (mid - sm.mid) * 0.35; sm.high += (high - sm.high) * 0.4;
+  cool.low = Math.max(0, cool.low - dtMs); cool.mid = Math.max(0, cool.mid - dtMs); cool.high = Math.max(0, cool.high - dtMs);
+  const onLow = cool.low === 0 && low > peak.low + ONSET_RISE;
+  const onMid = cool.mid === 0 && mid > peak.mid + ONSET_RISE;
+  const onHigh = cool.high === 0 && high > peak.high + ONSET_RISE;
+  if (onLow) cool.low = ONSET_COOL_MS; if (onMid) cool.mid = ONSET_COOL_MS; if (onHigh) cool.high = ONSET_COOL_MS;
+  peak.low = Math.max(low, peak.low * PEAK_DECAY); peak.mid = Math.max(mid, peak.mid * PEAK_DECAY); peak.high = Math.max(high, peak.high * PEAK_DECAY);
+  const g = parseFloat($('gain').value) || 1;
+  const c = (x) => Math.max(0, Math.min(1, x * g));
+  const ns = vizWin() && vizWin().Newspeech;
+  if (ns && ns.setExternalAudio) ns.setExternalAudio({ level: c(sm.level), low: c(sm.low), mid: c(sm.mid), high: c(sm.high), onsets: { low: onLow, mid: onMid, high: onHigh } });
+  raf = requestAnimationFrame(feedFrame);
+}
+
+async function play() {
+  const file = $('audio').value;
+  if (!file) { setStatus('pick an audio file first'); return; }
+  stop();
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  await actx.resume();
+  const buf = await fetch('/audio/' + encodeURIComponent(file)).then((r) => r.arrayBuffer()).then((b) => actx.decodeAudioData(b));
+  srcNode = actx.createBufferSource(); srcNode.buffer = buf;
+  analyser = actx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0;
+  fftBuf = new Uint8Array(analyser.frequencyBinCount);
+  srcNode.connect(analyser); analyser.connect(actx.destination);
+  srcNode.start(); playing = true; lastT = 0;
+  raf = requestAnimationFrame(feedFrame);
+  setStatus('playing — tune in the preview, then render');
+}
+function stop() {
+  playing = false; cancelAnimationFrame(raf);
+  if (srcNode) { try { srcNode.stop(); } catch (e) {} srcNode.disconnect(); srcNode = null; }
+  const ns = vizWin() && vizWin().Newspeech; if (ns && ns.setExternalAudio) ns.setExternalAudio(null);
+}
+
+// ---- preview sizing: iframe intrinsic size = logical (W/scale × H/scale) so
+//      element sizing matches the render, then CSS-scale to fit the stage ----
+function sizePreview() {
+  const scale = parseFloat($('scale').value) || 2;
+  const lw = Math.round(W / scale), lh = Math.round(H / scale);
+  const stage = document.querySelector('.stage');
+  const fit = Math.min((stage.clientHeight - 24) / lh, (stage.clientWidth - 24) / lw);
+  const vf = $('viz');
+  vf.style.width = lw + 'px'; vf.style.height = lh + 'px'; vf.style.transform = 'scale(' + fit + ')';
+  const frame = $('frame');
+  frame.style.width = lw * fit + 'px'; frame.style.height = lh * fit + 'px';
+}
+
+function loadViz() {
+  stop();
+  $('viz').src = '/' + $('page').value;
+  $('viz').onload = () => { sizePreview(); hideIframePanel(); buildParams(); };
+}
+
+// Hide the visualizer's own on-screen panel — its controls now live in the rail.
+function hideIframePanel() {
+  try {
+    const d = vizWin().document;
+    let s = d.getElementById('studio-hide');
+    if (!s) { s = d.createElement('style'); s.id = 'studio-hide'; d.head.appendChild(s); }
+    s.textContent = '#panel,#panel-handle{display:none !important}';
+  } catch (e) {}
+}
+
+function fire(el, type) { el.dispatchEvent(new Event(type, { bubbles: true })); }
+// Clickable controls that aren't <input>/<select>: real buttons + the panel's
+// custom div/span toggles (grayscale, grid cycler, telemetry pick/shuffle).
+function isClickProxy(el) {
+  return el.tagName === 'BUTTON'
+    || el.classList.contains('panel-grayscale') || el.classList.contains('panel-grid')
+    || el.classList.contains('ns-pick') || el.classList.contains('ns-shuffle');
+}
+function proxyLabel(src, fallback) {
+  if (src.classList.contains('ns-pick')) return 'telemetry · pick';
+  if (src.classList.contains('ns-shuffle')) return 'telemetry · shuffle';
+  const t = (src.textContent || '').trim();
+  return t || fallback;
+}
+function labelFor(src) {
+  const c = src.closest('label, .panel-row');
+  const nm = c && c.querySelector('.name');
+  if (nm) return nm.textContent.trim();
+  const t = (src.textContent || '').trim();
+  return t || src.getAttribute('data-k') || 'param';
+}
+function mkHead(name, val) {
+  const el = document.createElement('div'); el.className = 'pname';
+  const nm = document.createElement('span'); nm.textContent = name;
+  const v = document.createElement('span'); v.className = 'pval'; v.textContent = val;
+  el.append(nm, v); return { el, val: v };
+}
+
+// Mirror EVERY panel control (page params + global sliders + selects + toggle
+// buttons) into the params column, each driving the real iframe element so
+// core.js applies + persists it. Page params first, then a "site" group.
+function buildParams() {
+  const host = $('params'); host.innerHTML = '';
+  let panel;
+  try { panel = vizWin().document.getElementById('panel'); } catch (e) { return; }
+  if (!panel) return;
+  const ctrls = [...panel.querySelectorAll('input[type="range"], input[type="checkbox"], select, button, .panel-grayscale, .panel-grid, .ns-pick, .ns-shuffle')]
+    .filter((el) => !el.classList.contains('panel-close'));
+  if (!ctrls.length) { host.innerHTML = '<div class="hint">no params for this visualizer</div>'; return; }
+
+  let siteHeader = false;
+  for (const src of ctrls) {
+    // telemetry pick/shuffle get a dedicated section (built after this loop).
+    if (src.classList.contains('ns-pick') || src.classList.contains('ns-shuffle')) continue;
+    const isGlobal = !!src.closest('.panel-globals') || src.classList.contains('panel-grayscale') || src.classList.contains('panel-grid');
+    if (isGlobal && !siteHeader) {
+      const h = document.createElement('div'); h.className = 'subhead'; h.textContent = 'site'; host.appendChild(h); siteHeader = true;
+    }
+    const name = labelFor(src);
+    const wrap = document.createElement('div');
+
+    if (src.tagName === 'INPUT' && src.type === 'range') {
+      const head = mkHead(name, src.value);
+      const r = document.createElement('input'); r.type = 'range';
+      r.min = src.min; r.max = src.max; r.step = src.step || 'any'; r.value = src.value;
+      r.addEventListener('input', () => { src.value = r.value; fire(src, 'input'); fire(src, 'change'); head.val.textContent = r.value; });
+      wrap.append(head.el, r);
+    } else if (src.tagName === 'SELECT') {
+      const head = mkHead(name, '');
+      const sel = document.createElement('select'); sel.innerHTML = src.innerHTML; sel.value = src.value;
+      sel.addEventListener('change', () => { src.value = sel.value; fire(src, 'input'); fire(src, 'change'); });
+      wrap.append(head.el, sel);
+    } else if (src.tagName === 'INPUT' && src.type === 'checkbox') {
+      const lbl = document.createElement('label'); lbl.style.flexDirection = 'row'; lbl.style.alignItems = 'center'; lbl.style.gap = '8px';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = src.checked;
+      cb.addEventListener('change', () => { src.checked = cb.checked; fire(src, 'change'); });
+      const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = name;
+      lbl.append(cb, nm); wrap.append(lbl);
+    } else if (isClickProxy(src)) {
+      const b = document.createElement('button');
+      b.textContent = proxyLabel(src, name);
+      b.classList.toggle('on', src.classList.contains('on'));
+      b.addEventListener('click', () => {
+        src.click();
+        setTimeout(() => { b.textContent = proxyLabel(src, name); b.classList.toggle('on', src.classList.contains('on')); }, 0);
+      });
+      wrap.append(b);
+    } else continue;
+    host.appendChild(wrap);
+  }
+  buildTelemetrySection(host);
+}
+
+// Telemetry / micrographics picker, rebuilt as its own studio panel. The
+// picker's row-toggles drive private core.js state, so we build the real picker
+// in the (hidden) iframe panel once and proxy each studio row to it.
+function buildTelemetrySection(host) {
+  let panel, teleRow;
+  try { panel = vizWin().document.getElementById('panel'); teleRow = panel && panel.querySelector('.panel-telemetry'); } catch (e) { return; }
+  if (!teleRow) return;
+  // Build the backing picker once (hidden — the panel is display:none here).
+  if (!panel.querySelector('.panel-picker')) { const pick = teleRow.querySelector('.ns-pick'); if (pick) pick.click(); }
+
+  const sub = document.createElement('div'); sub.className = 'subhead'; sub.textContent = 'telemetry'; host.appendChild(sub);
+  const rows = document.createElement('div'); rows.className = 'tele-rows'; host.appendChild(rows);
+  const acts = document.createElement('div'); acts.className = 'btns';
+  const shuf = document.createElement('button'); shuf.textContent = 'shuffle';
+  shuf.addEventListener('click', () => { const s = teleRow.querySelector('.ns-shuffle'); if (s) s.click(); renderTeleRows(rows); });
+  const clr = document.createElement('button'); clr.textContent = 'clear';
+  clr.addEventListener('click', () => { const c = panel.querySelector('.panel-picker .pick-action'); if (c) c.click(); renderTeleRows(rows); });
+  acts.append(shuf, clr); host.appendChild(acts);
+  renderTeleRows(rows);
+}
+
+function renderTeleRows(rows) {
+  let picks;
+  try { picks = [...vizWin().document.querySelectorAll('.panel-picker .pick-row')]; } catch (e) { return; }
+  rows.innerHTML = '';
+  for (const pr of picks) {
+    const type = pr.dataset.type;
+    const el = document.createElement('button');
+    el.textContent = type;
+    el.style.justifyContent = 'flex-start';
+    el.classList.toggle('on', pr.classList.contains('on'));
+    el.addEventListener('click', () => {
+      const live = vizWin().document.querySelector(`.panel-picker .pick-row[data-type="${type}"]`);
+      if (live) live.click();
+      renderTeleRows(rows); // core.js rebuilds + reorders the rows on toggle
+    });
+    rows.appendChild(el);
+  }
+}
+
+function setStatus(s) { $('status').innerHTML = s; }
+
+// ---- gather tuned state from the iframe + POST render ----
+async function render() {
+  const win = vizWin();
+  const params = {};
+  try {
+    win.document.querySelectorAll('#panel [data-k]').forEach((el) => { params[el.getAttribute('data-k')] = el.value; });
+  } catch (e) {}
+  const ls = {};
+  try { for (let i = 0; i < win.localStorage.length; i++) { const k = win.localStorage.key(i); if (k.startsWith('newspeech.')) ls[k] = win.localStorage.getItem(k); } } catch (e) {}
+
+  const body = {
+    page: $('page').value.replace(/\.html$/, ''),
+    audio: $('audio').value || null,
+    scale: parseFloat($('scale').value) || 2,
+    gain: parseFloat($('gain').value) || 1,
+    seconds: parseFloat($('seconds').value) || 30,
+    fps: parseInt($('fps').value, 10) || 30,
+    jpeg: $('jpeg').checked,
+    params, localStorage: ls,
+  };
+  $('render').disabled = true;
+  setStatus('rendering ' + body.seconds + 's of ' + body.page + ' … (this runs the offline pipeline; watch the terminal for frame progress)');
+  try {
+    const r = await fetch('/api/render', { method: 'POST', body: JSON.stringify(body) }).then((x) => x.json());
+    if (r.ok) setStatus('done → ' + r.out + '  ·  <a href="/out/' + encodeURIComponent(r.out) + '" target="_blank">preview</a>  (saved to your output dir)');
+    else setStatus('render failed:\n' + (r.log || r.error || 'unknown'));
+  } catch (e) { setStatus('render error: ' + e); }
+  $('render').disabled = false;
+}
+
+// ---- init ----
+(async function init() {
+  const pages = await fetch('/api/pages').then((r) => r.json());
+  $('page').innerHTML = pages.map((p) => '<option>' + p + '</option>').join('');
+  const audio = await fetch('/api/audio').then((r) => r.json());
+  $('audio').innerHTML = (audio.length ? audio : ['— no audio files found —']).map((a) => '<option>' + a + '</option>').join('');
+
+  $('page').addEventListener('change', loadViz);
+  $('scale').addEventListener('change', sizePreview);
+  $('play').addEventListener('click', play);
+  $('stop').addEventListener('click', stop);
+  $('render').addEventListener('click', render);
+  window.addEventListener('resize', sizePreview);
+  loadViz();
+})();
+</script>
+</body>
+</html>
