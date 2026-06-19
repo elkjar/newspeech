@@ -387,6 +387,18 @@ export async function triggerSample(
       shape: number;
       rateHz: number;
     }>;
+    // Per-instrument granular (editor Phase C). on=false → normal sample
+    // playback (the single windowed read-head is bypassed). grainMs = grain
+    // length; position 0..1 into the sample; shape 0 square · 1 tri · 2 gauss;
+    // direction 0 fwd · 1 bwd · 2 pingpong.
+    granular?: {
+      on: boolean;
+      grainMs: number;
+      position: number;
+      shape: number;
+      direction: number;
+      spray: number;
+    };
   } = {},
 ): Promise<void> {
   await invoke<void>('audio_trigger_sample', {
@@ -417,6 +429,12 @@ export async function triggerSample(
     lfoRateHz: opts.lfoRateHz ?? null,
     lfoDepth: opts.lfoDepth ?? null,
     mods: opts.mods && opts.mods.length > 0 ? opts.mods : null,
+    granOn: opts.granular?.on ?? null,
+    granGrainMs: opts.granular?.grainMs ?? null,
+    granPosition: opts.granular?.position ?? null,
+    granShape: opts.granular?.shape ?? null,
+    granDir: opts.granular?.direction ?? null,
+    granSpray: opts.granular?.spray ?? null,
   });
 }
 

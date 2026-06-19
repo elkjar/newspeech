@@ -12,8 +12,13 @@ import {
   DEFAULT_FILTER_LFO,
   DEFAULT_ENV_MOD,
   DEFAULT_LFO_MOD,
+  DEFAULT_GRANULAR,
   type LoopMode,
   type FilterType,
+  type Playmode,
+  type GranularEdit,
+  type GrainShape,
+  type GrainDir,
   type AmpEnvEdit,
   type FilterLfoEdit,
   type VoiceEdit,
@@ -59,6 +64,7 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
   const previewId = useRef(0);
   const pollRef = useRef<number | null>(null);
   const [playhead, setPlayhead] = useState<number | null>(null);
+  const [durationSecs, setDurationSecs] = useState(0);
   const [exportState, setExportState] = useState<'idle' | 'working' | 'ok' | 'err'>('idle');
   // Live transport tempo for the LFO division → Hz hint. Must be read here
   // (with the other hooks) — never after the early return below.
@@ -115,6 +121,17 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
   const cutoffEnv = edit?.cutoffEnv ?? DEFAULT_ENV_MOD;
   const pitchEnv = edit?.pitchEnv ?? DEFAULT_ENV_MOD;
   const pitchLfo = edit?.pitchLfo ?? DEFAULT_LFO_MOD;
+  // Playmode + granular (Phase C). granPos* are the granular-position automation
+  // (a contextual 5th modulation cluster, shown only in granular mode).
+  const playmode = edit?.playmode ?? 'sample';
+  // Fill defaults for any fields a pre-existing edit predates (e.g. `spray`),
+  // so reads never hit undefined → NaN.
+  const granular = { ...DEFAULT_GRANULAR, ...(edit?.granular ?? {}) };
+  const isGran = playmode === 'granular';
+  const setGranular = (patch: Partial<GranularEdit>) =>
+    setVoiceEdit(voiceId, { granular: { ...granular, ...patch } });
+  const granPosLfo = edit?.granPosLfo ?? DEFAULT_LFO_MOD;
+  const granPosEnv = edit?.granPosEnv ?? DEFAULT_ENV_MOD;
   const setMod = <T,>(key: keyof VoiceEdit, def: T, patch: Partial<T>) =>
     setVoiceEdit(voiceId, {
       [key]: { ...((edit?.[key] as T) ?? def), ...patch },
@@ -172,12 +189,22 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
           <span className="text-[12px] uppercase tracking-widest text-white/40 truncate">
             {voiceLabel(voiceId)}
           </span>
+          {/* Playmode selector (same tab visual as the main screen tabs). Picks
+              how the sample is played; granular switches the body to the
+              single-windowed read-head controls. slice/wavetable are scaffolded
+              for later phases (disabled). */}
+          <div className="ml-auto">
+            <PlaymodeTabs
+              value={playmode}
+              onChange={(p) => setVoiceEdit(voiceId, { playmode: p })}
+            />
+          </div>
         </div>
 
-        {/* Instrument header — waveform (1st-column width) + basic controls to
-            its right; the flex-1 / flex-[3] split aligns with the 4-col grid. */}
+        {/* Instrument header — waveform + basic controls to its right. The
+            waveform takes 9/16 of the row (~56%). */}
         <div className="flex gap-6 items-start mb-1">
-        <div className="flex-1 min-w-0">
+        <div className="flex-[9] min-w-0">
         <Waveform
           voiceId={voiceId}
           start={start}
@@ -185,45 +212,113 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
           loopMode={loopMode}
           playhead={playhead}
           onChange={(patch) => setVoiceEdit(voiceId, patch)}
+          granular={isGran ? { position: granular.position, grainMs: granular.grainMs } : null}
+          onGranularPosition={(p) => setGranular({ position: p })}
+          onGranularGrain={(ms) => setGranular({ grainMs: ms })}
+          onDuration={setDurationSecs}
         />
+        {/* Always rendered so the row reserves the same height in both modes
+            (no layout shift when switching to granular); just hidden in sample
+            mode. */}
+        <div
+          className={`flex justify-between text-[9px] uppercase tracking-widest tabular-nums px-1 -mt-2 ${
+            isGran ? 'text-white/40' : 'invisible'
+          }`}
+        >
+          <span>grain {granular.grainMs.toFixed(0)} ms</span>
+          <span>
+            pos{' '}
+            {durationSecs > 0
+              ? `${(granular.position * durationSecs).toFixed(3)}s`
+              : `${(granular.position * 100).toFixed(0)}%`}
+          </span>
         </div>
-        <div className="flex-[3] min-w-0">
-        <div className="flex items-start gap-8 flex-wrap">
+        </div>
+        <div className="flex-[7] min-w-0 pt-2">
+        <div className="flex items-start gap-x-8 gap-y-3 flex-wrap">
           <TopKnob
             label="volume"
             value={gain / 2}
             display={`×${gain.toFixed(2)}`}
             onChange={(v) => setVoiceEdit(voiceId, { gain: v * 2 })}
           />
-          <TopControl label="tune" value={`${tune > 0 ? '+' : ''}${tune} st`}>
-            <input
-              type="range"
-              min={-24}
-              max={24}
-              step={1}
-              value={tune}
-              onChange={(e) => setVoiceEdit(voiceId, { tune: Math.round(Number(e.target.value)) })}
-              className="w-[120px] accent-white"
-            />
-          </TopControl>
-          <TopControl label="loop">
-            <div className="flex gap-1">
-              {(['off', 'fwd', 'bwd', 'pingpong'] as LoopMode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setVoiceEdit(voiceId, { loopMode: m })}
-                  className={`px-2 py-1 text-[9px] uppercase tracking-widest border transition-colors ${
-                    loopMode === m
-                      ? 'border-white text-white'
-                      : 'border-white/15 text-white/40 hover:text-white/70'
-                  }`}
-                >
-                  {m === 'pingpong' ? 'ping' : m}
-                </button>
-              ))}
-            </div>
-          </TopControl>
+          <TopKnob
+            label="tune"
+            value={(tune + 24) / 48}
+            bipolar
+            display={`${tune > 0 ? '+' : ''}${tune} st`}
+            onChange={(v) => setVoiceEdit(voiceId, { tune: Math.round(v * 48 - 24) })}
+          />
+          {/* Mode-specific: loop in sample mode, grain controls in granular. */}
+          {!isGran && (
+            <TopControl label="loop">
+              <div className="flex gap-1">
+                {(['off', 'fwd', 'bwd', 'pingpong'] as LoopMode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setVoiceEdit(voiceId, { loopMode: m })}
+                    className={`px-2 py-1 text-[9px] uppercase tracking-widest border transition-colors ${
+                      loopMode === m
+                        ? 'border-white text-white'
+                        : 'border-white/15 text-white/40 hover:text-white/70'
+                    }`}
+                  >
+                    {m === 'pingpong' ? 'ping' : m}
+                  </button>
+                ))}
+              </div>
+            </TopControl>
+          )}
+          {isGran && (
+            <>
+              {/* grain length + position are set by dragging the sample
+                  visualizer directly (left/body = position, right edge = size);
+                  the readout lives under the waveform. */}
+              <TopControl label="shape">
+                <div className="flex gap-1">
+                  {(['square', 'triangle', 'gauss'] as GrainShape[]).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setGranular({ shape: s })}
+                      className={`px-2 py-1 text-[9px] uppercase tracking-widest border transition-colors ${
+                        granular.shape === s
+                          ? 'border-white text-white'
+                          : 'border-white/15 text-white/40 hover:text-white/70'
+                      }`}
+                    >
+                      {s === 'triangle' ? 'tri' : s === 'square' ? 'sqr' : 'gss'}
+                    </button>
+                  ))}
+                </div>
+              </TopControl>
+              <TopControl label="direction">
+                <div className="flex gap-1">
+                  {(['fwd', 'bwd', 'pingpong'] as GrainDir[]).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setGranular({ direction: d })}
+                      className={`px-2 py-1 text-[9px] uppercase tracking-widest border transition-colors ${
+                        granular.direction === d
+                          ? 'border-white text-white'
+                          : 'border-white/15 text-white/40 hover:text-white/70'
+                      }`}
+                    >
+                      {d === 'pingpong' ? 'ping' : d}
+                    </button>
+                  ))}
+                </div>
+              </TopControl>
+              <TopKnob
+                label="scatter"
+                value={granular.spray}
+                display={`${(granular.spray * 100).toFixed(0)}%`}
+                onChange={(v) => setGranular({ spray: v })}
+              />
+            </>
+          )}
           <TopControl label="filter">
             <div className="flex gap-1">
               {(['off', 'lp', 'hp', 'bp'] as FilterType[]).map((f) => (
@@ -347,6 +442,27 @@ export function InstrumentEditorDialog({ open, track, onClose }: Props) {
               onChange={(p) => setMod('pitchEnv', DEFAULT_ENV_MOD, p)}
             />
           </div>
+
+          {/* GRAIN POSITION — contextual: only in granular mode (.pti
+              automations[4]). Sweeps the grain read position; LFO bipolar
+              around the base, envelope as a positive offset. */}
+          {isGran && (
+            <div className="flex-1 min-w-0">
+              <ModLfoSection
+                label="grain pos lfo"
+                value={granPosLfo}
+                depthCfg={DEPTH_UNIT}
+                bpm={bpm}
+                onChange={(p) => setMod('granPosLfo', DEFAULT_LFO_MOD, p)}
+              />
+              <ModEnvSection
+                label="grain pos env"
+                value={granPosEnv}
+                depthCfg={DEPTH_UNIT}
+                onChange={(p) => setMod('granPosEnv', DEFAULT_ENV_MOD, p)}
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between mt-5">
@@ -421,16 +537,67 @@ function TopKnob({
   value,
   display,
   onChange,
+  bipolar = false,
 }: {
   label: string;
   value: number;
   display: string;
   onChange: (v: number) => void;
+  bipolar?: boolean;
 }) {
   return (
     <TopControl label={label} value={display}>
-      <Knob value={value} displayValue={value} onChange={onChange} size={44} title={label} />
+      <Knob
+        value={value}
+        displayValue={value}
+        bipolar={bipolar}
+        onChange={onChange}
+        size={44}
+        title={label}
+      />
     </TopControl>
+  );
+}
+
+// Playmode selector — same segmented-tab visual as the main screen's
+// ROLL/LFO/FX/MASTER tabs (ScreenModeTabs). sample + granular are live;
+// slice + wavetable are scaffolded for later phases (disabled).
+const PLAYMODES: { id: Playmode; label: string; ready: boolean }[] = [
+  { id: 'sample', label: 'sample', ready: true },
+  { id: 'slice', label: 'slice', ready: false },
+  { id: 'wavetable', label: 'wavetable', ready: false },
+  { id: 'granular', label: 'granular', ready: true },
+];
+
+function PlaymodeTabs({
+  value,
+  onChange,
+}: {
+  value: Playmode;
+  onChange: (p: Playmode) => void;
+}) {
+  return (
+    <div className="flex gap-1.5 text-[10px] uppercase tracking-widest">
+      {PLAYMODES.map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          disabled={!m.ready}
+          onClick={() => m.ready && onChange(m.id)}
+          title={m.ready ? m.label : `${m.label} — coming soon`}
+          className={[
+            'px-2.5 py-1 border transition-colors',
+            value === m.id
+              ? 'bg-white text-ink border-white'
+              : m.ready
+                ? 'border-white/15 text-white/60 hover:text-white hover:border-white'
+                : 'border-white/10 text-white/25 cursor-not-allowed',
+          ].join(' ')}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

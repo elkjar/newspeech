@@ -111,6 +111,7 @@ export function monitorNote(
       lfoRateHz: pick.lfoRateHz,
       lfoDepth: pick.lfoDepth,
       mods: pick.mods,
+      granular: pick.granular,
     });
     return;
   }
@@ -203,6 +204,7 @@ export function monitorChord(
         lfoRateHz: pick.lfoRateHz,
         lfoDepth: pick.lfoDepth,
         mods: pick.mods,
+        granular: pick.granular,
       });
     });
     return;
@@ -282,6 +284,7 @@ export function monitorDrum(track: Track, velocity: number): void {
       lfoRateHz: pick.lfoRateHz,
       lfoDepth: pick.lfoDepth,
       mods: pick.mods,
+      granular: pick.granular,
     });
     return;
   }

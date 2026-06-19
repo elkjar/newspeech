@@ -673,6 +673,7 @@ export function App() {
                     lfoRateHz: pick.lfoRateHz,
                     lfoDepth: pick.lfoDepth,
                     mods: pick.mods,
+                    granular: pick.granular,
                   });
                 }
               } else {
@@ -770,6 +771,7 @@ export function App() {
                   lfoRateHz: pick.lfoRateHz,
                   lfoDepth: pick.lfoDepth,
                   mods: pick.mods,
+                  granular: pick.granular,
                 });
                 if (noteId !== undefined && targetMidi !== undefined) {
                   tones.push({ noteId, midi: targetMidi });
@@ -895,6 +897,7 @@ export function App() {
             lfoRateHz: pick.lfoRateHz,
             lfoDepth: pick.lfoDepth,
             mods: pick.mods,
+            granular: pick.granular,
           });
           nextTones.push({ noteId, midi });
         }

@@ -16,11 +16,32 @@ interface Props {
   loopMode: LoopMode;
   playhead: number | null; // 0..1 read position, or null when not playing
   onChange: (patch: { start?: number; end?: number }) => void;
+  // Granular mode: when set, the trim handles are replaced by a grain-window
+  // band you drag directly — the left edge / body sets the read position, the
+  // right edge sets the grain length. The playhead (when playing) shows the
+  // live mod-swept position. null = normal sample-trim view.
+  granular?: { position: number; grainMs: number } | null;
+  onGranularPosition?: (position: number) => void;
+  onGranularGrain?: (grainMs: number) => void;
+  // Reports the decoded sample duration (seconds) once peaks load, so callers
+  // can show position/grain in seconds (the Tracker measures position in s).
+  onDuration?: (secs: number) => void;
 }
 
-const HEIGHT = 96;
+const HEIGHT = 192;
 
-export function Waveform({ voiceId, start, end, loopMode, playhead, onChange }: Props) {
+export function Waveform({
+  voiceId,
+  start,
+  end,
+  loopMode,
+  playhead,
+  onChange,
+  granular = null,
+  onGranularPosition,
+  onGranularGrain,
+  onDuration,
+}: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [peaks, setPeaks] = useState<WaveformPeaks | null>(null);
@@ -46,7 +67,9 @@ export function Waveform({ voiceId, start, end, loopMode, playhead, onChange }: 
     let cancelled = false;
     setPeaks(null);
     loadVoicePeaks(voiceId, width).then((p) => {
-      if (!cancelled) setPeaks(p);
+      if (cancelled) return;
+      setPeaks(p);
+      if (p) onDuration?.(p.frames / 44100);
     });
     return () => {
       cancelled = true;
@@ -68,6 +91,19 @@ export function Waveform({ voiceId, start, end, loopMode, playhead, onChange }: 
     lastPh.current = playhead;
   }, [playhead]);
 
+  // Grain window width as a fraction of the sample (granular mode). Shared by
+  // the draw pass and the drag hit-testing so the right-edge size handle lines
+  // up with what's rendered. 44.1k = the peaks decode rate.
+  const grainFrac = granular && peaks
+    ? Math.max(0.004, Math.min(1, ((granular.grainMs / 1000) * 44100) / peaks.frames))
+    : 0;
+  // Inverse: a window fraction back to grain length in ms (right-edge drag).
+  const fracToGrainMs = (widthFrac: number): number => {
+    if (!peaks) return granular?.grainMs ?? 80;
+    const ms = ((widthFrac * peaks.frames) / 44100) * 1000;
+    return Math.max(1, Math.min(1000, ms));
+  };
+
   // Redraw on any geometry/playhead change.
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -82,6 +118,11 @@ export function Waveform({ voiceId, start, end, loopMode, playhead, onChange }: 
     const mid = HEIGHT / 2;
     const amp = mid - 3;
 
+    // The "bright" window: the trim region in sample mode, the grain window in
+    // granular mode (read position → grainFrac, computed above).
+    const winStart = granular ? granular.position : start;
+    const winEnd = granular ? Math.min(1, granular.position + grainFrac) : end;
+
     if (peaks) {
       const sx = peaks.columns / width;
       for (let x = 0; x < width; x++) {
@@ -89,7 +130,7 @@ export function Waveform({ voiceId, start, end, loopMode, playhead, onChange }: 
         const min = peaks.peaks[col * 2];
         const max = peaks.peaks[col * 2 + 1];
         const frac = x / width;
-        const inWindow = frac >= start && frac <= end;
+        const inWindow = frac >= winStart && frac <= winEnd;
         ctx.strokeStyle = inWindow ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)';
         ctx.beginPath();
         ctx.moveTo(x + 0.5, mid - max * amp);
@@ -101,21 +142,43 @@ export function Waveform({ voiceId, start, end, loopMode, playhead, onChange }: 
       ctx.fillRect(0, mid, width, 1);
     }
 
-    // Window handles.
-    const sxp = start * width;
-    const exp = end * width;
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 1;
-    for (const hx of [sxp, exp]) {
-      ctx.beginPath();
-      ctx.moveTo(hx, 0);
-      ctx.lineTo(hx, HEIGHT);
-      ctx.stroke();
+    if (granular) {
+      // Grain window band + two draggable edges: left = read position, right =
+      // grain length. Drag the band/left to move, the right edge to resize.
+      const lx = winStart * width;
+      const rx = winEnd * width;
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(lx, 0, Math.max(1, rx - lx), HEIGHT);
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 1;
+      for (const hx of [lx, rx]) {
+        ctx.beginPath();
+        ctx.moveTo(hx, 0);
+        ctx.lineTo(hx, HEIGHT);
+        ctx.stroke();
+      }
+      // Grab tabs: position (left, top) + size (right, bottom) so the two edges
+      // read as distinct affordances.
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(lx - 1.5, 0, 3, 6);
+      ctx.fillRect(rx - 1.5, HEIGHT - 6, 3, 6);
+    } else {
+      // Window handles.
+      const sxp = start * width;
+      const exp = end * width;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 1;
+      for (const hx of [sxp, exp]) {
+        ctx.beginPath();
+        ctx.moveTo(hx, 0);
+        ctx.lineTo(hx, HEIGHT);
+        ctx.stroke();
+      }
+      // Small grab tabs at the top of each handle.
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(sxp, 0, 3, 6);
+      ctx.fillRect(exp - 3, 0, 3, 6);
     }
-    // Small grab tabs at the top of each handle.
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillRect(sxp, 0, 3, 6);
-    ctx.fillRect(exp - 3, 0, 3, 6);
 
     // Playhead + direction caret.
     if (playhead != null && playhead >= 0) {
@@ -142,7 +205,7 @@ export function Waveform({ voiceId, start, end, loopMode, playhead, onChange }: 
       ctx.closePath();
       ctx.fill();
     }
-  }, [peaks, width, start, end, playhead, loopMode]);
+  }, [peaks, width, start, end, playhead, loopMode, granular?.position, granular?.grainMs]);
 
   const xToFrac = (clientX: number): number => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -154,13 +217,31 @@ export function Waveform({ voiceId, start, end, loopMode, playhead, onChange }: 
   };
   const onDown = (e: React.PointerEvent) => {
     const frac = xToFrac(e.clientX);
+    canvasRef.current!.setPointerCapture(e.pointerId);
+    if (granular) {
+      // 'end' = resize (right edge), 'start' = move (left edge / band). Pick the
+      // nearer edge; the right edge wins only when it's the closer of the two.
+      const rightEdge = Math.min(1, granular.position + grainFrac);
+      const which =
+        Math.abs(frac - rightEdge) < Math.abs(frac - granular.position) ? 'end' : 'start';
+      dragRef.current = which;
+      if (which === 'end') onGranularGrain?.(fracToGrainMs(frac - granular.position));
+      else onGranularPosition?.(frac);
+      return;
+    }
     const which = Math.abs(frac - start) <= Math.abs(frac - end) ? 'start' : 'end';
     dragRef.current = which;
-    canvasRef.current!.setPointerCapture(e.pointerId);
     applyDrag(which, frac);
   };
   const onMove = (e: React.PointerEvent) => {
-    if (dragRef.current) applyDrag(dragRef.current, xToFrac(e.clientX));
+    if (!dragRef.current) return;
+    const frac = xToFrac(e.clientX);
+    if (granular) {
+      if (dragRef.current === 'end') onGranularGrain?.(fracToGrainMs(frac - granular.position));
+      else onGranularPosition?.(frac);
+      return;
+    }
+    applyDrag(dragRef.current, frac);
   };
   const onUp = (e: React.PointerEvent) => {
     dragRef.current = null;

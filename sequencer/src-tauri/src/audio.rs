@@ -1353,9 +1353,43 @@ fn lfo_eval(shape: u8, phase: f32, rand_val: f32) -> f32 {
 
 // Number of generic modulator slots (editor B2 full grid). Fixed roles, agreed
 // with the JS MOD_SLOT map: 0 vol-LFO (tremolo) · 1 pan-env · 2 pan-LFO ·
-// 3 cutoff-env · 4 pitch-env · 5 pitch-LFO. (Vol-env = the amp envelope and
-// cutoff-LFO = the bespoke filter LFO live outside this array.)
-const MOD_SLOTS: usize = 6;
+// 3 cutoff-env · 4 pitch-env · 5 pitch-LFO · 6 granPos-LFO · 7 granPos-env.
+// (Vol-env = the amp envelope and cutoff-LFO = the bespoke filter LFO live
+// outside this array; slots 6/7 sweep the granular read position, granular
+// playmode only.)
+const MOD_SLOTS: usize = 8;
+
+// Grain window envelope (granular playmode, editor Phase C). Shapes one grain
+// over its phase 0..1: square (flat with short raised-cosine edges to declick
+// the grain seam), triangle (linear bell), gauss (gaussian bell). Matches the
+// .pti Granular.shape codes (0 Square · 1 Triangle · 2 Gauss).
+#[inline]
+fn grain_window(shape: u8, phase: f32) -> f32 {
+  let ph = phase.clamp(0.0, 1.0);
+  match shape {
+    0 => {
+      let edge = 0.03;
+      if ph < edge {
+        0.5 - 0.5 * (std::f32::consts::PI * ph / edge).cos()
+      } else if ph > 1.0 - edge {
+        0.5 - 0.5 * (std::f32::consts::PI * (1.0 - ph) / edge).cos()
+      } else {
+        1.0
+      }
+    }
+    1 => {
+      if ph < 0.5 {
+        2.0 * ph
+      } else {
+        2.0 * (1.0 - ph)
+      }
+    }
+    _ => {
+      let x = (ph - 0.5) * 2.0; // -1..1
+      (-(x * x) * 5.0).exp()
+    }
+  }
+}
 
 // One generic modulator: an envelope OR an LFO whose output (× depth) is summed
 // onto a target. Pure scalars → Copy, so it crosses the command queue and seeds
@@ -3122,6 +3156,31 @@ struct Voice {
   // Note hold in samples for mod-envelope release (= amp env hold when present,
   // else u32::MAX = sustain until the voice ends).
   mod_hold_samples: u32,
+  // Granular (editor Phase C). When gran_on, the voice plays through a single
+  // windowed read-head instead of the normal trim/loop reader: each grain reads
+  // `gran_grain_frames` source frames from the swept base position, shaped by
+  // `gran_shape`, read in `gran_dir` (0 fwd · 1 bwd · 2 pingpong), repeating to
+  // sustain. The base position is `gran_pos_norm` (0..1 of the sample) offset by
+  // the granular-position mods (slots 6/7). gran_read = source frames into the
+  // current grain; gran_ping_fwd = current direction for pingpong.
+  gran_on: bool,
+  gran_grain_frames: f64,
+  gran_pos_norm: f32,
+  gran_shape: u8,
+  gran_dir: u8,
+  gran_read: f64,
+  gran_ping_fwd: bool,
+  // The grain's start position in frames, LATCHED at each grain boundary (so the
+  // read point is fixed for the duration of a grain and the position automation
+  // only steps forward between grains — the discrete-grain texture). Recomputing
+  // it every sample instead would smear each grain into a continuous scrub.
+  gran_base_latched: f64,
+  // Per-grain start scatter (0..1 of the sample): each new grain latches at a
+  // random offset ± this around the target position, so the read "jumps around"
+  // the point rather than tracking one forward span. gran_rng is a dedicated
+  // PRNG so the scatter doesn't perturb the cutoff-LFO's random sequence.
+  gran_spray: f32,
+  gran_rng: u32,
 }
 
 impl Default for Voice {
@@ -3179,6 +3238,16 @@ impl Default for Voice {
       lfo_rng: 0x9e37_79b9,
       mods: [Modulator::off(); MOD_SLOTS],
       mod_hold_samples: u32::MAX,
+      gran_on: false,
+      gran_grain_frames: 0.0,
+      gran_pos_norm: 0.0,
+      gran_shape: 0,
+      gran_dir: 0,
+      gran_read: 0.0,
+      gran_ping_fwd: true,
+      gran_base_latched: 0.0,
+      gran_spray: 0.0,
+      gran_rng: 0x1234_5678,
     }
   }
 }
@@ -3254,6 +3323,15 @@ enum MixerCommand {
     lfo_depth: f32,
     // Generic modulator grid (prebuilt on the command thread — no heap here).
     mods: [Modulator; MOD_SLOTS],
+    // Granular (editor Phase C). gran_on switches the voice to the single
+    // windowed read-head; grain length in ms (resolved to frames at the device
+    // rate when the trigger is consumed), position 0..1, shape 0/1/2, dir 0/1/2.
+    gran_on: bool,
+    gran_grain_ms: f32,
+    gran_position: f32,
+    gran_shape: u8,
+    gran_dir: u8,
+    gran_spray: f32,
   },
   StopAll,
   // Release a single tagged voice (live-input monitoring note-off). Starts
@@ -3349,6 +3427,13 @@ struct PendingTrigger {
   lfo_depth: f32,
   // Generic modulator grid.
   mods: [Modulator; MOD_SLOTS],
+  // Granular (editor Phase C). gran_grain_frames resolved from ms at queue time.
+  gran_on: bool,
+  gran_grain_frames: f64,
+  gran_pos_norm: f32,
+  gran_shape: u8,
+  gran_dir: u8,
+  gran_spray: f32,
 }
 
 // --- shared state ---
@@ -3591,6 +3676,12 @@ impl AudioEngine {
     lfo_rate_hz: f32,
     lfo_depth: f32,
     mod_specs: Vec<ModSpecIpc>,
+    gran_on: bool,
+    gran_grain_ms: f32,
+    gran_position: f32,
+    gran_shape: u8,
+    gran_dir: u8,
+    gran_spray: f32,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -3641,6 +3732,12 @@ impl AudioEngine {
       lfo_rate_hz,
       lfo_depth,
       mods,
+      gran_on,
+      gran_grain_ms,
+      gran_position,
+      gran_shape,
+      gran_dir,
+      gran_spray,
     };
     let mut guard = self
       .state
@@ -4330,6 +4427,21 @@ fn claim_voice_slot(
   // sustain until the voice ends (u32::MAX).
   v.mods = p.mods;
   v.mod_hold_samples = if v.env_active { v.env_hold_samples } else { u32::MAX };
+  // Granular: copy the params and reset the grain read-head to the start of a
+  // fresh grain (forward for pingpong's first grain).
+  v.gran_on = p.gran_on;
+  v.gran_grain_frames = p.gran_grain_frames;
+  v.gran_pos_norm = p.gran_pos_norm;
+  v.gran_shape = p.gran_shape;
+  v.gran_dir = p.gran_dir;
+  v.gran_read = 0.0;
+  v.gran_ping_fwd = true;
+  // Seed the first grain's latched start at the base position (no automation
+  // offset yet at note onset).
+  let gran_fc = v.sample.as_ref().map(|s| s.frame_count()).unwrap_or(0) as f64;
+  v.gran_base_latched = (p.gran_pos_norm.clamp(0.0, 1.0) as f64) * (gran_fc - 2.0).max(0.0);
+  v.gran_spray = p.gran_spray;
+  v.gran_rng = 0x1234_5678 ^ (slot as u32).wrapping_mul(0x9e37_79b9);
 }
 
 fn build_stream(
@@ -4674,6 +4786,12 @@ fn build_stream(
               lfo_rate_hz,
               lfo_depth,
               mods,
+              gran_on,
+              gran_grain_ms,
+              gran_position,
+              gran_shape,
+              gran_dir,
+              gran_spray,
             } => {
               let pan_clamped = pan.clamp(-1.0, 1.0);
               let angle =
@@ -4714,6 +4832,11 @@ fn build_stream(
               // meaningful — otherwise there's nothing to modulate.
               let lfo_on =
                 inst_filter_on && lfo_depth > 0.0001 && lfo_rate_hz > 0.0001;
+              // Granular: resolve grain length (ms → source frames at the
+              // device rate) and clamp to [2, sample length]. Position 0..1.
+              let gran_grain_frames = ((gran_grain_ms.max(1.0) as f64) * 0.001
+                * device_sr_f64)
+                .clamp(2.0, (fc - 2.0).max(2.0));
               let pending = PendingTrigger {
                 sample,
                 rate,
@@ -4743,6 +4866,12 @@ fn build_stream(
                 lfo_rate_hz,
                 lfo_depth,
                 mods,
+                gran_on,
+                gran_grain_frames,
+                gran_pos_norm: gran_position.clamp(0.0, 1.0),
+                gran_shape,
+                gran_dir,
+                gran_spray: gran_spray.clamp(0.0, 1.0),
               };
               if delay_samples == 0 {
                 claim_voice_slot(
@@ -5027,72 +5156,12 @@ fn build_stream(
           let start = v.start_frame;
           let mut deactivate = false;
           for frame in start..frames {
-            // Loop-window handling (A3). Keep the read position inside
-            // [play_start, play_end]: forward/backward loops wrap to the
-            // opposite edge, pingpong bounces (flipping play_dir). One-shot
-            // (loop_mode 0) never wraps — it runs to play_end and stops.
-            if v.loop_mode != 0 && span > 1.0 {
-              if v.loop_mode == 3 {
-                if v.position >= v.play_end {
-                  v.position = v.play_end;
-                  v.play_dir = -1.0;
-                } else if v.position <= v.play_start {
-                  v.position = v.play_start;
-                  v.play_dir = 1.0;
-                }
-              } else if v.play_dir > 0.0 {
-                while v.position >= v.play_end {
-                  v.position -= span;
-                }
-              } else {
-                while v.position <= v.play_start {
-                  v.position += span;
-                }
-              }
-            }
-            let pos = v.position;
-            let i0 = pos.floor() as usize;
-            // Terminate one-shots at the window end (or the sample's last
-            // interpolatable frame, as a safety bound). Looped voices stay
-            // alive — the wrap above keeps them in range.
-            if i0 + 1 >= frame_count || (v.loop_mode == 0 && pos >= v.play_end) {
-              deactivate = true;
-              break;
-            }
-            let (mut ls, mut rs) = read_at(pos);
-            // Loop-seam crossfade — fwd/bwd loops jump at the seam, so blend
-            // the tail (approaching the jump edge) with the material we're
-            // about to wrap to, over `xf` frames, equal-power (constant
-            // energy). Pingpong (mode 3) reverses continuously — no jump, no
-            // blend. One-shots (mode 0) never reach here. This is what keeps
-            // loops from clicking when start/end aren't on zero crossings.
-            if xf > 1.0 && (v.loop_mode == 1 || v.loop_mode == 2) {
-              // t = 0 at the zone entry (pure tail) → 1 at the seam (pure head).
-              let t = if v.loop_mode == 1 {
-                // forward: seam at play_end, head is one span back
-                ((pos - (v.play_end - xf)) / xf).clamp(0.0, 1.0)
-              } else {
-                // backward: seam at play_start, head is one span forward
-                (((v.play_start + xf) - pos) / xf).clamp(0.0, 1.0)
-              };
-              if t > 0.0 {
-                let head_pos = if v.loop_mode == 1 {
-                  (pos - span).max(0.0)
-                } else {
-                  (pos + span).min(frame_count as f64 - 2.0)
-                };
-                let (hl, hr) = read_at(head_pos);
-                // Equal-power: tail cos, head sin over the quarter circle.
-                let angle = (t as f32) * std::f32::consts::FRAC_PI_2;
-                let (tail_g, head_g) = (angle.cos(), angle.sin());
-                ls = ls * tail_g + hl * head_g;
-                rs = rs * tail_g + hr * head_g;
-              }
-            }
             // Generic modulators (B2 grid): advance LFO phases, then read each
-            // target's offset. Envelope mods clock off frames_played + the note
-            // hold; LFO mods off their phase. Slots: 0 vol-LFO (tremolo) ·
-            // 1 pan-env · 2 pan-LFO · 3 cutoff-env · 4 pitch-env · 5 pitch-LFO.
+            // target's offset. Computed at the TOP of the frame so the granular
+            // read below can use the position offset (slots 6/7). Envelope mods
+            // clock off frames_played + the note hold; LFO mods off their phase.
+            // Slots: 0 vol-LFO (tremolo) · 1 pan-env · 2 pan-LFO · 3 cutoff-env ·
+            // 4 pitch-env · 5 pitch-LFO · 6 granPos-LFO · 7 granPos-env.
             for m in v.mods.iter_mut() {
               m.tick(sr_f32);
             }
@@ -5110,12 +5179,152 @@ fn build_stream(
             } else {
               1.0
             };
+            // Granular-position offset is UNIPOLAR/forward (matches the Tracker
+            // "amount" — the read scans forward from the set position, not a
+            // bipolar wobble around it like the pan/pitch/cutoff depths). The
+            // envelope (slot 7) is already a positive 0..depth ramp; the LFO
+            // (slot 6) is remapped from its bipolar shape to a 0..1 sweep ×
+            // depth so it pushes the position forward only.
+            let granpos_lfo = if v.mods[6].on {
+              ((lfo_eval(v.mods[6].shape, v.mods[6].phase, v.mods[6].rand) + 1.0) * 0.5)
+                * v.mods[6].depth
+            } else {
+              0.0
+            };
+            let mod_granpos = granpos_lfo + v.mods[7].value(mod_elapsed, mod_hold);
             // Pan modulation: recompute equal-power gains around the base pan.
             if mod_pan != 0.0 {
               let pan_eff = (v.pan_base + mod_pan).clamp(-1.0, 1.0);
               let angle = (pan_eff + 1.0) * 0.5 * std::f32::consts::FRAC_PI_2;
               v.pan_left = angle.cos();
               v.pan_right = angle.sin();
+            }
+
+            // Read one frame. Granular (Phase C) uses a single windowed
+            // read-head; everything else uses the trim/loop reader. Both yield
+            // (ls, rs) + the read position `pos` (used for the playhead +
+            // declick out-fade). The normal branch may `break` to deactivate a
+            // finished one-shot; granular voices never end by position (they
+            // ring until the envelope/note-off/voice-steal stops them).
+            let pos;
+            let (mut ls, mut rs);
+            if v.gran_on {
+              // `gran_read` advances through the grain at the playback rate
+              // (rate·pitch) and wraps at `grain_len` SOURCE frames, so the grain
+              // RATE tracks pitch — higher notes fire grains faster, lower notes
+              // slower (confirmed against the hardware: grain speed changes with
+              // pitch). Each grain reads from a LATCHED start, shaped by gran_shape,
+              // read in gran_dir, repeating to sustain. The start is fixed per
+              // grain; the position automation (slots 6/7, unipolar fwd) + scatter
+              // only take effect at the next grain boundary — the discrete-grain
+              // texture.
+              let grain_len = v.gran_grain_frames.max(2.0);
+              let target_base = ((v.gran_pos_norm + mod_granpos).clamp(0.0, 1.0) as f64)
+                * ((frame_count as f64) - 2.0).max(0.0);
+              let base = v.gran_base_latched;
+              let fwd = match v.gran_dir {
+                0 => true,
+                1 => false,
+                _ => v.gran_ping_fwd,
+              };
+              let off = if fwd { v.gran_read } else { grain_len - v.gran_read };
+              let read_pos = (base + off).clamp(0.0, frame_count as f64 - 2.0);
+              let (gl, gr) = read_at(read_pos);
+              let w = grain_window(v.gran_shape, (v.gran_read / grain_len) as f32);
+              ls = gl * w;
+              rs = gr * w;
+              pos = base;
+              v.position = base; // publish for the editor playhead readback
+              // Advance the in-grain read head at the playback rate; wrap
+              // (re-trigger the grain) at grain_len. On wrap, LATCH the next grain's
+              // start to the automated position (± scatter) and flip pingpong dir.
+              v.gran_read += v.rate * pitch_factor;
+              if v.gran_read >= grain_len {
+                v.gran_read -= grain_len;
+                if v.gran_read >= grain_len {
+                  v.gran_read = 0.0; // extreme rate overshoot guard
+                }
+                // Latch the next grain's start at the automated position ± a
+                // random scatter (spray), so successive grains jump around the
+                // point instead of all reading the same forward span.
+                let scatter = if v.gran_spray > 0.0 {
+                  (lfo_rand_bipolar(&mut v.gran_rng) as f64)
+                    * (v.gran_spray as f64)
+                    * ((frame_count as f64) - 2.0).max(0.0)
+                } else {
+                  0.0
+                };
+                v.gran_base_latched =
+                  (target_base + scatter).clamp(0.0, (frame_count as f64) - 2.0);
+                if v.gran_dir == 2 {
+                  v.gran_ping_fwd = !v.gran_ping_fwd;
+                }
+              }
+            } else {
+              // Loop-window handling (A3). Keep the read position inside
+              // [play_start, play_end]: forward/backward loops wrap to the
+              // opposite edge, pingpong bounces (flipping play_dir). One-shot
+              // (loop_mode 0) never wraps — it runs to play_end and stops.
+              if v.loop_mode != 0 && span > 1.0 {
+                if v.loop_mode == 3 {
+                  if v.position >= v.play_end {
+                    v.position = v.play_end;
+                    v.play_dir = -1.0;
+                  } else if v.position <= v.play_start {
+                    v.position = v.play_start;
+                    v.play_dir = 1.0;
+                  }
+                } else if v.play_dir > 0.0 {
+                  while v.position >= v.play_end {
+                    v.position -= span;
+                  }
+                } else {
+                  while v.position <= v.play_start {
+                    v.position += span;
+                  }
+                }
+              }
+              pos = v.position;
+              let i0 = pos.floor() as usize;
+              // Terminate one-shots at the window end (or the sample's last
+              // interpolatable frame, as a safety bound). Looped voices stay
+              // alive — the wrap above keeps them in range.
+              if i0 + 1 >= frame_count || (v.loop_mode == 0 && pos >= v.play_end) {
+                deactivate = true;
+                break;
+              }
+              let (l0, r0) = read_at(pos);
+              ls = l0;
+              rs = r0;
+              // Loop-seam crossfade — fwd/bwd loops jump at the seam, so blend
+              // the tail (approaching the jump edge) with the material we're
+              // about to wrap to, over `xf` frames, equal-power (constant
+              // energy). Pingpong (mode 3) reverses continuously — no jump, no
+              // blend. One-shots (mode 0) never reach here. This is what keeps
+              // loops from clicking when start/end aren't on zero crossings.
+              if xf > 1.0 && (v.loop_mode == 1 || v.loop_mode == 2) {
+                // t = 0 at the zone entry (pure tail) → 1 at the seam (head).
+                let t = if v.loop_mode == 1 {
+                  // forward: seam at play_end, head is one span back
+                  ((pos - (v.play_end - xf)) / xf).clamp(0.0, 1.0)
+                } else {
+                  // backward: seam at play_start, head is one span forward
+                  (((v.play_start + xf) - pos) / xf).clamp(0.0, 1.0)
+                };
+                if t > 0.0 {
+                  let head_pos = if v.loop_mode == 1 {
+                    (pos - span).max(0.0)
+                  } else {
+                    (pos + span).min(frame_count as f64 - 2.0)
+                  };
+                  let (hl, hr) = read_at(head_pos);
+                  // Equal-power: tail cos, head sin over the quarter circle.
+                  let angle = (t as f32) * std::f32::consts::FRAC_PI_2;
+                  let (tail_g, head_g) = (angle.cos(), angle.sin());
+                  ls = ls * tail_g + hl * head_g;
+                  rs = rs * tail_g + hr * head_g;
+                }
+              }
             }
             // Per-instrument filter (B1) — applied on the reconstructed
             // sample, ahead of the per-track mixer ladder below, so it's part
@@ -5232,10 +5441,10 @@ fn build_stream(
             if !v.env_active {
               let declick = (sr_f32 * 0.001).max(1.0);
               let fade_in = (v.frames_played as f32 / declick).min(1.0);
-              // Fade toward the window end for one-shots; looped voices have
-              // no natural end, so they skip the out-fade (the loop wrap is
-              // continuous and a fade there would dip on every pass).
-              let to_end = if v.loop_mode == 0 {
+              // Fade toward the window end for one-shots; looped AND granular
+              // voices have no natural end, so they skip the out-fade (the loop
+              // wrap / grain repeat is continuous and a fade there would dip).
+              let to_end = if v.loop_mode == 0 && !v.gran_on {
                 (((v.play_end - pos) / v.rate.max(1e-9)) as f32).max(0.0)
               } else {
                 f32::INFINITY
@@ -5337,7 +5546,12 @@ fn build_stream(
               let mono = 0.5 * (ls + rs);
               buf[frame * n_ch + route_first] += mono * v.gain * dry_scale;
             }
-            v.position += v.rate * pitch_factor * v.play_dir;
+            // Granular advances its own in-grain read head above; the base
+            // position is mod-swept, not playback-advanced, so skip the normal
+            // position advance for granular voices.
+            if !v.gran_on {
+              v.position += v.rate * pitch_factor * v.play_dir;
+            }
             // Advance the rate glide (portamento) one frame. Linear ramp of
             // `rate` toward `rate_target` — spreads a re-pitch over ~20ms so
             // there's no slope-discontinuity tick.
@@ -5857,6 +6071,15 @@ pub fn audio_trigger_sample(
   // Generic modulator grid (editor B2 full grid). Each entry carries a fixed
   // slot role + env-or-LFO params; omitted/empty = no extra modulation.
   mods: Option<Vec<ModSpecIpc>>,
+  // Per-instrument granular (editor Phase C). gran_on=false/None → normal
+  // sample playback. grain length in ms; position 0..1 into the sample; shape
+  // 0 square · 1 tri · 2 gauss; direction 0 fwd · 1 bwd · 2 pingpong.
+  gran_on: Option<bool>,
+  gran_grain_ms: Option<f32>,
+  gran_position: Option<f32>,
+  gran_shape: Option<u8>,
+  gran_dir: Option<u8>,
+  gran_spray: Option<f32>,
 ) -> Result<(), String> {
   let envelope = match (
     envelope_attack,
@@ -5896,6 +6119,12 @@ pub fn audio_trigger_sample(
     lfo_rate_hz.unwrap_or(0.0),
     lfo_depth.unwrap_or(0.0),
     mods.unwrap_or_default(),
+    gran_on.unwrap_or(false),
+    gran_grain_ms.unwrap_or(80.0),
+    gran_position.unwrap_or(0.0),
+    gran_shape.unwrap_or(0),
+    gran_dir.unwrap_or(0),
+    gran_spray.unwrap_or(0.0),
   )
 }
 

@@ -12,6 +12,7 @@ import {
   type EnvMod,
   type LfoMod,
   type LfoShape,
+  type LfoDivision,
 } from '../instruments/voiceEditsStore';
 
 export interface DepthCfg {
@@ -21,6 +22,15 @@ export interface DepthCfg {
 }
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+// Readable labels for the shape dropdown (the stored values are terse).
+const SHAPE_LABEL: Record<LfoShape, string> = {
+  revsaw: 'rev saw',
+  saw: 'saw',
+  tri: 'triangle',
+  square: 'square',
+  random: 'random',
+};
 
 export function ModHeader({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
   // The whole row (dot + label) is the toggle hit target — easier than the dot.
@@ -123,51 +133,37 @@ export function ModLfoSection({
   return (
     <div className="mb-5">
       <ModHeader label={label} on={value.on} onToggle={() => onChange({ on: !value.on })} />
-      <div className="flex items-stretch gap-2 mb-1">
-        <div className="flex gap-1">
-          <div className="flex flex-col gap-1">
-            {(['revsaw', 'saw', 'tri', 'square', 'random'] as LfoShape[]).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => onChange({ shape: s })}
-                className={`w-12 flex-1 px-1 py-1 text-[9px] uppercase tracking-widest border transition-colors ${
-                  value.shape === s
-                    ? 'border-white text-white'
-                    : 'border-white/15 text-white/40 hover:text-white/70'
-                }`}
-              >
-                {s === 'revsaw' ? 'rsaw' : s === 'square' ? 'sqr' : s === 'random' ? 'rnd' : s}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-col gap-1">
-            {LFO_DIVISIONS.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => onChange({ division: d })}
-                className={`w-12 flex-1 px-1 py-1 text-[9px] tabular-nums tracking-widest border transition-colors ${
-                  value.division === d
-                    ? 'border-white text-white'
-                    : 'border-white/15 text-white/40 hover:text-white/70'
-                }`}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className={`flex-1 min-w-0 ${value.on ? '' : 'opacity-50'}`}>
-          <LfoShapePlot
-            shape={value.shape}
-            rateHz={lfoDivisionToHz(value.division, bpm)}
-            depth={Math.abs(value.depth) / (depthCfg.max || 1)}
-          />
-        </div>
+      {/* shape plot on top; shape + rate dropdowns below it (no labels). */}
+      <div className={`h-16 mb-1 ${value.on ? '' : 'opacity-50'}`}>
+        <LfoShapePlot
+          shape={value.shape}
+          rateHz={lfoDivisionToHz(value.division, bpm)}
+          depth={Math.abs(value.depth) / (depthCfg.max || 1)}
+        />
       </div>
-      <div className="flex justify-end text-[9px] tabular-nums text-white/40 mb-2 pr-1">
-        {value.division} · ≈{lfoDivisionToHz(value.division, bpm).toFixed(1)} Hz
+      <div className="flex items-center gap-2 mb-2">
+        <select
+          value={value.shape}
+          onChange={(e) => onChange({ shape: e.target.value as LfoShape })}
+          className="select-chevron flex-1 min-w-0 bg-transparent border border-white/15 pl-2 pr-5 py-0.5 text-[10px] uppercase tracking-widest text-white/80 focus:outline-none focus:border-white"
+        >
+          {(['revsaw', 'saw', 'tri', 'square', 'random'] as LfoShape[]).map((s) => (
+            <option key={s} value={s} className="bg-[#050505]">
+              {SHAPE_LABEL[s]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={value.division}
+          onChange={(e) => onChange({ division: e.target.value as LfoDivision })}
+          className="select-chevron flex-1 min-w-0 bg-transparent border border-white/15 pl-2 pr-5 py-0.5 text-[10px] tabular-nums text-white/80 focus:outline-none focus:border-white"
+        >
+          {LFO_DIVISIONS.map((d) => (
+            <option key={d} value={d} className="bg-[#050505]">
+              {d}
+            </option>
+          ))}
+        </select>
       </div>
       <DepthKnob depth={value.depth} cfg={depthCfg} onChange={(d) => onChange({ depth: d })} />
     </div>

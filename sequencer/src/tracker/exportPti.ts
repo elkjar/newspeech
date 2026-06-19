@@ -11,6 +11,8 @@ import Tracker, {
   AudioUtil,
   InstrumentPlayMode,
   InstrumentFilterType,
+  GranularShape,
+  GranularType,
   LFO_SHAPE,
   LFO_SPEED,
 } from '@polyend/tracker-lib';
@@ -22,20 +24,22 @@ import {
   voiceTrim,
   voiceFilter,
   voiceFilterLfo,
+  voiceGranular,
   resolveVoiceEnvelope,
+  useVoiceEditsStore,
+  LFO_SHAPE_CODE,
+  LFO_DIVISIONS,
   type LfoDivision,
 } from '../instruments/voiceEditsStore';
 
-// Our tempo-synced division → the Tracker's LFO_SPEED, matched by name (both
+// Our tempo-synced division → the Tracker's LFO_SPEED, matched BY NAME (both
 // are "one cycle per this note value"), so the synced rate transfers exactly.
-const DIVISION_TO_SPEED: Record<LfoDivision, LFO_SPEED> = {
-  '1/1': LFO_SPEED.S1,
-  '1/2': LFO_SPEED.S1_2,
-  '1/4': LFO_SPEED.S1_4,
-  '1/8': LFO_SPEED.S1_8,
-  '1/16': LFO_SPEED.S1_16,
-  '1/32': LFO_SPEED.S1_32,
-};
+// The division label maps to the enum member `S${label}` with '/' → '_'
+// (e.g. '3/4' → S3_4, '1/64' → S1_64); '1/1' is the legacy alias of '1' → S1.
+const DIVISION_TO_SPEED = Object.fromEntries(
+  LFO_DIVISIONS.map((d) => [d, LFO_SPEED[`S${d.replace('/', '_')}` as keyof typeof LFO_SPEED]]),
+) as Record<LfoDivision, LFO_SPEED>;
+DIVISION_TO_SPEED['1/1'] = LFO_SPEED.S1;
 
 const PTI_MAX_RESONANCE = 4.3; // .pti resonance ceiling (our 0..1 maps onto it)
 
@@ -133,7 +137,13 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
     // local engine plays) into the file. Defaults (gain 1 / tune 0 / window
     // 0..1 / loop off) reproduce the prior full-length one-shot export.
     const trim = voiceTrim(voiceId);
-    inst.playmode = trim.loop as InstrumentPlayMode; // codes match the enum 1:1
+    const gran = voiceGranular(voiceId);
+    // Granular playmode (7) overrides the loop-derived playmode; otherwise the
+    // loop mode IS the playmode (off→OneShot 0 · fwd 1 · bwd 2 · ping 3 — codes
+    // match the enum 1:1).
+    inst.playmode = gran.on
+      ? InstrumentPlayMode.Granular
+      : (trim.loop as InstrumentPlayMode);
     inst.volume = voiceGainOverride(voiceId);
     inst.tune = Math.max(-24, Math.min(24, Math.round(voiceTune(voiceId))));
     // Window fractions → frame points. The Tracker addresses points with a
@@ -193,6 +203,46 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
         sustain: Math.max(0, Math.min(1, env.sustain ?? 1)),
         release: Math.max(0, Math.round(env.release * 1000)),
       };
+    }
+    // Granular params (Phase C) → the .pti Granular block + position automation.
+    // grainLength is in samples at the file's 44.1k rate (our grainMs → frames),
+    // clamped to the device's 44..44100 range; currentPosition is 0..65535 over
+    // the sample. shape/type codes match GranularShape/GranularType 1:1.
+    if (gran.on) {
+      const grainFrames = Math.round((gran.grainMs / 1000) * 44100);
+      inst.granular = {
+        grainLength: Math.max(44, Math.min(44100, grainFrames)),
+        currentPosition: Math.round(Math.max(0, Math.min(1, gran.position)) * PTI_MAX_POINT),
+        shape: gran.shape as GranularShape,
+        type: gran.direction as GranularType,
+      };
+      // Granular-position automation → automations[4]. The slot is env-XOR-LFO;
+      // prefer the LFO when on, else the envelope. depth/amount 0..1.
+      const edit = useVoiceEditsStore.getState().voiceEdits[voiceId];
+      const posLfo = edit?.granPosLfo;
+      const posEnv = edit?.granPosEnv;
+      if (inst.automations[4]) {
+        if (posLfo?.on) {
+          inst.automations[4].enabled = true;
+          inst.automations[4].isLFO = true;
+          inst.automations[4].lfo = {
+            shape: LFO_SHAPE_CODE[posLfo.shape] as LFO_SHAPE,
+            speed: DIVISION_TO_SPEED[posLfo.division],
+            amount: Math.max(0, Math.min(1, Math.abs(posLfo.depth))),
+          };
+        } else if (posEnv?.on) {
+          inst.automations[4].enabled = true;
+          inst.automations[4].isLFO = false;
+          inst.automations[4].envelope = {
+            amount: Math.max(0, Math.min(1, Math.abs(posEnv.depth))),
+            delay: 0,
+            attack: Math.max(0, Math.round(posEnv.attack * 1000)),
+            decay: Math.max(0, Math.round(posEnv.decay * 1000)),
+            sustain: Math.max(0, Math.min(1, posEnv.sustain)),
+            release: Math.max(0, Math.round(posEnv.release * 1000)),
+          };
+        }
+      }
     }
     const name = sanitizeName(resolved.label);
     inst.sample.filename = name;

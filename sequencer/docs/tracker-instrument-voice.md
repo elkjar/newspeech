@@ -376,6 +376,132 @@ cutoff-LFO→`automations[2]`. pan→[1] / pitch→[5] / tremolo / cutoff-env ar
 are env-XOR-LFO so need pick logic. **Deferred until hardware-verified** — per the delay lesson, some
 `.pti` automation slots may be vestigial, so prove each on the device before trusting the export.
 
+## Phase C — GRANULAR playmode — BUILT 2026-06-18 (app-only, pending reload-test)
+
+The granular playmode + its single windowed read-head DSP + the playmode selector are in. Chris chose
+"build the full granular mode in one pass" (no Figma — built from the existing tab pattern). App-only,
+same plumbing shape as trim/loop/filter; `cargo check` + `tsc` both clean. NOT committed; needs a Tauri
+**reload** (samplePlayer + audio.rs need a full rebuild, not HMR — [[reference-engine-hmr-stale]]).
+
+**Data model (`voiceEditsStore.ts`):**
+- `Playmode = 'sample' | 'slice' | 'wavetable' | 'granular'` (+ `PLAYMODE`-style intent; only granular is
+  wired in the engine, sample is default). `GranularEdit = { grainMs 1..1000, position 0..1, shape
+  square/triangle/gauss, direction fwd/bwd/pingpong }`; `GRAIN_SHAPE_CODE`/`GRAIN_DIR_CODE` map 1:1 to the
+  `.pti` `GranularShape` (0/1/2) and `GranularType` (0/1/2). `DEFAULT_GRANULAR = {80ms, 0.25, gauss, fwd}`.
+- `VoiceEdit` += `playmode?`, `granular?`, `granPosLfo?`, `granPosEnv?`. Two new `MOD_SLOT`s: **granPosLfo=6,
+  granPosEnv=7** (sweep the granular read position → `.pti` automations[4]). `voiceMods` appends slots 6/7
+  **only in granular mode**. New `voiceGranular(voiceId)` accessor (`on` = playmode is granular).
+
+**IPC:** `pickNativeSample` returns a `granular` object → `triggerSample` `granular?` opt → `audio_trigger_sample`
+(`granOn/granGrainMs/granPosition/granShape/granDir`). Forwarded at all 6 native trigger sites (3 App.tsx
++ 3 monitor.ts) as `granular: pick.granular`.
+
+**Engine (`audio.rs`) — the single windowed read-head:** `MOD_SLOTS` 6→8. `Voice`/`Trigger`/`PendingTrigger`
+carry `gran_on/gran_grain_frames/gran_pos_norm/gran_shape/gran_dir` + runtime `gran_read`/`gran_ping_fwd`.
+grain length resolves ms→frames at the device rate (clamped 2..fc-2) at queue time. In the read loop the
+mod block was **moved to the top of the frame** (so the granular read can use the position offset); a new
+`if v.gran_on { … } else { <normal trim/loop read> }` branch:
+- grain reads `gran_grain_frames` source frames from `base = (gran_pos_norm + mod_granpos)·(fc-2)`, windowed
+  by `grain_window(shape, phase)` (square = flat w/ raised-cosine edges; triangle; gauss bell), read fwd/bwd/
+  ping; `gran_read += rate·pitch_factor`, wraps (re-triggers) at grain_len (pingpong flips dir on wrap).
+- the base position does NOT advance with playback (the head holds; grains repeat) — only slots 6/7 sweep it.
+- **grain-position automation is UNIPOLAR/forward (2026-06-18, matches the Tracker "amount"):** the read scans
+  forward from the set position, NOT a bipolar wobble around it like pan/pitch/cutoff depths. The env (slot 7)
+  is already a positive 0..depth ramp; the LFO (slot 6) is remapped `((lfo+1)/2)·depth` so it only pushes
+  forward. The editor's grain-pos LFO knob is `DEPTH_UNIT` (0..100%), not bipolar.
+- **grain RATE tracks pitch (TRIED decoupling, REVERTED 2026-06-18):** I briefly decoupled grain rate from
+  pitch (phase in OUTPUT samples → fixed `1/grain_len`, matching Sandro's `grainPos = elapsed mod grainLength`)
+  to chase a "hardware sounds faster" note. Chris then confirmed on the real hardware that **grain speed DOES
+  change with pitch** — so it's reverted: `gran_read` advances at `rate·pitch` and wraps at `grain_len` SOURCE
+  frames (grain duration = `grain_len/(rate·pitch)`), so higher notes fire grains faster, lower notes slower.
+  This is the pitch-coupled model; Sandro's pitch-independent rate is NOT what the Polyend does. Don't
+  re-decouple.
+- **grain scatter / spray (2026-06-18):** Chris: ours "tracks through the sample forward" vs the hardware
+  "jumping around the start point." Sandro's read math is structurally identical to ours (`latchedStart +
+  grainPos·pitch`, sweep-fwd-then-snap-back) AND is itself only an approximation of the Polyend — so rather
+  than copy it, refined ours toward the hardware feel with a per-grain **position scatter**: at each grain
+  re-latch the start jumps to `target_base ± rand·spray·sampleLen` (dedicated `gran_rng`, not the LFO's), so
+  successive grains scatter around the point instead of all reading one forward span. `GranularEdit.spray`
+  (0..1, default 0.1 = audibly scattered out of the box; 0 = frozen single grain); "scatter" knob in the
+  granular header. LOCAL-ONLY (no `.pti` spray field — the hardware has its own inherent scatter; this tunes
+  the design-monitor feel, not the export). Threaded through the same granular IPC chain.
+- **overlap-add was TRIED and REVERTED (2026-06-18):** to fix "rougher than hardware" I added a 2nd grain
+  staggered half a grain (window-sum-normalized overlap-add). It **broke the sound** — Chris reverted to the
+  single-grain latched read (what Sandro's `granular.ts` actually does: ONE windowed read head, no overlap).
+  Roughness is still open, but match Sandro's single-grain model first; don't reintroduce overlap-add.
+- **LFO division set = full Tracker LFO_SPEED (2026-06-18):** Chris flagged the Tracker speed list is far larger
+  than our 6. `LfoDivision` now mirrors all 29 `LFO_SPEED` members (`128 … 1 … 1/64`, incl. dotted 3/2·3/4·3/8·
+  3/16 + triplet 1/3·1/6·1/12·1/24); `'1/1'` kept as a legacy alias of `'1'`. Beats-per-cycle in BARS (`1` = a
+  bar = 4 beats). `DIVISION_TO_SPEED` (export) is built by-name (`S${label.replace('/','_')}`). The editor's
+  rate control changed from a button column to a **`select-chevron` dropdown** (29 options) + live ≈Hz hint;
+  this is in `ModLfoSection` so ALL LFOs (vol/pan/pitch/cutoff/granpos) get the full set. Affects every LFO,
+  not just granular.
+- **grain start is LATCHED per grain (2026-06-18, fixes "doesn't sound like the Tracker"):** `gran_base_latched`
+  holds the grain's start position for the whole grain; the position automation is re-latched only at each
+  grain wrap (and seeded at note-on in `claim_voice_slot`). Recomputing base every sample (the original) slid
+  the position continuously through each grain = a smooth scrub, not discrete grains. **Verified against
+  Sandro's `tracker-pti-editor` granular** (github.com/sandroidmusic/tracker-pti-editor,
+  `src/audio/playmodes/granular.ts`, Elementary Audio): it does `el.latch(grainWrap, clampedPos)` for the start
+  + `modulatedPos = basePosition + posAutomation·sampleLength` (unipolar add) — confirms both the latch and the
+  forward-unipolar polarity. NOTE: that repo is a FULL granular engine (Elementary `el.*`), not the
+  no-audio "Instrumented" — good DSP reference for the remaining playmodes.
+- `v.position = base` published for the editor playhead; the normal position-advance + one-shot termination +
+  loop-seam crossfade + declick-out-fade are all skipped for granular (it rings until env/note-off/steal).
+`grain_window` is a free fn near `lfo_eval`.
+
+**Editor (`InstrumentEditorDialog.tsx` + `Waveform.tsx`):**
+- **`PlaymodeTabs`** = the `ScreenModeTabs` segmented-tab visual (sample/slice/wavetable/granular); sample +
+  granular live, slice/wavetable **disabled** (scaffolded). Sits top-right of the title row.
+- **Layout shift by mode:** sample shows the loop toggle; granular shows grain-length slider + position knob
+  + shape selector + direction selector (the loop/grain clusters swap). A **contextual 5th automation column
+  (grain pos lfo + env)** appears only in granular mode.
+- **`Waveform` granular view = the primary control (Chris, 2026-06-18):** a `granular={position,grainMs}` prop
+  replaces the trim handles with a grain-window band whose **two edges drag directly** — left edge/body =
+  read position (`onGranularPosition`), right edge = grain length (`onGranularGrain`, width→ms via
+  `frac·frames/44100·1000`). The header grain-slider + position-knob were REMOVED (the visualizer IS the
+  control; header just shows a `ms · %` readout). The playhead shows the live mod-swept position.
+
+**Export (`exportPti.ts`):** `inst.playmode = gran.on ? Granular(7) : trim.loop`; writes `inst.granular`
+(grainLength=ms→44.1k frames clamped 44..44100, currentPosition=position·65535, shape/type codes 1:1) and
+the granular-position automation → **automations[4]** (LFO if `granPosLfo.on`, else envelope if `granPosEnv.on`).
+
+**⚠️ Caveats / still open:**
+- A **flat (non-enveloped) granular voice drones** in pattern playback until voice-steal (same as flat looped
+  voices) — granular is for sustained/enveloped sources; preview note-off releases fine.
+- Local audition is **approximate** (device-rate grain, single read-head); the `.pti` granular-param fidelity
+  is what matters (the hardware renders the real grains). Per the delay-probe lesson, **hardware-verify** that
+  granular + automations[4] sound right on the Tracker before trusting the export.
+- **slice / wavetable** still unbuilt (the disabled tabs). WtPos→automations[3] still unwired.
+- The 6 generic-mod export slots (pan/pitch/tremolo/cutoff-env) remain unwired pending hardware verification.
+
+## NEXT PHASE — wavetable + slice playback (granular DONE 2026-06-18)
+
+The editable-instrument foundation (params + modulation grid + redesigned editor) and **granular** are in.
+Next: the remaining `.pti` playmodes — **Wavetable (6)** and **Slice (4/5)** — wavetable also activates the
+last unwired automation target (`WtPos` → `automations[3]`).
+
+**UI direction (Chris, 2026-06-18):**
+- A **playmode selector is the first choice, sitting next to the sample visualizer** (sample / slice /
+  wavetable / granular).
+- Selecting a playmode **triggers a layout shift** to that mode's param set (sample-window/trim vs
+  wavetable window vs granular grain controls — these are mutually exclusive).
+- Use the **main-screen tabbed-view feel** (the roll / lfo / fx / master tab pattern) for the
+  playmode switch — find and reuse that existing tab component rather than inventing one.
+
+**Open UI questions to resolve when we pick it up:**
+1. Exactly how much of the editor is mode-specific vs shared (filter/amp/pitch mods are shared; the
+   grain/window clusters are per-mode).
+2. What the **waveform display becomes per mode** — granular: position cursor + grain window over the
+   sample; wavetable: current window of a multi-window table. (Current `Waveform` is the sample-trim
+   view.)
+3. **Contextual automation targets** — WtPos / GranularPos should appear *only in their mode* rather
+   than as permanent grid columns (lean: contextual, not a fixed 6-wide grid).
+
+**DSP (the marquee piece):** granular = a **single windowed read-head** in `audio.rs` (NOT the
+tape-grain pool — the Tracker is single-grain), approximate-but-characterful locally, faithful in the
+`.pti`. Build iteratively (smallest audible grain first). Ties into the still-deferred WtPos/GranularPos
+export wiring + hardware verification.
+
 ## Phase A — execution plan (mapped 2026-06-18, ready to build)
 
 Slice order within Phase A (smallest audible first; build-and-test each with Chris):

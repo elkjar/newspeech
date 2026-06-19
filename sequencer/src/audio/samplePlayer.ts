@@ -19,6 +19,7 @@ import {
   voiceFilter,
   voiceFilterLfo,
   voiceMods,
+  voiceGranular,
   type ModSpec,
 } from '../instruments/voiceEditsStore';
 
@@ -602,6 +603,14 @@ class SamplePlayer {
     lfoRateHz: number;
     lfoDepth: number;
     mods: ModSpec[];
+    granular: {
+      on: boolean;
+      grainMs: number;
+      position: number;
+      shape: number;
+      direction: number;
+      spray: number;
+    };
   } | null {
     const data = this.voices.get(voice);
     if (!data || data.banks.length === 0) return null;
@@ -640,6 +649,8 @@ class SamplePlayer {
     const filter = voiceFilter(voice);
     // Cutoff LFO (B2). depth 0 = off.
     const lfo = voiceFilterLfo(voice);
+    // Granular (Phase C). on=false (default) leaves normal sample playback.
+    const granular = voiceGranular(voice);
     return {
       path,
       pitch,
@@ -654,6 +665,7 @@ class SamplePlayer {
       lfoRateHz: lfo.rateHz,
       lfoDepth: lfo.depth,
       mods: voiceMods(voice),
+      granular,
     };
   }
 

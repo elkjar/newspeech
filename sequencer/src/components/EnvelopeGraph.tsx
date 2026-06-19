@@ -22,10 +22,10 @@ interface Props {
   onChange: (patch: Partial<EnvShape>) => void;
 }
 
-const HEIGHT = 96;
+const HEIGHT = 64; // matches the LFO shape plot (h-16)
 const PAD_X = 8;
-const PAD_TOP = 12;
-const PAD_BOT = 12;
+const PAD_TOP = 10;
+const PAD_BOT = 10;
 // Per-stage max seconds (match the editor's slider ranges) + the lane budget
 // each gets. Sustain has no duration — it's a fixed display hold.
 const ATTACK_MAX = 2;

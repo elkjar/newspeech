@@ -81,20 +81,32 @@ export const LFO_SHAPE_CODE: Record<LfoShape, number> = {
   random: 4,
 };
 
-// One LFO cycle per this note value. Maps by name to the `.pti` LFO_SPEED
-// divisions on export (exact, no Hz guess). Beats-per-cycle drives the local
-// Hz derivation (4/4 assumed: a 1/4 = one beat).
-export type LfoDivision = '1/1' | '1/2' | '1/4' | '1/8' | '1/16' | '1/32';
+// One LFO cycle per this note value, in BARS (4/4: '1' = a bar = 4 beats,
+// '1/4' = one beat). The full set mirrors the Tracker's LFO_SPEED enum 1:1
+// (128 … 1 … 1/64, including the dotted/triplet 3/2·3/4·3/8·3/16 and triplet
+// 1/3·1/6·1/12·1/24), so the synced rate transfers to `.pti` by name on export.
+// '1/1' is kept as a legacy alias of '1' (older stored edits); it's not offered
+// in the UI list. Beats-per-cycle drives the local Hz derivation.
+export type LfoDivision =
+  | '128' | '96' | '64' | '48' | '32' | '24' | '16' | '12' | '8' | '6'
+  | '4' | '3' | '2' | '3/2' | '1' | '3/4' | '1/2' | '3/8' | '1/3' | '1/4'
+  | '3/16' | '1/6' | '1/8' | '1/12' | '1/16' | '1/24' | '1/32' | '1/48' | '1/64'
+  | '1/1';
 
-export const LFO_DIVISIONS: LfoDivision[] = ['1/1', '1/2', '1/4', '1/8', '1/16', '1/32'];
+// UI order: slowest → fastest. '1/1' alias omitted (use '1').
+export const LFO_DIVISIONS: LfoDivision[] = [
+  '128', '96', '64', '48', '32', '24', '16', '12', '8', '6',
+  '4', '3', '2', '3/2', '1', '3/4', '1/2', '3/8', '1/3', '1/4',
+  '3/16', '1/6', '1/8', '1/12', '1/16', '1/24', '1/32', '1/48', '1/64',
+];
 
 const LFO_DIVISION_BEATS: Record<LfoDivision, number> = {
-  '1/1': 4,
-  '1/2': 2,
-  '1/4': 1,
-  '1/8': 0.5,
-  '1/16': 0.25,
-  '1/32': 0.125,
+  '128': 512, '96': 384, '64': 256, '48': 192, '32': 128, '24': 96,
+  '16': 64, '12': 48, '8': 32, '6': 24, '4': 16, '3': 12, '2': 8,
+  '3/2': 6, '1': 4, '1/1': 4, '3/4': 3, '1/2': 2, '3/8': 1.5,
+  '1/3': 4 / 3, '1/4': 1, '3/16': 0.75, '1/6': 2 / 3, '1/8': 0.5,
+  '1/12': 1 / 3, '1/16': 0.25, '1/24': 1 / 6, '1/32': 0.125,
+  '1/48': 1 / 12, '1/64': 0.0625,
 };
 
 // Hz for a division at a given tempo, clamped to a sane engine range.
@@ -116,6 +128,55 @@ export const DEFAULT_FILTER_LFO: FilterLfoEdit = {
   shape: 'tri',
   division: '1/4',
   depth: 0.4,
+};
+
+// Playback mode (editor "playmode" selector). Mirrors the .pti
+// InstrumentPlayMode subset. 'sample' is the normal sample player (one-shot or
+// looped via `loopMode`); 'granular' is the single windowed read-head engine
+// (Phase C). 'slice' / 'wavetable' are scaffolded for later phases. The code
+// map below targets the .pti playmode field on export — but note 'sample' maps
+// to OneShot/ForwardLoop/etc. THROUGH `loopMode` (see exportPti), so PLAYMODE_CODE
+// only carries the non-'sample' modes' direct .pti values.
+export type Playmode = 'sample' | 'slice' | 'wavetable' | 'granular';
+
+// Per-instrument granular (editor Phase C). The Tracker granular engine is
+// single-grain: one windowed read of `grainMs` from `position`, shaped by
+// `shape`, read in `direction`, repeating to sustain. position is swept by the
+// granular-position automation (granPosLfo / granPosEnv → .pti automations[4]).
+export type GrainShape = 'square' | 'triangle' | 'gauss'; // .pti shape 0/1/2
+export type GrainDir = 'fwd' | 'bwd' | 'pingpong'; // .pti type 0/1/2
+
+export const GRAIN_SHAPE_CODE: Record<GrainShape, number> = {
+  square: 0,
+  triangle: 1,
+  gauss: 2,
+};
+
+export const GRAIN_DIR_CODE: Record<GrainDir, number> = {
+  fwd: 0,
+  bwd: 1,
+  pingpong: 2,
+};
+
+export interface GranularEdit {
+  grainMs: number; // grain length, 1..1000 ms (.pti grainLength 44..44100 samples)
+  position: number; // 0..1 into the sample (.pti currentPosition 0..65535)
+  shape: GrainShape; // grain window
+  direction: GrainDir; // read direction
+  // Per-grain start scatter (0..1 of the sample): each grain re-triggers from a
+  // random offset ± this around the position, so the read "jumps around" the
+  // point instead of tracking one forward span — the hardware-like grain cloud.
+  // LOCAL audition only (the .pti has no spray field; the hardware applies its
+  // own inherent scatter), so it shapes the design-monitor feel, not the export.
+  spray: number;
+}
+
+export const DEFAULT_GRANULAR: GranularEdit = {
+  grainMs: 80,
+  position: 0.25,
+  shape: 'gauss',
+  direction: 'fwd',
+  spray: 0.19,
 };
 
 // Generic modulators (editor B2 full grid). Each modulation TARGET (volume,
@@ -167,6 +228,8 @@ export const MOD_SLOT = {
   cutoffEnv: 3,
   pitchEnv: 4,
   pitchLfo: 5,
+  granPosLfo: 6, // granular read position (.pti automations[4]); granular mode only
+  granPosEnv: 7,
 } as const;
 
 export interface VoiceEdit {
@@ -187,6 +250,11 @@ export interface VoiceEdit {
   cutoffEnv?: EnvMod;
   pitchEnv?: EnvMod; // depth in semitones
   pitchLfo?: LfoMod; // depth in semitones (vibrato)
+  // Granular (Phase C):
+  playmode?: Playmode; // default 'sample'
+  granular?: GranularEdit; // grain params (only used when playmode === 'granular')
+  granPosLfo?: LfoMod; // sweeps granular read position; depth in sample fraction
+  granPosEnv?: EnvMod; // depth in sample fraction
 }
 
 // One modulator, resolved for the audio path. slot = MOD_SLOT role; isLfo
@@ -248,7 +316,39 @@ export function voiceMods(voiceId: string): ModSpec[] {
     envSpec(MOD_SLOT.pitchEnv, e.pitchEnv),
     lfoSpec(MOD_SLOT.pitchLfo, e.pitchLfo, bpm),
   ];
+  // Granular-position automation only matters in granular mode (it sweeps the
+  // grain read position). Skip the slots otherwise so non-granular voices carry
+  // no extra modulators.
+  if ((e.playmode ?? 'sample') === 'granular') {
+    out.push(lfoSpec(MOD_SLOT.granPosLfo, e.granPosLfo, bpm));
+    out.push(envSpec(MOD_SLOT.granPosEnv, e.granPosEnv));
+  }
   return out.filter((m): m is ModSpec => m !== null);
+}
+
+// Granular params resolved for the audio path. `on` gates the single
+// windowed read-head engine; the rest mirror GranularEdit (shape/direction as
+// the native/.pti codes, position 0..1, grain length in ms). Off (and default
+// params) when the voice isn't in granular mode.
+export function voiceGranular(voiceId: string): {
+  on: boolean;
+  grainMs: number;
+  position: number;
+  shape: number;
+  direction: number;
+  spray: number;
+} {
+  const e = useVoiceEditsStore.getState().voiceEdits[voiceId];
+  const on = (e?.playmode ?? 'sample') === 'granular';
+  const g = e?.granular ?? DEFAULT_GRANULAR;
+  return {
+    on,
+    grainMs: g.grainMs,
+    position: g.position,
+    shape: GRAIN_SHAPE_CODE[g.shape],
+    direction: GRAIN_DIR_CODE[g.direction],
+    spray: g.spray ?? DEFAULT_GRANULAR.spray,
+  };
 }
 
 // Resolved amplitude envelope for a voice: the authored edit (when enabled)
