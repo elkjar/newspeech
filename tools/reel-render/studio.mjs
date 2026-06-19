@@ -121,7 +121,11 @@ async function runRender(res, a, body) {
   await mkdir(tmpDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const statePath = join(tmpDir, `state-${stamp}.json`);
-  await writeFile(statePath, JSON.stringify({ localStorage: body.localStorage || {}, params: body.params || {} }));
+  await writeFile(statePath, JSON.stringify({
+    localStorage: body.localStorage || {},
+    params: body.params || {},
+    automation: body.automation || [],
+  }));
 
   const outName = `${body.page}-${stamp}.mp4`;
   const outPath = join(a.outDir, outName);

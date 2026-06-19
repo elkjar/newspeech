@@ -235,19 +235,39 @@ async function main() {
     }, state.params);
   }
 
+  // Performance automation (record-and-replay): timestamped control changes to
+  // apply as the timeline plays — `{ t (sec), sel, value }` or `{ t, sel, click }`.
+  const auto = (state?.automation || []).slice().sort((x, y) => x.t - y.t);
+  let ai = 0;
+  // If the performance toggles telemetry widgets, build the (hidden) picker once
+  // so its pick-row click events have rows to actuate.
+  if (auto.some((e) => e.sel && e.sel.includes('panel-picker'))) {
+    await page.evaluate(() => { const p = document.querySelector('#panel .ns-pick'); if (p) p.click(); });
+  }
+
   const outPath = resolve(process.cwd(), a.out);
   const ff = startFfmpegPipe(a, outPath); // encoder runs concurrently with capture
   const t0 = Date.now();
   for (let i = 0; i < totalFrames; i++) {
     const feat = featureAt(i);
     const tMs = (i * 1000) / a.fps;
+    const tSec = i / a.fps;
+    const due = [];
+    while (ai < auto.length && auto[ai].t <= tSec) due.push(auto[ai++]);
     await page.evaluate(
-      ({ tMs, feat }) => {
+      ({ tMs, feat, due }) => {
         window.__setNow(tMs);
         if (window.Newspeech && window.Newspeech.setExternalAudio) window.Newspeech.setExternalAudio(feat);
+        // Apply any due automation events before drawing this frame.
+        for (const ev of due) {
+          const el = document.querySelector(ev.sel);
+          if (!el) continue;
+          if (ev.click) { el.click(); }
+          else { el.value = ev.value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+        }
         window.__flushFrame();
       },
-      { tMs, feat },
+      { tMs, feat, due },
     );
     const buf = await page.screenshot(
       a.jpeg
