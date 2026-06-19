@@ -1,4 +1,5 @@
 node_modules/
 .frames/
 .studio/
+looks.json
 *.mp4

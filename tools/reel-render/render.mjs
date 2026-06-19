@@ -44,6 +44,7 @@ function parseArgs(argv) {
     else if (k === '--audio') { a.audio = v; i++; }
     else if (k === '--gain') { a.gain = parseFloat(v); i++; }
     else if (k === '--state') { a.state = v; i++; }
+    else if (k === '--timeline') { a.timeline = v; i++; }
     else if (k === '--preset') { a.preset = v; i++; }
     else if (k === '--jpeg') { a.jpeg = true; }
     else if (k === '--keep-frames') { a.keepFrames = true; }
@@ -137,9 +138,9 @@ function syntheticFeature(i, fps) {
 // One long-lived ffmpeg: PNG frames arrive on stdin (image2pipe), optional
 // audio is a second input, H.264 + lossless ALAC out. Encoding overlaps frame
 // capture and nothing hits disk (no PNG sequence, no re-read pass).
-function startFfmpegPipe(a, outPath) {
+function startFfmpegPipe(a, outPath, seconds) {
   const args = ['-y', '-f', 'image2pipe', '-framerate', String(a.fps), '-i', 'pipe:0'];
-  if (a.audio) args.push('-t', String(a.seconds), '-i', resolve(process.cwd(), a.audio));
+  if (a.audio) args.push('-t', String(seconds), '-i', resolve(process.cwd(), a.audio));
   args.push(
     '-map', '0:v',
     ...(a.audio ? ['-map', '1:a', '-c:a', 'alac', '-shortest'] : []),
@@ -171,18 +172,31 @@ async function main() {
   // dispatch core.js uses for MIDI/external changes.
   let state = null;
   if (a.state) state = JSON.parse(await readFile(resolve(process.cwd(), a.state), 'utf8'));
-  const totalFrames = Math.round(a.seconds * a.fps);
+  // A reel is a sequence of segments, each its own visualizer (HARD CUTS — all
+  // rendered into one ffmpeg pipe, so a cut is just consecutive frames from
+  // different pages). --timeline supplies { segments:[{page, seconds, state}] };
+  // otherwise the single --page/--seconds/--state is one segment.
+  let segments;
+  if (a.timeline) {
+    const tl = JSON.parse(await readFile(resolve(process.cwd(), a.timeline), 'utf8'));
+    segments = tl.segments || [];
+  } else {
+    segments = [{ page: a.page, seconds: a.seconds, state }];
+  }
+  if (!segments.length) { console.error('no segments to render'); process.exit(1); }
+  const totalSeconds = segments.reduce((s, seg) => s + (seg.seconds || 0), 0);
+  const totalFrames = Math.round(totalSeconds * a.fps);
 
-  // Feature track: real WAV analysis when --audio is given, else the synthetic
-  // beat pulse. --gain scales reactivity at feed time (no re-analysis needed).
+  // Feature track for the WHOLE timeline — audio-reactivity stays continuous
+  // across cuts. --gain scales reactivity at feed time (no re-analysis).
   let features = null;
   if (a.audio) {
     process.stdout.write('  analysing audio…');
-    features = await computeFeatures(resolve(process.cwd(), a.audio), { fps: a.fps, seconds: a.seconds });
+    features = await computeFeatures(resolve(process.cwd(), a.audio), { fps: a.fps, seconds: totalSeconds });
     process.stdout.write(` ${features.length} frames of features\n`);
   }
-  const featureAt = (i) => {
-    const f = features ? features[Math.min(i, features.length - 1)] : syntheticFeature(i, a.fps);
+  const featureAt = (gf) => {
+    const f = features ? features[Math.min(gf, features.length - 1)] : syntheticFeature(gf, a.fps);
     if (a.gain === 1) return f;
     const g = (x) => clamp01(x * a.gain);
     return { level: g(f.level), low: g(f.low), mid: g(f.mid), high: g(f.high), onsets: f.onsets };
@@ -190,94 +204,59 @@ async function main() {
 
   const server = await startServer();
   const port = server.address().port;
-  const pageUrl = `http://127.0.0.1:${port}/${a.page}.html`;
-  console.log(`[reel-render] ${a.page}.html → ${a.out}  (${totalFrames} frames @ ${a.fps}fps, seed ${a.seed}${a.audio ? `, audio ${a.audio}` : ', synthetic feed'})`);
+  const segNames = segments.map((s) => `${s.page}(${s.seconds}s)`).join(' · ');
+  console.log(`[reel-render] ${segNames} → ${a.out}  (${totalFrames} frames @ ${a.fps}fps${a.audio ? `, audio ${a.audio}` : ', synthetic'})`);
 
-  // --scale renders the page at a smaller LOGICAL viewport (W/scale × H/scale)
-  // with a matching deviceScaleFactor, so the visualizer lays itself out as a
-  // smaller "phone" screen — elements are `scale`× bigger and more legible —
-  // while the captured frame is still a crisp WxH. The pages are DPR-correct
-  // (canvas.width = cssSize·dpr, draw in CSS px), so no per-page changes.
+  // --scale renders each page at a smaller LOGICAL viewport (W/scale × H/scale)
+  // with a matching deviceScaleFactor — elements are `scale`× bigger/legible,
+  // captured frame still a crisp WxH. Pages are DPR-correct, so no page changes.
   const logicalW = Math.round(W / a.scale);
   const logicalH = Math.round(H / a.scale);
   const browser = await chromium.launch();
-  const page = await browser.newPage({
-    viewport: { width: logicalW, height: logicalH },
-    deviceScaleFactor: a.scale,
-  });
-  await page.addInitScript(initScript(a.seed));
-  // Seed persisted globals (grid / grayscale / datapoints / …) before any page
-  // script runs, so the page initialises with the studio-tuned values.
-  if (state?.localStorage) {
-    await page.addInitScript((ls) => {
-      try { for (const [k, v] of Object.entries(ls)) localStorage.setItem(k, v); } catch (_) {}
-    }, state.localStorage);
-  }
+  const page = await browser.newPage({ viewport: { width: logicalW, height: logicalH }, deviceScaleFactor: a.scale });
+  await page.addInitScript(initScript(a.seed)); // re-applies on every navigation: clock/random/rAF reset per segment
   page.on('console', (m) => { if (m.type() === 'error') console.log('  [page error]', m.text()); });
-  await page.goto(pageUrl, { waitUntil: 'load' });
-  await page.evaluate(() => document.fonts && document.fonts.ready).catch(() => {});
-  // Hide the on-screen control chrome (params panel + its handle + audio
-  // dialog) so the render is clean. The telemetry / datapoints overlay
-  // (#hud-overlay) is content and stays.
-  await page.addStyleTag({ content: '#panel,#panel-handle,#audio-panel{display:none !important}' });
-  // Apply the tuned visual knobs by driving the (now hidden) panel sliders —
-  // same input/change dispatch core.js uses for MIDI, so params + onParamChange
-  // side-effects fire exactly as in the studio preview.
-  if (state?.params) {
-    await page.evaluate((params) => {
-      for (const [k, val] of Object.entries(params)) {
-        const el = document.querySelector(`#panel [data-k="${k}"]`);
-        if (!el) continue;
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    }, state.params);
-  }
-
-  // Performance automation (record-and-replay): timestamped control changes to
-  // apply as the timeline plays — `{ t (sec), sel, value }` or `{ t, sel, click }`.
-  const auto = (state?.automation || []).slice().sort((x, y) => x.t - y.t);
-  let ai = 0;
-  // If the performance toggles telemetry widgets, build the (hidden) picker once
-  // so its pick-row click events have rows to actuate.
-  if (auto.some((e) => e.sel && e.sel.includes('panel-picker'))) {
-    await page.evaluate(() => { const p = document.querySelector('#panel .ns-pick'); if (p) p.click(); });
-  }
 
   const outPath = resolve(process.cwd(), a.out);
-  const ff = startFfmpegPipe(a, outPath); // encoder runs concurrently with capture
+  const ff = startFfmpegPipe(a, outPath, totalSeconds); // one pipe across all segments
   const t0 = Date.now();
-  for (let i = 0; i < totalFrames; i++) {
-    const feat = featureAt(i);
-    const tMs = (i * 1000) / a.fps;
-    const tSec = i / a.fps;
-    const due = [];
-    while (ai < auto.length && auto[ai].t <= tSec) due.push(auto[ai++]);
-    await page.evaluate(
-      ({ tMs, feat, due }) => {
-        window.__setNow(tMs);
-        if (window.Newspeech && window.Newspeech.setExternalAudio) window.Newspeech.setExternalAudio(feat);
-        // Apply any due automation events before drawing this frame.
-        for (const ev of due) {
-          const el = document.querySelector(ev.sel);
-          if (!el) continue;
-          if (ev.click) { el.click(); }
-          else { el.value = ev.value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
-        }
-        window.__flushFrame();
-      },
-      { tMs, feat, due },
-    );
-    const buf = await page.screenshot(
-      a.jpeg
-        ? { type: 'jpeg', quality: 92, clip: { x: 0, y: 0, width: logicalW, height: logicalH } }
-        : { clip: { x: 0, y: 0, width: logicalW, height: logicalH } },
-    );
-    await writeFrame(ff, buf);
-    if (i % a.fps === 0) {
-      const rate = i / Math.max(0.001, (Date.now() - t0) / 1000);
-      process.stdout.write(`\r  rendering ${i}/${totalFrames}  (${rate.toFixed(1)} fps)   `);
+  let gf = 0; // global frame index (drives the continuous audio feed)
+  for (const seg of segments) {
+    await setupSegment(page, seg, port);
+    const auto = (seg.state?.automation || []).slice().sort((x, y) => x.t - y.t);
+    let ai = 0;
+    const segFrames = Math.round((seg.seconds || 0) * a.fps);
+    for (let i = 0; i < segFrames; i++) {
+      const feat = featureAt(gf);
+      const tMs = (i * 1000) / a.fps; // page clock is per-segment (each viz starts fresh at 0)
+      const tSec = i / a.fps;
+      const due = [];
+      while (ai < auto.length && auto[ai].t <= tSec) due.push(auto[ai++]);
+      await page.evaluate(
+        ({ tMs, feat, due }) => {
+          window.__setNow(tMs);
+          if (window.Newspeech && window.Newspeech.setExternalAudio) window.Newspeech.setExternalAudio(feat);
+          for (const ev of due) {
+            const el = document.querySelector(ev.sel);
+            if (!el) continue;
+            if (ev.click) el.click();
+            else { el.value = ev.value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+          }
+          window.__flushFrame();
+        },
+        { tMs, feat, due },
+      );
+      const buf = await page.screenshot(
+        a.jpeg
+          ? { type: 'jpeg', quality: 92, clip: { x: 0, y: 0, width: logicalW, height: logicalH } }
+          : { clip: { x: 0, y: 0, width: logicalW, height: logicalH } },
+      );
+      await writeFrame(ff, buf);
+      gf++;
+      if (gf % a.fps === 0) {
+        const rate = gf / Math.max(0.001, (Date.now() - t0) / 1000);
+        process.stdout.write(`\r  rendering ${gf}/${totalFrames}  (${rate.toFixed(1)} fps)   `);
+      }
     }
   }
   ff.proc.stdin.end();
@@ -287,6 +266,35 @@ async function main() {
   server.close();
   await ff.done;
   console.log(`[reel-render] wrote ${outPath}`);
+}
+
+// Load a segment's visualizer into the reused page: navigate, inject the
+// segment's globals (localStorage) + reload so they take, hide the chrome,
+// apply tuned params, and pre-build the telemetry picker if the segment toggles
+// it. The seed/clock/rAF init script re-runs on each navigation, so every
+// segment's visualizer starts at virtual time 0.
+async function setupSegment(page, seg, port) {
+  await page.goto(`http://127.0.0.1:${port}/${seg.page}.html`, { waitUntil: 'load' });
+  const ls = seg.state?.localStorage;
+  if (ls && Object.keys(ls).length) {
+    await page.evaluate((ls) => { try { for (const [k, v] of Object.entries(ls)) localStorage.setItem(k, v); } catch (_) {} }, ls);
+    await page.reload({ waitUntil: 'load' });
+  }
+  await page.evaluate(() => document.fonts && document.fonts.ready).catch(() => {});
+  await page.addStyleTag({ content: '#panel,#panel-handle,#audio-panel{display:none !important}' });
+  if (seg.state?.params) {
+    await page.evaluate((params) => {
+      for (const [k, val] of Object.entries(params)) {
+        const el = document.querySelector(`#panel [data-k="${k}"]`);
+        if (!el) continue;
+        el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }, seg.state.params);
+  }
+  const auto = seg.state?.automation || [];
+  if (auto.some((e) => e.sel && e.sel.includes('panel-picker'))) {
+    await page.evaluate(() => { const p = document.querySelector('#panel .ns-pick'); if (p) p.click(); });
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

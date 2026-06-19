@@ -71,6 +71,15 @@
       <select id="audio"></select>
     </label>
 
+    <label>
+      <span class="name">look</span>
+      <select id="look"></select>
+    </label>
+    <div class="btns">
+      <button id="looksave">save look</button>
+      <button id="lookdel">delete</button>
+    </div>
+
     <div class="row">
       <label><span class="name">scale</span><input id="scale" type="number" min="1" max="4" step="0.5" value="2" /></label>
       <label><span class="name">gain</span><input id="gain" type="number" min="0.1" max="5" step="0.1" value="1" /></label>
@@ -119,8 +128,10 @@ const W = 1080, H = 1920;
 // ---- audio analysis (mirrors core.js tickAudio: 1024 fft, 8/25/60% bands,
 //      smoothing lerps, peak/onset detector) ----
 let actx = null, analyser = null, srcNode = null, fftBuf = null, raf = 0, playing = false;
-// performance record-and-replay state
-let playStart = 0, recArmed = false, recording = false, events = [], recState = null;
+// performance record-and-replay state — a performance is a list of segments
+// (one per visualizer in play order); each holds its baseline + timed events.
+let playStart = 0, recArmed = false, recording = false, segments = [], pendingSegment = null;
+let looksData = {}; // { page: [{ name, state }] }
 const sm = { level: 0, low: 0, mid: 0, high: 0 };
 const peak = { low: 1e-3, mid: 1e-3, high: 1e-3 };
 const cool = { low: 0, mid: 0, high: 0 };
@@ -171,8 +182,8 @@ async function play() {
   srcNode.connect(analyser); analyser.connect(actx.destination);
   srcNode.start(); playing = true; lastT = 0;
   playStart = actx.currentTime;
-  if (recArmed && !recording) { recording = true; events = []; recState = snapshotState(); }
-  updateRecUI();
+  if (recArmed && !recording) startRecording();
+  else updateRecUI();
   raf = requestAnimationFrame(feedFrame);
   setStatus('playing — tune / perform in the preview, then render');
 }
@@ -196,10 +207,69 @@ function sizePreview() {
   frame.style.width = lw * fit + 'px'; frame.style.height = lh * fit + 'px';
 }
 
-function loadViz() {
-  stop();
+// Apply a look's page params by driving the panel controls.
+function applyParams(state) {
+  if (!state || !state.params) return;
+  const win = vizWin();
+  for (const [k, val] of Object.entries(state.params)) {
+    const el = win.document.querySelector(`#panel [data-k="${k}"]`);
+    if (!el) continue;
+    el.value = val; fire(el, 'input'); fire(el, 'change');
+  }
+}
+// Load the current page, optionally applying a saved look (globals via
+// localStorage + reload, page params via control dispatch). Fires a pending
+// segment open (if armed) once ready.
+function loadVizPage(state) {
+  const ready = () => { sizePreview(); hideIframePanel(); applyParams(state); buildParams(); if (pendingSegment) pendingSegment(); };
+  $('viz').onload = () => {
+    const ls = state && state.localStorage;
+    if (ls && Object.keys(ls).length) {
+      try { const w = vizWin(); for (const [k, v] of Object.entries(ls)) w.localStorage.setItem(k, v); } catch (e) {}
+      $('viz').onload = ready;        // runs after the reload below applies the globals
+      vizWin().location.reload();
+    } else { ready(); }
+  };
   $('viz').src = '/' + $('page').value;
-  $('viz').onload = () => { sizePreview(); hideIframePanel(); buildParams(); };
+}
+function loadViz() { stop(); loadVizPage(null); }
+// Open a new timeline segment at the current track position once the next page
+// loads (a hard cut here, with the loaded look as its baseline).
+function armSegment() {
+  const bT = trackPos();
+  pendingSegment = () => { pendingSegment = null; segments.push({ page: currentPageName(), startT: bT, baseline: snapshotState(), events: [] }); updateRecUI(); };
+}
+
+// ---- looks (named per-visualizer state presets) ----
+function currentLookState() {
+  const name = $('look').value;
+  if (!name || name === '(default)') return null;
+  const l = (looksData[currentPageName()] || []).find((x) => x.name === name);
+  return l ? l.state : null;
+}
+function refreshLookOptions(selectName) {
+  const list = looksData[currentPageName()] || [];
+  $('look').innerHTML = ['(default)'].concat(list.map((l) => l.name)).map((n) => `<option>${n}</option>`).join('');
+  if (selectName) $('look').value = selectName;
+}
+async function loadLooks() { try { looksData = await fetch('/api/looks').then((r) => r.json()); } catch (e) { looksData = {}; } refreshLookOptions(); }
+async function saveLook() {
+  const name = prompt(`name this look for ${currentPageName()}:`); if (!name) return;
+  const r = await fetch('/api/looks', { method: 'POST', body: JSON.stringify({ page: currentPageName(), name, state: snapshotState() }) }).then((x) => x.json());
+  if (r.ok) { looksData = r.looks; refreshLookOptions(name); }
+}
+async function deleteLook() {
+  const name = $('look').value; if (!name || name === '(default)') return;
+  const r = await fetch('/api/looks/delete', { method: 'POST', body: JSON.stringify({ page: currentPageName(), name }) }).then((x) => x.json());
+  if (r.ok) { looksData = r.looks; refreshLookOptions(); }
+}
+// Selecting a look applies it; while recording it's a hard cut to that look.
+function onLookChange() { if (recording) armSegment(); loadVizPage(currentLookState()); }
+// Page change: refresh looks for the new page; hard cut if recording, else reload.
+function onPageChange() {
+  refreshLookOptions();
+  if (recording) { armSegment(); loadVizPage(null); }
+  else { stop(); loadVizPage(null); }
 }
 
 // Hide the visualizer's own on-screen panel — its controls now live in the rail.
@@ -215,7 +285,19 @@ function hideIframePanel() {
 function fire(el, type) { el.dispatchEvent(new Event(type, { bubbles: true })); }
 // Track position (seconds) for timestamping performance events.
 function trackPos() { return (playing && actx) ? Math.max(0, actx.currentTime - playStart) : 0; }
-function recordEvent(ev) { if (!recording || !ev.sel) return; events.push({ t: +trackPos().toFixed(3), ...ev }); updateRecUI(); }
+function currentPageName() { return $('page').value.replace(/\.html$/, ''); }
+function curSeg() { return segments[segments.length - 1]; }
+function recordEvent(ev) {
+  if (!recording || !ev.sel) return;
+  const seg = curSeg(); if (!seg) return;
+  seg.events.push({ t: +(trackPos() - seg.startT).toFixed(3), ...ev });
+  updateRecUI();
+}
+function startRecording() {
+  recording = true; recArmed = true;
+  segments = [{ page: currentPageName(), startT: trackPos(), baseline: snapshotState(), events: [] }];
+  updateRecUI();
+}
 // Stable selector for a panel control, usable in the fresh render page.
 function selectorFor(src) {
   const k = src.getAttribute && src.getAttribute('data-k');
@@ -237,9 +319,11 @@ function updateRecUI() {
   const b = $('rec');
   b.textContent = recording ? '● rec' : (recArmed ? '◉ armed' : '○ rec');
   b.classList.toggle('on', recording || recArmed);
+  const ev = segments.reduce((n, s) => n + s.events.length, 0);
+  const n = segments.length;
   $('recstatus').textContent = recording
-    ? `recording… ${events.length} events`
-    : (events.length ? `performance captured: ${events.length} events — replays on render` : '');
+    ? `recording… ${n} segment${n === 1 ? '' : 's'}, ${ev} events`
+    : (n ? `performance: ${n} segment${n === 1 ? '' : 's'}, ${ev} events — replays on render` : '');
 }
 // Clickable controls that aren't <input>/<select>: real buttons + the panel's
 // custom div/span toggles (grayscale, grid cycler, telemetry pick/shuffle).
@@ -371,21 +455,34 @@ function setStatus(s) { $('status').innerHTML = s; }
 async function render() {
   // With a captured performance, render from the baseline-at-record-start +
   // replay the automation; otherwise from the live tuned snapshot.
-  const usePerf = events.length > 0 && recState;
-  const state = usePerf ? recState : snapshotState();
-
+  const total = parseFloat($('seconds').value) || 30;
   const body = {
-    page: $('page').value.replace(/\.html$/, ''),
+    page: segments[0] ? segments[0].page : currentPageName(),
     audio: $('audio').value || null,
     scale: parseFloat($('scale').value) || 2,
     gain: parseFloat($('gain').value) || 1,
-    seconds: parseFloat($('seconds').value) || 30,
+    seconds: total,
     fps: parseInt($('fps').value, 10) || 30,
     jpeg: $('jpeg').checked,
-    params: state.params,
-    localStorage: state.localStorage,
-    automation: usePerf ? events : [],
   };
+  if (segments.length) {
+    // Turn the captured segments into a render timeline; each segment's
+    // duration runs to the next switch (last one to the total length).
+    const segs = [];
+    for (let i = 0; i < segments.length; i++) {
+      const s = segments[i];
+      const end = (i + 1 < segments.length) ? segments[i + 1].startT : total;
+      const dur = Math.max(0, Math.min(end, total) - s.startT);
+      if (dur <= 0) continue;
+      segs.push({ page: s.page, seconds: +dur.toFixed(3), state: { params: s.baseline.params, localStorage: s.baseline.localStorage, automation: s.events } });
+    }
+    body.timeline = { segments: segs };
+  } else {
+    const st = snapshotState();
+    body.params = st.params;
+    body.localStorage = st.localStorage;
+    body.automation = [];
+  }
   $('render').disabled = true;
   setStatus('rendering ' + body.seconds + 's of ' + body.page + ' … (this runs the offline pipeline; watch the terminal for frame progress)');
   try {
@@ -399,22 +496,29 @@ async function render() {
 // ---- init ----
 (async function init() {
   const pages = await fetch('/api/pages').then((r) => r.json());
-  $('page').innerHTML = pages.map((p) => '<option>' + p + '</option>').join('');
+  $('page').innerHTML = pages.map((p) => {
+    const name = p.file.replace(/\.html$/, '');
+    const label = p.source ? `${name}  ⚠ needs source (n/a)` : name;
+    return `<option value="${p.file}">${label}</option>`;
+  }).join('');
   const audio = await fetch('/api/audio').then((r) => r.json());
   $('audio').innerHTML = (audio.length ? audio : ['— no audio files found —']).map((a) => '<option>' + a + '</option>').join('');
+  await loadLooks();
 
-  $('page').addEventListener('change', loadViz);
+  $('page').addEventListener('change', onPageChange);
+  $('look').addEventListener('change', onLookChange);
+  $('looksave').addEventListener('click', saveLook);
+  $('lookdel').addEventListener('click', deleteLook);
   $('scale').addEventListener('change', sizePreview);
   $('play').addEventListener('click', play);
   $('stop').addEventListener('click', stop);
   $('render').addEventListener('click', render);
   $('rec').addEventListener('click', () => {
-    if (recording) recording = false;            // stop capturing (keep events)
-    else if (playing) { recording = true; events = []; recState = snapshotState(); } // start now
-    else recArmed = !recArmed;                    // arm for next play
-    updateRecUI();
+    if (recording) { recording = false; updateRecUI(); }   // stop capturing (keep segments)
+    else if (playing) startRecording();                    // start now
+    else { recArmed = !recArmed; updateRecUI(); }           // arm for next play
   });
-  $('recclear').addEventListener('click', () => { events = []; recState = null; recording = false; recArmed = false; updateRecUI(); });
+  $('recclear').addEventListener('click', () => { segments = []; recording = false; recArmed = false; updateRecUI(); });
   window.addEventListener('resize', sizePreview);
   updateRecUI();
   loadViz();

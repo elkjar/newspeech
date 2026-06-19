@@ -48,6 +48,13 @@ function serveFile(res, path) {
   res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
   createReadStream(path).pipe(res);
 }
+const LOOKS_FILE = join(HERE, 'looks.json');
+async function readLooks() {
+  try { return JSON.parse(await readFile(LOOKS_FILE, 'utf8')); } catch { return {}; }
+}
+async function writeLooks(looks) {
+  await writeFile(LOOKS_FILE, JSON.stringify(looks, null, 2));
+}
 function readBody(req) {
   return new Promise((resolveBody) => {
     const chunks = [];
@@ -67,8 +74,17 @@ async function main() {
       if (p === '/' || p === '/studio') return serveFile(res, join(HERE, 'studio.html'));
 
       if (p === '/api/pages') {
-        const files = await readdir(ROOT);
-        const pages = files.filter((f) => /^\d+-.*\.html$/.test(f)).sort((x, y) => parseInt(x) - parseInt(y));
+        const files = (await readdir(ROOT))
+          .filter((f) => /^\d+-.*\.html$/.test(f))
+          .sort((x, y) => parseInt(x) - parseInt(y));
+        const pages = [];
+        for (const f of files) {
+          // Source-reliant pages composite a picked image/video — not yet
+          // supported by the renderer, so flag them in the UI.
+          let source = false;
+          try { source = /getSource|id="src-file"|panel-source/.test(await readFile(join(ROOT, f), 'utf8')); } catch {}
+          pages.push({ file: f, source });
+        }
         return send(res, 200, pages);
       }
       if (p === '/api/audio') {
@@ -93,6 +109,25 @@ async function main() {
       if (p === '/api/render' && req.method === 'POST') {
         const body = JSON.parse(await readBody(req));
         return runRender(res, a, body);
+      }
+      // Saved per-visualizer "looks" (named state snapshots), persisted to disk.
+      if (p === '/api/looks' && req.method === 'GET') {
+        return send(res, 200, await readLooks());
+      }
+      if (p === '/api/looks' && req.method === 'POST') {
+        const { page, name, state } = JSON.parse(await readBody(req));
+        const looks = await readLooks();
+        looks[page] = (looks[page] || []).filter((l) => l.name !== name);
+        looks[page].push({ name, state });
+        await writeLooks(looks);
+        return send(res, 200, { ok: true, looks });
+      }
+      if (p === '/api/looks/delete' && req.method === 'POST') {
+        const { page, name } = JSON.parse(await readBody(req));
+        const looks = await readLooks();
+        if (looks[page]) looks[page] = looks[page].filter((l) => l.name !== name);
+        await writeLooks(looks);
+        return send(res, 200, { ok: true, looks });
       }
 
       // static: serve from repo root
@@ -120,27 +155,34 @@ async function runRender(res, a, body) {
   const tmpDir = join(HERE, '.studio');
   await mkdir(tmpDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const statePath = join(tmpDir, `state-${stamp}.json`);
-  await writeFile(statePath, JSON.stringify({
-    localStorage: body.localStorage || {},
-    params: body.params || {},
-    automation: body.automation || [],
-  }));
 
   const outName = `${body.page}-${stamp}.mp4`;
   const outPath = join(a.outDir, outName);
   const args = [
     join(HERE, 'render.mjs'),
-    '--page', body.page,
-    '--seconds', String(body.seconds ?? 30),
     '--fps', String(body.fps ?? 30),
     '--scale', String(body.scale ?? 2),
     '--gain', String(body.gain ?? 1),
-    '--state', statePath,
     '--out', outPath,
   ];
   if (body.jpeg !== false) args.push('--jpeg'); // studio defaults to fast JPEG capture
   if (body.audio) args.push('--audio', join(a.audioDir, body.audio));
+
+  if (body.timeline) {
+    // Multi-visualizer performance: a segment timeline (hard cuts).
+    const tlPath = join(tmpDir, `timeline-${stamp}.json`);
+    await writeFile(tlPath, JSON.stringify(body.timeline));
+    args.push('--timeline', tlPath);
+  } else {
+    // Single visualizer (+ optional automation).
+    const statePath = join(tmpDir, `state-${stamp}.json`);
+    await writeFile(statePath, JSON.stringify({
+      localStorage: body.localStorage || {},
+      params: body.params || {},
+      automation: body.automation || [],
+    }));
+    args.push('--page', body.page, '--seconds', String(body.seconds ?? 30), '--state', statePath);
+  }
 
   res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
   const child = spawn('node', args, { cwd: HERE });
