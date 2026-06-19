@@ -376,7 +376,12 @@ cutoff-LFO→`automations[2]`. pan→[1] / pitch→[5] / tremolo / cutoff-env ar
 are env-XOR-LFO so need pick logic. **Deferred until hardware-verified** — per the delay lesson, some
 `.pti` automation slots may be vestigial, so prove each on the device before trusting the export.
 
-## FUTURE IDEA — surface the editor in the main tabbed area (Chris, 2026-06-18, parked)
+## NEXT UP (Chris, 2026-06-18) — surface the editor in the main tabbed area, then play with it
+
+Chris wants to build this next session and then live with it for a bit. Build the
+[params]/[automation] tab integration first (below); the secondary LFO-destinations idea follows once
+the params live in the tabbed area.
+
 
 The instrument editor is powerful but **hidden** — buried in the RowPanel `[...]` gear menu.
 Idea: split it into **[params]** and **[automation]** and add them to the main `ChannelScreen`
