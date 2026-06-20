@@ -21,10 +21,16 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..'); // repo root (core.js + N-*.html)
 
 function parseArgs(argv) {
-  const a = { audioDir: join(homedir(), 'Desktop'), outDir: join(homedir(), 'Desktop'), port: 4321 };
+  const a = {
+    audioDir: join(homedir(), 'Desktop'),
+    outDir: join(homedir(), 'Desktop'),
+    sourceDir: join(homedir(), 'Documents', 'newspeech-visuals'),
+    port: 4321,
+  };
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--audio-dir') { a.audioDir = resolve(argv[++i]); }
     else if (argv[i] === '--out-dir') { a.outDir = resolve(argv[++i]); }
+    else if (argv[i] === '--source-dir') { a.sourceDir = resolve(argv[++i]); }
     else if (argv[i] === '--port') { a.port = parseInt(argv[++i], 10); }
   }
   return a;
@@ -39,6 +45,7 @@ const MIME = {
   '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.aif': 'audio/aiff', '.aiff': 'audio/aiff', '.flac': 'audio/flac',
 };
 const AUDIO_EXT = new Set(['.wav', '.mp3', '.aif', '.aiff', '.flac', '.m4a']);
+const SOURCE_EXT = new Set(['.mp4', '.mov', '.webm', '.m4v', '.png', '.jpg', '.jpeg', '.gif']);
 
 function send(res, code, body, type = 'application/json') {
   res.writeHead(code, { 'content-type': type, 'access-control-allow-origin': '*' });
@@ -49,8 +56,10 @@ function serveFile(res, path) {
   createReadStream(path).pipe(res);
 }
 const LOOKS_FILE = join(HERE, 'looks.json');
+// Looks are GLOBAL presets — a flat list of { name, page, state }; each look
+// captures its visualizer, so the selector can jump between any of them.
 async function readLooks() {
-  try { return JSON.parse(await readFile(LOOKS_FILE, 'utf8')); } catch { return {}; }
+  try { const d = JSON.parse(await readFile(LOOKS_FILE, 'utf8')); return Array.isArray(d) ? d : []; } catch { return []; }
 }
 async function writeLooks(looks) {
   await writeFile(LOOKS_FILE, JSON.stringify(looks, null, 2));
@@ -106,6 +115,18 @@ async function main() {
         if (!s) return send(res, 404, { error: 'not found' });
         return serveFile(res, path);
       }
+      if (p === '/api/sources') {
+        const files = await readdir(a.sourceDir).catch(() => []);
+        const list = files.filter((f) => SOURCE_EXT.has(extname(f).toLowerCase())).sort();
+        return send(res, 200, list);
+      }
+      if (p.startsWith('/source/')) {
+        const name = basename(decodeURIComponent(p.slice('/source/'.length)));
+        const path = join(a.sourceDir, name);
+        const s = await stat(path).catch(() => null);
+        if (!s) return send(res, 404, { error: 'not found' });
+        return serveFile(res, path);
+      }
       if (p === '/api/render' && req.method === 'POST') {
         const body = JSON.parse(await readBody(req));
         return runRender(res, a, body);
@@ -116,16 +137,14 @@ async function main() {
       }
       if (p === '/api/looks' && req.method === 'POST') {
         const { page, name, state } = JSON.parse(await readBody(req));
-        const looks = await readLooks();
-        looks[page] = (looks[page] || []).filter((l) => l.name !== name);
-        looks[page].push({ name, state });
+        let looks = (await readLooks()).filter((l) => l.name !== name);
+        looks.push({ name, page, state });
         await writeLooks(looks);
         return send(res, 200, { ok: true, looks });
       }
       if (p === '/api/looks/delete' && req.method === 'POST') {
-        const { page, name } = JSON.parse(await readBody(req));
-        const looks = await readLooks();
-        if (looks[page]) looks[page] = looks[page].filter((l) => l.name !== name);
+        const { name } = JSON.parse(await readBody(req));
+        const looks = (await readLooks()).filter((l) => l.name !== name);
         await writeLooks(looks);
         return send(res, 200, { ok: true, looks });
       }
@@ -168,8 +187,14 @@ async function runRender(res, a, body) {
   if (body.jpeg !== false) args.push('--jpeg'); // studio defaults to fast JPEG capture
   if (body.audio) args.push('--audio', join(a.audioDir, body.audio));
 
+  // Source filenames from the UI → absolute paths the renderer can serve.
+  const srcPath = (name) => (name ? join(a.sourceDir, basename(name)) : undefined);
+
   if (body.timeline) {
     // Multi-visualizer performance: a segment timeline (hard cuts).
+    for (const seg of body.timeline.segments || []) {
+      if (seg.state?.source) seg.state.source = srcPath(seg.state.source);
+    }
     const tlPath = join(tmpDir, `timeline-${stamp}.json`);
     await writeFile(tlPath, JSON.stringify(body.timeline));
     args.push('--timeline', tlPath);
@@ -180,6 +205,7 @@ async function runRender(res, a, body) {
       localStorage: body.localStorage || {},
       params: body.params || {},
       automation: body.automation || [],
+      source: srcPath(body.source),
     }));
     args.push('--page', body.page, '--seconds', String(body.seconds ?? 30), '--state', statePath);
   }

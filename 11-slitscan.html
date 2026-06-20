@@ -261,6 +261,24 @@ installTelemetry({ params });
 
 installPanel(params);
 
+// reel-render hook: load a source by URL (reuses the existing file loader via
+// fetch→File) and seek it per frame for the offline renderer / studio preview.
+window.__loadSourceUrl = async (url, opts) => {
+  const blob = await fetch(url).then((r) => r.blob());
+  const file = new File([blob], blob.type.startsWith("video") ? "src.mp4" : "src.png", { type: blob.type });
+  await loadSource(file);
+  if (opts && opts.paused && videoEl) { try { videoEl.pause(); } catch (e) {} videoEl.autoplay = false; }
+};
+window.__seekSource = (t) => new Promise((res) => {
+  if (!videoEl) return res();
+  const d = videoEl.duration || 0;
+  const tt = d > 0 ? (t % d) : t;
+  if (Math.abs((videoEl.currentTime || 0) - tt) < 0.001) return res();
+  const onS = () => res();
+  videoEl.addEventListener("seeked", onS, { once: true });
+  try { videoEl.currentTime = tt; } catch (e) { videoEl.removeEventListener("seeked", onS); res(); }
+});
+
 document.getElementById("src-file").addEventListener("change", (e) => {
   const f = e.target.files && e.target.files[0];
   if (f) loadSource(f);

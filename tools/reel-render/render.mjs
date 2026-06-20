@@ -45,6 +45,7 @@ function parseArgs(argv) {
     else if (k === '--gain') { a.gain = parseFloat(v); i++; }
     else if (k === '--state') { a.state = v; i++; }
     else if (k === '--timeline') { a.timeline = v; i++; }
+    else if (k === '--source') { a.source = v; i++; }
     else if (k === '--preset') { a.preset = v; i++; }
     else if (k === '--jpeg') { a.jpeg = true; }
     else if (k === '--keep-frames') { a.keepFrames = true; }
@@ -71,10 +72,23 @@ const MIME = {
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
 };
+// Source clips live outside the repo root; serve them only if allow-listed
+// (populated from the segments' source paths) so we don't expose the FS.
+const allowedSources = new Set();
 function startServer() {
   return new Promise((res) => {
     const server = createServer(async (req, rq) => {
       try {
+        // /source?p=<abs path> — a segment's source clip (allow-listed).
+        if ((req.url || '').startsWith('/source')) {
+          const p = new URL(req.url, 'http://x').searchParams.get('p');
+          if (!p || !allowedSources.has(p)) { rq.writeHead(403).end(); return; }
+          const s = await stat(p).catch(() => null);
+          if (!s) { rq.writeHead(404).end(); return; }
+          rq.writeHead(200, { 'content-type': MIME[extname(p)] || 'application/octet-stream' });
+          createReadStream(p).pipe(rq);
+          return;
+        }
         const url = decodeURIComponent((req.url || '/').split('?')[0]);
         const path = resolve(ROOT, '.' + url);
         if (!path.startsWith(ROOT)) { rq.writeHead(403).end(); return; }
@@ -143,7 +157,9 @@ function startFfmpegPipe(a, outPath, seconds) {
   if (a.audio) args.push('-t', String(seconds), '-i', resolve(process.cwd(), a.audio));
   args.push(
     '-map', '0:v',
-    ...(a.audio ? ['-map', '1:a', '-c:a', 'alac', '-shortest'] : []),
+    // No -shortest: reel length = the requested duration (the piped video), so a
+    // shorter audio file ends early instead of truncating the whole render.
+    ...(a.audio ? ['-map', '1:a', '-c:a', 'alac'] : []),
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', a.preset || 'veryfast',
     '-movflags', '+faststart', outPath,
   );
@@ -181,9 +197,18 @@ async function main() {
     const tl = JSON.parse(await readFile(resolve(process.cwd(), a.timeline), 'utf8'));
     segments = tl.segments || [];
   } else {
+    if (a.source) state = { ...(state || {}), source: a.source };
     segments = [{ page: a.page, seconds: a.seconds, state }];
   }
   if (!segments.length) { console.error('no segments to render'); process.exit(1); }
+  // Resolve + allow-list each segment's source clip, and give it a served URL.
+  for (const seg of segments) {
+    const src = seg.state?.source;
+    if (!src) continue;
+    const abs = resolve(process.cwd(), src);
+    allowedSources.add(abs);
+    seg.sourceUrl = `/source?p=${encodeURIComponent(abs)}`;
+  }
   const totalSeconds = segments.reduce((s, seg) => s + (seg.seconds || 0), 0);
   const totalFrames = Math.round(totalSeconds * a.fps);
 
@@ -230,6 +255,9 @@ async function main() {
       const feat = featureAt(gf);
       const tMs = (i * 1000) / a.fps; // page clock is per-segment (each viz starts fresh at 0)
       const tSec = i / a.fps;
+      // Source video: seek to the segment-local time (loops on clip length) and
+      // wait for the frame before drawing — keeps it deterministic.
+      if (seg.sourceUrl) await page.evaluate((t) => (window.__seekSource ? window.__seekSource(t) : null), tSec);
       const due = [];
       while (ai < auto.length && auto[ai].t <= tSec) due.push(auto[ai++]);
       await page.evaluate(
@@ -294,6 +322,10 @@ async function setupSegment(page, seg, port) {
   const auto = seg.state?.automation || [];
   if (auto.some((e) => e.sel && e.sel.includes('panel-picker'))) {
     await page.evaluate(() => { const p = document.querySelector('#panel .ns-pick'); if (p) p.click(); });
+  }
+  // Source-reliant pages: load the clip paused (we seek it per frame).
+  if (seg.sourceUrl) {
+    await page.evaluate(async (u) => { if (window.__loadSourceUrl) await window.__loadSourceUrl(u, { paused: true }); }, seg.sourceUrl);
   }
 }
 

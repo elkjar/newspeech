@@ -80,6 +80,11 @@
       <button id="lookdel">delete</button>
     </div>
 
+    <label>
+      <span class="name">source <span style="opacity:.45">(edge/slit/etc.)</span></span>
+      <select id="source"></select>
+    </label>
+
     <div class="row">
       <label><span class="name">scale</span><input id="scale" type="number" min="1" max="4" step="0.5" value="2" /></label>
       <label><span class="name">gain</span><input id="gain" type="number" min="0.1" max="5" step="0.1" value="1" /></label>
@@ -131,7 +136,8 @@ let actx = null, analyser = null, srcNode = null, fftBuf = null, raf = 0, playin
 // performance record-and-replay state — a performance is a list of segments
 // (one per visualizer in play order); each holds its baseline + timed events.
 let playStart = 0, recArmed = false, recording = false, segments = [], pendingSegment = null;
-let looksData = {}; // { page: [{ name, state }] }
+let looksData = []; // [{ name, page, state }] — global presets
+let sourcesData = [], sourcePages = new Set(), currentSource = null, reloadSeq = 0;
 const sm = { level: 0, low: 0, mid: 0, high: 0 };
 const peak = { low: 1e-3, mid: 1e-3, high: 1e-3 };
 const cool = { low: 0, mid: 0, high: 0 };
@@ -221,7 +227,15 @@ function applyParams(state) {
 // localStorage + reload, page params via control dispatch). Fires a pending
 // segment open (if armed) once ready.
 function loadVizPage(state) {
-  const ready = () => { sizePreview(); hideIframePanel(); applyParams(state); buildParams(); if (pendingSegment) pendingSegment(); };
+  const ready = () => {
+    sizePreview(); hideIframePanel(); applyParams(state); buildParams();
+    if (state && state.source) {
+      currentSource = state.source;
+      $('source').value = state.source;
+      const w = vizWin(); if (w.__loadSourceUrl) w.__loadSourceUrl('/source/' + encodeURIComponent(state.source), { play: true });
+    }
+    if (pendingSegment) pendingSegment();
+  };
   $('viz').onload = () => {
     const ls = state && state.localStorage;
     if (ls && Object.keys(ls).length) {
@@ -230,7 +244,9 @@ function loadVizPage(state) {
       vizWin().location.reload();
     } else { ready(); }
   };
-  $('viz').src = '/' + $('page').value;
+  // cache-buster guarantees a reload even when the page hasn't changed (jumping
+  // between looks on the same visualizer).
+  $('viz').src = '/' + $('page').value + '?r=' + (++reloadSeq);
 }
 function loadViz() { stop(); loadVizPage(null); }
 // Open a new timeline segment at the current track position once the next page
@@ -240,36 +256,59 @@ function armSegment() {
   pendingSegment = () => { pendingSegment = null; segments.push({ page: currentPageName(), startT: bT, baseline: snapshotState(), events: [] }); updateRecUI(); };
 }
 
-// ---- looks (named per-visualizer state presets) ----
-function currentLookState() {
-  const name = $('look').value;
-  if (!name || name === '(default)') return null;
-  const l = (looksData[currentPageName()] || []).find((x) => x.name === name);
-  return l ? l.state : null;
-}
+// ---- looks (GLOBAL presets: name + visualizer + state) ----
+function findLook(name) { return looksData.find((l) => l.name === name); }
 function refreshLookOptions(selectName) {
-  const list = looksData[currentPageName()] || [];
-  $('look').innerHTML = ['(default)'].concat(list.map((l) => l.name)).map((n) => `<option>${n}</option>`).join('');
-  if (selectName) $('look').value = selectName;
+  $('look').innerHTML = ['(default)'].concat(looksData.map((l) => l.name)).map((n) => {
+    const l = findLook(n);
+    return `<option value="${n}">${l ? `${n} · ${l.page.replace(/\.html$/, '')}` : n}</option>`;
+  }).join('');
+  $('look').value = selectName || '(default)';
 }
-async function loadLooks() { try { looksData = await fetch('/api/looks').then((r) => r.json()); } catch (e) { looksData = {}; } refreshLookOptions(); }
+async function loadLooks() { try { looksData = await fetch('/api/looks').then((r) => r.json()); } catch (e) { looksData = []; } refreshLookOptions(); }
 async function saveLook() {
-  const name = prompt(`name this look for ${currentPageName()}:`); if (!name) return;
-  const r = await fetch('/api/looks', { method: 'POST', body: JSON.stringify({ page: currentPageName(), name, state: snapshotState() }) }).then((x) => x.json());
+  const name = prompt('name this look (saved globally — captures the visualizer + its settings):'); if (!name) return;
+  const r = await fetch('/api/looks', { method: 'POST', body: JSON.stringify({ name, page: currentPageName(), state: snapshotState() }) }).then((x) => x.json());
   if (r.ok) { looksData = r.looks; refreshLookOptions(name); }
 }
 async function deleteLook() {
   const name = $('look').value; if (!name || name === '(default)') return;
-  const r = await fetch('/api/looks/delete', { method: 'POST', body: JSON.stringify({ page: currentPageName(), name }) }).then((x) => x.json());
+  const r = await fetch('/api/looks/delete', { method: 'POST', body: JSON.stringify({ name }) }).then((x) => x.json());
   if (r.ok) { looksData = r.looks; refreshLookOptions(); }
 }
-// Selecting a look applies it; while recording it's a hard cut to that look.
-function onLookChange() { if (recording) armSegment(); loadVizPage(currentLookState()); }
-// Page change: refresh looks for the new page; hard cut if recording, else reload.
+// Jump to a look: switch to its visualizer + apply its full state (params,
+// globals, source). Hard cut to a new segment if recording.
+function onLookChange() {
+  const l = findLook($('look').value);
+  currentSource = null;
+  // looks store the page without the .html the <option> values carry.
+  if (l) { $('page').value = l.page.endsWith('.html') ? l.page : l.page + '.html'; refreshSourceOptions(); }
+  if (recording) armSegment();
+  loadVizPage(l ? l.state : null);
+}
+// Page change: refresh looks + sources for the new page; hard cut if recording.
 function onPageChange() {
+  currentSource = null;
   refreshLookOptions();
+  refreshSourceOptions();
   if (recording) { armSegment(); loadVizPage(null); }
   else { stop(); loadVizPage(null); }
+}
+
+// ---- source clips (for the edge/slit/etc. visualizers) ----
+async function loadSources() { try { sourcesData = await fetch('/api/sources').then((r) => r.json()); } catch (e) { sourcesData = []; } }
+function refreshSourceOptions() {
+  const isSrc = sourcePages.has($('page').value);
+  $('source').disabled = !isSrc;
+  $('source').innerHTML = ['(none)'].concat(isSrc ? sourcesData : []).map((n) => `<option>${n}</option>`).join('');
+}
+function onSourceChange() {
+  const v = $('source').value;
+  currentSource = (v && v !== '(none)') ? v : null;
+  const w = vizWin();
+  if (currentSource && w.__loadSourceUrl) w.__loadSourceUrl('/source/' + encodeURIComponent(currentSource), { play: true });
+  // While recording, a source swap is a hard cut to a new segment with it.
+  if (recording) { segments.push({ page: currentPageName(), startT: trackPos(), baseline: snapshotState(), events: [] }); updateRecUI(); }
 }
 
 // Hide the visualizer's own on-screen panel — its controls now live in the rail.
@@ -313,7 +352,7 @@ function snapshotState() {
   const win = vizWin(); const params = {}; const ls = {};
   try { win.document.querySelectorAll('#panel [data-k]').forEach((el) => { params[el.getAttribute('data-k')] = el.value; }); } catch (e) {}
   try { for (let i = 0; i < win.localStorage.length; i++) { const k = win.localStorage.key(i); if (k.startsWith('newspeech.')) ls[k] = win.localStorage.getItem(k); } } catch (e) {}
-  return { params, localStorage: ls };
+  return { params, localStorage: ls, source: currentSource || undefined };
 }
 function updateRecUI() {
   const b = $('rec');
@@ -496,19 +535,22 @@ async function render() {
 // ---- init ----
 (async function init() {
   const pages = await fetch('/api/pages').then((r) => r.json());
+  sourcePages = new Set(pages.filter((p) => p.source).map((p) => p.file));
   $('page').innerHTML = pages.map((p) => {
     const name = p.file.replace(/\.html$/, '');
-    const label = p.source ? `${name}  ⚠ needs source (n/a)` : name;
-    return `<option value="${p.file}">${label}</option>`;
+    return `<option value="${p.file}">${p.source ? name + '  · needs source' : name}</option>`;
   }).join('');
   const audio = await fetch('/api/audio').then((r) => r.json());
   $('audio').innerHTML = (audio.length ? audio : ['— no audio files found —']).map((a) => '<option>' + a + '</option>').join('');
   await loadLooks();
+  await loadSources();
+  refreshSourceOptions();
 
   $('page').addEventListener('change', onPageChange);
   $('look').addEventListener('change', onLookChange);
   $('looksave').addEventListener('click', saveLook);
   $('lookdel').addEventListener('click', deleteLook);
+  $('source').addEventListener('change', onSourceChange);
   $('scale').addEventListener('change', sizePreview);
   $('play').addEventListener('click', play);
   $('stop').addEventListener('click', stop);
