@@ -28,6 +28,7 @@ use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use serde::{Deserialize, Serialize};
 
+use crate::delay::DelayBus;
 use crate::reverb::ReverbBus;
 
 // --- output level meter ---
@@ -164,11 +165,23 @@ pub struct TrackParams {
   cutoff_hz_eff: AtomicU32,
   resonance_base: AtomicU32,
   resonance_eff: AtomicU32,
-  // 0..1 — portion of the voice signal routed to the global reverb bus.
-  // The voice's dry signal is attenuated by (1 - fx_send) and the wet
-  // contribution scaled by fx_send. Per-voice mix, audio-rate atomic.
+  // 0..1 — portion of the voice signal routed to the mangler FX bus
+  // (tape → glitch → drive). The voice's dry signal is attenuated by
+  // (1 - fx_send) and the wet contribution scaled by fx_send. Per-voice
+  // mix, audio-rate atomic. Reverb is NO LONGER on this bus — see below.
   fx_send_base: AtomicU32,
   fx_send_eff: AtomicU32,
+  // 0..1 — per-instrument REVERB send. An ADDITIVE aux send (dry stays
+  // full, unlike fx_send's crossfade): the voice's full signal × reverb_send
+  // taps into the parallel reverb return. Sourced from the instrument's
+  // `reverbSend` voice param (saved with the instrument), pushed here per
+  // track so knob twists hit voices already in flight. Single atomic — no
+  // sequencer-LFO base/eff split (add one if it becomes an automation target).
+  reverb_send_eff: AtomicU32,
+  // 0..1 — per-instrument DELAY send. Same additive-aux shape as reverb_send,
+  // feeding the global ping-pong delay. Single atomic, sourced from the voice's
+  // `delaySend` param.
+  delay_send_eff: AtomicU32,
 }
 
 // Cutoff mapping mirrors src/audio/nativeEngine.ts cutoffNormToHz.
@@ -196,6 +209,8 @@ impl TrackParams {
       resonance_eff: AtomicU32::new(0.0_f32.to_bits()),
       fx_send_base: AtomicU32::new(0.0_f32.to_bits()),
       fx_send_eff: AtomicU32::new(0.0_f32.to_bits()),
+      reverb_send_eff: AtomicU32::new(0.0_f32.to_bits()),
+      delay_send_eff: AtomicU32::new(0.0_f32.to_bits()),
     }
   }
   fn cutoff(&self) -> f32 {
@@ -215,6 +230,12 @@ impl TrackParams {
   }
   fn fx_send_base(&self) -> f32 {
     f32::from_bits(self.fx_send_base.load(Ordering::Relaxed))
+  }
+  fn reverb_send(&self) -> f32 {
+    f32::from_bits(self.reverb_send_eff.load(Ordering::Relaxed))
+  }
+  fn delay_send(&self) -> f32 {
+    f32::from_bits(self.delay_send_eff.load(Ordering::Relaxed))
   }
   // IPC writes the user-knob value to base AND the post-mapping/post-no-mod
   // value to effective. When an LFO is later routed, the audio thread
@@ -240,6 +261,16 @@ impl TrackParams {
     self
       .fx_send_eff
       .store(fx_send.to_bits(), Ordering::Release);
+  }
+  fn set_reverb_send(&self, reverb_send: f32) {
+    self
+      .reverb_send_eff
+      .store(reverb_send.to_bits(), Ordering::Release);
+  }
+  fn set_delay_send(&self, delay_send: f32) {
+    self
+      .delay_send_eff
+      .store(delay_send.to_bits(), Ordering::Release);
   }
   // Writers used by the LFO compute (audio thread). Effective only —
   // base stays put so the next block can recompute from the same base.
@@ -350,6 +381,58 @@ static REVERB_STATE: OnceLock<ReverbState> = OnceLock::new();
 
 fn reverb_state() -> &'static ReverbState {
   REVERB_STATE.get_or_init(ReverbState::new)
+}
+
+// --- delay shared state ---
+//
+// Global ping-pong delay aux, sibling to the reverb. Per-voice `delay_send`
+// taps an additive copy into the delay send bus; the wet return sums to
+// channels 0+1 at unity. Time arrives as seconds (JS computes it from the
+// note division + bpm); feedback is 0..~1.1. Single atomics — no LFO base/eff
+// split yet (feedback LFO is a planned follow-up; add the split then).
+pub struct DelayState {
+  delay_seconds: AtomicU32,
+  feedback: AtomicU32,
+  pingpong: AtomicU32,
+  lofi: AtomicU32,
+}
+
+impl DelayState {
+  fn new() -> Self {
+    Self {
+      // 0 seconds → silent until JS pushes the synced time; 0 feedback.
+      delay_seconds: AtomicU32::new(0.0_f32.to_bits()),
+      feedback: AtomicU32::new(0.0_f32.to_bits()),
+      pingpong: AtomicU32::new(1.0_f32.to_bits()),
+      lofi: AtomicU32::new(0.0_f32.to_bits()),
+    }
+  }
+  fn ipc_set(&self, delay_seconds: f32, feedback: f32, pingpong: f32, lofi: f32) {
+    self
+      .delay_seconds
+      .store(delay_seconds.to_bits(), Ordering::Release);
+    self.feedback.store(feedback.to_bits(), Ordering::Release);
+    self.pingpong.store(pingpong.to_bits(), Ordering::Release);
+    self.lofi.store(lofi.to_bits(), Ordering::Release);
+  }
+  fn delay_seconds(&self) -> f32 {
+    f32::from_bits(self.delay_seconds.load(Ordering::Relaxed))
+  }
+  fn feedback(&self) -> f32 {
+    f32::from_bits(self.feedback.load(Ordering::Relaxed))
+  }
+  fn pingpong(&self) -> f32 {
+    f32::from_bits(self.pingpong.load(Ordering::Relaxed))
+  }
+  fn lofi(&self) -> f32 {
+    f32::from_bits(self.lofi.load(Ordering::Relaxed))
+  }
+}
+
+static DELAY_STATE: OnceLock<DelayState> = OnceLock::new();
+
+fn delay_state() -> &'static DelayState {
+  DELAY_STATE.get_or_init(DelayState::new)
 }
 
 // --- pre-saturation shared state ---
@@ -3072,8 +3155,8 @@ struct Voice {
   // swap and detached from the shared track_params so the incoming
   // scene's settings can't retune its ring-out (a resonance jump would
   // self-oscillate into a crash). Set by FreezeVoiceParams, cleared on
-  // re-trigger.
-  frozen_params: Option<(f32, f32, f32)>,
+  // re-trigger. Tuple = (cutoff_hz, resonance, fx_send, reverb_send, delay_send).
+  frozen_params: Option<(f32, f32, f32, f32, f32)>,
   // Output frames elapsed since trigger — drives the flat-voice declick
   // fade-in. Counts output frames (not sample position), so it's
   // rate-independent.
@@ -3766,6 +3849,16 @@ impl AudioEngine {
     params.set_fx_send(fx_send.clamp(0.0, 1.0));
   }
 
+  pub fn set_track_reverb_send(&self, track_id: String, reverb_send: f32) {
+    let params = get_or_create_track_params(&track_id);
+    params.set_reverb_send(reverb_send.clamp(0.0, 1.0));
+  }
+
+  pub fn set_track_delay_send(&self, track_id: String, delay_send: f32) {
+    let params = get_or_create_track_params(&track_id);
+    params.set_delay_send(delay_send.clamp(0.0, 1.0));
+  }
+
   // Reverb DSP params + global wet-bus gain. Held in atomics inside the
   // shared ReverbState so the audio callback can read them lock-free
   // each block. The DSP's internal mix is pinned to 1.0 (fully wet) at
@@ -3782,6 +3875,25 @@ impl AudioEngine {
       wet_gain.clamp(0.0, 4.0),
       diffusion.clamp(0.0, 0.85),
       damping.clamp(0.0, 1.0),
+    );
+  }
+
+  // Global ping-pong delay params. `delay_seconds` is the tempo-synced time
+  // (JS computes it from the note division + bpm); `feedback` 0..1.1;
+  // `pingpong` 0..1 (straight stereo → full cross-feed); `lofi` 0..1 (feedback
+  // degradation).
+  pub fn set_delay_params(
+    &self,
+    delay_seconds: f32,
+    feedback: f32,
+    pingpong: f32,
+    lofi: f32,
+  ) {
+    delay_state().ipc_set(
+      delay_seconds.max(0.0),
+      feedback.clamp(0.0, 1.1),
+      pingpong.clamp(0.0, 1.0),
+      lofi.clamp(0.0, 1.0),
     );
   }
 
@@ -4499,7 +4611,7 @@ fn build_stream(
   let mut rhythm_rec_producer: Option<HeapProd<i16>> = None;
   let mut melody_rec_producer: Option<HeapProd<i16>> = None;
   // Section scratch buffers (stereo interleaved? no — separate L/R for
-  // matching the bus accumulation pattern of reverb_in_l/r). Sized at
+  // matching the bus accumulation pattern of fxbus_l/r). Sized at
   // REVERB_SCRATCH for the same chunked-large-block reasoning.
   let mut rhythm_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut rhythm_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
@@ -4513,10 +4625,21 @@ fn build_stream(
   // device ever calls back with a larger buffer.
   const REVERB_SCRATCH: usize = 8192;
   let mut reverb_bus = ReverbBus::new(sample_rate);
-  let mut reverb_in_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
-  let mut reverb_in_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut delay_bus = DelayBus::new(sample_rate);
+  // Mangler FX bus (fed by fx_send: tape → glitch → drive). Reverb left this
+  // bus — it's now a parallel aux fed by its own per-instrument send buffer.
+  let mut fxbus_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut fxbus_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  // Reverb send bus (fed additively by per-instrument reverb_send) → reverb.
+  let mut rev_send_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut rev_send_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut reverb_out_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut reverb_out_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  // Delay send bus (fed additively by per-instrument delay_send) → ping-pong delay.
+  let mut delay_send_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut delay_send_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut delay_out_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut delay_out_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut tape_buffer = TapeBuffer::new(sample_rate);
   let mut glitch_machine = GlitchMachine::new(sample_rate);
   let mut master_stage = MasterStage::new(sample_rate);
@@ -4958,7 +5081,13 @@ fn build_stream(
                 // No track_params (manual panel trigger) → nothing to
                 // freeze; it doesn't read filter/fx_send anyway.
                 if let Some(tp) = v.track_params.as_ref() {
-                  v.frozen_params = Some((tp.cutoff(), tp.resonance(), tp.fx_send()));
+                  v.frozen_params = Some((
+                    tp.cutoff(),
+                    tp.resonance(),
+                    tp.fx_send(),
+                    tp.reverb_send(),
+                    tp.delay_send(),
+                  ));
                 }
               }
             }
@@ -5062,8 +5191,12 @@ fn build_stream(
         // tap into these during the voice loop below.
         let rev_frames = frames.min(REVERB_SCRATCH);
         for i in 0..rev_frames {
-          reverb_in_l[i] = 0.0;
-          reverb_in_r[i] = 0.0;
+          fxbus_l[i] = 0.0;
+          fxbus_r[i] = 0.0;
+          rev_send_l[i] = 0.0;
+          rev_send_r[i] = 0.0;
+          delay_send_l[i] = 0.0;
+          delay_send_r[i] = 0.0;
           rhythm_l[i] = 0.0;
           rhythm_r[i] = 0.0;
           melody_l[i] = 0.0;
@@ -5379,7 +5512,7 @@ fn build_stream(
             // Filter coefficients: frozen snapshot (detached on a swap) if
             // present, else live from track_params.
             let filt_coeffs = match v.frozen_params {
-              Some((fc, res, _)) => Some((fc, res)),
+              Some((fc, res, _, _, _)) => Some((fc, res)),
               None => track_params_ref.map(|p| (p.cutoff(), p.resonance())),
             };
             if let Some((fc, res)) = filt_coeffs {
@@ -5498,20 +5631,41 @@ fn build_stream(
             // preserved in TrackParams so turning bypass off restores
             // the prior amount with no discontinuity.
             let raw_fx_send = match v.frozen_params {
-              Some((_, _, fx)) => fx,
+              Some((_, _, fx, _, _)) => fx,
               None => track_params_ref.map(|p| p.fx_send()).unwrap_or(0.0),
             };
             let fx_send = if fx_bypass_now { 0.0 } else { raw_fx_send };
             let dry_scale = 1.0 - fx_send;
-            // Reverb input is post-gain + post-pan so the wet bus
-            // matches the dry path's positioning. Reverb sums L+R to
-            // mono internally so the pan only affects relative wet
-            // level, not the reverb tail's spatial placement.
+            // Mangler bus input is post-gain + post-pan so the wet bus
+            // matches the dry path's positioning.
             if fx_send > 0.0 && frame < REVERB_SCRATCH {
               let wet_l = ls * v.gain * v.pan_left * fx_send;
               let wet_r = rs * v.gain * v.pan_right * fx_send;
-              reverb_in_l[frame] += wet_l;
-              reverb_in_r[frame] += wet_r;
+              fxbus_l[frame] += wet_l;
+              fxbus_r[frame] += wet_r;
+            }
+            // Reverb send — ADDITIVE: taps the voice's full post-gain/pan
+            // signal (NOT scaled by dry_scale), so dialing reverb in doesn't
+            // thin the dry. Independent of fx_send and fx_bypass; the parallel
+            // reverb return sums these below. Reverb mono-sums L+R internally,
+            // so pan only sets relative wet level, not tail placement.
+            let raw_reverb_send = match v.frozen_params {
+              Some((_, _, _, rev, _)) => rev,
+              None => track_params_ref.map(|p| p.reverb_send()).unwrap_or(0.0),
+            };
+            if raw_reverb_send > 0.0 && frame < REVERB_SCRATCH {
+              rev_send_l[frame] += ls * v.gain * v.pan_left * raw_reverb_send;
+              rev_send_r[frame] += rs * v.gain * v.pan_right * raw_reverb_send;
+            }
+            // Delay send — same additive aux as reverb (taps the full voice
+            // signal, dry untouched), into the global ping-pong delay.
+            let raw_delay_send = match v.frozen_params {
+              Some((_, _, _, _, dly)) => dly,
+              None => track_params_ref.map(|p| p.delay_send()).unwrap_or(0.0),
+            };
+            if raw_delay_send > 0.0 && frame < REVERB_SCRATCH {
+              delay_send_l[frame] += ls * v.gain * v.pan_left * raw_delay_send;
+              delay_send_r[frame] += rs * v.gain * v.pan_right * raw_delay_send;
             }
             // Voice routing — multi_out OFF collapses everything to
             // channels 0+1 stereo (graceful headphone fold). Per-voice
@@ -5600,29 +5754,30 @@ fn build_stream(
           }
         }
 
-        // 4) FX bus — pre-reverb drive (saturation) → reverb. Both
-        // stages live INSIDE the wet bus and only colour the signal
-        // that voices fed in via fx_send. fx_send is a wet/dry
-        // crossfade (dry_scale = 1 - fx_send above), so fx_send=1 is
-        // pure-wet with no dry contribution and fx_send=0 is pure-dry
-        // with the wet bus silent. The whole stage is skipped when
-        // fx_bypass is on. Output channel pair depends on multi_out:
+        // 4) Mangler FX bus (tape → glitch → drive) + parallel reverb
+        // send/return. fx_send feeds the mangler (a wet/dry crossfade,
+        // dry_scale = 1 - fx_send above); reverb is NO LONGER on this bus —
+        // it's a separate aux fed by the per-instrument reverb_send tap.
+        // The mangler is skipped when fx_bypass is on; the reverb return is
+        // independent of fx_bypass. Output channel pair depends on multi_out:
         // OFF → 0+1 stereo (monitor fold); ON → fx_out_first / fx_out_stereo.
         let r = reverb_state();
         let size = f32::from_bits(r.size.load(Ordering::Relaxed));
-        let mix = f32::from_bits(r.wet_gain.load(Ordering::Relaxed));
         let diffusion = f32::from_bits(r.diffusion.load(Ordering::Relaxed));
         let damping = f32::from_bits(r.damping.load(Ordering::Relaxed));
         reverb_bus.set_size(size);
         reverb_bus.set_diffusion(diffusion);
         reverb_bus.set_damping(damping);
-        reverb_bus.set_mix(mix);
+        // 100% wet at unity return — reverb is a pure send/return now, no wet/dry
+        // and no return-level control. Per-instrument reverb_send is the only
+        // amount control. (ReverbState.wet_gain is no longer read here; the
+        // master "mix" knob was removed.)
+        reverb_bus.set_mix(1.0);
 
-        // Tape stage (first in the FX bus, ahead of drive). Always
+        // Tape stage (first in the mangler bus, ahead of drive). Always
         // captures the bus input even at mix=0 so the ring stays warm.
-        // Replaces reverb_in_l/r in place with the (1-mix)·input +
-        // mix·bed blend — downstream drive + reverb then operate on
-        // whatever the tape stage emitted.
+        // Replaces fxbus_l/r in place with the (1-mix)·input + mix·bed
+        // blend — the downstream drive then operates on what tape emitted.
         if !fx_bypass_now && rev_frames > 0 {
           let t = tape_state();
           let position = f32::from_bits(t.position.load(Ordering::Relaxed));
@@ -5641,8 +5796,8 @@ fn build_stream(
           let grain_rate = f32::from_bits(t.grain_rate.load(Ordering::Relaxed));
           let grain_mix = f32::from_bits(t.grain_mix.load(Ordering::Relaxed));
           tape_buffer.process_block(
-            &mut reverb_in_l[..rev_frames],
-            &mut reverb_in_r[..rev_frames],
+            &mut fxbus_l[..rev_frames],
+            &mut fxbus_r[..rev_frames],
             rev_frames,
             position,
             length,
@@ -5666,74 +5821,103 @@ fn build_stream(
           let glitch_mix = f32::from_bits(g.mix.load(Ordering::Relaxed));
           let fired = g.fire_requested.swap(false, Ordering::AcqRel);
           glitch_machine.process_block(
-            &mut reverb_in_l[..rev_frames],
-            &mut reverb_in_r[..rev_frames],
+            &mut fxbus_l[..rev_frames],
+            &mut fxbus_r[..rev_frames],
             rev_frames,
             glitch_mix,
             fired,
           );
         }
 
-        // Pre-reverb saturation — drives the wet input so the reverb
-        // processes a distorted signal. Tanh waveshaper, same curve as
-        // the web saturation.ts.
+        // Mangler drive — tanh waveshaper colouring the mangler bus, same
+        // curve as web saturation.ts. (No longer "pre-reverb": reverb is its
+        // own send now and isn't fed by this.)
         if !fx_bypass_now && rev_frames > 0 {
           let sat = saturation_state();
           let drive = f32::from_bits(sat.pre_drive.load(Ordering::Relaxed));
           if drive > 0.001 {
             for frame in 0..rev_frames {
-              reverb_in_l[frame] = pre_saturate_sample(reverb_in_l[frame], drive);
-              reverb_in_r[frame] = pre_saturate_sample(reverb_in_r[frame], drive);
+              fxbus_l[frame] = pre_saturate_sample(fxbus_l[frame], drive);
+              fxbus_r[frame] = pre_saturate_sample(fxbus_r[frame], drive);
             }
           }
         }
 
-        // The FX bus always outputs at unit gain — the reverb DSP's own
-        // wet/dry mix (set via `mix` above) controls how much tail
-        // bleeds against the saturated dry input. At mix=0 the bus
-        // outputs the saturated dry signal as a parallel layer (no
-        // reverb tail); at mix=1 it's tail only. Either way the drive
-        // colours something audible, no longer scaled by a separate
-        // wet-bus gain.
-        if !fx_bypass_now && rev_frames > 0 {
+        // Reverb send/return — parallel aux, independent of the mangler's
+        // fx_bypass. Process the per-instrument send bus fully wet and fold the
+        // tail INTO the mangler bus at unity so a single routing pass below
+        // places both into the fx-out pair. Always runs (no return-level gate)
+        // so tails ring out after the sending voices stop; the reverb DSP is
+        // cheap on silence once a tail has decayed.
+        if rev_frames > 0 {
           reverb_bus.process_block(
-            &reverb_in_l[..rev_frames],
-            &reverb_in_r[..rev_frames],
+            &rev_send_l[..rev_frames],
+            &rev_send_r[..rev_frames],
             &mut reverb_out_l[..rev_frames],
             &mut reverb_out_r[..rev_frames],
           );
-          {
-            // Same multi-out fallback as voice routing: if the FX bus
-            // pair falls off the end of the device, fold to 0/1 so the
-            // wet bus stays audible rather than vanishing on a smaller
-            // interface than the config was authored against.
-            let needed_channels = if fx_out_stereo { 2 } else { 1 };
-            let fx_in_range =
-              fx_out_first.saturating_add(needed_channels) <= n_ch;
-            let (out_first, out_stereo) = if multi_out_now && fx_in_range {
-              (fx_out_first, fx_out_stereo)
-            } else {
-              (0usize, true)
-            };
-            if out_stereo {
-              let l_idx = out_first;
-              let r_idx = out_first + 1;
-              if l_idx < n_ch {
-                for frame in 0..rev_frames {
-                  buf[frame * n_ch + l_idx] += reverb_out_l[frame];
-                }
-              }
-              if r_idx < n_ch {
-                for frame in 0..rev_frames {
-                  buf[frame * n_ch + r_idx] += reverb_out_r[frame];
-                }
-              }
-            } else if out_first < n_ch {
-              // Mono FX out — sum L+R*0.5 into a single channel.
+          for frame in 0..rev_frames {
+            fxbus_l[frame] += reverb_out_l[frame];
+            fxbus_r[frame] += reverb_out_r[frame];
+          }
+        }
+
+        // Delay send/return — sibling of the reverb aux. Process the
+        // per-instrument delay send bus through the global ping-pong delay
+        // (100% wet) and fold the wet output INTO the mangler bus at unity for
+        // the single routing pass below. Time is the synced seconds JS pushed.
+        if rev_frames > 0 {
+          let d = delay_state();
+          delay_bus.process_block(
+            &delay_send_l[..rev_frames],
+            &delay_send_r[..rev_frames],
+            &mut delay_out_l[..rev_frames],
+            &mut delay_out_r[..rev_frames],
+            rev_frames,
+            d.delay_seconds(),
+            d.feedback(),
+            d.pingpong(),
+            d.lofi(),
+          );
+          for frame in 0..rev_frames {
+            fxbus_l[frame] += delay_out_l[frame];
+            fxbus_r[frame] += delay_out_r[frame];
+          }
+        }
+
+        // Output the fx bus (mangler + folded-in reverb return) at unit gain.
+        // Runs whenever there are frames — NOT gated by fx_bypass — so a reverb
+        // tail still rings out even with the mangler bypassed (fx_send=0 under
+        // bypass already leaves the mangler contribution silent).
+        if rev_frames > 0 {
+          // Same multi-out fallback as voice routing: if the fx-out pair
+          // falls off the end of the device, fold to 0/1 so the bus stays
+          // audible on a smaller interface than the config was authored for.
+          let needed_channels = if fx_out_stereo { 2 } else { 1 };
+          let fx_in_range = fx_out_first.saturating_add(needed_channels) <= n_ch;
+          let (out_first, out_stereo) = if multi_out_now && fx_in_range {
+            (fx_out_first, fx_out_stereo)
+          } else {
+            (0usize, true)
+          };
+          if out_stereo {
+            let l_idx = out_first;
+            let r_idx = out_first + 1;
+            if l_idx < n_ch {
               for frame in 0..rev_frames {
-                let mono = 0.5 * (reverb_out_l[frame] + reverb_out_r[frame]);
-                buf[frame * n_ch + out_first] += mono;
+                buf[frame * n_ch + l_idx] += fxbus_l[frame];
               }
+            }
+            if r_idx < n_ch {
+              for frame in 0..rev_frames {
+                buf[frame * n_ch + r_idx] += fxbus_r[frame];
+              }
+            }
+          } else if out_first < n_ch {
+            // Mono fx out — sum L+R*0.5 into a single channel.
+            for frame in 0..rev_frames {
+              let mono = 0.5 * (fxbus_l[frame] + fxbus_r[frame]);
+              buf[frame * n_ch + out_first] += mono;
             }
           }
         }
@@ -6178,6 +6362,8 @@ pub struct TrackFilterUpdate {
   pub cutoff_norm: f32,
   pub resonance: f32,
   pub fx_send: f32,
+  pub reverb_send: f32,
+  pub delay_send: f32,
 }
 
 // One invoke carrying N per-track updates. RAF push in JS hits this
@@ -6189,7 +6375,9 @@ pub fn audio_set_track_filters_bulk(updates: Vec<TrackFilterUpdate>) -> Result<(
   let e = engine();
   for u in updates {
     e.set_track_filter(u.track_id.clone(), u.cutoff_norm, u.resonance);
-    e.set_track_fx_send(u.track_id, u.fx_send);
+    e.set_track_fx_send(u.track_id.clone(), u.fx_send);
+    e.set_track_reverb_send(u.track_id.clone(), u.reverb_send);
+    e.set_track_delay_send(u.track_id, u.delay_send);
   }
   Ok(())
 }
@@ -6202,6 +6390,17 @@ pub fn audio_set_reverb_params(
   damping: f32,
 ) -> Result<(), String> {
   engine().set_reverb_params(size, wet_gain, diffusion, damping);
+  Ok(())
+}
+
+#[tauri::command]
+pub fn audio_set_delay_params(
+  delay_seconds: f32,
+  feedback: f32,
+  pingpong: f32,
+  lofi: f32,
+) -> Result<(), String> {
+  engine().set_delay_params(delay_seconds, feedback, pingpong, lofi);
   Ok(())
 }
 

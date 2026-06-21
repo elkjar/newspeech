@@ -9,6 +9,7 @@ import type { MidiTarget } from '../midi/midiMap';
 import type { TapeParams } from '../audio/tape';
 import type { GlitchParams } from '../audio/glitch';
 import type { ReverbParams } from '../audio/reverb';
+import { DELAY_DIVISIONS, type DelayParams } from '../audio/delay';
 import type { SaturationParams } from '../audio/saturation';
 import {
   loCutLabel,
@@ -241,12 +242,20 @@ function CycleButton({
   );
 }
 
-function StageDivider({ label }: { label: string }) {
+// Thin vertical rule between FX groups — lifted from the params menu's Divider.
+function Divider() {
+  return <div className="self-stretch w-px bg-white/10" />;
+}
+
+// One FX stage: a horizontal label on top, controls in a 2-tall grid that flows
+// into columns (matches the params menu's grouped-stack look).
+function FXGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center px-2 self-stretch">
-      <span className="text-[10px] uppercase tracking-[0.16em] opacity-40 [writing-mode:vertical-rl] rotate-180">
-        {label}
-      </span>
+    <div className="flex flex-col items-center gap-2">
+      <span className="text-[9px] uppercase tracking-widest text-white/40">{label}</span>
+      <div className="grid grid-flow-col grid-rows-2 gap-x-3 gap-y-3 items-start">
+        {children}
+      </div>
     </div>
   );
 }
@@ -364,6 +373,45 @@ function ReverbKnob<F extends NumericKeys<ReverbParams>>({
   );
 }
 
+
+// Delay feedback knob (store 0..1; mapped to the engine's 0..1.1 at push
+// time). No lfoKnob/midiTarget yet — LFO + MIDI on delay are follow-ups.
+function DelayKnob<F extends NumericKeys<DelayParams>>({
+  field,
+  label,
+}: {
+  field: F;
+  label: string;
+}) {
+  const value = useSequencerStore((s) => s.delay[field] as number);
+  const setDelay = useSequencerStore((s) => s.setDelay);
+  const onChange = useCallback(
+    (v: number) => setDelay({ [field]: v } as Partial<DelayParams>),
+    [setDelay, field],
+  );
+  return <LabeledKnob label={label} value={value} onChange={onChange} />;
+}
+
+// Delay Time — a synced note division. CycleButton works in index space, so
+// map division ↔ index over DELAY_DIVISIONS.
+function DelayTimeCycle() {
+  const division = useSequencerStore((s) => s.delay.timeDivision);
+  const setDelay = useSequencerStore((s) => s.setDelay);
+  const index = Math.max(0, DELAY_DIVISIONS.indexOf(division));
+  const onChange = useCallback(
+    (i: number) => setDelay({ timeDivision: DELAY_DIVISIONS[Math.round(i) % DELAY_DIVISIONS.length] }),
+    [setDelay],
+  );
+  return (
+    <CycleButton
+      label="time"
+      value={index}
+      count={DELAY_DIVISIONS.length}
+      format={(i) => DELAY_DIVISIONS[Math.round(i)] ?? ''}
+      onChange={onChange}
+    />
+  );
+}
 
 function SaturationKnob<F extends NumericKeys<SaturationParams>>({
   field,
@@ -534,190 +582,116 @@ export function FXPanel({ section = 'all' }: { section?: 'fx' | 'master' | 'all'
   return (
     <div className="flex flex-col items-stretch gap-6 px-4 py-4">
       {showFx && (
-      <div className="flex flex-wrap items-start justify-center gap-5">
-      <StageDivider label="pre" />
-      <SaturationKnob
-        field="preDrive"
-        label="drive"
-        lfoKnob="preSaturationDrive"
-        midiTarget="fx:saturation.preDrive"
-      />
-      <StageDivider label="tape" />
-      <TapeKnob
-        field="position"
-        label="position"
-        lfoKnob="tapePosition"
-        midiTarget="fx:tape.position"
-      />
-      <TapeKnob
-        field="length"
-        label="length"
-        lfoKnob="tapeLength"
-        midiTarget="fx:tape.length"
-      />
-      <TapeToggle field="reverse" label="reverse" />
-      <TapeToggle field="hold" label="hold" midiTarget="fx:tape.hold" />
-      <TapeKnob
-        field="grainRate"
-        label="grain rate"
-        lfoKnob="tapeGrainRate"
-        midiTarget="fx:tape.grainRate"
-      />
-      <TapeKnob
-        field="grainMix"
-        label="grain mix"
-        lfoKnob="tapeGrainMix"
-        midiTarget="fx:tape.grainMix"
-      />
-      <TapeKnob
-        field="mix"
-        label="mix"
-        lfoKnob="tapeMix"
-        midiTarget="fx:tape.mix"
-      />
-      <StageDivider label="glitch" />
-      <GlitchKnob
-        field="chance"
-        label="chance"
-        lfoKnob="glitchChance"
-        midiTarget="fx:glitch.chance"
-      />
-      <GlitchKnob
-        field="mix"
-        label="mix"
-        lfoKnob="glitchMix"
-        midiTarget="fx:glitch.mix"
-      />
-      <StageDivider label="reverb" />
-      <ReverbKnob
-        field="size"
-        label="size"
-        lfoKnob="reverbSize"
-        midiTarget="fx:reverb.size"
-      />
-      <ReverbKnob
-        field="mix"
-        label="mix"
-        lfoKnob="reverbMix"
-        midiTarget="fx:reverb.mix"
-      />
-      <ReverbKnob
-        field="diffusion"
-        label="diff"
-        lfoKnob="reverbDiffusion"
-        midiTarget="fx:reverb.diffusion"
-      />
-      <ReverbKnob
-        field="damping"
-        label="damp"
-        lfoKnob="reverbDamping"
-        midiTarget="fx:reverb.damping"
-      />
+      <div className="flex items-stretch justify-center gap-4">
+        <FXGroup label="pre">
+          <SaturationKnob
+            field="preDrive"
+            label="drive"
+            lfoKnob="preSaturationDrive"
+            midiTarget="fx:saturation.preDrive"
+          />
+        </FXGroup>
+        <Divider />
+        <FXGroup label="tape">
+          <TapeKnob field="position" label="position" lfoKnob="tapePosition" midiTarget="fx:tape.position" />
+          <TapeKnob field="length" label="length" lfoKnob="tapeLength" midiTarget="fx:tape.length" />
+          <TapeToggle field="reverse" label="reverse" />
+          <TapeToggle field="hold" label="hold" midiTarget="fx:tape.hold" />
+          <TapeKnob field="grainRate" label="grain rate" lfoKnob="tapeGrainRate" midiTarget="fx:tape.grainRate" />
+          <TapeKnob field="grainMix" label="grain mix" lfoKnob="tapeGrainMix" midiTarget="fx:tape.grainMix" />
+          <TapeKnob field="mix" label="mix" lfoKnob="tapeMix" midiTarget="fx:tape.mix" />
+        </FXGroup>
+        <Divider />
+        <FXGroup label="glitch">
+          <GlitchKnob field="chance" label="chance" lfoKnob="glitchChance" midiTarget="fx:glitch.chance" />
+          <GlitchKnob field="mix" label="mix" lfoKnob="glitchMix" midiTarget="fx:glitch.mix" />
+        </FXGroup>
+        <Divider />
+        {/* No reverb "mix" knob — reverb is a 100%-wet send/return now; the
+            per-instrument Rev Send is the amount control. */}
+        <FXGroup label="reverb">
+          <ReverbKnob field="size" label="size" lfoKnob="reverbSize" midiTarget="fx:reverb.size" />
+          <ReverbKnob field="diffusion" label="diff" lfoKnob="reverbDiffusion" midiTarget="fx:reverb.diffusion" />
+          <ReverbKnob field="damping" label="damp" lfoKnob="reverbDamping" midiTarget="fx:reverb.damping" />
+        </FXGroup>
+        <Divider />
+        {/* Delay — global ping-pong send/return, sibling to reverb. */}
+        <FXGroup label="delay">
+          <DelayTimeCycle />
+          <DelayKnob field="feedback" label="feedback" />
+          <DelayKnob field="pingpong" label="ping" />
+          <DelayKnob field="lofi" label="lofi" />
+        </FXGroup>
         {section === 'all' && (
-        <div className="flex flex-col items-stretch gap-2 self-center text-xs uppercase tracking-widest opacity-70">
-          <MasterPresetSelect />
-          <button
-            onClick={() => setMasterExpanded(!masterExpanded)}
-            title={masterExpanded ? 'Hide master output' : 'Show master output'}
-            className="opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            master {masterExpanded ? '▴' : '▾'}
-          </button>
-        </div>
+          <div className="flex flex-col items-stretch gap-2 self-center text-xs uppercase tracking-widest opacity-70">
+            <MasterPresetSelect />
+            <button
+              onClick={() => setMasterExpanded(!masterExpanded)}
+              title={masterExpanded ? 'Hide master output' : 'Show master output'}
+              className="opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              master {masterExpanded ? '▴' : '▾'}
+            </button>
+          </div>
         )}
       </div>
       )}
       {showMaster && (
-      <div className="flex flex-wrap items-start justify-center gap-5">
-      {section === 'master' && (
-        <div className="self-center text-xs uppercase tracking-widest opacity-70">
-          <MasterPresetSelect />
-        </div>
-      )}
-      <StageDivider label="master" />
-      <MasterKnob
-        field="input"
-        label="input"
-        lfoKnob="masterInput"
-        midiTarget="fx:master.input"
-      />
-      <MasterCycle
-        field="loCut"
-        label="lo-cut"
-        count={LO_CUT_POSITIONS}
-        format={loCutLabel}
-        midiTarget="fx:master.loCut"
-      />
-      <MasterKnob
-        field="comp"
-        label="comp"
-        lfoKnob="masterComp"
-        midiTarget="fx:master.comp"
-      />
-      <MasterCycle
-        field="compAttack"
-        label="atk"
-        count={COMP_ATTACK_COUNT}
-        format={compAttackLabel}
-        midiTarget="fx:master.compAttack"
-      />
-      <MasterCycle
-        field="compRelease"
-        label="rel"
-        count={COMP_RELEASE_COUNT}
-        format={compReleaseLabel}
-        midiTarget="fx:master.compRelease"
-      />
-      <MasterCycle
-        field="mode"
-        label="mode"
-        count={MODE_COUNT}
-        format={modeLabel}
-        midiTarget="fx:master.mode"
-      />
-      <MasterKnob
-        field="drive"
-        label="drive"
-        lfoKnob="masterDrive"
-        midiTarget="fx:master.drive"
-      />
-      <MasterKnob
-        field="bias"
-        label="bias"
-        lfoKnob="masterBias"
-        midiTarget="fx:master.bias"
-        scale={0.2}
-      />
-      <MasterKnob
-        field="mix"
-        label="mix"
-        lfoKnob="masterMix"
-        midiTarget="fx:master.mix"
-      />
-      <MasterKnob
-        field="hiCut"
-        label="hi-cut"
-        lfoKnob="masterHiCut"
-        midiTarget="fx:master.hiCut"
-      />
-      <MasterKnob
-        field="trim"
-        label="trim"
-        lfoKnob="masterTrim"
-        midiTarget="fx:master.trim"
-      />
-      <MasterToggle
-        field="gateEnabled"
-        label="gate"
-        midiTarget="fx:master.gateEnabled"
-      />
-      <MasterKnob
-        field="gateThreshold"
-        label="gate thr"
-        lfoKnob="masterGateThreshold"
-        midiTarget="fx:master.gateThreshold"
-      />
-      <MasterToggle field="bypass" label="bypass" midiTarget="fx:master.bypass" />
+      <div className="flex items-stretch justify-center gap-4">
+        {section === 'master' && (
+          <div className="self-center text-xs uppercase tracking-widest opacity-70">
+            <MasterPresetSelect />
+          </div>
+        )}
+        <FXGroup label="in">
+          <MasterKnob field="input" label="input" lfoKnob="masterInput" midiTarget="fx:master.input" />
+          <MasterCycle
+            field="loCut"
+            label="lo-cut"
+            count={LO_CUT_POSITIONS}
+            format={loCutLabel}
+            midiTarget="fx:master.loCut"
+          />
+        </FXGroup>
+        <Divider />
+        <FXGroup label="comp">
+          <MasterKnob field="comp" label="comp" lfoKnob="masterComp" midiTarget="fx:master.comp" />
+          <MasterCycle
+            field="compAttack"
+            label="atk"
+            count={COMP_ATTACK_COUNT}
+            format={compAttackLabel}
+            midiTarget="fx:master.compAttack"
+          />
+          <MasterCycle
+            field="compRelease"
+            label="rel"
+            count={COMP_RELEASE_COUNT}
+            format={compReleaseLabel}
+            midiTarget="fx:master.compRelease"
+          />
+        </FXGroup>
+        <Divider />
+        <FXGroup label="dist">
+          <MasterCycle
+            field="mode"
+            label="mode"
+            count={MODE_COUNT}
+            format={modeLabel}
+            midiTarget="fx:master.mode"
+          />
+          <MasterKnob field="drive" label="drive" lfoKnob="masterDrive" midiTarget="fx:master.drive" />
+          <MasterKnob field="bias" label="bias" lfoKnob="masterBias" midiTarget="fx:master.bias" scale={0.2} />
+          <MasterKnob field="mix" label="mix" lfoKnob="masterMix" midiTarget="fx:master.mix" />
+        </FXGroup>
+        <Divider />
+        <FXGroup label="out">
+          <MasterKnob field="hiCut" label="hi-cut" lfoKnob="masterHiCut" midiTarget="fx:master.hiCut" />
+          <MasterKnob field="trim" label="trim" lfoKnob="masterTrim" midiTarget="fx:master.trim" />
+          <MasterToggle field="gateEnabled" label="gate" midiTarget="fx:master.gateEnabled" />
+          <MasterKnob field="gateThreshold" label="gate thr" lfoKnob="masterGateThreshold" midiTarget="fx:master.gateThreshold" />
+          <MasterToggle field="bypass" label="bypass" midiTarget="fx:master.bypass" />
+        </FXGroup>
       </div>
       )}
     </div>

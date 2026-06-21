@@ -499,6 +499,10 @@ export interface TrackFilterUpdate {
   cutoffNorm: number;
   resonance: number;
   fxSend: number;
+  // Per-instrument reverb send (the active voice's reverbSend), 0..1.
+  reverbSend: number;
+  // Per-instrument delay send (the active voice's delaySend), 0..1.
+  delaySend: number;
 }
 
 export async function setTrackFiltersBulk(
@@ -513,6 +517,8 @@ export async function setTrackFiltersBulk(
       cutoff_norm: u.cutoffNorm,
       resonance: u.resonance,
       fx_send: u.fxSend,
+      reverb_send: u.reverbSend,
+      delay_send: u.delaySend,
     })),
   });
 }
@@ -581,6 +587,22 @@ export async function setReverbParams(opts: {
     wetGain: opts.wetGain,
     diffusion: opts.diffusion,
     damping: opts.damping,
+  });
+}
+
+// Global ping-pong delay. `delaySeconds` is the tempo-synced time (computed
+// JS-side from the note division + bpm); `feedback` 0..1.1 (engine clamps).
+export async function setDelayParams(opts: {
+  delaySeconds: number;
+  feedback: number;
+  pingpong: number;
+  lofi: number;
+}): Promise<void> {
+  await invoke<void>('audio_set_delay_params', {
+    delaySeconds: opts.delaySeconds,
+    feedback: opts.feedback,
+    pingpong: opts.pingpong,
+    lofi: opts.lofi,
   });
 }
 

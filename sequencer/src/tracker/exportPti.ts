@@ -21,6 +21,8 @@ import { getRegisteredKits } from '../instruments/manifestRegistry';
 import {
   voiceGainOverride,
   voiceTune,
+  voiceReverbSend,
+  voiceDelaySend,
   voiceTrim,
   voiceFilter,
   voiceFilterLfo,
@@ -146,6 +148,11 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
       : (trim.loop as InstrumentPlayMode);
     inst.volume = voiceGainOverride(voiceId);
     inst.tune = Math.max(-24, Math.min(24, Math.round(voiceTune(voiceId))));
+    // Per-instrument reverb + delay sends — both models use a 0..1 float, so
+    // they map straight across. (Sequence's native delay aux isn't built yet,
+    // but the .pti carries delay send for the real Tracker regardless.)
+    inst.reverbSend = Math.max(0, Math.min(1, voiceReverbSend(voiceId)));
+    inst.delaySend = Math.max(0, Math.min(1, voiceDelaySend(voiceId)));
     // Window fractions → frame points. The Tracker addresses points with a
     // 16-bit value, so samples longer than 65535 frames clamp here (the
     // device can only seek into the first 65535 frames).

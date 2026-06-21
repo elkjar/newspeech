@@ -29,6 +29,7 @@ import type { Scale } from '../audio/scale';
 import { DEFAULT_TAPE_PARAMS, type TapeParams } from '../audio/tape';
 import { DEFAULT_GLITCH_PARAMS, type GlitchParams } from '../audio/glitch';
 import { DEFAULT_REVERB_PARAMS, type ReverbParams } from '../audio/reverb';
+import { DEFAULT_DELAY_PARAMS, DELAY_DIVISIONS, type DelayParams } from '../audio/delay';
 import { DEFAULT_SATURATION_PARAMS, type SaturationParams } from '../audio/saturation';
 import { DEFAULT_MASTER_PARAMS, type MasterParams } from '../audio/master';
 import { resetChordContext } from '../audio/chordContext';
@@ -58,6 +59,7 @@ interface PersistedState {
   tape?: TapeParams;
   glitch?: GlitchParams;
   reverb?: ReverbParams;
+  delay?: DelayParams;
   saturation?: SaturationParams;
   master?: MasterParams;
   banks?: (BankSlot | null)[];
@@ -115,6 +117,7 @@ export function exportProject(): string {
     tape: s.tape,
     glitch: s.glitch,
     reverb: s.reverb,
+    delay: s.delay,
     saturation: s.saturation,
     master: s.master,
     banks: topBanks,
@@ -210,6 +213,18 @@ export function hydrateReverb(v: unknown): ReverbParams {
     mix: clamp01(r.mix, DEFAULT_REVERB_PARAMS.mix),
     diffusion: clamp01(r.diffusion, DEFAULT_REVERB_PARAMS.diffusion),
     damping: clamp01(r.damping, DEFAULT_REVERB_PARAMS.damping),
+  };
+}
+
+export function hydrateDelay(v: unknown): DelayParams {
+  const d = (v && typeof v === 'object' ? v : {}) as Partial<DelayParams>;
+  return {
+    timeDivision: DELAY_DIVISIONS.includes(d.timeDivision as DelayParams['timeDivision'])
+      ? (d.timeDivision as DelayParams['timeDivision'])
+      : DEFAULT_DELAY_PARAMS.timeDivision,
+    feedback: clamp01(d.feedback, DEFAULT_DELAY_PARAMS.feedback),
+    pingpong: clamp01(d.pingpong, DEFAULT_DELAY_PARAMS.pingpong),
+    lofi: clamp01(d.lofi, DEFAULT_DELAY_PARAMS.lofi),
   };
 }
 
@@ -797,6 +812,7 @@ export function importProject(json: string): boolean {
     tape: hydrateTape(data.tape),
     glitch: hydrateGlitch(data.glitch),
     reverb: hydrateReverb(data.reverb),
+    delay: hydrateDelay(data.delay),
     saturation: hydrateSaturation(data.saturation),
     master: hydrateMaster(data.master),
     banks,

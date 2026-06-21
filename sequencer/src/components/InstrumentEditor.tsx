@@ -128,6 +128,8 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const filterType = edit?.filterType ?? 'off';
   const cutoff = edit?.cutoff ?? 1;
   const resonance = edit?.resonance ?? 0;
+  const reverbSend = edit?.reverbSend ?? 0;
+  const delaySend = edit?.delaySend ?? 0;
   const ampEnv = edit?.ampEnv ?? DEFAULT_AMP_ENV;
   const envOn = edit?.ampEnv?.on ?? false;
   // Generic-mod grid values (defaulted for display).
@@ -275,13 +277,23 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
           Order: level (vol/tune) · filter · mode-specific (loop | direction +
           grain) — so the first two columns stay put when switching playmode. */}
       <div className="flex-[7] min-w-0 flex items-start gap-5">
-        {/* level */}
-        <ControlStack>
+        {/* level — 2×2 grid mirroring the .pti instrument param set:
+              volume · rev send
+              tune   · delay send
+            Sends save with the instrument + export to .pti. (The native delay
+            aux isn't built yet, so delay send is silent in-app for now.) */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 items-start">
           <TopKnob
             label="volume"
             value={gain / 2}
             display={`×${gain.toFixed(2)}`}
             onChange={(v) => setVoiceEdit(voiceId, { gain: v * 2 })}
+          />
+          <TopKnob
+            label="rev send"
+            value={reverbSend}
+            display={`${(reverbSend * 100).toFixed(0)}%`}
+            onChange={(v) => setVoiceEdit(voiceId, { reverbSend: v })}
           />
           <TopKnob
             label="tune"
@@ -290,7 +302,13 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             display={`${tune > 0 ? '+' : ''}${tune} st`}
             onChange={(v) => setVoiceEdit(voiceId, { tune: Math.round(v * 48 - 24) })}
           />
-        </ControlStack>
+          <TopKnob
+            label="delay send"
+            value={delaySend}
+            display={`${(delaySend * 100).toFixed(0)}%`}
+            onChange={(v) => setVoiceEdit(voiceId, { delaySend: v })}
+          />
+        </div>
         <Divider />
         {/* filter — label on top, mode-button row, then cutoff + reso */}
         <LabeledStack label="filter">
@@ -608,11 +626,6 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
       {actionBar}
     </div>
   );
-}
-
-// A vertical stack of related controls (a column in the params grid).
-function ControlStack({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col items-center gap-3">{children}</div>;
 }
 
 // A control group with its label ON TOP and everything stacked below it

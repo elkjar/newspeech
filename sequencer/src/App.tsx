@@ -20,7 +20,12 @@ import { scheduler } from './audio/scheduler';
 import { emitClockForStep, setClockBpm } from './audio/midiClock';
 import { samplePlayer } from './audio/samplePlayer';
 import { voiceRole } from './audio/voices';
-import { resolveVoiceEnvelope } from './instruments/voiceEditsStore';
+import {
+  resolveVoiceEnvelope,
+  voiceReverbSend,
+  voiceDelaySend,
+} from './instruments/voiceEditsStore';
+import { delayDivisionToSeconds, FEEDBACK_TO_ENGINE } from './audio/delay';
 
 // TrackSection string → native section code (matches SECTION_* in
 // `src-tauri/src/audio.rs`). 0 = none (no splits write), 1 = drum,
@@ -38,6 +43,7 @@ import {
   repitchNote,
   setTrackFiltersBulk,
   setReverbParams,
+  setDelayParams,
   setSaturationParams,
   setTapeParams,
   setGlitchParams,
@@ -1122,7 +1128,13 @@ export function App() {
     if (!bootDone) return;
     const lastTrack = new Map<
       string,
-      { cutoffNorm: number; resonance: number; fxSend: number }
+      {
+        cutoffNorm: number;
+        resonance: number;
+        fxSend: number;
+        reverbSend: number;
+        delaySend: number;
+      }
     >();
     // Last CC values (0..127 ints) sent out per instrument track, so we only
     // emit on a real change — dedupes the rAF tick to ≤128 messages per full
@@ -1144,6 +1156,12 @@ export function App() {
       wetGain: number;
       diffusion: number;
       damping: number;
+    } | null = null;
+    let lastDelay: {
+      seconds: number;
+      feedback: number;
+      pingpong: number;
+      lofi: number;
     } | null = null;
     let lastSaturation: { preDrive: number } | null = null;
     let lastTape: {
@@ -1194,15 +1212,24 @@ export function App() {
         const cutoffNorm = t.filterCutoff;
         const resonance = t.filterResonance;
         const fxSend = t.fxSend;
+        // Reverb send is a per-instrument (voice) param, not a track knob —
+        // source it from the track's current voice. Non-voice rows (external
+        // MIDI instruments) have no native voice, so 0.
+        const reverbSend =
+          t.source.kind === 'voice' ? voiceReverbSend(t.source.id) : 0;
+        const delaySend =
+          t.source.kind === 'voice' ? voiceDelaySend(t.source.id) : 0;
         const last = lastTrack.get(t.id);
         const changed =
           !last ||
           Math.abs(last.cutoffNorm - cutoffNorm) > 0.0005 ||
           Math.abs(last.resonance - resonance) > 0.001 ||
-          Math.abs(last.fxSend - fxSend) > 0.001;
+          Math.abs(last.fxSend - fxSend) > 0.001 ||
+          Math.abs((last.reverbSend ?? 0) - reverbSend) > 0.001 ||
+          Math.abs((last.delaySend ?? 0) - delaySend) > 0.001;
         if (changed) {
-          updates.push({ trackId: t.id, cutoffNorm, resonance, fxSend });
-          lastTrack.set(t.id, { cutoffNorm, resonance, fxSend });
+          updates.push({ trackId: t.id, cutoffNorm, resonance, fxSend, reverbSend, delaySend });
+          lastTrack.set(t.id, { cutoffNorm, resonance, fxSend, reverbSend, delaySend });
         }
 
         // Instrument (external-MIDI) rows: mirror the filter / gain / pan knobs
@@ -1263,6 +1290,33 @@ export function App() {
       if (reverbChanged) {
         lastReverb = { size, wetGain, diffusion, damping };
         void setReverbParams({ size, wetGain, diffusion, damping });
+      }
+
+      // Global delay base. Time is tempo-synced: division + current bpm →
+      // seconds (so a bpm change re-pushes the time too). Feedback maps store
+      // 0..1 → engine 0..1.1 so the top runs past unity.
+      const dl = state.delay;
+      const delaySeconds = delayDivisionToSeconds(dl.timeDivision, state.bpm);
+      const delayFeedback = dl.feedback * FEEDBACK_TO_ENGINE;
+      const delayChanged =
+        !lastDelay ||
+        Math.abs(lastDelay.seconds - delaySeconds) > 1e-6 ||
+        Math.abs(lastDelay.feedback - delayFeedback) > 0.001 ||
+        Math.abs(lastDelay.pingpong - dl.pingpong) > 0.001 ||
+        Math.abs(lastDelay.lofi - dl.lofi) > 0.001;
+      if (delayChanged) {
+        lastDelay = {
+          seconds: delaySeconds,
+          feedback: delayFeedback,
+          pingpong: dl.pingpong,
+          lofi: dl.lofi,
+        };
+        void setDelayParams({
+          delaySeconds,
+          feedback: delayFeedback,
+          pingpong: dl.pingpong,
+          lofi: dl.lofi,
+        });
       }
 
       // Pre-saturation drive (base). Drive at 0 is a true no-op in

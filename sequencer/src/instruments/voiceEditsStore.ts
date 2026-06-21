@@ -242,6 +242,11 @@ export interface VoiceEdit {
   filterType?: FilterType; // per-instrument filter; default 'off'
   cutoff?: number; // filter cutoff, normalized 0..1; default 1 (fully open)
   resonance?: number; // filter resonance, normalized 0..1; default 0
+  reverbSend?: number; // additive send to the global reverb return, 0..1; default 0
+                       // (Volume/Tune/Rev Send/Delay Send mirror the .pti instrument set)
+  delaySend?: number; // send to the delay aux, 0..1; default 0. Stored + exported
+                      // to .pti now; the native delay aux is a later increment, so
+                      // it's not yet audible in-app.
   filterLfo?: FilterLfoEdit; // cutoff LFO (special — bespoke engine path)
   ampEnv?: AmpEnvEdit; // volume envelope (special — overrides manifest env)
   // Generic-mod grid:
@@ -460,6 +465,21 @@ export function voiceGainOverride(voiceId: string): number {
 export function voiceTune(voiceId: string): number {
   const e = resolvedVoiceEdit(voiceId);
   return e?.tune ?? 0;
+}
+
+// Per-instrument reverb send (0..1), resolved for the audio path. Default 0 =
+// dry. Pushed to the native track's reverb_send so the additive aux carries
+// this instrument into the shared reverb return.
+export function voiceReverbSend(voiceId: string): number {
+  const e = resolvedVoiceEdit(voiceId);
+  return e?.reverbSend ?? 0;
+}
+
+// Per-instrument delay send (0..1). Stored + exported to .pti; the native delay
+// aux isn't built yet, so this has no in-app audio effect until it lands.
+export function voiceDelaySend(voiceId: string): number {
+  const e = resolvedVoiceEdit(voiceId);
+  return e?.delaySend ?? 0;
 }
 
 // Sample window + loop, resolved for the audio path. start/end are 0..1

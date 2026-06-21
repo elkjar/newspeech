@@ -39,6 +39,7 @@ import defaultPreset from './defaultPreset.json';
 import type { TapeParams } from '../audio/tape';
 import type { GlitchParams } from '../audio/glitch';
 import type { ReverbParams } from '../audio/reverb';
+import { DEFAULT_DELAY_PARAMS, type DelayParams } from '../audio/delay';
 import type { SaturationParams } from '../audio/saturation';
 import { MASTER_PRESETS, type MasterParams } from '../audio/master';
 import type { ChordVoicing } from '../audio/chords';
@@ -743,6 +744,8 @@ export interface SequencerState {
   setGlitch: (patch: Partial<GlitchParams>) => void;
   reverb: ReverbParams;
   setReverb: (patch: Partial<ReverbParams>) => void;
+  delay: DelayParams;
+  setDelay: (patch: Partial<DelayParams>) => void;
   nativeMix: NativeMix;
   setNativeMix: (patch: Partial<NativeMix>) => void;
   saturation: SaturationParams;
@@ -1282,6 +1285,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   reverb: hydrateReverbFromPreset((defaultPreset as { reverb?: unknown }).reverb),
   setReverb: (patch) =>
     set((state) => ({ reverb: { ...state.reverb, ...patch } })),
+  delay: { ...DEFAULT_DELAY_PARAMS },
+  setDelay: (patch) =>
+    set((state) => ({ delay: { ...state.delay, ...patch } })),
   nativeMix: readPersistedNativeMix(),
   setNativeMix: (patch) =>
     set((state) => {
