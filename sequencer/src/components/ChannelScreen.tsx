@@ -65,7 +65,12 @@ export function ChannelScreen() {
   const screenMode = useSequencerStore((s) => s.screenMode);
 
   return (
-      <div className="border border-white/15 w-full h-[280px] overflow-auto">
+      // w-0 min-w-full (not w-full): preferred width 0 so the box never feeds
+      // its content's max-content up to the shrink-to-fit app wrapper — WebKit
+      // otherwise leaks a wide child (e.g. the automation tab's 5-column grid)
+      // through the percentage width and grows the whole window. min-w-full
+      // fills the available width at layout; overflow-auto scrolls internally.
+      <div className="border border-white/15 w-0 min-w-full h-[280px] overflow-auto">
         {screenMode === 'roll' && (
           <div className="h-full flex items-start gap-3 p-3">
             <div className="flex-1 self-stretch border border-white/10">

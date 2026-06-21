@@ -89,11 +89,15 @@ async function start(): Promise<void> {
   try {
     const dir = await resolveRecordingsDir();
     const ts = timestamp();
-    await startRecordingCombined(joinPath(dir, `combined_${ts}.wav`));
+    // Lead every take with the tempo (e.g. `111bpm_<ts>`) so files sort by
+    // session and the bpm reads at a glance. The combined take carries no role
+    // suffix; the splits keep `_rhythm` / `_melody`.
+    const prefix = `${useSequencerStore.getState().bpm}bpm_${ts}`;
+    await startRecordingCombined(joinPath(dir, `${prefix}.wav`));
     if (useSequencerStore.getState().splits) {
       await startRecordingSplits({
-        rhythmPath: joinPath(dir, `rhythm_${ts}.wav`),
-        melodyPath: joinPath(dir, `melody_${ts}.wav`),
+        rhythmPath: joinPath(dir, `${prefix}_rhythm.wav`),
+        melodyPath: joinPath(dir, `${prefix}_melody.wav`),
       });
     }
   } catch (err) {
