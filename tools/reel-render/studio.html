@@ -84,6 +84,10 @@
       <span class="name">source <span style="opacity:.45">(edge/slit/etc.)</span></span>
       <select id="source"></select>
     </label>
+    <label style="flex-direction:row; align-items:center; gap:8px;">
+      <input id="use-source-audio" type="checkbox" disabled />
+      <span class="name">use source audio <span style="opacity:.45">(keep the clip's sound, overlay on top)</span></span>
+    </label>
 
     <div class="row">
       <label><span class="name">scale</span><input id="scale" type="number" min="1" max="4" step="0.5" value="2" /></label>
@@ -301,10 +305,21 @@ function refreshSourceOptions() {
   const isSrc = sourcePages.has($('page').value);
   $('source').disabled = !isSrc;
   $('source').innerHTML = ['(none)'].concat(isSrc ? sourcesData : []).map((n) => `<option>${n}</option>`).join('');
+  updateSourceAudioToggle();
+}
+// The "use source audio" toggle only applies to a video clip — enable it when
+// one is picked, force it off otherwise (images/no source have no audio track).
+const VIDEO_SRC_RE = /\.(mp4|mov|webm|m4v)$/i;
+function updateSourceAudioToggle() {
+  const el = $('use-source-audio');
+  const ok = !!currentSource && VIDEO_SRC_RE.test(currentSource);
+  el.disabled = !ok;
+  if (!ok) el.checked = false;
 }
 function onSourceChange() {
   const v = $('source').value;
   currentSource = (v && v !== '(none)') ? v : null;
+  updateSourceAudioToggle();
   const w = vizWin();
   if (currentSource && w.__loadSourceUrl) w.__loadSourceUrl('/source/' + encodeURIComponent(currentSource), { play: true });
   // While recording, a source swap is a hard cut to a new segment with it.
@@ -503,6 +518,7 @@ async function render() {
     seconds: total,
     fps: parseInt($('fps').value, 10) || 30,
     jpeg: $('jpeg').checked,
+    useSourceAudio: $('use-source-audio').checked,
   };
   if (segments.length) {
     // Turn the captured segments into a render timeline; each segment's
@@ -520,6 +536,7 @@ async function render() {
     const st = snapshotState();
     body.params = st.params;
     body.localStorage = st.localStorage;
+    body.source = st.source;
     body.automation = [];
   }
   $('render').disabled = true;

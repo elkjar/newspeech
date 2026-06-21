@@ -31,7 +31,7 @@ const H = 1920;
 
 // ---- args ----------------------------------------------------------------
 function parseArgs(argv) {
-  const a = { page: '1-streaks', seconds: 8, fps: 30, seed: 1, scale: 2, out: 'reel.mp4', audio: null, gain: 1, state: null, preset: 'veryfast', jpeg: false, keepFrames: false };
+  const a = { page: '1-streaks', seconds: 8, fps: 30, seed: 1, scale: 2, out: 'reel.mp4', audio: null, gain: 1, state: null, preset: 'veryfast', jpeg: false, keepFrames: false, sourceAudio: false };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     const v = argv[i + 1];
@@ -46,6 +46,7 @@ function parseArgs(argv) {
     else if (k === '--state') { a.state = v; i++; }
     else if (k === '--timeline') { a.timeline = v; i++; }
     else if (k === '--source') { a.source = v; i++; }
+    else if (k === '--source-audio') { a.sourceAudio = true; }
     else if (k === '--preset') { a.preset = v; i++; }
     else if (k === '--jpeg') { a.jpeg = true; }
     else if (k === '--keep-frames') { a.keepFrames = true; }
@@ -152,14 +153,17 @@ function syntheticFeature(i, fps) {
 // One long-lived ffmpeg: PNG frames arrive on stdin (image2pipe), optional
 // audio is a second input, H.264 + lossless ALAC out. Encoding overlaps frame
 // capture and nothing hits disk (no PNG sequence, no re-read pass).
-function startFfmpegPipe(a, outPath, seconds) {
+function startFfmpegPipe(a, outPath, seconds, audioPath) {
   const args = ['-y', '-f', 'image2pipe', '-framerate', String(a.fps), '-i', 'pipe:0'];
-  if (a.audio) args.push('-t', String(seconds), '-i', resolve(process.cwd(), a.audio));
+  if (audioPath) args.push('-t', String(seconds), '-i', audioPath);
   args.push(
     '-map', '0:v',
     // No -shortest: reel length = the requested duration (the piped video), so a
     // shorter audio file ends early instead of truncating the whole render.
-    ...(a.audio ? ['-map', '1:a', '-c:a', 'alac'] : []),
+    // `1:a:0` = first audio stream of input 1 — works whether that input is a
+    // bare audio file or a video clip we're lifting the audio off of (its video
+    // streams stay unmapped; the composited frames already carry the picture).
+    ...(audioPath ? ['-map', '1:a:0', '-c:a', 'alac'] : []),
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', a.preset || 'veryfast',
     '-movflags', '+faststart', outPath,
   );
@@ -206,19 +210,43 @@ async function main() {
     const src = seg.state?.source;
     if (!src) continue;
     const abs = resolve(process.cwd(), src);
+    seg.sourceAbs = abs;
     allowedSources.add(abs);
     seg.sourceUrl = `/source?p=${encodeURIComponent(abs)}`;
   }
   const totalSeconds = segments.reduce((s, seg) => s + (seg.seconds || 0), 0);
   const totalFrames = Math.round(totalSeconds * a.fps);
 
+  // Pick the audio track to analyse + mux. Normally a separate --audio file;
+  // but with source-audio on we lift the audio straight off the video source
+  // so the reel keeps the clip's own sound under the overlays. That only makes
+  // sense for one continuous clip, so it's single-segment only — a hard-cut
+  // timeline keeps using --audio.
+  const VIDEO_SRC_RE = /\.(mp4|mov|webm|m4v)$/i;
+  const wantSourceAudio = a.sourceAudio || state?.useSourceAudio;
+  let audioPath = a.audio ? resolve(process.cwd(), a.audio) : null;
+  let audioFromSource = false;
+  if (wantSourceAudio && !a.timeline && segments.length === 1) {
+    const srcAbs = segments[0].sourceAbs;
+    if (srcAbs && VIDEO_SRC_RE.test(srcAbs)) { audioPath = srcAbs; audioFromSource = true; }
+    else process.stdout.write('  source-audio requested but no video source — falling back\n');
+  }
+
   // Feature track for the WHOLE timeline — audio-reactivity stays continuous
   // across cuts. --gain scales reactivity at feed time (no re-analysis).
   let features = null;
-  if (a.audio) {
-    process.stdout.write('  analysing audio…');
-    features = await computeFeatures(resolve(process.cwd(), a.audio), { fps: a.fps, seconds: totalSeconds });
-    process.stdout.write(` ${features.length} frames of features\n`);
+  if (audioPath) {
+    process.stdout.write(`  analysing audio${audioFromSource ? ' (from source clip)' : ''}…`);
+    try {
+      features = await computeFeatures(audioPath, { fps: a.fps, seconds: totalSeconds });
+      process.stdout.write(` ${features.length} frames of features\n`);
+    } catch (err) {
+      // A video with no audio track (or a decode failure) shouldn't kill the
+      // render — drop to synthetic reactivity and mux no audio.
+      process.stdout.write(` failed (${err.message || err}); rendering without audio\n`);
+      features = null;
+      audioPath = null;
+    }
   }
   const featureAt = (gf) => {
     const f = features ? features[Math.min(gf, features.length - 1)] : syntheticFeature(gf, a.fps);
@@ -230,7 +258,7 @@ async function main() {
   const server = await startServer();
   const port = server.address().port;
   const segNames = segments.map((s) => `${s.page}(${s.seconds}s)`).join(' · ');
-  console.log(`[reel-render] ${segNames} → ${a.out}  (${totalFrames} frames @ ${a.fps}fps${a.audio ? `, audio ${a.audio}` : ', synthetic'})`);
+  console.log(`[reel-render] ${segNames} → ${a.out}  (${totalFrames} frames @ ${a.fps}fps${audioPath ? `, audio ${audioFromSource ? '(from source)' : a.audio}` : ', synthetic'})`);
 
   // --scale renders each page at a smaller LOGICAL viewport (W/scale × H/scale)
   // with a matching deviceScaleFactor — elements are `scale`× bigger/legible,
@@ -243,7 +271,7 @@ async function main() {
   page.on('console', (m) => { if (m.type() === 'error') console.log('  [page error]', m.text()); });
 
   const outPath = resolve(process.cwd(), a.out);
-  const ff = startFfmpegPipe(a, outPath, totalSeconds); // one pipe across all segments
+  const ff = startFfmpegPipe(a, outPath, totalSeconds, audioPath); // one pipe across all segments
   const t0 = Date.now();
   let gf = 0; // global frame index (drives the continuous audio feed)
   for (const seg of segments) {

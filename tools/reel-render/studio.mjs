@@ -206,6 +206,7 @@ async function runRender(res, a, body) {
       params: body.params || {},
       automation: body.automation || [],
       source: srcPath(body.source),
+      useSourceAudio: !!body.useSourceAudio,
     }));
     args.push('--page', body.page, '--seconds', String(body.seconds ?? 30), '--state', statePath);
   }
