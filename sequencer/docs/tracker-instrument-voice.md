@@ -5,8 +5,78 @@ locally (Sequence audio = design monitor), then write a `.pti` the Tracker loads
 hardware over MIDI. Ordering decision (2026-06-17): build the Tracker voice **before** generic
 instrument-mode upgrades; granular comes **after** the format round-trip, before slice.
 
-This doc is the grounded spec from the 2026-06-17 research pass. Status: **format layer scaffolded
-+ verified headless; engine DSP + UI + hardware verification not started.**
+This doc is the grounded spec + build journal that began with the 2026-06-17 research pass. The
+per-section entries below are kept chronological (they record the design rationale); their original
+"BUILT / pending app test / NOT committed" tags are point-in-time and **superseded by the status
+block immediately below** — everything through the full modulation grid, granular, Save/Save-As, and
+per-instrument reverb/delay sends is now shipped on `main`.
+
+## STATUS — 2026-06-22 (shipped through 0.8.2)
+
+**Everything below the format-research sections is built, committed, and in `main`.** Commit map:
+
+| Increment | Commit | State |
+|-----------|--------|-------|
+| `@polyend/tracker-lib` + `.pti` export module | `a62f4d2` | shipped + hardware-validated |
+| `.pti` export button + A1/A2 (volume, tune) | `61979c3` | shipped |
+| A3 trim/loop + waveform editor + B1 per-instrument filter | `9337783` | shipped |
+| B2 amp ADSR + per-instrument cutoff LFO | `1457372` | shipped |
+| Remove vestigial envelope delay (DADSR → ADSR) | `5704f97` | shipped |
+| B2 full per-instrument modulation grid + redesigned editor | `3bc43c7` | shipped |
+| Phase C granular playmode (single-grain read-head) | `0e4b0c0` | shipped |
+| Save / Save-As to the global sample library | `524e575` | shipped |
+| Editor → `[params]` / `[automation]` tabs in the channel screen (0.8.0) | `9482a36` | shipped |
+| Per-instrument reverb + delay sends (0.8.2) | `ef98a6b` | shipped, delay aux audible |
+
+**Hardware-validated:** `.pti` files load + play + name correctly on the real Tracker (2026-06-17);
+the B1/B2 param serialization (filter, amp env → `automations[0]`, synced cutoff LFO →
+`automations[2]`, trim/loop → playmode + start/end) maps correctly on the device (2026-06-18).
+
+**Save / Save-As IS wired and the round-trip is sound** (`saveInstrument.ts` ↔ `voiceEditsStore.ts`):
+Save bakes `resolvedVoiceEdit` into the user-kit `manifest.json` `edits` field; the Rust scanner reads
+the manifest verbatim, the registry re-namespaces the voice keeping `.edits`, and `resolvedVoiceEdit`
+reads it back so playback / preview / `.pti` export all honor saved edits. Save-As forks a new
+library voice and repoints the focused track to it.
+
+### Genuinely still open
+
+1. **Slice + wavetable playmodes** — disabled scaffolds in `PlaymodeTabs` (`ready: false`). Wavetable
+   also activates the last unwired automation target (`WtPos` → `automations[3]`).
+2. **Generic-mod `.pti` automation export wiring** — `exportPti.ts` writes only `automations[0]`
+   (amp env), `[2]` (cutoff LFO) and `[4]` (granular pos). The rest of the *modulation grid* (pan → [1],
+   tremolo → [0] LFO side, cutoff-env → [2] env side, pitch → [5] Finetune) is **unserialized**. The
+   editor already enforces env-XOR-LFO per slot (`setMutex`), so no pick ambiguity — just replicate the
+   slot-[4] write pattern per slot. **Modulated pitch caveat:** the only pitch *automation* target is
+   slot [5] Finetune (±100 cents), so a pitch env/LFO can sweep at most ±1 semitone regardless of the
+   app's ±24-semitone depth — clamp + document. Still gated on a per-slot device listen (delay-probe
+   lesson). *Note: static tune + finetune are a separate, fully-wired thing — see below.*
+3. ~~Hardware A/B of granular + `automations[4]`~~ **DONE (Chris, 2026-06-22)** — not perfect but
+   close enough to understand how it resolves on the device. Delay + reverb sends likewise confirmed to
+   map onto the hardware effects. Local audition is approximate-not-parity by design; the `.pti`
+   fidelity carries.
+4. **Save-dialog-direct-to-SD for `.pti`** — export still downloads to the default dir (copy to SD by
+   hand). Needs the `.pti` bytes via a blob capture or a Rust `save_binary_file`.
+5. **Launchpad auto-key on editor entry — DROPPED.** It was a Phase A line item for the *modal* editor;
+   the editor became always-visible `[params]`/`[automation]` tabs (`9482a36`), so there's no
+   open/close event to hook. Live play already works via the existing keyboard page + preview button.
+6. **In progress — instrument params as app LFO destinations:** increment 1 (per-note drift of grain
+   length + position via the global LFO) BUILT 2026-06-22, app-only, not committed; increment 2
+   (continuous in-note sweep, needs engine work) deferred. See the dedicated section below.
+7. **Parked enhancements:** gate-synthesis to bound flat looped drums; `npm audit` advisory review.
+
+### Static fine pitch — tune + finetune (2026-06-22, app-only, not committed)
+
+The editor had only a coarse **tune** knob locked to integer semitones — useless for pitch-correcting a
+recorded sample. Added a dedicated **finetune** control (cents, ±100, integer steps), mirroring the
+Tracker's own Tune/Finetune split and the `.pti`'s two static fields (`tune` ±24 st, `finetune` ±100 c).
+- `VoiceEdit.finetune` (cents) + `voiceFinetune()` accessor (`voiceEditsStore.ts`).
+- Audio path: `samplePlayer.ts` folds both into one multiply — `pitch ×= 2^((tune + finetune/100)/12)`
+  (no Rust change; the engine already takes the final pitch). Works for melodic + drums.
+- Export: `exportPti.ts` writes `inst.finetune` (clamped ±100, integer) straight across — no
+  decomposition, since both models keep tune + finetune as separate static fields.
+- Editor: `finetune` `TopKnob` (cents, bipolar) next to `tune` in the level grid.
+`tsc` clean. Distinct from the *modulated* pitch limit in open-item 2 — this is the static base offset,
+full-range and lossless. Reload the app (samplePlayer edit). NOT committed.
 
 ## The library
 
@@ -87,7 +157,7 @@ Net-new for the voice type: explicit playmode + per-mode params mirroring `Instr
 single windowed read-head DSP (native `audio.rs`), per-instrument filter/env/LFO authoring, slice
 markers, and the `.pti` read/write + authoring UI.
 
-## In-app exporter — LANDED 2026-06-18 (pending hardware test)
+## In-app exporter — SHIPPED (`61979c3`; hardware-validated 2026-06-17)
 
 "Export focused track → `.pti`" now lives in the app. Files:
 - **`src/tracker/exportPti.ts`** — `exportVoiceToPti(voiceId)` + `voiceIsExportable(voiceId)`.
@@ -168,15 +238,16 @@ each sample and sound."
   Chris's priority DSP.
 - **Phase D — slice / beatslice / wavetable.**
 
-### Follow-up agreed for AFTER this build: per-instrument reverb send
+### Follow-up: per-instrument reverb + delay sends — SHIPPED (0.8.2, `ef98a6b`)
 
-Detach reverb from the global FX bus → **per-instrument reverb send** (and likely delay send). Direct
-synergy: `.pti` already carries per-instrument `reverbSend` + `delaySend` (0–1), so per-instrument
-sends align Sequence's engine with the instrument format. Design when Phase A–C land. (Engine note:
-[[reference-bank-swap-filter-graphs]] — per-track filter graphs are stable/persistent; per-instrument
-sends should follow that stability discipline.)
+Reverb detached from the global FX bus → **per-instrument reverb AND delay sends**, aligning Sequence's
+engine with the `.pti` per-instrument `reverbSend` + `delaySend` (0–1). Both are stored in `VoiceEdit`,
+read on the audio path (`voiceReverbSend`/`voiceDelaySend`), and exported. The native delay aux is
+built and audible (`audio.rs` `delay_send_eff`/`delay_send()`, consumed in the mix at ~`5089`) — the
+old `voiceEditsStore` comment calling delay "not yet audible" is stale. (Engine discipline followed
+per [[reference-bank-swap-filter-graphs]] — per-track graphs stay stable/persistent.)
 
-## A3 — start/end trim + loop modes — BUILT 2026-06-18 (pending app test)
+## A3 — start/end trim + loop modes — SHIPPED (`9337783`)
 
 Slice A3 adds a per-instrument **sample window** (start/end) + **loop mode** (off/fwd/bwd/pingpong),
 auditioned through the native engine and serialized to `.pti`. App-only, like A1/A2.
@@ -248,7 +319,7 @@ playback + preview, watch the playhead track fwd/bwd/ping, confirm loops don't c
 points, and re-export a trimmed/looped voice to confirm the `.pti` carries the window + playmode on
 hardware.
 
-## B1 — per-instrument filter — BUILT 2026-06-18 (pending app test)
+## B1 — per-instrument filter — SHIPPED (`9337783`)
 
 First slice of Phase B: a per-instrument **LP / HP / BP filter** with cutoff + resonance, authored in
 the editor, auditioned through the native engine, serialized to `.pti`. **Distinct from the per-track
@@ -280,7 +351,7 @@ sweep that note (re-press to hear the change). Live cutoff sweep would need per-
 (essentially the automations layer / Phase B2-3); deferred. `tsc` + `cargo check` clean. Reload the app
 (engine rebuild). NEXT in Phase B: per-instrument **envelope + LFO** (the `automations[]` layer).
 
-## B2 (envelope) — per-instrument amplitude ADSR — BUILT 2026-06-18
+## B2 (envelope) — per-instrument amplitude ADSR — SHIPPED (`1457372`)
 
 First slice of the modulation/automation layer: a per-instrument **amplitude envelope** (ADSR) that
 overrides the manifest envelope.
@@ -311,7 +382,7 @@ is honored — non-UI fields need a listen-test.)
 
 `tsc` + `cargo check` clean. Reload the app (engine rebuild).
 
-## B2 (cutoff LFO) — per-instrument filter LFO — BUILT 2026-06-18 (pending app test)
+## B2 (cutoff LFO) — per-instrument filter LFO — SHIPPED (`1457372`)
 
 A free-running LFO modulating the per-instrument filter cutoff — the first LFO primitive + the live
 per-voice cutoff-modulation path (which a filter *envelope* will reuse). Only meaningful with the
@@ -350,7 +421,7 @@ refinement if cross-voice phase alignment ever matters).
 `tsc` + `cargo check` clean. Reload the app. NEXT in B: a **filter envelope** (cutoff swept by a DADSR,
 reusing this live-cutoff path + the EnvelopeGraph UI) and **pitch** modulation.
 
-## B2 (full grid) — generic modulation + all controls revealed — BUILT 2026-06-18
+## B2 (full grid) — generic modulation + all controls revealed — SHIPPED (`3bc43c7`)
 
 Chris chose the **full automation grid**: each renderable `.pti` target (Vol/Pan/Cutoff/Pitch) carries
 an envelope and/or an LFO. Built on a **generic `Modulator`** (env OR lfo) over a fixed 6-slot array
@@ -376,7 +447,7 @@ cutoff-LFO→`automations[2]`. pan→[1] / pitch→[5] / tremolo / cutoff-env ar
 are env-XOR-LFO so need pick logic. **Deferred until hardware-verified** — per the delay lesson, some
 `.pti` automation slots may be vestigial, so prove each on the device before trusting the export.
 
-## Editor in the tabbed area — BUILT 2026-06-19 (app, pending reload-test)
+## Editor in the tabbed area — SHIPPED (0.8.0, `9482a36`)
 
 The instrument editor moved out of the RowPanel `[...]` modal and into the main `ChannelScreen` as two
 always-visible tabs, **[params]** and **[automation]**, alongside `roll / lfo / fx / master`. The channel
@@ -407,11 +478,9 @@ now discoverable instead of buried. **The modal is gone.**
 - **`EnvelopeGraph.tsx`** — optional `height` prop (default 64; threaded through `geometry`); **`ModSection.tsx`**
   — `compact` prop on both sections (h-11 plot / 44px graph + tighter margins) for the 280px tab.
 
-`tsc` clean. **PENDING:** Chris reload-test (a source FILE was deleted — `InstrumentEditorDialog.tsx` — so
-the Tauri app needs a full reload, NOT just HMR, per [[reference-vite-cache-deletions]]). Then eyeball the
-280px fit (automation may scroll ~30px — tighten or add the "another UI element" if too crowded) and
-confirm the `edit` button + tabs feel right. **NEXT:** the secondary LFO-destinations idea (below) now that
-params live in the tabbed area.
+Shipped as 0.8.0. The 280px automation fit was accepted (crowding noted; "another UI element" left as a
+later iterate-if-it-bites). The secondary LFO-destinations idea (below) remains the open enhancement now
+that params live in the tabbed area.
 
 **Params-tab layout iterated to final (2026-06-19, Chris-approved):** left→right —
 1. **waveform** (`flex-[6]`),
@@ -434,26 +503,51 @@ reads the same span reversed, ping alternates per grain via `gran_ping_fwd`). Th
 applied forward (symmetric gauss/tri → identical amplitude envelope all 3 modes), so it's a per-grain
 content reversal, **subtle at the 80ms default, obvious toward the 1s max grain.** Not a transport reversal.
 
-**Secondary idea (Chris, 2026-06-18) — instrument params as APP LFO destinations, export degrades to base.**
-Once the params live in the main tabbed area, make the new per-instrument functions (grain **length**,
-**position**, scatter, etc.) selectable **LFO/modulation destinations inside the app**, while the `.pti`
-export keeps writing only the **base level** (the static value + the Tracker's fixed automation slots).
-Principle: **app modulation destinations ⊇ `.pti` automation targets** — the app can modulate anything
-(it's its own instrument/engine), and on export anything the Tracker can't automate projects down to its
-base value (or the nearest supported `automations[]` slot). This is the same "app-only enrichment,
-faithful-where-it-can-be" stance as the per-grain scatter and the live cutoff LFO. Grain-length
-modulation especially (rhythmic grain-size sweeps) is classic granular and currently has no destination.
-Path when picked up: the per-voice mod grid already exists and already targets granular **position**
-(`automations[4]`); extend it to grain **length** + expose these as destinations in the automation tab,
-and/or let the GLOBAL LFO system (NativeLfo) route to per-instrument params (the bigger, macro-able
-version, consistent with [[reference-global-expression-layer]]).
+**Instrument params as APP LFO destinations (Chris, 2026-06-18) — INCREMENT 1 BUILT 2026-06-22 (per-note
+drift), app-only, not committed.** The global LFO system can now route to two per-instrument knobs:
+**grain length** and **grain position**. Chris chose per-note drift first (vs continuous in-note sweep)
+as the lowest-risk audible increment. Shape:
+- **New destination category** `LFODestKnobInstrument = 'grainLength' | 'grainPosition'` (`lfo.ts`),
+  added to the `LFODestKnob` union, `VALID_KNOBS` (persist across reload, `hydrate.ts`), and the LFO
+  panel `KNOB_LABELS`. Kept SEPARATE from `LFODestKnobTrack` so TrackKnob's read/write switches stay
+  exhaustive — these live on the voice (voiceEdits), not on `TrackData`.
+- **Apply point = trigger time** (`samplePlayer.pickNativeSample`, new optional `trackId` arg): when
+  granular is on and a routing track is known, `modulated()` samples the LFO at trigger and drifts the
+  grain position (0..1 direct) + length (normalized over [1,1000]ms). No-op fast path when nothing is
+  routed; **no engine/Rust change.** All 6 trigger sites pass a trackId — playback (`ev.trackId` ×2,
+  `chord.trackId`) and preview (`track.id` ×3 in monitor.ts).
+- **UI:** `GranLfoKnob` in the editor's granular column — LFO-bindable length + position knobs (live
+  modulated readout, click-to-bind under `selectingLFO`, hand-drag marks a manual override). Keyed to
+  the focused track's id. `scatter` stays a plain local knob.
+- **Waveform mapping:** the editor computes the live modulated grain position + length (`useLFOValue`
+  on the routed LFOs, hooks placed before the focus guard) and feeds them to the `Waveform` granular
+  prop + caption, so the **position cursor travels the sample and the grain window resizes in real time**
+  as the LFO drifts — even off-transport. No re-render when nothing's routed (`useLFOValue` bails on an
+  unchanged base; the Waveform redraw deps already include `granular.position`/`grainMs`).
+- **Caveat (by design, per the chosen increment):** a *held* granular note doesn't sweep mid-note — the
+  drift is sampled per trigger. Composes with the per-instrument `granPosLfo`/`granPosEnv` (which DO
+  sweep position in-engine within a note via `automations[4]`); the app LFO sets the drifting start.
+- `tsc` clean. Reload the app (samplePlayer edit; no cargo rebuild).
 
-## Phase C — GRANULAR playmode — BUILT 2026-06-18 (app-only, pending reload-test)
+**INCREMENT 2 (follow-up) — continuous in-note sweep.** Push the modulated grain length/position to the
+engine every frame (the `fxModulation.ts` RAF loop, the same path the per-track filter uses), with a
+per-track grain offset read in the `audio.rs` granular read-head + a new IPC command, so a sustained
+granular drone sweeps in real time. Bigger build (engine work); deferred until the per-note drift feel
+is confirmed. Export still writes only the base level + the Tracker's fixed `automations[]` slots.
+
+**Principle (unchanged):** app modulation destinations ⊇ `.pti` automation targets — the app modulates
+anything (it's its own engine); on export, anything the Tracker can't automate projects down to its base
+value (or the nearest supported `automations[]` slot). Same app-only-enrichment / faithful-where-it-can
+stance as per-grain scatter + the live cutoff LFO. Other per-instrument knobs (finetune, instrument
+cutoff, etc.) are candidate destinations for later — the `GranLfoKnob` + trigger-time pattern generalizes.
+
+## Phase C — GRANULAR playmode — SHIPPED (`0e4b0c0`)
 
 The granular playmode + its single windowed read-head DSP + the playmode selector are in. Chris chose
 "build the full granular mode in one pass" (no Figma — built from the existing tab pattern). App-only,
-same plumbing shape as trim/loop/filter; `cargo check` + `tsc` both clean. NOT committed; needs a Tauri
-**reload** (samplePlayer + audio.rs need a full rebuild, not HMR — [[reference-engine-hmr-stale]]).
+same plumbing shape as trim/loop/filter. **Hardware A/B DONE (Chris, 2026-06-22):** the granular sound
++ `automations[4]` resolve close enough on the device to be usable (approximate-not-parity as designed);
+the grain-param fidelity carries via the `.pti`.
 
 **Data model (`voiceEditsStore.ts`):**
 - `Playmode = 'sample' | 'slice' | 'wavetable' | 'granular'` (+ `PLAYMODE`-style intent; only granular is
@@ -671,12 +765,21 @@ comes from `sample.filename` (≤32 bytes), which `createInstrument` leaves blan
 set `inst.sample.filename`. Re-exported with names set; **Chris confirmed on hardware the names display
 correctly (2026-06-17). Increment 1 is DONE + hardware-validated.**
 
-## Open / gated on hardware (Chris)
+## Open / remaining (current — see the STATUS block up top)
 
-- **PENDING:** confirm `NS-Kick.pti` + `NS-Rhodes-C5.pti` load + play on the Tracker (copy to SD
-  `Instruments/`). Kick = does our `.pti` work at all; Rhodes = long-sample truncation behavior.
-- After load confirmed: build in-app "Export focused track → `.pti`" (Tauri save dialog + binary fs
-  write + proper resampler), then the granular voice.
-- By-ear calibration of Gauss grain width + grain-repeat behavior for the local audition.
-- `npm audit` flagged advisories on install (likely transitive dev deps via jszip/typedoc) — review,
-  do **not** run `audit fix --force` blind.
+Resolved since the original list: `NS-Kick.pti` + `NS-Rhodes` **loaded + played on hardware**
+(2026-06-17); the in-app exporter **shipped** (`61979c3`, OfflineAudioContext resampler, stereo,
+median-root); the granular voice **shipped** (`0e4b0c0`). What's still owed:
+
+- **Slice + wavetable playmodes** (disabled scaffolds) + the `WtPos` → `automations[3]` export wiring.
+- **Generic-mod `.pti` export** — wire pan/pitch/tremolo/cutoff-env into `automations[]`
+  (env-XOR-LFO pick logic for slots 0/2), **after** each is hardware-verified (delay-probe lesson).
+- ~~Hardware A/B of granular + `automations[4]`~~ DONE 2026-06-22 (close enough; delay/reverb mapping
+  also confirmed).
+- **Save-dialog-direct-to-SD for `.pti`** — currently downloads to the default dir (copy to SD by
+  hand); needs blob capture or a Rust `save_binary_file`.
+- **By-ear calibration** of Gauss grain width + grain-repeat for the local audition.
+- **Instrument params as app LFO destinations:** increment 1 (per-note grain length/position drift)
+  BUILT 2026-06-22; increment 2 (continuous in-note sweep) deferred — see the section above.
+- `npm audit` advisories (transitive dev deps via jszip/typedoc) — review, do **not** run
+  `audit fix --force` blind.

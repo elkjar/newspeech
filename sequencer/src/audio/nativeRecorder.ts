@@ -33,6 +33,23 @@ type FinalizedEvent = {
 let pendingFinalized: FinalizedEvent[] = [];
 let finalizeTimer: number | null = null;
 
+// Tail-aware stop: after the user stops, the recording keeps running (the audio
+// thread keeps pushing the live post-master bus while the producer is alive) so
+// reverb / delay / FX tails ring out into the file. We just delay the stop
+// command until the output goes quiet — watching the `audio:level` event (the
+// post-master peak Rust emits at ~30Hz) — then finalize. Mirrors the web
+// recorder's silence-detected tail. Caps at TAIL_MAX_MS so a self-sustaining
+// delay/feedback drone can't record forever.
+const TAIL_SILENCE_PEAK = 0.001; // ~-60 dBFS (matches recorder.ts)
+const TAIL_SILENCE_MS = 500; // output must stay quiet this long to finalize
+const TAIL_MAX_MS = 15000; // hard cap
+// Resolver that ends the in-flight tail wait early (a fresh take supersedes it);
+// null when no tail is pending.
+let cancelTail: (() => void) | null = null;
+// Bumped on every stop/start so a tail wait that's been superseded by a newer
+// take knows to bail instead of finalizing the new recording.
+let stopGeneration = 0;
+
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
   const s = Math.floor(secs % 60);
@@ -86,6 +103,14 @@ function joinPath(dir: string, name: string): string {
 }
 
 async function start(): Promise<void> {
+  // If a previous take is still ringing out its tail, supersede it and finalize
+  // it now — the native recorder is single-take, so the old file must close
+  // before we open a new one.
+  if (cancelTail) {
+    stopGeneration++;
+    cancelTail();
+    await finalizeRecording();
+  }
   try {
     const dir = await resolveRecordingsDir();
     const ts = timestamp();
@@ -107,7 +132,10 @@ async function start(): Promise<void> {
   }
 }
 
-async function stop(): Promise<void> {
+// Send the actual stop commands (drops the producers → workers drain + finalize).
+// Idempotent on the Rust side, so a double-call (e.g. a superseded tail racing a
+// fresh take) is harmless.
+async function finalizeRecording(): Promise<void> {
   try {
     await stopRecordingCombined();
   } catch (err) {
@@ -118,9 +146,50 @@ async function stop(): Promise<void> {
   } catch (err) {
     console.warn('[nativeRecorder] stop splits failed:', err);
   }
-  // Auto-disarm after stop, matching the web recorder's one-arm-per-take
-  // convention.
+}
+
+// Resolve once the post-master output has stayed below the silence floor for
+// TAIL_SILENCE_MS, or TAIL_MAX_MS elapses, or a fresh take cancels it.
+function waitForTail(): Promise<void> {
+  return new Promise((resolve) => {
+    let silenceStart: number | null = null;
+    let unlisten: UnlistenFn | null = null;
+    let capTimer: number | null = null;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (cancelTail === finish) cancelTail = null;
+      if (unlisten) unlisten();
+      if (capTimer !== null) window.clearTimeout(capTimer);
+      resolve();
+    };
+    cancelTail = finish; // let a new take cut the wait short
+    capTimer = window.setTimeout(finish, TAIL_MAX_MS);
+    void listen<number>('audio:level', (ev) => {
+      const now = performance.now();
+      if (ev.payload < TAIL_SILENCE_PEAK) {
+        if (silenceStart === null) silenceStart = now;
+        else if (now - silenceStart >= TAIL_SILENCE_MS) finish();
+      } else {
+        silenceStart = null;
+      }
+    }).then((fn) => {
+      if (finished) fn(); // already done before the listener attached
+      else unlisten = fn;
+    });
+  });
+}
+
+async function stop(): Promise<void> {
+  // Disarm immediately so the UI reflects "not recording" (one-arm-per-take);
+  // the file keeps capturing the tail in the background until it goes quiet.
   useSequencerStore.getState().setArmed(false);
+  const gen = ++stopGeneration;
+  await waitForTail();
+  // A newer take superseded this stop while we waited — it owns finalize now.
+  if (gen !== stopGeneration) return;
+  await finalizeRecording();
 }
 
 export function subscribeNativeRecorder(): void {
@@ -162,6 +231,7 @@ if (import.meta.hot) {
       window.clearTimeout(finalizeTimer);
       finalizeTimer = null;
     }
+    if (cancelTail) cancelTail();
     pendingFinalized = [];
     lastArmedAndPlaying = false;
   });

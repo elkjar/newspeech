@@ -49,6 +49,8 @@ const VALID_KNOBS: LFODestKnob[] = [
   'drift',
   'chaos',
   'tension',
+  'grainLength',
+  'grainPosition',
 ];
 
 function validDest(d: unknown): LFODestination | null {

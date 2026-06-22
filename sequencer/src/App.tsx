@@ -645,7 +645,7 @@ export function App() {
                   const interval = ev.voiceIntervals[i];
                   const targetMidi =
                     ev.midi !== undefined ? ev.midi + interval : undefined;
-                  const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
+                  const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi, ev.trackId);
                   if (!pick) continue;
                   const arpEnv = resolveVoiceEnvelope(ev.voice);
                   void triggerSample(pick.path, {
@@ -737,7 +737,7 @@ export function App() {
               for (const interval of intervals) {
                 const targetMidi =
                   ev.midi !== undefined ? ev.midi + interval : undefined;
-                const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi);
+                const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi, ev.trackId);
                 if (!pick) continue;
                 const noteId =
                   reVoiceable && targetMidi !== undefined
@@ -874,7 +874,7 @@ export function App() {
         for (const noteId of plan.removeNoteIds) void releaseNote(noteId, 0.12);
         const nextTones = [...plan.keptTones];
         for (const midi of plan.addMidis) {
-          const pick = samplePlayer.pickNativeSample(chord.voice, midi);
+          const pick = samplePlayer.pickNativeSample(chord.voice, midi, chord.trackId);
           if (!pick) continue;
           const noteId = allocRevoiceNoteId();
           void triggerSample(pick.path, {

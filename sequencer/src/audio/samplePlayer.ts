@@ -1,6 +1,8 @@
 import { getAudioContext, getMixBus, getSamplesBus, getRhythmBus, getMelodyBus, getTrackBus } from './audioContext';
 import type { TrackSection } from '../state/store';
 import { getTrackFilter } from './trackFilter';
+import { modulated } from './lfo';
+import { useSequencerStore } from '../state/store';
 import { dropChordToneWeighted } from './chords';
 import { synthHatC, synthHatO, synthKick, synthMelodic, synthSnare } from './synth';
 import {
@@ -14,6 +16,7 @@ import {
 import type { PadConfig } from './voices';
 import {
   voiceTune,
+  voiceFinetune,
   voiceGainOverride,
   voiceTrim,
   voiceFilter,
@@ -588,7 +591,8 @@ class SamplePlayer {
   // engine mid-pattern doesn't double-advance the counter.
   pickNativeSample(
     voice: SampleId,
-    midiNote?: number
+    midiNote?: number,
+    trackId?: string
   ): {
     path: string;
     pitch: number;
@@ -640,8 +644,10 @@ class SamplePlayer {
     // chokepoint every native trigger flows through (playback dispatch in
     // App.tsx + preview in monitor.ts). tune shifts pitch uniformly (works for
     // melodic + drums); gain override multiplies the manifest gain.
-    const tune = voiceTune(voice);
-    if (tune !== 0) pitch *= Math.pow(2, tune / 12);
+    // tune = coarse semitones, finetune = cents (sub-semitone pitch trim); both
+    // fold into one uniform pitch multiply (works for melodic + drums).
+    const semis = voiceTune(voice) + voiceFinetune(voice) / 100;
+    if (semis !== 0) pitch *= Math.pow(2, semis / 12);
     // Sample window + loop (A3). start/end as 0..1 fractions, loop as the
     // native loop_mode code; defaults (0/1/off) leave playback unchanged.
     const trim = voiceTrim(voice);
@@ -651,6 +657,18 @@ class SamplePlayer {
     const lfo = voiceFilterLfo(voice);
     // Granular (Phase C). on=false (default) leaves normal sample playback.
     const granular = voiceGranular(voice);
+    // App-LFO drift of grain position + length (per-note): when granular is on
+    // and a routing track is known, sample the global LFO at trigger time so the
+    // grain start/size drift across notes. modulated() is a no-op fast path when
+    // nothing is routed (free otherwise). Grain length rides in 0..1 over the
+    // [1,1000]ms range for the LFO, then maps back. Held notes don't sweep
+    // mid-note — that's the continuous-engine follow-up.
+    if (granular.on && trackId) {
+      const lfos = useSequencerStore.getState().lfos;
+      granular.position = modulated(granular.position, lfos, trackId, 'grainPosition');
+      const lenNorm = (granular.grainMs - 1) / 999;
+      granular.grainMs = 1 + modulated(lenNorm, lfos, trackId, 'grainLength') * 999;
+    }
     return {
       path,
       pitch,

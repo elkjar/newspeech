@@ -40,6 +40,9 @@ import { Waveform } from './Waveform';
 import { EnvelopeGraph } from './EnvelopeGraph';
 import { Knob } from './Knob';
 import { exportVoiceToPti } from '../tracker/exportPti';
+import { markManualOverride, type LFODestKnobInstrument } from '../audio/lfo';
+import { useRoutedLFOs } from '../hooks/useRoutedLFOs';
+import { useLFOValue } from '../hooks/useLFOValue';
 
 // Depth knob configs per modulation target.
 const DEPTH_UNIT: DepthCfg = { min: 0, max: 1, format: (d) => `${(d * 100).toFixed(0)}%` };
@@ -92,6 +95,29 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   // note even after the focused track changes.
   const previewTrack = useRef<Track | null>(null);
 
+  // Live LFO-modulated grain position + length for the waveform cursor — mirrors
+  // the per-note drift the trigger path applies (samplePlayer), so the cursor
+  // visibly travels the sample (and the grain window resizes) while a grain LFO
+  // is routed. Computed from the raw edit because `granular` is derived below,
+  // after the focus guard — and these are hooks, so they must run before any
+  // early return. Keyed to the focused track. No re-render when nothing's routed
+  // (useLFOValue bails on an unchanged base).
+  const grainPosRouted = useRoutedLFOs(track?.id ?? '', 'grainPosition');
+  const grainLenRouted = useRoutedLFOs(track?.id ?? '', 'grainLength');
+  const modGrainPos = useLFOValue(
+    edit?.granular?.position ?? DEFAULT_GRANULAR.position,
+    grainPosRouted,
+    1,
+  );
+  const modGrainMs =
+    1 +
+    useLFOValue(
+      ((edit?.granular?.grainMs ?? DEFAULT_GRANULAR.grainMs) - 1) / 999,
+      grainLenRouted,
+      1,
+    ) *
+      999;
+
   const stopPreview = () => {
     if (previewId.current && previewTrack.current) {
       monitorRelease(previewTrack.current, previewId.current);
@@ -122,6 +148,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
 
   const gain = edit?.gain ?? 1;
   const tune = edit?.tune ?? 0;
+  const finetune = edit?.finetune ?? 0;
   const start = edit?.start ?? 0;
   const end = edit?.end ?? 1;
   const loopMode = edit?.loopMode ?? 'off';
@@ -247,9 +274,15 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
           loopMode={loopMode}
           playhead={playhead}
           onChange={(patch) => setVoiceEdit(voiceId, patch)}
-          granular={isGran ? { position: granular.position, grainMs: granular.grainMs } : null}
-          onGranularPosition={(p) => setGranular({ position: p })}
-          onGranularGrain={(ms) => setGranular({ grainMs: ms })}
+          granular={isGran ? { position: modGrainPos, grainMs: modGrainMs } : null}
+          onGranularPosition={(p) => {
+            markManualOverride(track.id, 'grainPosition');
+            setGranular({ position: p });
+          }}
+          onGranularGrain={(ms) => {
+            markManualOverride(track.id, 'grainLength');
+            setGranular({ grainMs: ms });
+          }}
           onDuration={setDurationSecs}
         />
         <div
@@ -257,12 +290,12 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             isGran ? 'text-white/40' : 'invisible'
           }`}
         >
-          <span>grain {granular.grainMs.toFixed(0)} ms</span>
+          <span>grain {modGrainMs.toFixed(0)} ms</span>
           <span>
             pos{' '}
             {durationSecs > 0
-              ? `${(granular.position * durationSecs).toFixed(3)}s`
-              : `${(granular.position * 100).toFixed(0)}%`}
+              ? `${(modGrainPos * durationSecs).toFixed(3)}s`
+              : `${(modGrainPos * 100).toFixed(0)}%`}
           </span>
         </div>
       </div>
@@ -301,6 +334,13 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             bipolar
             display={`${tune > 0 ? '+' : ''}${tune} st`}
             onChange={(v) => setVoiceEdit(voiceId, { tune: Math.round(v * 48 - 24) })}
+          />
+          <TopKnob
+            label="finetune"
+            value={(finetune + 100) / 200}
+            bipolar
+            display={`${finetune > 0 ? '+' : ''}${finetune} ct`}
+            onChange={(v) => setVoiceEdit(voiceId, { finetune: Math.round(v * 200 - 100) })}
           />
           <TopKnob
             label="delay send"
@@ -386,12 +426,32 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
                   ))}
                 </div>
               </TopControl>
-              <TopKnob
-                label="scatter"
-                value={granular.spray}
-                display={`${(granular.spray * 100).toFixed(0)}%`}
-                onChange={(v) => setGranular({ spray: v })}
-              />
+              {/* length + position are global-LFO destinations (per-note drift);
+                  scatter is a plain local knob. */}
+              <div className="flex gap-2">
+                <GranLfoKnob
+                  trackId={track.id}
+                  knob="grainLength"
+                  label="length"
+                  value={(granular.grainMs - 1) / 999}
+                  display={(v) => `${Math.round(1 + v * 999)} ms`}
+                  onChange={(v) => setGranular({ grainMs: 1 + v * 999 })}
+                />
+                <GranLfoKnob
+                  trackId={track.id}
+                  knob="grainPosition"
+                  label="pos"
+                  value={granular.position}
+                  display={(v) => `${Math.round(v * 100)}%`}
+                  onChange={(v) => setGranular({ position: v })}
+                />
+                <TopKnob
+                  label="scatter"
+                  value={granular.spray}
+                  display={`${(granular.spray * 100).toFixed(0)}%`}
+                  onChange={(v) => setGranular({ spray: v })}
+                />
+              </div>
             </LabeledStack>
           </>
         )}
@@ -705,6 +765,59 @@ function TopKnob({
   return (
     <TopControl label={label} value={display}>
       <Knob value={value} displayValue={value} bipolar={bipolar} onChange={onChange} size={44} title={label} />
+    </TopControl>
+  );
+}
+
+// A grain knob that's also a global-LFO destination (per-note drift of grain
+// length/position). Mirrors TrackKnob: shows the live modulated value, click
+// while an LFO is in select-mode to bind it, and a hand-drag marks a manual
+// override so the LFO yields. Keyed by the focused track's id + the instrument
+// knob name. value/onChange operate in 0..1; `display` formats the modulated v.
+function GranLfoKnob({
+  trackId,
+  knob,
+  label,
+  value,
+  display,
+  onChange,
+}: {
+  trackId: string;
+  knob: LFODestKnobInstrument;
+  label: string;
+  value: number;
+  display: (v: number) => string;
+  onChange: (v: number) => void;
+}) {
+  const selectingLFO = useSequencerStore((s) => s.selectingLFO);
+  const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
+  const routed = useRoutedLFOs(trackId, knob);
+  const modValue = useLFOValue(value, routed, 1);
+  const lfoLabels = routed.map((l) => `L${l.id + 1}`).join(',');
+  const onModulationClick =
+    selectingLFO !== null
+      ? () => toggleLFODestination(selectingLFO, { trackId, knob })
+      : undefined;
+  const modulationLabel =
+    selectingLFO !== null
+      ? lfoLabels || undefined
+      : routed.length > 0
+        ? lfoLabels
+        : undefined;
+  return (
+    <TopControl label={label} value={display(modValue)}>
+      <Knob
+        value={value}
+        displayValue={modValue}
+        onChange={(v) => {
+          markManualOverride(trackId, knob);
+          onChange(v);
+        }}
+        size={44}
+        title={label}
+        onModulationClick={onModulationClick}
+        modulationLabel={modulationLabel}
+      />
     </TopControl>
   );
 }

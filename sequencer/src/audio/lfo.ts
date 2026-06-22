@@ -15,7 +15,15 @@ export type LFODestKnobGlobal =
   | 'reverbSize' | 'reverbMix' | 'reverbDiffusion' | 'reverbDamping'
   | 'preSaturationDrive'
   | 'masterInput' | 'masterComp' | 'masterDrive' | 'masterBias' | 'masterMix' | 'masterHiCut' | 'masterTrim' | 'masterGateThreshold';
-export type LFODestKnob = LFODestKnobTrack | LFODestKnobGlobal;
+// Per-instrument editor knobs the global LFO can reach (keyed by the focused
+// track's id at bind time). Distinct from LFODestKnobTrack because these live on
+// the voice (voiceEdits), not on TrackData — so they're applied at trigger time
+// in the sample chokepoint rather than read off the track record.
+export type LFODestKnobInstrument = 'grainLength' | 'grainPosition';
+export type LFODestKnob =
+  | LFODestKnobTrack
+  | LFODestKnobGlobal
+  | LFODestKnobInstrument;
 
 // Sentinel trackId used in LFODestination when the destination is a global
 // macro rather than a per-track knob. Lets the same routing list cover both.

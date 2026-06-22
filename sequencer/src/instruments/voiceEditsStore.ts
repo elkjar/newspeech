@@ -235,7 +235,11 @@ export const MOD_SLOT = {
 
 export interface VoiceEdit {
   gain?: number; // multiplier on the manifest gain; default 1 (unchanged)
-  tune?: number; // semitones, -24..24; default 0
+  tune?: number; // coarse pitch, semitones -24..24; default 0
+  finetune?: number; // fine pitch, cents -100..100; default 0. Sub-semitone trim for
+                     // correcting a recorded sample toward its intended pitch — maps
+                     // to the .pti `finetune` field (the Tracker's separate Finetune
+                     // control), composes with `tune` on the audio path.
   start?: number; // sample start, fraction 0..1; default 0
   end?: number; // sample end, fraction 0..1; default 1
   loopMode?: LoopMode; // playback loop; default 'off' (one-shot)
@@ -244,9 +248,9 @@ export interface VoiceEdit {
   resonance?: number; // filter resonance, normalized 0..1; default 0
   reverbSend?: number; // additive send to the global reverb return, 0..1; default 0
                        // (Volume/Tune/Rev Send/Delay Send mirror the .pti instrument set)
-  delaySend?: number; // send to the delay aux, 0..1; default 0. Stored + exported
-                      // to .pti now; the native delay aux is a later increment, so
-                      // it's not yet audible in-app.
+  delaySend?: number; // send to the delay aux, 0..1; default 0. Stored, exported
+                      // to .pti, and audible in-app via the native delay aux
+                      // (shipped 0.8.2 alongside the reverb send).
   filterLfo?: FilterLfoEdit; // cutoff LFO (special — bespoke engine path)
   ampEnv?: AmpEnvEdit; // volume envelope (special — overrides manifest env)
   // Generic-mod grid:
@@ -467,6 +471,14 @@ export function voiceTune(voiceId: string): number {
   return e?.tune ?? 0;
 }
 
+// Per-instrument fine pitch trim in cents (-100..100). Composes with voiceTune on
+// the audio path — total shift = 2^((tune + finetune/100) / 12) — and exports to
+// the .pti `finetune` field. Default 0 = no trim.
+export function voiceFinetune(voiceId: string): number {
+  const e = resolvedVoiceEdit(voiceId);
+  return e?.finetune ?? 0;
+}
+
 // Per-instrument reverb send (0..1), resolved for the audio path. Default 0 =
 // dry. Pushed to the native track's reverb_send so the additive aux carries
 // this instrument into the shared reverb return.
@@ -475,8 +487,8 @@ export function voiceReverbSend(voiceId: string): number {
   return e?.reverbSend ?? 0;
 }
 
-// Per-instrument delay send (0..1). Stored + exported to .pti; the native delay
-// aux isn't built yet, so this has no in-app audio effect until it lands.
+// Per-instrument delay send (0..1). Stored + exported to .pti and audible via the
+// native delay aux (shipped 0.8.2, same additive-aux shape as the reverb send).
 export function voiceDelaySend(voiceId: string): number {
   const e = resolvedVoiceEdit(voiceId);
   return e?.delaySend ?? 0;

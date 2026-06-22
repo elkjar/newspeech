@@ -21,6 +21,7 @@ import { getRegisteredKits } from '../instruments/manifestRegistry';
 import {
   voiceGainOverride,
   voiceTune,
+  voiceFinetune,
   voiceReverbSend,
   voiceDelaySend,
   voiceTrim,
@@ -148,9 +149,12 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
       : (trim.loop as InstrumentPlayMode);
     inst.volume = voiceGainOverride(voiceId);
     inst.tune = Math.max(-24, Math.min(24, Math.round(voiceTune(voiceId))));
+    // Fine pitch trim → the .pti `finetune` field (integer cents, ±100). Separate
+    // from `tune` in both models, so it maps straight across with no decomposition.
+    inst.finetune = Math.max(-100, Math.min(100, Math.round(voiceFinetune(voiceId))));
     // Per-instrument reverb + delay sends — both models use a 0..1 float, so
-    // they map straight across. (Sequence's native delay aux isn't built yet,
-    // but the .pti carries delay send for the real Tracker regardless.)
+    // they map straight across (both audible in-app via the native aux sends as
+    // of 0.8.2, and carried to the real Tracker's effects).
     inst.reverbSend = Math.max(0, Math.min(1, voiceReverbSend(voiceId)));
     inst.delaySend = Math.max(0, Math.min(1, voiceDelaySend(voiceId)));
     // Window fractions → frame points. The Tracker addresses points with a

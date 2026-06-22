@@ -47,6 +47,8 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   masterHiCut: 'm hi-cut',
   masterTrim: 'm trim',
   masterGateThreshold: 'm gate',
+  grainLength: 'grain len',
+  grainPosition: 'grain pos',
 };
 
 const SHAPE_SHORT: Record<LFOShape, string> = {

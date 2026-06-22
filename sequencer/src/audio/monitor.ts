@@ -78,7 +78,7 @@ export function monitorNote(
   const env = resolveVoiceEnvelope(voice);
 
   if (isNativeAudioAvailable()) {
-    const pick = samplePlayer.pickNativeSample(voice, soundingMidi);
+    const pick = samplePlayer.pickNativeSample(voice, soundingMidi, track.id);
     if (!pick) return;
     const out = track.output;
     const pan = ((track.pan ?? 0.5) - 0.5) * 2;
@@ -174,7 +174,7 @@ export function monitorChord(
     const out = track.output;
     const pan = ((track.pan ?? 0.5) - 0.5) * 2;
     intervals.forEach((interval, i) => {
-      const pick = samplePlayer.pickNativeSample(voice, rootMidi + interval);
+      const pick = samplePlayer.pickNativeSample(voice, rootMidi + interval, track.id);
       if (!pick) return;
       void triggerSample(pick.path, {
         gain: velocity * pick.voiceGain * (track.gain ?? 1),
@@ -260,7 +260,7 @@ export function monitorDrum(track: Track, velocity: number): void {
   const voice = track.source.id;
 
   if (isNativeAudioAvailable()) {
-    const pick = samplePlayer.pickNativeSample(voice, undefined);
+    const pick = samplePlayer.pickNativeSample(voice, undefined, track.id);
     if (!pick) return;
     const out = track.output;
     const pan = ((track.pan ?? 0.5) - 0.5) * 2;
