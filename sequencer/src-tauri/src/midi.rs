@@ -88,6 +88,29 @@ pub struct MidiMessageEvent {
     pub bytes: Vec<u8>,
 }
 
+// MIDI clock (0xF8) arrives at ~48/sec per port. Emitting each pulse as its own
+// `midi://message` event saturates the Tauri IPC channel and roughly half are
+// dropped under main-thread load — fatal for tempo timing. Instead we count
+// pulses on the Rust side and emit a throttled `midi://clock` tick carrying the
+// cumulative count + the hardware timestamp. The JS follower derives tempo from
+// (Δcount / Δtime), so dropped ticks don't corrupt the estimate (the count
+// accounts for every pulse that elapsed), and the hardware timestamp avoids
+// WebView receipt jitter. Transport bytes (start/stop/continue) are rare and
+// still flow through `midi://message`.
+#[derive(Serialize, Clone)]
+pub struct ClockTickEvent {
+    pub port: String,
+    pub count: u64,
+    // Hardware timestamp in microseconds (midir's callback timestamp). Only
+    // deltas are meaningful — the epoch is platform-dependent.
+    pub micros: u64,
+}
+
+// Emit one tick per N pulses (N=6 → ~8/sec at 120 BPM): low enough that IPC
+// never sheds it, dense enough to lock within a beat. 6 divides 24 (PPQN) so
+// ticks land on clean 16th-note boundaries.
+const CLOCK_EMIT_EVERY: u64 = 6;
+
 #[tauri::command]
 pub fn midi_list_ports() -> Result<MidiPorts, String> {
     let m_in = MidiInput::new(CLIENT_NAME).map_err(|e| format!("MidiInput::new: {e}"))?;
@@ -127,23 +150,62 @@ pub fn midi_subscribe_input(
     let mut m_in =
         MidiInput::new(CLIENT_NAME).map_err(|e| format!("MidiInput::new: {e}"))?;
     // Allow SysEx through (Launchpad X may respond to layout/state queries via
-    // SysEx). Still drop timing + active-sense — those are noise for our use.
-    m_in.ignore(Ignore::TimeAndActiveSense);
+    // SysEx) and timing clock through (external-clock follow — clockFollow.ts
+    // reads 0xF8/0xFA/0xFB/0xFC). Still drop active-sense — pure noise for us.
+    m_in.ignore(Ignore::ActiveSense);
     let port = resolve_input_port(&m_in, &port_name)
         .ok_or_else(|| format!("input port not found: {port_name}"))?;
     let cb_port = port_name.clone();
+    // Per-connection clock-pulse counter — the connect callback is FnMut, so it
+    // owns this across invocations without any shared state. Survives dropped
+    // IPC ticks because JS reads cumulative count deltas, not per-tick presence.
+    let mut clock_count: u64 = 0;
+    // Stamp ticks from a Rust-owned monotonic clock, not midir's callback
+    // timestamp: that timestamp's units are platform-dependent (raw mach ticks
+    // on Apple Silicon, not microseconds), which corrupts the JS tempo math.
+    // Instant elapsed is unambiguous microseconds.
+    let clock_start = Instant::now();
     let conn = m_in
         .connect(
             &port,
             "Sequence input",
             move |_ts, msg, _| {
-                let _ = app.emit(
-                    "midi://message",
-                    MidiMessageEvent {
-                        port: cb_port.clone(),
-                        bytes: msg.to_vec(),
-                    },
-                );
+                // CoreMIDI packs several MIDI messages into one packet and
+                // midir hands the whole buffer here, so a single callback can
+                // carry MANY 0xF8 clock bytes (and clock can be interleaved
+                // inside other messages). Count every clock byte — not just
+                // single-byte packets — or most pulses go missing at speed.
+                let clock_pulses = msg.iter().filter(|&&b| b == 0xF8).count() as u64;
+                if clock_pulses > 0 {
+                    let prev = clock_count;
+                    clock_count = clock_count.wrapping_add(clock_pulses);
+                    // Emit once if this buffer crossed a throttle boundary, so
+                    // the tick rate stays ~CLOCK_EMIT_EVERY-spaced regardless of
+                    // how the pulses clump per packet.
+                    if clock_count / CLOCK_EMIT_EVERY != prev / CLOCK_EMIT_EVERY {
+                        let _ = app.emit(
+                            "midi://clock",
+                            ClockTickEvent {
+                                port: cb_port.clone(),
+                                count: clock_count,
+                                micros: clock_start.elapsed().as_micros() as u64,
+                            },
+                        );
+                    }
+                }
+                // Forward the non-clock remainder (stripping 0xF8 is correct —
+                // realtime bytes may interrupt a running message). Skip the emit
+                // entirely when the buffer was clock-only.
+                let rest: Vec<u8> = msg.iter().copied().filter(|&b| b != 0xF8).collect();
+                if !rest.is_empty() {
+                    let _ = app.emit(
+                        "midi://message",
+                        MidiMessageEvent {
+                            port: cb_port.clone(),
+                            bytes: rest,
+                        },
+                    );
+                }
             },
             (),
         )

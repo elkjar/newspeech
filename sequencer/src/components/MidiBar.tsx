@@ -15,6 +15,11 @@ import {
   launchControlXL3Bindings,
   LAUNCH_CONTROL_XL3_PRESET_NAME,
 } from '../midi/controllerPresets';
+import {
+  getClockPulseRate,
+  getClockDebug,
+  getFollowedBpm,
+} from '../audio/clockFollow';
 
 const NATIVE = isTauri();
 
@@ -533,6 +538,140 @@ function LaunchpadStatus() {
   );
 }
 
+// internal = Sequence is the clock master (emits clock-out). external = slave
+// to a master on the clock-in port. Two-segment monochrome selector; fill marks
+// the active mode (no accent color — sequencer convention).
+function SyncSourceToggle() {
+  const syncSource = useSequencerStore((s) => s.syncSource);
+  const setSyncSource = useSequencerStore((s) => s.setSyncSource);
+  const seg = (mode: 'internal' | 'external', label: string) => {
+    const active = syncSource === mode;
+    return (
+      <button
+        type="button"
+        onClick={() => setSyncSource(mode)}
+        className={[
+          'px-2 text-[11px] uppercase tracking-widest transition-colors focus:outline-none',
+          ROW_HEIGHT,
+          active ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70',
+        ].join(' ')}
+        title={
+          mode === 'internal'
+            ? 'sequence is the clock master (sends clock out)'
+            : 'follow an external midi clock master (tempo + transport)'
+        }
+      >
+        {label}
+      </button>
+    );
+  };
+  return (
+    <div className={`inline-flex border border-white/15 ${ROW_HEIGHT}`}>
+      {seg('internal', 'master')}
+      {seg('external', 'follow')}
+    </div>
+  );
+}
+
+// Single input port whose system-realtime stream drives the follow. Only a
+// master sends clock, so this is single-select (mirrors the record-input
+// picker). The chosen name is stored even when disconnected so a re-plug
+// restores sync without re-picking.
+function MidiClockInSelector() {
+  const inputs = useMIDIInputs();
+  const clockIn = useSequencerStore((s) => s.midiClockInPort);
+  const setClockIn = useSequencerStore((s) => s.setMidiClockInPort);
+  const empty = inputs.length === 0;
+  const showStale = clockIn && !inputs.includes(clockIn);
+  return (
+    <select
+      value={clockIn ?? ''}
+      onChange={(e) => setClockIn(e.target.value || null)}
+      className={`select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[180px] ${ROW_HEIGHT}`}
+      title={
+        empty
+          ? 'no midi inputs detected'
+          : clockIn
+            ? `following clock from ${clockIn}${showStale ? ' (disconnected)' : ''}`
+            : 'pick the device sending midi clock (master)'
+      }
+    >
+      <option value="" className="bg-[#050505]">
+        {empty ? 'no inputs' : 'none'}
+      </option>
+      {inputs.map((name) => (
+        <option key={name} value={name} className="bg-[#050505]">
+          {name}
+        </option>
+      ))}
+      {showStale && (
+        <option value={clockIn} className="bg-[#050505]">
+          {clockIn} (disconnected)
+        </option>
+      )}
+    </select>
+  );
+}
+
+// Lock indicator for follow mode: solid when the tempo tracker has locked onto
+// the incoming clock, dim while waiting for it (or on a dropout). Also shows
+// the raw pulse rate (~49/s at 123 BPM) — a low rate means pulses are being
+// dropped before they reach the tracker, distinct from a tempo-math problem.
+function ClockLockDot() {
+  // Lock state is reactive from the store (HMR-proof). Rate is a module-level
+  // diagnostic, polled on a timer for display.
+  const locked = useSequencerStore((s) => s.clockFollowLocked);
+  const [rate, setRate] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setRate(getClockPulseRate()), 250);
+    return () => window.clearInterval(id);
+  }, []);
+  const bpm = getFollowedBpm();
+  const dbg = getClockDebug();
+  return (
+    <span
+      className={[
+        'inline-flex items-center gap-1.5 px-2 text-[11px] uppercase tracking-widest tabular-nums',
+        ROW_HEIGHT,
+        locked ? 'text-white' : 'text-white/30',
+      ].join(' ')}
+      title={
+        (locked
+          ? `locked to external clock${bpm ? ` · ${bpm} bpm` : ''} · ${rate} pulses/s`
+          : `waiting for clock… · ${rate} pulses/s`) +
+        ` · last tick Δ${dbg.dCount} pulses / ${dbg.dMicros}µs`
+      }
+    >
+      <span>{locked ? '●' : '○'}</span>
+      <span>{locked ? 'locked' : 'no lock'}</span>
+      <span className="text-white/40">{rate}/s</span>
+    </span>
+  );
+}
+
+// As master, the row just picks clock-out destinations. As follower it ALSO
+// picks the clock-in source (+ lock state) — clock-out stays editable because
+// follow mode RELAYS the master's clock to those same destinations (the rig),
+// so the in/out labels disambiguate the two pickers.
+function ClockRow() {
+  const following = useSequencerStore((s) => s.syncSource === 'external');
+  const subLabel = 'text-[11px] uppercase tracking-widest opacity-40';
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <SyncSourceToggle />
+      {following && (
+        <>
+          <span className={subLabel}>in</span>
+          <MidiClockInSelector />
+          <ClockLockDot />
+          <span className={subLabel}>out</span>
+        </>
+      )}
+      <MidiClockOutSelector />
+    </div>
+  );
+}
+
 export function MidiBar() {
   const labelCls = 'text-[11px] uppercase tracking-widest opacity-55 w-[64px] shrink-0';
   return (
@@ -548,7 +687,7 @@ export function MidiBar() {
       </div>
       <div className="flex items-center gap-2">
         <span className={labelCls}>clock</span>
-        <MidiClockOutSelector />
+        <ClockRow />
       </div>
       <div className="flex items-center gap-2">
         <span className={labelCls}>bluebox</span>

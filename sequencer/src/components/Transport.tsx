@@ -151,6 +151,7 @@ export function ImportIcon() {
 
 export function PlayButton() {
   const playing = useSequencerStore((s) => s.playing);
+  const following = useSequencerStore((s) => s.syncSource === 'external');
   const learn = useMidiLearn('transport:play');
   const handleClick = () => {
     if (learn.onLearnClick) {
@@ -162,18 +163,23 @@ export function PlayButton() {
   return (
     <button
       onClick={handleClick}
+      disabled={following}
       title={
-        learn.isLearnTarget
-          ? 'transport — learning…'
-          : `${playing ? 'stop' : 'play'}${learn.learning && learn.bindingLabel ? ' · ' + learn.bindingLabel : ''}`
+        following
+          ? 'following external transport — start/stop from the master'
+          : learn.isLearnTarget
+            ? 'transport — learning…'
+            : `${playing ? 'stop' : 'play'}${learn.learning && learn.bindingLabel ? ' · ' + learn.bindingLabel : ''}`
       }
       className={[
         'relative px-6 py-3 border uppercase tracking-widest text-xs transition-colors',
-        learn.isLearnTarget
-          ? 'border-white'
-          : learn.learning && learn.bound
-            ? 'border-white/40'
-            : 'border-white/15 hover:border-white',
+        following
+          ? 'border-white/10 text-white/30 cursor-default'
+          : learn.isLearnTarget
+            ? 'border-white'
+            : learn.learning && learn.bound
+              ? 'border-white/40'
+              : 'border-white/15 hover:border-white',
       ].join(' ')}
     >
       {playing ? '■ stop' : '▶ play'}
@@ -510,9 +516,14 @@ export function InstrumentLibraryButton() {
 function BpmInput({
   bpm,
   setBpm,
+  following = false,
 }: {
   bpm: number;
   setBpm: (n: number) => void;
+  // When following an external clock the tempo is owned by the master — the
+  // field becomes a read-only readout of the tracked BPM, shown at reduced
+  // weight (displaced-indicator convention) rather than disappearing.
+  following?: boolean;
 }) {
   const [draft, setDraft] = useState(String(bpm));
   const [editing, setEditing] = useState(false);
@@ -527,6 +538,19 @@ function BpmInput({
     if (Number.isFinite(parsed)) setBpm(parsed);
     else setDraft(String(bpm));
   };
+
+  if (following) {
+    return (
+      <input
+        type="number"
+        value={Math.round(bpm)}
+        readOnly
+        tabIndex={-1}
+        title="tempo follows the external clock master"
+        className="w-20 bg-transparent border border-white/10 px-2 tabular-nums text-[11px] text-white/50 focus:outline-none h-[28px] cursor-default"
+      />
+    );
+  }
 
   return (
     <input
@@ -552,6 +576,7 @@ export function TransportControls() {
   const setBpm = useSequencerStore((s) => s.setBpm);
   const setRootNote = useSequencerStore((s) => s.setRootNote);
   const setScale = useSequencerStore((s) => s.setScale);
+  const following = useSequencerStore((s) => s.syncSource === 'external');
 
   const rootName = NOTE_NAMES[rootNote % 12];
 
@@ -559,8 +584,8 @@ export function TransportControls() {
     <div className="globals flex items-center gap-4 flex-wrap">
       <label className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
         <span className="opacity-55">bpm</span>
-        <BpmInput bpm={bpm} setBpm={setBpm} />
-        <TapTempoButton />
+        <BpmInput bpm={bpm} setBpm={setBpm} following={following} />
+        {!following && <TapTempoButton />}
       </label>
       <label className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
         <span className="opacity-55">root</span>

@@ -343,6 +343,51 @@ function writePersistedBlueboxPort(v: string | null): void {
   }
 }
 
+// External-clock follow is rig routing too: whether Sequence is the clock
+// master ('internal') or slaves to an external master ('external'), and which
+// input port carries that master's clock. Persisted across launches, not in
+// .seq — same reasoning as the clock-out / bluebox ports above.
+const LS_SYNC_SOURCE = 'newspeech.sequencer.syncSource';
+const LS_MIDI_CLOCK_IN = 'newspeech.sequencer.midiClockInPort';
+
+function readPersistedSyncSource(): 'internal' | 'external' {
+  if (typeof localStorage === 'undefined') return 'internal';
+  try {
+    return localStorage.getItem(LS_SYNC_SOURCE) === 'external' ? 'external' : 'internal';
+  } catch {
+    return 'internal';
+  }
+}
+
+function writePersistedSyncSource(v: 'internal' | 'external'): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (v === 'external') localStorage.setItem(LS_SYNC_SOURCE, v);
+    else localStorage.removeItem(LS_SYNC_SOURCE);
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
+function readPersistedClockIn(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    return localStorage.getItem(LS_MIDI_CLOCK_IN) || null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedClockIn(v: string | null): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (v) localStorage.setItem(LS_MIDI_CLOCK_IN, v);
+    else localStorage.removeItem(LS_MIDI_CLOCK_IN);
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
 export const DEFAULT_TRACK_MIDI: TrackMidi = {
   channel: 0,
   portName: null,
@@ -683,6 +728,21 @@ export interface SequencerState {
   // baked into .seq files, which carry musical content, not interface config.
   midiClockOutPorts: string[];
   setMidiClockOutPorts: (ports: string[]) => void;
+  // Clock-follow: 'internal' = Sequence is the master (default, emits clock).
+  // 'external' = slave to an external master on `midiClockInPort` — its tempo
+  // drives the scheduler and its Start/Stop drive transport; clock-OUT is
+  // suppressed to avoid feedback. Rig routing, persisted, not in .seq.
+  syncSource: 'internal' | 'external';
+  setSyncSource: (src: 'internal' | 'external') => void;
+  // Input port whose system-realtime stream drives the follow. Single port
+  // (only a master sends clock); null = nothing drives sync.
+  midiClockInPort: string | null;
+  setMidiClockInPort: (port: string | null) => void;
+  // True once the tempo tracker has locked onto the incoming clock. Lives in
+  // the store (not module state) so the UI indicator is reactive and immune to
+  // HMR module-instance drift. Transient — not persisted.
+  clockFollowLocked: boolean;
+  setClockFollowLocked: (locked: boolean) => void;
   // MIDI output the XL3 mixer page sends Bluebox mixer CC to; null = unset.
   blueboxPort: string | null;
   setBlueboxPort: (port: string | null) => void;
@@ -1222,6 +1282,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   focusedTrackId: null,
   midiOutDeviceId: null,
   midiClockOutPorts: readPersistedClockOut(),
+  syncSource: readPersistedSyncSource(),
+  midiClockInPort: readPersistedClockIn(),
+  clockFollowLocked: false,
   blueboxPort: readPersistedBlueboxPort(),
   midiRecInputPort: null,
   viewSection: 'drum',
@@ -1361,6 +1424,15 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     writePersistedClockOut(midiClockOutPorts);
     set({ midiClockOutPorts });
   },
+  setSyncSource: (syncSource) => {
+    writePersistedSyncSource(syncSource);
+    set({ syncSource });
+  },
+  setMidiClockInPort: (midiClockInPort) => {
+    writePersistedClockIn(midiClockInPort);
+    set({ midiClockInPort });
+  },
+  setClockFollowLocked: (clockFollowLocked) => set({ clockFollowLocked }),
   setBlueboxPort: (blueboxPort) => {
     writePersistedBlueboxPort(blueboxPort);
     set({ blueboxPort });

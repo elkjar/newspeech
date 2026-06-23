@@ -3,6 +3,7 @@
 
 import { useSequencerStore, type Track } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
+import { handleClockRealtime, handleClockTick } from '../audio/clockFollow';
 import type { MidiMessage } from './midiIn';
 import { tryRecordNote, tryRecordNoteOff } from './recordInput';
 
@@ -531,6 +532,18 @@ function isMomentary(target: string): boolean {
 const lastValueByTarget = new Map<string, number>();
 
 export function dispatchMidi(msg: MidiMessage): void {
+  // System-realtime (clock / start / stop) never participates in learn,
+  // recording, or CC/note bindings — it drives the external-clock follower
+  // only, filtered there by sync mode + chosen clock-in port. Short-circuit
+  // first so the 48-pulses/sec clock stream never walks the binding list.
+  if (msg.msg === 'clock-tick') {
+    handleClockTick(msg);
+    return;
+  }
+  if (msg.msg === 'realtime') {
+    handleClockRealtime(msg);
+    return;
+  }
   // Learn mode: if the hook consumed the message (target was pinned),
   // skip normal dispatch so the twist binds without also moving the
   // bound parameter.

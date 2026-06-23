@@ -17,7 +17,9 @@ import {
   type TrackOutput,
 } from './state/store';
 import { scheduler } from './audio/scheduler';
-import { emitClockForStep, setClockBpm } from './audio/midiClock';
+import { emitClockForStep, setClockBpm, clockTransportStop } from './audio/midiClock';
+import { resetTracker } from './audio/clockFollow';
+import { stopPlaybackLocal, prepareForPlay } from './audio/transport';
 import { samplePlayer } from './audio/samplePlayer';
 import { voiceRole } from './audio/voices';
 import {
@@ -254,6 +256,7 @@ function ModeSwitcher() {
 
 export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
+  const syncSource = useSequencerStore((s) => s.syncSource);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Sample-load splash. ~140MB of bundled WAVs decode on boot; without a
   // splash the user sees a sluggish-feeling app for the duration (RAF-driven
@@ -918,6 +921,26 @@ export function App() {
     // Keep the native clock-master thread's tempo in sync with the transport.
     setClockBpm(bpm);
   }, [bpm]);
+
+  // Clock-follow mode switch: clear the tempo tracker on any transition so a
+  // re-entry to external re-derives tempo cleanly. Switching INTO follow mode
+  // while playing stops the internal transport cleanly (no MIDI stop emitted —
+  // we're handing transport to the master) and waits for its next Start.
+  useEffect(() => {
+    resetTracker();
+    if (syncSource === 'external') {
+      // Hand clock + transport to the master: tear down our own clock-out
+      // thread (clockTransportStop is intentionally NOT guarded so this works
+      // even as we enter external mode) and stop any in-progress playback. No
+      // transport echo to followers beyond the clock thread's own Stop.
+      clockTransportStop();
+      if (useSequencerStore.getState().playing) stopPlaybackLocal();
+      // Pre-warm the audio path (resume device + program changes) now, so the
+      // master's first Start launches instantly instead of paying the cold-start
+      // stall on the first downbeat. startFollowPlayback's await is then a no-op.
+      void prepareForPlay();
+    }
+  }, [syncSource]);
 
   // MIDI clock master: emit the 24-PPQN pulse stream from the scheduler's
   // step callback, where we get each step's exact audio time + duration. A

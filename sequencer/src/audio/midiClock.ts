@@ -2,11 +2,18 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore } from '../state/store';
 import { sendMIDIClockPulse, sendMIDIStart, sendMIDIStop } from './midiOut';
 
-// MIDI clock-out: Sequence is the rig clock master. It emits the 24-PPQN pulse
+// MIDI clock-out: Sequence drives the rig clock. It emits the 24-PPQN pulse
 // stream + Start/Stop to one or more configured output ports; everything
 // downstream (Mutant Brain → Pam's New Workout → the rack, plus the Bitbox
 // over its own analog clock patch) follows. A second destination — the
 // Bluebox — rides the same Start so a pre-armed REC captures on the downbeat.
+//
+// This runs in BOTH sync modes. As clock master (internal) it's driven by local
+// transport at the local tempo. As a follower (external) Sequence RELAYS: the
+// same clock-out is driven by the external master's transport at the tracked
+// tempo (regenerated clean off the native thread), so the rig stays in time with
+// e.g. a Pro Tools session feeding Sequence. The relay never targets the
+// clock-IN port (that would echo clock back to the master) — see clockDestPorts.
 //
 // Two emission paths, picked by environment:
 //   • Native (Tauri): a dedicated Rust thread (see src-tauri/src/midi.rs)
@@ -23,8 +30,13 @@ const TAURI = isTauri();
 // 24 PPQN / 8 = 3 pulses per step, spread across the step's exact duration.
 const PULSES_PER_STEP = 3;
 
-function clockPorts(): string[] {
-  return useSequencerStore.getState().midiClockOutPorts;
+// Destinations for the clock stream, with the clock-IN port excluded so a relay
+// never feeds the master's own clock back to it. (In internal mode there's no
+// in-port, so this is just the configured out-ports.)
+function clockDestPorts(): string[] {
+  const s = useSequencerStore.getState();
+  const inPort = s.midiClockInPort;
+  return s.midiClockOutPorts.filter((p) => p !== inPort);
 }
 
 // Web path only — emit this step's share of the pulse stream to every
@@ -33,7 +45,7 @@ function clockPorts(): string[] {
 // port is configured.
 export function emitClockForStep(when: number, stepDuration: number): void {
   if (TAURI) return;
-  const ports = clockPorts();
+  const ports = clockDestPorts();
   if (!ports.length) return;
   for (const port of ports) {
     for (let k = 0; k < PULSES_PER_STEP; k++) {
@@ -42,9 +54,10 @@ export function emitClockForStep(when: number, stepDuration: number): void {
   }
 }
 
-// Play: announce transport to followers and (native) spin up the clock thread.
+// Play (or external-clock relay start): announce transport to followers and
+// (native) spin up the clock thread on the destination ports.
 export function clockTransportStart(): void {
-  const ports = clockPorts();
+  const ports = clockDestPorts();
   if (!ports.length) return;
   if (TAURI) {
     const bpm = useSequencerStore.getState().bpm;
@@ -65,7 +78,7 @@ export function clockTransportStop(): void {
       console.warn('[midiClock] stop failed:', e),
     );
   } else {
-    for (const port of clockPorts()) sendMIDIStop(port);
+    for (const port of clockDestPorts()) sendMIDIStop(port);
   }
 }
 
@@ -73,6 +86,6 @@ export function clockTransportStop(): void {
 // per-step emit already tracks tempo via the scheduler's stepDuration) and
 // when no clock-out port is configured.
 export function setClockBpm(bpm: number): void {
-  if (!TAURI || !clockPorts().length) return;
+  if (!TAURI || !clockDestPorts().length) return;
   void invoke('midi_clock_set_bpm', { bpm }).catch(() => {});
 }

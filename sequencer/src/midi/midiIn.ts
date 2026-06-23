@@ -14,10 +14,17 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 // CC mapping ignores it; only the recording path inspects it today.
 // `noteoff` is consumed only by the recorder (held-note → tie capture); CC
 // bindings never match it, so it's harmless if it falls through.
+// `realtime` carries a single system-realtime status byte (clock 0xF8,
+// start 0xFA, continue 0xFB, stop 0xFC) — channel-less, 1-byte. Consumed
+// only by the external-clock follower (clockFollow.ts), filtered by port.
 export type MidiMessage =
   | { ch: number; msg: 'cc'; num: number; value: number; port: string }
   | { ch: number; msg: 'note'; num: number; value: number; port: string }
-  | { ch: number; msg: 'noteoff'; num: number; port: string };
+  | { ch: number; msg: 'noteoff'; num: number; port: string }
+  | { msg: 'realtime'; status: number; port: string }
+  // Native clock tick: a throttled, counter-tagged 0xF8 stream (see midi.rs).
+  // `count` is the cumulative pulse count, `micros` the hardware timestamp.
+  | { msg: 'clock-tick'; count: number; micros: number; port: string };
 
 const TAURI = isTauri();
 
@@ -27,6 +34,7 @@ let portListener: ((name: string) => void) | null = null;
 
 // Tauri-mode state.
 let tauriUnlisten: UnlistenFn | null = null;
+let tauriClockUnlisten: UnlistenFn | null = null;
 let tauriInputNames: string[] = [];
 let tauriPoll: number | null = null;
 const inputsChangedListeners = new Set<() => void>();
@@ -43,6 +51,14 @@ function notifyInputsChanged(): void {
 }
 
 function parseMessage(data: Uint8Array | number[], port: string): MidiMessage | null {
+  // System realtime is a single byte (status >= 0xF8) and would otherwise be
+  // dropped by the length guard below. Only the ones the clock follower cares
+  // about (clock / start / continue / stop) are surfaced; active-sense (0xFE)
+  // and the rest fall through to null.
+  const rt = data[0];
+  if (rt === 0xf8 || rt === 0xfa || rt === 0xfb || rt === 0xfc) {
+    return { msg: 'realtime', status: rt, port };
+  }
   if (data.length < 2) return null;
   const status = data[0];
   const ch = status & 0x0f;
@@ -131,6 +147,18 @@ async function initTauri(): Promise<boolean> {
         if (msg) listener(msg);
       }
     );
+    // Throttled, counter-tagged clock stream (see midi.rs) — kept off the raw
+    // message channel so the ~48/sec pulse rate can't starve it. Forwarded as a
+    // clock-tick message so it funnels through the same dispatcher/listener.
+    if (tauriClockUnlisten) tauriClockUnlisten();
+    tauriClockUnlisten = await listen<{ port: string; count: number; micros: number }>(
+      'midi://clock',
+      (event) => {
+        if (!listener) return;
+        const { port, count, micros } = event.payload;
+        listener({ msg: 'clock-tick', count, micros, port });
+      }
+    );
     if (tauriPoll === null) {
       // Hot-plug discovery — midir has no port-change event stream so we
       // poll. Match the output-side cadence (3 s).
@@ -203,6 +231,10 @@ if (import.meta.hot) {
     if (tauriUnlisten) {
       tauriUnlisten();
       tauriUnlisten = null;
+    }
+    if (tauriClockUnlisten) {
+      tauriClockUnlisten();
+      tauriClockUnlisten = null;
     }
   });
 }

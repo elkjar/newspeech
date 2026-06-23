@@ -210,6 +210,9 @@ setLearnHook((msg) => {
   if (!state.learnMode || !state.learnTarget) return false;
   // Note-off is never a binding target — let it fall through to the recorder.
   if (msg.msg === 'noteoff') return false;
+  // Clock messages are handled upstream and never reach here, but they carry no
+  // ch/num to bind — exclude so the binding target stays note/cc only.
+  if (msg.msg === 'realtime' || msg.msg === 'clock-tick') return false;
   state.bindLearnTarget(msg);
   return true;
 });

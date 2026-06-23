@@ -12,6 +12,8 @@ const TAP_BUFFER = 8;
 const tapTimes: number[] = [];
 
 export function tapTempo(): void {
+  // Tempo is owned by the external master in follow mode — ignore taps.
+  if (useSequencerStore.getState().syncSource === 'external') return;
   const now = performance.now();
   if (tapTimes.length > 0 && now - tapTimes[tapTimes.length - 1] > TAP_RESET_MS) {
     tapTimes.length = 0;
@@ -38,38 +40,53 @@ import { isNativeAudioAvailable, fadeTextures } from './nativeEngine';
 // native-only). Tune by ear.
 const TEXTURE_STOP_FADE_SECS = 6;
 
+// Shared play-prep: resume audio, boot the web FX chain (web only), and push
+// program changes. Used by both the local transport and the external-clock
+// follower (clockFollow.ts), so the two start paths can't drift apart.
+export async function prepareForPlay(): Promise<void> {
+  await ensureAudioRunning();
+  // Native (Tauri) build skips the entire WebAudio FX chain. All
+  // sample triggers go through `triggerSample` → cpal in native
+  // mode, so voicesBus / mixBus / etc. have nothing flowing in.
+  // The web chain (worklet loads + audio graph + RAF push +
+  // recorder) lives in `./webChain` behind a dynamic import so
+  // Vite chunks it out of the Tauri bundle — Tauri never even
+  // parses tape.ts / glitch.ts / reverb.ts / master.ts /
+  // trackFilter.ts / fxModulation.ts / recorder.ts. Recording is
+  // web-only right now; native record path lands later.
+  if (!isNativeAudioAvailable()) {
+    const { bootWebChain } = await import('./webChain');
+    await bootWebChain();
+  }
+  useSequencerStore.getState().fireAllProgramChanges();
+}
+
+// Shared stop teardown (no MIDI clock-stop — callers decide whether to announce
+// transport to followers). Stop REVERTS to the authored pattern: discard the
+// transient mutation variation rather than baking it in. Mutation is a runtime
+// overlay (the grid always shows the authored steps), so the knob value is kept
+// and a fresh variation regenerates on the next play.
+export function stopPlaybackLocal(): void {
+  scheduler.stop();
+  midiPanic();
+  if (isNativeAudioAvailable()) {
+    void fadeTextures(TEXTURE_STOP_FADE_SECS);
+  }
+  useSequencerStore.getState().setPlaying(false);
+  clearOverlay();
+}
+
 export async function togglePlayback(): Promise<void> {
   const store = useSequencerStore.getState();
+  // Follow mode: transport is driven by the external master's Start/Stop, so
+  // the local play/stop toggle (and its hardware bindings) is a no-op.
+  if (store.syncSource === 'external') return;
   if (store.playing) {
-    scheduler.stop();
+    // Sequence is the clock master: announce stop to followers, then tear down.
     clockTransportStop();
-    midiPanic();
-    if (isNativeAudioAvailable()) {
-      void fadeTextures(TEXTURE_STOP_FADE_SECS);
-    }
-    store.setPlaying(false);
-    // Stop REVERTS to the authored pattern: discard the transient mutation
-    // variation rather than baking it in. Mutation is a runtime overlay (the
-    // grid always shows the authored steps), so the knob value is kept and a
-    // fresh variation regenerates on the next play. The `commitMutationOverlay`
-    // store action remains for a future explicit "print" control.
-    clearOverlay();
+    stopPlaybackLocal();
   } else {
-    await ensureAudioRunning();
-    // Native (Tauri) build skips the entire WebAudio FX chain. All
-    // sample triggers go through `triggerSample` → cpal in native
-    // mode, so voicesBus / mixBus / etc. have nothing flowing in.
-    // The web chain (worklet loads + audio graph + RAF push +
-    // recorder) lives in `./webChain` behind a dynamic import so
-    // Vite chunks it out of the Tauri bundle — Tauri never even
-    // parses tape.ts / glitch.ts / reverb.ts / master.ts /
-    // trackFilter.ts / fxModulation.ts / recorder.ts. Recording is
-    // web-only right now; native record path lands later.
-    if (!isNativeAudioAvailable()) {
-      const { bootWebChain } = await import('./webChain');
-      await bootWebChain();
-    }
-    store.fireAllProgramChanges();
+    await prepareForPlay();
     // Count-in: one bar of clicks before the first scheduler step. The
     // scheduler's first tick is pushed by `scheduleClickIn`'s returned
     // pattern-start time. Recorder (if armed) starts at `setPlaying(true)`
