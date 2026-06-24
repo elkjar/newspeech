@@ -10,7 +10,8 @@
     "build-faust": "node scripts/build-faust-worklets.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "release": "bash scripts/release.sh"
   },
   "dependencies": {
     "@polyend/tracker-lib": "^0.1.1",
