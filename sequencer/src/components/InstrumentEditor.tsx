@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   useVoiceEditsStore,
+  resolvedVoiceEdit,
   DEFAULT_AMP_ENV,
   DEFAULT_FILTER_LFO,
   DEFAULT_ENV_MOD,
@@ -77,7 +78,15 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const track = resolveEditorTrack(tracks, focusedTrackId);
   const voiceId = track && track.source.kind === 'voice' ? track.source.id : null;
 
-  const edit = useVoiceEditsStore((s) => (voiceId ? s.voiceEdits[voiceId] : undefined));
+  // Subscribe to the WORKING layer for reactivity + the unsaved indicator…
+  const workingEdit = useVoiceEditsStore((s) => (voiceId ? s.voiceEdits[voiceId] : undefined));
+  // …but DISPLAY the resolved edit (manifest-baked + working). Save flushes the
+  // working layer into the manifest then clears it (resetVoiceEdit), so reading
+  // working-only made every saved param — playmode most visibly — snap back to
+  // its default in the UI after Save, even though the audio path (which reads
+  // resolved) was unaffected. resolvedVoiceEdit recomputes each render; the
+  // resetVoiceEdit that fires on save re-renders us with the fresh manifest.
+  const edit = voiceId ? resolvedVoiceEdit(voiceId) : undefined;
   const setVoiceEdit = useVoiceEditsStore((s) => s.setVoiceEdit);
   const resetVoiceEdit = useVoiceEditsStore((s) => s.resetVoiceEdit);
   const setTrackSource = useSequencerStore((s) => s.setTrackSource);
@@ -261,7 +270,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   };
   const doRevert = () => resetVoiceEdit(voiceId);
   const saveable = voiceIsSaveable(voiceId);
-  const isUnsaved = edit !== undefined;
+  const isUnsaved = workingEdit !== undefined;
 
   // ---- params view -------------------------------------------------------
   const paramsBody = (

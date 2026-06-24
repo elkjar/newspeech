@@ -40,6 +40,22 @@ impl DelayBus {
     }
   }
 
+  // Panic: zero the delay line + feedback-LP state so a runaway / self-
+  // oscillating tail (feedback near the top of its range) is killed instantly.
+  // The Vecs are already allocated, so this is allocation-free / audio-thread
+  // safe. Capacity and sample rate are untouched.
+  pub fn clear(&mut self) {
+    for s in self.buf_l.iter_mut() {
+      *s = 0.0;
+    }
+    for s in self.buf_r.iter_mut() {
+      *s = 0.0;
+    }
+    self.write = 0;
+    self.fb_lp_l = 0.0;
+    self.fb_lp_r = 0.0;
+  }
+
   // Process one block, writing the 100%-wet delayed signal to (out_l, out_r).
   // `delay_seconds` = tempo-synced time; `feedback` 0..~1.1 (top runs away /
   // self-oscillates, per broken-ranges). `pingpong` 0..1 blends the feedback
@@ -89,8 +105,16 @@ impl DelayBus {
         (1.0 - lf) * self.fb_lp_l + lf * (drive * self.fb_lp_l).tanh() * inv_drive;
       let deg_r =
         (1.0 - lf) * self.fb_lp_r + lf * (drive * self.fb_lp_r).tanh() * inv_drive;
-      self.buf_l[self.write] = in_l[i] + deg_l * fb;
-      self.buf_r[self.write] = in_r[i] + deg_r * fb;
+      // Ping-pong input routing. The cross-fed feedback above can only BOUNCE a
+      // signal that's already asymmetric — a centered/mono send writes equally
+      // to both lines, which then stay symmetric forever (no width). So as p
+      // rises, fold the input onto the LEFT line only: at p=1 the first echo is
+      // hard-left and the cross-feed walks it L→R→L. At p=0 it's untouched
+      // (straight per-channel stereo delay).
+      let in_left = in_l[i] + p * in_r[i];
+      let in_right = (1.0 - p) * in_r[i];
+      self.buf_l[self.write] = in_left + deg_l * fb;
+      self.buf_r[self.write] = in_right + deg_r * fb;
       out_l[i] = yl;
       out_r[i] = yr;
       self.write = (self.write + 1) % self.cap;

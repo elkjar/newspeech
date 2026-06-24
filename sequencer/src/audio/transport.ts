@@ -30,7 +30,7 @@ export function tapTempo(): void {
 }
 import { scheduleClickIn } from './clickIn';
 import { getAudioContext } from './audioContext';
-import { isNativeAudioAvailable, fadeTextures } from './nativeEngine';
+import { isNativeAudioAvailable, fadeTextures, audioPanic } from './nativeEngine';
 
 // Texture voices ring down over this many seconds when transport stops,
 // rather than playing their (often minute-long) sample out to the end.
@@ -74,6 +74,24 @@ export function stopPlaybackLocal(): void {
   }
   useSequencerStore.getState().setPlaying(false);
   clearOverlay();
+}
+
+// Panic kill — the "make it stop NOW" hotkey. Stops the transport, hard-kills
+// every voice, CLEARS the reverb + delay buffers (so a self-oscillating FX
+// tail goes silent — fadeTextures alone won't catch a runaway feedback loop),
+// and flushes MIDI. Works whether or not transport is running.
+export function panicKill(): void {
+  const store = useSequencerStore.getState();
+  if (store.playing) {
+    scheduler.stop();
+    clockTransportStop();
+    store.setPlaying(false);
+    clearOverlay();
+  }
+  midiPanic();
+  // Hard voice kill + FX-buffer clear (native). Overrides the graceful
+  // texture fade a normal stop would do — this is the emergency path.
+  if (isNativeAudioAvailable()) void audioPanic();
 }
 
 // Song mode reached the end of its rows (loop off): announce stop to clock

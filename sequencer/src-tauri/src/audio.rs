@@ -3417,6 +3417,10 @@ enum MixerCommand {
     gran_spray: f32,
   },
   StopAll,
+  // Hard panic: stop every voice (like StopAll) AND clear the reverb + delay
+  // buffers, killing a runaway / self-oscillating FX tail that StopAll alone
+  // leaves ringing (the feedback loops keep regenerating without new input).
+  Panic,
   // Release a single tagged voice (live-input monitoring note-off). Starts
   // the per-voice release ramp (fade_frames) on the active voice carrying
   // `note_id`, leaving every other voice — including the armed track's
@@ -4240,6 +4244,21 @@ impl AudioEngine {
     Ok(())
   }
 
+  pub fn panic(&self) -> Result<(), String> {
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(MixerCommand::Panic)
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
+
   // Transport-stop texture fade. Fade time arrives in seconds; convert
   // to frames at the device sample rate (the audio thread counts down in
   // frames). Only texture-role voices are affected.
@@ -5025,6 +5044,23 @@ fn build_stream(
                 v.is_texture = false;
               }
               pending_triggers.clear();
+            }
+            MixerCommand::Panic => {
+              for v in voices.iter_mut() {
+                v.active = false;
+                v.sample = None;
+                v.track_params = None;
+                v.filter.reset();
+                v.start_frame = 0;
+                v.release_remaining = 0;
+                v.release_total = 0;
+                v.is_texture = false;
+              }
+              pending_triggers.clear();
+              // Kill the FX tails too — StopAll only stops sources; a self-
+              // oscillating reverb/delay keeps ringing without these clears.
+              reverb_bus.clear();
+              delay_bus.clear();
             }
             MixerCommand::ReleaseNote { note_id, fade_frames } => {
               if note_id != 0 && fade_frames > 0 {
@@ -6545,6 +6581,11 @@ pub fn audio_set_tape_params(
 #[tauri::command]
 pub fn audio_stop_all() -> Result<(), String> {
   engine().stop_all_voices()
+}
+
+#[tauri::command]
+pub fn audio_panic() -> Result<(), String> {
+  engine().panic()
 }
 
 // Transport-stop texture fade — ring down texture-role voices over

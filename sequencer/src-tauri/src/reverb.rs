@@ -159,6 +159,13 @@ self.inner.set_param(PARAM_DAMPING, v.clamp(0.0, 1.0));
 self.inner.set_param(PARAM_MIX, v.clamp(0.0, 1.0));
   }
 
+  // Panic: zero the tank's internal state (delay lines / filter memory) so a
+  // ringing or self-oscillating tail is silenced instantly. Params are kept —
+  // only the audio memory is cleared. Called on the audio thread.
+  pub fn clear(&mut self) {
+    self.inner.instance_clear();
+  }
+
   // Compute one block in-place: writes wet output to (out_l, out_r).
   // Inputs and outputs must be the same length. Slices must be non-zero
   // — Faust panics on empty input/output buffers.

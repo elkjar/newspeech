@@ -819,6 +819,13 @@ export async function stopAllVoices(): Promise<void> {
   await invoke<void>('audio_stop_all');
 }
 
+// Hard panic: stop every voice AND clear the reverb + delay buffers so a
+// runaway / self-oscillating FX tail is silenced instantly (StopAll alone
+// leaves the feedback loops ringing).
+export async function audioPanic(): Promise<void> {
+  await invoke<void>('audio_panic');
+}
+
 // Transport-stop texture fade. Rings down texture-role voices over
 // `fadeSecs` while every other voice keeps playing untouched.
 export async function fadeTextures(fadeSecs: number): Promise<void> {

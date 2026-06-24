@@ -124,7 +124,7 @@ import { getOverlay, setOverlay, attachChordToOverlay } from './audio/mutationOv
 import { runTick } from './engine/tick';
 import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
 import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMotion';
-import { togglePlayback } from './audio/transport';
+import { togglePlayback, panicKill } from './audio/transport';
 import { scheduleWebClick } from './audio/clickIn';
 import {
   initGhost,
@@ -1795,6 +1795,16 @@ export function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Panic kill — Cmd/Ctrl + . — checked BEFORE the input-focus guard so it
+      // fires from anywhere (a runaway delay/reverb shouldn't be un-killable
+      // just because a text field has focus). Stops transport, hard-kills
+      // voices, clears the FX tails.
+      if ((e.metaKey || e.ctrlKey) && (e.key === '.' || e.code === 'Period')) {
+        e.preventDefault();
+        panicKill();
+        return;
+      }
+
       const tag = (document.activeElement?.tagName || '').toUpperCase();
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 

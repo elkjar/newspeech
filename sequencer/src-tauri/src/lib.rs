@@ -390,6 +390,7 @@ pub fn run() {
       audio::audio_stop_recording_splits,
       audio::audio_is_recording_splits,
       audio::audio_stop_all,
+      audio::audio_panic,
       audio::audio_fade_textures,
       audio::audio_freeze_voice_params,
       audio::audio_set_lfos,
