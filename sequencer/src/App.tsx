@@ -17,7 +17,12 @@ import {
   type TrackOutput,
 } from './state/store';
 import { scheduler } from './audio/scheduler';
-import { emitClockForStep, setClockBpm, clockTransportStop } from './audio/midiClock';
+import {
+  emitClockForStep,
+  setClockBpm,
+  clockEngineStart,
+  clockEngineStop,
+} from './audio/midiClock';
 import { resetTracker } from './audio/clockFollow';
 import { stopPlaybackLocal, prepareForPlay } from './audio/transport';
 import { samplePlayer } from './audio/samplePlayer';
@@ -257,6 +262,7 @@ function ModeSwitcher() {
 export function App() {
   const bpm = useSequencerStore((s) => s.bpm);
   const syncSource = useSequencerStore((s) => s.syncSource);
+  const midiClockOutPorts = useSequencerStore((s) => s.midiClockOutPorts);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Sample-load splash. ~140MB of bundled WAVs decode on boot; without a
   // splash the user sees a sluggish-feeling app for the duration (RAF-driven
@@ -929,11 +935,11 @@ export function App() {
   useEffect(() => {
     resetTracker();
     if (syncSource === 'external') {
-      // Hand clock + transport to the master: tear down our own clock-out
-      // thread (clockTransportStop is intentionally NOT guarded so this works
-      // even as we enter external mode) and stop any in-progress playback. No
-      // transport echo to followers beyond the clock thread's own Stop.
-      clockTransportStop();
+      // Hand clock + transport to the master: tear down our own free-running
+      // clock-out thread (sending a final Stop to the rig) and stop any
+      // in-progress playback. The internal-master engine effect below won't
+      // re-arm while syncSource !== 'internal'.
+      clockEngineStop(true);
       if (useSequencerStore.getState().playing) stopPlaybackLocal();
       // Pre-warm the audio path (resume device + program changes) now, so the
       // master's first Start launches instantly instead of paying the cold-start
@@ -941,6 +947,22 @@ export function App() {
       void prepareForPlay();
     }
   }, [syncSource]);
+
+  // Free-running MIDI clock master: in internal mode, run the continuous
+  // 24-PPQN pulse thread whenever a clock-out port is configured — so the rig
+  // gets clock the moment it's targeted, not only while playing, and the
+  // stream survives transport stops (play/stop only ride Start/Stop over the
+  // top; see togglePlayback). External (follow) mode owns the relay engine
+  // through clockFollow, so leave the thread alone here. clockEngineStart is
+  // idempotent, so the unchanged-ports re-run is a no-op on the live stream.
+  useEffect(() => {
+    if (syncSource !== 'internal') return;
+    if (midiClockOutPorts.length) {
+      clockEngineStart();
+    } else {
+      clockEngineStop(true);
+    }
+  }, [syncSource, midiClockOutPorts]);
 
   // MIDI clock master: emit the 24-PPQN pulse stream from the scheduler's
   // step callback, where we get each step's exact audio time + duration. A

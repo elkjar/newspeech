@@ -54,28 +54,63 @@ export function emitClockForStep(when: number, stepDuration: number): void {
   }
 }
 
-// Play (or external-clock relay start): announce transport to followers and
-// (native) spin up the clock thread on the destination ports.
+// Native only: spin up (or re-assert) the free-running pulse thread on the
+// destination ports. The 0xF8 stream then flows CONTINUOUSLY, independent of
+// transport — like a hardware modular master — so clocked rack gear keeps its
+// time base even while the sequencer is stopped. Idempotent: a call with the
+// same port set is a no-op on the running stream (no gap, no re-trigger).
+// Internal master: driven by an App.tsx effect on the clock-out ports. Follow
+// relay: driven by startFollowPlayback at the tracked tempo. No-op on web (the
+// per-step emit owns the stream there) and when no clock-out port is set.
+export function clockEngineStart(): Promise<void> {
+  if (!TAURI) return Promise.resolve();
+  const ports = clockDestPorts();
+  if (!ports.length) return Promise.resolve();
+  const bpm = useSequencerStore.getState().bpm;
+  return invoke<void>('midi_clock_start', { portNames: ports, bpm }).catch((e) =>
+    console.warn('[midiClock] engine start failed:', e),
+  );
+}
+
+// Native only: tear down the pulse thread. `sendStop` (default) flushes a final
+// MIDI Stop to the rig on the way out — for handing transport to an external
+// master, clearing the clock-out target, or quitting. A normal transport stop
+// does NOT call this (the stream stays alive); it uses clockTransportStop.
+export function clockEngineStop(sendStop = true): void {
+  if (!TAURI) return;
+  void invoke('midi_clock_stop', { sendStop }).catch((e) =>
+    console.warn('[midiClock] engine stop failed:', e),
+  );
+}
+
+// Play: announce Start to followers. Native rides 0xFA over the top of the
+// free-running pulse stream (engine already running); web sends Start directly
+// and the pulse stream flows from emitClockForStep while the scheduler ticks.
 export function clockTransportStart(): void {
   const ports = clockDestPorts();
   if (!ports.length) return;
   if (TAURI) {
-    const bpm = useSequencerStore.getState().bpm;
-    void invoke('midi_clock_start', { portNames: ports, bpm }).catch((e) =>
-      console.warn('[midiClock] start failed:', e),
+    // Ensure the free-running stream is up, THEN ride Start over it. Awaiting
+    // the (idempotent) start guarantees the thread exists before the transport
+    // byte lands — otherwise a first-play-after-config race drops the 0xFA.
+    void clockEngineStart().then(() =>
+      invoke('midi_clock_transport', { byte: 0xfa }).catch((e) =>
+        console.warn('[midiClock] transport start failed:', e),
+      ),
     );
   } else {
-    // Start fires here; the pulse stream flows from emitClockForStep.
     for (const port of ports) sendMIDIStart(port);
   }
 }
 
-// Stop: tear down the clock thread (native) — which sends MIDI Stop to every
-// destination itself — or send Stop directly on web.
+// Stop: announce Stop to followers. Native rides 0xFC over the top — the pulse
+// stream KEEPS running so clocked gear holds its time base. Web has no
+// free-running engine, so Stop goes out directly and the per-step pulse emit
+// stops with the scheduler.
 export function clockTransportStop(): void {
   if (TAURI) {
-    void invoke('midi_clock_stop').catch((e) =>
-      console.warn('[midiClock] stop failed:', e),
+    void invoke('midi_clock_transport', { byte: 0xfc }).catch((e) =>
+      console.warn('[midiClock] transport stop failed:', e),
     );
   } else {
     for (const port of clockDestPorts()) sendMIDIStop(port);

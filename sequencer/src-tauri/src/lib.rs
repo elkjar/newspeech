@@ -350,6 +350,7 @@ pub fn run() {
       midi::midi_panic,
       midi::midi_clock_start,
       midi::midi_clock_set_bpm,
+      midi::midi_clock_transport,
       midi::midi_clock_stop,
       samples::list_sample_kits,
       samples::get_user_samples_dir,
@@ -444,7 +445,7 @@ pub fn run() {
         // Stop the clock master first (sends MIDI Stop + joins the thread) so
         // followers don't free-run after we're gone, then all-notes-off.
         let clock = app_handle.state::<midi::ClockState>();
-        midi::clock_stop_blocking(clock.inner());
+        midi::clock_stop_blocking(clock.inner(), true);
         let registry = app_handle.state::<midi::MidiRegistry>();
         midi::panic_all(registry.inner());
         // Give CoreMIDI a moment to push the bytes out before we exit.

@@ -16,7 +16,7 @@ import { useSequencerStore } from '../state/store';
 import { scheduler } from './scheduler';
 import { getAudioContext } from './audioContext';
 import { prepareForPlay, stopPlaybackLocal } from './transport';
-import { clockTransportStart, clockTransportStop } from './midiClock';
+import { clockEngineStop, clockTransportStart } from './midiClock';
 import type { MidiMessage } from '../midi/midiIn';
 
 // 24 PPQN: a quarter note = 24 clock pulses.
@@ -164,10 +164,14 @@ async function startFollowPlayback(): Promise<void> {
   scheduler.start(ctx.currentTime + START_LOOKAHEAD_S);
   pulseCounter = 0;
   useSequencerStore.getState().setPlaying(true);
-  // Relay: re-broadcast clock + Start to the rig (Mutant Brain, Bluebox, …) at
-  // the tracked tempo so the whole rig follows the external master through us.
+  // Relay: spin up the pulse thread (clockTransportStart ensures it) and
+  // re-broadcast clock + Start to the rig (Mutant Brain, Bluebox, …) at the
+  // tracked tempo so the whole rig follows the external master through us.
   // clockDestPorts() excludes the clock-in port, so this never echoes back to
-  // the master. setClockBpm (App.tsx bpm effect) keeps the relay tempo tracking.
+  // the master. setClockBpm (App.tsx bpm effect) keeps the relay tempo
+  // tracking. Unlike the internal master, the relay stream is bracketed by the
+  // master's transport (torn down on Stop) — the master itself stops sending
+  // clock when it stops.
   clockTransportStart();
 }
 
@@ -185,11 +189,11 @@ export function feedTransportContinue(): void {
   feedTransportStart();
 }
 
-// 0xFC Stop: halt playback and stop relaying clock to the rig.
+// 0xFC Stop: halt playback and tear down the relay (final Stop to the rig).
 export function feedTransportStop(): void {
   if (!useSequencerStore.getState().playing) return;
   stopPlaybackLocal();
-  clockTransportStop();
+  clockEngineStop(true);
 }
 
 function followGate(port: string): boolean {

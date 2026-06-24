@@ -309,6 +309,16 @@ pub struct ClockState {
     // re-reads every tick (mid-stream tempo changes apply going forward).
     bpm_milli: Arc<AtomicU32>,
     handle: Mutex<Option<JoinHandle<()>>>,
+    // Realtime transport bytes (0xFA Start / 0xFC Stop) queued from JS to be
+    // flushed by the clock thread to every destination, interleaved with the
+    // free-running pulse stream. The pulse stream itself never stops on
+    // transport stop — like a hardware modular master, clock keeps flowing so
+    // clocked rack gear holds its time base; only Start/Stop ride over the top.
+    transport: Arc<Mutex<Vec<u8>>>,
+    // Ports the running thread is bound to, so a start with an unchanged port
+    // set is a no-op (idempotent) rather than tearing down + rebuilding the
+    // stream (which would gap the clock and re-trigger followers).
+    ports: Mutex<Vec<String>>,
 }
 
 impl Default for ClockState {
@@ -317,6 +327,8 @@ impl Default for ClockState {
             running: Arc::new(AtomicBool::new(false)),
             bpm_milli: Arc::new(AtomicU32::new(120_000)),
             handle: Mutex::new(None),
+            transport: Arc::new(Mutex::new(Vec::new())),
+            ports: Mutex::new(Vec::new()),
         }
     }
 }
@@ -345,14 +357,26 @@ fn precise_wait_until(target: Instant) {
     }
 }
 
-// Stop a running clock thread (send Stop + join). Shared by the stop command
-// and the app-quit hook. Safe to call when nothing is running.
-pub fn clock_stop_blocking(clock: &ClockState) {
+// Tear down a running clock thread and join it. With `send_stop`, a final 0xFC
+// is queued first so the thread flushes a Stop to the rig on its way out (used
+// when handing transport to an external master, clearing the clock-out target,
+// or quitting). A plain teardown is silent — the normal transport stop keeps
+// the thread alive and rides 0xFC over the top via `midi_clock_transport`.
+// Shared by the stop command and the app-quit hook; safe when nothing runs.
+pub fn clock_stop_blocking(clock: &ClockState, send_stop: bool) {
+    if send_stop {
+        if let Ok(mut q) = clock.transport.lock() {
+            q.push(0xFC);
+        }
+    }
     clock.running.store(false, Ordering::Relaxed);
     if let Ok(mut h) = clock.handle.lock() {
         if let Some(handle) = h.take() {
             let _ = handle.join();
         }
+    }
+    if let Ok(mut p) = clock.ports.lock() {
+        p.clear();
     }
 }
 
@@ -365,13 +389,33 @@ pub fn midi_clock_start(
     clock
         .bpm_milli
         .store((bpm.max(1.0) * 1000.0) as u32, Ordering::Relaxed);
-    // Restart cleanly if already running (e.g. ports changed mid-session).
-    clock_stop_blocking(clock.inner());
+    // Idempotent: a start on the same port set leaves the running stream
+    // untouched (just the tempo above), so re-configuring or re-asserting the
+    // clock-out target never gaps the pulse stream. Only a changed port set
+    // tears down + rebuilds (silently — the next Start rides over via transport).
+    if clock.running.load(Ordering::Relaxed) {
+        if clock
+            .ports
+            .lock()
+            .map(|p| *p == port_names)
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+        clock_stop_blocking(clock.inner(), false);
+    }
 
     let running = clock.running.clone();
     let bpm_milli = clock.bpm_milli.clone();
+    let transport = clock.transport.clone();
+    // Fresh stream starts with an empty transport queue (drop any stale bytes
+    // left from a prior teardown that never flushed).
+    if let Ok(mut q) = transport.lock() {
+        q.clear();
+    }
     running.store(true, Ordering::Relaxed);
 
+    let ports_rec = port_names.clone();
     let handle = thread::Builder::new()
         .name("midi-clock".into())
         .spawn(move || {
@@ -395,10 +439,10 @@ pub fn midi_clock_start(
                 running.store(false, Ordering::Relaxed);
                 return;
             }
-            // Start: followers reset to bar 1, then the pulse stream begins.
-            for c in &mut conns {
-                let _ = c.send(&[0xFA]);
-            }
+            // Free-running: the 0xF8 stream flows continuously from here,
+            // independent of transport. Start/Stop (0xFA/0xFC) arrive via the
+            // transport queue and are flushed interleaved with the pulses, so
+            // clocked gear downstream keeps its time base across transport stops.
             let mut next = Instant::now() + pulse_interval(bpm_milli.load(Ordering::Relaxed));
             while running.load(Ordering::Relaxed) {
                 precise_wait_until(next);
@@ -407,6 +451,17 @@ pub fn midi_clock_start(
                 }
                 for c in &mut conns {
                     let _ = c.send(&[0xF8]);
+                }
+                // Flush any queued transport bytes right after the pulse so
+                // Start/Stop land within one pulse of being requested.
+                let pending: Vec<u8> = transport
+                    .lock()
+                    .map(|mut q| q.drain(..).collect())
+                    .unwrap_or_default();
+                for b in pending {
+                    for c in &mut conns {
+                        let _ = c.send(&[b]);
+                    }
                 }
                 let iv = pulse_interval(bpm_milli.load(Ordering::Relaxed));
                 next += iv;
@@ -417,15 +472,26 @@ pub fn midi_clock_start(
                     next = now + iv;
                 }
             }
-            // Stop: followers freeze their playhead.
-            for c in &mut conns {
-                let _ = c.send(&[0xFC]);
+            // Final flush: send any transport byte queued at teardown (e.g. the
+            // Stop from clock_stop_blocking(send_stop=true)) before the
+            // connections drop, so the rig gets a clean Stop on its way out.
+            let pending: Vec<u8> = transport
+                .lock()
+                .map(|mut q| q.drain(..).collect())
+                .unwrap_or_default();
+            for b in pending {
+                for c in &mut conns {
+                    let _ = c.send(&[b]);
+                }
             }
         })
         .map_err(|e| format!("clock thread spawn: {e}"))?;
 
     if let Ok(mut h) = clock.handle.lock() {
         *h = Some(handle);
+    }
+    if let Ok(mut p) = clock.ports.lock() {
+        *p = ports_rec;
     }
     Ok(())
 }
@@ -438,8 +504,22 @@ pub fn midi_clock_set_bpm(clock: State<ClockState>, bpm: f64) -> Result<(), Stri
     Ok(())
 }
 
+// Queue a realtime transport byte (0xFA Start / 0xFC Stop) for the running
+// clock thread to flush over the top of the pulse stream. No-op (byte dropped)
+// if no thread is running — there's no stream to ride over.
 #[tauri::command]
-pub fn midi_clock_stop(clock: State<ClockState>) -> Result<(), String> {
-    clock_stop_blocking(clock.inner());
+pub fn midi_clock_transport(clock: State<ClockState>, byte: u8) -> Result<(), String> {
+    if !clock.running.load(Ordering::Relaxed) {
+        return Ok(());
+    }
+    if let Ok(mut q) = clock.transport.lock() {
+        q.push(byte);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn midi_clock_stop(clock: State<ClockState>, send_stop: bool) -> Result<(), String> {
+    clock_stop_blocking(clock.inner(), send_stop);
     Ok(())
 }
