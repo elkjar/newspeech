@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSequencerStore } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
-import { exportProject, filenameSlug } from '../state/persist';
+import { exportProject, importProject, filenameSlug } from '../state/persist';
 import { presetsForTarget } from '../instruments/library';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -60,20 +60,67 @@ export async function saveProject() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Toolbar button — save the current working state as a single .seq
-// song file. Same tier as InitButton / PerformanceButton; this is the
-// primary save action when authoring a piece (the perf dialog handles
-// SET-level concerns, not individual song saves).
-export function SaveSongButton() {
+// Load .seq text into the CURRENT working state (replaces tracks/banks/macros).
+// Shared by the import button, its web file-input fallback, and drag-and-drop.
+export function loadProjectFromText(text: string): boolean {
+  const ok = importProject(text);
+  if (!ok) console.error('[song load] invalid or unparseable .seq');
+  return ok;
+}
+
+// Open a .seq via the native picker (Tauri). Web import goes through the
+// button's hidden <input> instead — WKWebView ignores <input type=file>.
+export async function loadProjectFromPicker(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { open: pickFile } = await import('@tauri-apps/plugin-dialog');
+    const picked = await pickFile({ multiple: false, filters: SONG_FILTER });
+    if (!picked || typeof picked !== 'string') return;
+    const text = await invoke<string>('read_text_file', { path: picked });
+    loadProjectFromText(text);
+  } catch (err) {
+    console.error('[song load] failed:', err);
+  }
+}
+
+// Toolbar — save / load the current song as a single .seq file. Two icon
+// buttons (download = save, upload = load) mirroring the .midimap pair in the
+// MIDI bar. Save is the primary authoring action; load replaces the working
+// state directly (the perf dialog handles SET-level / per-slot song loads).
+export function SongFileButtons() {
+  const fileRef = useRef<HTMLInputElement>(null);
   return (
-    <button
-      type="button"
-      onClick={() => void saveProject()}
-      title="save the current song as a .seq file"
-      className="px-2 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors inline-flex items-center justify-center h-[28px]"
-    >
-      .seq
-    </button>
+    <div className="flex items-center gap-1">
+      <IconButton
+        title="save the current song as a .seq file"
+        className="h-[28px]"
+        onClick={() => void saveProject()}
+      >
+        <DownloadIcon />
+      </IconButton>
+      <IconButton
+        title="load a .seq file into the current song"
+        className="h-[28px]"
+        onClick={() => {
+          if (isTauri()) void loadProjectFromPicker();
+          else fileRef.current?.click();
+        }}
+      >
+        <ImportIcon />
+      </IconButton>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".seq,.seqcomp,.json,application/json,text/plain"
+        style={{ display: 'none' }}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (!file) return;
+          loadProjectFromText(await file.text());
+        }}
+      />
+    </div>
   );
 }
 
@@ -436,10 +483,10 @@ export function InitButton() {
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        title="reset all tracks, LFOs, and macros to a blank state (keeps bpm, root, scale, master FX, and saved banks)"
+        title="init — reset all tracks, LFOs, and macros to a blank state (keeps bpm, root, scale, master FX, and saved banks)"
         className="px-2 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors inline-flex items-center justify-center h-[28px]"
       >
-        init
+        I
       </button>
       {confirming && (
         <ConfirmDialog

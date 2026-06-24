@@ -721,8 +721,10 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     const isRootFollow =
       track.section === 'melodic' && track.pitchInterp === 'root-follow';
     const harmonicAnchor = isChordMaster || isBass || isRootFollow;
-    // Row 0 mute split — chord master still resolves so chord context
-    // publishes, but no audio events get emitted at the tail.
+    // Mute split — chord master still resolves so chord context publishes, but
+    // no audio events get emitted at the tail. Song mode drives track.mute
+    // directly (the active row's mask is applied on row entry), so there's no
+    // separate overlay to combine here.
     if (track.mute && !isChordMaster) continue;
     if (anySolo && !track.solo && !isChordMaster) continue;
     const stride = RATE_STRIDE[track.rate];
@@ -959,7 +961,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
       }
     }
 
-    // Row 0 mute split tail — chord context has already been published
+    // Chord-master mute split tail — chord context has already been published
     // above; we skip emitting audio events for muted/soloed-out rows.
     if (track.mute) continue;
     if (anySolo && !track.solo) continue;

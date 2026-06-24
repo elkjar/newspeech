@@ -9,6 +9,7 @@ import {
 } from '../state/store';
 import { scheduler } from '../audio/scheduler';
 import { isNativeAudioAvailable, fadeTextures } from '../audio/nativeEngine';
+import { endArrangementPlayback } from '../audio/transport';
 import { RECIPE_DWELL } from './generator';
 import { targetEntropy, phaseAt } from './shape';
 
@@ -605,6 +606,43 @@ export function beforeBarCommit(): void {
   }
 }
 
+// Song-mode advance: when the current arrangement row's bar count has elapsed,
+// move the cursor to the next row and engage its scene+bank (queued, commits
+// next bar). Self-contained — reads elapsed from the row's cursorStartStep, so
+// it works both on a fresh swap bar (elapsed 0 → only 1-bar rows advance) and
+// on later bars (elapsed ≥ bars-1). No-op while a swap is already in flight.
+function arrangementAdvance(
+  store: ReturnType<typeof useSequencerStore.getState>,
+  globalStep: number,
+): void {
+  const arr = store.arrangement;
+  if (!arr.active || arr.rows.length === 0) return;
+  if (store.pendingBank !== null || store.composition.pendingScene !== null) return;
+  const row = arr.rows[arr.cursor] ?? arr.rows[0];
+  const rowBars = Math.max(1, Math.floor(row.bars));
+  const elapsed = Math.floor((globalStep - arr.cursorStartStep) / STEPS_PER_BAR);
+  if (elapsed < rowBars - 1) return;
+  let next = arr.cursor + 1;
+  if (next >= arr.rows.length) {
+    if (!arr.loop) {
+      // End of song. Let the final row play its full `bars` (elapsed reaches
+      // rowBars-1 = its last bar → return), then at the next boundary
+      // (elapsed === rowBars) gate that bar's emission via pendingEnd and tear
+      // down the transport. The stop is deferred: scheduler.stop() called
+      // synchronously from inside its own tick loop corrupts the step counter.
+      if (elapsed >= rowBars && !arr.pendingEnd) {
+        store.setArrangementPendingEnd(true);
+        queueMicrotask(endArrangementPlayback);
+      }
+      return;
+    }
+    next = 0;
+  }
+  const nextRow = arr.rows[next];
+  store.setArrangementCursor(next, globalStep + STEPS_PER_BAR);
+  store.engageArrangementTarget(nextRow.scene, nextRow.bank);
+}
+
 // Called every bar boundary from App.tsx's scheduler callback, AFTER
 // commitPendingBank() has applied any queued swap for this bar. Reads current
 // store state, may call queueBank() which becomes the *next* bar's swap.
@@ -690,6 +728,13 @@ export function tickBar(globalStep: number): void {
     } else {
       state.dwellTargetBars = rollDwellBars(sceneGraph.minBars, sceneGraph.maxBars);
     }
+    // Song mode owns duration: override the rolled dwell with the current
+    // arrangement row's authored bar count, so the ghost's pre-transition fill
+    // (below) aligns to the authored row boundary instead of a random dwell.
+    if (store.arrangement.active && store.arrangement.rows.length > 0) {
+      const row = store.arrangement.rows[store.arrangement.cursor];
+      if (row) state.dwellTargetBars = Math.max(1, Math.floor(row.bars));
+    }
     // Decorate the just-pushed log entry with the dwell decision. tickBar
     // fires AFTER applyBankSlot's manual push and AFTER pickNextBank's auto
     // push, so the most-recent entry is always the one we want to tag.
@@ -742,6 +787,10 @@ export function tickBar(globalStep: number): void {
     if (sceneGraph.enabled) {
       store.setGhostDisplay(state.dwellTargetBars, state.dwellTargetBars);
     }
+    // Song mode: this swap bar is consumed by the branch, so the main
+    // arrangement block below won't see it — handle a 1-bar row's same-bar
+    // advance here (arrangementAdvance no-ops for longer rows at elapsed 0).
+    arrangementAdvance(store, globalStep);
     return;
   }
 
@@ -783,6 +832,16 @@ export function tickBar(globalStep: number): void {
     if (inFillZone) {
       applyFillBuild(remaining);
     }
+  }
+
+  // Song mode (arrangement) owns bank/scene progression when active. Runs
+  // regardless of ghost-enabled so a "locked song" advances deterministically
+  // even with the ghost off; the ghost's per-bar performance work (lead
+  // mutation + fills above) still runs when enabled. Only the bank/scene CHOICE
+  // is taken over — we skip the autonomous pick + composition auto-advance below.
+  if (store.arrangement.active && store.arrangement.rows.length > 0) {
+    arrangementAdvance(store, globalStep);
+    return; // arrangement owns progression — skip the ghost pick below
   }
 
   if (!sceneGraph.enabled) return;

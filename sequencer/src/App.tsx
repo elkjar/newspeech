@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PlayButton, RecordButton, CountInButton, MetronomeButton, RawRecordButton, SplitsButton, TransportControls, InitButton, SaveSongButton } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, MetronomeButton, RawRecordButton, SplitsButton, TransportControls, InitButton, SongFileButtons, loadProjectFromText } from './components/Transport';
 import { PerformanceButton } from './components/PerformanceDialog';
 import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -133,6 +133,7 @@ import {
   getGhostLeadMutation,
 } from './ghost/ghost';
 import { autoSeedBanks } from './ghost/generator';
+import { SongView } from './components/SongView';
 import { computeBankEntropy } from './ghost/entropy';
 import { phaseAt, targetEntropy as computeTargetEntropy } from './ghost/shape';
 import { isTauri, invoke } from '@tauri-apps/api/core';
@@ -372,6 +373,31 @@ export function App() {
     };
   }, []);
 
+  // Drag-and-drop a .seq file onto the window to load it into the current
+  // song. The window runs with Tauri `dragDropEnabled: false` (so in-page
+  // pad-reorder DnD works), which means the WKWebView delivers OS file drops
+  // as standard HTML5 drop events — same path as the web build, File.text().
+  useEffect(() => {
+    const isSeq = (name: string) => /\.(seq|seqcomp|json)$/i.test(name);
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+    // Suppress the WebView's default "open the dropped file" navigation.
+    const onOver = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      const file = Array.from(e.dataTransfer?.files ?? []).find((f) => isSeq(f.name));
+      if (file) void file.text().then(loadProjectFromText);
+    };
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
   useEffect(() => {
     // Sample kit boot. Two sources of kits:
     //   - Web: bundled samples under public/samples/, discovered via
@@ -555,7 +581,12 @@ export function App() {
       const inTailOut =
         state.performance.pendingSong !== null &&
         state.performance.tailOutBarsRemaining > 0;
-      const events = inTailOut
+      // Song mode hit its end this bar — the deferred stop is about to fire;
+      // suppress this boundary bar's triggers so the last row doesn't restate.
+      // Gate on `active` too: a stale pendingEnd must never silence audio once
+      // song mode is disengaged.
+      const songEnded = state.arrangement.active && state.arrangement.pendingEnd;
+      const events = inTailOut || songEnded
         ? []
         : runTick(
             {
@@ -1953,8 +1984,9 @@ export function App() {
           <div className="flex justify-between items-center gap-8 -my-4">
             <div className="flex items-center gap-2">
               <InitButton />
-              <SaveSongButton />
+              <SongFileButtons />
               <PerformanceButton />
+              <SongView />
             </div>
             <div className="flex items-center gap-8">
               <ScenePad />

@@ -12,6 +12,9 @@ import {
   type Scene,
   type Song,
   type Performance,
+  type Arrangement,
+  type ArrangementRow,
+  DEFAULT_ARRANGEMENT,
   type SequencerState,
   banksWithLiveActiveBank,
   resetSceneToFirstBank,
@@ -68,6 +71,9 @@ interface PersistedState {
   // Composition layer added 2026-05-20. Optional so older `.seq` files
   // load unchanged with an empty composition.
   composition?: Composition;
+  // Song-mode linear arrangement added 2026-06-23. Optional so older `.seq`
+  // files load with an empty arrangement.
+  arrangement?: Arrangement;
 }
 
 function clamp01(v: unknown, fallback = 0.5): number {
@@ -124,6 +130,8 @@ export function exportProject(): string {
     activeBank: 0,
     sceneGraph: s.sceneGraph,
     composition: { ...comp, scenes: resetScenes, activeScene: scene0 ? 0 : comp.activeScene },
+    // Reset the runtime cursor so a loaded project doesn't resume mid-row.
+    arrangement: { ...s.arrangement, cursor: 0, displayCursor: 0, cursorStartStep: 0, pendingEnd: false },
   };
   return JSON.stringify(data, null, 2);
 }
@@ -336,6 +344,32 @@ export function parseSceneFromSeq(json: string): Scene | null {
     activeBank,
     macros: { density, chaos, motion, drift, tension, voicing },
     sceneGraph: hydrateSceneGraph(data.sceneGraph),
+  };
+}
+
+export function hydrateArrangement(raw: unknown): Arrangement {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_ARRANGEMENT };
+  const o = raw as Partial<Arrangement>;
+  const rows: ArrangementRow[] = Array.isArray(o.rows)
+    ? o.rows.flatMap((r): ArrangementRow[] => {
+        if (!r || typeof r !== 'object') return [];
+        const scene = Math.max(0, Math.min(COMPOSITION_SLOT_COUNT - 1, Math.floor((r as ArrangementRow).scene ?? 0)));
+        const bank = Math.max(0, Math.min(BANK_SLOT_COUNT - 1, Math.floor((r as ArrangementRow).bank ?? 0)));
+        const bars = Math.max(1, Math.floor((r as ArrangementRow).bars ?? 4));
+        const mutes = Array.isArray((r as ArrangementRow).mutes)
+          ? (r as ArrangementRow).mutes.filter((t): t is string => typeof t === 'string')
+          : [];
+        return [{ scene, bank, bars, mutes }];
+      })
+    : [];
+  return {
+    rows,
+    active: typeof o.active === 'boolean' ? o.active : false,
+    cursor: 0,
+    displayCursor: 0,
+    cursorStartStep: 0,
+    loop: typeof o.loop === 'boolean' ? o.loop : true,
+    pendingEnd: false,
   };
 }
 
@@ -828,6 +862,8 @@ export function importProject(json: string): boolean {
     ghostBarsRemaining: 0,
     ghostTargetBars: 0,
     composition: hydrateComposition(data.composition, tracks, banks),
+    arrangement: hydrateArrangement(data.arrangement),
+    pendingArrangementBank: null,
   });
   // Re-seed the chord context so followers (root-follow / chord-tone tracks)
   // have a sensible starting harmony before the chord master plays its first

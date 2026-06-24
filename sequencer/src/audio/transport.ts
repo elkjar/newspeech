@@ -76,6 +76,15 @@ export function stopPlaybackLocal(): void {
   clearOverlay();
 }
 
+// Song mode reached the end of its rows (loop off): announce stop to clock
+// followers and tear down, same as a manual stop. Called deferred (microtask)
+// from the engine — never synchronously inside the scheduler tick.
+export function endArrangementPlayback(): void {
+  if (!useSequencerStore.getState().playing) return;
+  clockTransportStop();
+  stopPlaybackLocal();
+}
+
 export async function togglePlayback(): Promise<void> {
   const store = useSequencerStore.getState();
   // Follow mode: transport is driven by the external master's Start/Stop, so
@@ -106,6 +115,19 @@ export async function togglePlayback(): Promise<void> {
       } else {
         firstStepTime = scheduleClickIn(firstStepTime, store.bpm);
       }
+    }
+    // Song mode: every play starts the arrangement from the top (row 0), so a
+    // run is deterministic and repeatable for the show timeline rather than
+    // resuming wherever a prior stop left the cursor.
+    const arr = store.arrangement;
+    // Always clear a prior song's end-gate on play, even when song mode is now
+    // disengaged — otherwise a stale pendingEnd silences every trigger.
+    store.setArrangementPendingEnd(false);
+    if (arr.active && arr.rows.length > 0) {
+      store.setArrangementCursor(0, 0);
+      store.setArrangementDisplayCursor(0);
+      store.engageArrangementTarget(arr.rows[0].scene, arr.rows[0].bank);
+      store.applyArrangementRowMutes(0);
     }
     scheduler.start(firstStepTime);
     // Sequence is the clock master: announce transport to followers. The

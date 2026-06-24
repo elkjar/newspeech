@@ -537,6 +537,49 @@ export const DEFAULT_PERFORMANCE: Performance = {
   tailOutBars: 2,
 };
 
+// --- Song mode / linear arrangement -------------------------------------
+// An authored linear timeline that OVERRIDES the autonomous advancement
+// (composition scene-advance + ghost bank rotation) when active. Each row
+// addresses a fully-qualified pattern: scene (0–7, shown A–H) + bank (0–15,
+// shown 1–16) = "B3". `bars` = how long the row holds before advancing.
+// `mutes` = trackIds suppressed for this row as a NON-DESTRUCTIVE overlay
+// (combined with track.mute at dispatch; the authored pattern is never
+// edited). The ghost's performance layer (density/mutation) keeps running on
+// top; only the bank/scene CHOICE is taken over. See [[project_song_mode]].
+export interface ArrangementRow {
+  scene: number; // 0..COMPOSITION_SLOT_COUNT-1
+  bank: number; // 0..BANK_SLOT_COUNT-1
+  bars: number; // hold duration before advancing (deterministic — drives the show timeline)
+  mutes: string[]; // suppressed trackIds (overlay)
+}
+
+export interface Arrangement {
+  rows: ArrangementRow[];
+  active: boolean; // song mode engaged — arrangement drives advancement
+  cursor: number; // current row during playback — LEADS by a bar (set at queue time)
+  // What the UI highlights: the row whose pattern is actually playing. Updated
+  // when a queued swap COMMITS, so the playhead tracks the audible change
+  // rather than the one-bar-ahead queue. The engine reads `cursor`; the screen
+  // reads `displayCursor`.
+  displayCursor: number;
+  cursorStartStep: number; // globalStep the current row began (for elapsed-bar math)
+  loop: boolean; // loop to row 0 after the last row (vs. STOP at the end)
+  // Set the bar the last row finishes (loop off): gates that boundary bar's
+  // emission so the song doesn't restate its final downbeat, while a deferred
+  // stop tears down the transport. Cleared on play-start. Runtime-only.
+  pendingEnd: boolean;
+}
+
+export const DEFAULT_ARRANGEMENT: Arrangement = {
+  rows: [],
+  active: false,
+  cursor: 0,
+  displayCursor: 0,
+  cursorStartStep: 0,
+  loop: true,
+  pendingEnd: false,
+};
+
 // Toast for user-facing app notifications. Surface for: recording finalize
 // confirmation + error reporting (silent failures = lost takes the user
 // didn't know about). Kept generic enough to grow other event sources.
@@ -930,6 +973,26 @@ export interface SequencerState {
   loadScene: (i: number, source?: 'manual' | 'ghost') => void;
   clearScene: (i: number) => void;
   commitPendingScene: (atGlobalStep: number) => void;
+  // --- Song mode / arrangement ---
+  arrangement: Arrangement;
+  // Cross-scene arrangement engagement carries the target bank through the
+  // scene commit (applyScene resets activeBank to the scene's default), landed
+  // by commitPendingScene immediately after the scene applies.
+  pendingArrangementBank: number | null;
+  setArrangementActive: (active: boolean) => void;
+  addArrangementRow: () => void;
+  removeArrangementRow: (idx: number) => void;
+  moveArrangementRow: (idx: number, dir: number) => void;
+  setArrangementRow: (idx: number, patch: Partial<ArrangementRow>) => void;
+  toggleArrangementRowMute: (idx: number, trackId: string) => void;
+  setArrangementCursor: (cursor: number, cursorStartStep: number) => void;
+  setArrangementDisplayCursor: (displayCursor: number) => void;
+  setArrangementPendingEnd: (pendingEnd: boolean) => void;
+  // Project a row's authored mute mask onto the actual channel mutes
+  // (track.mute) — the mask IS the live mute state for that row's playthrough.
+  applyArrangementRowMutes: (rowIdx: number) => void;
+  setArrangementLoop: (loop: boolean) => void;
+  engageArrangementTarget: (sceneIdx: number, bankIdx: number) => void;
   moveScene: (from: number, to: number) => void;
   setCompositionEndsAfterLast: (v: boolean) => void;
   // Insert a Scene snapshot (typically built via parseSceneFromSeq from
@@ -1276,6 +1339,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   selectingLFO: null,
   globalStep: 0,
   sceneStartStep: 0,
+  arrangement: DEFAULT_ARRANGEMENT,
+  pendingArrangementBank: null,
   playing: false,
   editMode: 'live',
   screenMode: 'roll',
@@ -1864,9 +1929,22 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     clearOverlay();
   },
   setTrackMute: (trackId, mute) =>
-    set((state) => ({
-      tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, mute } : t)),
-    })),
+    set((state) => {
+      const tracks = state.tracks.map((t) => (t.id === trackId ? { ...t, mute } : t));
+      // While song mode is engaged, a manual/hardware channel mute is captured
+      // into the live row's authored mask — muting anywhere edits the same
+      // state the arrangement plays back.
+      if (!state.arrangement.active) return { tracks };
+      const li = state.arrangement.displayCursor;
+      const rows = state.arrangement.rows.map((r, i) => {
+        if (i !== li) return r;
+        const has = r.mutes.includes(trackId);
+        if (mute && !has) return { ...r, mutes: [...r.mutes, trackId] };
+        if (!mute && has) return { ...r, mutes: r.mutes.filter((t) => t !== trackId) };
+        return r;
+      });
+      return { tracks, arrangement: { ...state.arrangement, rows } };
+    }),
   setTrackSolo: (trackId, solo) =>
     set((state) => ({
       tracks: state.tracks.map((t) => (t.id === trackId ? { ...t, solo } : t)),
@@ -2140,6 +2218,17 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       return;
     }
     applyBankSlot(set, i, slot, atGlobalStep);
+    // Song mode: the leading `cursor` now points at the row whose pattern just
+    // became audible, so sync the UI playhead to it (no-op when not in song)
+    // and project that row's authored mute mask onto the channels.
+    if (state.arrangement.active) {
+      set((s) => ({
+        arrangement: { ...s.arrangement, displayCursor: s.arrangement.cursor },
+      }));
+      useSequencerStore.getState().applyArrangementRowMutes(
+        useSequencerStore.getState().arrangement.cursor,
+      );
+    }
   },
   snapScene: (i) => {
     if (i < 0 || i >= COMPOSITION_SLOT_COUNT) return;
@@ -2206,6 +2295,147 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       return;
     }
     applyScene(set, i, scene, atGlobalStep);
+    // Song-mode cross-scene engagement: applyScene just reset activeBank to the
+    // scene's saved default, so land the row's addressed bank within the now-
+    // live scene (same bar boundary — scene commit then bank, atomic).
+    const tgtBank = useSequencerStore.getState().pendingArrangementBank;
+    if (tgtBank !== null) {
+      const slot = useSequencerStore.getState().banks[tgtBank];
+      if (slot) applyBankSlot(set, tgtBank, slot, atGlobalStep);
+      set({ pendingArrangementBank: null });
+    }
+    // Cross-scene song row just became audible — sync the UI playhead to the
+    // leading cursor and project its mute mask (see commitPendingBank).
+    if (state.arrangement.active) {
+      set((s) => ({
+        arrangement: { ...s.arrangement, displayCursor: s.arrangement.cursor },
+      }));
+      useSequencerStore.getState().applyArrangementRowMutes(
+        useSequencerStore.getState().arrangement.cursor,
+      );
+    }
+  },
+  setArrangementActive: (active) => {
+    const s = useSequencerStore.getState();
+    set((st) => ({ arrangement: { ...st.arrangement, active } }));
+    // Engaging song mode jumps to row 0 and applies it (immediate when
+    // stopped; queued when playing). Disengaging just stops driving.
+    if (active && s.arrangement.rows.length > 0) {
+      set((st) => ({
+        arrangement: {
+          ...st.arrangement,
+          cursor: 0,
+          displayCursor: 0,
+          cursorStartStep: s.globalStep,
+        },
+      }));
+      const row = s.arrangement.rows[0];
+      useSequencerStore.getState().engageArrangementTarget(row.scene, row.bank);
+      useSequencerStore.getState().applyArrangementRowMutes(0);
+    }
+  },
+  addArrangementRow: () =>
+    set((s) => {
+      const last = s.arrangement.rows[s.arrangement.rows.length - 1];
+      const row: ArrangementRow = {
+        scene: s.composition.activeScene ?? 0,
+        bank: s.activeBank ?? 0,
+        bars: last ? last.bars : 4,
+        // Seed from the current channel mute state — a new row assumes the
+        // mutes you already have set on the sequencer, so building an
+        // arrangement starts from what you're hearing, not a blank slate.
+        mutes: s.tracks.filter((t) => t.mute).map((t) => t.id),
+      };
+      return { arrangement: { ...s.arrangement, rows: [...s.arrangement.rows, row] } };
+    }),
+  removeArrangementRow: (idx) =>
+    set((s) => {
+      const rows = s.arrangement.rows.filter((_, i) => i !== idx);
+      const clamp = (n: number) => Math.min(n, Math.max(0, rows.length - 1));
+      return {
+        arrangement: {
+          ...s.arrangement,
+          rows,
+          cursor: clamp(s.arrangement.cursor),
+          displayCursor: clamp(s.arrangement.displayCursor),
+        },
+      };
+    }),
+  moveArrangementRow: (idx, dir) =>
+    set((s) => {
+      const rows = s.arrangement.rows.slice();
+      const j = idx + dir;
+      if (idx < 0 || idx >= rows.length || j < 0 || j >= rows.length) return {};
+      [rows[idx], rows[j]] = [rows[j], rows[idx]];
+      return { arrangement: { ...s.arrangement, rows } };
+    }),
+  setArrangementRow: (idx, patch) =>
+    set((s) => ({
+      arrangement: {
+        ...s.arrangement,
+        rows: s.arrangement.rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
+      },
+    })),
+  toggleArrangementRowMute: (idx, trackId) =>
+    set((s) => {
+      const rows = s.arrangement.rows.map((r, i) => {
+        if (i !== idx) return r;
+        const mutes = r.mutes.includes(trackId)
+          ? r.mutes.filter((t) => t !== trackId)
+          : [...r.mutes, trackId];
+        return { ...r, mutes };
+      });
+      // Editing the live row mirrors straight onto the actual channel mute, so
+      // the song view and the sequencer are the same state (not two systems).
+      let tracks = s.tracks;
+      if (s.arrangement.active && idx === s.arrangement.displayCursor) {
+        const muted = rows[idx].mutes.includes(trackId);
+        tracks = s.tracks.map((t) => (t.id === trackId ? { ...t, mute: muted } : t));
+      }
+      return { arrangement: { ...s.arrangement, rows }, tracks };
+    }),
+  applyArrangementRowMutes: (rowIdx) =>
+    set((s) => {
+      const row = s.arrangement.rows[rowIdx];
+      if (!row) return {};
+      const muted = new Set(row.mutes);
+      let changed = false;
+      const tracks = s.tracks.map((t) => {
+        const m = muted.has(t.id);
+        if (t.mute === m) return t;
+        changed = true;
+        return { ...t, mute: m };
+      });
+      return changed ? { tracks } : {};
+    }),
+  setArrangementCursor: (cursor, cursorStartStep) =>
+    set((s) => ({ arrangement: { ...s.arrangement, cursor, cursorStartStep } })),
+  setArrangementDisplayCursor: (displayCursor) =>
+    set((s) => ({ arrangement: { ...s.arrangement, displayCursor } })),
+  setArrangementPendingEnd: (pendingEnd) =>
+    set((s) => ({ arrangement: { ...s.arrangement, pendingEnd } })),
+  setArrangementLoop: (loop) =>
+    set((s) => ({ arrangement: { ...s.arrangement, loop } })),
+  engageArrangementTarget: (sceneIdx, bankIdx) => {
+    const s = useSequencerStore.getState();
+    const crossScene =
+      sceneIdx !== s.composition.activeScene && s.composition.scenes[sceneIdx] != null;
+    if (!crossScene) {
+      // Same scene (or target scene empty) — just engage the bank. queueBank
+      // applies immediately when stopped, queues for the next bar when playing.
+      s.queueBank(bankIdx, 'auto');
+      return;
+    }
+    if (!s.playing) {
+      // Stopped: scene applies immediately, then the bank (banks are now live).
+      s.loadScene(sceneIdx, 'ghost');
+      useSequencerStore.getState().queueBank(bankIdx, 'auto');
+    } else {
+      // Playing: queue the scene; commitPendingScene lands the target bank
+      // immediately after the scene applies, same bar boundary.
+      s.loadScene(sceneIdx, 'ghost');
+      set({ pendingArrangementBank: bankIdx });
+    }
   },
   clearScene: (i) =>
     set((state) => {
