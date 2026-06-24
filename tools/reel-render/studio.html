@@ -42,6 +42,8 @@
   button.primary { border-color: rgba(255,255,255,0.55); }
   button:disabled { opacity: 0.35; cursor: default; }
   .btns { display: flex; gap: 8px; }
+  .picker { display: flex; flex-direction: column; gap: 6px; }
+  button.browse { padding: 6px 10px; font-size: 9px; letter-spacing: 0.14em; align-self: flex-start; }
   .hint { font-size: 10px; color: rgba(255,255,255,0.4); line-height: 1.6; }
   #params { display: flex; flex-direction: column; gap: 11px; }
   #params .pname { font-size: 9px; text-transform: uppercase; letter-spacing: 0.13em; color: rgba(255,255,255,0.45); display: flex; justify-content: space-between; }
@@ -66,10 +68,13 @@
       <span class="name">visualizer</span>
       <select id="page"></select>
     </label>
-    <label>
-      <span class="name">audio</span>
-      <select id="audio"></select>
-    </label>
+    <div class="picker">
+      <label>
+        <span class="name">audio</span>
+        <select id="audio"></select>
+      </label>
+      <button id="audio-browse" class="browse">browse files…</button>
+    </div>
 
     <label>
       <span class="name">look</span>
@@ -80,10 +85,13 @@
       <button id="lookdel">delete</button>
     </div>
 
-    <label>
-      <span class="name">source <span style="opacity:.45">(edge/slit/etc.)</span></span>
-      <select id="source"></select>
-    </label>
+    <div class="picker">
+      <label>
+        <span class="name">source <span style="opacity:.45">(edge/slit/etc.)</span></span>
+        <select id="source"></select>
+      </label>
+      <button id="source-browse" class="browse">browse files…</button>
+    </div>
     <label style="flex-direction:row; align-items:center; gap:8px;">
       <input id="use-source-audio" type="checkbox" disabled />
       <span class="name">use source audio <span style="opacity:.45">(keep the clip's sound, overlay on top)</span></span>
@@ -142,6 +150,38 @@ let actx = null, analyser = null, srcNode = null, fftBuf = null, raf = 0, playin
 let playStart = 0, recArmed = false, recording = false, segments = [], pendingSegment = null;
 let looksData = []; // [{ name, page, state }] — global presets
 let sourcesData = [], sourcePages = new Set(), currentSource = null, reloadSeq = 0;
+let extraSources = []; // absolute source paths picked via native browse
+
+// A picked file is either a bare filename (from the configured dir) or an
+// absolute path (native browse); route preview URLs + labels accordingly.
+const isAbs = (v) => typeof v === 'string' && v.startsWith('/');
+const baseName = (p) => (p || '').split('/').pop();
+const audioUrl = (v) => (isAbs(v) ? '/file?path=' + encodeURIComponent(v) : '/audio/' + encodeURIComponent(v));
+const sourceUrl = (v) => (isAbs(v) ? '/file?path=' + encodeURIComponent(v) : '/source/' + encodeURIComponent(v));
+const optLabel = (v) => (isAbs(v) ? baseName(v) + ' ⤴' : v);
+
+// Native file picker → add the picked path as a selected <option>.
+async function browse(type) {
+  setStatus('opening file picker…');
+  try {
+    const r = await fetch('/api/pick?type=' + type).then((x) => x.json());
+    if (r.canceled) { setStatus(''); return; }
+    if (r.error || !r.path) { setStatus('pick failed: ' + (r.error || 'no file')); return; }
+    if (type === 'audio') { ensureAudioOption(r.path); setStatus('audio: ' + r.name); }
+    else { ensureSourceOption(r.path, true); setStatus('source: ' + r.name); }
+  } catch (e) { setStatus('pick error: ' + e); }
+}
+function ensureAudioOption(path) {
+  let opt = [...$('audio').options].find((o) => o.value === path);
+  if (!opt) { opt = document.createElement('option'); opt.value = path; opt.textContent = optLabel(path); $('audio').appendChild(opt); }
+  $('audio').value = path;
+}
+function ensureSourceOption(path, doSelect) {
+  if (!extraSources.includes(path)) extraSources.push(path);
+  if (!sourcePages.has($('page').value)) { setStatus('pick a source-reliant visualizer to use this clip'); return; }
+  refreshSourceOptions();
+  if (doSelect) { $('source').value = path; onSourceChange(); }
+}
 const sm = { level: 0, low: 0, mid: 0, high: 0 };
 const peak = { low: 1e-3, mid: 1e-3, high: 1e-3 };
 const cool = { low: 0, mid: 0, high: 0 };
@@ -185,7 +225,7 @@ async function play() {
   stop();
   actx = actx || new (window.AudioContext || window.webkitAudioContext)();
   await actx.resume();
-  const buf = await fetch('/audio/' + encodeURIComponent(file)).then((r) => r.arrayBuffer()).then((b) => actx.decodeAudioData(b));
+  const buf = await fetch(audioUrl(file)).then((r) => r.arrayBuffer()).then((b) => actx.decodeAudioData(b));
   srcNode = actx.createBufferSource(); srcNode.buffer = buf;
   analyser = actx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = 0;
   fftBuf = new Uint8Array(analyser.frequencyBinCount);
@@ -234,9 +274,10 @@ function loadVizPage(state) {
   const ready = () => {
     sizePreview(); hideIframePanel(); applyParams(state); buildParams();
     if (state && state.source) {
+      if (isAbs(state.source) && !extraSources.includes(state.source)) { extraSources.push(state.source); refreshSourceOptions(); }
       currentSource = state.source;
       $('source').value = state.source;
-      const w = vizWin(); if (w.__loadSourceUrl) w.__loadSourceUrl('/source/' + encodeURIComponent(state.source), { play: true });
+      const w = vizWin(); if (w.__loadSourceUrl) w.__loadSourceUrl(sourceUrl(state.source), { play: true });
     }
     if (pendingSegment) pendingSegment();
   };
@@ -304,7 +345,9 @@ async function loadSources() { try { sourcesData = await fetch('/api/sources').t
 function refreshSourceOptions() {
   const isSrc = sourcePages.has($('page').value);
   $('source').disabled = !isSrc;
-  $('source').innerHTML = ['(none)'].concat(isSrc ? sourcesData : []).map((n) => `<option>${n}</option>`).join('');
+  const bb = $('source-browse'); if (bb) bb.disabled = !isSrc;
+  const list = isSrc ? sourcesData.concat(extraSources) : [];
+  $('source').innerHTML = ['(none)'].concat(list).map((n) => `<option value="${n}">${n === '(none)' ? n : optLabel(n)}</option>`).join('');
   updateSourceAudioToggle();
 }
 // The "use source audio" toggle only applies to a video clip — enable it when
@@ -321,7 +364,7 @@ function onSourceChange() {
   currentSource = (v && v !== '(none)') ? v : null;
   updateSourceAudioToggle();
   const w = vizWin();
-  if (currentSource && w.__loadSourceUrl) w.__loadSourceUrl('/source/' + encodeURIComponent(currentSource), { play: true });
+  if (currentSource && w.__loadSourceUrl) w.__loadSourceUrl(sourceUrl(currentSource), { play: true });
   // While recording, a source swap is a hard cut to a new segment with it.
   if (recording) { segments.push({ page: currentPageName(), startT: trackPos(), baseline: snapshotState(), events: [] }); updateRecUI(); }
 }
@@ -568,6 +611,8 @@ async function render() {
   $('looksave').addEventListener('click', saveLook);
   $('lookdel').addEventListener('click', deleteLook);
   $('source').addEventListener('change', onSourceChange);
+  $('audio-browse').addEventListener('click', () => browse('audio'));
+  $('source-browse').addEventListener('click', () => browse('source'));
   $('scale').addEventListener('change', sizePreview);
   $('play').addEventListener('click', play);
   $('stop').addEventListener('click', stop);

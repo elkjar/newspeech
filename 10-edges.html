@@ -541,7 +541,8 @@ function frame(t) {
   tickInputs(dt);
   // when a video source is active, recompute the edge field from the current
   // frame so particles track moving contours.
-  if (videoEl && videoEl.readyState >= 2 && !videoEl.paused) {
+  // recompute on every ready frame (incl. paused+seeked for the offline render)
+  if (videoEl && videoEl.readyState >= 2) {
     computeSobel(videoEl);
   }
   step(dt);
@@ -592,12 +593,18 @@ window.__loadSourceUrl = async (url, opts) => {
 };
 window.__seekSource = (t) => new Promise((res) => {
   if (!videoEl) return res();
+  // resolve only once a decoded frame is actually available, so the offline
+  // renderer never screenshots a blank pre-decode frame — notably the first
+  // frame, where the target time already equals currentTime.
+  const ready = () => {
+    if (videoEl.readyState >= 2) return res();
+    videoEl.addEventListener("loadeddata", () => res(), { once: true });
+  };
   const d = videoEl.duration || 0;
   const tt = d > 0 ? (t % d) : t;
-  if (Math.abs((videoEl.currentTime || 0) - tt) < 0.001) return res();
-  const onS = () => res();
-  videoEl.addEventListener("seeked", onS, { once: true });
-  try { videoEl.currentTime = tt; } catch (e) { videoEl.removeEventListener("seeked", onS); res(); }
+  if (Math.abs((videoEl.currentTime || 0) - tt) < 0.001) return ready();
+  videoEl.addEventListener("seeked", ready, { once: true });
+  try { videoEl.currentTime = tt; } catch (e) { videoEl.removeEventListener("seeked", ready); ready(); }
 });
 
 document.getElementById("src-file").addEventListener("change", (e) => {

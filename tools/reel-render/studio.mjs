@@ -10,10 +10,10 @@
 // Usage:
 //   node studio.mjs [--audio-dir ~/Desktop] [--out-dir ~/Desktop] [--port 4321]
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import { readdir, stat, writeFile, mkdir, readFile } from 'node:fs/promises';
-import { join, extname, resolve, dirname, basename } from 'node:path';
+import { join, extname, resolve, dirname, basename, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
@@ -41,8 +41,9 @@ const MIME = {
   '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.woff2': 'font/woff2', '.woff': 'font/woff',
   '.ttf': 'font/ttf', '.otf': 'font/otf', '.png': 'image/png', '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.mp4': 'video/mp4', '.webm': 'video/webm',
-  '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.aif': 'audio/aiff', '.aiff': 'audio/aiff', '.flac': 'audio/flac',
+  '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.m4v': 'video/x-m4v',
+  '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.aif': 'audio/aiff', '.aiff': 'audio/aiff', '.flac': 'audio/flac', '.m4a': 'audio/mp4',
 };
 const AUDIO_EXT = new Set(['.wav', '.mp3', '.aif', '.aiff', '.flac', '.m4a']);
 const SOURCE_EXT = new Set(['.mp4', '.mov', '.webm', '.m4v', '.png', '.jpg', '.jpeg', '.gif']);
@@ -127,6 +128,34 @@ async function main() {
         if (!s) return send(res, 404, { error: 'not found' });
         return serveFile(res, path);
       }
+      // Native macOS file chooser — lets you grab audio/source from anywhere on
+      // disk, not just the configured dirs. Returns the absolute path; the UI
+      // then references it via /file?path=… (preview) and passes it to render.
+      if (p === '/api/pick') {
+        const type = u.searchParams.get('type') === 'source' ? 'source' : 'audio';
+        const prompt = type === 'source' ? 'Pick a source video / image' : 'Pick an audio file';
+        const uti = type === 'source' ? '{"public.movie", "public.image"}' : '{"public.audio"}';
+        const script = `POSIX path of (choose file with prompt "${prompt}" of type ${uti})`;
+        const picked = await new Promise((done) => {
+          execFile('osascript', ['-e', script], (err, stdout, stderr) => {
+            if (err) return done({ canceled: /-128|User canceled/.test(stderr || '') ? true : undefined, error: /-128|User canceled/.test(stderr || '') ? undefined : (stderr || err.message).trim() });
+            done({ path: stdout.trim() });
+          });
+        });
+        if (picked.path) return send(res, 200, { path: picked.path, name: basename(picked.path) });
+        return send(res, picked.error ? 500 : 200, picked);
+      }
+      // Serve any file on disk by absolute path (browsed picks), gated to known
+      // media extensions. Localhost-only server, so this is the access boundary.
+      if (p === '/file') {
+        const fp = u.searchParams.get('path');
+        if (!fp || !isAbsolute(fp)) return send(res, 400, { error: 'absolute path required' });
+        const ext = extname(fp).toLowerCase();
+        if (!AUDIO_EXT.has(ext) && !SOURCE_EXT.has(ext)) return send(res, 403, { error: 'unsupported type' });
+        const s = await stat(fp).catch(() => null);
+        if (!s || s.isDirectory()) return send(res, 404, { error: 'not found' });
+        return serveFile(res, fp);
+      }
       if (p === '/api/render' && req.method === 'POST') {
         const body = JSON.parse(await readBody(req));
         return runRender(res, a, body);
@@ -184,11 +213,14 @@ async function runRender(res, a, body) {
     '--gain', String(body.gain ?? 1),
     '--out', outPath,
   ];
+  // A picked file may be an absolute path (native browse) or a bare filename
+  // from the configured dir — resolve each accordingly.
+  const absOrIn = (dir, name) => (isAbsolute(name) ? name : join(dir, basename(name)));
   if (body.jpeg !== false) args.push('--jpeg'); // studio defaults to fast JPEG capture
-  if (body.audio) args.push('--audio', join(a.audioDir, body.audio));
+  if (body.audio) args.push('--audio', absOrIn(a.audioDir, body.audio));
 
   // Source filenames from the UI → absolute paths the renderer can serve.
-  const srcPath = (name) => (name ? join(a.sourceDir, basename(name)) : undefined);
+  const srcPath = (name) => (name ? absOrIn(a.sourceDir, name) : undefined);
 
   if (body.timeline) {
     // Multi-visualizer performance: a segment timeline (hard cuts).

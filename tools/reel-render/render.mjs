@@ -70,8 +70,11 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml',
+  '.gif': 'image/gif',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.m4v': 'video/x-m4v',
 };
 // Source clips live outside the repo root; serve them only if allow-listed
 // (populated from the segments' source paths) so we don't expose the FS.
