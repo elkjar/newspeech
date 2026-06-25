@@ -514,6 +514,13 @@ export function App() {
         }
         useSequencerStore.getState().commitPendingScene(globalStep);
         useSequencerStore.getState().commitPendingBank(globalStep);
+        // Land the song-mode row even when it doesn't swap bank/scene — a
+        // mute-only row variation (same B3, different mute group) leaves
+        // commitPendingBank/Scene as no-ops, so without this the displayCursor
+        // and mute overlay would never advance off row 0. Runs AFTER the swap
+        // commits (idempotent when they already synced displayCursor) and
+        // BEFORE ghostTickBar so its arrangementAdvance sees the landed row.
+        useSequencerStore.getState().commitArrangementRow();
         ghostTickBar(globalStep);
         // If a bank/scene/song swap landed this bar, freeze the outgoing
         // scene's in-flight voice tails at their current DSP settings so

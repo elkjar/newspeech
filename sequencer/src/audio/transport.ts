@@ -170,13 +170,26 @@ async function nativeScheduleClickIn(
   const ctx = getAudioContext();
   const beatDur = 60 / bpm;
   const beats = 4;
+  // Route the count-in to the same cue channel as the universal metronome
+  // (App.tsx) — mono, follows metronomeOutput when multi-out is ON; the engine
+  // folds it to 1-2 when OFF. Without this the count-in defaults to channel 0
+  // (1-2) regardless of the metronome cue setting. The section: 3 stem tap is
+  // independent of output routing, so DAW alignment markers still land in both
+  // split WAVs.
+  const out = useSequencerStore.getState().nativeMix.metronomeOutput;
   for (let i = 0; i < beats; i++) {
     const when = startTime + i * beatDur;
     const delaySecs = Math.max(0, when - ctx.currentTime);
     const path = i === 0 ? '__click_accent' : '__click_beat';
     // section: 3 = CLICK — writes to both rhythm + melody splits so
     // the count-in serves as a DAW alignment marker in either file.
-    void triggerSample(path, { gain: 1.0, delaySecs, section: 3 });
+    void triggerSample(path, {
+      gain: 1.0,
+      delaySecs,
+      section: 3,
+      outFirst: out.firstChannel,
+      outStereo: false,
+    });
   }
   return startTime + beats * beatDur;
 }

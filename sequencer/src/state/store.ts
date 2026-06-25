@@ -991,6 +991,12 @@ export interface SequencerState {
   // Project a row's authored mute mask onto the actual channel mutes
   // (track.mute) — the mask IS the live mute state for that row's playthrough.
   applyArrangementRowMutes: (rowIdx: number) => void;
+  // Land the leading `cursor` onto the screen (`displayCursor`) and apply its
+  // mute overlay. commitPendingBank/Scene already do this WHEN a bank/scene
+  // swap commits — this is the catch-all for rows that DON'T swap (same
+  // scene+bank, mute-only variations), where no pending swap exists to ride.
+  // Idempotent: no-op when displayCursor already tracks cursor.
+  commitArrangementRow: () => void;
   setArrangementLoop: (loop: boolean) => void;
   engageArrangementTarget: (sceneIdx: number, bankIdx: number) => void;
   moveScene: (from: number, to: number) => void;
@@ -2408,6 +2414,17 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       });
       return changed ? { tracks } : {};
     }),
+  commitArrangementRow: () => {
+    const s = useSequencerStore.getState();
+    if (!s.arrangement.active) return;
+    if (s.arrangement.displayCursor === s.arrangement.cursor) return;
+    set((st) => ({
+      arrangement: { ...st.arrangement, displayCursor: st.arrangement.cursor },
+    }));
+    useSequencerStore.getState().applyArrangementRowMutes(
+      useSequencerStore.getState().arrangement.cursor,
+    );
+  },
   setArrangementCursor: (cursor, cursorStartStep) =>
     set((s) => ({ arrangement: { ...s.arrangement, cursor, cursorStartStep } })),
   setArrangementDisplayCursor: (displayCursor) =>
