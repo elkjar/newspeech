@@ -73,9 +73,13 @@ const MIME = {
   '.gif': 'image/gif',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
-  '.mov': 'video/quicktime',
-  '.m4v': 'video/x-m4v',
+  // .mov/.m4v are ISO-BMFF like .mp4 — serve as video/mp4 so Chromium decodes
+  // H.264-in-mov (it rejects a video/quicktime blob even when H.264 inside).
+  '.mov': 'video/mp4',
+  '.m4v': 'video/mp4',
 };
+// iPhone clips are `.MOV` (uppercase); MIME keys are lowercase.
+const mimeFor = (p) => MIME[extname(p).toLowerCase()] || 'application/octet-stream';
 // Source clips live outside the repo root; serve them only if allow-listed
 // (populated from the segments' source paths) so we don't expose the FS.
 const allowedSources = new Set();
@@ -89,7 +93,7 @@ function startServer() {
           if (!p || !allowedSources.has(p)) { rq.writeHead(403).end(); return; }
           const s = await stat(p).catch(() => null);
           if (!s) { rq.writeHead(404).end(); return; }
-          rq.writeHead(200, { 'content-type': MIME[extname(p)] || 'application/octet-stream' });
+          rq.writeHead(200, { 'content-type': mimeFor(p) });
           createReadStream(p).pipe(rq);
           return;
         }
@@ -98,7 +102,7 @@ function startServer() {
         if (!path.startsWith(ROOT)) { rq.writeHead(403).end(); return; }
         const s = await stat(path).catch(() => null);
         if (!s || s.isDirectory()) { rq.writeHead(404).end(); return; }
-        rq.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
+        rq.writeHead(200, { 'content-type': mimeFor(path) });
         createReadStream(path).pipe(rq);
       } catch { rq.writeHead(500).end(); }
     });

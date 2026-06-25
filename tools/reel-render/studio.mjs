@@ -42,7 +42,11 @@ const MIME = {
   '.json': 'application/json', '.woff2': 'font/woff2', '.woff': 'font/woff',
   '.ttf': 'font/ttf', '.otf': 'font/otf', '.png': 'image/png', '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.gif': 'image/gif',
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.m4v': 'video/x-m4v',
+  // .mov/.m4v are ISO-BMFF like .mp4; serve them as video/mp4 so Chromium will
+  // decode H.264-in-mov (it refuses a `video/quicktime` blob even when the
+  // inner stream is H.264 — the preview path fetches a blob whose type is this
+  // Content-Type, so the label matters). HEVC-in-mov still won't decode.
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/mp4', '.m4v': 'video/mp4',
   '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.aif': 'audio/aiff', '.aiff': 'audio/aiff', '.flac': 'audio/flac', '.m4a': 'audio/mp4',
 };
 const AUDIO_EXT = new Set(['.wav', '.mp3', '.aif', '.aiff', '.flac', '.m4a']);
@@ -52,8 +56,45 @@ function send(res, code, body, type = 'application/json') {
   res.writeHead(code, { 'content-type': type, 'access-control-allow-origin': '*' });
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
-function serveFile(res, path) {
-  res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
+// Serve a file with HTTP Range support. Browser <video> elements issue a
+// `Range:` request and expect a 206 Partial Content reply (with Accept-Ranges
+// + Content-Range); without it playback stalls and seeking is impossible — the
+// reason local .mov/.mp4 previews failed even with browser-decodable codecs.
+async function serveFile(req, res, path) {
+  // lowercase the ext — iPhone clips are `.MOV` (uppercase) and the MIME map is
+  // keyed lowercase; without this they fall back to application/octet-stream
+  // and the browser won't decode the blob.
+  const type = MIME[extname(path).toLowerCase()] || 'application/octet-stream';
+  const s = await stat(path).catch(() => null);
+  if (!s) { res.writeHead(404); return res.end(); }
+  const total = s.size;
+  const range = req && req.headers && req.headers.range;
+  if (range) {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    if (m) {
+      let start = m[1] === '' ? null : parseInt(m[1], 10);
+      let end = m[2] === '' ? total - 1 : parseInt(m[2], 10);
+      if (start === null) { start = total - end; end = total - 1; } // suffix range
+      if (start > end || start < 0 || end >= total) {
+        res.writeHead(416, { 'content-range': `bytes */${total}` });
+        return res.end();
+      }
+      res.writeHead(206, {
+        'content-type': type,
+        'content-range': `bytes ${start}-${end}/${total}`,
+        'accept-ranges': 'bytes',
+        'content-length': end - start + 1,
+        'access-control-allow-origin': '*',
+      });
+      return createReadStream(path, { start, end }).pipe(res);
+    }
+  }
+  res.writeHead(200, {
+    'content-type': type,
+    'accept-ranges': 'bytes',
+    'content-length': total,
+    'access-control-allow-origin': '*',
+  });
   createReadStream(path).pipe(res);
 }
 const LOOKS_FILE = join(HERE, 'looks.json');
@@ -81,7 +122,7 @@ async function main() {
       const u = new URL(req.url, 'http://localhost');
       const p = u.pathname;
 
-      if (p === '/' || p === '/studio') return serveFile(res, join(HERE, 'studio.html'));
+      if (p === '/' || p === '/studio') return serveFile(req, res, join(HERE, 'studio.html'));
 
       if (p === '/api/pages') {
         const files = (await readdir(ROOT))
@@ -107,14 +148,14 @@ async function main() {
         const path = join(a.audioDir, name);
         const s = await stat(path).catch(() => null);
         if (!s) return send(res, 404, { error: 'not found' });
-        return serveFile(res, path);
+        return serveFile(req, res, path);
       }
       if (p.startsWith('/out/')) {
         const name = basename(decodeURIComponent(p.slice('/out/'.length)));
         const path = join(a.outDir, name);
         const s = await stat(path).catch(() => null);
         if (!s) return send(res, 404, { error: 'not found' });
-        return serveFile(res, path);
+        return serveFile(req, res, path);
       }
       if (p === '/api/sources') {
         const files = await readdir(a.sourceDir).catch(() => []);
@@ -126,7 +167,7 @@ async function main() {
         const path = join(a.sourceDir, name);
         const s = await stat(path).catch(() => null);
         if (!s) return send(res, 404, { error: 'not found' });
-        return serveFile(res, path);
+        return serveFile(req, res, path);
       }
       // Native macOS file chooser — lets you grab audio/source from anywhere on
       // disk, not just the configured dirs. Returns the absolute path; the UI
@@ -154,7 +195,7 @@ async function main() {
         if (!AUDIO_EXT.has(ext) && !SOURCE_EXT.has(ext)) return send(res, 403, { error: 'unsupported type' });
         const s = await stat(fp).catch(() => null);
         if (!s || s.isDirectory()) return send(res, 404, { error: 'not found' });
-        return serveFile(res, fp);
+        return serveFile(req, res, fp);
       }
       if (p === '/api/render' && req.method === 'POST') {
         const body = JSON.parse(await readBody(req));
@@ -183,7 +224,7 @@ async function main() {
       if (!path.startsWith(ROOT)) return send(res, 403, { error: 'forbidden' });
       const s = await stat(path).catch(() => null);
       if (!s || s.isDirectory()) return send(res, 404, { error: 'not found' });
-      return serveFile(res, path);
+      return serveFile(req, res, path);
     } catch (e) {
       send(res, 500, { error: String(e) });
     }
