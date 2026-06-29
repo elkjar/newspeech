@@ -31,6 +31,8 @@ import {
   resolveVoiceEnvelope,
   voiceReverbSend,
   voiceDelaySend,
+  voiceTune,
+  voiceFinetune,
 } from './instruments/voiceEditsStore';
 import { delayDivisionToSeconds, FEEDBACK_TO_ENGINE } from './audio/delay';
 
@@ -1217,6 +1219,8 @@ export function App() {
         fxSend: number;
         reverbSend: number;
         delaySend: number;
+        tuneNorm: number;
+        finetuneNorm: number;
       }
     >();
     // Last CC values (0..127 ints) sent out per instrument track, so we only
@@ -1302,6 +1306,14 @@ export function App() {
           t.source.kind === 'voice' ? voiceReverbSend(t.source.id) : 0;
         const delaySend =
           t.source.kind === 'voice' ? voiceDelaySend(t.source.id) : 0;
+        // Static tune (−24..24 st) / finetune (−100..100 ct) normalized to
+        // 0..1 — the LFO swing center for the trackTune / trackFineTune dests.
+        // The static value itself is baked into the trigger pitch; Rust only
+        // uses these to center the LFO swing.
+        const tuneNorm =
+          t.source.kind === 'voice' ? (voiceTune(t.source.id) + 24) / 48 : 0.5;
+        const finetuneNorm =
+          t.source.kind === 'voice' ? (voiceFinetune(t.source.id) + 100) / 200 : 0.5;
         const last = lastTrack.get(t.id);
         const changed =
           !last ||
@@ -1309,10 +1321,12 @@ export function App() {
           Math.abs(last.resonance - resonance) > 0.001 ||
           Math.abs(last.fxSend - fxSend) > 0.001 ||
           Math.abs((last.reverbSend ?? 0) - reverbSend) > 0.001 ||
-          Math.abs((last.delaySend ?? 0) - delaySend) > 0.001;
+          Math.abs((last.delaySend ?? 0) - delaySend) > 0.001 ||
+          Math.abs((last.tuneNorm ?? 0.5) - tuneNorm) > 0.0005 ||
+          Math.abs((last.finetuneNorm ?? 0.5) - finetuneNorm) > 0.0005;
         if (changed) {
-          updates.push({ trackId: t.id, cutoffNorm, resonance, fxSend, reverbSend, delaySend });
-          lastTrack.set(t.id, { cutoffNorm, resonance, fxSend, reverbSend, delaySend });
+          updates.push({ trackId: t.id, cutoffNorm, resonance, fxSend, reverbSend, delaySend, tuneNorm, finetuneNorm });
+          lastTrack.set(t.id, { cutoffNorm, resonance, fxSend, reverbSend, delaySend, tuneNorm, finetuneNorm });
         }
 
         // Instrument (external-MIDI) rows: mirror the filter / gain / pan knobs
@@ -1609,6 +1623,10 @@ export function App() {
       filterCutoff: 'trackFilterCutoff',
       filterResonance: 'trackFilterResonance',
       fxSend: 'trackFxSend',
+      reverbSend: 'trackReverbSend',
+      delaySend: 'trackDelaySend',
+      tune: 'trackTune',
+      finetune: 'trackFineTune',
       reverbSize: 'reverbSize',
       reverbMix: 'reverbMix',
       reverbDiffusion: 'reverbDiffusion',
@@ -1641,7 +1659,11 @@ export function App() {
           if (
             native === 'trackFilterCutoff' ||
             native === 'trackFilterResonance' ||
-            native === 'trackFxSend'
+            native === 'trackFxSend' ||
+            native === 'trackReverbSend' ||
+            native === 'trackDelaySend' ||
+            native === 'trackTune' ||
+            native === 'trackFineTune'
           ) {
             if (d.trackId === GLOBAL_TRACK_ID) continue;
             destinations.push({ knob: native, trackId: d.trackId });

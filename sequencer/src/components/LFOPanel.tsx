@@ -49,6 +49,10 @@ const KNOB_LABELS: Record<LFODestKnob, string> = {
   masterGateThreshold: 'm gate',
   grainLength: 'grain len',
   grainPosition: 'grain pos',
+  reverbSend: 'rev send',
+  delaySend: 'delay send',
+  tune: 'tune',
+  finetune: 'finetune',
 };
 
 const SHAPE_SHORT: Record<LFOShape, string> = {

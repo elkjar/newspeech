@@ -41,7 +41,7 @@ import { Waveform } from './Waveform';
 import { EnvelopeGraph } from './EnvelopeGraph';
 import { Knob } from './Knob';
 import { exportVoiceToPti } from '../tracker/exportPti';
-import { markManualOverride, type LFODestKnobInstrument } from '../audio/lfo';
+import { markManualOverride, type LFODestKnob } from '../audio/lfo';
 import { useRoutedLFOs } from '../hooks/useRoutedLFOs';
 import { useLFOValue } from '../hooks/useLFOValue';
 
@@ -331,30 +331,44 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             display={`×${gain.toFixed(2)}`}
             onChange={(v) => setVoiceEdit(voiceId, { gain: v * 2 })}
           />
-          <TopKnob
+          <LfoBindKnob
+            trackId={track.id}
+            knob="reverbSend"
             label="rev send"
             value={reverbSend}
-            display={`${(reverbSend * 100).toFixed(0)}%`}
+            display={(v) => `${Math.round(v * 100)}%`}
             onChange={(v) => setVoiceEdit(voiceId, { reverbSend: v })}
           />
-          <TopKnob
+          <LfoBindKnob
+            trackId={track.id}
+            knob="tune"
             label="tune"
             value={(tune + 24) / 48}
             bipolar
-            display={`${tune > 0 ? '+' : ''}${tune} st`}
+            display={(v) => {
+              const st = Math.round(v * 48 - 24);
+              return `${st > 0 ? '+' : ''}${st} st`;
+            }}
             onChange={(v) => setVoiceEdit(voiceId, { tune: Math.round(v * 48 - 24) })}
           />
-          <TopKnob
+          <LfoBindKnob
+            trackId={track.id}
+            knob="finetune"
             label="finetune"
             value={(finetune + 100) / 200}
             bipolar
-            display={`${finetune > 0 ? '+' : ''}${finetune} ct`}
+            display={(v) => {
+              const ct = Math.round(v * 200 - 100);
+              return `${ct > 0 ? '+' : ''}${ct} ct`;
+            }}
             onChange={(v) => setVoiceEdit(voiceId, { finetune: Math.round(v * 200 - 100) })}
           />
-          <TopKnob
+          <LfoBindKnob
+            trackId={track.id}
+            knob="delaySend"
             label="delay send"
             value={delaySend}
-            display={`${(delaySend * 100).toFixed(0)}%`}
+            display={(v) => `${Math.round(v * 100)}%`}
             onChange={(v) => setVoiceEdit(voiceId, { delaySend: v })}
           />
         </div>
@@ -438,7 +452,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
               {/* length + position are global-LFO destinations (per-note drift);
                   scatter is a plain local knob. */}
               <div className="flex gap-2">
-                <GranLfoKnob
+                <LfoBindKnob
                   trackId={track.id}
                   knob="grainLength"
                   label="length"
@@ -446,7 +460,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
                   display={(v) => `${Math.round(1 + v * 999)} ms`}
                   onChange={(v) => setGranular({ grainMs: 1 + v * 999 })}
                 />
-                <GranLfoKnob
+                <LfoBindKnob
                   trackId={track.id}
                   knob="grainPosition"
                   label="pos"
@@ -778,25 +792,28 @@ function TopKnob({
   );
 }
 
-// A grain knob that's also a global-LFO destination (per-note drift of grain
-// length/position). Mirrors TrackKnob: shows the live modulated value, click
-// while an LFO is in select-mode to bind it, and a hand-drag marks a manual
-// override so the LFO yields. Keyed by the focused track's id + the instrument
-// knob name. value/onChange operate in 0..1; `display` formats the modulated v.
-function GranLfoKnob({
+// A knob that's also a global-LFO destination. Mirrors TrackKnob: shows the
+// live modulated value, click while an LFO is in select-mode to bind it, and a
+// hand-drag marks a manual override so the LFO yields. Keyed by the focused
+// track's id + the destination knob name. value/onChange operate in 0..1;
+// `display` formats the modulated v. Used for the grain length/position drift
+// and the per-instrument reverb / delay sends.
+function LfoBindKnob({
   trackId,
   knob,
   label,
   value,
   display,
   onChange,
+  bipolar = false,
 }: {
   trackId: string;
-  knob: LFODestKnobInstrument;
+  knob: LFODestKnob;
   label: string;
   value: number;
   display: (v: number) => string;
   onChange: (v: number) => void;
+  bipolar?: boolean;
 }) {
   const selectingLFO = useSequencerStore((s) => s.selectingLFO);
   const toggleLFODestination = useSequencerStore((s) => s.toggleLFODestination);
@@ -818,6 +835,7 @@ function GranLfoKnob({
       <Knob
         value={value}
         displayValue={modValue}
+        bipolar={bipolar}
         onChange={(v) => {
           markManualOverride(trackId, knob);
           onChange(v);

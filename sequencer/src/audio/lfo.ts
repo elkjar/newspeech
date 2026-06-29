@@ -19,7 +19,23 @@ export type LFODestKnobGlobal =
 // track's id at bind time). Distinct from LFODestKnobTrack because these live on
 // the voice (voiceEdits), not on TrackData — so they're applied at trigger time
 // in the sample chokepoint rather than read off the track record.
-export type LFODestKnobInstrument = 'grainLength' | 'grainPosition';
+// Per-instrument editor knobs the global LFO can reach (keyed by the focused
+// track's id at bind time). These live on the voice (voiceEdits), not on
+// TrackData, so TrackKnob doesn't render them. grain* drift is applied JS-side
+// at trigger (samplePlayer); the sends are pushed to Rust per-track from the
+// track's active voice and modulated continuously there (trackReverbSend /
+// trackDelaySend), exactly like fxSend.
+export type LFODestKnobInstrument =
+  | 'grainLength'
+  | 'grainPosition'
+  | 'reverbSend'
+  | 'delaySend'
+  // Continuous pitch drift around the static tune/finetune. Modulated in Rust
+  // per-track (trackTune / trackFineTune) and applied to the voice rate, so it
+  // sweeps through held notes — distinct from the automation page's per-voice
+  // pitch LFO.
+  | 'tune'
+  | 'finetune';
 export type LFODestKnob =
   | LFODestKnobTrack
   | LFODestKnobGlobal

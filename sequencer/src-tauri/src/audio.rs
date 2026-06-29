@@ -175,13 +175,27 @@ pub struct TrackParams {
   // full, unlike fx_send's crossfade): the voice's full signal × reverb_send
   // taps into the parallel reverb return. Sourced from the instrument's
   // `reverbSend` voice param (saved with the instrument), pushed here per
-  // track so knob twists hit voices already in flight. Single atomic — no
-  // sequencer-LFO base/eff split (add one if it becomes an automation target).
+  // track so knob twists hit voices already in flight. base/eff split so a
+  // sequencer LFO can sweep the send continuously (TrackReverbSend dest).
+  reverb_send_base: AtomicU32,
   reverb_send_eff: AtomicU32,
   // 0..1 — per-instrument DELAY send. Same additive-aux shape as reverb_send,
-  // feeding the global ping-pong delay. Single atomic, sourced from the voice's
-  // `delaySend` param.
+  // feeding the global ping-pong delay. base/eff split mirrors reverb_send so
+  // it's an LFO automation target too (TrackDelaySend dest).
+  delay_send_base: AtomicU32,
   delay_send_eff: AtomicU32,
+  // Continuous tuning modulation (TrackTune / TrackFineTune LFO dests). The
+  // STATIC tune/finetune is already baked into each voice's playback `rate` at
+  // trigger (JS folds it into the trigger pitch); these add an LFO DEVIATION on
+  // top, applied per-frame via `pitch_factor`. `*_base_norm` is the static knob
+  // value normalized 0..1 (pushed per-track from the active voice) — the LFO
+  // swings around it. `*_mod_semis` is the resulting deviation in SEMITONES the
+  // audio thread reads (0 = no LFO routed; reset in the snap-back pass). Coarse
+  // tune spans ±24 st (norm range 48), finetune ±1 st / ±100 ct (norm range 2).
+  tune_base_norm: AtomicU32,
+  tune_mod_semis: AtomicU32,
+  finetune_base_norm: AtomicU32,
+  finetune_mod_semis: AtomicU32,
 }
 
 // Cutoff mapping mirrors src/audio/nativeEngine.ts cutoffNormToHz.
@@ -209,8 +223,15 @@ impl TrackParams {
       resonance_eff: AtomicU32::new(0.0_f32.to_bits()),
       fx_send_base: AtomicU32::new(0.0_f32.to_bits()),
       fx_send_eff: AtomicU32::new(0.0_f32.to_bits()),
+      reverb_send_base: AtomicU32::new(0.0_f32.to_bits()),
       reverb_send_eff: AtomicU32::new(0.0_f32.to_bits()),
+      delay_send_base: AtomicU32::new(0.0_f32.to_bits()),
       delay_send_eff: AtomicU32::new(0.0_f32.to_bits()),
+      // Static tune/finetune both default to 0 → normalized 0.5 (the center).
+      tune_base_norm: AtomicU32::new(0.5_f32.to_bits()),
+      tune_mod_semis: AtomicU32::new(0.0_f32.to_bits()),
+      finetune_base_norm: AtomicU32::new(0.5_f32.to_bits()),
+      finetune_mod_semis: AtomicU32::new(0.0_f32.to_bits()),
     }
   }
   fn cutoff(&self) -> f32 {
@@ -234,8 +255,28 @@ impl TrackParams {
   fn reverb_send(&self) -> f32 {
     f32::from_bits(self.reverb_send_eff.load(Ordering::Relaxed))
   }
+  fn reverb_send_base(&self) -> f32 {
+    f32::from_bits(self.reverb_send_base.load(Ordering::Relaxed))
+  }
   fn delay_send(&self) -> f32 {
     f32::from_bits(self.delay_send_eff.load(Ordering::Relaxed))
+  }
+  fn delay_send_base(&self) -> f32 {
+    f32::from_bits(self.delay_send_base.load(Ordering::Relaxed))
+  }
+  // Tuning: base norms drive the LFO swing center; mod_semis is the deviation
+  // the voice adds to its per-frame pitch. mod readers are Relaxed (k-rate).
+  fn tune_base_norm(&self) -> f32 {
+    f32::from_bits(self.tune_base_norm.load(Ordering::Relaxed))
+  }
+  fn tune_mod_semis(&self) -> f32 {
+    f32::from_bits(self.tune_mod_semis.load(Ordering::Relaxed))
+  }
+  fn finetune_base_norm(&self) -> f32 {
+    f32::from_bits(self.finetune_base_norm.load(Ordering::Relaxed))
+  }
+  fn finetune_mod_semis(&self) -> f32 {
+    f32::from_bits(self.finetune_mod_semis.load(Ordering::Relaxed))
   }
   // IPC writes the user-knob value to base AND the post-mapping/post-no-mod
   // value to effective. When an LFO is later routed, the audio thread
@@ -264,13 +305,30 @@ impl TrackParams {
   }
   fn set_reverb_send(&self, reverb_send: f32) {
     self
+      .reverb_send_base
+      .store(reverb_send.to_bits(), Ordering::Release);
+    self
       .reverb_send_eff
       .store(reverb_send.to_bits(), Ordering::Release);
   }
   fn set_delay_send(&self, delay_send: f32) {
     self
+      .delay_send_base
+      .store(delay_send.to_bits(), Ordering::Release);
+    self
       .delay_send_eff
       .store(delay_send.to_bits(), Ordering::Release);
+  }
+  // IPC writes the static tune/finetune (normalized) as the LFO swing center.
+  // mod_semis is left to the audio thread (snap-back zeroes it, LFO compute
+  // writes the deviation) — no need to touch it here.
+  fn set_tuning(&self, tune_norm: f32, finetune_norm: f32) {
+    self
+      .tune_base_norm
+      .store(tune_norm.clamp(0.0, 1.0).to_bits(), Ordering::Release);
+    self
+      .finetune_base_norm
+      .store(finetune_norm.clamp(0.0, 1.0).to_bits(), Ordering::Release);
   }
   // Writers used by the LFO compute (audio thread). Effective only —
   // base stays put so the next block can recompute from the same base.
@@ -284,6 +342,19 @@ impl TrackParams {
   }
   fn write_fx_send_eff(&self, v: f32) {
     self.fx_send_eff.store(v.to_bits(), Ordering::Release);
+  }
+  fn write_reverb_send_eff(&self, v: f32) {
+    self.reverb_send_eff.store(v.to_bits(), Ordering::Release);
+  }
+  fn write_delay_send_eff(&self, v: f32) {
+    self.delay_send_eff.store(v.to_bits(), Ordering::Release);
+  }
+  // Tuning deviation writers (audio thread / LFO compute). Semitones.
+  fn write_tune_mod_semis(&self, v: f32) {
+    self.tune_mod_semis.store(v.to_bits(), Ordering::Release);
+  }
+  fn write_finetune_mod_semis(&self, v: f32) {
+    self.finetune_mod_semis.store(v.to_bits(), Ordering::Release);
   }
 }
 
@@ -2821,6 +2892,10 @@ pub enum LfoDestKind {
   TrackFilterCutoff,
   TrackFilterResonance,
   TrackFxSend,
+  TrackReverbSend,
+  TrackDelaySend,
+  TrackTune,
+  TrackFineTune,
   ReverbSize,
   ReverbMix,
   ReverbDiffusion,
@@ -2848,7 +2923,11 @@ impl LfoDestKind {
       self,
       LfoDestKind::TrackFilterCutoff
         | LfoDestKind::TrackFilterResonance
-        | LfoDestKind::TrackFxSend,
+        | LfoDestKind::TrackFxSend
+        | LfoDestKind::TrackReverbSend
+        | LfoDestKind::TrackDelaySend
+        | LfoDestKind::TrackTune
+        | LfoDestKind::TrackFineTune,
     )
   }
 }
@@ -2965,6 +3044,12 @@ fn install_lfo_snapshot(lfos: Vec<LfoIpc>) {
       params.write_cutoff_norm_eff(params.cutoff_norm_base());
       params.write_resonance_eff(params.resonance_base());
       params.write_fx_send_eff(params.fx_send_base());
+      params.write_reverb_send_eff(params.reverb_send_base());
+      params.write_delay_send_eff(params.delay_send_base());
+      // Tuning deviation is additive (0 = no mod), so snap back to 0 rather
+      // than to a base — the static tune already lives in each voice's rate.
+      params.write_tune_mod_semis(0.0);
+      params.write_finetune_mod_semis(0.0);
     }
   }
 
@@ -3861,6 +3946,11 @@ impl AudioEngine {
   pub fn set_track_delay_send(&self, track_id: String, delay_send: f32) {
     let params = get_or_create_track_params(&track_id);
     params.set_delay_send(delay_send.clamp(0.0, 1.0));
+  }
+
+  pub fn set_track_tuning(&self, track_id: String, tune_norm: f32, finetune_norm: f32) {
+    let params = get_or_create_track_params(&track_id);
+    params.set_tuning(tune_norm, finetune_norm);
   }
 
   // Reverb DSP params + global wet-bus gain. Held in atomics inside the
@@ -4764,6 +4854,35 @@ fn build_stream(
                   tp.write_fx_send_eff(apply_lfo(base, total_depth, out));
                 }
               }
+              LfoDestKind::TrackReverbSend => {
+                if let Some(tp) = group.track_params.as_ref() {
+                  let base = tp.reverb_send_base();
+                  tp.write_reverb_send_eff(apply_lfo(base, total_depth, out));
+                }
+              }
+              LfoDestKind::TrackDelaySend => {
+                if let Some(tp) = group.track_params.as_ref() {
+                  let base = tp.delay_send_base();
+                  tp.write_delay_send_eff(apply_lfo(base, total_depth, out));
+                }
+              }
+              // Tuning dests write the DEVIATION in semitones (apply_lfo result
+              // minus the static base), since the static tune is already in the
+              // voice rate. Coarse spans ±24 st (norm×48), fine ±1 st (norm×2).
+              LfoDestKind::TrackTune => {
+                if let Some(tp) = group.track_params.as_ref() {
+                  let base = tp.tune_base_norm();
+                  let modded = apply_lfo(base, total_depth, out);
+                  tp.write_tune_mod_semis((modded - base) * 48.0);
+                }
+              }
+              LfoDestKind::TrackFineTune => {
+                if let Some(tp) = group.track_params.as_ref() {
+                  let base = tp.finetune_base_norm();
+                  let modded = apply_lfo(base, total_depth, out);
+                  tp.write_finetune_mod_semis((modded - base) * 2.0);
+                }
+              }
               LfoDestKind::ReverbSize => {
                 let r = reverb_state();
                 r.write_size_eff(apply_lfo(r.size_base(), total_depth, out));
@@ -5315,6 +5434,18 @@ fn build_stream(
               (l, r)
             }
           };
+          // Per-track tuning LFO deviation (semitones), read once per block —
+          // it's k-rate (the LFO compute writes it once per block). Folded into
+          // the per-frame pitch_factor below alongside the mod-grid pitch. A
+          // frozen voice (caught mid-tail by a scene/bank/song swap) keeps its
+          // pitch — the incoming scene must not retune the ring-out.
+          let track_tune_semis: f32 = if v.frozen_params.is_some() {
+            0.0
+          } else {
+            track_params_ref
+              .map(|p| p.tune_mod_semis() + p.finetune_mod_semis())
+              .unwrap_or(0.0)
+          };
           // Loop geometry is constant across the block. xf = seam crossfade
           // length, capped at half the span so short loops still blend.
           let span = v.play_end - v.play_start;
@@ -5342,7 +5473,8 @@ fn build_stream(
             let mod_cutoff = v.mods[3].value(mod_elapsed, mod_hold);
             let cutoff_mod_on = v.mods[3].on;
             let mod_pitch_semis = v.mods[4].value(mod_elapsed, mod_hold)
-              + v.mods[5].value(mod_elapsed, mod_hold);
+              + v.mods[5].value(mod_elapsed, mod_hold)
+              + track_tune_semis;
             let pitch_factor = if mod_pitch_semis != 0.0 {
               2.0_f64.powf((mod_pitch_semis / 12.0) as f64)
             } else {
@@ -6400,6 +6532,11 @@ pub struct TrackFilterUpdate {
   pub fx_send: f32,
   pub reverb_send: f32,
   pub delay_send: f32,
+  // Static tune/finetune normalized 0..1 — the LFO swing center for the
+  // TrackTune / TrackFineTune destinations (the static value itself is already
+  // baked into each voice's pitch at trigger).
+  pub tune_norm: f32,
+  pub finetune_norm: f32,
 }
 
 // One invoke carrying N per-track updates. RAF push in JS hits this
@@ -6413,7 +6550,8 @@ pub fn audio_set_track_filters_bulk(updates: Vec<TrackFilterUpdate>) -> Result<(
     e.set_track_filter(u.track_id.clone(), u.cutoff_norm, u.resonance);
     e.set_track_fx_send(u.track_id.clone(), u.fx_send);
     e.set_track_reverb_send(u.track_id.clone(), u.reverb_send);
-    e.set_track_delay_send(u.track_id, u.delay_send);
+    e.set_track_delay_send(u.track_id.clone(), u.delay_send);
+    e.set_track_tuning(u.track_id, u.tune_norm, u.finetune_norm);
   }
   Ok(())
 }

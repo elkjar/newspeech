@@ -503,6 +503,10 @@ export interface TrackFilterUpdate {
   reverbSend: number;
   // Per-instrument delay send (the active voice's delaySend), 0..1.
   delaySend: number;
+  // Active voice's static tune / finetune, normalized 0..1 — the LFO swing
+  // center for the trackTune / trackFineTune destinations.
+  tuneNorm: number;
+  finetuneNorm: number;
 }
 
 export async function setTrackFiltersBulk(
@@ -519,6 +523,8 @@ export async function setTrackFiltersBulk(
       fx_send: u.fxSend,
       reverb_send: u.reverbSend,
       delay_send: u.delaySend,
+      tune_norm: u.tuneNorm,
+      finetune_norm: u.finetuneNorm,
     })),
   });
 }
@@ -535,6 +541,10 @@ export type LfoDestKind =
   | 'trackFilterCutoff'
   | 'trackFilterResonance'
   | 'trackFxSend'
+  | 'trackReverbSend'
+  | 'trackDelaySend'
+  | 'trackTune'
+  | 'trackFineTune'
   | 'reverbSize'
   | 'reverbMix'
   | 'reverbDiffusion'
