@@ -40,6 +40,11 @@ pub struct DelayBus {
   // One-pole LP state for the feedback signal (per channel).
   fb_lp_l: f32,
   fb_lp_r: f32,
+  // One-pole LP state for the fresh input (per channel) — the first tap gets
+  // the same darkening as the repeats, so echo 1 sounds like "a repeat" rather
+  // than a full-brightness clone of the dry hit.
+  in_lp_l: f32,
+  in_lp_r: f32,
 }
 
 impl DelayBus {
@@ -53,6 +58,8 @@ impl DelayBus {
       sample_rate: sample_rate as f32,
       fb_lp_l: 0.0,
       fb_lp_r: 0.0,
+      in_lp_l: 0.0,
+      in_lp_r: 0.0,
     }
   }
 
@@ -70,6 +77,8 @@ impl DelayBus {
     self.write = 0;
     self.fb_lp_l = 0.0;
     self.fb_lp_r = 0.0;
+    self.in_lp_l = 0.0;
+    self.in_lp_r = 0.0;
   }
 
   // Process one block, writing the 100%-wet delayed signal to (out_l, out_r).
@@ -97,7 +106,11 @@ impl DelayBus {
     // Flush any non-finite feedback-LP state (e.g. inherited from a buffer
     // poisoned before the bound below existed, or a 0×inf on a knob move).
     // One branch per block; keeps a transient NaN from circulating forever.
-    if !(self.fb_lp_l.is_finite() && self.fb_lp_r.is_finite()) {
+    if !(self.fb_lp_l.is_finite()
+      && self.fb_lp_r.is_finite()
+      && self.in_lp_l.is_finite()
+      && self.in_lp_r.is_finite())
+    {
       self.clear();
     }
     let fb = feedback.clamp(0.0, 1.1);
@@ -111,6 +124,12 @@ impl DelayBus {
     // lofi rises. Blended in by lofi so lofi=0 is perfectly clean.
     let drive = 1.0 + lf * 5.0;
     let inv_drive = 1.0 / drive;
+    // Energy compensation for the ping-pong input fold below. Folding both
+    // channels onto the left line sums a centered send coherently (+6dB in-
+    // channel at p=1), which made the first echo LOUDER than the dry hit and
+    // read as "the hit got panned". 1/sqrt(1+p^2) keeps a centered send at
+    // constant energy across the whole pingpong range.
+    let fold_norm = 1.0 / (1.0 + p * p).sqrt();
     for i in 0..frames {
       let read = (self.write + self.cap - d) % self.cap;
       let yl = self.buf_l[read];
@@ -133,12 +152,17 @@ impl DelayBus {
       // rises, fold the input onto the LEFT line only: at p=1 the first echo is
       // hard-left and the cross-feed walks it L→R→L. At p=0 it's untouched
       // (straight per-channel stereo delay).
-      let in_left = in_l[i] + p * in_r[i];
-      let in_right = (1.0 - p) * in_r[i];
+      let in_left = (in_l[i] + p * in_r[i]) * fold_norm;
+      let in_right = (1.0 - p) * in_r[i] * fold_norm;
+      // Darken the fresh input with the same one-pole as the feedback path so
+      // the FIRST echo already has repeat tone (slightly dark) instead of
+      // arriving as a full-brightness clone of the dry hit.
+      self.in_lp_l += lp * (in_left - self.in_lp_l);
+      self.in_lp_r += lp * (in_right - self.in_lp_r);
       // Bound the fed-back component (not the fresh input) so fb > 1
       // self-oscillates at a stable ceiling instead of running to inf.
-      self.buf_l[self.write] = in_left + bound_feedback(deg_l * fb);
-      self.buf_r[self.write] = in_right + bound_feedback(deg_r * fb);
+      self.buf_l[self.write] = self.in_lp_l + bound_feedback(deg_l * fb);
+      self.buf_r[self.write] = self.in_lp_r + bound_feedback(deg_r * fb);
       out_l[i] = yl;
       out_r[i] = yr;
       self.write = (self.write + 1) % self.cap;
