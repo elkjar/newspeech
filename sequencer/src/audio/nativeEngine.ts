@@ -333,6 +333,12 @@ export async function triggerSample(
     // this trigger claims its slot. Matches the web bass/lead
     // workflow where a new note chokes the prior tail.
     monophonic?: boolean;
+    // Manifest choke-group name (hats etc.). A trigger carrying one gives
+    // every in-flight voice tagged with the same group a ~20ms release
+    // ramp, ACROSS tracks — closed hat chokes open hat even though they
+    // live on different tracks. Mirrors the web samplePlayer's manifest
+    // chokeGroups. undefined/empty = no group.
+    chokeGroup?: string;
     // Section tag for splits recording. 0/undefined = none (skipped
     // from splits), 1 = 'drum', 2 = 'melodic', 3 = 'click' (writes to
     // both rhythm + melody splits so count-in lands in either stem).
@@ -410,6 +416,7 @@ export async function triggerSample(
     outStereo: opts.outStereo ?? null,
     trackId: opts.trackId ?? null,
     monophonic: opts.monophonic ?? null,
+    chokeGroup: opts.chokeGroup ?? null,
     section: opts.section ?? null,
     isTexture: opts.isTexture ?? null,
     envelopeAttack: opts.envelopeAttack ?? null,

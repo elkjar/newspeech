@@ -597,6 +597,10 @@ class SamplePlayer {
     path: string;
     pitch: number;
     voiceGain: number;
+    // Manifest choke-group name (hats etc.), forwarded to the native
+    // trigger so the cpal engine can choke matching voices across tracks
+    // — mirrors the chokeGroups handling in the web trigger() above.
+    chokeGroup: string | null;
     start: number;
     end: number;
     loop: number;
@@ -673,6 +677,7 @@ class SamplePlayer {
       path,
       pitch,
       voiceGain: data.gain * voiceGainOverride(voice),
+      chokeGroup: this.chokeGroups.get(voice) ?? null,
       start: trim.start,
       end: trim.end,
       loop: trim.loop,

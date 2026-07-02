@@ -709,6 +709,7 @@ export function App() {
                     // the web branch below: new tones choke the prior
                     // tail so the line reads as an arp, not a strum.
                     monophonic: true,
+                    chokeGroup: pick.chokeGroup ?? undefined,
                     section: sectionCode(ev.section),
                     isTexture,
                     // Per-arp-tone hold = sub-step duration × gate.
@@ -783,6 +784,11 @@ export function App() {
               // the voicing-macro loop (below) can re-voice it while it rings.
               const reVoiceable = ev.revoice !== undefined;
               const tones: ChordToneVoice[] = [];
+              // Choke group fires on the FIRST tone only — all tones of a
+              // chord land in the same audio block, and a per-tone choke
+              // would have tone 2 ramp out tone 1 of its own chord. The web
+              // path chokes once per trigger event; this mirrors that.
+              let chokeApplied = false;
               for (const interval of intervals) {
                 const targetMidi =
                   ev.midi !== undefined ? ev.midi + interval : undefined;
@@ -804,6 +810,10 @@ export function App() {
                   // the engine event) — mirror that for native so bass /
                   // lead tracks marked monophonic actually choke.
                   monophonic: ev.monophonic === true,
+                  // Manifest choke group (hats) — chokes across tracks,
+                  // matching the web samplePlayer's chokeGroups handling.
+                  chokeGroup:
+                    !chokeApplied && pick.chokeGroup ? pick.chokeGroup : undefined,
                   section: sectionCode(ev.section),
                   isTexture,
                   // Voice ADSR + hold = gate × stepDuration (matches the
@@ -828,6 +838,7 @@ export function App() {
                   mods: pick.mods,
                   granular: pick.granular,
                 });
+                if (pick.chokeGroup) chokeApplied = true;
                 if (noteId !== undefined && targetMidi !== undefined) {
                   tones.push({ noteId, midi: targetMidi });
                 }

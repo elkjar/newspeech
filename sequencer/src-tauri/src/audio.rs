@@ -2116,6 +2116,73 @@ impl MasterStage {
     }
   }
 
+  // Zero every piece of running state (biquad delay lines, comp/gate
+  // envelopes, distortion memories) while keeping coefficients. Called by
+  // Panic — a runaway FX tail that reached inf leaves NaN latched in the
+  // biquad x/y history and the detector envelopes, and without this the
+  // output stays dead after the panic clears the FX buses. Also invoked
+  // per-block by the non-finite guard in process_block. Allocation-free.
+  fn reset_state(&mut self) {
+    self.dc_l.reset_state();
+    self.dc_r.reset_state();
+    self.lo_l.reset_state();
+    self.lo_r.reset_state();
+    self.hi_l.reset_state();
+    self.hi_r.reset_state();
+    self.tail_l.reset_state();
+    self.tail_r.reset_state();
+    self.pre_emph_l.reset_state();
+    self.pre_emph_r.reset_state();
+    self.de_emph_l.reset_state();
+    self.de_emph_r.reset_state();
+    self.comp_peak_env_l = 0.0;
+    self.comp_peak_env_r = 0.0;
+    self.comp_rms_sq_l = 0.0;
+    self.comp_rms_sq_r = 0.0;
+    self.comp_smoothed_gr_db = 0.0;
+    self.comp_active_samples = 0;
+    self.dist_prev_y_l = 0.0;
+    self.dist_prev_y_r = 0.0;
+    self.dist_post_lp_l = 0.0;
+    self.dist_post_lp_r = 0.0;
+    self.dist_prev_x_l = 0.0;
+    self.dist_prev_x_r = 0.0;
+    self.gate_peak_env_l = 0.0;
+    self.gate_peak_env_r = 0.0;
+    self.gate_smoothed_gain = 1.0;
+  }
+
+  // True when any running state has gone non-finite (NaN/inf from a
+  // poisoned upstream block). Probes a sum across the stateful subsystems —
+  // all values are bounded audio-range floats, so a finite sum ⇔ every
+  // term finite; NaN and inf−inf both propagate to the probe.
+  #[inline]
+  fn state_is_poisoned(&self) -> bool {
+    let probe = self.dc_l.y1
+      + self.dc_r.y1
+      + self.lo_l.y1
+      + self.lo_r.y1
+      + self.hi_l.y1
+      + self.hi_r.y1
+      + self.tail_l.y1
+      + self.tail_r.y1
+      + self.pre_emph_l.y1
+      + self.pre_emph_r.y1
+      + self.de_emph_l.y1
+      + self.de_emph_r.y1
+      + self.comp_rms_sq_l
+      + self.comp_rms_sq_r
+      + self.comp_smoothed_gr_db
+      + self.dist_prev_y_l
+      + self.dist_prev_y_r
+      + self.dist_post_lp_l
+      + self.dist_post_lp_r
+      + self.gate_peak_env_l
+      + self.gate_peak_env_r
+      + self.gate_smoothed_gain;
+    !probe.is_finite()
+  }
+
   // Distortion stage applied to a single channel sample. State refs
   // are split fields of MasterStage; pre/de-emphasis biquads handled
   // by the caller because they're regular Biquads. Caller is also
@@ -2225,6 +2292,14 @@ impl MasterStage {
   ) {
     if n_ch == 0 {
       return;
+    }
+    // Non-finite recovery — a NaN/inf that slipped in from an upstream
+    // block (runaway FX before the delay's feedback bound, a pathological
+    // sample) would otherwise latch in the biquad/envelope state forever
+    // and silence the output permanently. Heals one block after the
+    // source stops. One branch per block.
+    if self.state_is_poisoned() {
+      self.reset_state();
     }
     let bypass_target: f32 = if bypass { 0.0 } else { 1.0 };
     let bypass_slew = self.bypass_slew_per_sample;
@@ -3246,6 +3321,13 @@ struct Voice {
   // fade-in. Counts output frames (not sample position), so it's
   // rate-independent.
   frames_played: u32,
+  // Choke-group tag (FNV-1a hash of the manifest group name, 0 = none).
+  // A new trigger carrying a non-zero group gives every active voice with
+  // the SAME group the ~20ms release ramp — across tracks, matching the
+  // web samplePlayer's manifest chokeGroups (closed hat chokes open hat
+  // even though they live on different tracks). Hashed JS→IPC-thread-side
+  // so no String ever crosses into the audio callback.
+  choke_group: u32,
   // Monophonic-choke release state. When a new trigger lands on a track
   // marked monophonic, all existing active voices that share the SAME
   // track_params Arc get `release_remaining` set to RELEASE_FRAMES. Per
@@ -3370,6 +3452,7 @@ impl Default for Voice {
       filter: LadderFilter::default(),
       start_frame: 0,
       active: false,
+      choke_group: 0,
       release_remaining: 0,
       release_total: 0,
       env_active: false,
@@ -3454,6 +3537,9 @@ enum MixerCommand {
     // deactivate. Matches the web bass/lead workflow where a new note
     // chokes the prior one's tail.
     monophonic: bool,
+    // Choke-group hash (0 = none) — chokes matching voices ACROSS tracks
+    // on dispatch (hats). See Voice::choke_group.
+    choke_group: u32,
     // Section tag (see SECTION_* constants). Drives the splits recording
     // tap — drum voices into rhythm WAV, melodic into melody WAV, click
     // into both. SECTION_NONE skips splits entirely.
@@ -3571,6 +3657,7 @@ struct PendingTrigger {
   out_stereo: bool,
   track_params: Option<Arc<TrackParams>>,
   monophonic: bool,
+  choke_group: u32,
   section: u8,
   is_texture: bool,
   envelope: Option<EnvelopeSpec>,
@@ -3834,6 +3921,7 @@ impl AudioEngine {
     track_id: Option<String>,
     delay_secs: f32,
     monophonic: bool,
+    choke_group: Option<String>,
     section: u8,
     is_texture: bool,
     envelope: Option<EnvelopeSpec>,
@@ -3867,6 +3955,18 @@ impl AudioEngine {
     let track_params = track_id
       .as_deref()
       .map(get_or_create_track_params);
+    // Choke group crosses IPC as the manifest's group name; hash it here
+    // (command thread) so only a Copy u32 rides the ring into the audio
+    // callback — no String alloc/drop on the realtime path. 0 is reserved
+    // for "no group"; an (unlikely) zero hash nudges to 1.
+    let choke_group = choke_group
+      .as_deref()
+      .filter(|g| !g.is_empty())
+      .map(|g| {
+        let h = fnv1a_32(g.as_bytes());
+        if h == 0 { 1 } else { h }
+      })
+      .unwrap_or(0);
     // Convert delay seconds → frames at the device sample rate. The
     // audio callback dequeues by frame count, so seconds is the
     // unit-agnostic value to cross IPC; sample rate is owned by Rust.
@@ -3889,6 +3989,7 @@ impl AudioEngine {
       out_stereo,
       track_params,
       monophonic,
+      choke_group,
       section,
       is_texture,
       envelope,
@@ -4100,27 +4201,21 @@ impl AudioEngine {
 
   pub fn stop_recording_combined(&self) -> Result<(), String> {
     let r = recorder_state();
-    if !r.combined_enabled.load(Ordering::Acquire) {
+    if !r.combined_enabled.swap(false, Ordering::AcqRel) {
       // Idempotent — stopping a non-running recorder is fine.
       return Ok(());
     }
-    // Push stop to the audio thread — it drops the producer, worker
-    // sees try_pop empty and eventually the stop flag, finalizes WAV.
-    {
-      let mut guard = self
-        .state
-        .trigger_producer
-        .lock()
-        .map_err(|e| format!("producer lock: {}", e))?;
-      let producer = guard
-        .as_mut()
-        .ok_or_else(|| "audio device not open".to_string())?;
-      producer
-        .try_push(MixerCommand::StopCombinedRecording)
-        .map_err(|_| "command queue full (stop recording)".to_string())?;
-    }
-    r.combined_enabled.store(false, Ordering::Release);
+    // Flags FIRST, producer push best-effort after. The worker finalizes
+    // off the stop flag alone; if the device was closed (or switched) in
+    // the meantime the callback-side producer already died with the old
+    // stream, and erroring out here would leave the worker spinning
+    // forever with an unfinalized WAV and the enabled flag stuck true.
     r.combined_stop.store(true, Ordering::Release);
+    if let Ok(mut guard) = self.state.trigger_producer.lock() {
+      if let Some(producer) = guard.as_mut() {
+        let _ = producer.try_push(MixerCommand::StopCombinedRecording);
+      }
+    }
     Ok(())
   }
 
@@ -4202,24 +4297,16 @@ impl AudioEngine {
 
   pub fn stop_recording_splits(&self) -> Result<(), String> {
     let r = recorder_state();
-    if !r.splits_enabled.load(Ordering::Acquire) {
+    if !r.splits_enabled.swap(false, Ordering::AcqRel) {
       return Ok(());
     }
-    {
-      let mut guard = self
-        .state
-        .trigger_producer
-        .lock()
-        .map_err(|e| format!("producer lock: {}", e))?;
-      let producer = guard
-        .as_mut()
-        .ok_or_else(|| "audio device not open".to_string())?;
-      producer
-        .try_push(MixerCommand::StopSplitsRecording)
-        .map_err(|_| "command queue full (stop splits)".to_string())?;
-    }
-    r.splits_enabled.store(false, Ordering::Release);
+    // Flags first, producer push best-effort — see stop_recording_combined.
     r.splits_stop.store(true, Ordering::Release);
+    if let Ok(mut guard) = self.state.trigger_producer.lock() {
+      if let Some(producer) = guard.as_mut() {
+        let _ = producer.try_push(MixerCommand::StopSplitsRecording);
+      }
+    }
     Ok(())
   }
 
@@ -4450,6 +4537,22 @@ impl AudioEngine {
   }
 }
 
+// Dropping (or replacing) the audio stream also drops the callback-local
+// recorder producers — without signalling the recorder workers first, a
+// recording in flight across a device Open/Close leaves its worker thread
+// spinning forever on an unfinalized WAV (and the enabled flag stuck true,
+// blocking any new take). Called at the top of Open and Close so an
+// in-flight take cleanly finalizes with everything captured so far.
+fn stop_recorders_for_stream_teardown() {
+  let r = recorder_state();
+  if r.combined_enabled.swap(false, Ordering::AcqRel) {
+    r.combined_stop.store(true, Ordering::Release);
+  }
+  if r.splits_enabled.swap(false, Ordering::AcqRel) {
+    r.splits_stop.store(true, Ordering::Release);
+  }
+}
+
 fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
   // _stream holds the cpal output stream for the duration of an open
   // device; cpal::Stream is !Send on macOS so its lifetime stays here.
@@ -4464,6 +4567,9 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
         reply,
       } => {
         // Drop any existing stream + producer before opening a new one.
+        // A recording in flight finalizes first (worker signalled before
+        // its producer dies with the stream).
+        stop_recorders_for_stream_teardown();
         _stream = None;
         if let Ok(mut prod) = state.trigger_producer.lock() {
           *prod = None;
@@ -4509,6 +4615,7 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
         }
       }
       EngineCommand::Close { reply } => {
+        stop_recorders_for_stream_teardown();
         _stream = None;
         if let Ok(mut prod) = state.trigger_producer.lock() {
           *prod = None;
@@ -4526,6 +4633,19 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
 // Monophonic-choke release window. ~20ms at any sample rate; matches
 // the web path's STEAL_RELEASE (samplePlayer.ts).
 const MONOPHONIC_CHOKE_MS: f32 = 20.0;
+
+// FNV-1a (32-bit) — hashes manifest choke-group names to the u32 tag that
+// rides the trigger command (see Voice::choke_group). Collision odds across
+// a handful of group names per kit are negligible, and a collision merely
+// over-chokes. Runs on the IPC command thread, never the audio callback.
+fn fnv1a_32(bytes: &[u8]) -> u32 {
+  let mut h: u32 = 0x811c_9dc5;
+  for b in bytes {
+    h ^= *b as u32;
+    h = h.wrapping_mul(0x0100_0193);
+  }
+  h
+}
 
 // Drops a PendingTrigger into a voice slot — picks an inactive slot,
 // or steals one round-robin via steal_cursor if all are busy. Used by
@@ -4561,6 +4681,22 @@ fn claim_voice_slot(
       }
     }
   }
+  // Choke group — cross-track choke keyed by the manifest group tag
+  // (closed hat chokes open hat on a different track). Same soft ~20ms
+  // ramp as the monophonic choke; the web path hard-stops instead, but
+  // an unfaded cut clicks on sustained samples, and the ramp is this
+  // engine's established choke idiom.
+  if p.choke_group != 0 {
+    let release_frames =
+      (MONOPHONIC_CHOKE_MS * 0.001 * sample_rate_f).max(1.0) as u32;
+    for v in voices.iter_mut() {
+      if v.active && v.release_remaining == 0 && v.choke_group == p.choke_group
+      {
+        v.release_remaining = release_frames;
+        v.release_total = release_frames;
+      }
+    }
+  }
   let slot = (0..VOICE_POOL_SIZE)
     .find(|i| !voices[*i].active)
     .unwrap_or_else(|| {
@@ -4570,6 +4706,7 @@ fn claim_voice_slot(
     });
   let v = &mut voices[slot];
   v.sample = Some(p.sample);
+  v.choke_group = p.choke_group;
   // Sample window + loop. Backward loops start at the window end and read
   // toward the start; everything else starts at the window start. play_dir
   // is the per-frame read direction (multiplies rate); pingpong flips it at
@@ -5032,6 +5169,7 @@ fn build_stream(
               out_stereo,
               track_params,
               monophonic,
+              choke_group,
               section,
               is_texture,
               envelope,
@@ -5109,6 +5247,7 @@ fn build_stream(
                 out_stereo,
                 track_params,
                 monophonic,
+                choke_group,
                 section,
                 is_texture,
                 envelope,
@@ -5180,6 +5319,11 @@ fn build_stream(
               // oscillating reverb/delay keeps ringing without these clears.
               reverb_bus.clear();
               delay_bus.clear();
+              // And flush the master chain's running state — a runaway that
+              // reached inf/NaN upstream latches in the master biquads and
+              // detector envelopes, leaving the output dead even after the
+              // FX buses are cleared. Coefficients are untouched.
+              master_stage.reset_state();
             }
             MixerCommand::ReleaseNote { note_id, fade_frames } => {
               if note_id != 0 && fade_frames > 0 {
@@ -6386,6 +6530,10 @@ pub fn audio_trigger_sample(
   track_id: Option<String>,
   delay_secs: Option<f32>,
   monophonic: Option<bool>,
+  // Manifest choke-group name (hats etc.) — a trigger carrying one chokes
+  // every in-flight voice tagged with the same group, across tracks.
+  // None/empty = no group. Hashed to a u32 before the audio thread.
+  choke_group: Option<String>,
   // Section tag for splits routing. 0/None = no section (skipped from
   // splits WAVs), 1 = drum, 2 = melodic, 3 = click (writes to BOTH
   // splits so count-in is in either stem).
@@ -6457,6 +6605,7 @@ pub fn audio_trigger_sample(
     track_id,
     delay_secs.unwrap_or(0.0),
     monophonic.unwrap_or(false),
+    choke_group,
     section.unwrap_or(0),
     is_texture.unwrap_or(false),
     envelope,

@@ -15,6 +15,22 @@ const MAX_DELAY_SECS: f32 = 4.0;
 const FB_DAMP: f32 = 0.35;
 const FB_DAMP_MIN: f32 = 0.04;
 
+// Hard ceiling on the fed-back signal. tanh(x/CEIL)*CEIL has unit slope at
+// the origin, so musical-level echoes (|x| ≲ 1) pass through effectively
+// untouched (<0.25dB compression at full scale) — runaway feedback (fb > 1,
+// per broken-ranges) still self-oscillates and screams, but settles into a
+// bounded analog-style saturation around ~2-3x full scale instead of growing
+// to f32::INFINITY. Unbounded growth was the real bug: inf reaching the
+// master stage turns into 0×inf = NaN, which latches in every downstream
+// biquad/envelope and leaves the output permanently dead (even Panic only
+// cleared the delay line, not the poisoned master state).
+const FB_CEIL: f32 = 4.0;
+
+#[inline]
+fn bound_feedback(x: f32) -> f32 {
+  (x * (1.0 / FB_CEIL)).tanh() * FB_CEIL
+}
+
 pub struct DelayBus {
   buf_l: Vec<f32>,
   buf_r: Vec<f32>,
@@ -78,6 +94,12 @@ impl DelayBus {
     lofi: f32,
   ) {
     let d = ((delay_seconds * self.sample_rate).round() as usize).clamp(1, self.cap - 1);
+    // Flush any non-finite feedback-LP state (e.g. inherited from a buffer
+    // poisoned before the bound below existed, or a 0×inf on a knob move).
+    // One branch per block; keeps a transient NaN from circulating forever.
+    if !(self.fb_lp_l.is_finite() && self.fb_lp_r.is_finite()) {
+      self.clear();
+    }
     let fb = feedback.clamp(0.0, 1.1);
     let p = pingpong.clamp(0.0, 1.0);
     let lf = lofi.clamp(0.0, 1.0);
@@ -113,8 +135,10 @@ impl DelayBus {
       // (straight per-channel stereo delay).
       let in_left = in_l[i] + p * in_r[i];
       let in_right = (1.0 - p) * in_r[i];
-      self.buf_l[self.write] = in_left + deg_l * fb;
-      self.buf_r[self.write] = in_right + deg_r * fb;
+      // Bound the fed-back component (not the fresh input) so fb > 1
+      // self-oscillates at a stable ceiling instead of running to inf.
+      self.buf_l[self.write] = in_left + bound_feedback(deg_l * fb);
+      self.buf_r[self.write] = in_right + bound_feedback(deg_r * fb);
       out_l[i] = yl;
       out_r[i] = yr;
       self.write = (self.write + 1) % self.cap;

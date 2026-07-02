@@ -91,6 +91,9 @@ export function monitorNote(
       trackId: track.id,
       delaySecs: 0,
       monophonic: track.monophonic === true,
+      // Manifest choke group — live-monitored hats choke each other the
+      // same way pattern playback does (mirrors the web trigger path).
+      chokeGroup: pick.chokeGroup ?? undefined,
       section: 0,
       envelopeAttack: env?.attack,
       envelopeDecay: env?.decay,
@@ -185,6 +188,9 @@ export function monitorChord(
         trackId: track.id,
         delaySecs: 0,
         monophonic: false,
+        // First tone only — a per-tone choke would ramp out this chord's
+        // own earlier tones (see the App.tsx dispatch path).
+        chokeGroup: i === 0 && pick.chokeGroup ? pick.chokeGroup : undefined,
         section: 0,
         envelopeAttack: env?.attack,
         envelopeDecay: env?.decay,
@@ -273,6 +279,7 @@ export function monitorDrum(track: Track, velocity: number): void {
       trackId: track.id,
       delaySecs: 0,
       monophonic: track.monophonic === true,
+      chokeGroup: pick.chokeGroup ?? undefined,
       section: 0, // SECTION_NONE — auditions stay out of recording stems
       start: pick.start,
       end: pick.end,
