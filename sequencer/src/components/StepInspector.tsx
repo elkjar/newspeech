@@ -307,74 +307,79 @@ export function StepInspector() {
         </div>
       )}
       {showAcc && (
-        <div
-          className={`flex items-center gap-2 mt-3 pt-2 border-t border-white/10 text-[10px] uppercase tracking-widest ${
-            accPlocked ? '' : 'opacity-50'
-          }`}
-        >
-          <span className="text-white/40">acc</span>
-          <LabeledSelect
-            label="S"
-            value={accPlocked ? String(effectiveAcc.step) : 'off'}
-            onChange={(v) =>
-              v === 'off' ? clearAcc() : updateAcc({ ...effectiveAcc, step: Number(v) })
-            }
-            plocked={accPlocked}
-            title="accumulator — degrees per rung each fire (— = off)"
+        <div className="mt-3 pt-2 border-t border-white/10">
+          <div
+            className={`text-[10px] uppercase tracking-widest mb-1.5 ${
+              accPlocked ? 'text-white' : 'text-white/40'
+            }`}
           >
-            <option value="off" className="bg-[#050505]">
-              —
-            </option>
-            {ACC_STEPS.map((n) => (
-              <option key={n} value={n} className="bg-[#050505]">
-                {signed(n)}
+            accumulator
+          </div>
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest">
+            <LabeledSelect
+              label="S"
+              value={accPlocked ? String(effectiveAcc.step) : 'off'}
+              onChange={(v) =>
+                v === 'off' ? clearAcc() : updateAcc({ ...effectiveAcc, step: Number(v) })
+              }
+              plocked={accPlocked}
+              title="accumulator — degrees per rung each fire (— = off)"
+              textSize="text-[11px]"
+            >
+              <option value="off" className="bg-[#050505]">
+                —
               </option>
-            ))}
-          </LabeledSelect>
-          <LabeledSelect
-            label="R"
-            value={String(effectiveAcc.range)}
-            onChange={(v) => updateAcc({ ...effectiveAcc, range: Number(v) })}
-            plocked={accPlocked}
-            disabled={!accPlocked}
-            title="range — rungs before it turns / resets"
-          >
-            {ACC_RANGES.map((n) => (
-              <option key={n} value={n} className="bg-[#050505]">
-                {n}
-              </option>
-            ))}
-          </LabeledSelect>
-          <LabeledSelect
-            label="⟳"
-            value={effectiveAcc.shape}
-            onChange={(v) => updateAcc({ ...effectiveAcc, shape: v as AccumulatorShape })}
-            plocked={accPlocked}
-            disabled={!accPlocked}
-            title="shape — wrap (saw) / bounce (triangle) / hold (climb + stay)"
-          >
-            {ACC_SHAPES.map((s) => (
-              <option key={s} value={s} className="bg-[#050505]">
-                {ACC_SHAPE_LABELS[s]}
-              </option>
-            ))}
-          </LabeledSelect>
+              {ACC_STEPS.map((n) => (
+                <option key={n} value={n} className="bg-[#050505]">
+                  {signed(n)}
+                </option>
+              ))}
+            </LabeledSelect>
+            <LabeledSelect
+              label="R"
+              value={String(effectiveAcc.range)}
+              onChange={(v) => updateAcc({ ...effectiveAcc, range: Number(v) })}
+              plocked={accPlocked}
+              title="range — rungs before it turns / resets (setting it turns the accumulator on)"
+              textSize="text-[11px]"
+            >
+              {ACC_RANGES.map((n) => (
+                <option key={n} value={n} className="bg-[#050505]">
+                  {n}
+                </option>
+              ))}
+            </LabeledSelect>
+            <LabeledSelect
+              label="⟳"
+              value={effectiveAcc.shape}
+              onChange={(v) => updateAcc({ ...effectiveAcc, shape: v as AccumulatorShape })}
+              plocked={accPlocked}
+              title="shape — wrap (saw) / bounce (triangle) / hold (climb + stay) (setting it turns the accumulator on)"
+              textSize="text-[11px]"
+            >
+              {ACC_SHAPES.map((s) => (
+                <option key={s} value={s} className="bg-[#050505]">
+                  {ACC_SHAPE_LABELS[s]}
+                </option>
+              ))}
+            </LabeledSelect>
+            {accPlocked && (
+              <button
+                type="button"
+                onClick={clearAcc}
+                className="ml-auto text-white/40 hover:text-white text-[11px] uppercase tracking-widest"
+                title="clear per-step accumulator"
+              >
+                ×
+              </button>
+            )}
+          </div>
           {accPlocked && track && activeSelection && (
-            <AccRungReadout
+            <AccLadder
               trackId={track.id}
               index={activeSelection.index}
               cfg={effectiveAcc}
             />
-          )}
-          {accPlocked && (
-            <button
-              type="button"
-              onClick={clearAcc}
-              className="ml-auto text-white/40 hover:text-white text-[10px] uppercase tracking-widest"
-              title="clear per-step accumulator"
-            >
-              ×
-            </button>
           )}
         </div>
       )}
@@ -382,10 +387,13 @@ export function StepInspector() {
   );
 }
 
-// Live current-rung / degree-offset readout for the selected step's
-// accumulator. Polls the ephemeral counter (not in the store) via RAF while
-// playing; static otherwise. Isolated so it doesn't re-render the inspector.
-function AccRungReadout({
+// Live ladder visualization for the selected step's accumulator: one cell per
+// rung, labeled with its degree offset, current rung filled. The traversal
+// makes the shape legible in motion — wrap saws home, bounce walks back and
+// forth, hold climbs and parks. Polls the ephemeral counter (not in the store)
+// via RAF while playing; static otherwise. Isolated so the RAF ticks don't
+// re-render the inspector.
+function AccLadder({
   trackId,
   index,
   cfg,
@@ -413,11 +421,21 @@ function AccRungReadout({
       cancelAnimationFrame(raf);
     };
   }, [playing, trackId, index, cfg.range, cfg.shape, cfg.step]);
-  const offset = cfg.step * rung;
   return (
-    <span className="text-white/55 tabular-nums" title="current rung · degree offset">
-      {rung}·{signed(offset)}
-    </span>
+    <div className="flex gap-1 mt-2" title="accumulator ladder — current rung · degree offset per rung">
+      {Array.from({ length: cfg.range }, (_, r) => (
+        <span
+          key={r}
+          className={`flex-1 h-7 flex items-center justify-center border text-[11px] tabular-nums tracking-wider transition-colors ${
+            r === rung
+              ? 'bg-white text-black border-white'
+              : 'border-white/15 text-white/45'
+          }`}
+        >
+          {signed(cfg.step * r)}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -438,6 +456,7 @@ function LabeledSelect({
   plocked,
   disabled,
   title,
+  textSize = 'text-[10px]',
 }: {
   label: string;
   value: string;
@@ -446,6 +465,7 @@ function LabeledSelect({
   plocked: boolean;
   disabled?: boolean;
   title?: string;
+  textSize?: string;
 }) {
   return (
     <label className="flex items-center gap-1" title={title}>
@@ -454,7 +474,7 @@ function LabeledSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className={`bg-transparent border border-white/15 px-1 text-[10px] focus:outline-none focus:border-white disabled:opacity-30 ${
+        className={`bg-transparent border border-white/15 px-1 ${textSize} focus:outline-none focus:border-white disabled:opacity-30 ${
           plocked ? 'text-white' : 'text-white/55'
         }`}
       >

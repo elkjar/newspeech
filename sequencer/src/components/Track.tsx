@@ -393,6 +393,13 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
                 isMelodic={melodic}
                 isCurrent={isCurrent}
                 isTiedChain={isTiedChain}
+                accSign={
+                  !isTiedChain && (display?.on ?? false) && display?.accumulator
+                    ? display.accumulator.step > 0
+                      ? 1
+                      : -1
+                    : 0
+                }
                 tieEnabled={tieEnabled}
                 size={STEP_SIZE}
               />

@@ -27,6 +27,10 @@ interface StepButtonProps {
   isMelodic: boolean;
   isCurrent: boolean;
   isTiedChain: boolean;
+  // Step carries a per-step accumulator plock — marked with a +/− glyph
+  // (the ladder's direction) so laddered steps read at a glance across the
+  // pattern. 0 = no accumulator.
+  accSign: -1 | 0 | 1;
   // When false, tie affordances are suppressed: shift+click does nothing,
   // and the tie-anchor pin square is hidden. Used on drum rows backed by
   // sample voices where tie carries no audible weight.
@@ -70,6 +74,7 @@ export function StepButton({
   isMelodic,
   isCurrent,
   isTiedChain,
+  accSign,
   tieEnabled,
   size,
 }: StepButtonProps) {
@@ -357,6 +362,18 @@ export function StepButton({
       )}
       {isAnchor && tieEnabled && (
         <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-white pointer-events-none" />
+      )}
+      {accSign !== 0 && (
+        <span
+          className="absolute bottom-0.5 left-0.5 pointer-events-none"
+          style={{ mixBlendMode: 'difference' }}
+          title="per-step accumulator"
+        >
+          <svg width="6" height="6" viewBox="0 0 9 9" fill="#fff">
+            <rect x="1" y="3.75" width="7" height="1.5" />
+            {accSign > 0 && <rect x="3.75" y="1" width="1.5" height="7" />}
+          </svg>
+        </span>
       )}
     </button>
   );
