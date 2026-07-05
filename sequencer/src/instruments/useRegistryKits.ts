@@ -1,4 +1,4 @@
-// React hook returning every registered sample kit (bundled + user).
+// React hook returning every registered sample kit.
 // Mirrors useRegistryVoices but at kit granularity — for surfaces that
 // want to display voices grouped by source pack.
 

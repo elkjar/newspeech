@@ -18,15 +18,19 @@ import { getRegisteredKits } from './manifestRegistry';
 
 const LS_VOICE_EDITS = 'newspeech.sequencer.voiceedits';
 
-// Sample playback loop mode. Maps 1:1 to the `.pti` playmode subset and to the
-// native engine's loop_mode code (off 0 · fwd 1 · bwd 2 · pingpong 3).
-export type LoopMode = 'off' | 'fwd' | 'bwd' | 'pingpong';
+// Sample playback loop mode. Codes 0-3 map 1:1 to the `.pti` playmode subset and
+// to the native engine's loop_mode code (off 0 · fwd 1 · bwd 2 · pingpong 3).
+// `rev` (code 4) is an app-only extension: a reverse ONE-SHOT — reads the window
+// backward once, then stops (unlike `bwd`, which loops backward forever). It has
+// no `.pti` equivalent, so exportPti clamps it back to OneShot.
+export type LoopMode = 'off' | 'fwd' | 'bwd' | 'pingpong' | 'rev';
 
 export const LOOP_MODE_CODE: Record<LoopMode, number> = {
   off: 0,
   fwd: 1,
   bwd: 2,
   pingpong: 3,
+  rev: 4,
 };
 
 // Per-instrument filter. 'off' bypasses; lp/hp/bp map to the native filter

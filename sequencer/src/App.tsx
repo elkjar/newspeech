@@ -33,6 +33,7 @@ import {
   voiceDelaySend,
   voiceTune,
   voiceFinetune,
+  voiceTrim,
 } from './instruments/voiceEditsStore';
 import { delayDivisionToSeconds, FEEDBACK_TO_ENGINE } from './audio/delay';
 
@@ -115,7 +116,6 @@ import {
   isStreamListenerActive,
   type StreamEvent,
 } from './stream/streamEvents';
-import { registerKit, type SampleKitEntry, type ExtendedSampleManifest } from './instruments/manifestRegistry';
 import { scanAndLoadUserSamples } from './instruments/userSamplesDir';
 import { tickPadDrift } from './audio/padState';
 import { consumeBranchLeaf } from './audio/treeState';
@@ -188,11 +188,11 @@ const SECTIONS: { id: TrackSection; label: string }[] = [
   { id: 'melodic', label: 'melody' },
 ];
 
-function SamplesSplash({ loaded, total }: { loaded: number; total: number }) {
-  // Cover the whole window. z-[100] sits above modals/portals; the splash
-  // owns the screen until bootDone. Terminal-style minimal text matching
-  // the rest of the app's aesthetic — no spinner, just a count.
-  const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+function SamplesSplash() {
+  // Cover the whole window. z-[100] sits above modals/portals; the splash owns
+  // the screen until bootDone. Terminal-style minimal text matching the rest of
+  // the app's aesthetic. The samples dir scan reports no incremental count, so
+  // this is an indeterminate loading state (near-instant on native pathsOnly).
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#050505]">
       <div className="flex flex-col items-center gap-3 text-white">
@@ -200,16 +200,7 @@ function SamplesSplash({ loaded, total }: { loaded: number; total: number }) {
           newspeech sequence
         </div>
         <div className="text-[10px] uppercase tracking-widest opacity-40">
-          loading samples
-        </div>
-        <div className="text-[10px] uppercase tracking-widest opacity-70 tabular-nums">
-          {total > 0 ? `${loaded} / ${total}` : '…'}
-        </div>
-        <div className="w-[160px] h-px bg-white/15 relative overflow-hidden">
-          <div
-            className="absolute inset-y-0 left-0 bg-white/60"
-            style={{ width: `${pct}%` }}
-          />
+          loading samples …
         </div>
       </div>
     </div>
@@ -267,13 +258,9 @@ export function App() {
   const syncSource = useSequencerStore((s) => s.syncSource);
   const midiClockOutPorts = useSequencerStore((s) => s.midiClockOutPorts);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Sample-load splash. ~140MB of bundled WAVs decode on boot; without a
-  // splash the user sees a sluggish-feeling app for the duration (RAF-driven
-  // UI like LFO indicators chugs at 2-3 FPS while the audio thread + main
-  // thread chew through decodes). Splash hides that window — once loaded,
-  // every interaction is snappy from the first click.
-  const [samplesLoaded, setSamplesLoaded] = useState(0);
-  const [samplesTotal, setSamplesTotal] = useState(0);
+  // Sample-load splash. Covers the brief window while the samples dir is
+  // scanned + manifests register on boot, so the user never sees a half-loaded
+  // library. Near-instant on native (pathsOnly — no decode pass).
   const [bootDone, setBootDone] = useState(false);
 
   useEffect(() => {
@@ -283,10 +270,8 @@ export function App() {
     void initAudioOutputs();
     if (NATIVE) {
       // Tauri app launches in init state — blank tracks, no banks, no
-      // scenes, no composition (2026-05-24 user direction). The default
-      // preset's authored patterns / voice IDs only make sense on the
-      // web build where bundled samples are loaded; on Tauri the user's
-      // library is the source of truth and they start from scratch.
+      // scenes, no composition (2026-05-24 user direction). The user's
+      // sample library is the source of truth and they start from scratch.
       // Tempo / scale / master FX stay (good starting tone).
       useSequencerStore.getState().initProject();
     } else {
@@ -401,65 +386,24 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // Sample kit boot. Two sources of kits:
-    //   - Web: bundled samples under public/samples/, discovered via
-    //     samples/index.json (emitted by the vite samplesIndex plugin
-    //     at build time; served live in dev). The web tier is the
-    //     "free baseline" per [[project-app-web-tiering]] and has no
-    //     user-samples-dir mechanism, so bundled is the only source.
-    //   - Tauri app: user samples directory only. The app defaults to
-    //     "your library is the source of truth" (user direction
-    //     2026-05-24) — bundled kits in the repo are for the web build
-    //     only and skipped here. First-launch trade: default preset's
-    //     voice IDs won't resolve until the user loads their kits, and
-    //     those tracks fall through to the synth fallback. Acceptable
-    //     per "leave broken (manual re-pick)" save-compat policy.
+    // Sample kit boot. The samples directory (~/Documents/Sequence/samples) is
+    // the single source of truth — every kit is loaded from there, categorized
+    // by its parent folder (drums/instruments/pads/bass/textures). There is no
+    // "bundled" tier: Sequence is native-only, and a first launch with an empty
+    // samples dir simply starts with no kits (tracks fall through to the synth
+    // fallback until the user adds samples).
     if (samplesBootStarted()) return;
     markSamplesBootStarted();
-    const indexUrl = `${import.meta.env.BASE_URL}samples/index.json`;
     void (async () => {
-      if (!NATIVE) {
-        try {
-          const res = await fetch(indexUrl);
-          const index = (await res.json()) as SampleKitEntry[];
-          setSamplesTotal(index.length);
-          // Splash screen is up — load kits in parallel for fastest wall-clock
-          // time. Counter increments as each kit's manifest finishes registering
-          // + decoding so the user sees progress instead of a frozen number.
-          await Promise.all(
-            index.map(async (entry) => {
-              const baseUrl = `${import.meta.env.BASE_URL}samples/${entry.kitPath}`;
-              try {
-                const manifestRes = await fetch(`${baseUrl}/manifest.json`);
-                const manifest = (await manifestRes.json()) as ExtendedSampleManifest;
-                registerKit(entry.kitPath, baseUrl, manifest);
-                await samplePlayer.loadManifest(baseUrl, manifest, undefined, {
-                  pathsOnly: isNativeAudioAvailable(),
-                });
-              } catch (err) {
-                console.warn(`sample manifest ${entry.kitPath} load failed:`, err);
-              }
-              setSamplesLoaded((n) => n + 1);
-            }),
-          );
-        } catch (err) {
-          console.warn('samples index load failed:', err);
-        }
+      // loadManifest runs in pathsOnly mode on native — no Web Audio
+      // decodeAudioData pass, no JSON-encoded bytes round trip through invoke,
+      // just path-string interning. The cpal engine reads each file directly
+      // when the voice is first triggered.
+      const result = await scanAndLoadUserSamples();
+      if (result.loaded > 0) {
+        console.info(`[samples] loaded ${result.loaded} kit(s)`);
       }
-      // User-sample kits. No-op on web (isTauri false → resolveUserSamplesDir
-      // returns null → scanner skips). In Tauri this is cheap because
-      // samplePlayer.loadManifest runs in pathsOnly mode there — no
-      // Web Audio decodeAudioData pass, no JSON-encoded bytes round
-      // trip through invoke, just path-string interning. Native
-      // preload reads files directly via the cpal-side bytes path
-      // when each voice is first triggered.
-      const userResult = await scanAndLoadUserSamples();
-      if (userResult.loaded > 0) {
-        console.info(`[user samples] loaded ${userResult.loaded} kit(s)`);
-      }
-      if (userResult.errors.length > 0) {
-        for (const e of userResult.errors) console.warn('[user samples]', e);
-      }
+      for (const e of result.errors) console.warn('[samples]', e);
       setBootDone(true);
     })();
   }, []);
@@ -696,7 +640,14 @@ export function App() {
                     ev.midi !== undefined ? ev.midi + interval : undefined;
                   const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi, ev.trackId);
                   if (!pick) continue;
-                  const arpEnv = resolveVoiceEnvelope(ev.voice);
+                  // Continuous loop modes need a synthetic gate so they don't
+                  // ring forever (see the standard-path note below). Monophonic
+                  // choke ends earlier tones; the gate bounds the final one.
+                  const arpLooping =
+                    pick.loop === 1 || pick.loop === 2 || pick.loop === 3;
+                  const arpEnv =
+                    resolveVoiceEnvelope(ev.voice) ??
+                    (arpLooping ? { attack: 0.003, release: 0.05 } : undefined);
                   void triggerSample(pick.path, {
                     gain: ev.velocity * pick.voiceGain * trackGain,
                     pan,
@@ -775,9 +726,22 @@ export function App() {
               // a flat sample otherwise plays full regardless of gate. Drums
               // stay one-shots (full sample); voices with an explicit envelope
               // keep it.
+              //
+              // Continuous loop modes (fwd/bwd/ping) ALSO need this synthetic
+              // gate even on a flat drum voice: a looping voice has no natural
+              // end, so without an envelope it wraps forever (the "infinite
+              // reverse snare" hang). Binding the loop to gate × stepDuration
+              // makes it loop while the step is held, then release — same as a
+              // hardware sampler. `rev` (reverse one-shot, code 4) and `off`
+              // self-terminate, so they don't need it.
+              const loopCode = voiceTrim(ev.voice).loop;
+              const isContinuousLoop =
+                loopCode === 1 || loopCode === 2 || loopCode === 3;
               const playEnv =
                 resolveVoiceEnvelope(ev.voice) ??
-                (ev.section === 'melodic' ? { attack: 0.003, release: 0.05 } : undefined);
+                (ev.section === 'melodic' || isContinuousLoop
+                  ? { attack: 0.003, release: 0.05 }
+                  : undefined);
               const holdSecs = playEnv ? ev.gate * ev.stepDuration : undefined;
               // Sustaining chord-master triggers carry a `revoice` context — tag
               // each chord tone with a note_id and register the sounding chord so
@@ -1939,9 +1903,7 @@ export function App() {
 
   return (
     <div className="relative w-full">
-      {!bootDone && (
-        <SamplesSplash loaded={samplesLoaded} total={samplesTotal} />
-      )}
+      {!bootDone && <SamplesSplash />}
       <main
         className={
           NATIVE

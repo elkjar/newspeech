@@ -16,7 +16,7 @@ import Tracker, {
   LFO_SHAPE,
   LFO_SPEED,
 } from '@polyend/tracker-lib';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getRegisteredKits } from '../instruments/manifestRegistry';
 import {
   voiceGainOverride,
@@ -49,8 +49,7 @@ const PTI_MAX_RESONANCE = 4.3; // .pti resonance ceiling (our 0..1 maps onto it)
 const PTI_MAX_POINT = 65535; // 16-bit frame addressing ceiling
 
 export interface ResolvedSample {
-  url: string; // `${baseUrl}/${file}` — a URL for bundled kits, a filesystem path for user kits
-  source: 'bundled' | 'user';
+  url: string; // `${baseUrl}/${file}` — a filesystem path (native) or a URL (web)
   label: string;
 }
 
@@ -71,7 +70,7 @@ export function resolveExportSample(voiceId: string): ResolvedSample | null {
       file = voice.files[0];
     }
     if (!file) return null;
-    return { url: `${kit.baseUrl}/${file}`, source: kit.source, label: voice.label ?? voiceId };
+    return { url: `${kit.baseUrl}/${file}`, label: voice.label ?? voiceId };
   }
   return null;
 }
@@ -81,8 +80,8 @@ export function voiceIsExportable(voiceId: string): boolean {
 }
 
 export async function readBytes(s: ResolvedSample): Promise<ArrayBuffer> {
-  if (s.source === 'user') {
-    // user kits live on disk; the native command returns raw file bytes
+  if (isTauri()) {
+    // Native: kits live on disk; the command returns raw file bytes.
     const bytes = await invoke<number[]>('read_audio_file', { path: s.url });
     return new Uint8Array(bytes).buffer;
   }
@@ -143,10 +142,11 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
     const gran = voiceGranular(voiceId);
     // Granular playmode (7) overrides the loop-derived playmode; otherwise the
     // loop mode IS the playmode (off→OneShot 0 · fwd 1 · bwd 2 · ping 3 — codes
-    // match the enum 1:1).
+    // match the enum 1:1). The app-only reverse one-shot (`rev`, code 4) has no
+    // `.pti` equivalent (4 is Slice there), so clamp it to OneShot.
     inst.playmode = gran.on
       ? InstrumentPlayMode.Granular
-      : (trim.loop as InstrumentPlayMode);
+      : ((trim.loop === 4 ? 0 : trim.loop) as InstrumentPlayMode);
     inst.volume = voiceGainOverride(voiceId);
     inst.tune = Math.max(-24, Math.min(24, Math.round(voiceTune(voiceId))));
     // Fine pitch trim → the .pti `finetune` field (integer cents, ±100). Separate

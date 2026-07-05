@@ -135,38 +135,15 @@ export async function scanAndLoadUserSamples(): Promise<UserKitScanResult> {
   return result;
 }
 
-// Full rescan — clears the registry and reloads bundled + user kits from
-// scratch. Heavier than `scanAndLoadUserSamples` (which only adds user
-// kits) but the correct call when kits may have been removed: clear-and-
-// reload is the only way the registry forgets a kit that's no longer
-// present on disk. Used by the Settings rescan button and the
+// Full rescan — clears the registry and reloads every kit from the samples
+// dir from scratch. The correct call when kits may have been removed:
+// clear-and-reload is the only way the registry forgets a kit that's no
+// longer present on disk. Used by the Settings rescan button and the
 // SampleLibraryPane's rescan flow.
 export async function rescanAllKits(): Promise<UserKitScanResult> {
+  // The samples directory is the single source of truth — clear the registry
+  // and reload every kit from disk. Clear-and-reload (rather than an additive
+  // scan) is how the registry forgets a kit that's no longer present.
   clearKits();
-  // Bundled kits via the build-time samples/index.json (web flow). On web
-  // and inside Tauri this URL resolves the same way — the bundle ships
-  // the index at the same relative path.
-  const indexUrl = `${import.meta.env.BASE_URL}samples/index.json`;
-  try {
-    const res = await fetch(indexUrl);
-    const index = (await res.json()) as Array<{ kitPath: string; category: string }>;
-    await Promise.all(
-      index.map(async (entry) => {
-        const baseUrl = `${import.meta.env.BASE_URL}samples/${entry.kitPath}`;
-        try {
-          const manifestRes = await fetch(`${baseUrl}/manifest.json`);
-          const manifest = (await manifestRes.json()) as ExtendedSampleManifest;
-          registerKit(entry.kitPath, baseUrl, manifest);
-          await samplePlayer.loadManifest(baseUrl, manifest, undefined, {
-            pathsOnly: isTauri(),
-          });
-        } catch (err) {
-          console.warn(`bundled ${entry.kitPath} reload failed:`, err);
-        }
-      }),
-    );
-  } catch (err) {
-    console.warn('samples index reload failed:', err);
-  }
   return scanAndLoadUserSamples();
 }

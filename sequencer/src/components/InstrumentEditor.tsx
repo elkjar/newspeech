@@ -406,7 +406,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
         {!isGran && (
           <LabeledStack label="loop">
             <div className="flex flex-col gap-1 items-stretch">
-              {(['off', 'fwd', 'bwd', 'pingpong'] as LoopMode[]).map((m) => (
+              {(['off', 'fwd', 'bwd', 'rev', 'pingpong'] as LoopMode[]).map((m) => (
                 <SegButton
                   key={m}
                   active={loopMode === m}

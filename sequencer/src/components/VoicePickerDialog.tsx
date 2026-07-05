@@ -135,15 +135,14 @@ function buildGroups(
   });
 
   if (isDrum) {
-    // Drum section: one group per kit (bundled + user combined). The "kit
-    // first, then voice" workflow lives entirely inside this section.
+    // Drum section: one group per kit. The "kit first, then voice" workflow
+    // lives entirely inside this section.
     const drumKits = kits
       .filter((k) => k.category === 'drum')
       .slice()
       .sort((a, b) => a.kitPath.localeCompare(b.kitPath));
     for (const kit of drumKits) {
       const items: PickerItem[] = [];
-      const isUser = kit.source === 'user';
       for (const [voiceId, vm] of Object.entries(kit.manifest.voices)) {
         const def = voiceById.get(voiceId);
         const label = def?.label ?? vm.label ?? voiceId;
@@ -152,16 +151,15 @@ function buildGroups(
           kind: 'voice',
           id: voiceId,
           label,
-          hint: isUser ? '[user] sample' : 'sample',
+          hint: 'sample',
           kitPath: kit.kitPath,
         });
       }
       items.sort((a, b) => a.label.localeCompare(b.label));
       if (items.length === 0) continue;
-      const prefix = kit.source === 'user' ? 'user / ' : '';
       groups.push({
         key: `drum-kit-${kit.kitPath}`,
-        label: `${prefix}${kitDisplayName(kit)}`,
+        label: kitDisplayName(kit),
         items,
         collapsedByDefault: true,
       });
@@ -192,10 +190,10 @@ function buildGroups(
     return groups;
   }
 
-  // Melodic section: four flat category groups. Each combines bundled
-  // samples + user samples + MIDI instruments under the matching role,
-  // with a `sample` or `midi` tag on each row so the kind stays legible
-  // without a separate group level.
+  // Melodic section: four flat category groups. Each combines sample
+  // voices + MIDI instruments under the matching role, with a `sample` or
+  // `midi` tag on each row so the kind stays legible without a separate
+  // group level.
   const byCategory: Record<MelodicCategory, PickerItem[]> = {
     instruments: [],
     pads: [],
@@ -205,7 +203,6 @@ function buildGroups(
 
   for (const kit of kits) {
     if (kit.category !== 'melodic') continue;
-    const isUser = kit.source === 'user';
     for (const [voiceId, vm] of Object.entries(kit.manifest.voices)) {
       const cats = voiceCategoriesForKit(kit, voiceId);
       if (cats === 'drum') continue;
@@ -219,7 +216,7 @@ function buildGroups(
           kind: 'voice',
           id: voiceId,
           label,
-          hint: isUser ? '[user] sample' : 'sample',
+          hint: 'sample',
         });
       }
     }

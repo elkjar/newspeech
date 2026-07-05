@@ -3369,8 +3369,9 @@ struct Voice {
   note_id: u64,
   // Per-instrument sample window + loop (editor A3). play_start/play_end
   // are read positions in sample frames; loop_mode is 0 off · 1 fwd · 2
-  // bwd · 3 pingpong; play_dir is the read direction (+1/-1), flipped at
-  // the window edges for pingpong and held at -1 for backward loops.
+  // bwd · 3 pingpong · 4 rev one-shot; play_dir is the read direction
+  // (+1/-1), flipped at the window edges for pingpong and held at -1 for
+  // backward readers (bwd loop + rev one-shot).
   // Defaults (0 / frame_count / 0 / +1) reproduce a full-length one-shot.
   play_start: f64,
   play_end: f64,
@@ -3561,7 +3562,7 @@ enum MixerCommand {
     // Voice handle (0 = untagged). Only live-input monitoring sets it.
     note_id: u64,
     // Per-instrument sample window (0..1 fractions of the sample) + loop
-    // mode (0 off · 1 fwd · 2 bwd · 3 pingpong). 0/1/0 = full one-shot.
+    // mode (0 off · 1 fwd · 2 bwd · 3 pingpong · 4 rev one-shot). 0/1/0 = full one-shot.
     start_frac: f32,
     end_frac: f32,
     loop_mode: u8,
@@ -3664,8 +3665,8 @@ struct PendingTrigger {
   remaining_samples: i32,
   note_id: u64,
   // Sample window in frames (resolved from the 0..1 fractions at queue
-  // time) + loop mode (0 off · 1 fwd · 2 bwd · 3 pingpong). play_end is
-  // the read position the voice stops/loops at; play_start the start.
+  // time) + loop mode (0 off · 1 fwd · 2 bwd · 3 pingpong · 4 rev one-shot).
+  // play_end is the read position the voice stops/loops at; play_start the start.
   play_start: f64,
   play_end: f64,
   loop_mode: u8,
@@ -4707,15 +4708,17 @@ fn claim_voice_slot(
   let v = &mut voices[slot];
   v.sample = Some(p.sample);
   v.choke_group = p.choke_group;
-  // Sample window + loop. Backward loops start at the window end and read
-  // toward the start; everything else starts at the window start. play_dir
-  // is the per-frame read direction (multiplies rate); pingpong flips it at
-  // the edges, backward holds -1, forward/one-shot hold +1.
+  // Sample window + loop. Backward readers (bwd loop = 2, rev one-shot = 4)
+  // start at the window end and read toward the start; everything else starts
+  // at the window start. play_dir is the per-frame read direction (multiplies
+  // rate); pingpong flips it at the edges, backward readers hold -1,
+  // forward/one-shot hold +1.
   v.play_start = p.play_start;
   v.play_end = p.play_end;
   v.loop_mode = p.loop_mode;
-  v.play_dir = if p.loop_mode == 2 { -1.0 } else { 1.0 };
-  v.position = if p.loop_mode == 2 { p.play_end } else { p.play_start };
+  let reads_backward = p.loop_mode == 2 || p.loop_mode == 4;
+  v.play_dir = if reads_backward { -1.0 } else { 1.0 };
+  v.position = if reads_backward { p.play_end } else { p.play_start };
   // Per-instrument filter: copy the prebuilt coefficients into both channels
   // and clear their delay lines so a reused slot doesn't carry stale state.
   v.inst_filter_on = p.inst_filter_on;
@@ -5708,9 +5711,11 @@ fn build_stream(
             } else {
               // Loop-window handling (A3). Keep the read position inside
               // [play_start, play_end]: forward/backward loops wrap to the
-              // opposite edge, pingpong bounces (flipping play_dir). One-shot
-              // (loop_mode 0) never wraps — it runs to play_end and stops.
-              if v.loop_mode != 0 && span > 1.0 {
+              // opposite edge, pingpong bounces (flipping play_dir). The
+              // one-shots — forward (loop_mode 0) and reverse (loop_mode 4) —
+              // never wrap; they run to their far edge and stop (handled below).
+              let is_loop = v.loop_mode == 1 || v.loop_mode == 2 || v.loop_mode == 3;
+              if is_loop && span > 1.0 {
                 if v.loop_mode == 3 {
                   if v.position >= v.play_end {
                     v.position = v.play_end;
@@ -5731,10 +5736,14 @@ fn build_stream(
               }
               pos = v.position;
               let i0 = pos.floor() as usize;
-              // Terminate one-shots at the window end (or the sample's last
-              // interpolatable frame, as a safety bound). Looped voices stay
-              // alive — the wrap above keeps them in range.
-              if i0 + 1 >= frame_count || (v.loop_mode == 0 && pos >= v.play_end) {
+              // Terminate one-shots at their far edge (or the sample's last
+              // interpolatable frame, as a safety bound): forward one-shots stop
+              // at play_end, reverse one-shots (loop_mode 4) at play_start.
+              // Looped voices stay alive — the wrap above keeps them in range.
+              if i0 + 1 >= frame_count
+                || (v.loop_mode == 0 && pos >= v.play_end)
+                || (v.loop_mode == 4 && pos <= v.play_start)
+              {
                 deactivate = true;
                 break;
               }
@@ -5889,8 +5898,15 @@ fn build_stream(
               // Fade toward the window end for one-shots; looped AND granular
               // voices have no natural end, so they skip the out-fade (the loop
               // wrap / grain repeat is continuous and a fade there would dip).
-              let to_end = if v.loop_mode == 0 && !v.gran_on {
-                (((v.play_end - pos) / v.rate.max(1e-9)) as f32).max(0.0)
+              // Forward one-shot (0) heads for play_end; reverse one-shot (4)
+              // reads backward, so its end is play_start.
+              let to_end = if !v.gran_on && (v.loop_mode == 0 || v.loop_mode == 4) {
+                let frames = if v.loop_mode == 4 {
+                  pos - v.play_start
+                } else {
+                  v.play_end - pos
+                };
+                ((frames / v.rate.max(1e-9)) as f32).max(0.0)
               } else {
                 f32::INFINITY
               };
@@ -6553,7 +6569,7 @@ pub fn audio_trigger_sample(
   note_id: Option<u64>,
   // Per-instrument sample window + loop (editor A3). start/end are 0..1
   // fractions of the sample; loop_mode is 0 off · 1 fwd · 2 bwd · 3
-  // pingpong. None/defaults (0 / 1 / 0) = full-length one-shot (unchanged).
+  // pingpong · 4 rev one-shot. None/defaults (0 / 1 / 0) = full-length one-shot.
   start_frac: Option<f32>,
   end_frac: Option<f32>,
   loop_mode: Option<u8>,

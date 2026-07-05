@@ -48,14 +48,13 @@ function slugify(name: string): string {
     .slice(0, 48);
 }
 
-// Can this voice be saved? True only for voices that belong to a user kit
-// (bundled kits are read-only; synth/MIDI voices have no manifest). Synchronous
-// — reads the in-memory registry, enough to gate the editor's Save buttons.
+// Can this voice be saved? True for any voice that belongs to a sample kit
+// (kits live on the writable samples dir; synth/MIDI voices have no manifest).
+// Synchronous — reads the in-memory registry, enough to gate the editor's
+// Save buttons.
 export function voiceIsSaveable(voiceId: string): boolean {
   if (!isTauri()) return false;
-  return getRegisteredKits().some(
-    (k) => k.source === 'user' && k.manifest.voices[voiceId] !== undefined,
-  );
+  return getRegisteredKits().some((k) => k.manifest.voices[voiceId] !== undefined);
 }
 
 // Re-scan the raw kits and find which user kit + bare voice id a (namespaced)

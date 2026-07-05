@@ -362,8 +362,8 @@ export async function triggerSample(
     // for every sequencer trigger.
     noteId?: number;
     // Per-instrument sample window + loop (editor A3). start/end are 0..1
-    // fractions of the sample; loopMode is 0 off · 1 fwd · 2 bwd · 3 pingpong.
-    // Defaults (0 / 1 / 0) make the voice a full-length one-shot — unchanged.
+    // fractions of the sample; loopMode is 0 off · 1 fwd · 2 bwd · 3 pingpong ·
+    // 4 rev one-shot. Defaults (0 / 1 / 0) make the voice a full-length one-shot.
     start?: number;
     end?: number;
     loopMode?: number;

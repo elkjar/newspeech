@@ -189,7 +189,7 @@ export function Waveform({
       ctx.moveTo(px, 0);
       ctx.lineTo(px, HEIGHT);
       ctx.stroke();
-      const d = loopMode === 'bwd' ? -1 : dirRef.current;
+      const d = loopMode === 'bwd' || loopMode === 'rev' ? -1 : dirRef.current;
       const cy = HEIGHT - 6;
       ctx.fillStyle = 'rgba(255,255,255,1)';
       ctx.beginPath();

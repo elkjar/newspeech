@@ -1,11 +1,10 @@
 // SampleLibraryPane — manage sample kits parallel to InstrumentLibraryPane.
 //
-// Lists every registered kit (bundled + user) grouped by category, matching
-// the VoicePickerDialog's organization (drums → instruments → pads → bass →
-// textures). Bundled and user kits share each category group; the row tag
-// distinguishes them. Bundled kits are read-only (they ship inside the app
-// bundle); user kits get reveal-in-finder and move-to-trash actions plus a
-// rescan/open-folder header bar.
+// Lists every registered kit grouped by category, matching the
+// VoicePickerDialog's organization (drums → instruments → pads → bass →
+// textures). Every kit lives on disk in the samples dir and gets
+// reveal-in-finder and move-to-trash actions plus a rescan/open-folder
+// header bar.
 
 import { useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
@@ -158,7 +157,7 @@ export function SampleLibraryPane() {
               ? 'px-3 py-1 text-[11px] uppercase tracking-widest border border-white/10 text-white/30 cursor-not-allowed'
               : 'px-3 py-1 text-[11px] uppercase tracking-widest border border-white text-white hover:bg-white/10 transition-colors'
           }
-          title="reload bundled + user sample kits"
+          title="reload sample kits from disk"
         >
           {scanning ? 'scanning…' : 'rescan'}
         </button>
@@ -258,27 +257,21 @@ function KitRow({
   onReveal: () => void;
   onTrash: () => void;
 }) {
-  const isUser = kit.source === 'user';
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-white/[0.04] hover:bg-white/[0.02] -mx-2 px-2 transition-colors">
       <div className="flex items-center gap-3 min-w-0">
         <span className="text-white truncate">{kitDisplayName(kit)}</span>
         <span className="text-white/30 text-[11px] tabular-nums shrink-0">
           {voiceCount(kit)} {voiceCount(kit) === 1 ? 'voice' : 'voices'}
-          {!isUser && ' · bundled'}
         </span>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        {isUser && (
-          <RowBtn onClick={onReveal} title="reveal in finder">
-            reveal
-          </RowBtn>
-        )}
-        {isUser && (
-          <RowBtn onClick={onTrash} title="move kit to trash" danger>
-            ×
-          </RowBtn>
-        )}
+        <RowBtn onClick={onReveal} title="reveal in finder">
+          reveal
+        </RowBtn>
+        <RowBtn onClick={onTrash} title="move kit to trash" danger>
+          ×
+        </RowBtn>
       </div>
     </div>
   );

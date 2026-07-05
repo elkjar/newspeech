@@ -125,21 +125,11 @@ export interface ExtendedSampleManifest extends SampleManifest {
   voices: Record<string, ManifestVoice>;
 }
 
-// What samples/index.json (web build) and Tauri runtime scans return.
-export interface SampleKitEntry {
-  kitPath: string;                 // relative path under sample root, e.g. "instruments/mini-moog"
-  category: VoiceCategory;         // inferred from kit path's parent folder
-}
-
 export interface RegisteredKit {
   kitPath: string;
-  baseUrl: string;                 // resolved URL the samplePlayer used to load files
+  baseUrl: string;                 // resolved filesystem dir the samplePlayer loaded files from
   category: VoiceCategory;
   manifest: ExtendedSampleManifest;
-  // Where the kit came from. Bundled kits live under public/samples/ and
-  // ship with the app; user kits come from the user samples directory and
-  // are registered with kit paths prefixed `user/` (see userSamplesDir.ts).
-  source: 'bundled' | 'user';
 }
 
 const kits = new Map<string, RegisteredKit>();
@@ -157,11 +147,11 @@ function notifyListeners(): void {
 }
 
 function inferCategoryFromKitPath(kitPath: string): VoiceCategory {
-  // Kit paths: "drums/<name>" (bundled) or "user/drums/<name>" (user dir).
-  // Strip the optional `user/` prefix, then check the leading segment.
-  // Drums are drums; everything else (instruments, pads, future categories)
-  // is melodic. Pad-specific dispatch is keyed off VoiceDef.type === 'pad',
-  // not category.
+  // Kit paths carry an internal `user/` namespace root (see userSamplesDir.ts)
+  // followed by the category folder, e.g. "user/drums/<name>". Strip the
+  // prefix, then check the leading segment. Drums are drums; everything else
+  // (instruments, pads, future categories) is melodic. Pad-specific dispatch
+  // is keyed off VoiceDef.type === 'pad', not category.
   const trimmed = kitPath.startsWith('user/') ? kitPath.slice('user/'.length) : kitPath;
   return trimmed.startsWith('drums/') ? 'drum' : 'melodic';
 }
@@ -172,33 +162,28 @@ export function registerKit(
   manifest: ExtendedSampleManifest,
 ): void {
   const category = inferCategoryFromKitPath(kitPath);
-  const source: 'bundled' | 'user' = kitPath.startsWith('user/') ? 'user' : 'bundled';
-  kits.set(kitPath, { kitPath, baseUrl, category, manifest, source });
+  kits.set(kitPath, { kitPath, baseUrl, category, manifest });
   notifyListeners();
 }
 
 // Voice IDs live in a global registry inside samplePlayer (`voices` Map
-// keyed by SampleId). When two kits declare the same key — bundled
-// blck_noir's "kick" and a user kit auto-synthesized from a KICK/
-// subfolder also called "kick" — the second `loadManifest` silently
-// overwrites the first, causing triggers to play whichever kit
-// registered last (the "glitched together kick" symptom). Bundled kits
-// pre-coordinate (ns1-kick / blk / etc.) so they keep their bare IDs
-// for `.seq` backward compatibility; user kits don't have that luxury
-// and get namespaced here.
+// keyed by SampleId). When two kits declare the same key — e.g. two kits
+// each auto-synthesized from a KICK/ subfolder, both called "kick" — the
+// second `loadManifest` would silently overwrite the first, causing
+// triggers to play whichever kit registered last (the "glitched together
+// kick" symptom). Every kit's voices are namespaced by kit path to prevent
+// that.
 //
-// Apply this BEFORE both `registerKit` and `samplePlayer.loadManifest`
-// — both consumers need to see the same namespaced voice keys. Bundled
-// kits (kitPath without `user/` prefix) pass through unchanged.
+// Apply this BEFORE both `registerKit` and `samplePlayer.loadManifest` —
+// both consumers need to see the same namespaced voice keys.
 //
-// Note: existing `.seq` files that reference a user-kit voice by its
-// bare ID (saved pre-fix) won't find a match post-fix and will fall
-// through to synthMelodic at trigger time. User has to re-pick the
-// voice on those tracks once. The fix is worth the one-time hiccup
-// because the bug it solves is silent / mis-routing samples.
-// The id prefix a user kit's voices get namespaced under (so user-kit "kick"
-// doesn't collide with bundled "kick"). Derived from the `user/<kit_path>`
-// kit path. Exported so the instrument-save path can map a registry voice id
+// Note: `.seq` files that reference a voice by its bare ID (saved before
+// namespacing landed) won't find a match and fall through to synthMelodic
+// at trigger time. The track needs a one-time re-pick. Worth the hiccup —
+// the bug it solves is silent / mis-routing samples.
+// The id prefix a kit's voices get namespaced under (so one kit's "kick"
+// doesn't collide with another's). Derived from the `user/<kit_path>` kit
+// path. Exported so the instrument-save path can map a registry voice id
 // (`<prefix>-<bareId>`) back to the bare id used in the on-disk manifest.
 export function namespacePrefix(kitPath: string): string {
   return kitPath
