@@ -196,6 +196,11 @@ pub struct TrackParams {
   tune_mod_semis: AtomicU32,
   finetune_base_norm: AtomicU32,
   finetune_mod_semis: AtomicU32,
+  // Stem-recording slot (1-based track index; 0 = not captured). Set per
+  // track when a stems recording arms (start_recording_stems); voices
+  // snapshot it at creation into Voice.rec_track so the per-track dry tap
+  // reads a plain field on the hot path. 0 the rest of the time — no cost.
+  rec_track: AtomicU32,
 }
 
 // Cutoff mapping mirrors src/audio/nativeEngine.ts cutoffNormToHz.
@@ -232,7 +237,14 @@ impl TrackParams {
       tune_mod_semis: AtomicU32::new(0.0_f32.to_bits()),
       finetune_base_norm: AtomicU32::new(0.5_f32.to_bits()),
       finetune_mod_semis: AtomicU32::new(0.0_f32.to_bits()),
+      rec_track: AtomicU32::new(0),
     }
+  }
+  fn rec_track(&self) -> u8 {
+    self.rec_track.load(Ordering::Relaxed) as u8
+  }
+  fn set_rec_track(&self, slot: u8) {
+    self.rec_track.store(slot as u32, Ordering::Relaxed);
   }
   fn cutoff(&self) -> f32 {
     f32::from_bits(self.cutoff_hz_eff.load(Ordering::Relaxed))
@@ -370,6 +382,17 @@ fn get_or_create_track_params(track_id: &str) -> Arc<TrackParams> {
     .entry(track_id.to_string())
     .or_insert_with(|| Arc::new(TrackParams::new()))
     .clone()
+}
+
+// Clear every track's stem-recording slot (command thread only). Called at
+// stems-take start before assigning fresh slots so no track carries a stale
+// index from a prior take with a different track order.
+fn reset_all_rec_tracks() {
+  if let Ok(reg) = track_params_registry().lock() {
+    for tp in reg.values() {
+      tp.set_rec_track(0);
+    }
+  }
 }
 
 // --- reverb shared state ---
@@ -866,15 +889,32 @@ fn master_state() -> &'static MasterState {
 //
 // Split recording (7f-2) reuses the same pattern with two additional
 // queues for rhythm/melody section buses.
+// Maximum per-track stems in a full-stems recording (matches the 16-track
+// grid). A stems take captures up to this many dry per-track WAVs plus the
+// master / fx / reverb / delay bus WAVs — all sample-locked (one command).
+const MAX_STEMS: usize = 16;
+
+// Static worker labels for per-track stems (spawn_recorder_worker wants a
+// &'static str for the finalize payload). Index i → the i-th track's stem.
+const STEM_LABELS: [&str; MAX_STEMS] = [
+  "track01", "track02", "track03", "track04", "track05", "track06", "track07",
+  "track08", "track09", "track10", "track11", "track12", "track13", "track14",
+  "track15", "track16",
+];
+
 pub struct RecorderState {
   // Mirror of audio-thread state for IPC introspection ("is recording
   // armed?"). Set true by start, cleared by stop.
   combined_enabled: AtomicBool,
   splits_enabled: AtomicBool,
+  stems_enabled: AtomicBool,
   // Per-recording worker stop flags. Single-recording-at-a-time per
-  // mode so one shared flag per stream is fine.
+  // mode so one shared flag per stream is fine. `stems_stop` is shared
+  // by ALL workers in a stems take (master + tracks + fx + reverb + delay)
+  // so one flag finalizes the whole set.
   combined_stop: Arc<AtomicBool>,
   splits_stop: Arc<AtomicBool>,
+  stems_stop: Arc<AtomicBool>,
 }
 
 impl RecorderState {
@@ -882,8 +922,10 @@ impl RecorderState {
     Self {
       combined_enabled: AtomicBool::new(false),
       splits_enabled: AtomicBool::new(false),
+      stems_enabled: AtomicBool::new(false),
       combined_stop: Arc::new(AtomicBool::new(false)),
       splits_stop: Arc::new(AtomicBool::new(false)),
+      stems_stop: Arc::new(AtomicBool::new(false)),
     }
   }
 }
@@ -3305,6 +3347,11 @@ struct Voice {
   // 3 = click (writes to BOTH so DAW alignment markers land in either
   // split file). Mirrors the web `TrackSection` plus the click bus tap.
   section: u8,
+  // Stem-recording slot (1-based track index; 0 = not captured). Snapshotted
+  // from track_params.rec_track() at voice creation so the per-track dry stem
+  // tap reads a plain field on the hot path. Fixed for the voice's lifetime
+  // (matches section's per-trigger semantics).
+  rec_track: u8,
   // Texture-role flag. On transport stop, texture voices get a long
   // release ramp (graceful fade) while everything else cuts; see the
   // StopFade mixer command.
@@ -3466,6 +3513,7 @@ impl Default for Voice {
       env_sustain_level: 1.0,
       env_release_start_level: -1.0,
       section: 0,
+      rec_track: 0,
       is_texture: false,
       frozen_params: None,
       frames_played: 0,
@@ -3525,6 +3573,19 @@ enum MixerCommand {
     melody: HeapProd<i16>,
   },
   StopSplitsRecording,
+  // Full-stems recording — every producer installs on the SAME audio block
+  // so master / per-track / fx / reverb / delay are all sample-locked. The
+  // per-track producer array is boxed so this variant doesn't bloat every
+  // ring slot; the one-time heap free when the box is consumed happens on a
+  // user-initiated record-start, never on the per-block hot path.
+  StartStemsRecording {
+    master: Option<HeapProd<i16>>,
+    fx: Option<HeapProd<i16>>,
+    reverb: Option<HeapProd<i16>>,
+    delay: Option<HeapProd<i16>>,
+    tracks: Box<[Option<HeapProd<i16>>; MAX_STEMS]>,
+  },
+  StopStemsRecording,
   Trigger {
     sample: Arc<SampleData>,
     gain: f32,
@@ -4315,6 +4376,129 @@ impl AudioEngine {
     recorder_state().splits_enabled.load(Ordering::Acquire)
   }
 
+  // Full-stems recording. Writes, in one sample-locked take: master (post-
+  // master mix), fx (mangler bus), reverb + delay (the wet returns), and one
+  // dry WAV per track. Every producer installs on the same audio block via a
+  // single StartStemsRecording command, so all files share a sample origin.
+  // Per-track dry taps carry dry_scale, so Σ(tracks) + fx + reverb + delay
+  // reconstructs the pre-master mix. All files land in `stem_dir`.
+  #[allow(clippy::too_many_arguments)]
+  pub fn start_recording_stems(
+    &self,
+    app: tauri::AppHandle,
+    stem_dir: String,
+    master_path: String,
+    fx_path: String,
+    reverb_path: String,
+    delay_path: String,
+    track_ids: Vec<String>,
+    track_paths: Vec<String>,
+  ) -> Result<(), String> {
+    let r = recorder_state();
+    if r.stems_enabled.load(Ordering::Acquire) {
+      return Err("stems recording already in progress".to_string());
+    }
+    let sr = self.state.sample_rate.load(Ordering::Acquire);
+    if sr == 0 {
+      return Err("audio device not open".to_string());
+    }
+    if track_ids.len() != track_paths.len() {
+      return Err("track_ids / track_paths length mismatch".to_string());
+    }
+    let n = track_paths.len().min(MAX_STEMS);
+    // WavWriter::create won't mkdir — ensure the take's subfolder exists.
+    std::fs::create_dir_all(&stem_dir)
+      .map_err(|e| format!("create stem dir '{}': {}", stem_dir, e))?;
+
+    const QUEUE_SAMPLES: usize = 480_000;
+    let spec = hound::WavSpec {
+      channels: 2,
+      sample_rate: sr,
+      bits_per_sample: 16,
+      sample_format: hound::SampleFormat::Int,
+    };
+
+    // Assign fresh 1-based slots to the recorded tracks; wipe any stale
+    // indices first so a prior take's ordering can't leak in.
+    reset_all_rec_tracks();
+    for (i, tid) in track_ids.iter().take(MAX_STEMS).enumerate() {
+      get_or_create_track_params(tid).set_rec_track((i + 1) as u8);
+    }
+
+    r.stems_stop.store(false, Ordering::Release);
+
+    // Create a WAV + ring + worker for one labeled stream. On failure the
+    // stop flag stays false and any already-spawned workers idle until the
+    // caller's error unwinds (the take never arms), then finalize empty on
+    // the next stop — acceptable for a start-time file error.
+    let make = |label: &'static str, path: String| -> Result<HeapProd<i16>, String> {
+      let writer = hound::WavWriter::create(&path, spec)
+        .map_err(|e| format!("create wav '{}': {}", path, e))?;
+      let (prod, cons) = HeapRb::<i16>::new(QUEUE_SAMPLES).split();
+      spawn_recorder_worker(
+        app.clone(),
+        label,
+        path,
+        writer,
+        cons,
+        Arc::clone(&r.stems_stop),
+      );
+      Ok(prod)
+    };
+
+    let master = make("master", master_path)?;
+    let fx = make("fx", fx_path)?;
+    let reverb = make("reverb", reverb_path)?;
+    let delay = make("delay", delay_path)?;
+
+    let mut tracks: Box<[Option<HeapProd<i16>>; MAX_STEMS]> =
+      Box::new(std::array::from_fn(|_| None));
+    for i in 0..n {
+      tracks[i] = Some(make(STEM_LABELS[i], track_paths[i].clone())?);
+    }
+
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(MixerCommand::StartStemsRecording {
+        master: Some(master),
+        fx: Some(fx),
+        reverb: Some(reverb),
+        delay: Some(delay),
+        tracks,
+      })
+      .map_err(|_| "command queue full (start stems)".to_string())?;
+
+    r.stems_enabled.store(true, Ordering::Release);
+    Ok(())
+  }
+
+  pub fn stop_recording_stems(&self) -> Result<(), String> {
+    let r = recorder_state();
+    if !r.stems_enabled.swap(false, Ordering::AcqRel) {
+      return Ok(());
+    }
+    // Flag first, command best-effort — same closed-device tolerance as
+    // stop_recording_combined.
+    r.stems_stop.store(true, Ordering::Release);
+    if let Ok(mut guard) = self.state.trigger_producer.lock() {
+      if let Some(producer) = guard.as_mut() {
+        let _ = producer.try_push(MixerCommand::StopStemsRecording);
+      }
+    }
+    Ok(())
+  }
+
+  pub fn is_recording_stems(&self) -> bool {
+    recorder_state().stems_enabled.load(Ordering::Acquire)
+  }
+
   // Distortion (phase 7e-3). `mode` 0..3, `drive` + `bias` + `mix` 0..1.
   pub fn set_master_dist(
     &self,
@@ -4552,6 +4736,9 @@ fn stop_recorders_for_stream_teardown() {
   if r.splits_enabled.swap(false, Ordering::AcqRel) {
     r.splits_stop.store(true, Ordering::Release);
   }
+  if r.stems_enabled.swap(false, Ordering::AcqRel) {
+    r.stems_stop.store(true, Ordering::Release);
+  }
 }
 
 fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
@@ -4751,6 +4938,13 @@ fn claim_voice_slot(
   v.out_first = p.out_first;
   v.out_stereo = p.out_stereo;
   v.track_params = p.track_params;
+  // Snapshot the track's stem-recording slot (0 when no stems recording is
+  // armed) so the per-track dry tap reads a plain field, not an atomic.
+  v.rec_track = v
+    .track_params
+    .as_ref()
+    .map(|tp| tp.rec_track())
+    .unwrap_or(0);
   v.filter.reset();
   v.start_frame = start_frame;
   v.active = true;
@@ -4859,6 +5053,26 @@ fn build_stream(
   let mut combined_rec_producer: Option<HeapProd<i16>> = None;
   let mut rhythm_rec_producer: Option<HeapProd<i16>> = None;
   let mut melody_rec_producer: Option<HeapProd<i16>> = None;
+  // Full-stems recording producers. master = post-master buf (like combined);
+  // fx = mangler bus (pre reverb/delay fold); reverb/delay = the wet returns;
+  // stems[i] = per-track dry (dry_scale applied — sums with the buses to the
+  // master). All None when no stems take is armed.
+  let mut master_rec_producer: Option<HeapProd<i16>> = None;
+  let mut fx_rec_producer: Option<HeapProd<i16>> = None;
+  let mut reverb_rec_producer: Option<HeapProd<i16>> = None;
+  let mut delay_rec_producer: Option<HeapProd<i16>> = None;
+  let mut stem_rec_producers: [Option<HeapProd<i16>>; MAX_STEMS] =
+    std::array::from_fn(|_| None);
+  // Per-track dry scratch (accumulated in the voice loop). fx_stem is a
+  // snapshot of the mangler bus taken before reverb/delay fold in (overwritten
+  // via copy, so no per-block clear). Allocated once here, never on the hot
+  // path.
+  let mut stem_l: Vec<Vec<f32>> =
+    (0..MAX_STEMS).map(|_| vec![0.0; REVERB_SCRATCH]).collect();
+  let mut stem_r: Vec<Vec<f32>> =
+    (0..MAX_STEMS).map(|_| vec![0.0; REVERB_SCRATCH]).collect();
+  let mut fx_stem_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut fx_stem_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   // Section scratch buffers (stereo interleaved? no — separate L/R for
   // matching the bus accumulation pattern of fxbus_l/r). Sized at
   // REVERB_SCRATCH for the same chunked-large-block reasoning.
@@ -5433,6 +5647,32 @@ fn build_stream(
               rhythm_rec_producer = None;
               melody_rec_producer = None;
             }
+            MixerCommand::StartStemsRecording {
+              master,
+              fx,
+              reverb,
+              delay,
+              tracks,
+            } => {
+              // Move the boxed per-track producer array into audio-thread
+              // state (the emptied box frees once, off the hot path). All
+              // producers land on this same block → sample-locked files.
+              master_rec_producer = master;
+              fx_rec_producer = fx;
+              reverb_rec_producer = reverb;
+              delay_rec_producer = delay;
+              stem_rec_producers = *tracks;
+            }
+            MixerCommand::StopStemsRecording => {
+              // Drop every producer → each worker drains + finalizes.
+              master_rec_producer = None;
+              fx_rec_producer = None;
+              reverb_rec_producer = None;
+              delay_rec_producer = None;
+              for p in stem_rec_producers.iter_mut() {
+                *p = None;
+              }
+            }
           }
         }
 
@@ -5503,6 +5743,25 @@ fn build_stream(
           rhythm_r[i] = 0.0;
           melody_l[i] = 0.0;
           melody_r[i] = 0.0;
+        }
+        // Per-track dry stem scratches — cleared only for armed slots, and
+        // only when a stems take is running, so the idle path never touches
+        // these 16 buffers. (fx_stem is a snapshot via copy, no clear needed;
+        // reverb/delay push their process_block outputs directly.)
+        let stems_recording = master_rec_producer.is_some()
+          || fx_rec_producer.is_some()
+          || reverb_rec_producer.is_some()
+          || delay_rec_producer.is_some()
+          || stem_rec_producers.iter().any(|p| p.is_some());
+        if stems_recording {
+          for idx in 0..MAX_STEMS {
+            if stem_rec_producers[idx].is_some() {
+              for i in 0..rev_frames {
+                stem_l[idx][i] = 0.0;
+                stem_r[idx][i] = 0.0;
+              }
+            }
+          }
         }
 
         // 3) Voices — per-voice routing.
@@ -5964,6 +6223,20 @@ fn build_stream(
             };
             let fx_send = if fx_bypass_now { 0.0 } else { raw_fx_send };
             let dry_scale = 1.0 - fx_send;
+            // Per-track dry stem tap — the voice's actual dry contribution to
+            // the master (ls·gain·pan·dry_scale, identical to the buf write
+            // below). Sends are additive, so Σ(track stems) + fx + reverb +
+            // delay reconstructs the pre-master mix exactly. Gated by
+            // `stems_recording` so a voice carrying a stale rec_track (set on a
+            // prior take, not yet overwritten) can't accumulate into an
+            // un-cleared, un-pushed scratch after the take ends.
+            if stems_recording && v.rec_track > 0 && frame < REVERB_SCRATCH {
+              let idx = (v.rec_track - 1) as usize;
+              if idx < MAX_STEMS {
+                stem_l[idx][frame] += ls * v.gain * v.pan_left * dry_scale;
+                stem_r[idx][frame] += rs * v.gain * v.pan_right * dry_scale;
+              }
+            }
             // Mangler bus input is post-gain + post-pan so the wet bus
             // matches the dry path's positioning.
             if fx_send > 0.0 && frame < REVERB_SCRATCH {
@@ -6171,6 +6444,14 @@ fn build_stream(
           }
         }
 
+        // Stems: snapshot the mangler bus (tape → glitch → drive) NOW, before
+        // the reverb/delay returns fold in below, so the fx stem is the
+        // mangler contribution alone. copy overwrites — no per-block clear.
+        if fx_rec_producer.is_some() {
+          fx_stem_l[..rev_frames].copy_from_slice(&fxbus_l[..rev_frames]);
+          fx_stem_r[..rev_frames].copy_from_slice(&fxbus_r[..rev_frames]);
+        }
+
         // Reverb send/return — parallel aux, independent of the mangler's
         // fx_bypass. Process the per-instrument send bus fully wet and fold the
         // tail INTO the mangler bus at unity so a single routing pass below
@@ -6342,6 +6623,50 @@ fn build_stream(
           for frame in 0..rev_frames {
             let _ = prod.try_push(f32_to_i16(melody_l[frame]));
             let _ = prod.try_push(f32_to_i16(melody_r[frame]));
+          }
+        }
+        // Full-stems tap. master = post-master buf (same as combined but its
+        // own producer so the whole set shares one lifecycle); fx = mangler
+        // snapshot; reverb/delay = the wet returns (process_block filled these
+        // this block); stems[i] = per-track dry. All sample-locked.
+        if let Some(prod) = master_rec_producer.as_mut() {
+          if n_ch >= 2 {
+            for frame in 0..frames {
+              let _ = prod.try_push(f32_to_i16(buf[frame * n_ch]));
+              let _ = prod.try_push(f32_to_i16(buf[frame * n_ch + 1]));
+            }
+          } else if n_ch == 1 {
+            for frame in 0..frames {
+              let s = f32_to_i16(buf[frame * n_ch]);
+              let _ = prod.try_push(s);
+              let _ = prod.try_push(s);
+            }
+          }
+        }
+        if let Some(prod) = fx_rec_producer.as_mut() {
+          for frame in 0..rev_frames {
+            let _ = prod.try_push(f32_to_i16(fx_stem_l[frame]));
+            let _ = prod.try_push(f32_to_i16(fx_stem_r[frame]));
+          }
+        }
+        if let Some(prod) = reverb_rec_producer.as_mut() {
+          for frame in 0..rev_frames {
+            let _ = prod.try_push(f32_to_i16(reverb_out_l[frame]));
+            let _ = prod.try_push(f32_to_i16(reverb_out_r[frame]));
+          }
+        }
+        if let Some(prod) = delay_rec_producer.as_mut() {
+          for frame in 0..rev_frames {
+            let _ = prod.try_push(f32_to_i16(delay_out_l[frame]));
+            let _ = prod.try_push(f32_to_i16(delay_out_r[frame]));
+          }
+        }
+        for idx in 0..MAX_STEMS {
+          if let Some(prod) = stem_rec_producers[idx].as_mut() {
+            for frame in 0..rev_frames {
+              let _ = prod.try_push(f32_to_i16(stem_l[idx][frame]));
+              let _ = prod.try_push(f32_to_i16(stem_r[idx][frame]));
+            }
           }
         }
 
@@ -6857,6 +7182,40 @@ pub fn audio_stop_recording_splits() -> Result<(), String> {
 #[tauri::command]
 pub fn audio_is_recording_splits() -> bool {
   engine().is_recording_splits()
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn audio_start_recording_stems(
+  app: tauri::AppHandle,
+  stem_dir: String,
+  master_path: String,
+  fx_path: String,
+  reverb_path: String,
+  delay_path: String,
+  track_ids: Vec<String>,
+  track_paths: Vec<String>,
+) -> Result<(), String> {
+  engine().start_recording_stems(
+    app,
+    stem_dir,
+    master_path,
+    fx_path,
+    reverb_path,
+    delay_path,
+    track_ids,
+    track_paths,
+  )
+}
+
+#[tauri::command]
+pub fn audio_stop_recording_stems() -> Result<(), String> {
+  engine().stop_recording_stems()
+}
+
+#[tauri::command]
+pub fn audio_is_recording_stems() -> bool {
+  engine().is_recording_stems()
 }
 
 #[tauri::command]

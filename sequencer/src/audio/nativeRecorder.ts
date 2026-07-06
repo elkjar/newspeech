@@ -1,30 +1,35 @@
 // Native recorder bridge. Subscribes to the store's `armed && playing`
-// edge and drives `audio_start_recording_combined` / `audio_stop_recording_combined`
-// on transitions. Audio path lives entirely in Rust — no IPC for sample
-// bytes, no WebAudio worklet, no main-thread encoding.
+// edge and drives the Rust recorder on transitions. Audio path lives
+// entirely in Rust — no IPC for sample bytes, no WebAudio worklet, no
+// main-thread encoding.
 //
-// Phase 7f-1: combined only. Splits land in 7f-2.
+// Two modes, selected by the `multitrack` ("multi") flag:
+//   • off → one combined "quick mix" WAV (audio_start_recording_combined).
+//   • on  → the full stems suite (audio_start_recording_stems): master + fx
+//           + reverb + delay bus WAVs + one dry WAV per track, sample-locked.
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useSequencerStore } from '../state/store';
+import { sourceLabel } from '../instruments/library';
 import { getConfiguredRecordingsDir } from './recorderConfig';
 import {
   isNativeAudioAvailable,
   startRecordingCombined,
   stopRecordingCombined,
-  startRecordingSplits,
-  stopRecordingSplits,
+  startRecordingStems,
+  stopRecordingStems,
 } from './nativeEngine';
 
 let unsubscribe: (() => void) | null = null;
 let unlistenFinalized: UnlistenFn | null = null;
 let lastArmedAndPlaying = false;
 
-// Batches finalize events from the workers (1 for combined-only, 3 for
-// combined + splits) into a single user-visible toast. ~250ms debounce
-// is plenty — workers all finalize within tens of ms of each other,
-// well under the gap a human reads as "separate event."
+// Batches finalize events from the workers (1 for a quick-mix take, up to
+// ~20 for a full-stems take: master + fx + reverb + delay + one per track)
+// into a single user-visible toast. The debounce timer RESETS on each event,
+// so any burst arriving within ~250ms of each other collapses to one toast —
+// workers all finalize within tens of ms.
 type FinalizedEvent = {
   label: string;
   path: string;
@@ -114,16 +119,47 @@ async function start(): Promise<void> {
   try {
     const dir = await resolveRecordingsDir();
     const ts = timestamp();
+    const s = useSequencerStore.getState();
     // Lead every take with the tempo (e.g. `111bpm_<ts>`) so files sort by
-    // session and the bpm reads at a glance. The combined take carries no role
-    // suffix; the splits keep `_rhythm` / `_melody`.
-    const prefix = `${useSequencerStore.getState().bpm}bpm_${ts}`;
-    await startRecordingCombined(joinPath(dir, `${prefix}.wav`));
-    if (useSequencerStore.getState().splits) {
-      await startRecordingSplits({
-        rhythmPath: joinPath(dir, `${prefix}_rhythm.wav`),
-        melodyPath: joinPath(dir, `${prefix}_melody.wav`),
+    // session and the bpm reads at a glance. Quick-mix → `<prefix>.wav`;
+    // stems → a `<prefix>/` subfolder of named WAVs.
+    const prefix = `${s.bpm}bpm_${ts}`;
+    if (s.multitrack) {
+      // "multi" ON → the full stems suite in its own subfolder (master + fx +
+      // reverb + delay + one WAV per track, ~20 files). Master is captured by
+      // the stems take itself, so we do NOT also start the combined recorder.
+      const stemDir = joinPath(dir, prefix);
+      // Name each track stem by section + within-section index + instrument:
+      // rhythm → `r01_kick`, melody → `m01_distant_pad`. Counters run in
+      // track order (which is the rec_track slot order Rust assigns), so the
+      // filename stays aligned to trackIds[i]. Slug = lowercase, non-alnum →
+      // `_`; nameless/empty tracks fall back to just the `rNN`/`mNN` prefix.
+      let rCount = 0;
+      let mCount = 0;
+      const trackPaths = s.tracks.map((t) => {
+        const isRhythm = t.section === 'drum';
+        const nn = String(isRhythm ? ++rCount : ++mCount).padStart(2, '0');
+        const slug = sourceLabel(t.source)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+        const base = `${isRhythm ? 'r' : 'm'}${nn}${slug ? `_${slug}` : ''}`;
+        return joinPath(stemDir, `${base}.wav`);
       });
+      await startRecordingStems({
+        stemDir,
+        // Numeric-prefixed so the bus stems sort to the top of the folder,
+        // above the r##/m## track stems.
+        masterPath: joinPath(stemDir, '01_master.wav'),
+        fxPath: joinPath(stemDir, '02_fx.wav'),
+        reverbPath: joinPath(stemDir, '03_reverb.wav'),
+        delayPath: joinPath(stemDir, '04_delay.wav'),
+        trackIds: s.tracks.map((t) => t.id),
+        trackPaths,
+      });
+    } else {
+      // "multi" OFF → a single combined "quick mix" WAV.
+      await startRecordingCombined(joinPath(dir, `${prefix}.wav`));
     }
   } catch (err) {
     console.warn('[nativeRecorder] start failed:', err);
@@ -142,9 +178,9 @@ async function finalizeRecording(): Promise<void> {
     console.warn('[nativeRecorder] stop combined failed:', err);
   }
   try {
-    await stopRecordingSplits();
+    await stopRecordingStems();
   } catch (err) {
-    console.warn('[nativeRecorder] stop splits failed:', err);
+    console.warn('[nativeRecorder] stop stems failed:', err);
   }
 }
 

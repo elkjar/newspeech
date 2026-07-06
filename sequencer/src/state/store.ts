@@ -823,21 +823,15 @@ export interface SequencerState {
   // unaffected either way; this only swaps where the WAV's data comes
   // from. Useful for DAW workflows where you want the sequencer's
   // character live but a clean source to process in the DAW.
+  // Vestigial — read only by the decommissioned web recorder shim
+  // (`audio/recorder.ts`, dynamic-imported behind `!isNativeAudioAvailable`).
+  // No UI toggles them anymore; the native workflow is quick-mix vs stems
+  // via `multitrack` alone. Kept so the web shim still typechecks.
   recordRaw: boolean;
-  setRecordRaw: (v: boolean) => void;
-  toggleRecordRaw: () => void;
-  // Splits toggle. When true, a take produces two WAVs (rhythm + melody)
-  // instead of one combined. Forces sample-bus tap territory; `recordRaw`
-  // becomes a no-op while splits is on. Count-in clicks land in both splits
-  // for DAW alignment.
   splits: boolean;
-  setSplits: (v: boolean) => void;
-  toggleSplits: () => void;
-  // Multitrack toggle. When true, a take produces one WAV per audio-
-  // producing track (16+ files) tapped from per-track recording buses,
-  // pre-FX/pre-master. Mutually exclusive with `splits`. Toggling this on
-  // also flips `recordRaw` on for visual coherence — multitrack inherently
-  // captures raw signal.
+  // Recording mode toggle ("multi"). Off = a single combined "quick mix" WAV.
+  // On = the full stems suite (master + fx + reverb + delay bus WAVs + one
+  // dry WAV per track), native-only. See nativeRecorder.ts / audio.rs.
   multitrack: boolean;
   setMultitrack: (v: boolean) => void;
   toggleMultitrack: () => void;
@@ -1379,18 +1373,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setMetronome: (v) => set({ metronome: v }),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
   recordRaw: false,
-  setRecordRaw: (v) => set({ recordRaw: v }),
-  toggleRecordRaw: () => set((s) => ({ recordRaw: !s.recordRaw })),
   splits: false,
-  setSplits: (v) => set({ splits: v }),
-  toggleSplits: () => set((s) => ({ splits: !s.splits, multitrack: false })),
   multitrack: false,
   setMultitrack: (v) => set({ multitrack: v }),
-  toggleMultitrack: () =>
-    set((s) => {
-      const next = !s.multitrack;
-      return { multitrack: next, recordRaw: next, splits: next ? false : s.splits };
-    }),
+  toggleMultitrack: () => set((s) => ({ multitrack: !s.multitrack })),
   sceneGraph: hydrateSceneGraph((defaultPreset as { sceneGraph?: unknown }).sceneGraph),
   ghostBarsRemaining: 0,
   ghostTargetBars: 0,

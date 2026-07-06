@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PlayButton, RecordButton, CountInButton, MetronomeButton, RawRecordButton, SplitsButton, TransportControls, InitButton, SongFileButtons, loadProjectFromText } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, MetronomeButton, MultiButton, TransportControls, InitButton, SongFileButtons, loadProjectFromText } from './components/Transport';
 import { PerformanceButton } from './components/PerformanceDialog';
 import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -2013,8 +2013,7 @@ export function App() {
                 <RecordButton />
                 <CountInButton />
                 <MetronomeButton />
-                <RawRecordButton />
-                <SplitsButton />
+                <MultiButton />
               </div>
               <div className="flex items-center gap-4">
                 <SectionToggle />

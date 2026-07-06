@@ -234,35 +234,34 @@ export function PlayButton() {
   );
 }
 
-// SplitsButton — toggles two-WAV split recording (rhythm + melody). Forces
-// sample-bus tap territory, so the `raw` toggle is implicit-on while this
-// is active. Count-in clicks land in both files for DAW alignment.
-// Mutually exclusive with `multitrack`.
-export function SplitsButton() {
-  const splits = useSequencerStore((s) => s.splits);
-  const toggleSplits = useSequencerStore((s) => s.toggleSplits);
+// MultiButton — the recording-mode toggle ("multi"). Off = a take bounces a
+// single combined "quick mix" WAV. On = the full stems suite (native only):
+// a sample-locked subfolder of master + fx + reverb + delay bus WAVs plus one
+// dry WAV per track. Σ(track stems) + the bus stems reconstruct the master.
+// Re-enabled 2026-07-05 — native per-track capture with off-thread WAV
+// encoding makes in-app stems cheap (the web worklet version was the perf
+// problem). Replaced the old splits/raw toggles (removed same day): the
+// workflow is now just quick-mix vs full-suite. See project-sequencer memory.
+export function MultiButton() {
+  const multitrack = useSequencerStore((s) => s.multitrack);
+  const toggleMultitrack = useSequencerStore((s) => s.toggleMultitrack);
   return (
     <button
-      onClick={toggleSplits}
+      onClick={toggleMultitrack}
       title={
-        splits
-          ? 'splits on — take exports rhythm + melody as separate WAVs (clicks land in both for alignment)'
-          : 'splits off — take exports a single combined WAV'
+        multitrack
+          ? 'multi on — take exports the full suite: master + fx + reverb + delay + one dry WAV per track (own subfolder)'
+          : 'multi off — take bounces a single combined quick-mix WAV'
       }
       className={[
         'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
-        splits ? 'text-white' : 'text-white/40 hover:text-white',
+        multitrack ? 'text-white' : 'text-white/40 hover:text-white',
       ].join(' ')}
     >
-      {splits ? '●' : '○'} splits
+      {multitrack ? '●' : '○'} multi
     </button>
   );
 }
-
-// MultitrackButton removed 2026-05-22 — multi-out routing (per-track to
-// separate physical channels) handles this workflow better than 16 WAV
-// files. The store's `multitrack` flag stays so old session files load
-// cleanly, but the button + the recording flow are gone.
 
 // AudioOutSelector — picks which physical output device gets the
 // sequencer's audio. Backed by AudioContext.setSinkId (Safari 17+,
@@ -327,34 +326,6 @@ export function AudioOutSelector() {
         </option>
       )}
     </select>
-  );
-}
-
-// RawRecordButton — toggles the recorder's tap point. Off (default) =
-// recorder captures master output (what the user hears). On = recorder
-// captures voicesBus pre-FX (raw samples, no master / tape / glitch /
-// reverb / saturation processing). Audible output is identical either
-// way — this only swaps where the WAV's data comes from. For DAW
-// workflows where the user wants the sequencer's character live but a
-// clean source to process downstream.
-export function RawRecordButton() {
-  const recordRaw = useSequencerStore((s) => s.recordRaw);
-  const toggleRecordRaw = useSequencerStore((s) => s.toggleRecordRaw);
-  return (
-    <button
-      onClick={toggleRecordRaw}
-      title={
-        recordRaw
-          ? 'recording the raw sample bus — master + FX bypassed in the WAV (you still hear the full mix)'
-          : 'recording the full mix — master + FX baked into the WAV'
-      }
-      className={[
-        'px-2 py-1 text-[11px] uppercase tracking-widest transition-colors',
-        recordRaw ? 'text-white' : 'text-white/40 hover:text-white',
-      ].join(' ')}
-    >
-      {recordRaw ? '●' : '○'} raw
-    </button>
   );
 }
 

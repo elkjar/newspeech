@@ -747,26 +747,39 @@ export async function isRecordingCombined(): Promise<boolean> {
   return await invoke<boolean>('audio_is_recording_combined');
 }
 
-// Splits recording (phase 7f-2). Two WAV files written in parallel —
-// rhythm (drum-section voices + count-in click) + melody (melodic-
-// section voices + count-in click). Pre-FX, pre-master raw signal so
-// DAWs can do their own master tone-shaping on the stems.
-export async function startRecordingSplits(opts: {
-  rhythmPath: string;
-  melodyPath: string;
+
+// Full-stems recording. One sample-locked take → master (post-master mix),
+// fx (mangler bus), reverb + delay (wet returns), and one dry WAV per track.
+// All files land in `stemDir`. `trackIds` / `trackPaths` are parallel arrays
+// (index i = the i-th track, capped at 16 in Rust); the id assigns the track
+// its stem slot so its dry signal routes to `trackPaths[i]`. Σ(track stems) +
+// fx + reverb + delay reconstructs the pre-master mix.
+export async function startRecordingStems(opts: {
+  stemDir: string;
+  masterPath: string;
+  fxPath: string;
+  reverbPath: string;
+  delayPath: string;
+  trackIds: string[];
+  trackPaths: string[];
 }): Promise<void> {
-  await invoke<void>('audio_start_recording_splits', {
-    rhythmPath: opts.rhythmPath,
-    melodyPath: opts.melodyPath,
+  await invoke<void>('audio_start_recording_stems', {
+    stemDir: opts.stemDir,
+    masterPath: opts.masterPath,
+    fxPath: opts.fxPath,
+    reverbPath: opts.reverbPath,
+    delayPath: opts.delayPath,
+    trackIds: opts.trackIds,
+    trackPaths: opts.trackPaths,
   });
 }
 
-export async function stopRecordingSplits(): Promise<void> {
-  await invoke<void>('audio_stop_recording_splits');
+export async function stopRecordingStems(): Promise<void> {
+  await invoke<void>('audio_stop_recording_stems');
 }
 
-export async function isRecordingSplits(): Promise<boolean> {
-  return await invoke<boolean>('audio_is_recording_splits');
+export async function isRecordingStems(): Promise<boolean> {
+  return await invoke<boolean>('audio_is_recording_stems');
 }
 
 // Tape (full bed + grains). `stretch1`/`stretch2` are actual playback
