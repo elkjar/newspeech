@@ -931,6 +931,11 @@ export interface SequencerState {
   setSongTitle: (name: string | null) => void;
   docPath: string | null;
   docDirty: boolean;
+  // "Unsaved instruments" prompt. Set by saveProject when voice edits are
+  // pending (saveSong: true — the gate: a .seq saved over unsaved edits plays
+  // stock instruments anywhere this machine's localStorage isn't) or by the
+  // header badge (saveSong: false — plain bulk save). null = closed.
+  instrumentGate: { as: boolean; saveSong: boolean } | null;
   setTrackLength: (trackId: string, length: number) => void;
   setTrackPage: (trackId: string, page: number) => void;
   setTrackEuclidean: (trackId: string, partial: Partial<EuclideanParams>) => void;
@@ -1352,6 +1357,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   songTitle: null,
   docPath: null,
   docDirty: false,
+  instrumentGate: null,
   viewSection: 'drum',
   density: initialMacros.density,
   chaos: initialMacros.chaos,

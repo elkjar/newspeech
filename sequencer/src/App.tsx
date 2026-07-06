@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { PlayButton, RecordButton, CountInButton, MetronomeButton, MultiButton, TransportControls, InitButton, SongFileButtons, SongTitleInput, loadProjectFromText, saveProject, loadProjectFromPicker } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, MetronomeButton, MultiButton, TransportControls, InitButton, SongFileButtons, SongTitleInput, InstrumentDirtyBadge, loadProjectFromText, saveProject, loadProjectFromPicker } from './components/Transport';
+import { saveAllVoiceEdits } from './instruments/saveInstrument';
+import { unsavedVoiceLabels } from './instruments/voiceEditsStore';
 import { adoptLoadedFile, installDocumentTracking } from './state/document';
 import { listen } from '@tauri-apps/api/event';
 // Static import (not dynamic) — a dynamic import of a not-yet-optimized dep
@@ -272,6 +274,7 @@ export function App() {
   // decides. 'window' = red button / Cmd+W (we preventDefault'ed the close);
   // 'quit' = Cmd+Q (Rust prevent_exit'ed and pinged quit-requested).
   const [closeIntent, setCloseIntent] = useState<null | 'window' | 'quit'>(null);
+  const instrumentGate = useSequencerStore((s) => s.instrumentGate);
 
   // Leave for real: clear the Rust-side dirty mirror first so the close/quit
   // isn't re-intercepted, then resume whichever path was held.
@@ -2058,6 +2061,7 @@ export function App() {
               </span>
               <SongTitleInput />
               <SongFileButtons />
+              <InstrumentDirtyBadge />
               <button
                 type="button"
                 onClick={() => setSettingsOpen(true)}
@@ -2134,7 +2138,10 @@ export function App() {
               onConfirm={() => {
                 const intent = closeIntent;
                 void (async () => {
-                  await saveProject();
+                  // Skip the unsaved-instruments gate on quit — instrument
+                  // edits survive restarts (localStorage), so quitting isn't
+                  // lossy for them the way a portable .seq save is.
+                  await saveProject({ skipInstrumentGate: true });
                   // An unbound song runs save-as here, which can be
                   // cancelled — only leave if the save actually landed.
                   if (!useSequencerStore.getState().docDirty) {
@@ -2146,6 +2153,46 @@ export function App() {
               }}
               onSecondary={() => void proceedClose(closeIntent)}
               onCancel={() => setCloseIntent(null)}
+            />
+          )}
+          {instrumentGate && (
+            <ConfirmDialog
+              title="unsaved instruments"
+              body={
+                <>
+                  unsaved instrument edits: {unsavedVoiceLabels().join(', ')}.
+                  {instrumentGate.saveSong
+                    ? ' these live only on this machine until saved into their kits — a .seq saved now plays stock instruments anywhere else.'
+                    : ' save them into their kits to make them permanent everywhere.'}
+                </>
+              }
+              confirmLabel={
+                instrumentGate.saveSong ? 'save instruments & song' : 'save instruments'
+              }
+              secondaryLabel={instrumentGate.saveSong ? 'save song only' : undefined}
+              onConfirm={() => {
+                const gate = instrumentGate;
+                useSequencerStore.setState({ instrumentGate: null });
+                void (async () => {
+                  const result = await saveAllVoiceEdits();
+                  if (result.skipped.length > 0 || result.errors.length > 0) {
+                    console.warn('[instruments] save-all:', result);
+                  }
+                  if (gate.saveSong) {
+                    await saveProject({ as: gate.as, skipInstrumentGate: true });
+                  }
+                })();
+              }}
+              onSecondary={
+                instrumentGate.saveSong
+                  ? () => {
+                      const gate = instrumentGate;
+                      useSequencerStore.setState({ instrumentGate: null });
+                      void saveProject({ as: gate.as, skipInstrumentGate: true });
+                    }
+                  : undefined
+              }
+              onCancel={() => useSequencerStore.setState({ instrumentGate: null })}
             />
           )}
           <div className="flex justify-between items-center gap-8 -my-4">

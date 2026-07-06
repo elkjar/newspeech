@@ -252,6 +252,9 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const doSave = async () => {
     setSaveState('working');
     const res = await saveVoiceInline(voiceId);
+    // Keep the reason — the 2s "err" flash alone made write failures
+    // (e.g. a permission wall on the samples dir) undiagnosable.
+    if (!res.ok) console.error(`[instrument save] ${voiceId}: ${res.error}`);
     setSaveState(res.ok ? 'ok' : 'err');
     window.setTimeout(() => setSaveState('idle'), 2000);
   };
@@ -260,6 +263,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
     if (!name) return;
     setSaveState('working');
     const res = await saveVoiceAs(voiceId, name);
+    if (!res.ok) console.error(`[instrument save-as] ${voiceId}: ${res.error}`);
     if (res.ok && res.newVoiceId) {
       setTrackSource(track.id, { kind: 'voice', id: res.newVoiceId });
       setSaveAsMode(false);

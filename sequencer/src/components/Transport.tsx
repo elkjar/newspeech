@@ -4,6 +4,7 @@ import { togglePlayback, tapTempo } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
 import { exportProject, importProject, filenameSlug } from '../state/persist';
 import { setDocument, adoptLoadedFile } from '../state/document';
+import { unsavedVoiceIds, useVoiceEditsStore } from '../instruments/voiceEditsStore';
 import { presetsForTarget } from '../instruments/library';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -20,8 +21,21 @@ const SONG_FILTER = [{ name: 'newspeech song', extensions: ['seq', 'seqcomp'] }]
 // silently, document-app style. `as: true` (Cmd+Shift+S / shift-click)
 // forces the dialog; the picked path becomes the binding, so the NEXT
 // save is silent. An unbound save also runs the dialog.
-export async function saveProject(opts: { as?: boolean } = {}) {
+export async function saveProject(
+  opts: { as?: boolean; skipInstrumentGate?: boolean } = {},
+) {
   const state = useSequencerStore.getState();
+  // Unsaved instrument edits make the .seq a lie on any other machine — the
+  // song references voices by id, and pending edits live only in this
+  // machine's localStorage until saved into their kit manifests. Divert to
+  // the prompt; it re-enters here with skipInstrumentGate after the user
+  // decides. (The quit-flow save skips this — quitting doesn't lose edits.)
+  if (isTauri() && !opts.skipInstrumentGate && unsavedVoiceIds().length > 0) {
+    useSequencerStore.setState({
+      instrumentGate: { as: !!opts.as, saveSong: true },
+    });
+    return;
+  }
   if (isTauri()) {
     const boundPath = opts.as ? null : state.docPath;
     if (boundPath) {
@@ -222,6 +236,29 @@ export function SongTitleInput() {
       />
       {docDirty && <span className="text-white/60 text-[8px]">●</span>}
     </label>
+  );
+}
+
+// Header "unsaved instruments" badge — visible only while some voice carries
+// an unsaved working edit (the aggregate of the editor's per-voice ● badge).
+// Labeled-circle modifier weight, no border, per the toggle convention.
+// Click opens the bulk save-all prompt (instrumentGate, saveSong: false).
+export function InstrumentDirtyBadge() {
+  const count = useVoiceEditsStore((s) => Object.keys(s.voiceEdits).length);
+  if (count === 0 || !isTauri()) return null;
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        useSequencerStore.setState({
+          instrumentGate: { as: false, saveSong: false },
+        })
+      }
+      title={`${count} instrument${count === 1 ? '' : 's'} with unsaved edits — click to save all into their kits`}
+      className="px-1 text-[11px] uppercase tracking-widest text-white/60 hover:text-white transition-colors h-[20px]"
+    >
+      ● inst
+    </button>
   );
 }
 

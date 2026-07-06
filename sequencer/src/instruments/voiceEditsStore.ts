@@ -472,6 +472,26 @@ export function hasUnsavedVoiceEdit(voiceId: string): boolean {
   return useVoiceEditsStore.getState().voiceEdits[voiceId] !== undefined;
 }
 
+// Every voice with an unsaved working edit — the aggregate behind the header
+// "● inst" badge and the song-save gate. Unsaved edits survive restarts (the
+// working layer is localStorage-backed) but never travel in a .seq, so a song
+// saved over them plays stock instruments anywhere this localStorage isn't.
+export function unsavedVoiceIds(): string[] {
+  return Object.keys(useVoiceEditsStore.getState().voiceEdits);
+}
+
+// Human labels for the unsaved voices (registered kit label when available,
+// raw id otherwise) — for the "unsaved instruments" dialog body.
+export function unsavedVoiceLabels(): string[] {
+  return unsavedVoiceIds().map((id) => {
+    for (const kit of getRegisteredKits()) {
+      const v = kit.manifest.voices[id];
+      if (v?.label) return v.label;
+    }
+    return id;
+  });
+}
+
 // Non-React accessors for the audio path (samplePlayer.pickNativeSample).
 export function voiceGainOverride(voiceId: string): number {
   const e = resolvedVoiceEdit(voiceId);

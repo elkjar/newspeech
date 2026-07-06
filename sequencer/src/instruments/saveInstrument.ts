@@ -116,6 +116,96 @@ export async function saveVoiceInline(voiceId: string): Promise<SaveResult> {
   }
 }
 
+export interface SaveAllResult {
+  saved: number;
+  // Voices with working edits that live in no editable kit (synth/MIDI voices,
+  // stale ids from renamed kits). Left in the working layer untouched — a
+  // reset would silently discard the only copy of those edits.
+  skipped: string[];
+  errors: string[];
+}
+
+// Bulk companion to saveVoiceInline — bake EVERY unsaved instrument edit into
+// its kit manifest in one pass. Used by the "unsaved instruments" gate on song
+// save and the header badge. Kits are scanned once and each dirty manifest is
+// written once (a kit with several dirty voices gets one write), with a single
+// registry rescan at the end — not N× the inline flow.
+export async function saveAllVoiceEdits(): Promise<SaveAllResult> {
+  const out: SaveAllResult = { saved: 0, skipped: [], errors: [] };
+  if (!isTauri()) return out;
+  const ids = Object.keys(useVoiceEditsStore.getState().voiceEdits);
+  if (ids.length === 0) return out;
+  try {
+    const dir = await resolveUserSamplesDir();
+    if (!dir) {
+      out.skipped = ids;
+      return out;
+    }
+    const kits = await invoke<RustSampleKitEntry[]>('list_sample_kits', { dir });
+    interface KitGroup {
+      absoluteDir: string;
+      manifest: ExtendedSampleManifest;
+      entries: Array<{ voiceId: string; bareId: string }>;
+    }
+    const parsed: Array<{ kitPath: string; absoluteDir: string; manifest: ExtendedSampleManifest }> = [];
+    for (const kit of kits) {
+      try {
+        parsed.push({
+          kitPath: kit.kit_path,
+          absoluteDir: kit.absolute_dir,
+          manifest: JSON.parse(kit.manifest_json) as ExtendedSampleManifest,
+        });
+      } catch {
+        /* unparseable manifest — its voices land in `skipped` below */
+      }
+    }
+    const byKit = new Map<string, KitGroup>();
+    for (const voiceId of ids) {
+      let found = false;
+      for (const kit of parsed) {
+        const prefix = namespacePrefix(`user/${kit.kitPath}`);
+        for (const bareId of Object.keys(kit.manifest.voices ?? {})) {
+          if (`${prefix}-${bareId}` === voiceId) {
+            let group = byKit.get(kit.kitPath);
+            if (!group) {
+              group = { absoluteDir: kit.absoluteDir, manifest: kit.manifest, entries: [] };
+              byKit.set(kit.kitPath, group);
+            }
+            group.entries.push({ voiceId, bareId });
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+      if (!found) out.skipped.push(voiceId);
+    }
+    for (const group of byKit.values()) {
+      // Bake BEFORE reset — resolvedVoiceEdit merges the working layer over
+      // the saved base, same semantics as the inline save.
+      for (const e of group.entries) {
+        const voice = group.manifest.voices[e.bareId];
+        group.manifest.voices[e.bareId] = { ...voice, edits: resolvedVoiceEdit(e.voiceId) ?? {} };
+      }
+      try {
+        await writeKitManifest(group.absoluteDir, group.manifest);
+        for (const e of group.entries) {
+          useVoiceEditsStore.getState().resetVoiceEdit(e.voiceId);
+          out.saved += 1;
+        }
+      } catch (err) {
+        out.errors.push(
+          `${group.absoluteDir}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    if (out.saved > 0) await rescanAllKits();
+  } catch (err) {
+    out.errors.push(err instanceof Error ? err.message : String(err));
+  }
+  return out;
+}
+
 // Save As: fork a NEW voice in the same kit (new id + name, same sample files,
 // current params baked in) — a variation off the same multisample. The original
 // keeps its saved state untouched; the working override is cleared off the
