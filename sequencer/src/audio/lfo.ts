@@ -1,4 +1,12 @@
-import { getAudioContext } from './audioContext';
+// The LFO clock. Free-running monotonic seconds for phase math, the
+// manual-override hold timer, and the panel previews — deliberately NOT
+// the engine clock (nothing here schedules audio; the Rust engine
+// computes its own LFO phases for audio params) and no longer the
+// AudioContext (this was the app's last Web Audio dependency).
+// performance.now() can't stall the way a suspended AudioContext could.
+export function lfoNow(): number {
+  return performance.now() / 1000;
+}
 
 export type LFODestKnobTrack =
   | 'mutation'
@@ -98,7 +106,7 @@ export function defaultLFOs(): LFO[] {
 }
 
 export function lfoOutput(lfo: LFO, time?: number): number {
-  const t = time ?? getAudioContext().currentTime;
+  const t = time ?? lfoNow();
   return lfoShapeValue(lfo.shape, lfo.rate * t);
 }
 
@@ -107,7 +115,7 @@ export function lfoOutput(lfo: LFO, time?: number): number {
 let frozenLFOOutputs: Map<number, number> | null = null;
 
 export function freezeLFOs(lfos: LFO[], time?: number): void {
-  const t = time ?? getAudioContext().currentTime;
+  const t = time ?? lfoNow();
   const snap = new Map<number, number>();
   for (const l of lfos) {
     snap.set(l.id, lfoShapeValue(l.shape, l.rate * t));
@@ -168,7 +176,7 @@ export function findRouted(
 // XL3 "always do whatever it wants" with an LFO-bound control.
 const OVERRIDE_HOLD_S = 2;
 const OVERRIDE_RAMP_S = 1.5;
-const manualOverrides = new Map<string, number>(); // "trackId:knob" -> ctx time the hold ends
+const manualOverrides = new Map<string, number>(); // "trackId:knob" -> lfoNow() time the hold ends
 
 function overrideKey(trackId: string, knob: LFODestKnob): string {
   return `${trackId}:${knob}`;
@@ -178,7 +186,7 @@ function overrideKey(trackId: string, knob: LFODestKnob): string {
 export function markManualOverride(trackId: string, knob: LFODestKnob): void {
   manualOverrides.set(
     overrideKey(trackId, knob),
-    getAudioContext().currentTime + OVERRIDE_HOLD_S
+    lfoNow() + OVERRIDE_HOLD_S
   );
 }
 
@@ -194,7 +202,7 @@ export function modulated(
   if (routed.length === 0) return base;
   const totalDepth = routed.reduce((s, l) => s + l.depth, 0);
   if (totalDepth === 0) return base;
-  const t = time ?? getAudioContext().currentTime;
+  const t = time ?? lfoNow();
   // Manual override: hand wins. Full base (LFO off) during the hold, then the
   // LFO depth ramps back from 0 over OVERRIDE_RAMP_S so it doesn't snap.
   const holdUntil = manualOverrides.get(overrideKey(trackId, knob));

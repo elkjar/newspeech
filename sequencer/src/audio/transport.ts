@@ -1,4 +1,3 @@
-import { ensureAudioRunning } from './audioContext';
 import { scheduler } from './scheduler';
 import { midiPanic } from './midiOut';
 import { clockTransportStart, clockTransportStop } from './midiClock';
@@ -37,11 +36,11 @@ import { fadeTextures, audioPanic } from './nativeEngine';
 // any short tails ring out naturally. Tune by ear.
 const TEXTURE_STOP_FADE_SECS = 6;
 
-// Shared play-prep: resume audio and push program changes. Used by both
-// the local transport and the external-clock follower (clockFollow.ts),
-// so the two start paths can't drift apart.
+// Shared play-prep: push program changes. Used by both the local
+// transport and the external-clock follower (clockFollow.ts), so the
+// two start paths can't drift apart. (Async for call-site stability —
+// historically this also resumed the WebAudio context.)
 export async function prepareForPlay(): Promise<void> {
-  await ensureAudioRunning();
   useSequencerStore.getState().fireAllProgramChanges();
 }
 

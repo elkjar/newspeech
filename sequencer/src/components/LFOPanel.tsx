@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSequencerStore } from '../state/store';
-import { getAudioContext } from '../audio/audioContext';
 import { Knob } from './Knob';
 import { sourceLabel, type TrackSource } from '../instruments/library';
 import {
   GLOBAL_TRACK_ID,
+  lfoNow,
   lfoShapeValue,
   LFO_SHAPES,
   type LFO,
@@ -156,7 +156,7 @@ function WaveformPlot({ lfo }: { lfo: LFO }) {
         ctx.stroke();
 
         // phase dot
-        const t = getAudioContext().currentTime;
+        const t = lfoNow();
         const cycles = rate * t;
         const p = cycles - Math.floor(cycles);
         ctx.fillStyle = 'rgba(255,255,255,1)';

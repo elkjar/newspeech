@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getAudioContext } from '../audio/audioContext';
-import { applyLFO, getFrozenLFOOutput, isLFOFrozen, lfoShapeValue, type LFO } from '../audio/lfo';
+import { applyLFO, getFrozenLFOOutput, isLFOFrozen, lfoNow, lfoShapeValue, type LFO } from '../audio/lfo';
 
 // Drives a value at RAF rate from a base + a list of routed LFOs. Mirrors what
 // `modulated()` does in the audio dispatch, but in a React-rendering form so
@@ -35,7 +34,7 @@ export function useLFOValue(
           next = b;
         } else {
           const frozen = isLFOFrozen();
-          const t = getAudioContext().currentTime;
+          const t = lfoNow();
           let summed = 0;
           for (const l of list) {
             const o = frozen

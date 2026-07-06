@@ -4,7 +4,7 @@
 // (revsaw/saw/tri/square/random) and driven by the synced rate. Illustrative:
 // the dot free-runs at the resolved Hz; the real per-voice phase resets per note.
 import { useEffect, useRef } from 'react';
-import { getAudioContext } from '../audio/audioContext';
+import { lfoNow } from '../audio/lfo';
 import type { LfoShape } from '../instruments/voiceEditsStore';
 
 interface Props {
@@ -100,7 +100,7 @@ export function LfoShapePlot({ shape, rateHz, depth }: Props) {
         ctx.stroke();
 
         // phase dot, free-running at the resolved rate
-        const t = getAudioContext().currentTime;
+        const t = lfoNow();
         const cycles = rate * t;
         const p = cycles - Math.floor(cycles);
         ctx.fillStyle = 'rgba(255,255,255,1)';
