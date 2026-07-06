@@ -921,6 +921,16 @@ export interface SequencerState {
   setTrackInputArmed: (trackId: string, armed: boolean) => void;
   midiRecInputPort: string | null;
   setMidiRecInputPort: (port: string | null) => void;
+  // Document binding — which .seq file on disk the working state belongs to.
+  // songTitle is authored state (serialized into the .seq as `name`); docPath
+  // and docDirty are session-only. Dirty is computed in state/document.ts by
+  // re-exporting and comparing against the last-saved bytes, so playback churn
+  // (bank swaps folding live state back) never false-positives. Song switches
+  // and init clear docPath — the working state no longer IS that file.
+  songTitle: string | null;
+  setSongTitle: (name: string | null) => void;
+  docPath: string | null;
+  docDirty: boolean;
   setTrackLength: (trackId: string, length: number) => void;
   setTrackPage: (trackId: string, page: number) => void;
   setTrackEuclidean: (trackId: string, partial: Partial<EuclideanParams>) => void;
@@ -1339,6 +1349,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   clockFollowLocked: false,
   blueboxPort: readPersistedBlueboxPort(),
   midiRecInputPort: null,
+  songTitle: null,
+  docPath: null,
+  docDirty: false,
   viewSection: 'drum',
   density: initialMacros.density,
   chaos: initialMacros.chaos,
@@ -1545,6 +1558,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   },
   initProject: () => {
     set((state) => ({
+      songTitle: null,
+      docPath: null,
+      docDirty: false,
       tracks: state.tracks.map(blankTrack),
       lfos: defaultLFOs(),
       density: 0.5,
@@ -1943,6 +1959,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       };
     }),
   setMidiRecInputPort: (port) => set({ midiRecInputPort: port }),
+  setSongTitle: (name) =>
+    set({ songTitle: name && name.trim() ? name.trim() : null }),
   setTrackLength: (trackId, length) => {
     const safe = Number.isFinite(length) ? Math.floor(length) : DEFAULT_LENGTH;
     const clamped = Math.max(1, Math.min(MAX_STEPS, safe));
@@ -3056,6 +3074,12 @@ function applySong(
   atGlobalStep: number,
 ): void {
   set((state) => ({
+    // The working state becomes this performance slot's song — carry its
+    // title, and unbind any .seq file the previous working state came from
+    // (Cmd+S must not overwrite song A's file with song B's state).
+    songTitle: song.name ?? null,
+    docPath: null,
+    docDirty: false,
     tracks: withInputArm(state.tracks, song.tracks.map(cloneTrack)),
     banks: song.banks.map((b) =>
       b

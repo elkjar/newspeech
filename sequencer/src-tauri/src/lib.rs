@@ -331,11 +331,14 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .manage(midi::MidiRegistry::default())
     .manage(midi::ClockState::default())
+    .manage(projectfs::PendingOpenFiles::default())
     .invoke_handler(tauri::generate_handler![
       projectfs::save_text_file,
       projectfs::read_text_file,
       projectfs::get_recordings_dir,
       projectfs::reveal_in_finder,
+      projectfs::drag_pasteboard_paths,
+      projectfs::take_pending_open_files,
       midi::midi_list_ports,
       midi::midi_subscribe_input,
       midi::midi_unsubscribe_input,
@@ -445,6 +448,30 @@ pub fn run() {
     .build(tauri::generate_context!())
     .expect("error while building tauri application")
     .run(|app_handle, event| {
+      // Finder "open with Sequence" — .seq double-click or a drop on the dock
+      // icon. macOS delivers these as an Apple event (never argv), surfaced
+      // by tauri as RunEvent::Opened. Buffer the paths (a cold-launch open
+      // arrives before the webview has listeners), then ping the frontend,
+      // which drains via take_pending_open_files.
+      #[cfg(target_os = "macos")]
+      if let tauri::RunEvent::Opened { urls } = &event {
+        use tauri::Emitter;
+        let paths: Vec<String> = urls
+          .iter()
+          .filter_map(|u| u.to_file_path().ok())
+          .map(|p| p.to_string_lossy().to_string())
+          .collect();
+        if !paths.is_empty() {
+          let pending = app_handle.state::<projectfs::PendingOpenFiles>();
+          if let Ok(mut buf) = pending.0.lock() {
+            buf.extend(paths);
+          }
+          if let Err(e) = app_handle.emit("open-files-pending", ()) {
+            log::warn!("[open-files emit] {}", e);
+          }
+        }
+      }
+
       // On quit, flush an all-notes-off to every MIDI output before the process
       // tears down the CoreMIDI client — otherwise notes left on external gear
       // (e.g. the Mutant Brain) sustain forever. Same message as the panic button.

@@ -3,6 +3,7 @@ import { useSequencerStore } from '../state/store';
 import { togglePlayback, tapTempo } from '../audio/transport';
 import { NOTE_NAMES, SCALES } from '../audio/scale';
 import { exportProject, importProject, filenameSlug } from '../state/persist';
+import { setDocument, adoptLoadedFile } from '../state/document';
 import { presetsForTarget } from '../instruments/library';
 import { useMidiLearn } from '../hooks/useMidiLearn';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -13,35 +14,66 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 // 2026-05-24 intermediate naming; save always writes .seq going forward.
 const SONG_FILTER = [{ name: 'newspeech song', extensions: ['seq', 'seqcomp'] }];
 
-// Canonical "save current song as .seq" action — single source of truth
-// for the song-save flow. Uses the active song's name (if any) for the
-// default filename so successive saves of the same song reuse the slug.
-export async function saveProject() {
+// Canonical "save current song" action — single source of truth for the
+// song-save flow. When the working state is bound to a .seq on disk
+// (docPath — set by open, drag-in, or a prior save-as) this overwrites it
+// silently, document-app style. `as: true` (Cmd+Shift+S / shift-click)
+// forces the dialog; the picked path becomes the binding, so the NEXT
+// save is silent. An unbound save also runs the dialog.
+export async function saveProject(opts: { as?: boolean } = {}) {
   const state = useSequencerStore.getState();
-  const code = exportProject();
-  const activeSong =
-    state.performance.activeSong !== null
-      ? state.performance.songs[state.performance.activeSong]
-      : null;
-  const defaultName = `${filenameSlug(activeSong?.name, 'newspeech-song')}.seq`;
   if (isTauri()) {
+    const boundPath = opts.as ? null : state.docPath;
+    if (boundPath) {
+      const code = exportProject();
+      try {
+        await invoke('save_text_file', { path: boundPath, contents: code });
+        setDocument(boundPath, code);
+      } catch (err) {
+        console.error('[song save] failed:', err);
+      }
+      return;
+    }
     const { save } = await import('@tauri-apps/plugin-dialog');
-    const { documentDir, join } = await import('@tauri-apps/api/path');
+    const { documentDir, dirname, join } = await import('@tauri-apps/api/path');
+    const activeSong =
+      state.performance.activeSong !== null
+        ? state.performance.songs[state.performance.activeSong]
+        : null;
+    const defaultName = `${filenameSlug(state.songTitle ?? activeSong?.name, 'newspeech-song')}.seq`;
     let defaultPath: string | undefined;
     try {
-      defaultPath = await join(await documentDir(), defaultName);
+      // Save-as of an already-bound song starts next to the original file.
+      const dir = state.docPath ? await dirname(state.docPath) : await documentDir();
+      defaultPath = await join(dir, defaultName);
     } catch {
       defaultPath = defaultName;
     }
     const picked = await save({ defaultPath, filters: SONG_FILTER });
     if (!picked) return;
+    // An untitled song takes its title from the chosen filename — set it
+    // BEFORE exporting so the written .seq carries the name.
+    if (!useSequencerStore.getState().songTitle) {
+      const base = picked.split('/').pop() ?? '';
+      useSequencerStore
+        .getState()
+        .setSongTitle(base.replace(/\.(seq|seqcomp|json)$/i, ''));
+    }
+    const code = exportProject();
     try {
       await invoke('save_text_file', { path: picked, contents: code });
+      setDocument(picked, code);
     } catch (err) {
       console.error('[song save] failed:', err);
     }
     return;
   }
+  const activeSong =
+    state.performance.activeSong !== null
+      ? state.performance.songs[state.performance.activeSong]
+      : null;
+  const defaultName = `${filenameSlug(state.songTitle ?? activeSong?.name, 'newspeech-song')}.seq`;
+  const code = exportProject();
   const blob = new Blob([code], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -70,37 +102,53 @@ export async function loadProjectFromPicker(): Promise<void> {
     const picked = await pickFile({ multiple: false, filters: SONG_FILTER });
     if (!picked || typeof picked !== 'string') return;
     const text = await invoke<string>('read_text_file', { path: picked });
-    loadProjectFromText(text);
+    if (loadProjectFromText(text)) adoptLoadedFile(picked);
   } catch (err) {
     console.error('[song load] failed:', err);
   }
 }
 
-// Toolbar — save / load the current song as a single .seq file. Two icon
-// buttons (download = save, upload = load) mirroring the .midimap pair in the
-// MIDI bar. Save is the primary authoring action; load replaces the working
-// state directly (the perf dialog handles SET-level / per-slot song loads).
+// Save / load the current song as a single .seq file. Two icon buttons
+// (download = save, upload = load) living in the top logo row next to the
+// song title, at that row's 20px control scale (same box as the settings /
+// stream-window buttons). Save is the primary authoring action; load
+// replaces the working state directly (the perf dialog handles SET-level /
+// per-slot song loads).
+const TOP_BAR_BUTTON =
+  'bg-transparent border border-white/15 hover:border-white/50 transition-colors inline-flex items-center justify-center text-white/60 hover:text-white';
+
 export function SongFileButtons() {
   const fileRef = useRef<HTMLInputElement>(null);
+  const docPath = useSequencerStore((s) => s.docPath);
   return (
-    <div className="flex items-center gap-1">
-      <IconButton
-        title="save the current song as a .seq file"
-        className="h-[28px]"
-        onClick={() => void saveProject()}
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        title={
+          docPath
+            ? `save — overwrite ${docPath} · shift-click: save as…`
+            : 'save the current song as a .seq file'
+        }
+        aria-label="save song"
+        style={{ width: 20, height: 20 }}
+        className={TOP_BAR_BUTTON}
+        onClick={(e) => void saveProject({ as: e.shiftKey })}
       >
-        <DownloadIcon />
-      </IconButton>
-      <IconButton
+        <SaveIcon />
+      </button>
+      <button
+        type="button"
         title="load a .seq file into the current song"
-        className="h-[28px]"
+        aria-label="load song"
+        style={{ width: 20, height: 20 }}
+        className={TOP_BAR_BUTTON}
         onClick={() => {
           if (isTauri()) void loadProjectFromPicker();
           else fileRef.current?.click();
         }}
       >
         <ImportIcon />
-      </IconButton>
+      </button>
       <input
         ref={fileRef}
         type="file"
@@ -110,13 +158,72 @@ export function SongFileButtons() {
           const file = e.target.files?.[0];
           e.target.value = '';
           if (!file) return;
-          loadProjectFromText(await file.text());
+          if (loadProjectFromText(await file.text())) {
+            // Web builds never learn a path — title from the filename only.
+            adoptLoadedFile(null, file.name);
+          }
         }}
       />
     </div>
   );
 }
 
+
+// Editable song title — the document's name. Persisted into the .seq as
+// `name`, used for the default save filename, and mirrored into the window
+// title. Draft-buffered like BpmInput so the store only commits on blur /
+// Enter. The ● prefix marks unsaved changes against the bound file
+// (displaced next to the field rather than restyling the save button).
+// Lives in the top logo row (beside the settings / stream-window buttons),
+// sized to that row's 20px control scale — NOT the 28px toolbar scale.
+export function SongTitleInput() {
+  const songTitle = useSequencerStore((s) => s.songTitle);
+  const setSongTitle = useSequencerStore((s) => s.setSongTitle);
+  const docPath = useSequencerStore((s) => s.docPath);
+  const docDirty = useSequencerStore((s) => s.docDirty);
+  const [draft, setDraft] = useState(songTitle ?? '');
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(songTitle ?? '');
+  }, [songTitle, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    setSongTitle(draft);
+  };
+
+  return (
+    <label
+      // -ml-2 cancels the input's px-2 so the (borderless) title text sits
+      // flush with the logo text in the row above.
+      className="flex items-center gap-1.5 text-[11px] tracking-widest -ml-2"
+      title={
+        docPath
+          ? `${docPath}${docDirty ? ' — unsaved changes' : ''}`
+          : 'song title — saved into the .seq and used as the default filename'
+      }
+    >
+      <input
+        type="text"
+        value={draft}
+        placeholder="untitled"
+        spellCheck={false}
+        onFocus={() => setEditing(true)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+        // Reads as plain text in the logo row — the border only surfaces on
+        // hover (editability hint) and focus. Transparent border, not
+        // border-none, so nothing shifts when it appears.
+        className="w-40 bg-transparent border border-transparent hover:border-white/15 focus:border-white/50 px-2 text-[11px] tracking-widest text-white/70 focus:text-white placeholder:text-white/25 focus:outline-none h-[20px]"
+      />
+      {docDirty && <span className="text-white/60 text-[8px]">●</span>}
+    </label>
+  );
+}
 
 export function IconButton({
   title,
@@ -126,7 +233,7 @@ export function IconButton({
   children,
 }: {
   title: string;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
   disabled?: boolean;
   className?: string;
   children: React.ReactNode;
@@ -148,6 +255,28 @@ export function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+// Floppy disk — the song-save button. Distinct from DownloadIcon, which the
+// MIDI bar still uses for .midimap export (a true "download"-shaped action);
+// song save overwrites a bound file, so it reads as "save".
+export function SaveIcon() {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      width="12"
+      height="12"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      fill="none"
+      strokeLinecap="square"
+      strokeLinejoin="miter"
+    >
+      <path d="M2.5 2.5 L9.5 2.5 L11.5 4.5 L11.5 11.5 L2.5 11.5 Z" />
+      <path d="M4.5 2.5 L4.5 5.5 L9 5.5 L9 2.5" />
+      <path d="M4.5 11.5 L4.5 8.5 L9.5 8.5" />
+    </svg>
   );
 }
 
@@ -384,7 +513,7 @@ export function InitButton() {
         title="init — reset all tracks, LFOs, and macros to a blank state (keeps bpm, root, scale, master FX, and saved banks)"
         className="px-2 text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors inline-flex items-center justify-center h-[28px]"
       >
-        I
+        init
       </button>
       {confirming && (
         <ConfirmDialog

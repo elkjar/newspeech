@@ -42,6 +42,12 @@ import { resetStepAccumulators } from '../audio/accumulator';
 
 interface PersistedState {
   version: number;
+  // Song title (2026-07-06). Optional — older .seq files have no name and
+  // load with a title derived from their filename by the caller. Sits right
+  // after `version` so the title is the first thing visible when eyeballing
+  // the JSON. parseSongFromSeq already reads this same field for .seqset
+  // slot titles, so titled .seq files import into performance slots named.
+  name?: string;
   bpm: number;
   rootNote: number;
   scale: Scale;
@@ -103,6 +109,7 @@ export function exportProject(): string {
   const topBanks = scene0 ? scene0.banks : liveBanks;
   const data: PersistedState = {
     version: CURRENT_VERSION,
+    name: s.songTitle ?? undefined,
     bpm: s.bpm,
     rootNote: s.rootNote,
     scale: s.scale,
@@ -820,6 +827,8 @@ export function importProject(json: string): boolean {
       : 0;
 
   useSequencerStore.setState({
+    songTitle:
+      typeof data.name === 'string' && data.name.trim() ? data.name : null,
     bpm: typeof data.bpm === 'number' ? data.bpm : 120,
     rootNote: typeof data.rootNote === 'number' ? data.rootNote : 60,
     scale: data.scale ?? 'major',

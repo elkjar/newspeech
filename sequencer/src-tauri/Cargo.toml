@@ -43,10 +43,12 @@ arc-swap = "1.7"
 # NSWindow (stream-window level), and the WKUIDelegate media-capture method
 # (which itself requires WKFrameInfo + WKSecurityOrigin + block2).
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSData"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSArray", "NSString", "NSURL"] }
 objc2-app-kit = { version = "0.3", features = [
   "NSApplication",
   "NSImage",
+  "NSPasteboard",
+  "NSPasteboardItem",
   "NSResponder",
   "NSView",
   "NSWindow",

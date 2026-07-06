@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { PlayButton, RecordButton, CountInButton, MetronomeButton, MultiButton, TransportControls, InitButton, SongFileButtons, loadProjectFromText } from './components/Transport';
+import { PlayButton, RecordButton, CountInButton, MetronomeButton, MultiButton, TransportControls, InitButton, SongFileButtons, SongTitleInput, loadProjectFromText, saveProject, loadProjectFromPicker } from './components/Transport';
+import { adoptLoadedFile, installDocumentTracking } from './state/document';
+import { listen } from '@tauri-apps/api/event';
+// Static import (not dynamic) — a dynamic import of a not-yet-optimized dep
+// makes vite dev re-optimize and force-reload the page MID-BOOT, which boots
+// the app twice and stacks two cpal streams (the zombie-stream noise mode).
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { PerformanceButton } from './components/PerformanceDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TrackGrid } from './components/TrackGrid';
@@ -358,6 +364,69 @@ export function App() {
     };
   }, []);
 
+  // Document binding — dirty tracking + native window title. The title
+  // mirrors the bound file (or the song title when unbound) macOS-document
+  // style: "Sequence — name — edited".
+  useEffect(() => {
+    installDocumentTracking();
+    if (!NATIVE) return;
+    const applyTitle = async (s: {
+      docPath: string | null;
+      docDirty: boolean;
+      songTitle: string | null;
+    }) => {
+      const name = s.docPath
+        ? s.docPath.split('/').pop()
+        : s.songTitle || 'untitled';
+      try {
+        await getCurrentWindow().setTitle(
+          `Sequence — ${name}${s.docDirty ? ' — edited' : ''}`,
+        );
+      } catch (err) {
+        console.warn('[doc title] setTitle failed:', err);
+      }
+    };
+    void applyTitle(useSequencerStore.getState());
+    const unsub = useSequencerStore.subscribe((state, prev) => {
+      if (
+        state.docPath !== prev.docPath ||
+        state.docDirty !== prev.docDirty ||
+        state.songTitle !== prev.songTitle
+      ) {
+        void applyTitle(state);
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Finder "open with Sequence" — .seq double-click / drop on the dock icon.
+  // The Rust side buffers the paths (cold-launch opens race webview boot)
+  // and pings; drain the buffer at boot and on every ping. take_* clears
+  // atomically, so the boot drain and a ping-triggered drain never
+  // double-load the same file.
+  useEffect(() => {
+    if (!NATIVE) return;
+    let disposed = false;
+    const drain = async () => {
+      try {
+        const paths = await invoke<string[]>('take_pending_open_files');
+        if (disposed || paths.length === 0) return;
+        // Multiple files selected → the last one wins (single-document app).
+        const path = paths[paths.length - 1];
+        const text = await invoke<string>('read_text_file', { path });
+        if (loadProjectFromText(text)) adoptLoadedFile(path);
+      } catch (err) {
+        console.error('[open-file] failed:', err);
+      }
+    };
+    const unlisten = listen('open-files-pending', () => void drain());
+    void drain();
+    return () => {
+      disposed = true;
+      void unlisten.then((u) => u());
+    };
+  }, []);
+
   // Drag-and-drop a .seq file onto the window to load it into the current
   // song. The window runs with Tauri `dragDropEnabled: false` (so in-page
   // pad-reorder DnD works), which means the WKWebView delivers OS file drops
@@ -373,7 +442,25 @@ export function App() {
       if (!hasFiles(e)) return;
       e.preventDefault();
       const file = Array.from(e.dataTransfer?.files ?? []).find((f) => isSeq(f.name));
-      if (file) void file.text().then(loadProjectFromText);
+      if (!file) return;
+      void (async () => {
+        if (!loadProjectFromText(await file.text())) return;
+        // HTML5 File objects carry no filesystem path, but on macOS the drag
+        // pasteboard still holds the dragged file URLs at drop time — ask the
+        // Rust side so the drop binds the document to its real path (Cmd+S
+        // then overwrites in place). Basename must match the dropped file;
+        // on any mismatch/failure the load stands, just unbound (save-as).
+        let path: string | null = null;
+        if (NATIVE) {
+          try {
+            const paths = await invoke<string[]>('drag_pasteboard_paths');
+            path = paths.find((p) => p.split('/').pop() === file.name) ?? null;
+          } catch (err) {
+            console.warn('[song drop] pasteboard path lookup failed:', err);
+          }
+        }
+        adoptLoadedFile(path, file.name);
+      })();
     };
     window.addEventListener('dragover', onOver);
     window.addEventListener('drop', onDrop);
@@ -1768,6 +1855,20 @@ export function App() {
         return;
       }
 
+      // Document shortcuts — Cmd/Ctrl+S save (silently overwrites the bound
+      // .seq; Shift forces save-as), Cmd/Ctrl+O open. Also ahead of the
+      // input-focus guard: saving must work while a text field has focus.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void saveProject({ as: e.shiftKey });
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        void loadProjectFromPicker();
+        return;
+      }
+
       const tag = (document.activeElement?.tagName || '').toUpperCase();
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
@@ -1879,6 +1980,9 @@ export function App() {
         >
           <div className="flex justify-between items-center gap-8">
             <div className="flex flex-col gap-4 items-start">
+            {/* Title row — logo, then song title + save/load, then the
+                settings / stream-window utilities, on the 20px control
+                scale. */}
             <div className="flex items-center gap-2">
               <span className="text-[12px] uppercase tracking-[0.12em] opacity-55">
                 {NATIVE ? (
@@ -1893,6 +1997,8 @@ export function App() {
                   </>
                 )}
               </span>
+              <SongTitleInput />
+              <SongFileButtons />
               <button
                 type="button"
                 onClick={() => setSettingsOpen(true)}
@@ -1955,7 +2061,6 @@ export function App() {
           <div className="flex justify-between items-center gap-8 -my-4">
             <div className="flex items-center gap-2">
               <InitButton />
-              <SongFileButtons />
               <PerformanceButton />
               <SongView />
             </div>
