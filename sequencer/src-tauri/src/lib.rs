@@ -2,7 +2,6 @@ mod audio;
 mod delay;
 mod midi;
 mod projectfs;
-mod recording;
 mod reverb;
 mod samples;
 
@@ -330,14 +329,9 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_dialog::init())
-    .manage(recording::RecordingRegistry::default())
     .manage(midi::MidiRegistry::default())
     .manage(midi::ClockState::default())
     .invoke_handler(tauri::generate_handler![
-      recording::recording_start,
-      recording::recording_write_chunk,
-      recording::recording_finalize,
-      recording::recording_cancel,
       projectfs::save_text_file,
       projectfs::read_text_file,
       projectfs::get_recordings_dir,

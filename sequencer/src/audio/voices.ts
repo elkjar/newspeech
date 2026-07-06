@@ -238,7 +238,7 @@ export const DEFAULT_PAD_CONFIG: PadConfig = {
 const STATIC_VOICES: VoiceDef[] = [];
 
 // Cached merged voice list, invalidated when the manifestRegistry changes.
-// The cache exists because `runTick` and `samplePlayer.trigger` call the
+// The cache exists because `runTick` and the trigger dispatch call the
 // `voiceX(id)` helpers in tight inner loops; rebuilding the list per call
 // (~40 entries, but per-step × per-track × per-frame) would show up.
 //

@@ -9,25 +9,21 @@
 // still only happens while playing (see recordInput.ts); monitoring is always
 // on while armed.
 //
-// The note SUSTAINS while the key is held (native path): each press tags its
-// voice with a unique note id and triggers with a long hold, and the matching
-// release (on note-off) ramps that exact voice down — without touching the
-// armed track's pattern voices, which share the same trackId. So a held note
-// rings for as long as you hold it, matching the tie it records. Section is
-// SECTION_NONE so the live monitor never bleeds into recording stems.
-//
-// Web build: no targeted release exists on the Web Audio sample player, so it
-// stays a short fire-and-forget audition (the web build isn't the recording
-// target — the native engine is). monitorRelease is a no-op there.
+// The note SUSTAINS while the key is held: each press tags its voice with a
+// unique note id and triggers with a long hold, and the matching release (on
+// note-off) ramps that exact voice down — without touching the armed track's
+// pattern voices, which share the same trackId. So a held note rings for as
+// long as you hold it, matching the tie it records. Section is SECTION_NONE
+// so the live monitor never bleeds into recording stems.
 
-import { isNativeAudioAvailable, triggerSample, releaseNote } from './nativeEngine';
+import { triggerSample, releaseNote } from './nativeEngine';
 import { getAudioContext } from './audioContext';
 import { samplePlayer } from './samplePlayer';
 import { resolveVoiceEnvelope } from '../instruments/voiceEditsStore';
 import { resolveDeviceId, sendMIDINote, sendMIDINoteOn, sendMIDINoteOff } from './midiOut';
 import { useSequencerStore, type Track } from '../state/store';
 
-// Web audition window (fire-and-forget). Native sustains instead.
+// Scheduled on/off window for instrument-row (external MIDI) drum hits.
 const MONITOR_HOLD_SECS = 0.25;
 // Native sustain ceiling — a safety net for a missed note-off (stuck key /
 // dropped MIDI). The note-off normally releases the voice well before this;
@@ -77,77 +73,55 @@ export function monitorNote(
   const voice = track.source.id;
   const env = resolveVoiceEnvelope(voice);
 
-  if (isNativeAudioAvailable()) {
-    const pick = samplePlayer.pickNativeSample(voice, soundingMidi, track.id);
-    if (!pick) return;
-    const out = track.output;
-    const pan = ((track.pan ?? 0.5) - 0.5) * 2;
-    void triggerSample(pick.path, {
-      gain: velocity * pick.voiceGain * (track.gain ?? 1),
-      pan,
-      pitch: pick.pitch,
-      outFirst: out?.firstChannel ?? 0,
-      outStereo: out?.stereo ?? true,
-      trackId: track.id,
-      delaySecs: 0,
-      monophonic: track.monophonic === true,
-      // Manifest choke group — live-monitored hats choke each other the
-      // same way pattern playback does (mirrors the web trigger path).
-      chokeGroup: pick.chokeGroup ?? undefined,
-      section: 0,
-      envelopeAttack: env?.attack,
-      envelopeDecay: env?.decay,
-      envelopeSustain: env?.sustain,
-      envelopeRelease: env?.release,
-      // Long hold so the voice sustains at its sustain level until note-off
-      // releases it. Enveloped voices only — flat-gain voices (drums/leads)
-      // ring for their sample length and the note-off ramp fades that.
-      envelopeHold: env ? MONITOR_MAX_HOLD_SECS : undefined,
-      noteId,
-      start: pick.start,
-      end: pick.end,
-      loopMode: pick.loop,
-      filterType: pick.filterType,
-      cutoff: pick.cutoff,
-      resonance: pick.resonance,
-      lfoShape: pick.lfoShape,
-      lfoRateHz: pick.lfoRateHz,
-      lfoDepth: pick.lfoDepth,
-      mods: pick.mods,
-      granular: pick.granular,
-    });
-    return;
-  }
-
-  // Web build — fire-and-forget audition (no targeted release available).
-  samplePlayer.trigger(
-    voice,
-    getAudioContext().currentTime,
-    velocity,
-    soundingMidi,
-    1, // gate
-    MONITOR_HOLD_SECS, // step duration → hold window
-    [0], // single tone
-    track.pan,
-    track.id,
-    track.monophonic,
-    undefined, // section = none (monitor stays out of recording stems)
-  );
+  const pick = samplePlayer.pickNativeSample(voice, soundingMidi, track.id);
+  if (!pick) return;
+  const out = track.output;
+  const pan = ((track.pan ?? 0.5) - 0.5) * 2;
+  void triggerSample(pick.path, {
+    gain: velocity * pick.voiceGain * (track.gain ?? 1),
+    pan,
+    pitch: pick.pitch,
+    outFirst: out?.firstChannel ?? 0,
+    outStereo: out?.stereo ?? true,
+    trackId: track.id,
+    delaySecs: 0,
+    monophonic: track.monophonic === true,
+    // Manifest choke group — live-monitored hats choke each other the
+    // same way pattern playback does.
+    chokeGroup: pick.chokeGroup ?? undefined,
+    section: 0,
+    envelopeAttack: env?.attack,
+    envelopeDecay: env?.decay,
+    envelopeSustain: env?.sustain,
+    envelopeRelease: env?.release,
+    // Long hold so the voice sustains at its sustain level until note-off
+    // releases it. Enveloped voices only — flat-gain voices (drums/leads)
+    // ring for their sample length and the note-off ramp fades that.
+    envelopeHold: env ? MONITOR_MAX_HOLD_SECS : undefined,
+    noteId,
+    start: pick.start,
+    end: pick.end,
+    loopMode: pick.loop,
+    filterType: pick.filterType,
+    cutoff: pick.cutoff,
+    resonance: pick.resonance,
+    lfoShape: pick.lfoShape,
+    lfoRateHz: pick.lfoRateHz,
+    lfoDepth: pick.lfoDepth,
+    mods: pick.mods,
+    granular: pick.granular,
+  });
 }
 
 // Audition a CHORD on a track's voice. Used by the Launchpad chord page — press
-// a pad, hear the chord, and it SUSTAINS while the pad is held (native path),
-// exactly like a keyboard-page note. The caller hands one monitor `noteId` per
-// interval (parallel array); each tone is tagged with its id and triggered with
-// a long hold, and the pad release ramps each id down via monitorChordRelease —
+// a pad, hear the chord, and it SUSTAINS while the pad is held, exactly like a
+// keyboard-page note. The caller hands one monitor `noteId` per interval
+// (parallel array); each tone is tagged with its id and triggered with a long
+// hold, and the pad release ramps each id down via monitorChordRelease —
 // without touching the track's pattern voices, which share the same trackId. One
 // voice per interval, NOT monophonic so the tones sound together. `rootMidi` is
 // the chord root the intervals are offsets from (already octave-applied by the
 // caller); section 0 keeps auditions out of recording stems.
-//
-// Web build: no targeted release exists on the Web Audio sample player, so it
-// stays a short fire-and-forget audition (the native engine is the target).
-const AUDITION_HOLD_SECS = 1.0;
 export function monitorChord(
   track: Track,
   rootMidi: number,
@@ -173,68 +147,50 @@ export function monitorChord(
   const voice = track.source.id;
   const env = resolveVoiceEnvelope(voice);
 
-  if (isNativeAudioAvailable()) {
-    const out = track.output;
-    const pan = ((track.pan ?? 0.5) - 0.5) * 2;
-    intervals.forEach((interval, i) => {
-      const pick = samplePlayer.pickNativeSample(voice, rootMidi + interval, track.id);
-      if (!pick) return;
-      void triggerSample(pick.path, {
-        gain: velocity * pick.voiceGain * (track.gain ?? 1),
-        pan,
-        pitch: pick.pitch,
-        outFirst: out?.firstChannel ?? 0,
-        outStereo: out?.stereo ?? true,
-        trackId: track.id,
-        delaySecs: 0,
-        monophonic: false,
-        // First tone only — a per-tone choke would ramp out this chord's
-        // own earlier tones (see the App.tsx dispatch path).
-        chokeGroup: i === 0 && pick.chokeGroup ? pick.chokeGroup : undefined,
-        section: 0,
-        envelopeAttack: env?.attack,
-        envelopeDecay: env?.decay,
-        envelopeSustain: env?.sustain,
-        envelopeRelease: env?.release,
-        // Long hold so each tone sustains at its sustain level until the pad
-        // release ramps it down (flat-gain voices ring their sample length).
-        envelopeHold: env ? MONITOR_MAX_HOLD_SECS : undefined,
-        noteId: noteIds[i],
-        start: pick.start,
-        end: pick.end,
-        loopMode: pick.loop,
-        filterType: pick.filterType,
-        cutoff: pick.cutoff,
-        resonance: pick.resonance,
-        lfoShape: pick.lfoShape,
-        lfoRateHz: pick.lfoRateHz,
-        lfoDepth: pick.lfoDepth,
-        mods: pick.mods,
-        granular: pick.granular,
-      });
+  const out = track.output;
+  const pan = ((track.pan ?? 0.5) - 0.5) * 2;
+  intervals.forEach((interval, i) => {
+    const pick = samplePlayer.pickNativeSample(voice, rootMidi + interval, track.id);
+    if (!pick) return;
+    void triggerSample(pick.path, {
+      gain: velocity * pick.voiceGain * (track.gain ?? 1),
+      pan,
+      pitch: pick.pitch,
+      outFirst: out?.firstChannel ?? 0,
+      outStereo: out?.stereo ?? true,
+      trackId: track.id,
+      delaySecs: 0,
+      monophonic: false,
+      // First tone only — a per-tone choke would ramp out this chord's
+      // own earlier tones (see the App.tsx dispatch path).
+      chokeGroup: i === 0 && pick.chokeGroup ? pick.chokeGroup : undefined,
+      section: 0,
+      envelopeAttack: env?.attack,
+      envelopeDecay: env?.decay,
+      envelopeSustain: env?.sustain,
+      envelopeRelease: env?.release,
+      // Long hold so each tone sustains at its sustain level until the pad
+      // release ramps it down (flat-gain voices ring their sample length).
+      envelopeHold: env ? MONITOR_MAX_HOLD_SECS : undefined,
+      noteId: noteIds[i],
+      start: pick.start,
+      end: pick.end,
+      loopMode: pick.loop,
+      filterType: pick.filterType,
+      cutoff: pick.cutoff,
+      resonance: pick.resonance,
+      lfoShape: pick.lfoShape,
+      lfoRateHz: pick.lfoRateHz,
+      lfoDepth: pick.lfoDepth,
+      mods: pick.mods,
+      granular: pick.granular,
     });
-    return;
-  }
-
-  // Web build — fire-and-forget chord audition (no targeted release available).
-  samplePlayer.trigger(
-    voice,
-    getAudioContext().currentTime,
-    velocity,
-    rootMidi,
-    1,
-    AUDITION_HOLD_SECS,
-    intervals,
-    track.pan,
-    track.id,
-    false,
-    undefined,
-  );
+  });
 }
 
-// Release every tone of a held chord audition (native path) — ramps each tagged
-// voice down over the voice's own release time. Mirrors monitorRelease, one call
-// per chord tone. No-op per id on the web build (the audition already ended).
+// Release every tone of a held chord audition — ramps each tagged voice down
+// over the voice's own release time. Mirrors monitorRelease, one call per
+// chord tone.
 export function monitorChordRelease(track: Track, noteIds: number[]): void {
   for (const id of noteIds) monitorRelease(track, id);
 }
@@ -265,67 +221,45 @@ export function monitorDrum(track: Track, velocity: number): void {
   if (track.source.kind !== 'voice') return;
   const voice = track.source.id;
 
-  if (isNativeAudioAvailable()) {
-    const pick = samplePlayer.pickNativeSample(voice, undefined, track.id);
-    if (!pick) return;
-    const out = track.output;
-    const pan = ((track.pan ?? 0.5) - 0.5) * 2;
-    void triggerSample(pick.path, {
-      gain: velocity * pick.voiceGain * (track.gain ?? 1),
-      pan,
-      pitch: pick.pitch,
-      outFirst: out?.firstChannel ?? 0,
-      outStereo: out?.stereo ?? true,
-      trackId: track.id,
-      delaySecs: 0,
-      monophonic: track.monophonic === true,
-      chokeGroup: pick.chokeGroup ?? undefined,
-      section: 0, // SECTION_NONE — auditions stay out of recording stems
-      start: pick.start,
-      end: pick.end,
-      loopMode: pick.loop,
-      filterType: pick.filterType,
-      cutoff: pick.cutoff,
-      resonance: pick.resonance,
-      lfoShape: pick.lfoShape,
-      lfoRateHz: pick.lfoRateHz,
-      lfoDepth: pick.lfoDepth,
-      mods: pick.mods,
-      granular: pick.granular,
-    });
-    return;
-  }
-
-  // Web build — fire-and-forget one-shot at natural pitch (no midi note).
-  samplePlayer.trigger(
-    voice,
-    getAudioContext().currentTime,
-    velocity,
-    undefined,
-    1,
-    MONITOR_HOLD_SECS,
-    [0],
-    track.pan,
-    track.id,
-    track.monophonic,
-    undefined,
-  );
+  const pick = samplePlayer.pickNativeSample(voice, undefined, track.id);
+  if (!pick) return;
+  const out = track.output;
+  const pan = ((track.pan ?? 0.5) - 0.5) * 2;
+  void triggerSample(pick.path, {
+    gain: velocity * pick.voiceGain * (track.gain ?? 1),
+    pan,
+    pitch: pick.pitch,
+    outFirst: out?.firstChannel ?? 0,
+    outStereo: out?.stereo ?? true,
+    trackId: track.id,
+    delaySecs: 0,
+    monophonic: track.monophonic === true,
+    chokeGroup: pick.chokeGroup ?? undefined,
+    section: 0, // SECTION_NONE — auditions stay out of recording stems
+    start: pick.start,
+    end: pick.end,
+    loopMode: pick.loop,
+    filterType: pick.filterType,
+    cutoff: pick.cutoff,
+    resonance: pick.resonance,
+    lfoShape: pick.lfoShape,
+    lfoRateHz: pick.lfoRateHz,
+    lfoDepth: pick.lfoDepth,
+    mods: pick.mods,
+    granular: pick.granular,
+  });
 }
 
-// Release a held monitor voice on note-off. Native only — ramps the tagged
-// voice down over the voice's own release time (clean, no click). No-op on the
-// web build, where the audition already fired and ended on its own.
+// Release a held monitor voice on note-off — ramps the tagged voice down over
+// the voice's own release time (clean, no click).
 export function monitorRelease(track: Track, noteId: number): void {
-  // Instrument rows: close the live note we opened on note-on. Works on both
-  // the native and web builds (MIDI out is available on both), so this runs
-  // before the native-audio gate below.
+  // Instrument rows: close the live note we opened on note-on.
   const held = heldMidiMonitors.get(noteId);
   if (held) {
     heldMidiMonitors.delete(noteId);
     sendMIDINoteOff(held.deviceId, held.channel, held.note);
     return;
   }
-  if (!isNativeAudioAvailable()) return;
   if (track.source.kind !== 'voice') return;
   const release = resolveVoiceEnvelope(track.source.id)?.release;
   void releaseNote(noteId, release);

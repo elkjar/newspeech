@@ -9,7 +9,6 @@
 // web to app gets continuity, but the scan command itself fails fast.
 
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { getAudioContext } from '../audio/audioContext';
 import { samplePlayer } from '../audio/samplePlayer';
 import {
   clearKits,
@@ -63,12 +62,7 @@ export async function resolveUserSamplesDir(): Promise<string | null> {
 
 // Scans the active user samples dir and registers any found kits into the
 // manifestRegistry + samplePlayer. Idempotent: re-registering an existing
-// kit-path replaces the entry. Bundled kits are not touched.
-//
-// WAV files are loaded via the `read_audio_file` Rust command (bytes →
-// decodeAudioData) rather than fetched as URLs — keeps the asset-protocol
-// scope simple (none needed) and matches the consent model of the
-// projectfs save/read commands (user picked the dir = user granted access).
+// kit-path replaces the entry.
 export async function scanAndLoadUserSamples(): Promise<UserKitScanResult> {
   const result: UserKitScanResult = { loaded: 0, skipped: 0, failed: 0, errors: [] };
   if (!isTauri()) {
@@ -98,34 +92,17 @@ export async function scanAndLoadUserSamples(): Promise<UserKitScanResult> {
       continue;
     }
     const absDir = kit.absolute_dir;
-    const fetcher = async (file: string): Promise<AudioBuffer> => {
-      const bytes = await invoke<number[]>('read_audio_file', {
-        path: `${absDir}/${file}`,
-      });
-      const buf = new Uint8Array(bytes).buffer;
-      return getAudioContext().decodeAudioData(buf);
-    };
     try {
-      // baseUrl is purely cosmetic when the fetcher ignores it; pass the
-      // absolute dir for log readability if anything goes wrong downstream.
-      // Voice IDs get kit-scoped here so user-kit "kick" doesn't collide
-      // with bundled blck_noir's "kick" (or any other user kit's "kick").
-      // Same namespaced manifest goes to BOTH the registry and the player
-      // — they must agree on the keys.
+      // Voice IDs get kit-scoped here so one user kit's "kick" doesn't
+      // collide with another's. Same namespaced manifest goes to BOTH the
+      // registry and the player — they must agree on the keys.
       const namespacedKitPath = `user/${kit.kit_path}`;
       const namespaced = withNamespacedVoiceIds(namespacedKitPath, manifest);
       registerKit(namespacedKitPath, absDir, namespaced);
-      // In Tauri, native is the only audio path — skip the Web Audio
-      // AudioBuffer decode pass. Path strings + voice metadata are
-      // all the native engine needs; the fetcher relays bytes back
-      // through invoke as a JSON number array, which is the
-      // dominant cost of cold-boot user-samples loading. Native
-      // preload reads files directly via hound::WavReader::open on
-      // the absolute filesystem path (see [[reference_tauri_binary_ipc]]).
-      const nativeMode = isTauri();
-      await samplePlayer.loadManifest(absDir, namespaced, fetcher, {
-        pathsOnly: nativeMode,
-      });
+      // Path-string interning only — no decode pass. The cpal engine reads
+      // files directly via hound::WavReader::open on the absolute
+      // filesystem path (see [[reference_tauri_binary_ipc]]).
+      await samplePlayer.loadManifest(absDir, namespaced);
       result.loaded += 1;
     } catch (err) {
       result.failed += 1;

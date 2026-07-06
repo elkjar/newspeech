@@ -14,7 +14,6 @@ import { useSequencerStore } from '../state/store';
 import { sourceLabel } from '../instruments/library';
 import { getConfiguredRecordingsDir } from './recorderConfig';
 import {
-  isNativeAudioAvailable,
   startRecordingCombined,
   stopRecordingCombined,
   startRecordingStems,
@@ -98,8 +97,7 @@ function timestamp(): string {
 async function resolveRecordingsDir(): Promise<string> {
   const configured = getConfiguredRecordingsDir();
   if (configured) return configured;
-  // Fall back to the Rust-side default (~/Documents/newspeech-recordings)
-  // — same default the web recorder's `recording_start` IPC uses.
+  // Fall back to the Rust-side default (~/Documents/newspeech-recordings).
   return await invoke<string>('get_recordings_dir');
 }
 
@@ -229,7 +227,7 @@ async function stop(): Promise<void> {
 }
 
 export function subscribeNativeRecorder(): void {
-  if (!isNativeAudioAvailable() || unsubscribe) return;
+  if (unsubscribe) return;
   // Seed last-state from current store so a hot-mount (HMR) doesn't
   // trigger a phantom start/stop.
   const s = useSequencerStore.getState();

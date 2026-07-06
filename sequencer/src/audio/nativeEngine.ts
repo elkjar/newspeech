@@ -175,12 +175,11 @@ export async function applyOutputDeviceConfig(config: {
   return info;
 }
 
-// Called once on app launch (Tauri-only). Reads persisted settings,
-// validates against currently-attached devices, falls back to defaults
-// where needed, opens the device. Returns null on web build or on hard
-// failure — failure is non-fatal; user can still open via Settings.
+// Called once on app launch. Reads persisted settings, validates against
+// currently-attached devices, falls back to defaults where needed, opens
+// the device. Returns null on hard failure — failure is non-fatal; user
+// can still open via Settings.
 export async function initNativeAudio(): Promise<NativeOpenedInfo | null> {
-  if (!isNativeAudioAvailable()) return null;
   let devices: NativeDeviceInfo[];
   try {
     devices = await listOutputDevices();
@@ -834,9 +833,9 @@ export async function setMixRouting(opts: {
   });
 }
 
-// Cutoff mapping matches src/audio/trackFilter.ts — tight log range from
-// 50 Hz (very dark) to 18 kHz (effectively open). Defaults stay
-// transparent so a fresh track sounds the same as no filter.
+// Cutoff mapping — tight log range from 50 Hz (very dark) to 18 kHz
+// (effectively open). Defaults stay transparent so a fresh track sounds
+// the same as no filter.
 export const CUTOFF_MIN_HZ = 50;
 export const CUTOFF_MAX_HZ = 18000;
 const CUTOFF_RATIO = CUTOFF_MAX_HZ / CUTOFF_MIN_HZ;

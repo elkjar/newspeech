@@ -28,36 +28,20 @@ export function tapTempo(): void {
   const bpm = Math.max(40, Math.min(240, Math.round(60000 / avgMs)));
   useSequencerStore.getState().setBpm(bpm);
 }
-import { scheduleClickIn } from './clickIn';
 import { getAudioContext } from './audioContext';
-import { isNativeAudioAvailable, fadeTextures, audioPanic } from './nativeEngine';
+import { fadeTextures, audioPanic } from './nativeEngine';
 
 // Texture voices ring down over this many seconds when transport stops,
 // rather than playing their (often minute-long) sample out to the end.
 // Everything else is left untouched — it stops issuing new triggers and
-// any short tails ring out naturally. Native path only (the web build
-// keeps the prior natural-end behavior, same as recording being
-// native-only). Tune by ear.
+// any short tails ring out naturally. Tune by ear.
 const TEXTURE_STOP_FADE_SECS = 6;
 
-// Shared play-prep: resume audio, boot the web FX chain (web only), and push
-// program changes. Used by both the local transport and the external-clock
-// follower (clockFollow.ts), so the two start paths can't drift apart.
+// Shared play-prep: resume audio and push program changes. Used by both
+// the local transport and the external-clock follower (clockFollow.ts),
+// so the two start paths can't drift apart.
 export async function prepareForPlay(): Promise<void> {
   await ensureAudioRunning();
-  // Native (Tauri) build skips the entire WebAudio FX chain. All
-  // sample triggers go through `triggerSample` → cpal in native
-  // mode, so voicesBus / mixBus / etc. have nothing flowing in.
-  // The web chain (worklet loads + audio graph + RAF push +
-  // recorder) lives in `./webChain` behind a dynamic import so
-  // Vite chunks it out of the Tauri bundle — Tauri never even
-  // parses tape.ts / glitch.ts / reverb.ts / master.ts /
-  // trackFilter.ts / fxModulation.ts / recorder.ts. Recording is
-  // web-only right now; native record path lands later.
-  if (!isNativeAudioAvailable()) {
-    const { bootWebChain } = await import('./webChain');
-    await bootWebChain();
-  }
   useSequencerStore.getState().fireAllProgramChanges();
 }
 
@@ -69,9 +53,7 @@ export async function prepareForPlay(): Promise<void> {
 export function stopPlaybackLocal(): void {
   scheduler.stop();
   midiPanic();
-  if (isNativeAudioAvailable()) {
-    void fadeTextures(TEXTURE_STOP_FADE_SECS);
-  }
+  void fadeTextures(TEXTURE_STOP_FADE_SECS);
   useSequencerStore.getState().setPlaying(false);
   clearOverlay();
 }
@@ -89,9 +71,9 @@ export function panicKill(): void {
     clearOverlay();
   }
   midiPanic();
-  // Hard voice kill + FX-buffer clear (native). Overrides the graceful
-  // texture fade a normal stop would do — this is the emergency path.
-  if (isNativeAudioAvailable()) void audioPanic();
+  // Hard voice kill + FX-buffer clear. Overrides the graceful texture
+  // fade a normal stop would do — this is the emergency path.
+  void audioPanic();
 }
 
 // Song mode reached the end of its rows (loop off): announce stop to clock
@@ -115,24 +97,18 @@ export async function togglePlayback(): Promise<void> {
   } else {
     await prepareForPlay();
     // Count-in: one bar of clicks before the first scheduler step. The
-    // scheduler's first tick is pushed by `scheduleClickIn`'s returned
-    // pattern-start time. Recorder (if armed) starts at `setPlaying(true)`
-    // and captures the clicks too — DAW alignment cue lives in the WAV.
+    // scheduler's first tick is pushed by `nativeScheduleClickIn`'s
+    // returned pattern-start time. Recorder (if armed) starts at
+    // `setPlaying(true)` and captures the clicks too — DAW alignment cue
+    // lives in the WAV.
     const ctx = getAudioContext();
     const lookahead = 0.05;
     let firstStepTime = ctx.currentTime + lookahead;
     if (store.clickIn) {
-      if (isNativeAudioAvailable()) {
-        // Native click: fire the bundled synthetic click samples via
-        // `triggerSample` with sample-accurate delaySecs. The
-        // count-in plays through the cpal output (and into the
-        // native recorder's combined WAV); the web `scheduleClickIn`
-        // path can't because its oscillators target a WebAudio bus
-        // that isn't routed in Tauri.
-        firstStepTime = await nativeScheduleClickIn(firstStepTime, store.bpm);
-      } else {
-        firstStepTime = scheduleClickIn(firstStepTime, store.bpm);
-      }
+      // Fire the bundled synthetic click samples via `triggerSample`
+      // with sample-accurate delaySecs. The count-in plays through the
+      // cpal output (and into the native recorder's combined WAV).
+      firstStepTime = await nativeScheduleClickIn(firstStepTime, store.bpm);
     }
     // Song mode: every play starts the arrangement from the top (row 0), so a
     // run is deterministic and repeatable for the show timeline rather than

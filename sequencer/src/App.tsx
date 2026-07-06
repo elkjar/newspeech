@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PlayButton, RecordButton, CountInButton, MetronomeButton, MultiButton, TransportControls, InitButton, SongFileButtons, loadProjectFromText } from './components/Transport';
 import { PerformanceButton } from './components/PerformanceDialog';
-import { initAudioOutputs } from './audio/audioOutput';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TrackGrid } from './components/TrackGrid';
 import { ChannelScreen, ScreenModeTabs } from './components/ChannelScreen';
@@ -47,7 +46,6 @@ function sectionCode(section: 'drum' | 'melodic' | undefined): number {
   return 0;
 }
 import {
-  isNativeAudioAvailable,
   triggerSample,
   releaseNote,
   repitchNote,
@@ -127,7 +125,6 @@ import { runTick } from './engine/tick';
 import { modulated, GLOBAL_TRACK_ID } from './audio/lfo';
 import { makeHarmonicMotionState, tickHarmonicMotion } from './audio/harmonicMotion';
 import { togglePlayback, panicKill } from './audio/transport';
-import { scheduleWebClick } from './audio/clickIn';
 import {
   initGhost,
   tickBar as ghostTickBar,
@@ -267,7 +264,6 @@ export function App() {
     if (NATIVE) document.body.classList.add('tauri-native');
     initMIDIOut();
     initGhost();
-    void initAudioOutputs();
     if (NATIVE) {
       // Tauri app launches in init state — blank tracks, no banks, no
       // scenes, no composition (2026-05-24 user direction). The user's
@@ -474,7 +470,7 @@ export function App() {
         // retune them — a resonance jump on a ringing tail self-oscillates
         // into a crash. Fires before the new triggers below (which start
         // unfrozen on the new scene's settings).
-        if (isNativeAudioAvailable()) {
+        {
           const postSwap = useSequencerStore.getState();
           if (
             postSwap.activeBank !== preBank ||
@@ -494,21 +490,17 @@ export function App() {
       // but stays OUT of recording stems (the count-in, SECTION_CLICK, is
       // intentionally captured — the metronome is not).
       if (state.metronome && globalStep % 8 === 0) {
-        if (isNativeAudioAvailable()) {
-          const delaySecs = Math.max(0, when - getAudioContext().currentTime);
-          const out = state.nativeMix.metronomeOutput;
-          void triggerSample('__click_beat', {
-            gain: 1.0,
-            delaySecs,
-            section: 0,
-            // Mono cue channel when multi-out is ON; the engine folds to 1-2
-            // when it's OFF (same as every other voice).
-            outFirst: out.firstChannel,
-            outStereo: false,
-          });
-        } else {
-          scheduleWebClick(when, false);
-        }
+        const delaySecs = Math.max(0, when - getAudioContext().currentTime);
+        const out = state.nativeMix.metronomeOutput;
+        void triggerSample('__click_beat', {
+          gain: 1.0,
+          delaySecs,
+          section: 0,
+          // Mono cue channel when multi-out is ON; the engine folds to 1-2
+          // when it's OFF (same as every other voice).
+          outFirst: out.firstChannel,
+          outStereo: false,
+        });
       }
       // Harmonic motion is a cross-tick state machine — owned by the
       // dispatcher, not the engine. Engine consumes the resolved offset.
@@ -620,8 +612,8 @@ export function App() {
               // exactly M tones, each occupying (N/M) step-durations.
               const totalDuration = ev.stepDuration * ev.tieLength;
               const sub = totalDuration / n;
-              if (isNativeAudioAvailable()) {
-                // Native arp — Phase 5 sample-accurate dispatch. Fire
+              {
+                // Arp — sample-accurate dispatch. Fire
                 // all tones IMMEDIATELY through the IPC; each carries
                 // its own delaySecs so the Rust audio callback queues
                 // them and emits at the exact sub-step sample. No more
@@ -656,9 +648,8 @@ export function App() {
                     outStereo: out?.stereo ?? true,
                     trackId: ev.trackId,
                     delaySecs,
-                    // Force monophonic per arp tone — same reasoning as
-                    // the web branch below: new tones choke the prior
-                    // tail so the line reads as an arp, not a strum.
+                    // Force monophonic per arp tone — new tones choke the
+                    // prior tail so the line reads as an arp, not a strum.
                     monophonic: true,
                     chokeGroup: pick.chokeGroup ?? undefined,
                     section: sectionCode(ev.section),
@@ -683,34 +674,14 @@ export function App() {
                     granular: pick.granular,
                   });
                 }
-              } else {
-                for (let i = 0; i < n; i++) {
-                  samplePlayer.trigger(
-                    ev.voice,
-                    ev.when + i * sub,
-                    ev.velocity,
-                    ev.midi,
-                    ev.gate,
-                    sub,
-                    [ev.voiceIntervals[i]],
-                    ev.pan,
-                    ev.trackId,
-                    // Force monophonic per arp tone so each new note chokes
-                    // the previous one's natural decay. Without this,
-                    // sample releases overlap and it feels like a strum,
-                    // not an arp.
-                    true,
-                    ev.section,
-                  );
-                }
               }
-            } else if (isNativeAudioAvailable()) {
-              // Native-only audio path (Tauri build). Multi-tone triggers
-              // fire one native voice per interval — all simultaneous
-              // (a chord). delaySecs = ev.when - audioContext.currentTime
-              // lets the Rust callback dispatch sample-accurately, so
-              // the trigger no longer fires the moment the IPC arrives
-              // (which was ~25-100 ms early from the JS lookahead).
+            } else {
+              // Multi-tone triggers fire one native voice per interval —
+              // all simultaneous (a chord). delaySecs = ev.when -
+              // audioContext.currentTime lets the Rust callback dispatch
+              // sample-accurately, so the trigger no longer fires the
+              // moment the IPC arrives (which was ~25-100 ms early from
+              // the JS lookahead).
               const intervals =
                 ev.voiceIntervals && ev.voiceIntervals.length > 0
                   ? ev.voiceIntervals
@@ -770,20 +741,17 @@ export function App() {
                   outStereo: out?.stereo ?? true,
                   trackId: ev.trackId,
                   delaySecs,
-                  // Web path uses `ev.monophonic` (carried through from
-                  // the engine event) — mirror that for native so bass /
-                  // lead tracks marked monophonic actually choke.
+                  // `ev.monophonic` carries through from the engine event
+                  // so bass / lead tracks marked monophonic actually choke.
                   monophonic: ev.monophonic === true,
-                  // Manifest choke group (hats) — chokes across tracks,
-                  // matching the web samplePlayer's chokeGroups handling.
+                  // Manifest choke group (hats) — chokes across tracks.
                   chokeGroup:
                     !chokeApplied && pick.chokeGroup ? pick.chokeGroup : undefined,
                   section: sectionCode(ev.section),
                   isTexture,
-                  // Voice ADSR + hold = gate × stepDuration (matches the
-                  // web `samplePlayer.trigger` envelope). Voices without
+                  // Voice ADSR + hold = gate × stepDuration. Voices without
                   // an envelope config (drums, leads) pass nothing here
-                  // and run at flat gain in native.
+                  // and run at flat gain.
                   envelopeAttack: playEnv?.attack,
                   envelopeDecay: playEnv?.decay,
                   envelopeSustain: playEnv?.sustain,
@@ -835,21 +803,6 @@ export function App() {
                     : undefined,
                 });
               }
-            } else {
-              // Web build — original Web Audio path.
-              samplePlayer.trigger(
-                ev.voice,
-                ev.when,
-                ev.velocity,
-                ev.midi,
-                ev.gate,
-                ev.stepDuration,
-                ev.voiceIntervals,
-                ev.pan,
-                ev.trackId,
-                ev.monophonic,
-                ev.section,
-              );
             }
             break;
           }
@@ -867,7 +820,6 @@ export function App() {
   // extensions as fresh voices, and fades out removed ones. When nothing has
   // moved the diff is empty and no IPC is issued. See voicingRevoice.ts.
   useEffect(() => {
-    if (!isNativeAudioAvailable()) return;
     const id = window.setInterval(() => {
       const s = useSequencerStore.getState();
       if (!s.playing) {
@@ -1146,11 +1098,9 @@ export function App() {
   // system default. Non-fatal on failure — user can still pick a
   // device in Settings → native audio.
   useEffect(() => {
-    if (!isNativeAudioAvailable()) return;
     void initNativeAudio();
     // Bridge the store's armed+playing edge to the native recorder's
-    // start/stop IPCs. Web build keeps its own subscriber (inside
-    // webChain) so this stays Tauri-only.
+    // start/stop IPCs.
     void import('./audio/nativeRecorder').then((m) => m.subscribeNativeRecorder());
   }, []);
 
@@ -1159,7 +1109,6 @@ export function App() {
   // beats folding it into the RAF loop. Initial pass fires the current
   // state to the engine right after device open.
   useEffect(() => {
-    if (!isNativeAudioAvailable()) return;
     const push = (mix: { multiOut: boolean; fxOutput: TrackOutput; fxBypass: boolean }) => {
       void setMixRouting({
         multiOut: mix.multiOut,
@@ -1184,7 +1133,6 @@ export function App() {
   // pushes when nothing's actually moving. Gated on bootDone so the
   // loop doesn't start before tracks settle.
   useEffect(() => {
-    if (!isNativeAudioAvailable()) return;
     if (!bootDone) return;
     const lastTrack = new Map<
       string,
@@ -1592,7 +1540,6 @@ export function App() {
   // destinations carry `trackId`, globals omit it. Knobs that don't
   // map to a Rust destination (JS-only sequencer logic) get filtered.
   useEffect(() => {
-    if (!isNativeAudioAvailable()) return;
     if (!bootDone) return;
     const KNOB_MAP: Partial<Record<string, LfoDestKind>> = {
       filterCutoff: 'trackFilterCutoff',
@@ -1678,7 +1625,6 @@ export function App() {
   // but skips the `setTimeout` align — beat-level alignment with one
   // block of latency is imperceptible against the stutter character.
   useEffect(() => {
-    if (!isNativeAudioAvailable()) return;
     const unsub = scheduler.onStep('app:native-glitch', (stepIndex) => {
       if (stepIndex % 8 !== 0) return;
       const state = useSequencerStore.getState();
@@ -1715,7 +1661,6 @@ export function App() {
   //      paths internally via Promise.allSettled. This caps the wave
   //      of concurrent fetch+IPC calls hitting the audio thread.
   useEffect(() => {
-    if (!isNativeAudioAvailable()) return;
     if (!bootDone) return;
 
     const queue: string[] = [];

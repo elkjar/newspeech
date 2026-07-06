@@ -8,7 +8,7 @@ import {
   type SceneShape,
 } from '../state/store';
 import { scheduler } from '../audio/scheduler';
-import { isNativeAudioAvailable, fadeTextures } from '../audio/nativeEngine';
+import { fadeTextures } from '../audio/nativeEngine';
 import { endArrangementPlayback } from '../audio/transport';
 import { RECIPE_DWELL } from './generator';
 import { targetEntropy, phaseAt } from './shape';
@@ -960,7 +960,7 @@ function maybeAutoAdvanceScene(
   // new song via fadeTextures, so the transition bridges on the textural
   // layer rather than a silent gap.
   if (nextSong !== null) {
-    if (isNativeAudioAvailable()) void fadeTextures(SONG_FADE_SECS);
+    void fadeTextures(SONG_FADE_SECS);
     store.swapSongImmediate(nextSong, globalStep);
     return true;
   }

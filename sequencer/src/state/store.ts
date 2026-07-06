@@ -816,19 +816,6 @@ export interface SequencerState {
   metronome: boolean;
   setMetronome: (v: boolean) => void;
   toggleMetronome: () => void;
-  // Recorder tap-point toggle. When false: recorder taps master output
-  // (what the user hears, all FX baked in). When true: recorder taps
-  // voicesBus pre-everything — raw sample audio with no master / tape /
-  // glitch / reverb / saturation processing. The audible output is
-  // unaffected either way; this only swaps where the WAV's data comes
-  // from. Useful for DAW workflows where you want the sequencer's
-  // character live but a clean source to process in the DAW.
-  // Vestigial — read only by the decommissioned web recorder shim
-  // (`audio/recorder.ts`, dynamic-imported behind `!isNativeAudioAvailable`).
-  // No UI toggles them anymore; the native workflow is quick-mix vs stems
-  // via `multitrack` alone. Kept so the web shim still typechecks.
-  recordRaw: boolean;
-  splits: boolean;
   // Recording mode toggle ("multi"). Off = a single combined "quick mix" WAV.
   // On = the full stems suite (master + fx + reverb + delay bus WAVs + one
   // dry WAV per track), native-only. See nativeRecorder.ts / audio.rs.
@@ -1372,8 +1359,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   metronome: false,
   setMetronome: (v) => set({ metronome: v }),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
-  recordRaw: false,
-  splits: false,
   multitrack: false,
   setMultitrack: (v) => set({ multitrack: v }),
   toggleMultitrack: () => set((s) => ({ multitrack: !s.multitrack })),
@@ -1390,12 +1375,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     endsAfterLast: true,
   },
   performance: { ...DEFAULT_PERFORMANCE, songs: [...DEFAULT_PERFORMANCE.songs] },
-  // FX param setters are pure state writes. The canonical store→worklet
-  // bridge lives in `audio/fxModulation.ts` (RAF loop, started at first
-  // play); it reads these slices each frame, applies LFO modulation, and
-  // pushes resolved values to the worklets. Pre-first-play: knob moves
-  // update store only — worklets get the current state at play time
-  // via the explicit setXParams calls in `audio/transport.ts`.
+  // FX param setters are pure state writes. The canonical store→engine
+  // bridge is the App.tsx RAF loop, which reads these slices each frame
+  // and pushes changed values to the Rust engine (LFO modulation of audio
+  // params is computed engine-side).
   tape: hydrateTapeFromPreset((defaultPreset as { tape?: unknown }).tape),
   setTape: (patch) =>
     set((state) => ({ tape: { ...state.tape, ...patch } })),
@@ -2693,11 +2676,6 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     const song = i >= 0 ? next.songs[i] : null;
     if (song) {
       applySong(set, i, song, useSequencerStore.getState().globalStep);
-      // Fresh trackIds from the file → rebuild per-track filter graphs, same
-      // as importProject does on a .seq load (persist.ts).
-      void import('../audio/trackFilter')
-        .then((m) => m.resetTrackFilters())
-        .catch(() => {});
     }
   },
   // Insert-and-shift reorder for scenes — mirrors moveBank's semantics
@@ -2906,12 +2884,11 @@ function applyBankSlot(
   resetPadDrift();
   resetBranchWalk();
   resetStepAccumulators();
-  // Per-track filter graphs intentionally KEEP across bank swaps. trackIds
-  // are stable (compose / variant preserve t.id), and fxModulation's RAF
-  // loop slews cutoff/resonance/fxSend to the new bank's per-track values
-  // via setTargetAtTime — so a disconnect here would only buy us cutting
-  // off in-flight sample tails for tracks that survive the swap. Project
-  // import (persist.ts) DOES reset filters because trackIds change there.
+  // Per-track filter state intentionally KEEPS across bank swaps. trackIds
+  // are stable (compose / variant preserve t.id), and the App.tsx RAF
+  // bridge slews cutoff/resonance/fxSend to the new bank's per-track
+  // values — so a reset here would only buy us cutting off in-flight
+  // sample tails for tracks that survive the swap.
 
   // Commit-stage log entry. The matching queue-stage entry (auto or
   // manual) was pushed earlier by pickNextBank or queueBank; this is the
