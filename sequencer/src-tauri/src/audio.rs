@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -43,6 +43,25 @@ static AUDIO_OUTPUT_LEVEL: AtomicU32 = AtomicU32::new(0);
 
 pub fn audio_output_level() -> f32 {
   f32::from_bits(AUDIO_OUTPUT_LEVEL.load(Ordering::Relaxed))
+}
+
+// --- engine sample clock ---
+//
+// Monotonic frame counter for the open cpal stream — the app's master
+// timebase. The audio callback advances it by the block size once per
+// block; it resets to 0 on every stream (re)open. Everything absolute-
+// time-scheduled (triggers, glitch fires) targets a frame on THIS
+// counter, so fire times are exact regardless of which block drains the
+// command. JS mirrors it via the `audio:time` event (lib.rs emitter) +
+// the `audio_engine_time` poll command, extrapolating between events
+// with performance.now().
+//
+// Single writer (the audio callback); plain load/store is sufficient.
+
+static ENGINE_FRAMES: AtomicU64 = AtomicU64::new(0);
+
+pub fn engine_frames() -> u64 {
+  ENGINE_FRAMES.load(Ordering::Relaxed)
 }
 
 // --- device + open metadata ---
@@ -5123,6 +5142,11 @@ fn build_stream(
   // stable over long sessions (years of phase accumulation).
   let mut lfo_phases: [f64; LFO_COUNT] = [0.0; LFO_COUNT];
 
+  // Engine clock restarts at 0 for every stream open — absolute frame
+  // targets only make sense against the stream they were scheduled on.
+  // JS re-seeds its extrapolator when it sees the counter jump backward.
+  ENGINE_FRAMES.store(0, Ordering::Release);
+
   let cb_state = state.clone();
   let stream = device
     .build_output_stream(
@@ -5149,6 +5173,14 @@ fn build_stream(
             v
           }
         };
+
+        // Engine-clock block window. ENGINE_FRAMES holds the absolute
+        // frame index of this block's first sample for the whole
+        // callback (it advances at the end); absolute-target dispatch
+        // below compares against [block_start_frame, block_end_frame).
+        let block_start_frame = ENGINE_FRAMES.load(Ordering::Relaxed);
+        let block_frames_total = (buf.len() / n_ch.max(1)) as u64;
+        let block_end_frame = block_start_frame + block_frames_total;
 
         // 0) Phase 6 — advance LFO phases and write modulated values to
         // each routed destination's `_eff` atomic. Reads the current
@@ -6682,6 +6714,10 @@ fn build_stream(
           }
         }
         AUDIO_OUTPUT_LEVEL.store(peak.to_bits(), Ordering::Relaxed);
+
+        // Advance the engine clock LAST so ENGINE_FRAMES == this block's
+        // start frame for the entire callback body above.
+        ENGINE_FRAMES.store(block_end_frame, Ordering::Release);
       },
       move |err| {
         log::error!("[audio] stream error: {}", err);
@@ -6790,6 +6826,29 @@ pub fn audio_status() -> AudioStatus {
     channels: e.current_channels(),
     sample_rate: e.current_sample_rate(),
   }
+}
+
+// Engine-clock snapshot: absolute frame position of the open stream +
+// the device sample rate. Polled once by the JS extrapolator at boot;
+// the ~30Hz `audio:time` event (lib.rs) carries the same payload for
+// continuous correction.
+#[derive(Debug, Serialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineTime {
+  pub frames: u64,
+  pub sample_rate: u32,
+}
+
+pub fn engine_time() -> EngineTime {
+  EngineTime {
+    frames: engine_frames(),
+    sample_rate: engine().current_sample_rate(),
+  }
+}
+
+#[tauri::command]
+pub fn audio_engine_time() -> EngineTime {
+  engine_time()
 }
 
 #[tauri::command]

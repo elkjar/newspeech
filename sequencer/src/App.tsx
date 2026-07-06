@@ -69,6 +69,7 @@ import {
   type NativeLfo,
   type LfoDestKind,
 } from './audio/nativeEngine';
+import { initEngineClock } from './audio/engineClock';
 import { getAudioContext } from './audio/audioContext';
 import {
   allocRevoiceNoteId,
@@ -1098,7 +1099,10 @@ export function App() {
   // system default. Non-fatal on failure — user can still pick a
   // device in Settings → native audio.
   useEffect(() => {
-    void initNativeAudio();
+    // Engine clock first: initNativeAudio opens the cpal stream, and the
+    // clock's boot poll + audio:time subscription want to catch the very
+    // first frames of it.
+    void initEngineClock().then(() => initNativeAudio());
     // Bridge the store's armed+playing edge to the native recorder's
     // start/stop IPCs.
     void import('./audio/nativeRecorder').then((m) => m.subscribeNativeRecorder());

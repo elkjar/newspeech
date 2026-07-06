@@ -354,6 +354,7 @@ pub fn run() {
       audio::audio_open_device,
       audio::audio_close_device,
       audio::audio_status,
+      audio::audio_engine_time,
       audio::audio_test_tone,
       audio::audio_load_sample,
       audio::audio_load_sample_from_bytes,
@@ -415,9 +416,12 @@ pub fn run() {
         )?;
       }
 
-      // Audio output level emitter — reads the per-block peak the cpal
-      // callback stashes in audio::AUDIO_OUTPUT_LEVEL and forwards it
-      // to all webviews as the `audio:level` Tauri event at ~30Hz.
+      // Audio output level + engine-clock emitter — reads the per-block
+      // peak the cpal callback stashes in audio::AUDIO_OUTPUT_LEVEL and
+      // the absolute frame counter, forwarding them to all webviews as
+      // the `audio:level` / `audio:time` Tauri events at ~30Hz. The JS
+      // engine-clock extrapolator (engineClock.ts) corrects itself off
+      // each `audio:time` and extrapolates between them.
       // Daemon thread (no shutdown plumbing) — OS reaps on app exit.
       {
         use tauri::Emitter;
@@ -427,6 +431,10 @@ pub fn run() {
           let level = audio::audio_output_level();
           if let Err(e) = app_handle.emit("audio:level", level) {
             log::warn!("[audio:level emit] {}", e);
+          }
+          let time = audio::engine_time();
+          if let Err(e) = app_handle.emit("audio:time", time) {
+            log::warn!("[audio:time emit] {}", e);
           }
         });
       }
