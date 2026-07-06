@@ -8,6 +8,7 @@ import {
   voiceFilter,
   voiceFilterLfo,
   voiceSaturation,
+  voiceBitDepth,
   voiceMods,
   voiceGranular,
   type ModSpec,
@@ -111,6 +112,7 @@ class SamplePlayer {
     cutoff: number;
     resonance: number;
     satDrive: number;
+    bitDepth: number;
     lfoShape: number;
     lfoRateHz: number;
     lfoDepth: number;
@@ -189,6 +191,7 @@ class SamplePlayer {
       cutoff: filter.cutoff,
       resonance: filter.resonance,
       satDrive: voiceSaturation(voice),
+      bitDepth: voiceBitDepth(voice),
       lfoShape: lfo.shape,
       lfoRateHz: lfo.rateHz,
       lfoDepth: lfo.depth,

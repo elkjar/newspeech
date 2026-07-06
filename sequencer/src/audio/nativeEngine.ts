@@ -386,6 +386,9 @@ export interface TriggerOpts {
     // Per-instrument saturation drive 0..1 (0/undefined = bypass). Applied
     // post-filter in the voice — same tanh family as the mangler pre-drive.
     satDrive?: number;
+    // Per-instrument bit crush, integer 4..16 (16/undefined = bypass).
+    // Applied after saturation: drive → crush.
+    bitDepth?: number;
     // Per-instrument cutoff LFO (editor B2). lfoShape 0 revsaw · 1 saw · 2 tri
     // · 3 square · 4 random; rate in Hz (free-running); depth 0..1 bipolar.
     // depth 0 = off.
@@ -450,6 +453,7 @@ function buildTriggerSpec(path: string, opts: TriggerOpts): Record<string, unkno
     instCutoff: opts.cutoff ?? null,
     instResonance: opts.resonance ?? null,
     satDrive: opts.satDrive ?? null,
+    bitDepth: opts.bitDepth ?? null,
     lfoShape: opts.lfoShape ?? null,
     lfoRateHz: opts.lfoRateHz ?? null,
     lfoDepth: opts.lfoDepth ?? null,

@@ -255,6 +255,9 @@ export interface VoiceEdit {
                        // screams INTO the shaper — that's the point); same
                        // tanh curve as the mangler-bus pre-drive. Maps to
                        // the .pti `overdrive` (0-100) on export.
+  bitDepth?: number; // per-voice bit crush, integer 4..16; default 16
+                     // (bypass). Applied after saturation (drive → crush),
+                     // matching the .pti `bitdepth` range 1:1 on export.
   reverbSend?: number; // additive send to the global reverb return, 0..1; default 0
                        // (Volume/Tune/Rev Send/Delay Send mirror the .pti instrument set)
   delaySend?: number; // send to the delay aux, 0..1; default 0. Stored, exported
@@ -541,6 +544,12 @@ export function voiceFilter(voiceId: string): {
 export function voiceSaturation(voiceId: string): number {
   const e = resolvedVoiceEdit(voiceId);
   return Math.max(0, Math.min(1, e?.saturation ?? 0));
+}
+
+// Per-instrument bit depth, resolved for the audio path. 16 = bypass.
+export function voiceBitDepth(voiceId: string): number {
+  const e = resolvedVoiceEdit(voiceId);
+  return Math.max(4, Math.min(16, Math.round(e?.bitDepth ?? 16)));
 }
 
 // Cutoff LFO, resolved for the audio path. Only active when the filter itself

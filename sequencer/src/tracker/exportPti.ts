@@ -24,6 +24,7 @@ import {
   voiceFinetune,
   voiceReverbSend,
   voiceSaturation,
+  voiceBitDepth,
   voiceDelaySend,
   voiceTrim,
   voiceFilter,
@@ -163,6 +164,8 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
     // this is character-approximate, but the exported instrument keeps its
     // dirt rather than arriving clean.
     inst.overdrive = Math.round(Math.max(0, Math.min(1, voiceSaturation(voiceId))) * 100);
+    // Bit depth maps 1:1 — both models are integer 4..16, 16 = clean.
+    inst.bitdepth = voiceBitDepth(voiceId);
     // Window fractions → frame points. The Tracker addresses points with a
     // 16-bit value, so samples longer than 65535 frames clamp here (the
     // device can only seek into the first 65535 frames).

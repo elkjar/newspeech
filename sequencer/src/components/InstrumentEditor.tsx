@@ -165,6 +165,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const cutoff = edit?.cutoff ?? 1;
   const resonance = edit?.resonance ?? 0;
   const saturation = edit?.saturation ?? 0;
+  const bitDepth = Math.max(4, Math.min(16, Math.round(edit?.bitDepth ?? 16)));
   const reverbSend = edit?.reverbSend ?? 0;
   const delaySend = edit?.delaySend ?? 0;
   const ampEnv = edit?.ampEnv ?? DEFAULT_AMP_ENV;
@@ -403,10 +404,10 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
           </div>
         </LabeledStack>
         <Divider />
-        {/* saturation — post-filter per-voice drive (tanh, crushes past 50%).
-            Sits after filter because the signal flows filter → drive: a
-            cranked resonance screams into the shaper. Exports to .pti
-            overdrive. */}
+        {/* saturation + bit crush — post-filter per-voice character stage,
+            in signal order: filter → drive (tanh, crushes past 50%) →
+            bits (hard quantize, 16 = clean). Export to .pti overdrive /
+            bitdepth. */}
         <LabeledStack label="drive">
           <div className="flex items-start gap-4">
             <TopKnob
@@ -414,6 +415,14 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
               value={saturation}
               display={`${(saturation * 100).toFixed(0)}%`}
               onChange={(v) => setVoiceEdit(voiceId, { saturation: v })}
+            />
+            <TopKnob
+              label="bits"
+              value={(bitDepth - 4) / 12}
+              display={bitDepth >= 16 ? '16 (off)' : `${bitDepth} bit`}
+              onChange={(v) =>
+                setVoiceEdit(voiceId, { bitDepth: Math.round(4 + v * 12) })
+              }
             />
           </div>
         </LabeledStack>

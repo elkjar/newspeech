@@ -3479,6 +3479,8 @@ struct Voice {
   // Per-instrument saturation drive (0 = bypass), applied post-filter —
   // a cranked resonance screams INTO the shaper by design.
   sat_drive: f32,
+  // Per-instrument bit crush, 4..16 (>=16 = bypass), after saturation.
+  bit_depth: u8,
   lfo_on: bool,
   lfo_shape: u8,
   lfo_rate_hz: f32,
@@ -3569,6 +3571,7 @@ impl Default for Voice {
       inst_cutoff_norm: 1.0,
       inst_q: 0.707,
       sat_drive: 0.0,
+      bit_depth: 16,
       lfo_on: false,
       lfo_shape: 0,
       lfo_rate_hz: 0.0,
@@ -3682,6 +3685,9 @@ enum MixerCommand {
     // post-filter in the voice loop via pre_saturate_sample — same tanh
     // family as the mangler-bus pre-drive.
     sat_drive: f32,
+    // Per-instrument bit crush, 4..16 (>=16 = bypass), applied after
+    // saturation: drive → crush.
+    bit_depth: u8,
     // Cutoff LFO: shape 0 revsaw · 1 saw · 2 tri · 3 square · 4 random; rate
     // in Hz; depth 0..1 bipolar. depth 0 (or filter off) = no modulation.
     lfo_shape: u8,
@@ -3794,6 +3800,8 @@ struct PendingTrigger {
   inst_q: f32,
   // Per-instrument saturation drive (0 = bypass), applied post-filter.
   sat_drive: f32,
+  // Per-instrument bit crush, 4..16 (>=16 = bypass), after saturation.
+  bit_depth: u8,
   // Cutoff LFO: on flag + shape + rate (Hz) + depth (0..1 bipolar).
   lfo_on: bool,
   lfo_shape: u8,
@@ -4049,6 +4057,7 @@ impl AudioEngine {
     inst_cutoff: f32,
     inst_resonance: f32,
     sat_drive: f32,
+    bit_depth: u8,
     lfo_shape: u8,
     lfo_rate_hz: f32,
     lfo_depth: f32,
@@ -4120,6 +4129,7 @@ impl AudioEngine {
       inst_cutoff,
       inst_resonance,
       sat_drive,
+      bit_depth,
       lfo_shape,
       lfo_rate_hz,
       lfo_depth,
@@ -4992,6 +5002,7 @@ fn claim_voice_slot(
   v.inst_cutoff_norm = p.inst_cutoff_norm;
   v.inst_q = p.inst_q;
   v.sat_drive = p.sat_drive;
+  v.bit_depth = p.bit_depth;
   v.lfo_on = p.lfo_on;
   v.lfo_shape = p.lfo_shape;
   v.lfo_rate_hz = p.lfo_rate_hz;
@@ -5508,6 +5519,7 @@ fn build_stream(
               inst_cutoff,
               inst_resonance,
               sat_drive,
+              bit_depth,
               lfo_shape,
               lfo_rate_hz,
               lfo_depth,
@@ -5599,6 +5611,7 @@ fn build_stream(
                 inst_cutoff_norm: inst_cutoff,
                 inst_q,
                 sat_drive: sat_drive.clamp(0.0, 1.0),
+                bit_depth: bit_depth.clamp(4, 16),
                 lfo_on,
                 lfo_shape,
                 lfo_rate_hz,
@@ -6214,6 +6227,15 @@ fn build_stream(
             if v.sat_drive > 0.001 {
               ls = pre_saturate_sample(ls, v.sat_drive);
               rs = pre_saturate_sample(rs, v.sat_drive);
+            }
+            // Per-instrument bit crush — after saturation (drive → crush),
+            // matching the Tracker instrument order. Quantizes to 2^(bits-1)
+            // levels per polarity; 16 = bypass. No dither, hard steps —
+            // the grit IS the feature.
+            if v.bit_depth < 16 {
+              let q = (1u32 << (v.bit_depth.max(1) - 1)) as f32;
+              ls = (ls * q).round() / q;
+              rs = (rs * q).round() / q;
             }
             // Tremolo (vol-LFO, slot 0) — amplitude scale around unity.
             ls *= mod_tremolo;
@@ -7068,6 +7090,8 @@ pub struct TriggerSpec {
   pub inst_resonance: Option<f32>,
   // Per-instrument saturation drive 0..1 (0/None = bypass), post-filter.
   pub sat_drive: Option<f32>,
+  // Per-instrument bit crush 4..16 (16/None = bypass), after saturation.
+  pub bit_depth: Option<u8>,
   pub lfo_shape: Option<u8>,
   pub lfo_rate_hz: Option<f32>,
   pub lfo_depth: Option<f32>,
@@ -7123,6 +7147,7 @@ fn queue_trigger(spec: TriggerSpec) -> Result<(), String> {
     spec.inst_cutoff.unwrap_or(1.0),
     spec.inst_resonance.unwrap_or(0.0),
     spec.sat_drive.unwrap_or(0.0),
+    spec.bit_depth.unwrap_or(16),
     spec.lfo_shape.unwrap_or(0),
     spec.lfo_rate_hz.unwrap_or(0.0),
     spec.lfo_depth.unwrap_or(0.0),
