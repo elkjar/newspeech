@@ -22,10 +22,17 @@ export function TrackGrid() {
 
   useEffect(() => {
     let raf = 0;
+    // The audible 32nd-step only changes ~16-32×/s but this RAF runs at
+    // 60-120Hz — the store `set` is unguarded, so an unconditional write
+    // re-ran every globalStep subscriber per frame. Skip unchanged values.
+    let lastSent: number | null = null;
     const tick = () => {
       if (scheduler.isPlaying()) {
         const audible = scheduler.getAudibleStep();
-        if (audible !== null) setGlobalStep(audible);
+        if (audible !== null && audible !== lastSent) {
+          lastSent = audible;
+          setGlobalStep(audible);
+        }
       }
       raf = requestAnimationFrame(tick);
     };

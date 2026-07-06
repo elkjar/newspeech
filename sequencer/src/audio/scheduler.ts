@@ -147,3 +147,9 @@ class Scheduler {
 }
 
 export const scheduler = new Scheduler();
+
+// Dev: the scheduler singleton is captured by App.tsx's boot effect and the
+// step subscribers at mount — HMR can't hot-swap it in the running loop (the
+// old instance's setTimeout chain keeps ticking). Force a full reload on
+// change, matching engine/tick.ts and voices.ts. No-op in production.
+if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());

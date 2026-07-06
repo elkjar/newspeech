@@ -45,6 +45,10 @@ export async function saveProject(
         setDocument(boundPath, code);
       } catch (err) {
         console.error('[song save] failed:', err);
+        useSequencerStore.getState().pushToast({
+          kind: 'error',
+          text: `song save failed · ${String(err)}`,
+        });
       }
       return;
     }
@@ -79,6 +83,10 @@ export async function saveProject(
       setDocument(picked, code);
     } catch (err) {
       console.error('[song save] failed:', err);
+      useSequencerStore.getState().pushToast({
+        kind: 'error',
+        text: `song save failed · ${String(err)}`,
+      });
     }
     return;
   }

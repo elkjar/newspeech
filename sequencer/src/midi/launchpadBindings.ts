@@ -31,6 +31,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { useSequencerStore, RATE_STRIDE, type Track, type TrackSection } from '../state/store';
+import { switchToSong } from '../state/songFileSync';
 import { scheduler } from '../audio/scheduler';
 import { togglePlayback } from '../audio/transport';
 import { resolveChord, type ChordVoicing } from '../audio/chords';
@@ -868,9 +869,10 @@ function handleSessionEvent(_device: number, e: LaunchpadEvent): void {
     return;
   }
   // Another song's row → swap songs (tail-out when playing). v1 lands on the
-  // song's own saved scene regardless of which column was tapped.
+  // song's own saved scene regardless of which column was tapped. Routed
+  // through the action helper so the outgoing song's .seq flushes first.
   if (!store.performance.songs[row]) return; // empty song slot
-  store.loadSong(row);
+  switchToSong(row);
 }
 
 // Chord page: pads audition the degree×voicing chord; play/panic stay live.

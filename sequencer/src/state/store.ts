@@ -439,13 +439,14 @@ export interface BankSlot {
   tracks: Track[];
   macros: BankMacros;
   kind: BankKind;
-  // The compose recipe that generated this bank — used by the ghost for
-  // per-recipe dwell ranges and same-recipe avoidance. Optional: user-saved
-  // banks (snapBank) don't have a recipe, in which case the ghost falls
-  // back to its global dwell range and any pick is valid.
+  // The compose recipe that generated this bank (legacy — the generator was
+  // removed 2026-07-06; slots in older .seq files still carry the tag). Used
+  // by the ghost for per-recipe dwell ranges and same-recipe avoidance.
+  // Optional: user-saved banks (snapBank) don't have a recipe, in which case
+  // the ghost falls back to its global dwell range and any pick is valid.
   recipe?: string;
   // Cached Ghost entropy (0..1). Computed when the slot is written
-  // (snapshotBank, ghost.generateBank) and round-tripped in `.seq`. Optional
+  // (snapshotBank) and round-tripped in `.seq`. Optional
   // so old saves without the field still load — hydrator recomputes from
   // tracks/macros on load if missing.
   entropy?: number;
@@ -510,6 +511,9 @@ export interface Song {
   rootNote: number;
   scale: Scale;
   lfos: LFO[];
+  // Song-mode linear arrangement (2026-07-06). Optional so songs snapped
+  // before the field existed still apply; absent = empty arrangement.
+  arrangement?: Arrangement;
 }
 
 export const PERFORMANCE_SLOT_COUNT = 8;
@@ -517,6 +521,11 @@ export const PERFORMANCE_SLOT_COUNT = 8;
 export interface Performance {
   name?: string;
   songs: (Song | null)[];
+  // Slot-aligned .seq file references (2026-07-06). A `.seqset` stores ONLY
+  // these paths — songs resolve fresh from disk at set load, so editing a
+  // .seq updates every set that references it. Slots snapped in-session get
+  // their path from the bound document (save-first gate in the dialog).
+  songPaths: (string | null)[];
   activeSong: number | null;
   // Bar-boundary queued song swap, with optional tail-out gap before the
   // snap lands. While `pendingSong` is set and `tailOutBarsRemaining > 0`,
@@ -531,6 +540,7 @@ export interface Performance {
 
 export const DEFAULT_PERFORMANCE: Performance = {
   songs: Array.from({ length: PERFORMANCE_SLOT_COUNT }, () => null),
+  songPaths: Array.from({ length: PERFORMANCE_SLOT_COUNT }, () => null),
   activeSong: null,
   pendingSong: null,
   tailOutBarsRemaining: 0,
@@ -1015,13 +1025,16 @@ export interface SequencerState {
   // scheduler's scheduled step (not the lagging store globalStep).
   swapSongImmediate: (i: number, atGlobalStep: number) => void;
   clearSong: (i: number) => void;
+  // Bind (or clear) a slot's .seq file reference — the disk identity a
+  // `.seqset` persists for this slot.
+  setSongPath: (i: number, path: string | null) => void;
   moveSong: (from: number, to: number) => void;
   commitPendingSong: (atGlobalStep: number) => void;
   tickPerformanceTailOut: () => void;
   setPerformanceTailOutBars: (bars: number) => void;
   setPerformanceName: (name: string) => void;
   setSongName: (i: number, name: string) => void;
-  importSong: (song: Song) => number | null;
+  importSong: (song: Song, path?: string | null) => number | null;
   // Replace the entire performance container (used when loading a
   // `.seqset` file). Caller passes an already-hydrated Performance —
   // hydration logic lives in persist.ts to keep store free of JSON
@@ -1393,7 +1406,11 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     pendingScene: null,
     endsAfterLast: true,
   },
-  performance: { ...DEFAULT_PERFORMANCE, songs: [...DEFAULT_PERFORMANCE.songs] },
+  performance: {
+    ...DEFAULT_PERFORMANCE,
+    songs: [...DEFAULT_PERFORMANCE.songs],
+    songPaths: [...DEFAULT_PERFORMANCE.songPaths],
+  },
   // FX param setters are pure state writes. The canonical store→engine
   // bridge is the App.tsx RAF loop, which reads these slices each frame
   // and pushes changed values to the Rust engine (LFO modulation of audio
@@ -1594,6 +1611,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       performance: {
         ...state.performance,
         songs: Array.from({ length: PERFORMANCE_SLOT_COUNT }, () => null),
+        songPaths: Array.from({ length: PERFORMANCE_SLOT_COUNT }, () => null),
         activeSong: null,
         pendingSong: null,
         tailOutBarsRemaining: 0,
@@ -2204,6 +2222,15 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         banks,
         activeBank: shiftIndex(state.activeBank),
         pendingBank: shiftIndex(state.pendingBank),
+        // Arrangement rows reference banks by slot index — follow the shift
+        // so authored rows keep pointing at the same pattern.
+        arrangement: {
+          ...state.arrangement,
+          rows: state.arrangement.rows.map((r) => ({
+            ...r,
+            bank: shiftIndex(r.bank) ?? r.bank,
+          })),
+        },
       };
     });
   },
@@ -2493,8 +2520,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       const song: Song = {
         // Preserve the slot's user-assigned title — it's slot metadata,
         // not live state, so re-snapping (incl. the loadSong auto-save
-        // snap-back) must carry it over or the title gets wiped.
-        name: state.performance.songs[i]?.name,
+        // snap-back) must carry it over or the title gets wiped. A fresh
+        // snap into an empty slot inherits the working song's title.
+        name:
+          (state.performance.songs[i]?.name ?? state.songTitle) || undefined,
         tracks: state.tracks.map(cloneTrack),
         banks: banksWithLiveActiveBank(state).map((b) =>
           b
@@ -2532,6 +2561,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         rootNote: state.rootNote,
         scale: state.scale,
         lfos: state.lfos.map((l) => ({ ...l, destinations: l.destinations.map((d) => ({ ...d })) })),
+        arrangement: {
+          ...state.arrangement,
+          rows: state.arrangement.rows.map((r) => ({ ...r, mutes: [...r.mutes] })),
+          cursor: 0,
+          displayCursor: 0,
+          cursorStartStep: 0,
+          pendingEnd: false,
+        },
       };
       const songs = state.performance.songs.slice();
       songs[i] = song;
@@ -2582,16 +2619,26 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       if (i < 0 || i >= PERFORMANCE_SLOT_COUNT) return {};
       const songs = state.performance.songs.slice();
       songs[i] = null;
+      const songPaths = state.performance.songPaths.slice();
+      songPaths[i] = null;
       return {
         performance: {
           ...state.performance,
           songs,
+          songPaths,
           activeSong:
             state.performance.activeSong === i ? null : state.performance.activeSong,
           pendingSong:
             state.performance.pendingSong === i ? null : state.performance.pendingSong,
         },
       };
+    }),
+  setSongPath: (i, path) =>
+    set((state) => {
+      if (i < 0 || i >= PERFORMANCE_SLOT_COUNT) return {};
+      const songPaths = state.performance.songPaths.slice();
+      songPaths[i] = path;
+      return { performance: { ...state.performance, songPaths } };
     }),
   moveSong: (from, to) => {
     set((state) => {
@@ -2601,12 +2648,21 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       const moved = state.performance.songs[from];
       if (!moved) return {};
       const songs = state.performance.songs.slice();
+      const songPaths = state.performance.songPaths.slice();
+      const movedPath = songPaths[from];
       if (from < to) {
-        for (let j = from; j < to; j++) songs[j] = songs[j + 1];
+        for (let j = from; j < to; j++) {
+          songs[j] = songs[j + 1];
+          songPaths[j] = songPaths[j + 1];
+        }
       } else {
-        for (let j = from; j > to; j--) songs[j] = songs[j - 1];
+        for (let j = from; j > to; j--) {
+          songs[j] = songs[j - 1];
+          songPaths[j] = songPaths[j - 1];
+        }
       }
       songs[to] = moved;
+      songPaths[to] = movedPath;
       const shiftIndex = (idx: number | null): number | null => {
         if (idx === null) return null;
         if (idx === from) return to;
@@ -2618,6 +2674,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         performance: {
           ...state.performance,
           songs,
+          songPaths,
           activeSong: shiftIndex(state.performance.activeSong),
           pendingSong: shiftIndex(state.performance.pendingSong),
         },
@@ -2672,7 +2729,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       songs[i] = { ...song, name: name.trim() ? name : undefined };
       return { performance: { ...state.performance, songs } };
     }),
-  importSong: (song): number | null => {
+  importSong: (song, path): number | null => {
     let idx: number | null = null;
     set((s) => {
       const found = s.performance.songs.findIndex((x) => x === null);
@@ -2680,7 +2737,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       idx = found;
       const songs = s.performance.songs.slice();
       songs[found] = song;
-      return { performance: { ...s.performance, songs } };
+      const songPaths = s.performance.songPaths.slice();
+      songPaths[found] = path ?? null;
+      return { performance: { ...s.performance, songs, songPaths } };
     });
     return idx;
   },
@@ -2733,6 +2792,15 @@ export const useSequencerStore = create<SequencerState>((set) => ({
           scenes,
           activeScene: shiftIndex(state.composition.activeScene),
           pendingScene: shiftIndex(state.composition.pendingScene),
+        },
+        // Arrangement rows reference scenes by slot index — follow the shift
+        // so authored rows keep pointing at the same scene.
+        arrangement: {
+          ...state.arrangement,
+          rows: state.arrangement.rows.map((r) => ({
+            ...r,
+            scene: shiftIndex(r.scene) ?? r.scene,
+          })),
         },
       };
     });
@@ -3130,6 +3198,20 @@ function applySong(
       pendingScene: null,
       endsAfterLast: song.endsAfterLast,
     },
+    // The arrangement belongs to the song — swap it with the rest of the
+    // piece (cursor reset; `active` stays as authored so a song saved in
+    // song mode resumes in song mode). Songs snapped before the field
+    // existed load with an empty arrangement.
+    arrangement: song.arrangement
+      ? {
+          ...song.arrangement,
+          rows: song.arrangement.rows.map((r) => ({ ...r, mutes: [...r.mutes] })),
+          cursor: 0,
+          displayCursor: 0,
+          cursorStartStep: 0,
+          pendingEnd: false,
+        }
+      : { ...DEFAULT_ARRANGEMENT, rows: [] },
     performance: {
       ...state.performance,
       activeSong: i,

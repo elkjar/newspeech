@@ -1,8 +1,13 @@
 import { scheduler } from './scheduler';
-import { midiPanic } from './midiOut';
+import { cancelScheduledMidi, midiPanic } from './midiOut';
 import { clockTransportStart, clockTransportStop } from './midiClock';
 import { useSequencerStore } from '../state/store';
 import { clearOverlay } from './mutationOverlay';
+
+// Dev: transport functions are captured by hardware bindings + key handlers
+// registered at mount, so HMR can't hot-swap them mid-session. Force a full
+// reload on change, matching engine/tick.ts and voices.ts. No-op in production.
+if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());
 
 // Tap-tempo: averages the gaps between recent taps. A gap > TAP_RESET_MS
 // resets the buffer so a long pause starts a fresh measurement.
@@ -51,6 +56,11 @@ export async function prepareForPlay(): Promise<void> {
 // and a fresh variation regenerates on the next play.
 export function stopPlaybackLocal(): void {
   scheduler.stop();
+  // Kill note-on/offs queued behind the 250ms schedule horizon BEFORE the
+  // panic's all-notes-off — otherwise they fire after it and leave ghost
+  // notes ringing on external hardware. (midiPanic also cancels internally;
+  // explicit here so the stop path doesn't depend on that detail.)
+  cancelScheduledMidi();
   midiPanic();
   void fadeTextures(TEXTURE_STOP_FADE_SECS);
   useSequencerStore.getState().setPlaying(false);

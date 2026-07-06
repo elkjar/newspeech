@@ -24,7 +24,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, SampleRate, Stream, StreamConfig};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use ringbuf::traits::{Consumer, Producer, Split};
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use serde::{Deserialize, Serialize};
 
@@ -144,7 +144,7 @@ fn decode_wav<R: std::io::Read>(mut reader: hound::WavReader<R>) -> Result<Sampl
     return Err("wav reports sample_rate = 0".into());
   }
 
-  let frames: Vec<f32> = match spec.sample_format {
+  let mut frames: Vec<f32> = match spec.sample_format {
     hound::SampleFormat::Float => reader
       .samples::<f32>()
       .collect::<Result<_, _>>()
@@ -161,6 +161,15 @@ fn decode_wav<R: std::io::Read>(mut reader: hound::WavReader<R>) -> Result<Sampl
         .map_err(|e| format!("decode int: {}", e))?
     }
   };
+
+  // Float-format WAVs can legally carry NaN/inf; one non-finite sample
+  // riding a voice into the reverb send would latch the recursive tank
+  // dead. Scrub at decode (command thread, one pass).
+  for s in frames.iter_mut() {
+    if !s.is_finite() {
+      *s = 0.0;
+    }
+  }
 
   Ok(SampleData {
     channels,
@@ -973,13 +982,17 @@ fn recorder_state() -> &'static RecorderState {
   RECORDER_STATE.get_or_init(RecorderState::new)
 }
 
-// f32 → i16 PCM with hard clip. Matches the web `floatStereoToInt16Bytes`
-// conversion in `audio/recorder.ts`. 16-bit PCM keeps file sizes
-// reasonable and is universally importable by DAWs.
+// Frame-atomic recorder push. Only whole L/R pairs enter the ring — under
+// ring-full pressure (stalled worker) a half-pushed frame would offset the
+// interleave and channel-swap the remainder of the take; dropping the whole
+// frame leaves a gap instead. Samples are 32-bit float (no clip): stems
+// hotter than 0dBFS survive intact for the DAW to trim.
 #[inline]
-fn f32_to_i16(x: f32) -> i16 {
-  let clamped = x.clamp(-1.0, 1.0);
-  (clamped * 32767.0) as i16
+fn push_rec_frame(prod: &mut HeapProd<f32>, l: f32, r: f32) {
+  if prod.vacant_len() >= 2 {
+    let _ = prod.try_push(l);
+    let _ = prod.try_push(r);
+  }
 }
 
 // --- count-in click samples ---
@@ -1041,7 +1054,7 @@ fn spawn_recorder_worker(
   label: &'static str,
   path: String,
   writer: hound::WavWriter<std::io::BufWriter<std::fs::File>>,
-  mut cons: HeapCons<i16>,
+  mut cons: HeapCons<f32>,
   stop_flag: Arc<AtomicBool>,
 ) {
   use tauri::Emitter;
@@ -3609,12 +3622,12 @@ enum MixerCommand {
   // other side of the producer (held outside this enum) drains samples
   // and writes WAV.
   StartCombinedRecording {
-    producer: HeapProd<i16>,
+    producer: HeapProd<f32>,
   },
   StopCombinedRecording,
   StartSplitsRecording {
-    rhythm: HeapProd<i16>,
-    melody: HeapProd<i16>,
+    rhythm: HeapProd<f32>,
+    melody: HeapProd<f32>,
   },
   StopSplitsRecording,
   // Full-stems recording — every producer installs on the SAME audio block
@@ -3623,11 +3636,11 @@ enum MixerCommand {
   // ring slot; the one-time heap free when the box is consumed happens on a
   // user-initiated record-start, never on the per-block hot path.
   StartStemsRecording {
-    master: Option<HeapProd<i16>>,
-    fx: Option<HeapProd<i16>>,
-    reverb: Option<HeapProd<i16>>,
-    delay: Option<HeapProd<i16>>,
-    tracks: Box<[Option<HeapProd<i16>>; MAX_STEMS]>,
+    master: Option<HeapProd<f32>>,
+    fx: Option<HeapProd<f32>>,
+    reverb: Option<HeapProd<f32>>,
+    delay: Option<HeapProd<f32>>,
+    tracks: Box<[Option<HeapProd<f32>>; MAX_STEMS]>,
   },
   StopStemsRecording,
   Trigger {
@@ -4163,26 +4176,6 @@ impl AudioEngine {
     params.set_filter_norm(cutoff_norm.clamp(0.0, 1.0), resonance.clamp(0.0, 1.0));
   }
 
-  pub fn set_track_fx_send(&self, track_id: String, fx_send: f32) {
-    let params = get_or_create_track_params(&track_id);
-    params.set_fx_send(fx_send.clamp(0.0, 1.0));
-  }
-
-  pub fn set_track_reverb_send(&self, track_id: String, reverb_send: f32) {
-    let params = get_or_create_track_params(&track_id);
-    params.set_reverb_send(reverb_send.clamp(0.0, 1.0));
-  }
-
-  pub fn set_track_delay_send(&self, track_id: String, delay_send: f32) {
-    let params = get_or_create_track_params(&track_id);
-    params.set_delay_send(delay_send.clamp(0.0, 1.0));
-  }
-
-  pub fn set_track_tuning(&self, track_id: String, tune_norm: f32, finetune_norm: f32) {
-    let params = get_or_create_track_params(&track_id);
-    params.set_tuning(tune_norm, finetune_norm);
-  }
-
   // Reverb DSP params + global wet-bus gain. Held in atomics inside the
   // shared ReverbState so the audio callback can read them lock-free
   // each block. The DSP's internal mix is pinned to 1.0 (fully wet) at
@@ -4293,17 +4286,17 @@ impl AudioEngine {
     if sr == 0 {
       return Err("audio device not open".to_string());
     }
-    // ~5s of headroom at 48k stereo (480_000 i16 samples = 960 KB).
+    // ~5s of headroom at 48k stereo (480_000 f32 samples = 1.9 MB).
     // Worker drains every 5ms so this is far more than ever needed
     // in practice; keeps the audio thread's push side from blocking.
     const QUEUE_SAMPLES: usize = 480_000;
-    let (prod, cons) = HeapRb::<i16>::new(QUEUE_SAMPLES).split();
+    let (prod, cons) = HeapRb::<f32>::new(QUEUE_SAMPLES).split();
 
     let spec = hound::WavSpec {
       channels: 2,
       sample_rate: sr,
-      bits_per_sample: 16,
-      sample_format: hound::SampleFormat::Int,
+      bits_per_sample: 32,
+      sample_format: hound::SampleFormat::Float,
     };
     let writer = hound::WavWriter::create(&path, spec)
       .map_err(|e| format!("create wav '{}': {}", path, e))?;
@@ -4319,17 +4312,26 @@ impl AudioEngine {
     );
 
     // Push the producer to the audio thread via the existing command queue.
-    let mut guard = self
-      .state
-      .trigger_producer
-      .lock()
-      .map_err(|e| format!("producer lock: {}", e))?;
-    let producer = guard
-      .as_mut()
-      .ok_or_else(|| "audio device not open".to_string())?;
-    producer
-      .try_push(MixerCommand::StartCombinedRecording { producer: prod })
-      .map_err(|_| "command queue full (start recording)".to_string())?;
+    // On failure past this point the worker is already spinning — set the
+    // stop flag so it finalizes (an empty WAV) and exits, instead of idling
+    // forever holding an open file no stop path can reach.
+    let arm = (|| -> Result<(), String> {
+      let mut guard = self
+        .state
+        .trigger_producer
+        .lock()
+        .map_err(|e| format!("producer lock: {}", e))?;
+      let producer = guard
+        .as_mut()
+        .ok_or_else(|| "audio device not open".to_string())?;
+      producer
+        .try_push(MixerCommand::StartCombinedRecording { producer: prod })
+        .map_err(|_| "command queue full (start recording)".to_string())
+    })();
+    if let Err(e) = arm {
+      r.combined_stop.store(true, Ordering::Release);
+      return Err(e);
+    }
 
     r.combined_enabled.store(true, Ordering::Release);
     Ok(())
@@ -4382,15 +4384,15 @@ impl AudioEngine {
     let spec = hound::WavSpec {
       channels: 2,
       sample_rate: sr,
-      bits_per_sample: 16,
-      sample_format: hound::SampleFormat::Int,
+      bits_per_sample: 32,
+      sample_format: hound::SampleFormat::Float,
     };
     let rhythm_writer = hound::WavWriter::create(&rhythm_path, spec)
       .map_err(|e| format!("create rhythm wav '{}': {}", rhythm_path, e))?;
     let melody_writer = hound::WavWriter::create(&melody_path, spec)
       .map_err(|e| format!("create melody wav '{}': {}", melody_path, e))?;
-    let (rhythm_prod, rhythm_cons) = HeapRb::<i16>::new(QUEUE_SAMPLES).split();
-    let (melody_prod, melody_cons) = HeapRb::<i16>::new(QUEUE_SAMPLES).split();
+    let (rhythm_prod, rhythm_cons) = HeapRb::<f32>::new(QUEUE_SAMPLES).split();
+    let (melody_prod, melody_cons) = HeapRb::<f32>::new(QUEUE_SAMPLES).split();
 
     r.splits_stop.store(false, Ordering::Release);
 
@@ -4412,20 +4414,28 @@ impl AudioEngine {
       Arc::clone(&r.splits_stop),
     );
 
-    let mut guard = self
-      .state
-      .trigger_producer
-      .lock()
-      .map_err(|e| format!("producer lock: {}", e))?;
-    let producer = guard
-      .as_mut()
-      .ok_or_else(|| "audio device not open".to_string())?;
-    producer
-      .try_push(MixerCommand::StartSplitsRecording {
-        rhythm: rhythm_prod,
-        melody: melody_prod,
-      })
-      .map_err(|_| "command queue full (start splits)".to_string())?;
+    // On failure past this point both workers are already spinning — set
+    // the stop flag so they finalize and exit (see start_recording_combined).
+    let arm = (|| -> Result<(), String> {
+      let mut guard = self
+        .state
+        .trigger_producer
+        .lock()
+        .map_err(|e| format!("producer lock: {}", e))?;
+      let producer = guard
+        .as_mut()
+        .ok_or_else(|| "audio device not open".to_string())?;
+      producer
+        .try_push(MixerCommand::StartSplitsRecording {
+          rhythm: rhythm_prod,
+          melody: melody_prod,
+        })
+        .map_err(|_| "command queue full (start splits)".to_string())
+    })();
+    if let Err(e) = arm {
+      r.splits_stop.store(true, Ordering::Release);
+      return Err(e);
+    }
 
     r.splits_enabled.store(true, Ordering::Release);
     Ok(())
@@ -4488,8 +4498,8 @@ impl AudioEngine {
     let spec = hound::WavSpec {
       channels: 2,
       sample_rate: sr,
-      bits_per_sample: 16,
-      sample_format: hound::SampleFormat::Int,
+      bits_per_sample: 32,
+      sample_format: hound::SampleFormat::Float,
     };
 
     // Assign fresh 1-based slots to the recorded tracks; wipe any stale
@@ -4501,14 +4511,13 @@ impl AudioEngine {
 
     r.stems_stop.store(false, Ordering::Release);
 
-    // Create a WAV + ring + worker for one labeled stream. On failure the
-    // stop flag stays false and any already-spawned workers idle until the
-    // caller's error unwinds (the take never arms), then finalize empty on
-    // the next stop — acceptable for a start-time file error.
-    let make = |label: &'static str, path: String| -> Result<HeapProd<i16>, String> {
+    // Create a WAV + ring + worker for one labeled stream. Any failure
+    // after the first worker spawns sets the stop flag (below) so the
+    // already-running workers finalize their empty WAVs and exit.
+    let make = |label: &'static str, path: String| -> Result<HeapProd<f32>, String> {
       let writer = hound::WavWriter::create(&path, spec)
         .map_err(|e| format!("create wav '{}': {}", path, e))?;
-      let (prod, cons) = HeapRb::<i16>::new(QUEUE_SAMPLES).split();
+      let (prod, cons) = HeapRb::<f32>::new(QUEUE_SAMPLES).split();
       spawn_recorder_worker(
         app.clone(),
         label,
@@ -4520,34 +4529,41 @@ impl AudioEngine {
       Ok(prod)
     };
 
-    let master = make("master", master_path)?;
-    let fx = make("fx", fx_path)?;
-    let reverb = make("reverb", reverb_path)?;
-    let delay = make("delay", delay_path)?;
+    let arm = (|| -> Result<(), String> {
+      let master = make("master", master_path)?;
+      let fx = make("fx", fx_path)?;
+      let reverb = make("reverb", reverb_path)?;
+      let delay = make("delay", delay_path)?;
 
-    let mut tracks: Box<[Option<HeapProd<i16>>; MAX_STEMS]> =
-      Box::new(std::array::from_fn(|_| None));
-    for i in 0..n {
-      tracks[i] = Some(make(STEM_LABELS[i], track_paths[i].clone())?);
+      let mut tracks: Box<[Option<HeapProd<f32>>; MAX_STEMS]> =
+        Box::new(std::array::from_fn(|_| None));
+      for i in 0..n {
+        tracks[i] = Some(make(STEM_LABELS[i], track_paths[i].clone())?);
+      }
+
+      let mut guard = self
+        .state
+        .trigger_producer
+        .lock()
+        .map_err(|e| format!("producer lock: {}", e))?;
+      let producer = guard
+        .as_mut()
+        .ok_or_else(|| "audio device not open".to_string())?;
+      producer
+        .try_push(MixerCommand::StartStemsRecording {
+          master: Some(master),
+          fx: Some(fx),
+          reverb: Some(reverb),
+          delay: Some(delay),
+          tracks,
+        })
+        .map_err(|_| "command queue full (start stems)".to_string())
+    })();
+    if let Err(e) = arm {
+      r.stems_stop.store(true, Ordering::Release);
+      reset_all_rec_tracks();
+      return Err(e);
     }
-
-    let mut guard = self
-      .state
-      .trigger_producer
-      .lock()
-      .map_err(|e| format!("producer lock: {}", e))?;
-    let producer = guard
-      .as_mut()
-      .ok_or_else(|| "audio device not open".to_string())?;
-    producer
-      .try_push(MixerCommand::StartStemsRecording {
-        master: Some(master),
-        fx: Some(fx),
-        reverb: Some(reverb),
-        delay: Some(delay),
-        tracks,
-      })
-      .map_err(|_| "command queue full (start stems)".to_string())?;
 
     r.stems_enabled.store(true, Ordering::Release);
     Ok(())
@@ -5139,18 +5155,18 @@ fn build_stream(
   // Audio-thread-local recorder producers. None when idle; populated
   // by Start*Recording, cleared by Stop*Recording. Holding them in the
   // callback closure avoids any locking on the audio thread.
-  let mut combined_rec_producer: Option<HeapProd<i16>> = None;
-  let mut rhythm_rec_producer: Option<HeapProd<i16>> = None;
-  let mut melody_rec_producer: Option<HeapProd<i16>> = None;
+  let mut combined_rec_producer: Option<HeapProd<f32>> = None;
+  let mut rhythm_rec_producer: Option<HeapProd<f32>> = None;
+  let mut melody_rec_producer: Option<HeapProd<f32>> = None;
   // Full-stems recording producers. master = post-master buf (like combined);
   // fx = mangler bus (pre reverb/delay fold); reverb/delay = the wet returns;
   // stems[i] = per-track dry (dry_scale applied — sums with the buses to the
   // master). All None when no stems take is armed.
-  let mut master_rec_producer: Option<HeapProd<i16>> = None;
-  let mut fx_rec_producer: Option<HeapProd<i16>> = None;
-  let mut reverb_rec_producer: Option<HeapProd<i16>> = None;
-  let mut delay_rec_producer: Option<HeapProd<i16>> = None;
-  let mut stem_rec_producers: [Option<HeapProd<i16>>; MAX_STEMS] =
+  let mut master_rec_producer: Option<HeapProd<f32>> = None;
+  let mut fx_rec_producer: Option<HeapProd<f32>> = None;
+  let mut reverb_rec_producer: Option<HeapProd<f32>> = None;
+  let mut delay_rec_producer: Option<HeapProd<f32>> = None;
+  let mut stem_rec_producers: [Option<HeapProd<f32>>; MAX_STEMS] =
     std::array::from_fn(|_| None);
   // Per-track dry scratch (accumulated in the voice loop). fx_stem is a
   // snapshot of the mangler bus taken before reverb/delay fold in (overwritten
@@ -6068,7 +6084,7 @@ fn build_stream(
                 _ => v.gran_ping_fwd,
               };
               let off = if fwd { v.gran_read } else { grain_len - v.gran_read };
-              let read_pos = (base + off).clamp(0.0, frame_count as f64 - 2.0);
+              let read_pos = (base + off).clamp(0.0, (frame_count as f64 - 2.0).max(0.0));
               let (gl, gr) = read_at(read_pos);
               let w = grain_window(v.gran_shape, (v.gran_read / grain_len) as f32);
               ls = gl * w;
@@ -6095,7 +6111,7 @@ fn build_stream(
                   0.0
                 };
                 v.gran_base_latched =
-                  (target_base + scatter).clamp(0.0, (frame_count as f64) - 2.0);
+                  (target_base + scatter).clamp(0.0, ((frame_count as f64) - 2.0).max(0.0));
                 if v.gran_dir == 2 {
                   v.gran_ping_fwd = !v.gran_ping_fwd;
                 }
@@ -6629,6 +6645,15 @@ fn build_stream(
             &mut reverb_out_l[..rev_frames],
             &mut reverb_out_r[..rev_frames],
           );
+          // The tank is recursive — one non-finite sample latches it dead
+          // until Panic (delay + master already self-heal; this was the
+          // last unguarded feedback path). Probe the block head and flush
+          // the bus on poison instead of folding it into the mix.
+          if !(reverb_out_l[0].is_finite() && reverb_out_r[0].is_finite()) {
+            reverb_bus.clear();
+            reverb_out_l[..rev_frames].fill(0.0);
+            reverb_out_r[..rev_frames].fill(0.0);
+          }
           for frame in 0..rev_frames {
             fxbus_l[frame] += reverb_out_l[frame];
             fxbus_r[frame] += reverb_out_r[frame];
@@ -6758,18 +6783,14 @@ fn build_stream(
         if let Some(prod) = combined_rec_producer.as_mut() {
           if n_ch >= 2 {
             for frame in 0..frames {
-              let l = f32_to_i16(buf[frame * n_ch]);
-              let r_s = f32_to_i16(buf[frame * n_ch + 1]);
-              // Best-effort push — if queue is full (worker stalled),
-              // drop samples rather than block the audio thread.
-              let _ = prod.try_push(l);
-              let _ = prod.try_push(r_s);
+              // Best-effort whole-frame push — if the queue is full
+              // (worker stalled), drop frames rather than block.
+              push_rec_frame(prod, buf[frame * n_ch], buf[frame * n_ch + 1]);
             }
           } else if n_ch == 1 {
             for frame in 0..frames {
-              let s = f32_to_i16(buf[frame * n_ch]);
-              let _ = prod.try_push(s);
-              let _ = prod.try_push(s);
+              let s = buf[frame * n_ch];
+              push_rec_frame(prod, s, s);
             }
           }
         }
@@ -6779,14 +6800,12 @@ fn build_stream(
         // point and gives DAWs a clean stem per section.
         if let Some(prod) = rhythm_rec_producer.as_mut() {
           for frame in 0..rev_frames {
-            let _ = prod.try_push(f32_to_i16(rhythm_l[frame]));
-            let _ = prod.try_push(f32_to_i16(rhythm_r[frame]));
+            push_rec_frame(prod, rhythm_l[frame], rhythm_r[frame]);
           }
         }
         if let Some(prod) = melody_rec_producer.as_mut() {
           for frame in 0..rev_frames {
-            let _ = prod.try_push(f32_to_i16(melody_l[frame]));
-            let _ = prod.try_push(f32_to_i16(melody_r[frame]));
+            push_rec_frame(prod, melody_l[frame], melody_r[frame]);
           }
         }
         // Full-stems tap. master = post-master buf (same as combined but its
@@ -6796,40 +6815,34 @@ fn build_stream(
         if let Some(prod) = master_rec_producer.as_mut() {
           if n_ch >= 2 {
             for frame in 0..frames {
-              let _ = prod.try_push(f32_to_i16(buf[frame * n_ch]));
-              let _ = prod.try_push(f32_to_i16(buf[frame * n_ch + 1]));
+              push_rec_frame(prod, buf[frame * n_ch], buf[frame * n_ch + 1]);
             }
           } else if n_ch == 1 {
             for frame in 0..frames {
-              let s = f32_to_i16(buf[frame * n_ch]);
-              let _ = prod.try_push(s);
-              let _ = prod.try_push(s);
+              let s = buf[frame * n_ch];
+              push_rec_frame(prod, s, s);
             }
           }
         }
         if let Some(prod) = fx_rec_producer.as_mut() {
           for frame in 0..rev_frames {
-            let _ = prod.try_push(f32_to_i16(fx_stem_l[frame]));
-            let _ = prod.try_push(f32_to_i16(fx_stem_r[frame]));
+            push_rec_frame(prod, fx_stem_l[frame], fx_stem_r[frame]);
           }
         }
         if let Some(prod) = reverb_rec_producer.as_mut() {
           for frame in 0..rev_frames {
-            let _ = prod.try_push(f32_to_i16(reverb_out_l[frame]));
-            let _ = prod.try_push(f32_to_i16(reverb_out_r[frame]));
+            push_rec_frame(prod, reverb_out_l[frame], reverb_out_r[frame]);
           }
         }
         if let Some(prod) = delay_rec_producer.as_mut() {
           for frame in 0..rev_frames {
-            let _ = prod.try_push(f32_to_i16(delay_out_l[frame]));
-            let _ = prod.try_push(f32_to_i16(delay_out_r[frame]));
+            push_rec_frame(prod, delay_out_l[frame], delay_out_r[frame]);
           }
         }
         for idx in 0..MAX_STEMS {
           if let Some(prod) = stem_rec_producers[idx].as_mut() {
             for frame in 0..rev_frames {
-              let _ = prod.try_push(f32_to_i16(stem_l[idx][frame]));
-              let _ = prod.try_push(f32_to_i16(stem_r[idx][frame]));
+              push_rec_frame(prod, stem_l[idx][frame], stem_r[idx][frame]);
             }
           }
         }
@@ -7171,10 +7184,18 @@ pub fn audio_trigger_sample(spec: TriggerSpec) -> Result<(), String> {
 // batching changes serialization cost only, not timing semantics.
 #[tauri::command]
 pub fn audio_trigger_batch(triggers: Vec<TriggerSpec>) -> Result<(), String> {
+  // One bad spec (e.g. an unloaded sample path) must not drop the rest of
+  // the tick's tones — queue everything, report the first error.
+  let mut first_err: Option<String> = None;
   for spec in triggers {
-    queue_trigger(spec)?;
+    if let Err(e) = queue_trigger(spec) {
+      first_err.get_or_insert(e);
+    }
   }
-  Ok(())
+  match first_err {
+    Some(e) => Err(e),
+    None => Ok(()),
+  }
 }
 
 #[tauri::command]
@@ -7242,13 +7263,15 @@ pub struct TrackFilterUpdate {
 // thread reads the LFO snapshot directly and writes `_eff` atomics).
 #[tauri::command]
 pub fn audio_set_track_filters_bulk(updates: Vec<TrackFilterUpdate>) -> Result<(), String> {
-  let e = engine();
+  // Hottest IPC handler (RAF-paced) — resolve the registry entry once per
+  // track instead of once per param (5 mutex passes + 4 String clones).
   for u in updates {
-    e.set_track_filter(u.track_id.clone(), u.cutoff_norm, u.resonance);
-    e.set_track_fx_send(u.track_id.clone(), u.fx_send);
-    e.set_track_reverb_send(u.track_id.clone(), u.reverb_send);
-    e.set_track_delay_send(u.track_id.clone(), u.delay_send);
-    e.set_track_tuning(u.track_id, u.tune_norm, u.finetune_norm);
+    let params = get_or_create_track_params(&u.track_id);
+    params.set_filter_norm(u.cutoff_norm.clamp(0.0, 1.0), u.resonance.clamp(0.0, 1.0));
+    params.set_fx_send(u.fx_send.clamp(0.0, 1.0));
+    params.set_reverb_send(u.reverb_send.clamp(0.0, 1.0));
+    params.set_delay_send(u.delay_send.clamp(0.0, 1.0));
+    params.set_tuning(u.tune_norm, u.finetune_norm);
   }
   Ok(())
 }

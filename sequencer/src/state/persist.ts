@@ -591,9 +591,12 @@ export function parseSongFromSeq(json: string): Song | null {
         : 60,
     scale: data.scale ?? 'major',
     lfos: hydrateLFOs(data.lfos),
+    arrangement: hydrateArrangement(data.arrangement),
   };
 }
 
+// Legacy embedded-song .seqset shape (pre 2026-07-06) — full Song snapshots
+// baked into the file. Still parsed on load; never written anymore.
 interface PersistedPerformance {
   version: number;
   name?: string;
@@ -602,57 +605,170 @@ interface PersistedPerformance {
   tailOutBars: number;
 }
 
-export function exportPerformance(): string {
+// Reference-based .seqset (2026-07-06): the set persists PATHS to .seq files,
+// not song bodies — songs resolve fresh from disk at set load, so editing a
+// .seq updates every set that references it. `path` is absolute; `rel` is
+// relative to the .seqset's own folder so a moved/synced folder still
+// resolves. Slot titles live on the ref (they're set metadata, not song data).
+export interface SeqsetSongRef {
+  path: string;
+  rel?: string;
+  name?: string;
+}
+
+interface PersistedSeqset {
+  version: number;
+  name?: string;
+  songRefs: (SeqsetSongRef | null)[];
+  activeSong: number | null;
+  tailOutBars: number;
+}
+
+function dirnameOf(p: string): string {
+  const i = p.lastIndexOf('/');
+  return i <= 0 ? '/' : p.slice(0, i);
+}
+
+function relativePath(fromDir: string, toPath: string): string {
+  const a = fromDir.split('/').filter(Boolean);
+  const b = toPath.split('/').filter(Boolean);
+  let i = 0;
+  while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+  return `${'../'.repeat(a.length - i)}${b.slice(i).join('/')}`;
+}
+
+export function resolveRelativePath(fromDir: string, rel: string): string {
+  const parts = fromDir.split('/').filter(Boolean);
+  for (const seg of rel.split('/')) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') parts.pop();
+    else parts.push(seg);
+  }
+  return `/${parts.join('/')}`;
+}
+
+// Serialize a Song slot as standalone `.seq` text — the migration path for
+// legacy embedded slots (saving an old set extracts each song to disk).
+// Round-trips through the same PersistedState shape exportProject writes,
+// reset to scene 1 / bank 1 like every saved song.
+export function songToSeqText(song: Song): string {
+  const s = resetSongToFirstSceneBank(song) ?? song;
+  const data: PersistedState = {
+    version: CURRENT_VERSION,
+    name: s.name,
+    bpm: s.bpm,
+    rootNote: s.rootNote,
+    scale: s.scale,
+    tracks: s.tracks,
+    lfos: s.lfos,
+    density: s.macros.density,
+    chaos: s.macros.chaos,
+    motion: s.macros.motion,
+    drift: s.macros.drift,
+    tension: s.macros.tension,
+    voicing: s.macros.voicing,
+    banks: s.banks,
+    activeBank: 0,
+    sceneGraph: s.sceneGraph,
+    composition: {
+      scenes: s.scenes,
+      activeScene: s.activeScene,
+      pendingScene: null,
+      endsAfterLast: s.endsAfterLast,
+    },
+    arrangement: s.arrangement ?? { ...DEFAULT_ARRANGEMENT },
+  };
+  return JSON.stringify(data, null, 2);
+}
+
+// The caller (PerformanceDialog save flow) guarantees every filled slot is
+// file-backed before exporting — the active song auto-saved to its bound
+// .seq, legacy embedded slots extracted via songToSeqText. A path-less slot
+// here would silently drop from the set, so it's a bug upstream.
+export function exportPerformance(setPath: string): string {
   const s = useSequencerStore.getState();
-  const data: PersistedPerformance = {
+  const setDir = dirnameOf(setPath);
+  const songRefs: (SeqsetSongRef | null)[] = s.performance.songs.map(
+    (song, i) => {
+      const path = s.performance.songPaths[i];
+      if (!song || !path) return null;
+      return { path, rel: relativePath(setDir, path), name: song.name };
+    },
+  );
+  const data: PersistedSeqset = {
     version: CURRENT_VERSION,
     name: s.performance.name,
-    // Don't persist any song's active scene/bank — every song is serialized at
-    // scene 1 / bank 1 so switching to any song on load starts it at the top.
-    songs: songsWithLiveActiveSong(s).map(resetSongToFirstSceneBank),
+    songRefs,
     activeSong: s.performance.activeSong,
     tailOutBars: s.performance.tailOutBars,
   };
   return JSON.stringify(data, null, 2);
 }
 
-// Same staleness as compositionWithLiveActiveScene, one layer up: the
-// active SONG is represented by the live working state (tracks / banks /
-// composition / globals), while performance.songs[activeSong] is the
-// snapshot from when the song was last snapped. Fold the live state
-// (including its live active scene) into the active song slot so an
-// exported set round-trips the song currently on screen at its current
-// state. Serialization-only; no store mutation.
-function songsWithLiveActiveSong(s: SequencerState): (Song | null)[] {
-  const { performance } = s;
-  if (performance.activeSong === null) return performance.songs;
-  const songs = performance.songs.slice();
-  songs[performance.activeSong] = {
-    name: performance.songs[performance.activeSong]?.name,
-    tracks: s.tracks,
-    banks: banksWithLiveActiveBank(s),
-    activeBank: s.activeBank,
-    macros: {
-      density: s.density,
-      chaos: s.chaos,
-      motion: s.motion,
-      drift: s.drift,
-      tension: s.tension,
-      voicing: s.voicing,
-    },
-    sceneGraph: s.sceneGraph,
-    scenes: compositionWithLiveActiveScene(s).scenes,
-    activeScene: s.composition.activeScene,
-    endsAfterLast: s.composition.endsAfterLast,
-    bpm: s.bpm,
-    rootNote: s.rootNote,
-    scale: s.scale,
-    lfos: s.lfos,
-  };
-  return songs;
+export type ParsedSeqset =
+  | {
+      kind: 'refs';
+      name?: string;
+      refs: (SeqsetSongRef | null)[];
+      activeSong: number | null;
+      tailOutBars: number;
+    }
+  | { kind: 'embedded'; performance: Performance };
+
+// Both .seqset generations parse here: reference sets return their refs for
+// the caller to resolve against disk (file IO stays out of persist); legacy
+// embedded sets hydrate fully and come back as a ready Performance with no
+// file backing (paths all null — saving extracts them).
+export function parseSeqset(json: string): ParsedSeqset | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Partial<PersistedSeqset>;
+  if (Array.isArray(d.songRefs)) {
+    const refs: (SeqsetSongRef | null)[] = Array.from(
+      { length: PERFORMANCE_SLOT_COUNT },
+      () => null,
+    );
+    for (let i = 0; i < Math.min(PERFORMANCE_SLOT_COUNT, d.songRefs.length); i++) {
+      const raw = d.songRefs[i];
+      if (!raw || typeof raw !== 'object' || typeof raw.path !== 'string' || !raw.path) {
+        continue;
+      }
+      refs[i] = {
+        path: raw.path,
+        rel: typeof raw.rel === 'string' ? raw.rel : undefined,
+        name: typeof raw.name === 'string' ? raw.name : undefined,
+      };
+    }
+    const activeSong =
+      typeof d.activeSong === 'number' &&
+      Number.isFinite(d.activeSong) &&
+      d.activeSong >= 0 &&
+      d.activeSong < PERFORMANCE_SLOT_COUNT &&
+      refs[d.activeSong]
+        ? Math.floor(d.activeSong)
+        : null;
+    const tailOutBars =
+      typeof d.tailOutBars === 'number' && Number.isFinite(d.tailOutBars)
+        ? Math.max(0, Math.min(32, Math.floor(d.tailOutBars)))
+        : 2;
+    return {
+      kind: 'refs',
+      name: typeof d.name === 'string' ? d.name : undefined,
+      refs,
+      activeSong,
+      tailOutBars,
+    };
+  }
+  const legacy = parsePerformanceFromSeqset(json);
+  return legacy ? { kind: 'embedded', performance: legacy } : null;
 }
 
-export function parsePerformanceFromSeqset(json: string): Performance | null {
+function parsePerformanceFromSeqset(json: string): Performance | null {
   let data: PersistedPerformance;
   try {
     data = JSON.parse(json) as PersistedPerformance;
@@ -692,6 +808,9 @@ export function parsePerformanceFromSeqset(json: string): Performance | null {
   return {
     name: typeof data.name === 'string' ? data.name : undefined,
     songs,
+    // Embedded songs have no disk identity — saving the set extracts them
+    // to .seq files and fills these in.
+    songPaths: Array.from({ length: PERFORMANCE_SLOT_COUNT }, () => null),
     activeSong,
     pendingSong: null,
     tailOutBarsRemaining: 0,
@@ -870,6 +989,16 @@ export function importProject(json: string): boolean {
     composition: hydrateComposition(data.composition, tracks, banks),
     arrangement: hydrateArrangement(data.arrangement),
     pendingArrangementBank: null,
+    // Detach the set linkage: a standalone .seq replaces the live state, and
+    // a still-active song slot would fold the imported project over that
+    // unrelated slot on the next set export / song switch (see
+    // songsWithLiveActiveSong + loadSong's outgoing snapSong).
+    performance: {
+      ...useSequencerStore.getState().performance,
+      activeSong: null,
+      pendingSong: null,
+      tailOutBarsRemaining: 0,
+    },
   });
   // Re-seed the chord context so followers (root-follow / chord-tone tracks)
   // have a sensible starting harmony before the chord master plays its first

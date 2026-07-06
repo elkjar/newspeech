@@ -19,7 +19,14 @@ export function useLFOValue(
 
   const [v, setV] = useState(baseValue);
 
+  // Only run the RAF loop while at least one LFO is actually routed here.
+  // Most instances (~56 knobs on screen) are unrouted, and a never-idle loop
+  // per hook instance kept the main thread busy for nothing — with no routing
+  // the value IS the base, returned directly below without any loop.
+  const hasRouted = routed.length > 0;
+
   useEffect(() => {
+    if (!hasRouted) return;
     let raf = 0;
     const tick = () => {
       const list = routedRef.current;
@@ -50,7 +57,7 @@ export function useLFOValue(
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [hasRouted]);
 
-  return v;
+  return hasRouted ? v : baseValue;
 }

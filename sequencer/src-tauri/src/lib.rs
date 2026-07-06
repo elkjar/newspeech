@@ -332,7 +332,6 @@ pub fn run() {
     .manage(midi::MidiRegistry::default())
     .manage(midi::ClockState::default())
     .manage(projectfs::PendingOpenFiles::default())
-    .manage(projectfs::DocDirty::default())
     .invoke_handler(tauri::generate_handler![
       projectfs::save_text_file,
       projectfs::read_text_file,
@@ -340,7 +339,6 @@ pub fn run() {
       projectfs::reveal_in_finder,
       projectfs::drag_pasteboard_paths,
       projectfs::take_pending_open_files,
-      projectfs::set_doc_dirty,
       projectfs::quit_app,
       midi::midi_list_ports,
       midi::midi_subscribe_input,
@@ -475,16 +473,15 @@ pub fn run() {
         }
       }
 
-      // Cmd+Q (or last-window close) with unsaved changes: hold the exit and
-      // ask the frontend to run the save prompt. `code` is Some(_) only for
-      // programmatic exits — i.e. quit_app after the user has decided — so
-      // those pass straight through; user-initiated exits carry None.
+      // Cmd+Q (or last-window close): hold user-initiated exits (code None)
+      // and ask the frontend, which owns dirty state and can compare
+      // synchronously — a Rust-side mirror was always one debounce behind,
+      // letting an edit-then-instant-Cmd+Q slip past the prompt. Gated on
+      // the main webview still existing: programmatic exits (quit_app after
+      // the user decided) carry Some(_) and pass through, and teardown after
+      // the main window was destroyed has nobody left to answer.
       if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
-        let dirty = app_handle
-          .state::<projectfs::DocDirty>()
-          .0
-          .load(std::sync::atomic::Ordering::Relaxed);
-        if code.is_none() && dirty {
+        if code.is_none() && app_handle.get_webview_window("main").is_some() {
           use tauri::Emitter;
           api.prevent_exit();
           if let Err(e) = app_handle.emit("quit-requested", ()) {

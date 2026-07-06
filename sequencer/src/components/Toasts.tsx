@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore, type Toast as ToastEntry } from '../state/store';
 
-const NATIVE = typeof (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== 'undefined';
+const NATIVE = isTauri();
 const AUTO_DISMISS_MS = 5000;
 
 function revealPathInFinder(path: string): void {

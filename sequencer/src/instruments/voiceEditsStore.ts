@@ -400,7 +400,16 @@ interface VoiceEditsState {
   resetVoiceEdit: (voiceId: string) => void;
 }
 
-function persist(map: Record<string, VoiceEdit>): void {
+// Persistence is DEBOUNCED (trailing edge): setVoiceEdit fires per pointermove
+// while dragging an editor knob, and a full-map JSON.stringify + synchronous
+// localStorage write per frame was measurable jank. In-memory state stays
+// synchronous; the write lands ~250ms after the last edit, with a beforeunload
+// flush so a quit right after a drag can't lose the edit.
+const PERSIST_DEBOUNCE_MS = 250;
+let persistTimer: number | null = null;
+let pendingMap: Record<string, VoiceEdit> | null = null;
+
+function persistNow(map: Record<string, VoiceEdit>): void {
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(LS_VOICE_EDITS, JSON.stringify(map));
@@ -408,6 +417,36 @@ function persist(map: Record<string, VoiceEdit>): void {
   } catch {
     /* best-effort */
   }
+}
+
+function flushPersist(): void {
+  if (persistTimer !== null) {
+    window.clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  if (pendingMap !== null) {
+    persistNow(pendingMap);
+    pendingMap = null;
+  }
+}
+
+function persist(map: Record<string, VoiceEdit>): void {
+  pendingMap = map;
+  if (persistTimer !== null) window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(flushPersist, PERSIST_DEBOUNCE_MS);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushPersist);
+}
+
+// HMR: flush any pending write and drop the module-scope listener so reloads
+// don't stack handlers (zustand/HMR subscriber convention elsewhere in the app).
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    flushPersist();
+    window.removeEventListener('beforeunload', flushPersist);
+  });
 }
 
 function load(): Record<string, VoiceEdit> {

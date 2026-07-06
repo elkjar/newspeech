@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { useSequencerStore, MAX_STEPS, type EditMode } from '../state/store';
 
 function effectiveMode(
@@ -62,7 +62,10 @@ const RATCHET_DRAG_PX_PER_UNIT = 14;
 const TIMING_DRAG_PX_PER_UNIT = 100;
 const GATE_DRAG_PX_PER_UNIT = 60;
 
-export function StepButton({
+// memo: all props are scalars (no callbacks), so the shallow compare is exact.
+// Without it, every step advance re-rendered every visible row's full step
+// subtree; now only the cells whose isCurrent/values changed reconcile.
+export const StepButton = memo(function StepButton({
   trackId,
   index,
   on,
@@ -377,4 +380,4 @@ export function StepButton({
       )}
     </button>
   );
-}
+});

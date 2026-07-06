@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Knob } from './Knob';
 import { type LFODestKnobTrack } from '../audio/lfo';
 import { useLFOValue } from '../hooks/useLFOValue';
@@ -83,7 +84,10 @@ function formatKnobValue(knob: LFODestKnobTrack, value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-export function TrackKnob({
+// memo: `track` keeps its identity unless THIS track's data changes (store
+// setters only re-create the edited row), and the rest are scalars — so the
+// row's 6 knobs skip reconcile on playhead/globalStep-driven Track re-renders.
+export const TrackKnob = memo(function TrackKnob({
   track,
   knob,
   trackIndex,
@@ -151,4 +155,4 @@ export function TrackKnob({
       bipolar={knob === 'pan' || knob === 'gain'}
     />
   );
-}
+});

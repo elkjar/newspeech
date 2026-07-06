@@ -1,12 +1,9 @@
-// Native audio engine bridge — Tauri-only.
-//
-// Phase 0 surface: device enumeration, open/close, per-channel test tone.
-// Sample voices, synths, FX, and the scheduler land in later phases; this
-// file grows alongside the Rust audio module. The Web Audio engine
-// (audioContext.ts and friends) remains the entirety of the web build —
-// nothing here touches it.
+// Native audio engine bridge — Tauri-only. The invoke surface over the Rust
+// cpal audio module: device open, sample load/trigger, per-track DSP, FX bus,
+// master chain, recording. This is the app's ONLY audio path (the Web Audio
+// engine was removed 2026-07-05); it grows alongside src-tauri/src/audio.rs.
 
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 
 export interface NativeDeviceInfo {
   name: string;
@@ -74,10 +71,6 @@ function normalizeOpened(o: RawOpenedInfo): NativeOpenedInfo {
     sampleRate: o.sample_rate,
     bufferSize: o.buffer_size,
   };
-}
-
-export function isNativeAudioAvailable(): boolean {
-  return isTauri();
 }
 
 export async function listOutputDevices(): Promise<NativeDeviceInfo[]> {
@@ -228,10 +221,6 @@ export async function initNativeAudio(): Promise<NativeOpenedInfo | null> {
     console.warn('[nativeAudio] open failed:', err);
     return null;
   }
-}
-
-export async function closeOutputDevice(): Promise<void> {
-  await invoke<void>('audio_close_device');
 }
 
 export async function getAudioStatus(): Promise<NativeAudioStatus> {
@@ -523,24 +512,6 @@ export async function repitchNote(noteId: number, ratio: number): Promise<void> 
   });
 }
 
-// Per-track filter params (cutoff normalized 0..1 over the same log
-// curve as `cutoffNormToHz`, resonance 0..1). Phase 6: cutoff travels
-// as norm so the Rust LFO compute can modulate in the same space as
-// `modulated()` does for the web build. Voices already playing pick
-// up changes within one audio block — the audio thread reads the
-// underlying atomics each frame.
-export async function setTrackFilter(
-  trackId: string,
-  cutoffNorm: number,
-  resonance: number,
-): Promise<void> {
-  await invoke<void>('audio_set_track_filter', {
-    trackId,
-    cutoffNorm,
-    resonance,
-  });
-}
-
 // Batched track DSP updates — one IPC round-trip carrying many tracks.
 // Used by App.tsx's RAF push to send raw store bases to Rust whenever
 // they change. Phase 6 moved the LFO compute Rust-side, so this no
@@ -792,11 +763,6 @@ export async function stopRecordingCombined(): Promise<void> {
   await invoke<void>('audio_stop_recording_combined');
 }
 
-export async function isRecordingCombined(): Promise<boolean> {
-  return await invoke<boolean>('audio_is_recording_combined');
-}
-
-
 // Full-stems recording. One sample-locked take → master (post-master mix),
 // fx (mangler bus), reverb + delay (wet returns), and one dry WAV per track.
 // All files land in `stemDir`. `trackIds` / `trackPaths` are parallel arrays
@@ -825,10 +791,6 @@ export async function startRecordingStems(opts: {
 
 export async function stopRecordingStems(): Promise<void> {
   await invoke<void>('audio_stop_recording_stems');
-}
-
-export async function isRecordingStems(): Promise<boolean> {
-  return await invoke<boolean>('audio_is_recording_stems');
 }
 
 // Tape (full bed + grains). `stretch1`/`stretch2` are actual playback
@@ -892,10 +854,6 @@ const CUTOFF_RATIO = CUTOFF_MAX_HZ / CUTOFF_MIN_HZ;
 export function cutoffNormToHz(norm: number): number {
   const clamped = Math.max(0, Math.min(1, norm));
   return CUTOFF_MIN_HZ * Math.pow(CUTOFF_RATIO, clamped);
-}
-
-export async function stopAllVoices(): Promise<void> {
-  await invoke<void>('audio_stop_all');
 }
 
 // Hard panic: stop every voice AND clear the reverb + delay buffers so a

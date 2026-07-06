@@ -10,8 +10,24 @@ import {
 import { scheduler } from '../audio/scheduler';
 import { fadeTextures } from '../audio/nativeEngine';
 import { endArrangementPlayback } from '../audio/transport';
-import { RECIPE_DWELL } from './generator';
 import { targetEntropy, phaseAt } from './shape';
+
+// Dwell ranges (bars) for recipe-tagged banks. The generator that authored
+// these tags was removed 2026-07-06 (generate UI unused in practice), but
+// slots in existing .seq files still carry `recipe`, so the dwell feel of
+// those banks is preserved here.
+const RECIPE_DWELL: Record<string, { min: number; max: number }> = {
+  'compose-ambient': { min: 6, max: 12 },
+  'compose-sparse': { min: 4, max: 8 },
+  'compose-melodic': { min: 4, max: 8 },
+  'compose-dance': { min: 4, max: 8 },
+  'compose-driving': { min: 4, max: 8 },
+  'compose-halftime': { min: 3, max: 6 },
+  'compose-poly': { min: 4, max: 8 },
+  'compose-drums': { min: 1, max: 2 },
+  'compose-build': { min: 1, max: 2 },
+  'compose-hits': { min: 3, max: 6 },
+};
 
 // How long outgoing texture voices ring down across a song transition —
 // matches transport.ts's stop fade so the gesture is consistent. The

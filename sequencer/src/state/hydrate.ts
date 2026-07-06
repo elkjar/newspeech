@@ -221,6 +221,12 @@ function hydrateOctave(saved: unknown): number | null {
   return Math.max(-4, Math.min(4, Math.round(saved)));
 }
 
+function hydrateArpConfig(saved: unknown): { on: boolean } | undefined {
+  if (!saved || typeof saved !== 'object') return undefined;
+  const on = (saved as { on?: unknown }).on;
+  return typeof on === 'boolean' ? { on } : undefined;
+}
+
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -305,6 +311,7 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
       hydratePitchInterp((saved as { pitchInterp?: unknown }).pitchInterp) ?? 'semitones',
     octave: hydrateOctave((saved as { octave?: unknown }).octave) ?? 0,
     monophonic: typeof saved.monophonic === 'boolean' ? saved.monophonic : false,
+    arpConfig: hydrateArpConfig((saved as { arpConfig?: unknown }).arpConfig),
     output: hydrateTrackOutput((saved as { output?: unknown }).output),
   };
 }

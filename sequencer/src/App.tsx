@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { PlayButton, RecordButton, CountInButton, MetronomeButton, MultiButton, TransportControls, InitButton, SongFileButtons, SongTitleInput, InstrumentDirtyBadge, loadProjectFromText, saveProject, loadProjectFromPicker } from './components/Transport';
 import { saveAllVoiceEdits } from './instruments/saveInstrument';
 import { unsavedVoiceLabels } from './instruments/voiceEditsStore';
-import { adoptLoadedFile, installDocumentTracking } from './state/document';
+import {
+  adoptLoadedFile,
+  computeDocDirtyNow,
+  installDocumentTracking,
+} from './state/document';
+import { installSongDocBinding } from './state/songFileSync';
 import { listen } from '@tauri-apps/api/event';
 // Static import (not dynamic) — a dynamic import of a not-yet-optimized dep
 // makes vite dev re-optimize and force-reload the page MID-BOOT, which boots
@@ -17,7 +22,6 @@ import { MacroStrip } from './components/MacroStrip';
 import { Toasts } from './components/Toasts';
 import { BankPad } from './components/BankPad';
 import { ScenePad } from './components/ScenePad';
-import { GhostPanel } from './components/GhostPanel';
 import {
   useSequencerStore,
   type EditMode,
@@ -25,12 +29,7 @@ import {
   type TrackOutput,
 } from './state/store';
 import { scheduler } from './audio/scheduler';
-import {
-  emitClockForStep,
-  setClockBpm,
-  clockEngineStart,
-  clockEngineStop,
-} from './audio/midiClock';
+import { setClockBpm, clockEngineStart, clockEngineStop } from './audio/midiClock';
 import { resetTracker } from './audio/clockFollow';
 import { stopPlaybackLocal, prepareForPlay } from './audio/transport';
 import { samplePlayer } from './audio/samplePlayer';
@@ -142,7 +141,6 @@ import {
   beforeBarCommit as ghostBeforeBarCommit,
   getGhostLeadMutation,
 } from './ghost/ghost';
-import { autoSeedBanks } from './ghost/generator';
 import { SongView } from './components/SongView';
 import { computeBankEntropy } from './ghost/entropy';
 import { phaseAt, targetEntropy as computeTargetEntropy } from './ghost/shape';
@@ -276,12 +274,9 @@ export function App() {
   const [closeIntent, setCloseIntent] = useState<null | 'window' | 'quit'>(null);
   const instrumentGate = useSequencerStore((s) => s.instrumentGate);
 
-  // Leave for real: clear the Rust-side dirty mirror first so the close/quit
-  // isn't re-intercepted, then resume whichever path was held.
+  // Leave for real — resume whichever path was held. quit_app exits with
+  // code Some(0), which passes straight through the Rust exit hold.
   const proceedClose = async (intent: 'window' | 'quit') => {
-    try {
-      await invoke('set_doc_dirty', { dirty: false });
-    } catch {}
     if (intent === 'quit') {
       try {
         await invoke('quit_app');
@@ -310,14 +305,6 @@ export function App() {
       // sample library is the source of truth and they start from scratch.
       // Tempo / scale / master FX stay (good starting tone).
       useSequencerStore.getState().initProject();
-    } else {
-      // Web: auto-seed banks on every load — wipes scene banks and fills
-      // slots 0-9 with one of each recipe in song-arc order. User's
-      // track voices (band identity) persist via persist.ts and seed
-      // banks inherit those via activeVoice() in compose moves. Default
-      // preset's authored tracks remain so the demo is immediately
-      // playable.
-      autoSeedBanks();
     }
     // Load any saved user mappings FIRST so the active mapping is in
     // place before MIDI input starts firing.
@@ -401,6 +388,9 @@ export function App() {
   // style: "Sequence — name — edited".
   useEffect(() => {
     installDocumentTracking();
+    // Rebind the document to the incoming slot's .seq on performance song
+    // swaps (manual, tail-out commit, ghost set-advance).
+    installSongDocBinding();
     if (!NATIVE) return;
     const applyTitle = async (s: {
       docPath: string | null;
@@ -433,29 +423,27 @@ export function App() {
 
   // Unsaved-changes gate on both close paths. Window close (red button /
   // Cmd+W) is intercepted here via onCloseRequested; app quit (Cmd+Q) is
-  // intercepted in Rust (RunEvent::ExitRequested reads the DocDirty mirror,
-  // holds the exit, pings quit-requested). Either path opens the same
-  // prompt; proceeding clears the mirror first so the real close/quit isn't
-  // re-intercepted.
+  // held in Rust (RunEvent::ExitRequested prevent_exit + quit-requested
+  // ping) and answered here — both run the synchronous dirty compare, so
+  // an edit made inside the 400ms debounce window still hits the prompt.
   useEffect(() => {
     if (!NATIVE) return;
-    void invoke('set_doc_dirty', {
-      dirty: useSequencerStore.getState().docDirty,
-    });
-    const unsubDirty = useSequencerStore.subscribe((state, prev) => {
-      if (state.docDirty !== prev.docDirty) {
-        void invoke('set_doc_dirty', { dirty: state.docDirty });
-      }
-    });
     const unlistenClose = getCurrentWindow().onCloseRequested((e) => {
-      if (useSequencerStore.getState().docDirty) {
+      if (computeDocDirtyNow()) {
         e.preventDefault();
         setCloseIntent('window');
       }
     });
-    const unlistenQuit = listen('quit-requested', () => setCloseIntent('quit'));
+    const unlistenQuit = listen('quit-requested', () => {
+      if (computeDocDirtyNow()) {
+        setCloseIntent('quit');
+      } else {
+        void invoke('quit_app').catch((err) =>
+          console.error('[quit] failed:', err),
+        );
+      }
+    });
     return () => {
-      unsubDirty();
       void unlistenClose.then((u) => u());
       void unlistenQuit.then((u) => u());
     };
@@ -1090,18 +1078,6 @@ export function App() {
       clockEngineStop(true);
     }
   }, [syncSource, midiClockOutPorts]);
-
-  // MIDI clock master: emit the 24-PPQN pulse stream from the scheduler's
-  // step callback, where we get each step's exact audio time + duration. A
-  // dedicated named subscriber keeps it independent of the main dispatcher and
-  // HMR-safe (re-registration evicts the prior one by key). The port + on/off
-  // is read live from the store inside emitClockForStep, so changing the
-  // clock-out target takes effect without a remount.
-  useEffect(() => {
-    return scheduler.onStep('app:midi-clock', (_step, when, stepDuration) => {
-      emitClockForStep(when, stepDuration);
-    });
-  }, []);
 
   // Periodic state snapshot for the stream window. 10Hz matches
   // GhostDebug's DensityTrace sample rate so Datafeed reads identically
@@ -2061,7 +2037,6 @@ export function App() {
               </span>
               <SongTitleInput />
               <SongFileButtons />
-              <InstrumentDirtyBadge />
               <button
                 type="button"
                 onClick={() => setSettingsOpen(true)}
@@ -2112,6 +2087,7 @@ export function App() {
                   </svg>
                 </button>
               )}
+              <InstrumentDirtyBadge />
             </div>
             <ScreenModeTabs />
             </div>
@@ -2224,7 +2200,6 @@ export function App() {
             </div>
             <div className="flex items-center gap-8 flex-wrap">
               <TransportControls />
-              <GhostPanel />
             </div>
           </div>
         </div>

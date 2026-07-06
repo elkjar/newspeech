@@ -99,10 +99,6 @@ export function getConnectedCount(): number {
   return surfaces.length;
 }
 
-export function isLaunchpadConnected(): boolean {
-  return surfaces.length > 0;
-}
-
 /** Input port names of the connected devices, in device-index order. */
 export function getConnectedInputPorts(): string[] {
   return surfaces.map((s) => s.inputPort);
@@ -292,11 +288,6 @@ export function bulkRedraw(device: number, desired: Uint8Array): void {
     surface.lastColors[slot] = v;
   }
   sendBytes(device, [...SYSEX_HEADER, SYSEX_CMD_LED, ...specs, ...SYSEX_FOOTER]);
-}
-
-export function clearAll(device: number): void {
-  if (!surfaces[device]) return;
-  bulkRedraw(device, new Uint8Array(SURFACE_SIZE));
 }
 
 // ---------- input parsing ----------

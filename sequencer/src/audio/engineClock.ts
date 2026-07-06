@@ -28,7 +28,6 @@ let anchorFrames = 0;
 let anchorPerfMs = performance.now();
 let seeded = false;
 let lastReturnedFrames = 0;
-let generation = 0;
 
 // Fraction of the measured error applied per event. Forward (we're
 // behind) corrections chase fast; backward corrections are treated as
@@ -53,7 +52,6 @@ export function feedEngineTime(frames: number, sampleRate: number): void {
     anchorPerfMs = nowMs;
     seeded = true;
     lastReturnedFrames = frames;
-    generation += 1;
     return;
   }
   const predicted = predictedFramesAt(nowMs);
@@ -64,7 +62,6 @@ export function feedEngineTime(frames: number, sampleRate: number): void {
     anchorFrames = frames;
     anchorPerfMs = nowMs;
     lastReturnedFrames = frames;
-    generation += 1;
     return;
   }
   const alpha = err >= 0 ? CORRECT_FORWARD : CORRECT_BACKWARD;
@@ -103,14 +100,8 @@ export function engineTimeToPerfMs(engineSecs: number): number {
   return anchorPerfMs + ((engineSecs * sr - anchorFrames) / sr) * 1000;
 }
 
-// Bumps when the underlying stream (re)opens and the frame counter
-// resets. Consumers holding absolute times across the reset can use this
-// to invalidate them.
-export function engineClockGeneration(): number {
-  return generation;
-}
-
 let started = false;
+let timeUnlisten: (() => void) | null = null;
 
 // Subscribe to the ~30Hz audio:time events + take one immediate poll so
 // the clock is device-aligned before the first scheduled note. Idempotent;
@@ -125,7 +116,19 @@ export async function initEngineClock(): Promise<void> {
     // Device not open yet — the event stream seeds us once it is.
   }
   const { listen } = await import('@tauri-apps/api/event');
-  await listen<{ frames: number; sampleRate: number }>('audio:time', (e) => {
+  timeUnlisten = await listen<{ frames: number; sampleRate: number }>('audio:time', (e) => {
     feedEngineTime(e.payload.frames, e.payload.sampleRate);
+  });
+}
+
+// HMR cleanup — without this the old module instance's audio:time listener
+// leaks on reload (its unlisten handle was never stored), and each reload
+// stacks another feed into a dead extrapolator.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (timeUnlisten) {
+      timeUnlisten();
+      timeUnlisten = null;
+    }
   });
 }

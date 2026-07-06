@@ -283,15 +283,3 @@ export function deriveSampleVoices(): VoiceDef[] {
   return out;
 }
 
-// Voice IDs known to the registry. Used by hydrate.ts to validate `.seq`
-// references — replaces the previously hardcoded INTERNAL_VOICE_IDS set
-// (which fell out of sync; the ns1-* drums were never added to it).
-export function registeredVoiceIds(): Set<string> {
-  const out = new Set<string>();
-  for (const kit of kits.values()) {
-    for (const voiceId of Object.keys(kit.manifest.voices)) {
-      out.add(voiceId);
-    }
-  }
-  return out;
-}

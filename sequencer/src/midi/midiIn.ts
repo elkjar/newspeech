@@ -1,12 +1,11 @@
-// MIDI input — port enumeration + message parsing. Two backends:
-//   - Browser: navigator.requestMIDIAccess (Web MIDI API).
-//   - Tauri:   invoke into the midir-backed Rust bridge; messages arrive
-//              via the `midi://message` Tauri event. WKWebView doesn't
-//              expose Web MIDI so the in-app shell goes native.
-// Both paths funnel through the same `listener` callback so midiMap.ts
-// stays unchanged.
+// MIDI input — port enumeration + message parsing, Tauri-only: invoke into
+// the midir-backed Rust bridge; messages arrive via the `midi://message`
+// Tauri event (WKWebView doesn't expose Web MIDI). The old browser backend
+// (navigator.requestMIDIAccess) was removed 2026-07-06 — the app is
+// native-only. Everything funnels through the same `listener` callback so
+// midiMap.ts stays unchanged.
 
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 // `port` is the source device's display name. Carried on every message
@@ -26,9 +25,6 @@ export type MidiMessage =
   // `count` is the cumulative pulse count, `micros` the hardware timestamp.
   | { msg: 'clock-tick'; count: number; micros: number; port: string };
 
-const TAURI = isTauri();
-
-let access: MIDIAccess | null = null;
 let listener: ((msg: MidiMessage) => void) | null = null;
 let portListener: ((name: string) => void) | null = null;
 
@@ -79,16 +75,6 @@ function parseMessage(data: Uint8Array | number[], port: string): MidiMessage | 
     return { ch, msg: 'noteoff', num: data[1], port };
   }
   return null;
-}
-
-function wireInput(input: MIDIInput): void {
-  const port = input.name ?? '';
-  input.onmidimessage = (e) => {
-    const data = (e as MIDIMessageEvent).data;
-    if (!data) return;
-    const msg = parseMessage(data, port);
-    if (msg && listener) listener(msg);
-  };
 }
 
 interface MidiPorts {
@@ -179,42 +165,11 @@ export async function initMIDIIn(
 ): Promise<boolean> {
   listener = onMessage;
   portListener = onPortConnected ?? null;
-  if (TAURI) return initTauri();
-  const nav = navigator as Navigator & {
-    requestMIDIAccess?: (opts?: { sysex?: boolean }) => Promise<MIDIAccess>;
-  };
-  if (typeof nav.requestMIDIAccess !== 'function') return false;
-  try {
-    access = await nav.requestMIDIAccess({ sysex: false });
-  } catch {
-    return false;
-  }
-  for (const input of access.inputs.values()) {
-    wireInput(input);
-    if (portListener && input.name) portListener(input.name);
-  }
-  notifyInputsChanged();
-  access.onstatechange = (e) => {
-    const port = (e as MIDIConnectionEvent).port;
-    if (!port || port.type !== 'input') return;
-    if (port.state === 'connected') {
-      const input = port as MIDIInput;
-      wireInput(input);
-      if (portListener && input.name) portListener(input.name);
-    }
-    notifyInputsChanged();
-  };
-  return true;
+  return initTauri();
 }
 
 export function getConnectedInputNames(): string[] {
-  if (TAURI) return tauriInputNames.slice();
-  if (!access) return [];
-  const names: string[] = [];
-  for (const input of access.inputs.values()) {
-    if (input.name) names.push(input.name);
-  }
-  return names;
+  return tauriInputNames.slice();
 }
 
 // HMR cleanup — without this, the Tauri hot-plug polling setInterval gets

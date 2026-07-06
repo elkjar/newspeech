@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import {
   useSequencerStore,
   PERFORMANCE_SLOT_COUNT,
@@ -9,17 +9,22 @@ import {
 import {
   exportPerformance,
   filenameSlug,
-  parsePerformanceFromSeqset,
+  parseSeqset,
   parseSongFromSeq,
+  resolveRelativePath,
+  songToSeqText,
 } from '../state/persist';
+import { ensureWorkingSongSaved, switchToSong } from '../state/songFileSync';
 import { NOTE_NAMES } from '../audio/scale';
 
 // Performance dialog — modal authoring + live-trigger surface for the
 // outermost layer of the hierarchy (scene → composition/song →
 // performance). Songs are slotted here; clicking one during playback
 // queues a tail-out swap, while shift-click snaps the live state into
-// the slot. Save/load handles both .seq (single song; same shape as
-// the legacy project save) and .seqset (whole performance).
+// the slot (save-first gated — every slot is backed by a .seq on disk).
+// A .seqset persists REFERENCES to those files, so songs resolve fresh
+// from disk on set load; legacy embedded sets still parse and extract
+// their songs to files on the next save.
 
 type PerformanceDialogProps = {
   open: boolean;
@@ -44,9 +49,26 @@ function songNameFromFilename(filename: string): string {
   return base.replace(/\.(seq|seqcomp|json)$/i, '');
 }
 
+function dirOf(p: string): string {
+  const i = p.lastIndexOf('/');
+  return i <= 0 ? '/' : p.slice(0, i);
+}
+
+// Existence probe via the read command — no dedicated stat IPC, and at
+// most 8 small .seq reads behind an explicit save gesture.
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await invoke<string>('read_text_file', { path });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function SongSlotCard({
   i,
   song,
+  path,
   isActive,
   isPending,
   isTailingOut,
@@ -65,6 +87,7 @@ function SongSlotCard({
 }: {
   i: number;
   song: Song | null;
+  path: string | null;
   isActive: boolean;
   isPending: boolean;
   isTailingOut: boolean;
@@ -93,6 +116,9 @@ function SongSlotCard({
     onClick();
   };
   const filled = !!song;
+  // A reference whose .seq didn't resolve at set load — the slot keeps the
+  // path (it round-trips on the next save) but can't play.
+  const missing = !song && !!path;
   const stateLabel = isActive
     ? isTailingOut
       ? 'ending…'
@@ -101,7 +127,9 @@ function SongSlotCard({
       ? 'queued'
       : filled
         ? 'loaded'
-        : 'empty';
+        : missing
+          ? 'missing'
+          : 'empty';
   return (
     <div
       role="button"
@@ -121,8 +149,10 @@ function SongSlotCard({
       }}
       title={
         filled
-          ? `click to load · shift-click to overwrite · cmd-click to clear · drag to reorder`
-          : `shift-click to snap current state into this slot`
+          ? `${path ?? ''}\nclick to load · shift-click to overwrite · cmd-click to clear · drag to reorder`.trim()
+          : missing
+            ? `${path} — file not found at set load · cmd-click to clear`
+            : `shift-click to snap current state into this slot`
       }
       style={{ opacity: isDragging ? 0.3 : 1 }}
       className={[
@@ -169,6 +199,11 @@ function SongSlotCard({
             {songSummary(song)}
           </div>
         )}
+        {missing && (
+          <div className="text-[9px] tracking-widest opacity-40 mt-0.5 normal-case truncate">
+            {path?.split('/').pop()}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -178,7 +213,7 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
   const performance = useSequencerStore((s) => s.performance);
   const playing = useSequencerStore((s) => s.playing);
   const snapSong = useSequencerStore((s) => s.snapSong);
-  const loadSong = useSequencerStore((s) => s.loadSong);
+  const setSongPath = useSequencerStore((s) => s.setSongPath);
   const clearSong = useSequencerStore((s) => s.clearSong);
   const moveSong = useSequencerStore((s) => s.moveSong);
   const importSong = useSequencerStore((s) => s.importSong);
@@ -189,8 +224,6 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
   const setPerformanceName = useSequencerStore((s) => s.setPerformanceName);
   const setSongName = useSequencerStore((s) => s.setSongName);
 
-  const songInputRef = useRef<HTMLInputElement>(null);
-  const seqsetInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
   // Drag-to-reorder state. dragSource is the slot the user picked up;
   // dragOverSlot is the card the cursor is currently hovering over with
@@ -221,133 +254,206 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
 
   const hasEmptySlot = performance.songs.some((s) => s === null);
 
+  // Snapping is save-first gated: the slot's identity IS the .seq on disk,
+  // so an unbound working song runs the save-as dialog before it can land.
+  const handleSnapIntoSlot = async (i: number) => {
+    const path = await ensureWorkingSongSaved();
+    if (!path) return;
+    snapSong(i);
+    setSongPath(i, path);
+  };
+
   const handleSnapIntoNextEmpty = () => {
     const idx = performance.songs.findIndex((s) => s === null);
     if (idx === -1) return;
-    snapSong(idx);
-  };
-
-  const handleImportSongText = (text: string, filename?: string) => {
-    setImportError(null);
-    const song = parseSongFromSeq(text);
-    if (!song) {
-      setImportError('could not parse this .seq file');
-      return;
-    }
-    // .seq files carry no title — use the filename (sans path + extension)
-    // as the song name so imported songs land labeled in the set. Respect
-    // an existing name if the parsed song somehow has one.
-    const named =
-      song.name || !filename
-        ? song
-        : { ...song, name: songNameFromFilename(filename) };
-    const slot = importSong(named);
-    if (slot === null) {
-      setImportError('all song slots are full — clear one first');
-    }
+    void handleSnapIntoSlot(idx);
   };
 
   const handleImportSongClick = async () => {
     if (!hasEmptySlot) return;
-    if (isTauri()) {
-      try {
-        const { open: pickFile } = await import('@tauri-apps/plugin-dialog');
-        const picked = await pickFile({
-          multiple: false,
-          filters: SONG_FILTER,
-        });
-        if (!picked || typeof picked !== 'string') return;
-        const text = await invoke<string>('read_text_file', { path: picked });
-        handleImportSongText(text, picked);
-      } catch (err) {
-        console.error('[performance] import song failed:', err);
-        setImportError('import failed — see console');
+    try {
+      const { open: pickFile } = await import('@tauri-apps/plugin-dialog');
+      const picked = await pickFile({
+        multiple: false,
+        filters: SONG_FILTER,
+      });
+      if (!picked || typeof picked !== 'string') return;
+      const text = await invoke<string>('read_text_file', { path: picked });
+      setImportError(null);
+      const song = parseSongFromSeq(text);
+      if (!song) {
+        setImportError('could not parse this .seq file');
+        return;
       }
-      return;
+      // .seq files may carry no title — use the filename (sans path +
+      // extension) so imported songs land labeled in the set. The picked
+      // path becomes the slot's reference.
+      const named = song.name
+        ? song
+        : { ...song, name: songNameFromFilename(picked) };
+      const slot = importSong(named, picked);
+      if (slot === null) {
+        setImportError('all song slots are full — clear one first');
+      }
+    } catch (err) {
+      console.error('[performance] import song failed:', err);
+      setImportError('import failed — see console');
     }
-    songInputRef.current?.click();
-  };
-
-  const handleSongFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    handleImportSongText(text, file.name);
-    e.target.value = '';
   };
 
   const handleSavePerformanceAsSeqset = async () => {
-    const code = exportPerformance();
-    const defaultName = `${filenameSlug(performance.name, 'newspeech-set')}.seqset`;
-    if (isTauri()) {
-      try {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        const { documentDir, join } = await import('@tauri-apps/api/path');
-        let defaultPath: string | undefined;
-        try {
-          defaultPath = await join(await documentDir(), defaultName);
-        } catch {
-          defaultPath = defaultName;
-        }
-        const picked = await save({ defaultPath, filters: SEQSET_FILTER });
-        if (!picked) return;
-        await invoke('save_text_file', { path: picked, contents: code });
-      } catch (err) {
-        console.error('[performance] save seqset failed:', err);
-      }
-      return;
-    }
-    const blob = new Blob([code], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = defaultName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
-  const handleLoadSeqsetText = (text: string) => {
     setImportError(null);
-    const next = parsePerformanceFromSeqset(text);
-    if (!next) {
-      setImportError('could not parse this .seqset file');
-      return;
+    const defaultName = `${filenameSlug(performance.name, 'newspeech-set')}.seqset`;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { documentDir, join } = await import('@tauri-apps/api/path');
+      let defaultPath: string | undefined;
+      try {
+        defaultPath = await join(await documentDir(), defaultName);
+      } catch {
+        defaultPath = defaultName;
+      }
+      // Location first — legacy embedded slots extract to .seq files
+      // BESIDE the set, so the folder has to be known before serializing.
+      const picked = await save({ defaultPath, filters: SEQSET_FILTER });
+      if (!picked) return;
+      // The active song IS the live working state — flush it to its .seq
+      // (save-as if unbound) so the set references what's audible now.
+      const st = useSequencerStore.getState();
+      if (
+        st.performance.activeSong !== null &&
+        st.performance.songs[st.performance.activeSong]
+      ) {
+        const songPath = await ensureWorkingSongSaved();
+        if (!songPath) return;
+        setSongPath(st.performance.activeSong, songPath);
+      }
+      // Extract path-less slots (embedded songs from a legacy .seqset, or
+      // pre-reference sessions) into real files — one save fully migrates.
+      const setDir = dirOf(picked);
+      const perf = useSequencerStore.getState().performance;
+      const extracted: string[] = [];
+      for (let i = 0; i < PERFORMANCE_SLOT_COUNT; i++) {
+        const song = perf.songs[i];
+        if (!song || perf.songPaths[i]) continue;
+        const base = filenameSlug(song.name, `song-${i + 1}`);
+        let path = `${setDir}/${base}.seq`;
+        for (let n = 2; (await fileExists(path)); n++) {
+          path = `${setDir}/${base}-${n}.seq`;
+        }
+        await invoke('save_text_file', { path, contents: songToSeqText(song) });
+        setSongPath(i, path);
+        extracted.push(path.split('/').pop() ?? path);
+      }
+      await invoke('save_text_file', {
+        path: picked,
+        contents: exportPerformance(picked),
+      });
+      useSequencerStore.getState().pushToast({
+        kind: 'success',
+        text: extracted.length
+          ? `set saved · extracted ${extracted.join(' · ')}`
+          : 'set saved',
+        revealPath: setDir,
+      });
+    } catch (err) {
+      console.error('[performance] save seqset failed:', err);
+      useSequencerStore.getState().pushToast({
+        kind: 'error',
+        text: `set save failed · ${String(err)}`,
+      });
     }
-    replacePerformance(next);
   };
 
   const handleLoadSeqsetClick = async () => {
-    if (isTauri()) {
-      try {
-        const { open: pickFile } = await import('@tauri-apps/plugin-dialog');
-        const picked = await pickFile({
-          multiple: false,
-          filters: SEQSET_FILTER,
-        });
-        if (!picked || typeof picked !== 'string') return;
-        const text = await invoke<string>('read_text_file', { path: picked });
-        handleLoadSeqsetText(text);
-      } catch (err) {
-        console.error('[performance] load seqset failed:', err);
-        setImportError('load failed — see console');
+    try {
+      const { open: pickFile } = await import('@tauri-apps/plugin-dialog');
+      const picked = await pickFile({
+        multiple: false,
+        filters: SEQSET_FILTER,
+      });
+      if (!picked || typeof picked !== 'string') return;
+      const text = await invoke<string>('read_text_file', { path: picked });
+      setImportError(null);
+      const parsed = parseSeqset(text);
+      if (!parsed) {
+        setImportError('could not parse this .seqset file');
+        return;
       }
-      return;
+      if (parsed.kind === 'embedded') {
+        // Legacy set — songs hydrate from the file itself; saving it in
+        // the new format extracts them to .seq files.
+        replacePerformance(parsed.performance);
+        return;
+      }
+      // Reference set: resolve every song fresh from disk, absolute path
+      // first, then relative to the set's folder (survives folder moves).
+      const setDir = dirOf(picked);
+      const songs: (Song | null)[] = Array.from(
+        { length: PERFORMANCE_SLOT_COUNT },
+        () => null,
+      );
+      const songPaths: (string | null)[] = Array.from(
+        { length: PERFORMANCE_SLOT_COUNT },
+        () => null,
+      );
+      const missing: string[] = [];
+      for (let i = 0; i < PERFORMANCE_SLOT_COUNT; i++) {
+        const ref = parsed.refs[i];
+        if (!ref) continue;
+        let resolvedPath = ref.path;
+        let songText: string | null = null;
+        try {
+          songText = await invoke<string>('read_text_file', { path: resolvedPath });
+        } catch {
+          if (ref.rel) {
+            const alt = resolveRelativePath(setDir, ref.rel);
+            try {
+              songText = await invoke<string>('read_text_file', { path: alt });
+              resolvedPath = alt;
+            } catch {
+              // stays missing
+            }
+          }
+        }
+        // Keep the reference either way — a temporarily-missing file (e.g.
+        // un-synced folder) must survive a load→save round trip.
+        songPaths[i] = resolvedPath;
+        if (songText === null) {
+          missing.push(ref.path.split('/').pop() ?? ref.path);
+          continue;
+        }
+        const song = parseSongFromSeq(songText);
+        if (!song) {
+          missing.push(ref.path.split('/').pop() ?? ref.path);
+          continue;
+        }
+        songs[i] = {
+          ...song,
+          name: ref.name ?? song.name ?? songNameFromFilename(resolvedPath),
+        };
+      }
+      replacePerformance({
+        name: parsed.name,
+        songs,
+        songPaths,
+        activeSong:
+          parsed.activeSong !== null && songs[parsed.activeSong]
+            ? parsed.activeSong
+            : null,
+        pendingSong: null,
+        tailOutBarsRemaining: 0,
+        tailOutBars: parsed.tailOutBars,
+      });
+      if (missing.length) {
+        setImportError(
+          `missing song file${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
+        );
+      }
+    } catch (err) {
+      console.error('[performance] load seqset failed:', err);
+      setImportError('load failed — see console');
     }
-    seqsetInputRef.current?.click();
-  };
-
-  const handleSeqsetFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    handleLoadSeqsetText(text);
-    e.target.value = '';
   };
 
   const isTailingOut =
@@ -388,14 +494,15 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
                 key={i}
                 i={i}
                 song={performance.songs[i]}
+                path={performance.songPaths[i]}
                 isActive={performance.activeSong === i}
                 isPending={performance.pendingSong === i}
                 isTailingOut={performance.pendingSong === i && isTailingOut}
                 isDragging={dragSource === i}
                 isDragOver={dragOverSlot === i && dragSource !== null && dragSource !== i}
                 draggable={filled}
-                onClick={() => loadSong(i)}
-                onShiftClick={() => snapSong(i)}
+                onClick={() => switchToSong(i)}
+                onShiftClick={() => void handleSnapIntoSlot(i)}
                 onCmdClick={() => clearSong(i)}
                 onRename={(name) => setSongName(i, name)}
                 onDragStart={(e) => {
@@ -533,20 +640,6 @@ export function PerformanceDialog({ open, onClose }: PerformanceDialogProps) {
           </button>
         </div>
 
-        <input
-          ref={songInputRef}
-          type="file"
-          accept=".seq,.seqcomp,.json,application/json"
-          className="hidden"
-          onChange={handleSongFileChange}
-        />
-        <input
-          ref={seqsetInputRef}
-          type="file"
-          accept=".seqset,.json,application/json"
-          className="hidden"
-          onChange={handleSeqsetFileChange}
-        />
       </div>
     </div>,
     document.body,

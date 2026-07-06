@@ -80,8 +80,9 @@ export function getFollowedBpm(): number | null {
   return locked ? lastPublishedBpm : null;
 }
 
-// Current pulse position within the beat (0..PPQN-1). Consumed by the phase
-// nudge to align the scheduler grid to the master's beat.
+// Current pulse position within the beat (0..PPQN-1). No caller yet — this is
+// the deliberate stub for the deferred phase-nudge step (align the scheduler
+// grid to the master's beat); it also keeps the pulseCounter tracking live.
 export function getClockPhase(): number {
   return pulseCounter;
 }
