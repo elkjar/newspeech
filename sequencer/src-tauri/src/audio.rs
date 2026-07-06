@@ -6963,123 +6963,122 @@ fn resolve_bundled_sample_path(
   Err(format!("bundled sample not found: {}", url))
 }
 
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub fn audio_trigger_sample(
-  path: String,
-  gain: Option<f32>,
-  pan: Option<f32>,
-  pitch: Option<f32>,
-  out_first: Option<u32>,
-  out_stereo: Option<bool>,
-  track_id: Option<String>,
-  delay_secs: Option<f32>,
-  // Absolute ENGINE_FRAMES deadline for this trigger — the jitter-free
-  // scheduling path (see engineClock.ts). Overrides delay_secs when set.
-  // f64 over IPC (JS numbers); frame counts stay far below 2^53.
-  target_frame: Option<f64>,
-  monophonic: Option<bool>,
-  // Manifest choke-group name (hats etc.) — a trigger carrying one chokes
-  // every in-flight voice tagged with the same group, across tracks.
-  // None/empty = no group. Hashed to a u32 before the audio thread.
-  choke_group: Option<String>,
-  // Section tag for splits routing. 0/None = no section (skipped from
-  // splits WAVs), 1 = drum, 2 = melodic, 3 = click (writes to BOTH
-  // splits so count-in is in either stem).
-  section: Option<u8>,
-  // Texture-role flag — texture voices fade out on transport stop.
-  is_texture: Option<bool>,
-  // ADSR envelope spec — all four fields must be present for the voice
-  // to apply one. None of these → flat-gain voice (drums, leads
-  // without envelope config). Times in seconds; sustain is 0..1.
-  envelope_attack: Option<f32>,
-  envelope_decay: Option<f32>,
-  envelope_sustain: Option<f32>,
-  envelope_release: Option<f32>,
-  envelope_hold: Option<f32>,
-  // Voice handle for targeted release (live-input monitoring). Omitted /
-  // 0 for every sequencer trigger.
-  note_id: Option<u64>,
-  // Per-instrument sample window + loop (editor A3). start/end are 0..1
-  // fractions of the sample; loop_mode is 0 off · 1 fwd · 2 bwd · 3
-  // pingpong · 4 rev one-shot. None/defaults (0 / 1 / 0) = full-length one-shot.
-  start_frac: Option<f32>,
-  end_frac: Option<f32>,
-  loop_mode: Option<u8>,
-  // Per-instrument filter (editor B1). inst_filter_type 0 off · 1 lp · 2 hp
-  // · 3 bp; cutoff/resonance normalized 0..1. None/0 = bypass.
-  inst_filter_type: Option<u8>,
-  inst_cutoff: Option<f32>,
-  inst_resonance: Option<f32>,
-  // Per-instrument cutoff LFO (editor B2). shape 0 revsaw · 1 saw · 2 tri · 3
-  // square · 4 random; rate in Hz (free-running); depth 0..1 bipolar. depth 0
-  // (or filter off) = no modulation.
-  lfo_shape: Option<u8>,
-  lfo_rate_hz: Option<f32>,
-  lfo_depth: Option<f32>,
-  // Generic modulator grid (editor B2 full grid). Each entry carries a fixed
-  // slot role + env-or-LFO params; omitted/empty = no extra modulation.
-  mods: Option<Vec<ModSpecIpc>>,
-  // Per-instrument granular (editor Phase C). gran_on=false/None → normal
-  // sample playback. grain length in ms; position 0..1 into the sample; shape
-  // 0 square · 1 tri · 2 gauss; direction 0 fwd · 1 bwd · 2 pingpong.
-  gran_on: Option<bool>,
-  gran_grain_ms: Option<f32>,
-  gran_position: Option<f32>,
-  gran_shape: Option<u8>,
-  gran_dir: Option<u8>,
-  gran_spray: Option<f32>,
-) -> Result<(), String> {
+// One trigger's full parameter set as a serde struct — shared by the
+// single-shot `audio_trigger_sample` and the batched
+// `audio_trigger_batch` (a tick's chord/arp tones in ONE invoke instead
+// of N JSON round-trips). Field semantics match the doc comments on
+// `MixerCommand::Trigger` / the JS `triggerSample` opts.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerSpec {
+  pub path: String,
+  pub gain: Option<f32>,
+  pub pan: Option<f32>,
+  pub pitch: Option<f32>,
+  pub out_first: Option<u32>,
+  pub out_stereo: Option<bool>,
+  pub track_id: Option<String>,
+  pub delay_secs: Option<f32>,
+  // Absolute ENGINE_FRAMES deadline — the jitter-free scheduling path.
+  // Overrides delay_secs when set. f64 over IPC (JS numbers).
+  pub target_frame: Option<f64>,
+  pub monophonic: Option<bool>,
+  pub choke_group: Option<String>,
+  pub section: Option<u8>,
+  pub is_texture: Option<bool>,
+  pub envelope_attack: Option<f32>,
+  pub envelope_decay: Option<f32>,
+  pub envelope_sustain: Option<f32>,
+  pub envelope_release: Option<f32>,
+  pub envelope_hold: Option<f32>,
+  pub note_id: Option<u64>,
+  pub start_frac: Option<f32>,
+  pub end_frac: Option<f32>,
+  pub loop_mode: Option<u8>,
+  pub inst_filter_type: Option<u8>,
+  pub inst_cutoff: Option<f32>,
+  pub inst_resonance: Option<f32>,
+  pub lfo_shape: Option<u8>,
+  pub lfo_rate_hz: Option<f32>,
+  pub lfo_depth: Option<f32>,
+  pub mods: Option<Vec<ModSpecIpc>>,
+  pub gran_on: Option<bool>,
+  pub gran_grain_ms: Option<f32>,
+  pub gran_position: Option<f32>,
+  pub gran_shape: Option<u8>,
+  pub gran_dir: Option<u8>,
+  pub gran_spray: Option<f32>,
+}
+
+// Resolve a TriggerSpec's defaults and queue it on the mixer ring.
+fn queue_trigger(spec: TriggerSpec) -> Result<(), String> {
   let envelope = match (
-    envelope_attack,
-    envelope_release,
-    envelope_hold,
+    spec.envelope_attack,
+    spec.envelope_release,
+    spec.envelope_hold,
   ) {
     (Some(attack), Some(release), Some(hold)) => Some(EnvelopeSpec {
       attack_secs: attack,
-      decay_secs: envelope_decay.unwrap_or(0.0),
-      sustain_level: envelope_sustain.unwrap_or(1.0),
+      decay_secs: spec.envelope_decay.unwrap_or(0.0),
+      sustain_level: spec.envelope_sustain.unwrap_or(1.0),
       release_secs: release,
       hold_secs: hold,
     }),
     _ => None,
   };
   engine().trigger_sample(
-    path,
-    gain.unwrap_or(1.0),
-    pan.unwrap_or(0.0),
-    pitch.unwrap_or(1.0),
-    out_first.unwrap_or(0),
-    out_stereo.unwrap_or(true),
-    track_id,
-    delay_secs.unwrap_or(0.0),
-    target_frame
+    spec.path,
+    spec.gain.unwrap_or(1.0),
+    spec.pan.unwrap_or(0.0),
+    spec.pitch.unwrap_or(1.0),
+    spec.out_first.unwrap_or(0),
+    spec.out_stereo.unwrap_or(true),
+    spec.track_id,
+    spec.delay_secs.unwrap_or(0.0),
+    spec
+      .target_frame
       .filter(|f| f.is_finite() && *f > 0.0)
       .map(|f| f.round() as u64)
       .unwrap_or(0),
-    monophonic.unwrap_or(false),
-    choke_group,
-    section.unwrap_or(0),
-    is_texture.unwrap_or(false),
+    spec.monophonic.unwrap_or(false),
+    spec.choke_group,
+    spec.section.unwrap_or(0),
+    spec.is_texture.unwrap_or(false),
     envelope,
-    note_id.unwrap_or(0),
-    start_frac.unwrap_or(0.0),
-    end_frac.unwrap_or(1.0),
-    loop_mode.unwrap_or(0),
-    inst_filter_type.unwrap_or(0),
-    inst_cutoff.unwrap_or(1.0),
-    inst_resonance.unwrap_or(0.0),
-    lfo_shape.unwrap_or(0),
-    lfo_rate_hz.unwrap_or(0.0),
-    lfo_depth.unwrap_or(0.0),
-    mods.unwrap_or_default(),
-    gran_on.unwrap_or(false),
-    gran_grain_ms.unwrap_or(80.0),
-    gran_position.unwrap_or(0.0),
-    gran_shape.unwrap_or(0),
-    gran_dir.unwrap_or(0),
-    gran_spray.unwrap_or(0.0),
+    spec.note_id.unwrap_or(0),
+    spec.start_frac.unwrap_or(0.0),
+    spec.end_frac.unwrap_or(1.0),
+    spec.loop_mode.unwrap_or(0),
+    spec.inst_filter_type.unwrap_or(0),
+    spec.inst_cutoff.unwrap_or(1.0),
+    spec.inst_resonance.unwrap_or(0.0),
+    spec.lfo_shape.unwrap_or(0),
+    spec.lfo_rate_hz.unwrap_or(0.0),
+    spec.lfo_depth.unwrap_or(0.0),
+    spec.mods.unwrap_or_default(),
+    spec.gran_on.unwrap_or(false),
+    spec.gran_grain_ms.unwrap_or(80.0),
+    spec.gran_position.unwrap_or(0.0),
+    spec.gran_shape.unwrap_or(0),
+    spec.gran_dir.unwrap_or(0),
+    spec.gran_spray.unwrap_or(0.0),
   )
+}
+
+#[tauri::command]
+pub fn audio_trigger_sample(spec: TriggerSpec) -> Result<(), String> {
+  queue_trigger(spec)
+}
+
+// Batched dispatch — a tick's simultaneous triggers (chord tones, arp
+// spread) in one IPC. Each spec still carries its own target_frame, so
+// batching changes serialization cost only, not timing semantics.
+#[tauri::command]
+pub fn audio_trigger_batch(triggers: Vec<TriggerSpec>) -> Result<(), String> {
+  for spec in triggers {
+    queue_trigger(spec)?;
+  }
+  Ok(())
 }
 
 #[tauri::command]

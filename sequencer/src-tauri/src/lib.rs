@@ -360,6 +360,7 @@ pub fn run() {
       audio::audio_load_sample_from_bytes,
       audio::audio_load_bundled_sample,
       audio::audio_trigger_sample,
+      audio::audio_trigger_batch,
       audio::audio_release_note,
       audio::audio_repitch_note,
       audio::audio_set_monitor_voice,

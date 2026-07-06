@@ -47,6 +47,8 @@ function sectionCode(section: 'drum' | 'melodic' | undefined): number {
 }
 import {
   triggerSample,
+  triggerBatch,
+  type TriggerOpts,
   releaseNote,
   repitchNote,
   setTrackFiltersBulk,
@@ -612,16 +614,17 @@ export function App() {
               const totalDuration = ev.stepDuration * ev.tieLength;
               const sub = totalDuration / n;
               {
-                // Arp — sample-accurate dispatch. Fire all tones
-                // IMMEDIATELY through the IPC; each carries its own
-                // absolute engine-clock target frame so the Rust audio
-                // callback queues them and emits at the exact sub-step
-                // sample. pickNativeSample is still called at
-                // scheduling time so the round-robin counter advances
-                // in arp order regardless of dispatch latency.
+                // Arp — sample-accurate dispatch. All tones go out in
+                // ONE batched IPC; each carries its own absolute
+                // engine-clock target frame so the Rust audio callback
+                // queues them and emits at the exact sub-step sample.
+                // pickNativeSample is still called at scheduling time
+                // so the round-robin counter advances in arp order
+                // regardless of dispatch latency.
                 const out = evTrack?.output;
                 const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
                 const trackGain = evTrack?.gain ?? 1;
+                const batch: Array<{ path: string; opts: TriggerOpts }> = [];
                 for (let i = 0; i < n; i++) {
                   const fireAt = ev.when + i * sub;
                   const interval = ev.voiceIntervals[i];
@@ -637,7 +640,7 @@ export function App() {
                   const arpEnv =
                     resolveVoiceEnvelope(ev.voice) ??
                     (arpLooping ? { attack: 0.003, release: 0.05 } : undefined);
-                  void triggerSample(pick.path, {
+                  batch.push({ path: pick.path, opts: {
                     gain: ev.velocity * pick.voiceGain * trackGain,
                     pan,
                     pitch: pick.pitch,
@@ -669,8 +672,9 @@ export function App() {
                     lfoDepth: pick.lfoDepth,
                     mods: pick.mods,
                     granular: pick.granular,
-                  });
+                  } });
                 }
+                void triggerBatch(batch);
               }
             } else {
               // Multi-tone triggers fire one native voice per interval —
@@ -721,6 +725,7 @@ export function App() {
               // would have tone 2 ramp out tone 1 of its own chord. The web
               // path chokes once per trigger event; this mirrors that.
               let chokeApplied = false;
+              const batch: Array<{ path: string; opts: TriggerOpts }> = [];
               for (const interval of intervals) {
                 const targetMidi =
                   ev.midi !== undefined ? ev.midi + interval : undefined;
@@ -730,7 +735,7 @@ export function App() {
                   reVoiceable && targetMidi !== undefined
                     ? allocRevoiceNoteId()
                     : undefined;
-                void triggerSample(pick.path, {
+                batch.push({ path: pick.path, opts: {
                   gain: ev.velocity * pick.voiceGain * trackGain,
                   pan,
                   pitch: pick.pitch,
@@ -766,12 +771,15 @@ export function App() {
                   lfoDepth: pick.lfoDepth,
                   mods: pick.mods,
                   granular: pick.granular,
-                });
+                } });
                 if (pick.chokeGroup) chokeApplied = true;
                 if (noteId !== undefined && targetMidi !== undefined) {
                   tones.push({ noteId, midi: targetMidi });
                 }
               }
+              // One IPC for the whole chord — Rust queues each tone on
+              // the same absolute target frame.
+              void triggerBatch(batch);
               if (reVoiceable && ev.revoice && tones.length > 0) {
                 registerChord({
                   trackId: ev.trackId,

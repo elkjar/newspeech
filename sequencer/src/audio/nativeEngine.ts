@@ -306,9 +306,7 @@ export async function loadBundledSample(
   return normalizeSampleLoad(raw);
 }
 
-export async function triggerSample(
-  path: string,
-  opts: {
+export interface TriggerOpts {
     gain?: number;
     pan?: number;
     pitch?: number;
@@ -408,9 +406,12 @@ export async function triggerSample(
       direction: number;
       spray: number;
     };
-  } = {},
-): Promise<void> {
-  await invoke<void>('audio_trigger_sample', {
+}
+
+// Flatten (path, opts) into the Rust TriggerSpec IPC shape — shared by
+// the single-shot and batched dispatch below.
+function buildTriggerSpec(path: string, opts: TriggerOpts): Record<string, unknown> {
+  return {
     path,
     gain: opts.gain ?? null,
     pan: opts.pan ?? null,
@@ -446,6 +447,28 @@ export async function triggerSample(
     granShape: opts.granular?.shape ?? null,
     granDir: opts.granular?.direction ?? null,
     granSpray: opts.granular?.spray ?? null,
+  };
+}
+
+export async function triggerSample(
+  path: string,
+  opts: TriggerOpts = {},
+): Promise<void> {
+  await invoke<void>('audio_trigger_sample', {
+    spec: buildTriggerSpec(path, opts),
+  });
+}
+
+// Batched dispatch — a tick's simultaneous triggers (chord tones, arp
+// spread) in one invoke instead of N JSON round-trips. Each entry still
+// carries its own targetFrame, so batching changes IPC cost only, not
+// timing.
+export async function triggerBatch(
+  items: Array<{ path: string; opts: TriggerOpts }>,
+): Promise<void> {
+  if (items.length === 0) return;
+  await invoke<void>('audio_trigger_batch', {
+    triggers: items.map((i) => buildTriggerSpec(i.path, i.opts)),
   });
 }
 
