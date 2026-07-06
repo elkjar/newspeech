@@ -250,6 +250,11 @@ export interface VoiceEdit {
   filterType?: FilterType; // per-instrument filter; default 'off'
   cutoff?: number; // filter cutoff, normalized 0..1; default 1 (fully open)
   resonance?: number; // filter resonance, normalized 0..1; default 0
+  saturation?: number; // per-voice drive 0..1; default 0 (bypass). Applied
+                       // post-filter in the engine (a cranked resonance
+                       // screams INTO the shaper — that's the point); same
+                       // tanh curve as the mangler-bus pre-drive. Maps to
+                       // the .pti `overdrive` (0-100) on export.
   reverbSend?: number; // additive send to the global reverb return, 0..1; default 0
                        // (Volume/Tune/Rev Send/Delay Send mirror the .pti instrument set)
   delaySend?: number; // send to the delay aux, 0..1; default 0. Stored, exported
@@ -530,6 +535,12 @@ export function voiceFilter(voiceId: string): {
     cutoff: e?.cutoff ?? 1,
     resonance: e?.resonance ?? 0,
   };
+}
+
+// Per-instrument saturation drive, resolved for the audio path. 0 = bypass.
+export function voiceSaturation(voiceId: string): number {
+  const e = resolvedVoiceEdit(voiceId);
+  return Math.max(0, Math.min(1, e?.saturation ?? 0));
 }
 
 // Cutoff LFO, resolved for the audio path. Only active when the filter itself

@@ -23,6 +23,7 @@ import {
   voiceTune,
   voiceFinetune,
   voiceReverbSend,
+  voiceSaturation,
   voiceDelaySend,
   voiceTrim,
   voiceFilter,
@@ -157,6 +158,11 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
     // of 0.8.2, and carried to the real Tracker's effects).
     inst.reverbSend = Math.max(0, Math.min(1, voiceReverbSend(voiceId)));
     inst.delaySend = Math.max(0, Math.min(1, voiceDelaySend(voiceId)));
+    // Per-instrument saturation → the .pti `overdrive` (0-100). Curves
+    // differ (ours is the mangler tanh, the Tracker's is its own drive) so
+    // this is character-approximate, but the exported instrument keeps its
+    // dirt rather than arriving clean.
+    inst.overdrive = Math.round(Math.max(0, Math.min(1, voiceSaturation(voiceId))) * 100);
     // Window fractions → frame points. The Tracker addresses points with a
     // 16-bit value, so samples longer than 65535 frames clamp here (the
     // device can only seek into the first 65535 frames).

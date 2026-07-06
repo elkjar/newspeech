@@ -164,6 +164,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const filterType = edit?.filterType ?? 'off';
   const cutoff = edit?.cutoff ?? 1;
   const resonance = edit?.resonance ?? 0;
+  const saturation = edit?.saturation ?? 0;
   const reverbSend = edit?.reverbSend ?? 0;
   const delaySend = edit?.delaySend ?? 0;
   const ampEnv = edit?.ampEnv ?? DEFAULT_AMP_ENV;
@@ -398,6 +399,21 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
               value={resonance}
               display={`${(resonance * 100).toFixed(0)}%`}
               onChange={(v) => setVoiceEdit(voiceId, { resonance: v })}
+            />
+          </div>
+        </LabeledStack>
+        <Divider />
+        {/* saturation — post-filter per-voice drive (tanh, crushes past 50%).
+            Sits after filter because the signal flows filter → drive: a
+            cranked resonance screams into the shaper. Exports to .pti
+            overdrive. */}
+        <LabeledStack label="drive">
+          <div className="flex items-start gap-4">
+            <TopKnob
+              label="drive"
+              value={saturation}
+              display={`${(saturation * 100).toFixed(0)}%`}
+              onChange={(v) => setVoiceEdit(voiceId, { saturation: v })}
             />
           </div>
         </LabeledStack>
