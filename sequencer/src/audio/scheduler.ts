@@ -8,7 +8,12 @@ import { engineNow } from './engineClock';
 export type StepCallback = (stepIndex: number, when: number, stepDuration: number) => void;
 
 const LOOKAHEAD_MS = 25;
-const SCHEDULE_AHEAD_S = 0.1;
+// Scheduling horizon. 250ms is safe now that trigger deadlines are
+// absolute engine frames — under the old relative-delay scheme a longer
+// horizon accumulated Web-vs-cpal clock drift across the window, so it
+// was pinned at 100ms. The wider horizon buys main-thread stall headroom
+// (a busy UI frame no longer risks starving the trigger queue).
+const SCHEDULE_AHEAD_S = 0.25;
 const HISTORY_S = 1;
 // If nextStepTime lands this far past the horizon, the engine clock
 // jumped backward under us (stream reopen reset the frame counter) —
