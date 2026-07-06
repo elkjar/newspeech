@@ -332,6 +332,7 @@ pub fn run() {
     .manage(midi::MidiRegistry::default())
     .manage(midi::ClockState::default())
     .manage(projectfs::PendingOpenFiles::default())
+    .manage(projectfs::DocDirty::default())
     .invoke_handler(tauri::generate_handler![
       projectfs::save_text_file,
       projectfs::read_text_file,
@@ -339,6 +340,8 @@ pub fn run() {
       projectfs::reveal_in_finder,
       projectfs::drag_pasteboard_paths,
       projectfs::take_pending_open_files,
+      projectfs::set_doc_dirty,
+      projectfs::quit_app,
       midi::midi_list_ports,
       midi::midi_subscribe_input,
       midi::midi_unsubscribe_input,
@@ -472,10 +475,30 @@ pub fn run() {
         }
       }
 
-      // On quit, flush an all-notes-off to every MIDI output before the process
-      // tears down the CoreMIDI client — otherwise notes left on external gear
-      // (e.g. the Mutant Brain) sustain forever. Same message as the panic button.
-      if let tauri::RunEvent::ExitRequested { .. } = event {
+      // Cmd+Q (or last-window close) with unsaved changes: hold the exit and
+      // ask the frontend to run the save prompt. `code` is Some(_) only for
+      // programmatic exits — i.e. quit_app after the user has decided — so
+      // those pass straight through; user-initiated exits carry None.
+      if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
+        let dirty = app_handle
+          .state::<projectfs::DocDirty>()
+          .0
+          .load(std::sync::atomic::Ordering::Relaxed);
+        if code.is_none() && dirty {
+          use tauri::Emitter;
+          api.prevent_exit();
+          if let Err(e) = app_handle.emit("quit-requested", ()) {
+            log::warn!("[quit-requested emit] {}", e);
+          }
+        }
+      }
+
+      // On ACTUAL exit (not merely requested — a held exit must not stop the
+      // clock mid-session), flush an all-notes-off to every MIDI output before
+      // the process tears down the CoreMIDI client — otherwise notes left on
+      // external gear (e.g. the Mutant Brain) sustain forever. Same message as
+      // the panic button.
+      if let tauri::RunEvent::Exit = &event {
         // Stop the clock master first (sends MIDI Stop + joins the thread) so
         // followers don't free-run after we're gone, then all-notes-off.
         let clock = app_handle.state::<midi::ClockState>();

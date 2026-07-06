@@ -7,6 +7,7 @@ import { listen } from '@tauri-apps/api/event';
 // the app twice and stacks two cpal streams (the zombie-stream noise mode).
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { PerformanceButton } from './components/PerformanceDialog';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TrackGrid } from './components/TrackGrid';
 import { ChannelScreen, ScreenModeTabs } from './components/ChannelScreen';
@@ -267,6 +268,34 @@ export function App() {
   // scanned + manifests register on boot, so the user never sees a half-loaded
   // library. Near-instant on native (pathsOnly — no decode pass).
   const [bootDone, setBootDone] = useState(false);
+  // Unsaved-changes prompt: which close path is being held while the user
+  // decides. 'window' = red button / Cmd+W (we preventDefault'ed the close);
+  // 'quit' = Cmd+Q (Rust prevent_exit'ed and pinged quit-requested).
+  const [closeIntent, setCloseIntent] = useState<null | 'window' | 'quit'>(null);
+
+  // Leave for real: clear the Rust-side dirty mirror first so the close/quit
+  // isn't re-intercepted, then resume whichever path was held.
+  const proceedClose = async (intent: 'window' | 'quit') => {
+    try {
+      await invoke('set_doc_dirty', { dirty: false });
+    } catch {}
+    if (intent === 'quit') {
+      try {
+        await invoke('quit_app');
+      } catch (err) {
+        console.error('[quit] failed:', err);
+      }
+    } else {
+      // destroy(), not close() — close() re-fires CloseRequested, and the
+      // store's docDirty is still true at this point, so it would just
+      // re-open the prompt. Needs core:window:allow-destroy in capabilities.
+      try {
+        await getCurrentWindow().destroy();
+      } catch (err) {
+        console.error('[close] destroy failed:', err);
+      }
+    }
+  };
 
   useEffect(() => {
     if (NATIVE) document.body.classList.add('tauri-native');
@@ -397,6 +426,36 @@ export function App() {
       }
     });
     return unsub;
+  }, []);
+
+  // Unsaved-changes gate on both close paths. Window close (red button /
+  // Cmd+W) is intercepted here via onCloseRequested; app quit (Cmd+Q) is
+  // intercepted in Rust (RunEvent::ExitRequested reads the DocDirty mirror,
+  // holds the exit, pings quit-requested). Either path opens the same
+  // prompt; proceeding clears the mirror first so the real close/quit isn't
+  // re-intercepted.
+  useEffect(() => {
+    if (!NATIVE) return;
+    void invoke('set_doc_dirty', {
+      dirty: useSequencerStore.getState().docDirty,
+    });
+    const unsubDirty = useSequencerStore.subscribe((state, prev) => {
+      if (state.docDirty !== prev.docDirty) {
+        void invoke('set_doc_dirty', { dirty: state.docDirty });
+      }
+    });
+    const unlistenClose = getCurrentWindow().onCloseRequested((e) => {
+      if (useSequencerStore.getState().docDirty) {
+        e.preventDefault();
+        setCloseIntent('window');
+      }
+    });
+    const unlistenQuit = listen('quit-requested', () => setCloseIntent('quit'));
+    return () => {
+      unsubDirty();
+      void unlistenClose.then((u) => u());
+      void unlistenQuit.then((u) => u());
+    };
   }, []);
 
   // Finder "open with Sequence" — .seq double-click / drop on the dock icon.
@@ -2058,6 +2117,37 @@ export function App() {
               the logo); this is the body. Scope + GhostDebug removed. */}
           <ChannelScreen />
           <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          {closeIntent && (
+            <ConfirmDialog
+              title="unsaved changes"
+              body={
+                <>
+                  “{useSequencerStore.getState().songTitle || 'untitled'}” has
+                  unsaved changes.
+                </>
+              }
+              confirmLabel={closeIntent === 'quit' ? 'save & quit' : 'save & close'}
+              secondaryLabel={
+                closeIntent === 'quit' ? 'quit without saving' : 'close without saving'
+              }
+              cancelLabel="cancel"
+              onConfirm={() => {
+                const intent = closeIntent;
+                void (async () => {
+                  await saveProject();
+                  // An unbound song runs save-as here, which can be
+                  // cancelled — only leave if the save actually landed.
+                  if (!useSequencerStore.getState().docDirty) {
+                    await proceedClose(intent);
+                  } else {
+                    setCloseIntent(null);
+                  }
+                })();
+              }}
+              onSecondary={() => void proceedClose(closeIntent)}
+              onCancel={() => setCloseIntent(null)}
+            />
+          )}
           <div className="flex justify-between items-center gap-8 -my-4">
             <div className="flex items-center gap-2">
               <InitButton />

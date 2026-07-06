@@ -5,9 +5,29 @@
 
 use std::fs;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager};
+
+// Mirror of the frontend's docDirty flag. RunEvent::ExitRequested must decide
+// synchronously whether to hold a Cmd+Q for the unsaved-changes prompt — it
+// can't await the webview — so the frontend pushes every dirty transition
+// here via set_doc_dirty.
+#[derive(Default)]
+pub struct DocDirty(pub AtomicBool);
+
+#[tauri::command]
+pub fn set_doc_dirty(dirty: bool, state: tauri::State<'_, DocDirty>) {
+    state.0.store(dirty, Ordering::Relaxed);
+}
+
+// The "actually quit" escape hatch for the unsaved-changes prompt: exit(0)
+// re-enters ExitRequested with code Some(0), which bypasses the dirty check.
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
 
 // Files macOS asked the app to open (.seq double-click / drop on the dock
 // icon), delivered as RunEvent::Opened in lib.rs — possibly BEFORE the
