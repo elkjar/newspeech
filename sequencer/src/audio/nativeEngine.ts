@@ -179,7 +179,16 @@ export async function applyOutputDeviceConfig(config: {
 // currently-attached devices, falls back to defaults where needed, opens
 // the device. Returns null on hard failure — failure is non-fatal; user
 // can still open via Settings.
+//
+// Guarded against double-invocation: React StrictMode runs the boot
+// effect twice in dev, and the resulting double device-open left TWO
+// live cpal streams both advancing the engine clock (tracks at 2x,
+// 2026-07-05). One boot open only; explicit re-opens go through
+// applyOutputDeviceConfig.
+let bootOpenStarted = false;
 export async function initNativeAudio(): Promise<NativeOpenedInfo | null> {
+  if (bootOpenStarted) return null;
+  bootOpenStarted = true;
   let devices: NativeDeviceInfo[];
   try {
     devices = await listOutputDevices();

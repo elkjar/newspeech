@@ -60,6 +60,15 @@ pub fn audio_output_level() -> f32 {
 
 static ENGINE_FRAMES: AtomicU64 = AtomicU64::new(0);
 
+// Stream generation — bumped once per build_stream. The callback only
+// advances ENGINE_FRAMES (and consumes clock-targeted state like the
+// glitch fire_at slot) when its own generation is still current, so a
+// zombie stream (macOS: a dropped cpal stream's callback can keep
+// running — observed live 2026-07-05 when the dev double-open left two
+// streams counting the clock at 2x) renders but never touches the
+// timebase.
+static ENGINE_STREAM_GEN: AtomicU32 = AtomicU32::new(0);
+
 pub fn engine_frames() -> u64 {
   ENGINE_FRAMES.load(Ordering::Relaxed)
 }
@@ -4799,9 +4808,15 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
       } => {
         // Drop any existing stream + producer before opening a new one.
         // A recording in flight finalizes first (worker signalled before
-        // its producer dies with the stream).
+        // its producer dies with the stream). Explicit pause() before the
+        // drop: on macOS a dropped cpal stream's callback has been
+        // observed to keep running (2026-07-05, two live streams after a
+        // double open) — stop the AudioUnit explicitly rather than
+        // trusting Drop alone.
         stop_recorders_for_stream_teardown();
-        _stream = None;
+        if let Some(s) = _stream.take() {
+          let _ = s.pause();
+        }
         if let Ok(mut prod) = state.trigger_producer.lock() {
           *prod = None;
         }
@@ -4847,7 +4862,9 @@ fn control_thread(rx: Receiver<EngineCommand>, state: Arc<SharedState>) {
       }
       EngineCommand::Close { reply } => {
         stop_recorders_for_stream_teardown();
-        _stream = None;
+        if let Some(s) = _stream.take() {
+          let _ = s.pause();
+        }
         if let Ok(mut prod) = state.trigger_producer.lock() {
           *prod = None;
         }
@@ -5074,6 +5091,10 @@ fn build_stream(
 
   let actual_name = device.name().unwrap_or_else(|_| "unknown".to_string());
 
+  // Claim the engine clock for this stream — see ENGINE_STREAM_GEN.
+  let stream_gen = ENGINE_STREAM_GEN.fetch_add(1, Ordering::AcqRel) + 1;
+  let mut logged_first_block = false;
+
   // Callback-local state — only the audio thread touches these.
   let mut phase: f32 = 0.0;
   let mut last_ch: usize = usize::MAX;
@@ -5203,9 +5224,24 @@ fn build_stream(
         // frame index of this block's first sample for the whole
         // callback (it advances at the end); absolute-target dispatch
         // below compares against [block_start_frame, block_end_frame).
+        let is_current_stream =
+          ENGINE_STREAM_GEN.load(Ordering::Relaxed) == stream_gen;
         let block_start_frame = ENGINE_FRAMES.load(Ordering::Relaxed);
         let block_frames_total = (buf.len() / n_ch.max(1)) as u64;
         let block_end_frame = block_start_frame + block_frames_total;
+        // One line per stream lifetime — this is what surfaces a zombie
+        // stream (a gen that isn't current, or more gens than opens).
+        if !logged_first_block {
+          logged_first_block = true;
+          log::info!(
+            "[engine-clock] stream gen {} first block: buf.len={} n_ch={} frames={} current={}",
+            stream_gen,
+            buf.len(),
+            n_ch,
+            block_frames_total,
+            is_current_stream
+          );
+        }
 
         // 0) Phase 6 — advance LFO phases and write modulated values to
         // each routed destination's `_eff` atomic. Reads the current
@@ -6489,14 +6525,19 @@ fn build_stream(
         if !fx_bypass_now && rev_frames > 0 {
           let g = glitch_state();
           let glitch_mix = f32::from_bits(g.mix.load(Ordering::Relaxed));
-          let mut fired = g.fire_requested.swap(false, Ordering::AcqRel);
+          // One-shot fire flags are consumed by the CURRENT stream only —
+          // a zombie callback stealing the swap would eat the fire.
+          let mut fired = is_current_stream
+            && g.fire_requested.swap(false, Ordering::AcqRel);
           // Beat-aligned fire: consume the absolute deadline once the
           // block containing it arrives. A stale/late deadline (behind
           // this block) still fires — better late by a block than never.
-          let fire_at = g.fire_at_frame.load(Ordering::Acquire);
-          if fire_at != GLITCH_FIRE_NONE && fire_at < block_end_frame {
-            g.fire_at_frame.store(GLITCH_FIRE_NONE, Ordering::Release);
-            fired = true;
+          if is_current_stream {
+            let fire_at = g.fire_at_frame.load(Ordering::Acquire);
+            if fire_at != GLITCH_FIRE_NONE && fire_at < block_end_frame {
+              g.fire_at_frame.store(GLITCH_FIRE_NONE, Ordering::Release);
+              fired = true;
+            }
           }
           glitch_machine.process_block(
             &mut fxbus_l[..rev_frames],
@@ -6761,8 +6802,11 @@ fn build_stream(
         AUDIO_OUTPUT_LEVEL.store(peak.to_bits(), Ordering::Relaxed);
 
         // Advance the engine clock LAST so ENGINE_FRAMES == this block's
-        // start frame for the entire callback body above.
-        ENGINE_FRAMES.store(block_end_frame, Ordering::Release);
+        // start frame for the entire callback body above. Current stream
+        // only — a zombie callback must never advance the timebase.
+        if is_current_stream {
+          ENGINE_FRAMES.store(block_end_frame, Ordering::Release);
+        }
       },
       move |err| {
         log::error!("[audio] stream error: {}", err);
