@@ -688,12 +688,20 @@ fn tape_state() -> &'static TapeState {
 //
 // `mix` is the wet level DURING a fire event (k-rate). Outside fires
 // the stage passes through unchanged regardless of mix.
-// `fire_requested` is the trigger flag; audio thread polls on each
-// block and clears once consumed.
+// `fire_requested` is the ASAP trigger flag (no target); audio thread
+// polls on each block and clears once consumed. `fire_at_frame` is the
+// beat-aligned path: an absolute ENGINE_FRAMES deadline (u64::MAX =
+// none) that fires in the block containing that frame — so a dice roll
+// scheduled a lookahead ahead of the audible beat lands ON the beat
+// instead of ~SCHEDULE_AHEAD early. One pending slot, last-write-wins
+// (fires come at beat rate, blocks are far denser).
+const GLITCH_FIRE_NONE: u64 = u64::MAX;
+
 pub struct GlitchState {
   mix_base: AtomicU32,
   mix: AtomicU32,
   fire_requested: AtomicBool,
+  fire_at_frame: AtomicU64,
 }
 
 impl GlitchState {
@@ -702,6 +710,7 @@ impl GlitchState {
       mix_base: AtomicU32::new(1.0_f32.to_bits()),
       mix: AtomicU32::new(1.0_f32.to_bits()),
       fire_requested: AtomicBool::new(false),
+      fire_at_frame: AtomicU64::new(GLITCH_FIRE_NONE),
     }
   }
   fn ipc_set(&self, mix: f32) {
@@ -3633,11 +3642,16 @@ enum MixerCommand {
     // per-sample envelope level; voice deactivates when release tail
     // completes. Seconds in the IPC; coefficients computed at dispatch.
     envelope: Option<EnvelopeSpec>,
+    // Absolute ENGINE_FRAMES position the voice should begin emitting
+    // at. 0 = no absolute target (fall back to delay_samples). This is
+    // the jitter-free path: the deadline doesn't depend on which block
+    // drains the command.
+    target_frame: u64,
     // Frames to wait after this trigger is drained from the queue
-    // before the voice begins emitting. 0 = fire immediately at start
-    // of the next audio block (existing behavior). >0 = queue in
-    // pending_triggers and fire sample-accurately when the deadline
-    // falls within an audio block.
+    // before the voice begins emitting — the RELATIVE fallback, used
+    // when target_frame == 0. Converted to an absolute target against
+    // ENGINE_FRAMES at drain time. 0 = fire immediately at the start
+    // of the next audio block.
     delay_samples: u32,
     // Voice handle (0 = untagged). Only live-input monitoring sets it.
     note_id: u64,
@@ -3724,9 +3738,10 @@ pub(crate) struct EnvelopeSpec {
 
 // Holds a voice-ready trigger that hasn't fired yet. Pan, rate, etc.
 // are pre-computed at queue time so the firing path only has to copy
-// into a slot. remaining_samples can go negative if the trigger
-// arrives "late" relative to its requested delay (IPC + block boundary
-// latency) — handled by clamping start_frame to 0.
+// into a slot. target_frame is an absolute ENGINE_FRAMES deadline; a
+// trigger that arrives "late" (target already behind the current
+// block, from IPC + block-boundary latency) fires at the top of the
+// block via saturating_sub.
 struct PendingTrigger {
   sample: Arc<SampleData>,
   rate: f64,
@@ -3742,7 +3757,7 @@ struct PendingTrigger {
   section: u8,
   is_texture: bool,
   envelope: Option<EnvelopeSpec>,
-  remaining_samples: i32,
+  target_frame: u64,
   note_id: u64,
   // Sample window in frames (resolved from the 0..1 fractions at queue
   // time) + loop mode (0 off · 1 fwd · 2 bwd · 3 pingpong · 4 rev one-shot).
@@ -4001,6 +4016,7 @@ impl AudioEngine {
     out_stereo: bool,
     track_id: Option<String>,
     delay_secs: f32,
+    target_frame: u64,
     monophonic: bool,
     choke_group: Option<String>,
     section: u8,
@@ -4074,6 +4090,7 @@ impl AudioEngine {
       section,
       is_texture,
       envelope,
+      target_frame,
       delay_samples,
       note_id,
       start_frac,
@@ -4184,10 +4201,17 @@ impl AudioEngine {
     glitch_state().ipc_set(mix.clamp(0.0, 1.0));
   }
 
-  pub fn glitch_fire(&self) {
-    glitch_state()
-      .fire_requested
-      .store(true, Ordering::Release);
+  // Fire the glitch stage. target_frame == 0 → ASAP (next block);
+  // otherwise an absolute ENGINE_FRAMES deadline — the stutter starts
+  // in the block containing that frame, aligning the fire with the
+  // audible beat the scheduler targeted.
+  pub fn glitch_fire(&self, target_frame: u64) {
+    let g = glitch_state();
+    if target_frame == 0 {
+      g.fire_requested.store(true, Ordering::Release);
+    } else {
+      g.fire_at_frame.store(target_frame, Ordering::Release);
+    }
   }
 
   // Master stage params (phase 7e-1: input gain + lo-cut index + hi-cut
@@ -4856,8 +4880,8 @@ fn fnv1a_32(bytes: &[u8]) -> u32 {
 
 // Drops a PendingTrigger into a voice slot — picks an inactive slot,
 // or steals one round-robin via steal_cursor if all are busy. Used by
-// both the immediate-fire path (delay_samples == 0) and the
-// sample-accurate dispatch path (delay reached this block).
+// both the immediate-fire path (no target frame) and the
+// sample-accurate dispatch path (target frame reached this block).
 // When the trigger is flagged monophonic, all OTHER currently-active
 // voices sharing the same `track_params` Arc get a soft ~20ms release
 // ramp before this trigger claims its slot.
@@ -5055,9 +5079,10 @@ fn build_stream(
   let mut last_ch: usize = usize::MAX;
   let mut voices: Vec<Voice> = vec![Voice::default(); VOICE_POOL_SIZE];
   let mut steal_cursor: usize = 0;
-  // Pending triggers — sample-accurate dispatch queue. Triggers with
-  // delay_samples > 0 land here at drain time; each block we scan and
-  // fire any whose remaining_samples falls inside this block.
+  // Pending triggers — sample-accurate dispatch queue. Triggers with a
+  // future deadline land here at drain time (absolute ENGINE_FRAMES
+  // target); each block we scan and fire any whose target_frame falls
+  // inside this block.
   //
   // Bounded at PENDING_TRIGGERS_CAP. Pre-allocated to that size so the
   // audio thread never reallocates; pushes past the cap drop with the
@@ -5403,10 +5428,12 @@ fn build_stream(
           }
         }
 
-        // 1) Drain the trigger queue. Triggers with delay_samples == 0
-        // claim a voice slot immediately at start_frame=0 (existing
-        // behavior). Triggers with delay_samples > 0 are pushed to
-        // pending_triggers for sample-accurate dispatch in step 2.
+        // 1) Drain the trigger queue. Immediate triggers (no absolute
+        // target, no delay) claim a voice slot at start_frame=0.
+        // Everything else resolves to an absolute ENGINE_FRAMES target
+        // (target_frame as-is, or block start + delay_samples for the
+        // relative fallback) and queues in pending_triggers for
+        // sample-accurate dispatch in step 1.5.
         while let Some(cmd) = consumer.try_pop() {
           match cmd {
             MixerCommand::Trigger {
@@ -5422,6 +5449,7 @@ fn build_stream(
               section,
               is_texture,
               envelope,
+              target_frame,
               delay_samples,
               note_id,
               start_frac,
@@ -5485,6 +5513,16 @@ fn build_stream(
               let gran_grain_frames = ((gran_grain_ms.max(1.0) as f64) * 0.001
                 * device_sr_f64)
                 .clamp(2.0, (fc - 2.0).max(2.0));
+              // Resolve the firing deadline to an absolute engine frame.
+              // 0 = immediate (claim below); relative delays anchor to
+              // THIS block's start so they keep their old semantics.
+              let resolved_target = if target_frame > 0 {
+                target_frame
+              } else if delay_samples > 0 {
+                block_start_frame + delay_samples as u64
+              } else {
+                0
+              };
               let pending = PendingTrigger {
                 sample,
                 rate,
@@ -5500,7 +5538,7 @@ fn build_stream(
                 section,
                 is_texture,
                 envelope,
-                remaining_samples: delay_samples as i32,
+                target_frame: resolved_target,
                 note_id,
                 play_start,
                 play_end,
@@ -5522,7 +5560,7 @@ fn build_stream(
                 gran_dir,
                 gran_spray: gran_spray.clamp(0.0, 1.0),
               };
-              if delay_samples == 0 {
+              if pending.target_frame == 0 {
                 claim_voice_slot(
                   &mut voices,
                   &mut steal_cursor,
@@ -5713,20 +5751,19 @@ fn build_stream(
         // 1.5) Sample-accurate dispatch — scan pending triggers and
         // fire any whose deadline falls inside the current block. Uses
         // swap_remove for O(1) deletion. Order changes but that's fine
-        // (each trigger carries its own delay; the JS scheduler already
-        // computed pan/rate/etc. at push time).
-        let block_frames = frames as i32;
+        // (each trigger carries its own absolute deadline; the JS
+        // scheduler already computed pan/rate/etc. at push time).
+        // Deadlines are absolute ENGINE_FRAMES targets — no per-block
+        // countdown, so fire times don't smear with block boundaries.
+        // A late trigger (target behind this block) fires at frame 0.
         let mut i = 0;
         while i < pending_triggers.len() {
-          if pending_triggers[i].remaining_samples < block_frames {
-            let mut p = pending_triggers.swap_remove(i);
-            let start_frame = p.remaining_samples.max(0) as usize;
-            // Re-zero remaining so the moved value doesn't leak weird
-            // state if anything in claim_voice_slot reads it.
-            p.remaining_samples = 0;
+          if pending_triggers[i].target_frame < block_end_frame {
+            let p = pending_triggers.swap_remove(i);
+            let start_frame =
+              p.target_frame.saturating_sub(block_start_frame) as usize;
             claim_voice_slot(&mut voices, &mut steal_cursor, p, start_frame, sr_f32);
           } else {
-            pending_triggers[i].remaining_samples -= block_frames;
             i += 1;
           }
         }
@@ -6452,7 +6489,15 @@ fn build_stream(
         if !fx_bypass_now && rev_frames > 0 {
           let g = glitch_state();
           let glitch_mix = f32::from_bits(g.mix.load(Ordering::Relaxed));
-          let fired = g.fire_requested.swap(false, Ordering::AcqRel);
+          let mut fired = g.fire_requested.swap(false, Ordering::AcqRel);
+          // Beat-aligned fire: consume the absolute deadline once the
+          // block containing it arrives. A stale/late deadline (behind
+          // this block) still fires — better late by a block than never.
+          let fire_at = g.fire_at_frame.load(Ordering::Acquire);
+          if fire_at != GLITCH_FIRE_NONE && fire_at < block_end_frame {
+            g.fire_at_frame.store(GLITCH_FIRE_NONE, Ordering::Release);
+            fired = true;
+          }
           glitch_machine.process_block(
             &mut fxbus_l[..rev_frames],
             &mut fxbus_r[..rev_frames],
@@ -6929,6 +6974,10 @@ pub fn audio_trigger_sample(
   out_stereo: Option<bool>,
   track_id: Option<String>,
   delay_secs: Option<f32>,
+  // Absolute ENGINE_FRAMES deadline for this trigger — the jitter-free
+  // scheduling path (see engineClock.ts). Overrides delay_secs when set.
+  // f64 over IPC (JS numbers); frame counts stay far below 2^53.
+  target_frame: Option<f64>,
   monophonic: Option<bool>,
   // Manifest choke-group name (hats etc.) — a trigger carrying one chokes
   // every in-flight voice tagged with the same group, across tracks.
@@ -7004,6 +7053,10 @@ pub fn audio_trigger_sample(
     out_stereo.unwrap_or(true),
     track_id,
     delay_secs.unwrap_or(0.0),
+    target_frame
+      .filter(|f| f.is_finite() && *f > 0.0)
+      .map(|f| f.round() as u64)
+      .unwrap_or(0),
     monophonic.unwrap_or(false),
     choke_group,
     section.unwrap_or(0),
@@ -7151,8 +7204,13 @@ pub fn audio_set_glitch_params(mix: f32) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn audio_glitch_fire() -> Result<(), String> {
-  engine().glitch_fire();
+pub fn audio_glitch_fire(target_frame: Option<f64>) -> Result<(), String> {
+  engine().glitch_fire(
+    target_frame
+      .filter(|f| f.is_finite() && *f > 0.0)
+      .map(|f| f.round() as u64)
+      .unwrap_or(0),
+  );
   Ok(())
 }
 

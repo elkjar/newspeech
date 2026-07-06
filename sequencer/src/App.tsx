@@ -69,8 +69,7 @@ import {
   type NativeLfo,
   type LfoDestKind,
 } from './audio/nativeEngine';
-import { initEngineClock } from './audio/engineClock';
-import { getAudioContext } from './audio/audioContext';
+import { initEngineClock, frameAtTime } from './audio/engineClock';
 import {
   allocRevoiceNoteId,
   registerChord,
@@ -491,11 +490,10 @@ export function App() {
       // but stays OUT of recording stems (the count-in, SECTION_CLICK, is
       // intentionally captured — the metronome is not).
       if (state.metronome && globalStep % 8 === 0) {
-        const delaySecs = Math.max(0, when - getAudioContext().currentTime);
         const out = state.nativeMix.metronomeOutput;
         void triggerSample('__click_beat', {
           gain: 1.0,
-          delaySecs,
+          targetFrame: frameAtTime(when),
           section: 0,
           // Mono cue channel when multi-out is ON; the engine folds to 1-2
           // when it's OFF (same as every other voice).
@@ -614,20 +612,18 @@ export function App() {
               const totalDuration = ev.stepDuration * ev.tieLength;
               const sub = totalDuration / n;
               {
-                // Arp — sample-accurate dispatch. Fire
-                // all tones IMMEDIATELY through the IPC; each carries
-                // its own delaySecs so the Rust audio callback queues
-                // them and emits at the exact sub-step sample. No more
-                // setTimeout jitter. pickNativeSample is still called
-                // at scheduling time so the round-robin counter
-                // advances in arp order regardless of dispatch latency.
+                // Arp — sample-accurate dispatch. Fire all tones
+                // IMMEDIATELY through the IPC; each carries its own
+                // absolute engine-clock target frame so the Rust audio
+                // callback queues them and emits at the exact sub-step
+                // sample. pickNativeSample is still called at
+                // scheduling time so the round-robin counter advances
+                // in arp order regardless of dispatch latency.
                 const out = evTrack?.output;
                 const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
                 const trackGain = evTrack?.gain ?? 1;
-                const nowAudio = getAudioContext().currentTime;
                 for (let i = 0; i < n; i++) {
                   const fireAt = ev.when + i * sub;
-                  const delaySecs = Math.max(0, fireAt - nowAudio);
                   const interval = ev.voiceIntervals[i];
                   const targetMidi =
                     ev.midi !== undefined ? ev.midi + interval : undefined;
@@ -648,7 +644,7 @@ export function App() {
                     outFirst: out?.firstChannel ?? 0,
                     outStereo: out?.stereo ?? true,
                     trackId: ev.trackId,
-                    delaySecs,
+                    targetFrame: frameAtTime(fireAt),
                     // Force monophonic per arp tone — new tones choke the
                     // prior tail so the line reads as an arp, not a strum.
                     monophonic: true,
@@ -678,9 +674,9 @@ export function App() {
               }
             } else {
               // Multi-tone triggers fire one native voice per interval —
-              // all simultaneous (a chord). delaySecs = ev.when -
-              // audioContext.currentTime lets the Rust callback dispatch
-              // sample-accurately, so the trigger no longer fires the
+              // all simultaneous (a chord). Each carries the step's
+              // absolute engine-clock target frame so the Rust callback
+              // dispatches sample-accurately, instead of firing the
               // moment the IPC arrives (which was ~25-100 ms early from
               // the JS lookahead).
               const intervals =
@@ -690,7 +686,7 @@ export function App() {
               const out = evTrack?.output;
               const pan = ((ev.pan ?? 0.5) - 0.5) * 2;
               const trackGain = evTrack?.gain ?? 1;
-              const delaySecs = Math.max(0, ev.when - getAudioContext().currentTime);
+              const stepTargetFrame = frameAtTime(ev.when);
               // Melodic voices honor note length even without a hand-authored
               // ADSR: mirror the live monitor (which releases the voice on
               // key-up) by synthesizing a gate-driven hold + short release.
@@ -741,7 +737,7 @@ export function App() {
                   outFirst: out?.firstChannel ?? 0,
                   outStereo: out?.stereo ?? true,
                   trackId: ev.trackId,
-                  delaySecs,
+                  targetFrame: stepTargetFrame,
                   // `ev.monophonic` carries through from the engine event
                   // so bass / lead tracks marked monophonic actually choke.
                   monophonic: ev.monophonic === true,
@@ -1624,12 +1620,12 @@ export function App() {
   // Glitch beat-fire dice roll. The scheduler ticks at 32nds
   // (stepsPerBeat=8), so beat boundaries are `stepIndex % 8 === 0`.
   // On each beat we roll `state.glitch.chance` (LFO-modulated via
-  // `glitchChance`) and fire via IPC on a hit. The Rust glitch stage
-  // is otherwise pass-through. Mirrors `audio/glitch.ts`'s web setup
-  // but skips the `setTimeout` align — beat-level alignment with one
-  // block of latency is imperceptible against the stutter character.
+  // `glitchChance`) and fire via IPC on a hit, targeting the beat's
+  // absolute engine-clock frame — the stutter starts ON the audible
+  // beat instead of a lookahead (~SCHEDULE_AHEAD) early. The Rust
+  // glitch stage is otherwise pass-through.
   useEffect(() => {
-    const unsub = scheduler.onStep('app:native-glitch', (stepIndex) => {
+    const unsub = scheduler.onStep('app:native-glitch', (stepIndex, when) => {
       if (stepIndex % 8 !== 0) return;
       const state = useSequencerStore.getState();
       const chance = modulated(
@@ -1640,7 +1636,7 @@ export function App() {
       );
       if (chance <= 0) return;
       if (Math.random() >= chance) return;
-      void fireGlitch();
+      void fireGlitch(frameAtTime(when));
     });
     return unsub;
   }, []);

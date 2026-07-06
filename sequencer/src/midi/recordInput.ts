@@ -23,7 +23,7 @@
 
 import { useSequencerStore, RATE_STRIDE, MAX_STEPS, type Track } from '../state/store';
 import { scheduler } from '../audio/scheduler';
-import { getAudioContext } from '../audio/audioContext';
+import { engineNow } from '../audio/engineClock';
 import { snapToScale, scaleDegreeOf } from '../audio/scale';
 import { monitorNote, monitorRelease } from '../audio/monitor';
 import type { ChordVoicing } from '../audio/chords';
@@ -135,7 +135,7 @@ export interface RecordedOverdub {
   trackId: string;
   localStep: number;
   rowStepDur: number; // seconds of one row-step at record time
-  t0: number; // audio-clock time of the note-on
+  t0: number; // engine-clock time of the note-on
 }
 
 // Write a played note onto `track` — the shared record path for both the MIDI
@@ -170,7 +170,7 @@ export function writeRecordedNote(
     state.setStepVelocity(track.id, q.localStep, velocity);
     state.setStepMicroTiming(track.id, q.localStep, q.micro);
     state.setStepOn(track.id, q.localStep, true);
-    return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: getAudioContext().currentTime };
+    return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: engineNow() };
   } else if (writeIndex !== null) {
     const degree = scaleDegreeOf(snapped, state.rootNote, state.scale) ?? 0;
     const wasOn = !!track.steps[writeIndex]?.on;
@@ -216,7 +216,7 @@ export function writeRecordedChord(
     state.setStepVelocity(track.id, q.localStep, velocity);
     state.setStepMicroTiming(track.id, q.localStep, q.micro);
     state.setStepOn(track.id, q.localStep, true);
-    return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: getAudioContext().currentTime };
+    return { trackId: track.id, localStep: q.localStep, rowStepDur: q.rowStepDur, t0: engineNow() };
   } else if (writeIndex !== null) {
     const wasOn = !!track.steps[writeIndex]?.on;
     state.setStepChordVoicing(track.id, writeIndex, voicing);
@@ -246,7 +246,7 @@ function quantizedOverdubStep(
   const rowStartGlobal = state.sceneStartStep + raw * stride;
   const rowStepDur = stride * aud.stepDuration;
   const rowStartTime = aud.when - (aud.index - rowStartGlobal) * aud.stepDuration;
-  const frac = (getAudioContext().currentTime - rowStartTime) / rowStepDur; // [0,1)
+  const frac = (engineNow() - rowStartTime) / rowStepDur; // [0,1)
   let rowIndex = raw;
   let micro = frac;
   if (frac > 0.5) {
@@ -285,7 +285,7 @@ export function writeDrumHit(track: Track, velocity: number, ratchet: number): v
 // pattern.) Floor of 0.1 keeps the briefest tap audible. Called on note-off
 // with the RecordedOverdub from the matching note-on.
 export function finalizeRecordedNote(ov: RecordedOverdub): void {
-  const heldSteps = (getAudioContext().currentTime - ov.t0) / ov.rowStepDur;
+  const heldSteps = (engineNow() - ov.t0) / ov.rowStepDur;
   const state = useSequencerStore.getState();
   state.setStepGate(ov.trackId, ov.localStep, Math.max(0.1, Math.min(MAX_STEPS, heldSteps)));
   state.setStepTie(ov.trackId, ov.localStep, false); // length lives in the gate, not a tie

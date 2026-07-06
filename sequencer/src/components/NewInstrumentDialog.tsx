@@ -10,7 +10,7 @@ import {
   sendMIDINote,
   sendPatchSelect,
 } from '../audio/midiOut';
-import { getAudioContext } from '../audio/audioContext';
+import { engineNow } from '../audio/engineClock';
 import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
 
 // Form modal for creating a new user MIDI instrument. Visually matches
@@ -99,8 +99,7 @@ export function NewInstrumentDialog({
       sendPatchSelect(deviceId, ch, msb, lsb, programVal);
     }
     if (role === 'drum' && noteVal !== null) {
-      const ctx = getAudioContext();
-      sendMIDINote(deviceId, ch, noteVal, 0.8, ctx.currentTime + 0.005, 0.15);
+      sendMIDINote(deviceId, ch, noteVal, 0.8, engineNow() + 0.005, 0.15);
     }
   };
 

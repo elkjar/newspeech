@@ -1,10 +1,19 @@
-import { getAudioContext } from './audioContext';
+import { engineNow } from './engineClock';
 
+// All scheduler timestamps (`when`, `nextStepTime`, getAudibleStep*)
+// are ENGINE-CLOCK seconds — the JS mirror of the Rust cpal sample
+// counter (engineClock.ts) — not AudioContext.currentTime. Consumers
+// convert `when` to an absolute target frame for trigger IPC
+// (frameAtTime) or to wall-clock ms for MIDI-out (engineTimeToPerfMs).
 export type StepCallback = (stepIndex: number, when: number, stepDuration: number) => void;
 
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD_S = 0.1;
 const HISTORY_S = 1;
+// If nextStepTime lands this far past the horizon, the engine clock
+// jumped backward under us (stream reopen reset the frame counter) —
+// re-anchor instead of stalling until the old timeline catches up.
+const CLOCK_RESET_SLACK_S = 5;
 
 interface ScheduledStep {
   index: number;
@@ -55,7 +64,7 @@ class Scheduler {
   }
 
   getAudibleStep(): number | null {
-    const now = getAudioContext().currentTime;
+    const now = engineNow();
     let audible: number | null = null;
     for (const s of this.scheduled) {
       if (s.when <= now) audible = s.index;
@@ -70,7 +79,7 @@ class Scheduler {
   // capture "lazy"/pushed feel as per-step microTiming). HISTORY_S of past
   // steps are retained, so the audible step's `when` is still in `scheduled`.
   getAudibleStepTiming(): { index: number; when: number; stepDuration: number } | null {
-    const now = getAudioContext().currentTime;
+    const now = engineNow();
     let found: ScheduledStep | null = null;
     for (const s of this.scheduled) {
       if (s.when <= now) found = s;
@@ -79,15 +88,14 @@ class Scheduler {
     return found ? { index: found.index, when: found.when, stepDuration: this.stepDuration() } : null;
   }
 
-  // firstStepTime: optional explicit audioContext-time for tick 0. Used by the
+  // firstStepTime: optional explicit engine-clock time for tick 0. Used by the
   // count-in path to push the first pattern step out one bar after the click
-  // cues. Defaults to currentTime + 50ms (the regular play lookahead).
+  // cues. Defaults to engineNow() + 50ms (the regular play lookahead).
   start(firstStepTime?: number) {
     if (this.playing) return;
-    const ctx = getAudioContext();
     this.playing = true;
     this.currentStep = 0;
-    this.nextStepTime = firstStepTime ?? ctx.currentTime + 0.05;
+    this.nextStepTime = firstStepTime ?? engineNow() + 0.05;
     this.scheduled = [];
     this.tick();
   }
@@ -108,15 +116,24 @@ class Scheduler {
 
   private tick = () => {
     if (!this.playing) return;
-    const ctx = getAudioContext();
-    while (this.nextStepTime < ctx.currentTime + SCHEDULE_AHEAD_S) {
+    const now = engineNow();
+    // Engine-clock reset recovery (device close/reopen mid-play): the
+    // frame counter restarted at 0, so nextStepTime — anchored on the
+    // old timeline — sits impossibly far ahead. Re-anchor just past
+    // "now" and keep the step index; playback continues on the new
+    // stream instead of stalling silently.
+    if (this.nextStepTime > now + SCHEDULE_AHEAD_S + CLOCK_RESET_SLACK_S) {
+      this.nextStepTime = now + 0.05;
+      this.scheduled = [];
+    }
+    while (this.nextStepTime < now + SCHEDULE_AHEAD_S) {
       const dur = this.stepDuration();
       for (const cb of this.callbacks.values()) cb(this.currentStep, this.nextStepTime, dur);
       this.scheduled.push({ index: this.currentStep, when: this.nextStepTime });
       this.nextStepTime += dur;
       this.currentStep += 1;
     }
-    const cutoff = ctx.currentTime - HISTORY_S;
+    const cutoff = now - HISTORY_S;
     while (this.scheduled.length && this.scheduled[0].when < cutoff) {
       this.scheduled.shift();
     }

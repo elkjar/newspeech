@@ -17,7 +17,7 @@
 // so the live monitor never bleeds into recording stems.
 
 import { triggerSample, releaseNote } from './nativeEngine';
-import { getAudioContext } from './audioContext';
+import { engineNow } from './engineClock';
 import { samplePlayer } from './samplePlayer';
 import { resolveVoiceEnvelope } from '../instruments/voiceEditsStore';
 import { resolveDeviceId, sendMIDINote, sendMIDINoteOn, sendMIDINoteOff } from './midiOut';
@@ -213,7 +213,7 @@ export function monitorDrum(track: Track, velocity: number): void {
       track.midi.channel,
       track.midi.note,
       velocity,
-      getAudioContext().currentTime,
+      engineNow(),
       MONITOR_HOLD_SECS,
     );
     return;

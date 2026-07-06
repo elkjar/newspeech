@@ -14,7 +14,7 @@
 
 import { useSequencerStore } from '../state/store';
 import { scheduler } from './scheduler';
-import { getAudioContext } from './audioContext';
+import { engineNow } from './engineClock';
 import { prepareForPlay, stopPlaybackLocal } from './transport';
 import { clockEngineStop, clockTransportStart } from './midiClock';
 import type { MidiMessage } from '../midi/midiIn';
@@ -160,8 +160,7 @@ const START_LOOKAHEAD_S = 0.015;
 
 async function startFollowPlayback(): Promise<void> {
   await prepareForPlay();
-  const ctx = getAudioContext();
-  scheduler.start(ctx.currentTime + START_LOOKAHEAD_S);
+  scheduler.start(engineNow() + START_LOOKAHEAD_S);
   pulseCounter = 0;
   useSequencerStore.getState().setPlaying(true);
   // Relay: spin up the pulse thread (clockTransportStart ensures it) and

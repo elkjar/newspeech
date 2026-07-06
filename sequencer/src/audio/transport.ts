@@ -28,7 +28,7 @@ export function tapTempo(): void {
   const bpm = Math.max(40, Math.min(240, Math.round(60000 / avgMs)));
   useSequencerStore.getState().setBpm(bpm);
 }
-import { getAudioContext } from './audioContext';
+import { engineNow, frameAtTime } from './engineClock';
 import { fadeTextures, audioPanic } from './nativeEngine';
 
 // Texture voices ring down over this many seconds when transport stops,
@@ -100,10 +100,9 @@ export async function togglePlayback(): Promise<void> {
     // scheduler's first tick is pushed by `nativeScheduleClickIn`'s
     // returned pattern-start time. Recorder (if armed) starts at
     // `setPlaying(true)` and captures the clicks too — DAW alignment cue
-    // lives in the WAV.
-    const ctx = getAudioContext();
+    // lives in the WAV. All times are engine-clock seconds.
     const lookahead = 0.05;
-    let firstStepTime = ctx.currentTime + lookahead;
+    let firstStepTime = engineNow() + lookahead;
     if (store.clickIn) {
       // Fire the bundled synthetic click samples via `triggerSample`
       // with sample-accurate delaySecs. The count-in plays through the
@@ -143,7 +142,6 @@ async function nativeScheduleClickIn(
   bpm: number,
 ): Promise<number> {
   const { triggerSample } = await import('./nativeEngine');
-  const ctx = getAudioContext();
   const beatDur = 60 / bpm;
   const beats = 4;
   // Route the count-in to the same cue channel as the universal metronome
@@ -155,13 +153,12 @@ async function nativeScheduleClickIn(
   const out = useSequencerStore.getState().nativeMix.metronomeOutput;
   for (let i = 0; i < beats; i++) {
     const when = startTime + i * beatDur;
-    const delaySecs = Math.max(0, when - ctx.currentTime);
     const path = i === 0 ? '__click_accent' : '__click_beat';
     // section: 3 = CLICK — writes to both rhythm + melody splits so
     // the count-in serves as a DAW alignment marker in either file.
     void triggerSample(path, {
       gain: 1.0,
-      delaySecs,
+      targetFrame: frameAtTime(when),
       section: 3,
       outFirst: out.firstChannel,
       outStereo: false,

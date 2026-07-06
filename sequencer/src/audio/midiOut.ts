@@ -1,4 +1,4 @@
-import { getAudioContext } from './audioContext';
+import { engineTimeToPerfMs } from './engineClock';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
 export interface MIDIOutputInfo {
@@ -119,9 +119,11 @@ const MIDI_STOP = 0xfc;
 const CC_BANK_MSB = 0;
 const CC_BANK_LSB = 32;
 
+// Scheduler `when` values are engine-clock seconds; convert through the
+// engine-clock extrapolator so MIDI sends line up with the audio voices
+// targeting the same instant.
 function audioToPerfMs(audioTime: number): number {
-  const ctx = getAudioContext();
-  return performance.now() + (audioTime - ctx.currentTime) * 1000;
+  return engineTimeToPerfMs(audioTime);
 }
 
 function tauriSend(portName: string, bytes: number[]) {

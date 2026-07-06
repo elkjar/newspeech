@@ -323,10 +323,14 @@ export async function triggerSample(
     trackId?: string;
     // Seconds in the future to fire (relative to when the audio
     // callback drains this trigger). 0 = fire immediately at next
-    // block boundary (existing behavior). Used by the scheduler for
-    // sample-accurate dispatch (arp time-spread, etc.). Rust converts
-    // to samples at the device sample rate.
+    // block boundary. The RELATIVE path — live monitoring uses it with
+    // 0; scheduled playback should pass targetFrame instead.
     delaySecs?: number;
+    // Absolute engine-clock frame to fire at (see engineClock.ts
+    // frameAtTime). The jitter-free scheduling path: Rust compares the
+    // deadline against its own sample counter, so fire time doesn't
+    // depend on which audio block drains the IPC. Overrides delaySecs.
+    targetFrame?: number;
     // Monophonic track flag — when true, on dispatch all OTHER active
     // voices sharing the same trackId get a ~20ms release ramp before
     // this trigger claims its slot. Matches the web bass/lead
@@ -424,6 +428,7 @@ export async function triggerSample(
     envelopeRelease: opts.envelopeRelease ?? null,
     envelopeHold: opts.envelopeHold ?? null,
     delaySecs: opts.delaySecs ?? null,
+    targetFrame: opts.targetFrame ?? null,
     noteId: opts.noteId ?? null,
     startFrac: opts.start ?? null,
     endFrac: opts.end ?? null,
@@ -645,8 +650,13 @@ export async function setGlitchParams(opts: {
   });
 }
 
-export async function fireGlitch(): Promise<void> {
-  await invoke<void>('audio_glitch_fire');
+// Fire the glitch stage. Pass an absolute engine-clock frame (see
+// engineClock.ts frameAtTime) to align the stutter with the audible
+// beat the scheduler targeted; omit to fire ASAP at the next block.
+export async function fireGlitch(targetFrame?: number): Promise<void> {
+  await invoke<void>('audio_glitch_fire', {
+    targetFrame: targetFrame ?? null,
+  });
 }
 
 // Master stage filters — phase 7e-1 covers the static character
