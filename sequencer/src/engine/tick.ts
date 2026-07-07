@@ -646,6 +646,19 @@ export interface TickInputs {
   // walks tracks; emits the final value as a `chordContext` event if it
   // changed.
   chordContext: ChordContext;
+  // Perform-mode punch-in layer (session-only; audio/perform.ts). Non-null
+  // while a beat-repeat is anchored — masked tracks loop/stutter the captured
+  // window; unmasked tracks play through. The grid keeps showing the authored
+  // pattern (existing convention — live layers only drive audio).
+  perform?: {
+    repeat: {
+      windowTicks: number;
+      engageScene: number;
+      anchorScene: number;
+      windowStartScene: number;
+    };
+    isMasked: (trackId: string) => boolean;
+  } | null;
 }
 
 export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
@@ -728,14 +741,63 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     if (track.mute && !isChordMaster) continue;
     if (anySolo && !track.solo && !isChordMaster) continue;
     const stride = RATE_STRIDE[track.rate];
-    if (sceneStep % stride !== 0) continue;
-    const rowStep = Math.floor(sceneStep / stride);
+    // Perform beat-repeat — remap this track's clock into the captured window
+    // while engaged (docs/perform-mode.md). Two regimes:
+    //  · window ≥ row stride: step-remap. The effective scene step walks
+    //    [windowStart, engage) in a loop; the real counter keeps advancing
+    //    underneath so release resumes exactly in-position. Mutation applies
+    //    per read (decision: the repeat stays alive under Ghost rather than
+    //    freezing a snapshot).
+    //  · window < row stride (incl. sub-tick): stutter. Retrigger the row
+    //    step sounding at punch-in, every windowTicks — the roll /
+    //    machine-gun territory. Sub-tick windows fire multiple retriggers
+    //    per tick via the ratchet spacing at the emit stage.
+    const repeat =
+      inputs.perform &&
+      sceneStep >= inputs.perform.repeat.engageScene &&
+      inputs.perform.isMasked(track.id)
+        ? inputs.perform.repeat
+        : null;
+    let effSceneStep = sceneStep;
+    // Non-null = stutter regime. fireTicks = the fire-window length in whole
+    // ticks; count = retriggers inside it (sub-tick spacing falls out of the
+    // ratchet division at the emit stage: fireTicks·dt / count = window·dt).
+    let stutter: { count: number; fireTicks: number } | null = null;
+    if (repeat) {
+      const w = repeat.windowTicks;
+      if (w >= stride) {
+        effSceneStep =
+          repeat.windowStartScene + ((sceneStep - repeat.windowStartScene) % w);
+        if (effSceneStep % stride !== 0) continue;
+      } else {
+        // Fire on every window boundary (sub-tick windows: every tick, with
+        // count retriggers inside it). Phase rides the grid-snapped window
+        // start so rolls stay locked to the bar.
+        if (w >= 1 && (sceneStep - repeat.windowStartScene) % w !== 0) continue;
+        stutter = {
+          count: w < 1 ? Math.round(1 / w) : 1,
+          fireTicks: Math.max(1, w),
+        };
+        // The row step CONTAINING the capture anchor — what was audible at
+        // the punch-in is what machine-guns.
+        effSceneStep = Math.floor(repeat.anchorScene / stride) * stride;
+      }
+    } else if (sceneStep % stride !== 0) continue;
+    // Repeat replays the captured overlay VERBATIM — a temporary per-track
+    // freeze. The first cut let mutation/accumulators re-roll per read
+    // ("repeat stays alive under Ghost"); by ear that wanders pitch inside
+    // the loop and fights the catch-and-stick gesture, so the loop now pins
+    // what was heard. Mutation resumes on release.
+    const replay = inputs.freeze || repeat !== null;
+    const rowStep = Math.floor(effSceneStep / stride);
     const localStep = rowStep % track.length;
     const step = track.steps[localStep];
     if (!step) continue;
     if (track.source.kind === 'empty') continue;
 
-    const rowStepDuration = inputs.stepDuration * stride;
+    const rowStepDuration = stutter
+      ? stutter.fireTicks * inputs.stepDuration
+      : inputs.stepDuration * stride;
     // Pre-chaos modulated mutation control — this is the LFO-swept value the
     // user "turns." The lead tree uses it directly as a depth coordinate (so
     // "75%" means 75% of the knob regardless of chaos); the stochastic axes
@@ -762,7 +824,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
       !harmonicAnchor &&
       profile.treeMutation === true &&
       !track.lockTiming &&
-      !inputs.freeze;
+      !replay;
     let treeFlip = false;
     let treePitchJump = 0;
     let treeClampMax = 14;
@@ -794,7 +856,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
       }
     }
 
-    const resolution = inputs.freeze
+    const resolution = replay
       ? resolveFreezePlayback(
           track,
           step,
@@ -828,7 +890,10 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     // quantized downstream like all pitch. Mutates resolution.pitch BEFORE the
     // overlay is emitted so the roll's deviation layer shows the ladder. Counter
     // advances only when the step actually fires (gated) and we're not frozen.
-    if (melodic && resolution.on) {
+    // Repeat replay skips the accumulator entirely — the captured overlay
+    // pitch already contains the ladder position at capture, and advancing
+    // the counters per stuttered fire would climb them absurdly fast.
+    if (melodic && resolution.on && repeat === null) {
       const advance = resolution.gated && !inputs.freeze;
       if (step.accumulator) {
         // Authored per-step accumulator (Phase 1) — full step*rung climb.
@@ -844,7 +909,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
       }
     }
 
-    if (!inputs.freeze) {
+    if (!replay) {
       events.push({
         kind: 'overlay',
         trackId: track.id,
@@ -863,11 +928,21 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
 
     if (!resolution.gated) continue;
 
-    const { velocity: v, pitch, gate: gateMutated, ratchet } = resolution;
-    const ties = tieLength(track, localStep);
-    const baseTime = inputs.when + step.microTiming * rowStepDuration;
+    const { velocity: v, pitch, gate: gateMutated } = resolution;
+    // Stutter overrides: the retrigger count replaces the step's ratchet, tie
+    // chains don't extend a roll, and microTiming is dropped — machine-gun
+    // repeats stay rigid on the sub-grid.
+    const ratchet = stutter ? stutter.count : resolution.ratchet;
+    const ties = stutter ? 1 : tieLength(track, localStep);
+    const baseTime = stutter
+      ? inputs.when
+      : inputs.when + step.microTiming * rowStepDuration;
     const subDur = rowStepDuration / ratchet;
     const effectiveGate = gateMutated * ties;
+    // Gate/hold basis — stuttered notes are bounded by their sub-window so
+    // retriggers clip each other into a roll instead of stacking full-length
+    // tails.
+    const noteSpan = stutter ? subDur : rowStepDuration;
     const harmonicShift = melodic ? inputs.harmonicOffset : 0;
 
     let rootMidi: number | undefined;
@@ -882,7 +957,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
       if (isChordMaster) {
         let padDriftCount: number | null = null;
         if (
-          !inputs.freeze &&
+          !replay &&
           track.source.kind === 'voice' &&
           isPadVoice(track.source.id) &&
           stepVoicing.degree > 0
@@ -892,7 +967,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
             padDriftCount = ctx.consumePadDrift(track.id);
           }
         }
-        const frozenChord = inputs.freeze
+        const frozenChord = replay
           ? ctx.readOverlay(track.id, localStep)?.chord
           : undefined;
         const cm = resolveChordMasterNote({
@@ -905,7 +980,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
           harmonicShift,
           mut,
           profile,
-          freeze: inputs.freeze,
+          freeze: replay,
           frozenChord,
           padDriftCount,
         });
@@ -915,7 +990,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
         // actually a chord (degree > 0) and not frozen. authoredVoicing is the
         // pre-macro voicing so the dispatcher can re-derive at any macro value.
         if (
-          !inputs.freeze &&
+          !replay &&
           !cm.mutated &&
           track.source.kind === 'voice' &&
           isPadVoice(track.source.id) &&
@@ -967,7 +1042,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     if (anySolo && !track.solo) continue;
 
     const isInstrument = track.source.kind === 'instrument';
-    const midiNoteDuration = Math.max(0.02, effectiveGate * rowStepDuration);
+    const midiNoteDuration = Math.max(0.02, effectiveGate * noteSpan);
 
     for (let r = 0; r < ratchet; r++) {
       const t = baseTime + r * subDur;
@@ -1013,7 +1088,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
           velocity: v * modGain,
           midi: rootMidi,
           gate: effectiveGate,
-          stepDuration: rowStepDuration,
+          stepDuration: noteSpan,
           tieLength: ties,
           voiceIntervals,
           pan: modulated(track.pan, inputs.lfos, track.id, 'pan'),

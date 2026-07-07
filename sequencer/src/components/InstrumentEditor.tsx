@@ -61,6 +61,25 @@ const DEPTH_SEMIS: DepthCfg = {
 const PLAYHEAD_POLL_MS = 33; // ~30Hz playhead readback while previewing
 const PREVIEW_MIDI = 60; // C3 (matches the Tracker preview note + our sample naming)
 
+// Discrete bits-knob ladder, clean → destroyed. By ear (2026-07-07) the
+// crusher is imperceptible above ~8 bits at its chain position (it
+// quantizes near-full-scale data pre filter/env/gain), so a linear 4..16
+// sweep wasted most of its travel — the ladder spends it on the audible
+// band instead. 16 = bypass.
+const BITS_LADDER = [1, 2, 3, 4, 5, 6, 8, 12, 16];
+
+// Knob position (0..1) for a stored bit depth — nearest ladder rung, so
+// legacy values like 13 land on a sane position instead of off-ladder.
+function bitsLadderPos(bits: number): number {
+  let best = 0;
+  for (let i = 1; i < BITS_LADDER.length; i++) {
+    if (Math.abs(BITS_LADDER[i] - bits) < Math.abs(BITS_LADDER[best] - bits)) {
+      best = i;
+    }
+  }
+  return best / (BITS_LADDER.length - 1);
+}
+
 // Resolve which voice the editor edits: the focused track if it's a voice
 // (respect the focus — don't silently swap to another track), else the first
 // voice track so the tab isn't empty before anything is focused.
@@ -165,7 +184,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const cutoff = edit?.cutoff ?? 1;
   const resonance = edit?.resonance ?? 0;
   const saturation = edit?.saturation ?? 0;
-  const bitDepth = Math.max(4, Math.min(16, Math.round(edit?.bitDepth ?? 16)));
+  const bitDepth = Math.max(1, Math.min(16, Math.round(edit?.bitDepth ?? 16)));
   const reverbSend = edit?.reverbSend ?? 0;
   const delaySend = edit?.delaySend ?? 0;
   const ampEnv = edit?.ampEnv ?? DEFAULT_AMP_ENV;
@@ -432,10 +451,13 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             />
             <TopKnob
               label="bits"
-              value={(bitDepth - 4) / 12}
+              value={bitsLadderPos(bitDepth)}
               display={`${bitDepth} bit`}
               onChange={(v) =>
-                setVoiceEdit(voiceId, { bitDepth: Math.round(4 + v * 12) })
+                setVoiceEdit(voiceId, {
+                  bitDepth:
+                    BITS_LADDER[Math.round(v * (BITS_LADDER.length - 1))],
+                })
               }
             />
           </div>

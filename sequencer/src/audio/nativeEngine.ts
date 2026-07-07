@@ -3,7 +3,7 @@
 // master chain, recording. This is the app's ONLY audio path (the Web Audio
 // engine was removed 2026-07-05); it grows alongside src-tauri/src/audio.rs.
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 
 export interface NativeDeviceInfo {
   name: string;
@@ -165,6 +165,12 @@ export async function applyOutputDeviceConfig(config: {
     channels: config.channels,
     bufferSize: config.bufferSize ?? 0,
   });
+  // Anchor the rate watch: this is a DELIBERATE open (boot or Settings), so
+  // the requested channel count becomes the desired count auto-reopens clamp
+  // against (and un-clamp back to when the device recovers).
+  currentOpen = { ...config, sampleRate: info.sampleRate };
+  desiredChannels = config.channels;
+  anchorDefaultRate = null; // re-observe the device baseline on next poll
   return info;
 }
 
@@ -207,20 +213,158 @@ export async function initNativeAudio(): Promise<NativeOpenedInfo | null> {
   // Sample rate always follows the device's native default — never the
   // persisted/previous value. Catches the case where a prior session
   // saved 44.1 but the actual device runs at 48 (or vice versa for an
-  // external interface).
-  const sampleRate = device.defaultSampleRate || device.supportedSampleRates[0] || 48000;
+  // external interface). Floored at 44.1k: a Bluetooth headset held in
+  // HFP by a call reports 16k, and opening THERE glitches the engine —
+  // a 44.1k client stream instead lets CoreAudio resample down to the
+  // degraded device (phone-call fidelity, but coherent).
+  const deviceRate =
+    device.defaultSampleRate || device.supportedSampleRates[0] || 48000;
+  const sampleRate = Math.max(deviceRate, MIN_OPEN_SAMPLE_RATE);
   const bufferSize = persisted.bufferSize ?? 0;
   try {
-    return await applyOutputDeviceConfig({
+    const info = await applyOutputDeviceConfig({
       deviceName: device.name,
       channels,
       sampleRate,
       bufferSize: bufferSize > 0 ? bufferSize : undefined,
+    }).catch((err) => {
+      // Device refused the floored rate — fall back to its own default
+      // rather than booting silent.
+      if (sampleRate !== deviceRate) {
+        console.warn(
+          `[nativeAudio] open at ${sampleRate} failed (${err}) — retrying at device rate ${deviceRate}`,
+        );
+        return applyOutputDeviceConfig({
+          deviceName: device.name,
+          channels,
+          sampleRate: deviceRate,
+          bufferSize: bufferSize > 0 ? bufferSize : undefined,
+        });
+      }
+      throw err;
     });
+    // Booting mid-call can clamp channels to a degraded profile (BT HFP =
+    // mono). The rate watch un-clamps against the DESIRED count, so keep
+    // the persisted preference as the target rather than the boot clamp —
+    // otherwise a call-time launch stays mono after the headset recovers.
+    if (persisted.channels && persisted.channels > channels) {
+      desiredChannels = persisted.channels;
+    }
+    return info;
   } catch (err) {
     console.warn('[nativeAudio] open failed:', err);
     return null;
   }
+}
+
+// --- device-rate watch ----------------------------------------------------
+//
+// A Zoom/FaceTime mic grab flips a Bluetooth headset from A2DP (48k stereo)
+// to HFP (16k mono) MID-SESSION. Since the engine-clock rework the whole app
+// schedules on an absolute sample-frame timebase pinned to the rate captured
+// at device open, so a silent device-rate change desyncs JS scheduling from
+// rendering — the "crazy noises" glitch (2026-07-07). Nothing surfaces the
+// change (cpal has no device-format listener; the stream error callback only
+// logs), so we poll: compare the open device's currently-reported default
+// rate / channel ceiling against what the stream was opened with, and reopen
+// to match. The scheduler + engine clock already recover from a reopen's
+// frame-counter reset (CLOCK_RESET_SLACK_S / RESET_JUMP_S) — this is the
+// same recovery as re-applying in Settings, minus the hands.
+//
+// Deliberately NOT persisted: auto-reopens keep the user's saved channel
+// count untouched and clamp against `desiredChannels` per-open, so when the
+// call releases the headset back to 48k stereo the next poll restores the
+// full config automatically.
+
+// Floor for any automatic open (boot + rate watch). Nothing musical ever
+// wants less: samples/DSP assume music rates, and CoreAudio resamples the
+// client stream down to a degraded device (BT HFP 16k) on its own. Manual
+// Settings choices are not clamped.
+export const MIN_OPEN_SAMPLE_RATE = 44100;
+
+let currentOpen: {
+  deviceName: string;
+  channels: number;
+  sampleRate: number;
+  bufferSize?: number;
+} | null = null;
+let desiredChannels: number | null = null;
+// The device's reported default rate as of the last deliberate open —
+// observed lazily on the first poll after it. The watch triggers on THIS
+// changing, not on `open rate ≠ device default`: the Settings panel lets the
+// user pick a custom rate on purpose, and the watcher must not fight it.
+let anchorDefaultRate: number | null = null;
+
+const DEVICE_RATE_POLL_MS = 2000;
+let rateWatchStarted = false;
+let rateWatchBusy = false;
+
+async function checkDeviceRate(): Promise<void> {
+  if (!currentOpen || rateWatchBusy) return;
+  rateWatchBusy = true;
+  try {
+    const devices = await listOutputDevices();
+    const open = currentOpen;
+    // Device gone (unplugged / renamed) — don't device-hop mid-session;
+    // boot fallback handles it on next launch, Settings handles it now.
+    const dev = devices.find((d) => d.name === open.deviceName);
+    if (!dev) return;
+    const freshRate = dev.defaultSampleRate || 0;
+    if (freshRate <= 0) return;
+    if (anchorDefaultRate === null) {
+      // First look after a deliberate open — record the baseline only.
+      anchorDefaultRate = freshRate;
+      return;
+    }
+    const wantChannels = Math.min(
+      desiredChannels ?? open.channels,
+      Math.max(1, dev.maxOutputChannels),
+    );
+    const rateChanged = freshRate !== anchorDefaultRate;
+    const channelsChanged = wantChannels !== open.channels;
+    if (!rateChanged && !channelsChanged) return;
+    const next = {
+      deviceName: open.deviceName,
+      channels: wantChannels,
+      // Reopen floored at 44.1k — never chase a degraded device's rate
+      // down; CoreAudio resamples the client stream to it instead.
+      sampleRate: Math.max(freshRate, MIN_OPEN_SAMPLE_RATE),
+      bufferSize: open.bufferSize,
+    };
+    const info = await openOutputDevice(next).catch((err) => {
+      if (next.sampleRate === freshRate) throw err;
+      // Device refused the floored rate — its own rate beats silence.
+      console.warn(
+        `[nativeAudio] rate-watch open at ${next.sampleRate} failed (${err}) — retrying at device rate ${freshRate}`,
+      );
+      return openOutputDevice({ ...next, sampleRate: freshRate });
+    });
+    setReportedChannelCount(info.channels);
+    currentOpen = { ...next, sampleRate: info.sampleRate };
+    anchorDefaultRate = freshRate;
+    console.info(
+      `[nativeAudio] device rate change — reopened ${next.deviceName} at ${info.sampleRate} Hz / ${next.channels}ch`,
+    );
+    void import('../state/store').then(({ useSequencerStore }) => {
+      useSequencerStore.getState().pushToast({
+        kind: 'success',
+        text: `output rate changed — reopened at ${(info.sampleRate / 1000).toFixed(1)}k ${next.channels}ch`,
+      });
+    });
+  } catch (err) {
+    // Mid-transition opens can fail (device busy) — leave state as-is and
+    // let the next poll retry.
+    console.warn('[nativeAudio] rate-watch reopen failed:', err);
+  } finally {
+    rateWatchBusy = false;
+  }
+}
+
+// Call once at boot, after initNativeAudio. Idles until a device is open.
+export function installDeviceRateWatch(): void {
+  if (rateWatchStarted || !isTauri()) return;
+  rateWatchStarted = true;
+  window.setInterval(() => void checkDeviceRate(), DEVICE_RATE_POLL_MS);
 }
 
 export async function getAudioStatus(): Promise<NativeAudioStatus> {
@@ -867,6 +1011,14 @@ export async function audioPanic(): Promise<void> {
 // `fadeSecs` while every other voice keeps playing untouched.
 export async function fadeTextures(fadeSecs: number): Promise<void> {
   await invoke<void>('audio_fade_textures', { fadeSecs });
+}
+
+// Perform punch edges — drop queued-but-unfired triggers whose absolute
+// deadline is at or past `minFrame` so the dispatcher can re-emit the
+// scheduling horizon under the new perform state. Sounding voices are
+// untouched. See MixerCommand::FlushPending.
+export async function flushPendingTriggers(minFrame: number): Promise<void> {
+  await invoke<void>('audio_flush_pending', { minFrame });
 }
 
 // Freeze in-flight voice DSP params (filter cutoff/resonance + fx send)

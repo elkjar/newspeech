@@ -29,6 +29,23 @@ import {
   type TrackOutput,
 } from './state/store';
 import { scheduler } from './audio/scheduler';
+import {
+  performBitDepth,
+  performChopGate,
+  performDelaySend,
+  performFilterCutoff,
+  performRepeatForTick,
+  performReverbSend,
+  performSaturation,
+  performScrubDepth,
+  performReverse,
+  performTuneRatio,
+  isTrackMasked,
+  armRepeat,
+  releaseRepeat,
+  repeatHeld,
+  setPerformEdgeHandler,
+} from './audio/perform';
 import { setClockBpm, clockEngineStart, clockEngineStop } from './audio/midiClock';
 import { resetTracker } from './audio/clockFollow';
 import { stopPlaybackLocal, prepareForPlay } from './audio/transport';
@@ -56,6 +73,7 @@ function sectionCode(section: 'drum' | 'melodic' | undefined): number {
 import {
   triggerSample,
   triggerBatch,
+  flushPendingTriggers,
   type TriggerOpts,
   releaseNote,
   repitchNote,
@@ -74,12 +92,13 @@ import {
   setMixRouting,
   setLfos,
   initNativeAudio,
+  installDeviceRateWatch,
   freezeVoiceParams,
   type TrackFilterUpdate,
   type NativeLfo,
   type LfoDestKind,
 } from './audio/nativeEngine';
-import { initEngineClock, frameAtTime } from './audio/engineClock';
+import { initEngineClock, frameAtTime, engineNow } from './audio/engineClock';
 import {
   allocRevoiceNoteId,
   registerChord,
@@ -558,14 +577,25 @@ export function App() {
 
   useEffect(() => {
     const harmonic = makeHarmonicMotionState();
-    return scheduler.onStep('app:dispatcher', (globalStep, when, stepDuration) => {
+    // The per-tick dispatch body. `redispatch` = re-emitting an already-
+    // scheduled tick after a perform punch edge flushed its queued native
+    // triggers: cross-tick state (bar commits, ghost, harmonic motion) has
+    // already advanced for these ticks, so only the trigger emission re-runs.
+    // MIDI-out and stream events aren't flushed/replayed either — hardware
+    // keeps the horizon latency.
+    const dispatchTick = (
+      globalStep: number,
+      when: number,
+      stepDuration: number,
+      redispatch = false,
+    ) => {
       // Bar boundary at 4/4 32nd resolution = every 32 global steps. A queued
       // pattern recall commits here, before we read `tracks` for this tick,
       // so the swap is atomic from the dispatch's point of view. Ghost
       // ordering: beforeBarCommit snapshots current macros as lerp source
       // BEFORE commit overwrites them; tickBar runs AFTER commit so it sees
       // the just-swapped activeBank as the lerp target.
-      if (globalStep % 32 === 0) {
+      if (!redispatch && globalStep % 32 === 0) {
         // Snapshot the active bank/scene/song BEFORE any commit so we can
         // tell afterward whether a swap landed this bar. A swap means the
         // about-to-be-pushed new track params would otherwise retune the
@@ -646,7 +676,9 @@ export function App() {
       // keeps the same key-shift it had at freeze moment.
       const modMotion = modulated(state.motion, state.lfos, GLOBAL_TRACK_ID, 'motion', undefined, 1);
       const modDrift = modulated(state.drift, state.lfos, GLOBAL_TRACK_ID, 'drift', undefined, 1);
-      const harmonicOffset = state.freeze
+      // Redispatch reuses the current offset — the motion state machine
+      // already ticked for these steps on their first dispatch.
+      const harmonicOffset = state.freeze || redispatch
         ? harmonic.offset
         : tickHarmonicMotion(
             harmonic,
@@ -669,6 +701,13 @@ export function App() {
       // Gate on `active` too: a stale pendingEnd must never silence audio once
       // song mode is disengaged.
       const songEnded = state.arrangement.active && state.arrangement.pendingEnd;
+      // Perform punch-in layer — anchor/read the beat-repeat window for this
+      // tick (cross-tick state owned by audio/perform.ts, same shape as
+      // harmonic motion). Masked tracks loop the captured window in runTick.
+      const performRepeat = performRepeatForTick(
+        globalStep - state.sceneStartStep,
+        state.sceneStartStep,
+      );
       const events = inTailOut || songEnded
         ? []
         : runTick(
@@ -689,6 +728,9 @@ export function App() {
               stepDuration,
               harmonicOffset,
               chordContext: getChordContext(),
+              perform: performRepeat
+                ? { repeat: performRepeat, isMasked: isTrackMasked }
+                : null,
             },
             {
               readOverlay: getOverlay,
@@ -711,6 +753,9 @@ export function App() {
             attachChordToOverlay(ev.trackId, ev.localStep, ev.chord);
             break;
           case 'midi': {
+            // MIDI-out scheduling isn't flushable — re-emitting on a punch
+            // edge would double the hardware notes.
+            if (redispatch) break;
             const deviceId = resolveDeviceId(ev.portName, state.midiOutDeviceId);
             if (deviceId) {
               sendMIDINote(
@@ -740,6 +785,32 @@ export function App() {
             // Texture voices fade on transport stop rather than cutting —
             // flag the native voice so the StopFade path can target them.
             const isTexture = voiceRole(ev.voice) === 'texture';
+            // Perform punch FX (P2) — trigger-time transforms on masked
+            // tracks: reverse flips new triggers to reverse one-shot
+            // (loopMode 4, in the engine since 0.8.12); tune multiplies the
+            // playback rate for new notes. Ringing notes are untouched —
+            // matches the hardware's offset semantics.
+            const perfReverse = performReverse(ev.trackId);
+            const perfTune = performTuneRatio(ev.trackId);
+            // Bits punch takes min(voice, slot) — only ever deepens the crush.
+            const perfBits = performBitDepth(ev.trackId);
+            // Scrub/chop punches (diced/applied per trigger): scrub
+            // randomizes the sample start within the trim window, chop
+            // forces a snappy synthetic gate. Sat drives the tanh stage —
+            // max(voice, slot), only ever adds dirt.
+            const perfScrub = performScrubDepth(ev.trackId);
+            const perfChop = performChopGate(ev.trackId);
+            const perfSat = performSaturation(ev.trackId);
+            // Scrubbed start fraction for a pick (undefined = untouched).
+            const scrubStart = (
+              pick: { start?: number; end?: number },
+              roll: number,
+            ) => {
+              if (perfScrub === null) return pick.start;
+              const s = pick.start ?? 0;
+              const e = pick.end ?? 1;
+              return Math.min(s + roll * perfScrub * (e - s), e - 0.001);
+            };
             const arpOn = evTrack?.arpConfig?.on === true;
             if (arpOn && ev.voiceIntervals.length > 1) {
               const n = ev.voiceIntervals.length;
@@ -772,15 +843,19 @@ export function App() {
                   // Continuous loop modes need a synthetic gate so they don't
                   // ring forever (see the standard-path note below). Monophonic
                   // choke ends earlier tones; the gate bounds the final one.
+                  // A chop punch replaces the envelope wholesale — snappy
+                  // synthetic gate regardless of the voice's authored shape.
                   const arpLooping =
                     pick.loop === 1 || pick.loop === 2 || pick.loop === 3;
                   const arpEnv =
-                    resolveVoiceEnvelope(ev.voice) ??
-                    (arpLooping ? { attack: 0.003, release: 0.05 } : undefined);
+                    perfChop !== null
+                      ? { attack: 0.0015, release: 0.02 }
+                      : resolveVoiceEnvelope(ev.voice) ??
+                        (arpLooping ? { attack: 0.003, release: 0.05 } : undefined);
                   batch.push({ path: pick.path, opts: {
                     gain: ev.velocity * pick.voiceGain * trackGain,
                     pan,
-                    pitch: pick.pitch,
+                    pitch: pick.pitch * perfTune,
                     outFirst: out?.firstChannel ?? 0,
                     outStereo: out?.stereo ?? true,
                     trackId: ev.trackId,
@@ -791,21 +866,29 @@ export function App() {
                     chokeGroup: pick.chokeGroup ?? undefined,
                     section: sectionCode(ev.section),
                     isTexture,
-                    // Per-arp-tone hold = sub-step duration × gate.
-                    // Envelope follows the voice's configured shape.
+                    // Per-arp-tone hold = sub-step duration × gate (chop
+                    // punch overrides the gate fraction outright).
                     envelopeAttack: arpEnv?.attack,
                     envelopeDecay: arpEnv?.decay,
                     envelopeSustain: arpEnv?.sustain,
                     envelopeRelease: arpEnv?.release,
-                    envelopeHold: arpEnv ? ev.gate * sub : undefined,
-                    start: pick.start,
+                    envelopeHold: arpEnv
+                      ? (perfChop ?? ev.gate) * sub
+                      : undefined,
+                    start: scrubStart(pick, Math.random()),
                     end: pick.end,
-                    loopMode: pick.loop,
+                    loopMode: perfReverse ? 4 : pick.loop,
                     filterType: pick.filterType,
                     cutoff: pick.cutoff,
                     resonance: pick.resonance,
-                    satDrive: pick.satDrive,
-                    bitDepth: pick.bitDepth,
+                    satDrive:
+                      perfSat !== null
+                        ? Math.max(pick.satDrive ?? 0, perfSat)
+                        : pick.satDrive,
+                    bitDepth:
+                      perfBits !== null
+                        ? Math.min(pick.bitDepth ?? 16, perfBits)
+                        : pick.bitDepth,
                     lfoShape: pick.lfoShape,
                     lfoRateHz: pick.lfoRateHz,
                     lfoDepth: pick.lfoDepth,
@@ -848,16 +931,27 @@ export function App() {
               const loopCode = voiceTrim(ev.voice).loop;
               const isContinuousLoop =
                 loopCode === 1 || loopCode === 2 || loopCode === 3;
+              // A chop punch replaces the envelope wholesale — snappy
+              // synthetic gate on EVERY masked voice (drums included),
+              // holding for the slot's fraction of the step.
               const playEnv =
-                resolveVoiceEnvelope(ev.voice) ??
-                (ev.section === 'melodic' || isContinuousLoop
-                  ? { attack: 0.003, release: 0.05 }
-                  : undefined);
-              const holdSecs = playEnv ? ev.gate * ev.stepDuration : undefined;
+                perfChop !== null
+                  ? { attack: 0.0015, release: 0.02 }
+                  : resolveVoiceEnvelope(ev.voice) ??
+                    (ev.section === 'melodic' || isContinuousLoop
+                      ? { attack: 0.003, release: 0.05 }
+                      : undefined);
+              const holdSecs = playEnv
+                ? (perfChop ?? ev.gate) * ev.stepDuration
+                : undefined;
               // Sustaining chord-master triggers carry a `revoice` context — tag
               // each chord tone with a note_id and register the sounding chord so
               // the voicing-macro loop (below) can re-voice it while it rings.
               const reVoiceable = ev.revoice !== undefined;
+              // Scrub — one roll per event; multisample picks may trim
+              // differently per tone, so the roll maps into each pick's own
+              // window but the chord scrubs coherently.
+              const scrubRoll = Math.random();
               const tones: ChordToneVoice[] = [];
               // Choke group fires on the FIRST tone only — all tones of a
               // chord land in the same audio block, and a per-tone choke
@@ -877,7 +971,7 @@ export function App() {
                 batch.push({ path: pick.path, opts: {
                   gain: ev.velocity * pick.voiceGain * trackGain,
                   pan,
-                  pitch: pick.pitch,
+                  pitch: pick.pitch * perfTune,
                   outFirst: out?.firstChannel ?? 0,
                   outStereo: out?.stereo ?? true,
                   trackId: ev.trackId,
@@ -899,14 +993,20 @@ export function App() {
                   envelopeRelease: playEnv?.release,
                   envelopeHold: holdSecs,
                   noteId,
-                  start: pick.start,
+                  start: scrubStart(pick, scrubRoll),
                   end: pick.end,
-                  loopMode: pick.loop,
+                  loopMode: perfReverse ? 4 : pick.loop,
                   filterType: pick.filterType,
                   cutoff: pick.cutoff,
                   resonance: pick.resonance,
-                  satDrive: pick.satDrive,
-                  bitDepth: pick.bitDepth,
+                  satDrive:
+                    perfSat !== null
+                      ? Math.max(pick.satDrive ?? 0, perfSat)
+                      : pick.satDrive,
+                  bitDepth:
+                    perfBits !== null
+                      ? Math.min(pick.bitDepth ?? 16, perfBits)
+                      : pick.bitDepth,
                   lfoShape: pick.lfoShape,
                   lfoRateHz: pick.lfoRateHz,
                   lfoDepth: pick.lfoDepth,
@@ -954,8 +1054,35 @@ export function App() {
           }
         }
       }
-      if (streamBatch.length > 0) emitStreamEvents(streamBatch);
+      if (!redispatch && streamBatch.length > 0) emitStreamEvents(streamBatch);
+    };
+    const unsubStep = scheduler.onStep('app:dispatcher', (g, w, d) =>
+      dispatchTick(g, w, d),
+    );
+    // Perform punch edges (arm / length-switch / release): the ~250ms of
+    // already-queued native triggers are what made engage and release feel
+    // laggy and "continuing". Flush everything from ~now onward and re-run
+    // the dispatch for exactly those scheduled ticks under the NEW perform
+    // state — both edges land within ~30ms. The flush is awaited so the
+    // re-emitted triggers can't race ahead of the drop in the command queue.
+    setPerformEdgeHandler(() => {
+      void (async () => {
+        const boundary = engineNow() + 0.03;
+        try {
+          await flushPendingTriggers(frameAtTime(boundary));
+        } catch {
+          // Device not open (transport idle) — nothing queued to flush.
+          return;
+        }
+        for (const s of scheduler.pendingSteps(boundary)) {
+          dispatchTick(s.index, s.when, s.stepDuration, true);
+        }
+      })();
     });
+    return () => {
+      setPerformEdgeHandler(null);
+      unsubStep();
+    };
   }, []);
 
   // Live chord re-voicing for the voicing macro (Increment 2). Native only —
@@ -1236,8 +1363,11 @@ export function App() {
   useEffect(() => {
     // Engine clock first: initNativeAudio opens the cpal stream, and the
     // clock's boot poll + audio:time subscription want to catch the very
-    // first frames of it.
-    void initEngineClock().then(() => initNativeAudio());
+    // first frames of it. The rate watch then auto-reopens if the device's
+    // rate/channels change mid-session (Zoom HFP grab) — see nativeEngine.
+    void initEngineClock()
+      .then(() => initNativeAudio())
+      .then(() => installDeviceRateWatch());
     // Bridge the store's armed+playing edge to the native recorder's
     // start/stop IPCs.
     void import('./audio/nativeRecorder').then((m) => m.subscribeNativeRecorder());
@@ -1358,16 +1488,24 @@ export function App() {
       // modulator's space. Resonance + fxSend already are.
       const updates: TrackFilterUpdate[] = [];
       for (const t of state.tracks) {
-        const cutoffNorm = t.filterCutoff;
+        // Perform filter punch (P2) — an engaged filter slot replaces masked
+        // tracks' cutoff outright (absolute punch, hardware-style). Riding
+        // this continuous path means it bends already-ringing voices and
+        // restores the knob value the moment the slot releases.
+        const cutoffNorm = performFilterCutoff(t.id) ?? t.filterCutoff;
         const resonance = t.filterResonance;
         const fxSend = t.fxSend;
         // Reverb send is a per-instrument (voice) param, not a track knob —
         // source it from the track's current voice. Non-voice rows (external
-        // MIDI instruments) have no native voice, so 0.
+        // MIDI instruments) have no native voice, so 0. Perform send punches
+        // (P2) override outright, same absolute semantics as the filter
+        // punch — throws ringing voices into the bus, restores on release.
         const reverbSend =
-          t.source.kind === 'voice' ? voiceReverbSend(t.source.id) : 0;
+          performReverbSend(t.id) ??
+          (t.source.kind === 'voice' ? voiceReverbSend(t.source.id) : 0);
         const delaySend =
-          t.source.kind === 'voice' ? voiceDelaySend(t.source.id) : 0;
+          performDelaySend(t.id) ??
+          (t.source.kind === 'voice' ? voiceDelaySend(t.source.id) : 0);
         // Static tune (−24..24 st) / finetune (−100..100 ct) normalized to
         // 0..1 — the LFO swing center for the trackTune / trackFineTune dests.
         // The static value itself is baked into the trigger pitch; Rust only
@@ -1917,6 +2055,22 @@ export function App() {
       }
 
       const lower = e.key.toLowerCase();
+
+      // Perform beat-repeat — hold `r` to punch in (momentary; released on
+      // keyup/blur below), number row 1..9 switches the repeat length while
+      // held (16 steps → 1/16 of a step). Checked BEFORE the edit-mode keys
+      // so the digits are repeat lengths only for the duration of the hold.
+      if (lower === 'r') {
+        e.preventDefault();
+        if (!e.repeat) armRepeat();
+        return;
+      }
+      if (repeatHeld() && lower >= '1' && lower <= '9') {
+        e.preventDefault();
+        armRepeat(Number(lower) - 1);
+        return;
+      }
+
       const mode = MODE_KEYS[lower];
       if (mode) {
         e.preventDefault();
@@ -1995,8 +2149,20 @@ export function App() {
         }
       }
     };
+    // Momentary release for the perform repeat — keyup on `r`, plus window
+    // blur so a Cmd-Tab mid-hold can't leave the repeat stuck engaged.
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'r') releaseRepeat();
+    };
+    const handleBlur = () => releaseRepeat();
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
   }, []);
 
   return (

@@ -5,8 +5,10 @@ import { FXPanel } from './FXPanel';
 import { StepInspector } from './StepInspector';
 import { PianoRoll } from './PianoRoll';
 import { InstrumentEditor } from './InstrumentEditor';
+import { PerformPanel } from './PerformPanel';
 
-// The top multi-mode "screen" — ROLL / LFO / FX / MASTER / PARAMS / AUTOMATION.
+// The top multi-mode "screen" — ROLL / LFO / FX / MASTER / PARAMS /
+// AUTOMATION / PERFORM.
 // The mode tabs (`ScreenModeTabs`) live in the app title row beside the logo;
 // `ChannelScreen` is just the body. PARAMS + AUTOMATION are the focused voice's
 // instrument editor (the two halves of the old modal). UI-only — no Launchpad /
@@ -19,6 +21,7 @@ const MODES: { id: ScreenMode; label: string }[] = [
   { id: 'lfo', label: 'lfo' },
   { id: 'fx', label: 'fx' },
   { id: 'master', label: 'master' },
+  { id: 'perform', label: 'perform' },
 ];
 
 // Mode tabs + backtick cycle. Rendered on the title line, not above the screen,
@@ -94,6 +97,7 @@ export function ChannelScreen() {
             <FXPanel section="master" />
           </div>
         )}
+        {screenMode === 'perform' && <PerformPanel />}
         {/* PARAMS + AUTOMATION share one mounted editor (so a held preview
             survives switching between the two halves); the `view` prop selects
             which half renders. */}

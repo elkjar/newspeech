@@ -93,6 +93,19 @@ class Scheduler {
     return found ? { index: found.index, when: found.when, stepDuration: this.stepDuration() } : null;
   }
 
+  // Steps already handed to the dispatcher whose engine-clock time is still
+  // at/after `fromTime` — the not-yet-audible slice of the scheduling
+  // horizon. The perform punch-edge path flushes their queued native
+  // triggers and re-runs the dispatch for exactly these steps under the new
+  // perform state. Returns copies; also reports the current step duration so
+  // the re-dispatch matches the original calls.
+  pendingSteps(fromTime: number): { index: number; when: number; stepDuration: number }[] {
+    const dur = this.stepDuration();
+    return this.scheduled
+      .filter((s) => s.when >= fromTime)
+      .map((s) => ({ index: s.index, when: s.when, stepDuration: dur }));
+  }
+
   // firstStepTime: optional explicit engine-clock time for tick 0. Used by the
   // count-in path to push the first pattern step out one bar after the click
   // cues. Defaults to engineNow() + 50ms (the regular play lookahead).

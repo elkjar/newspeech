@@ -126,6 +126,13 @@ export function Waveform({
     if (peaks) {
       // fillRect with a 1px height floor — stroked zero-height lines draw
       // nothing at all, which is what made quiet/smooth spans render hollow.
+      // Each column's band is ANCHORED TO THE ZERO LINE: a pure min/max band
+      // degenerates to a 1px contour on low-frequency material (a kick's
+      // cycle spans hundreds of samples, so min≈max within one column — the
+      // "hollow waveform on rhythm channels" report). Filling from the zero
+      // crossing gives the classic solid body; dense columns (noise, snares)
+      // already straddle zero and render identically. Don't revert to a bare
+      // min/max band — this is the third recurrence of this glitch family.
       const sx = peaks.columns / width;
       for (let x = 0; x < width; x++) {
         const col = Math.min(peaks.columns - 1, Math.floor(x * sx));
@@ -134,8 +141,8 @@ export function Waveform({
         const frac = x / width;
         const inWindow = frac >= winStart && frac <= winEnd;
         ctx.fillStyle = inWindow ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)';
-        const yTop = mid - max * amp;
-        const yBot = mid - min * amp;
+        const yTop = mid - Math.max(max, 0) * amp;
+        const yBot = mid - Math.min(min, 0) * amp;
         ctx.fillRect(x, yTop, 1, Math.max(1, yBot - yTop));
       }
     } else {

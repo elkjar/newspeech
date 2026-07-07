@@ -3754,6 +3754,15 @@ enum MixerCommand {
   FadeTextures {
     fade_frames: u32,
   },
+  // Drop queued-but-not-yet-fired triggers whose absolute deadline is at
+  // or past min_frame. Sounding voices are untouched. This is the perform
+  // punch-in/release path: the JS scheduler dispatches ~250ms ahead, so
+  // without a flush a punch edge only becomes audible after the queued
+  // horizon plays out — the dispatcher flushes from "now" and re-emits
+  // the horizon under the new perform state.
+  FlushPending {
+    min_frame: u64,
+  },
   // Detach every active, not-yet-frozen voice from its shared
   // track_params by snapshotting the current cutoff/resonance/fx_send
   // onto the voice. Issued on a scene/bank/song swap so in-flight tails
@@ -4711,6 +4720,24 @@ impl AudioEngine {
     Ok(())
   }
 
+  // Perform punch edges — drop queued triggers with deadline >= min_frame
+  // so the JS dispatcher can re-emit the scheduling horizon under the new
+  // perform state. Sounding voices ring on untouched.
+  pub fn flush_pending(&self, min_frame: u64) -> Result<(), String> {
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(MixerCommand::FlushPending { min_frame })
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
+
   // Transport-stop texture fade. Fade time arrives in seconds; convert
   // to frames at the device sample rate (the audio thread counts down in
   // frames). Only texture-role voices are affected.
@@ -5627,7 +5654,12 @@ fn build_stream(
                 inst_cutoff_norm: inst_cutoff,
                 inst_q,
                 sat_drive: sat_drive.clamp(0.0, 1.0),
-                bit_depth: bit_depth.clamp(4, 16),
+                // Floor 1, not 4: the low end is where the destruction
+                // lives (2 bits = five levels, 1 bit = full square) — the
+                // perform bits punch and the instrument editor's bits
+                // ladder both use it (2026-07-07). .pti export clamps back
+                // to the Tracker hardware's 4.
+                bit_depth: bit_depth.clamp(1, 16),
                 lfo_on,
                 lfo_shape,
                 lfo_rate_hz,
@@ -5776,6 +5808,11 @@ fn build_stream(
                   }
                 }
               }
+            }
+            MixerCommand::FlushPending { min_frame } => {
+              // retain() shifts in place within the pre-allocated Vec — no
+              // realloc on the audio thread.
+              pending_triggers.retain(|p| p.target_frame < min_frame);
             }
             MixerCommand::StartCombinedRecording { producer } => {
               // Drop any prior producer (worker thread observes via
@@ -7483,6 +7520,17 @@ pub fn audio_stop_all() -> Result<(), String> {
 #[tauri::command]
 pub fn audio_panic() -> Result<(), String> {
   engine().panic()
+}
+
+// Perform punch-in/release — flush queued-but-unfired triggers from
+// min_frame onward so the dispatcher can re-emit the horizon under the
+// new perform state. See MixerCommand::FlushPending.
+#[tauri::command]
+pub fn audio_flush_pending(min_frame: f64) -> Result<(), String> {
+  if !min_frame.is_finite() || min_frame < 0.0 {
+    return Err("min_frame must be a non-negative number".to_string());
+  }
+  engine().flush_pending(min_frame as u64)
 }
 
 // Transport-stop texture fade — ring down texture-role voices over

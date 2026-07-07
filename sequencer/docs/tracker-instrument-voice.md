@@ -41,7 +41,8 @@ library voice and repoints the focused track to it.
 ### Genuinely still open
 
 1. **Slice + wavetable playmodes** — disabled scaffolds in `PlaymodeTabs` (`ready: false`). Wavetable
-   also activates the last unwired automation target (`WtPos` → `automations[3]`).
+   also activates the last unwired automation target (`WtPos` → `automations[3]`). **Slice now has a
+   firmed execution plan — see "Slice mode — execution plan (firmed 2026-07-07)" below.**
 2. **Generic-mod `.pti` automation export wiring** — `exportPti.ts` writes only `automations[0]`
    (amp env), `[2]` (cutoff LFO) and `[4]` (granular pos). The rest of the *modulation grid* (pan → [1],
    tremolo → [0] LFO side, cutoff-env → [2] env side, pitch → [5] Finetune) is **unserialized**. The
@@ -667,6 +668,53 @@ last unwired automation target (`WtPos` → `automations[3]`).
 tape-grain pool — the Tracker is single-grain), approximate-but-characterful locally, faithful in the
 `.pti`. Build iteratively (smallest audible grain first). Ties into the still-deferred WtPos/GranularPos
 export wiring + hardware verification.
+
+## Slice mode — execution plan (firmed 2026-07-07)
+
+Scope: **Slice (playmode 4) only** — BeatSlice (5) deferred, wavetable after slice. Hardware fact
+established (manual + Backstage): the Tracker's own sample editor auto-slices from transients
+(hand-adjustable, up to 48), but its detection has **no sensitivity control** — so the app's value-add
+is authoring: better/tunable slicing on the laptop, auditioned natively, landing on the device as-is
+via `slices[48]`. Same author-here/render-there philosophy as granular.
+
+**S1 — slices data + playback (audible end-to-end with grid slices, zero Rust).**
+- `voiceEditsStore.ts`: `VoiceEdit.slices?: number[]` — sorted 0..1 fractions, ≤48 — + `voiceSlices()`
+  accessor. Flip `PlaymodeTabs` slice → `ready: true`.
+- `samplePlayer.pickNativeSample` (the single chokepoint): when `playmode === 'slice'` and slices
+  exist, map `midiNote` → slice index and override the returned `start`/`end` with that slice's window
+  (`[slices[i], slices[i+1] ?? trim.end]`), `loop = off`. **Note selects, doesn't repitch** (pitch = 1;
+  tune/finetune still apply as static offsets). Mapping: chromatic from C1 (MIDI 36), **wrapping
+  `mod numSlices`** so every key always plays a slice (audible-default bias).
+- Reuses the A3 `play_start`/`play_end` machinery verbatim — no engine work in S1.
+- `Waveform.tsx`: slice-mode overlay = thin marker lines + top tabs (third display mode next to
+  trim/granular).
+- Editor cluster (slice mode): minimal — **÷4 / ÷8 / ÷16 equal-grid buttons + clear**. Grid slicing
+  gives instant audible material before transient detection exists.
+
+**S2 — auto-slice from transients + sensitivity + manual marker editing.**
+- Detection in JS on the decoded mono buffer (extend the `waveformPeaks` cache to retain the decoded
+  buffer rather than re-decoding): windowed RMS envelope; onset where the short-window level rises
+  past `sensitivity ×` the trailing average; ~30ms min-gap guard; cap 48. Same rise-detection idea as
+  the `slice-samples` pipeline.
+- UI: **AUTO button + sensitivity knob** — twisting re-runs detection live (the control the hardware
+  lacks). Markers: click empty adds, drag moves, alt-click removes.
+- Click within a slice's span previews that slice (`monitorNote` with the mapped note).
+
+**S3 — export + save + hardware verify (the gate).**
+- `exportPti.ts`: `playmode = Slice (4)` when the edit says slice; `slices[i]` = fraction → point
+  (same `PTI_MAX_POINT` path as start/end); `numSlices`.
+- ⚠️ **Open format question, verify on device:** points are written as raw 44.1k frame offsets clamped
+  to 65535 (~1.49s). Slicing long breaks is THE slice use case, so a >1.5s sliced sample is the
+  hardware test: do points resolve as raw frames (long samples truncate) or normalized units? The
+  Rhodes long-sample probe (2026-06-17) was exported but the addressing result was never recorded —
+  this test answers both.
+- Save: `slices` rides `VoiceEdit` → manifest `edits` like every other field — verify the ARRAY
+  survives the save → rescan → `resolvedVoiceEdit` round-trip.
+
+**S4 — deferred:** BeatSlice (5); piano-roll slice-number ergonomics; Launchpad slice pads.
+
+Decisions taken 2026-07-07 (revisit if they feel wrong in use): chromatic-from-C1 wrap mapping;
+slices play unpitched; grid-slice buttons ship in v1 alongside AUTO.
 
 ## Phase A — execution plan (mapped 2026-06-18, ready to build)
 

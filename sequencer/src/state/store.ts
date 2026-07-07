@@ -51,7 +51,7 @@ export type EditMode = 'live' | 'velocity' | 'chance' | 'ratchet' | 'timing' | '
 // persisted) — mirrors editMode. ROLL = focused-channel piano roll (default),
 // LFO/FX/MASTER = the relocated control panels, PARAMS/AUTOMATION = the
 // focused voice's instrument editor (the two halves of the old modal editor).
-export type ScreenMode = 'roll' | 'lfo' | 'fx' | 'master' | 'params' | 'automation';
+export type ScreenMode = 'roll' | 'lfo' | 'fx' | 'master' | 'params' | 'automation' | 'perform';
 
 export interface StepSelection {
   trackId: string;
