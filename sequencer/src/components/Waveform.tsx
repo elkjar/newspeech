@@ -124,6 +124,8 @@ export function Waveform({
     const winEnd = granular ? Math.min(1, granular.position + grainFrac) : end;
 
     if (peaks) {
+      // fillRect with a 1px height floor — stroked zero-height lines draw
+      // nothing at all, which is what made quiet/smooth spans render hollow.
       const sx = peaks.columns / width;
       for (let x = 0; x < width; x++) {
         const col = Math.min(peaks.columns - 1, Math.floor(x * sx));
@@ -131,11 +133,10 @@ export function Waveform({
         const max = peaks.peaks[col * 2 + 1];
         const frac = x / width;
         const inWindow = frac >= winStart && frac <= winEnd;
-        ctx.strokeStyle = inWindow ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)';
-        ctx.beginPath();
-        ctx.moveTo(x + 0.5, mid - max * amp);
-        ctx.lineTo(x + 0.5, mid - min * amp);
-        ctx.stroke();
+        ctx.fillStyle = inWindow ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)';
+        const yTop = mid - max * amp;
+        const yBot = mid - min * amp;
+        ctx.fillRect(x, yTop, 1, Math.max(1, yBot - yTop));
       }
     } else {
       ctx.fillStyle = 'rgba(255,255,255,0.18)';

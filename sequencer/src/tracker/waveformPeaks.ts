@@ -24,28 +24,35 @@ function ctx(): OfflineAudioContext {
 }
 
 // Reduce an AudioBuffer (downmixed to mono) to `columns` min/max pairs.
+// Each column is seeded with the previous column's closing sample so adjacent
+// columns always overlap by one value — without the carry, smooth or short
+// audio reduces to zero-height (min == max) columns, which canvas draws as
+// nothing, and the waveform renders hollow/gappy.
 function reduce(buf: AudioBuffer, columns: number): WaveformPeaks {
   const frames = buf.length;
   const chans: Float32Array[] = [];
   for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+  const mono = (i: number): number => {
+    let s = 0;
+    for (let c = 0; c < chans.length; c++) s += chans[c][i];
+    return s / chans.length;
+  };
   const peaks = new Float32Array(columns * 2);
   const per = frames / columns;
+  let carry = frames > 0 ? mono(0) : 0;
   for (let col = 0; col < columns; col++) {
     const i0 = Math.floor(col * per);
-    const i1 = Math.min(frames, Math.floor((col + 1) * per));
-    let min = 1;
-    let max = -1;
+    // Always read at least one sample (short samples make per < 1, which left
+    // i1 <= i0 and produced empty columns before).
+    const i1 = Math.min(frames, Math.max(i0 + 1, Math.floor((col + 1) * per)));
+    let min = carry;
+    let max = carry;
     for (let i = i0; i < i1; i++) {
-      let s = 0;
-      for (let c = 0; c < chans.length; c++) s += chans[c][i];
-      s /= chans.length;
+      const s = mono(i);
       if (s < min) min = s;
       if (s > max) max = s;
     }
-    if (i1 <= i0) {
-      min = 0;
-      max = 0;
-    }
+    if (i1 > i0) carry = mono(i1 - 1);
     peaks[col * 2] = min;
     peaks[col * 2 + 1] = max;
   }

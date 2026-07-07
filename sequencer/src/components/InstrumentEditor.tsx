@@ -281,7 +281,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   // ---- params view -------------------------------------------------------
   const paramsBody = (
     <div className="flex-1 min-h-0 flex gap-4 p-3 overflow-auto">
-      <div className="flex-[6] min-w-0">
+      <div className="flex-[5] min-w-0">
         <Waveform
           voiceId={voiceId}
           start={start}
@@ -317,33 +317,22 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
       {/* Playmode picker — a vertical stack directly to the right of the
           visualizer, so it's out of the controls grid (which now has the room
           to breathe rather than competing with a horizontal tab row). */}
-      <div className="shrink-0 flex flex-col gap-2 pt-1">
+      <div className="shrink-0 flex flex-col gap-2 pt-3">
         <span className="text-[9px] uppercase tracking-widest text-white/40">playmode</span>
         <PlaymodeTabs vertical value={playmode} onChange={(p) => setVoiceEdit(voiceId, { playmode: p })} />
       </div>
       {/* Controls grouped into vertical stacks, divider lines between groups.
           Order: level (vol/tune) · filter · mode-specific (loop | direction +
           grain) — so the first two columns stay put when switching playmode. */}
-      <div className="flex-[7] min-w-0 flex items-start gap-5">
-        {/* level — 2×2 grid mirroring the .pti instrument param set:
-              volume · rev send
-              tune   · delay send
-            Sends save with the instrument + export to .pti. (The native delay
-            aux isn't built yet, so delay send is silent in-app for now.) */}
+      <div className="flex-[7] min-w-0 flex items-start gap-5 pt-3">
+        {/* level — volume + tune/finetune column. The rev/delay sends moved to
+            their own SENDS stack so they're visible without scrolling. */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 items-start">
           <TopKnob
             label="volume"
             value={gain / 2}
             display={`×${gain.toFixed(2)}`}
             onChange={(v) => setVoiceEdit(voiceId, { gain: v * 2 })}
-          />
-          <LfoBindKnob
-            trackId={track.id}
-            knob="reverbSend"
-            label="rev send"
-            value={reverbSend}
-            display={(v) => `${Math.round(v * 100)}%`}
-            onChange={(v) => setVoiceEdit(voiceId, { reverbSend: v })}
           />
           <LfoBindKnob
             trackId={track.id}
@@ -357,36 +346,57 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             }}
             onChange={(v) => setVoiceEdit(voiceId, { tune: Math.round(v * 48 - 24) })}
           />
-          <LfoBindKnob
-            trackId={track.id}
-            knob="finetune"
-            label="finetune"
-            value={(finetune + 100) / 200}
-            bipolar
-            display={(v) => {
-              const ct = Math.round(v * 200 - 100);
-              return `${ct > 0 ? '+' : ''}${ct} ct`;
-            }}
-            onChange={(v) => setVoiceEdit(voiceId, { finetune: Math.round(v * 200 - 100) })}
-          />
-          <LfoBindKnob
-            trackId={track.id}
-            knob="delaySend"
-            label="delay send"
-            value={delaySend}
-            display={(v) => `${Math.round(v * 100)}%`}
-            onChange={(v) => setVoiceEdit(voiceId, { delaySend: v })}
-          />
+          <div className="col-start-2">
+            <LfoBindKnob
+              trackId={track.id}
+              knob="finetune"
+              label="finetune"
+              value={(finetune + 100) / 200}
+              bipolar
+              display={(v) => {
+                const ct = Math.round(v * 200 - 100);
+                return `${ct > 0 ? '+' : ''}${ct} ct`;
+              }}
+              onChange={(v) => setVoiceEdit(voiceId, { finetune: Math.round(v * 200 - 100) })}
+            />
+          </div>
         </div>
         <Divider />
-        {/* filter — label on top, mode-button row, then cutoff + reso */}
+        {/* sends — per-instrument reverb / delay, stacked. Save with the
+            instrument + export to .pti. */}
+        <LabeledStack label="sends">
+          <div className="flex flex-col gap-3 items-center">
+            <LfoBindKnob
+              trackId={track.id}
+              knob="reverbSend"
+              label="reverb"
+              value={reverbSend}
+              display={(v) => `${Math.round(v * 100)}%`}
+              onChange={(v) => setVoiceEdit(voiceId, { reverbSend: v })}
+            />
+            <LfoBindKnob
+              trackId={track.id}
+              knob="delaySend"
+              label="delay"
+              value={delaySend}
+              display={(v) => `${Math.round(v * 100)}%`}
+              onChange={(v) => setVoiceEdit(voiceId, { delaySend: v })}
+            />
+          </div>
+        </LabeledStack>
+        <Divider />
+        {/* filter — label on top, mode-button row, then cutoff + reso. No
+            explicit OFF button: clicking the active mode toggles the filter
+            off (none lit = off). */}
         <LabeledStack label="filter">
           <div className="flex gap-1">
-            {(['off', 'lp', 'hp', 'bp'] as FilterType[]).map((f) => (
+            {(['lp', 'hp', 'bp'] as FilterType[]).map((f) => (
               <SegButton
                 key={f}
                 active={filterType === f}
-                onClick={() => setVoiceEdit(voiceId, { filterType: f })}
+                onClick={() =>
+                  setVoiceEdit(voiceId, { filterType: filterType === f ? 'off' : f })
+                }
               >
                 {f}
               </SegButton>
@@ -413,7 +423,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             bits (hard quantize, 16 = clean). Export to .pti overdrive /
             bitdepth. */}
         <LabeledStack label="drive">
-          <div className="flex items-start gap-4">
+          <div className="flex flex-col gap-3 items-center">
             <TopKnob
               label="drive"
               value={saturation}
@@ -423,7 +433,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             <TopKnob
               label="bits"
               value={(bitDepth - 4) / 12}
-              display={bitDepth >= 16 ? '16 (off)' : `${bitDepth} bit`}
+              display={`${bitDepth} bit`}
               onChange={(v) =>
                 setVoiceEdit(voiceId, { bitDepth: Math.round(4 + v * 12) })
               }
@@ -779,6 +789,10 @@ function SegButton({
   );
 }
 
+// Params-area knob size — one step down from the FX panel's 44 so the whole
+// control row reads lighter (and narrower).
+const PARAM_KNOB_SIZE = 35;
+
 // Instrument-header control unit — control on top, label + value below.
 function TopControl({
   label,
@@ -791,7 +805,7 @@ function TopControl({
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className="h-12 flex items-center justify-center">{children}</div>
+      <div className="h-9 flex items-center justify-center">{children}</div>
       <span className="text-[10px] uppercase tracking-[0.14em] text-white/60 whitespace-nowrap">
         {label}
       </span>
@@ -816,7 +830,14 @@ function TopKnob({
 }) {
   return (
     <TopControl label={label} value={display}>
-      <Knob value={value} displayValue={value} bipolar={bipolar} onChange={onChange} size={44} title={label} />
+      <Knob
+        value={value}
+        displayValue={value}
+        bipolar={bipolar}
+        onChange={onChange}
+        size={PARAM_KNOB_SIZE}
+        title={label}
+      />
     </TopControl>
   );
 }
@@ -869,7 +890,7 @@ function LfoBindKnob({
           markManualOverride(trackId, knob);
           onChange(v);
         }}
-        size={44}
+        size={PARAM_KNOB_SIZE}
         title={label}
         onModulationClick={onModulationClick}
         modulationLabel={modulationLabel}
