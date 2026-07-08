@@ -1,0 +1,71 @@
+{
+  "name": "ethereal-piano",
+  "voices": {
+    "ethereal-piano": {
+      "label": "ethereal piano",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 36,
+          "files": [
+            "Ethereal earth-048-C2.WAV"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "Ethereal earth-052-E2.WAV"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "Ethereal earth-060-C3.WAV"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "Ethereal earth-064-E3.WAV"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "Ethereal earth-056-Ab2.WAV"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "Ethereal earth-072-C4.WAV"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "Ethereal earth-076-E4.WAV"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "Ethereal earth-068-Ab3.WAV"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "Ethereal earth-084-C5.WAV"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "Ethereal earth-080-Ab4.WAV"
+          ]
+        }
+      ]
+    }
+  }
+}

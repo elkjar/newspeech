@@ -1,0 +1,107 @@
+{
+  "name": "wave-sub",
+  "voices": {
+    "wave-sub": {
+      "label": "wave sub",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "wave-sub-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "wave-sub-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "wave-sub-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "wave-sub-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "wave-sub-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "wave-sub-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "wave-sub-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "wave-sub-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "wave-sub-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "wave-sub-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "wave-sub-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "wave-sub-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "wave-sub-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "wave-sub-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "wave-sub-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "wave-sub-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

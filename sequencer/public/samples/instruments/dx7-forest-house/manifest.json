@@ -1,0 +1,107 @@
+{
+  "name": "dx7-forest-house",
+  "voices": {
+    "dx7-forest-house": {
+      "label": "dx7 forest house",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "dx7-forest-house-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "dx7-forest-house-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "dx7-forest-house-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "dx7-forest-house-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "dx7-forest-house-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "dx7-forest-house-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "dx7-forest-house-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "dx7-forest-house-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "dx7-forest-house-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "dx7-forest-house-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "dx7-forest-house-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "dx7-forest-house-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "dx7-forest-house-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "dx7-forest-house-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "dx7-forest-house-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "dx7-forest-house-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "name": "grand-piano-ss",
+  "voices": {
+    "grand-piano-ss": {
+      "label": "grand piano ss",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "grand-piano-ss-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "grand-piano-ss-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "grand-piano-ss-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "grand-piano-ss-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "grand-piano-ss-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "grand-piano-ss-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "grand-piano-ss-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "grand-piano-ss-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "grand-piano-ss-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "grand-piano-ss-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "grand-piano-ss-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "grand-piano-ss-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "grand-piano-ss-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "grand-piano-ss-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "grand-piano-ss-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "grand-piano-ss-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

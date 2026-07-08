@@ -1,0 +1,221 @@
+{
+  "name": "plaits-soft-rev",
+  "voices": {
+    "plaits-soft-rev": {
+      "gain": 0.7,
+      "label": "plaits soft rev",
+      "roots": [
+        {
+          "files": [
+            "plaits-soft-rev-C1.wav"
+          ],
+          "midi": 24
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E1.wav"
+          ],
+          "midi": 28
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs1.wav"
+          ],
+          "midi": 32
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C2.wav"
+          ],
+          "midi": 36
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E2.wav"
+          ],
+          "midi": 40
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs2.wav"
+          ],
+          "midi": 44
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C3.wav"
+          ],
+          "midi": 48
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E3.wav"
+          ],
+          "midi": 52
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs3.wav"
+          ],
+          "midi": 56
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C4.wav"
+          ],
+          "midi": 60
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E4.wav"
+          ],
+          "midi": 64
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs4.wav"
+          ],
+          "midi": 68
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C5.wav"
+          ],
+          "midi": 72
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E5.wav"
+          ],
+          "midi": 76
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs5.wav"
+          ],
+          "midi": 80
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C6.wav"
+          ],
+          "midi": 84
+        }
+      ],
+      "edits": {
+        "reverbSend": 0.36,
+        "delaySend": 1,
+        "loopMode": "off",
+        "end": 0.49777465602352694
+      }
+    },
+    "plaits-gran": {
+      "gain": 0.7,
+      "label": "plaits gran",
+      "roots": [
+        {
+          "files": [
+            "plaits-soft-rev-C1.wav"
+          ],
+          "midi": 24
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E1.wav"
+          ],
+          "midi": 28
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs1.wav"
+          ],
+          "midi": 32
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C2.wav"
+          ],
+          "midi": 36
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E2.wav"
+          ],
+          "midi": 40
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs2.wav"
+          ],
+          "midi": 44
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C3.wav"
+          ],
+          "midi": 48
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E3.wav"
+          ],
+          "midi": 52
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs3.wav"
+          ],
+          "midi": 56
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C4.wav"
+          ],
+          "midi": 60
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E4.wav"
+          ],
+          "midi": 64
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs4.wav"
+          ],
+          "midi": 68
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C5.wav"
+          ],
+          "midi": 72
+        },
+        {
+          "files": [
+            "plaits-soft-rev-E5.wav"
+          ],
+          "midi": 76
+        },
+        {
+          "files": [
+            "plaits-soft-rev-Gs5.wav"
+          ],
+          "midi": 80
+        },
+        {
+          "files": [
+            "plaits-soft-rev-C6.wav"
+          ],
+          "midi": 84
+        }
+      ],
+      "edits": {
+        "reverbSend": 0.53,
+        "delaySend": 0.59,
+        "saturation": 0.2,
+        "playmode": "granular"
+      }
+    }
+  }
+}

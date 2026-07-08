@@ -1,0 +1,107 @@
+{
+  "name": "dx7-bells",
+  "voices": {
+    "dx7-bells": {
+      "label": "dx7 bells",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "dx7-bells-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "dx7-bells-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "dx7-bells-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "dx7-bells-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "dx7-bells-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "dx7-bells-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "dx7-bells-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "dx7-bells-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "dx7-bells-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "dx7-bells-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "dx7-bells-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "dx7-bells-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "dx7-bells-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "dx7-bells-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "dx7-bells-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "dx7-bells-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

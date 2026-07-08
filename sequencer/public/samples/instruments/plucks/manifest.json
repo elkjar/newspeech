@@ -1,0 +1,107 @@
+{
+  "name": "plucks",
+  "voices": {
+    "plucks": {
+      "label": "plucks",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "plucks-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "plucks-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "plucks-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "plucks-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "plucks-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "plucks-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "plucks-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "plucks-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "plucks-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "plucks-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "plucks-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "plucks-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "plucks-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "plucks-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "plucks-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "plucks-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

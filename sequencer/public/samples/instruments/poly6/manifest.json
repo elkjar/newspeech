@@ -1,0 +1,99 @@
+{
+  "name": "poly6",
+  "voices": {
+    "poly6": {
+      "gain": 0.7,
+      "label": "poly6",
+      "roots": [
+        {
+          "files": [
+            "poly6-C1.wav"
+          ],
+          "midi": 24
+        },
+        {
+          "files": [
+            "poly6-E1.wav"
+          ],
+          "midi": 28
+        },
+        {
+          "files": [
+            "poly6-Gs1.wav"
+          ],
+          "midi": 32
+        },
+        {
+          "files": [
+            "poly6-C2.wav"
+          ],
+          "midi": 36
+        },
+        {
+          "files": [
+            "poly6-E2.wav"
+          ],
+          "midi": 40
+        },
+        {
+          "files": [
+            "poly6-Gs2.wav"
+          ],
+          "midi": 44
+        },
+        {
+          "files": [
+            "poly6-C3.wav"
+          ],
+          "midi": 48
+        },
+        {
+          "files": [
+            "poly6-E3.wav"
+          ],
+          "midi": 52
+        },
+        {
+          "files": [
+            "poly6-Gs3.wav"
+          ],
+          "midi": 56
+        },
+        {
+          "files": [
+            "poly6-C4.wav"
+          ],
+          "midi": 60
+        },
+        {
+          "files": [
+            "poly6-E4.wav"
+          ],
+          "midi": 64
+        },
+        {
+          "files": [
+            "poly6-Gs4.wav"
+          ],
+          "midi": 68
+        },
+        {
+          "files": [
+            "poly6-C5.wav"
+          ],
+          "midi": 72
+        },
+        {
+          "files": [
+            "poly6-E5.wav"
+          ],
+          "midi": 76
+        }
+      ],
+      "edits": {
+        "reverbSend": 0.69,
+        "delaySend": 0.71
+      }
+    }
+  }
+}

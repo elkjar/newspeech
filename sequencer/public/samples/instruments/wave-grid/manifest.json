@@ -1,0 +1,107 @@
+{
+  "name": "wave-grid",
+  "voices": {
+    "wave-grid": {
+      "label": "wave grid",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "wave-grid-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "wave-grid-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "wave-grid-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "wave-grid-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "wave-grid-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "wave-grid-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "wave-grid-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "wave-grid-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "wave-grid-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "wave-grid-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "wave-grid-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "wave-grid-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "wave-grid-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "wave-grid-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "wave-grid-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "wave-grid-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}
