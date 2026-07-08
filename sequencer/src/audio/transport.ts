@@ -87,6 +87,7 @@ export function panicKill(): void {
   // not pull the loops module graph in at boot).
   void audioPanic();
   void import('./loops').then((m) => m.loopsOnPanic());
+  void import('./noise').then((m) => m.noiseOnPanic());
 }
 
 // Song mode reached the end of its rows (loop off): announce stop to clock

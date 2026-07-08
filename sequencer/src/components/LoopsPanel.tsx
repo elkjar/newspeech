@@ -340,6 +340,9 @@ export function LoopsPanel() {
     loopLock,
     loopLevel,
     grainLevel,
+    fxSend,
+    revSend,
+    delSend,
     size,
     random,
     grains,
@@ -537,6 +540,30 @@ export function LoopsPanel() {
               value={Math.min(1, grainLevel / 1.5)}
               onChange={(v) => setLoopLayerLevel('grain', v * 1.5)}
               title="grain layer return level — independent of the tape loop"
+            />
+          </LoopGroup>
+          <Divider />
+          <LoopGroup label="sends">
+            <ParamKnob
+              label="fx"
+              valueText={`${Math.round(fxSend * 100)}`}
+              value={fxSend}
+              onChange={(v) => setLoopParam('fxSend', v)}
+              title="unit output → mangler bus (tape/glitch/drive chain)"
+            />
+            <ParamKnob
+              label="verb"
+              valueText={`${Math.round(revSend * 100)}`}
+              value={revSend}
+              onChange={(v) => setLoopParam('revSend', v)}
+              title="unit output → reverb bus"
+            />
+            <ParamKnob
+              label="dly"
+              valueText={`${Math.round(delSend * 100)}`}
+              value={delSend}
+              onChange={(v) => setLoopParam('delSend', v)}
+              title="unit output → delay bus"
             />
           </LoopGroup>
         </div>

@@ -44,6 +44,13 @@ export function noteBarBoundary(frame: number, frames: number) {
   barFrames = frames;
 }
 
+// Shared with the NOISE unit (audio/noise.ts) — same retroactive
+// bar-quantized capture math over the same engine ring.
+export function barAnchor(): { frame: number; barFrames: number } | null {
+  if (lastBarFrame === null || barFrames <= 0) return null;
+  return { frame: lastBarFrame, barFrames };
+}
+
 interface LoopState {
   // Captured length in bars; null = unit empty/stopped.
   bars: number | null;
@@ -83,6 +90,11 @@ interface LoopState {
   sizeDev: number;
   pitchDev: number;
   rateDev: number;
+  // Unit → FX-bus sends (mangler / reverb / delay), one-block deferred
+  // engine-side. Pre-routing tap: they fire even when inserted into NOISE.
+  fxSend: number;
+  revSend: number;
+  delSend: number;
 }
 
 const state: LoopState = {
@@ -103,6 +115,9 @@ const state: LoopState = {
   sizeDev: 0,
   pitchDev: 0,
   rateDev: 0,
+  fxSend: 0,
+  revSend: 0,
+  delSend: 0,
 };
 
 // Thru-zero vari-speed ladder — octave ratios only (Chris's call): pitch
@@ -184,6 +199,9 @@ function effectiveParams() {
     sizeDev: state.sizeDev,
     pitchDev: state.pitchDev,
     rateDev: state.rateDev,
+    fxSend: state.fxSend,
+    revSend: state.revSend,
+    delSend: state.delSend,
   };
 }
 
@@ -283,6 +301,9 @@ export function loopParamValues(): {
   sizeDev: number;
   pitchDev: number;
   rateDev: number;
+  fxSend: number;
+  revSend: number;
+  delSend: number;
 } {
   return {
     speedKnob: state.speedKnob,
@@ -299,6 +320,9 @@ export function loopParamValues(): {
     sizeDev: state.sizeDev,
     pitchDev: state.pitchDev,
     rateDev: state.rateDev,
+    fxSend: state.fxSend,
+    revSend: state.revSend,
+    delSend: state.delSend,
   };
 }
 
@@ -317,7 +341,10 @@ export function setLoopParam(
     | 'random'
     | 'sizeDev'
     | 'pitchDev'
-    | 'rateDev',
+    | 'rateDev'
+    | 'fxSend'
+    | 'revSend'
+    | 'delSend',
   value: number,
 ) {
   const v = Math.max(0, Math.min(1, value));

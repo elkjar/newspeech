@@ -118,6 +118,60 @@ move: sequence → capture → mangle → save → re-sequence.
   for alignment + N bars to render). Still open from P4: perform-tab capture punch,
   Ghost-triggered capture (autonomous resampling).
 
+## NOISE unit (P1 landed 2026-07-07 — Mörser-shaped, own tab)
+
+Chris's DE references drove the design: the **Djupviks Mörser** (stereo WASP filter, clocked
+digital noise normalled to audio-in AND cutoff-CV, always-on distortion, self-sounding) and
+the **Spektrum** (signal-as-clock switched-cap filter — parked as the v2 twist: the clock
+source selector grows a SIGNAL mode driven by zero-crossing rate, incl. cross-clocking from
+Loop A). Set-and-forget was the requirement: all flow processing, no accumulation —
+equilibrium textures, unlike the rejected re-crush idea.
+
+- **Chain:** input → [+ clocked S&H digital noise] → stereo Chamberlin SVF with tanh INSIDE
+  the resonance loop (WASP/CMOS grit; per-channel damping = res ± width for stereo
+  instability; LP/BP tap) → always-on tanh distortion (DE philosophy, no blend) → own
+  return level (0 = bypass).
+- **Clocked noise, two destinations** like the hardware: audio (`noise`) and cutoff
+  (`cv`, ±2 octaves at full — the morse/rainforest maker). Clock = bar divisions
+  (grid-anchored, chatter locks to the groove) or free Hz via the same sync-toggle pattern
+  as the grain rate.
+- **INPUT routing (Chris's flow: "loop → manipulate → add noise → export"):** stepped
+  source — **LOOP** (default; true insert: Loop A routes THROUGH the chain, its direct
+  injection suppressed, wet-only; the loop SAVE bounce prints the POST-NOISE signal via the
+  relocated bounce tap on the send scratch) · **CAPT** (own retroactive bar-quantized
+  capture off the shared ring + vari-speed head — a second bed) · **OFF** (self-sounding:
+  noise alone through the filter). Level 0 = implicit bypass (loop injects direct again).
+- Engine: `MixerCommand::NoiseCapture/NoiseStop/NoiseParams`; `loop_send_l/r` block scratch
+  carries loop→noise→bounce; Panic zeroes level + SVF state (a self-oscillating filter is a
+  runaway source). JS: `src/audio/noise.ts` + `NoisePanel.tsx` (FX-style groups: input /
+  filter / noise / out), `noise` ScreenMode.
+- **Character pass (same day — Chris: "doesn't really feel like the Mörser"):** the gap was
+  level-sensitivity + asymmetry + noise hardness. Added: **DRIVE** (1–24x input gain INTO
+  the filter — pushing it is the sound; output stage compensates so LEVEL stays a fader) ·
+  **asymmetric in-loop nonlinearity** (`tanh(v + 0.14v²)` — even harmonics, mis-biased
+  CMOS) · **resonance SQUELCH** (damping rises with bp level — resonance chokes under load
+  instead of ringing clean) · **hard LFSR ±1 bitstream** noise (was smoothed random; cv
+  jitter stays 4-step graded) · **free clock extended to AUDIO RATE** (0.5Hz–8kHz — slow =
+  stepped CV blips, audio-rate = pitched digital hash, the Mörser noise color; default
+  240Hz).
+- **SAVE prints the chain's TOTAL output in every routing** (fixed after Chris's
+  silent-file report): inserted → noise REPLACES the loop in the bounce scratch; capt/off →
+  noise ADDS on top of the loop's direct out. Previously capt/off setups weren't taped at
+  all. Also same-session: ping LEDs (L/R peak-hold atomics, ~100ms persistence, 30Hz
+  imperative poll — the Mörser tuning light), edge-ping noise injection (transitions ping
+  the resonance — the morse mechanic; held-DC was the miss), 2x-oversampled SVF (high
+  cutoff no longer collapses into a Nyquist limit cycle), DC-latch fix (leaky lp + DC
+  blocker — the asymmetric clipper's DC was pinning the unit silent).
+- **Unit → FX-bus sends (Chris: "can these feed INTO the FX loop?"):** both units carry
+  fx/verb/dly send knobs into the mangler/reverb/delay buses. The units run downstream of
+  the FX section, so the sends are ONE BLOCK DEFERRED (carry buffers seeded into the bus
+  inputs at the next block top — ~10ms, inaudible on send material). Pre-routing tap: the
+  loop's sends fire even when inserted into NOISE. Deliberate consequence: unit FX tails
+  re-enter the pre-master mix and therefore future captures — generational resampling
+  through the buses.
+- **Open (NOISE):** SIGNAL clock mode (Spektrum, incl. Loop-A cross-clocking), LFO
+  addressability, viz, its own save path when in CAPT mode.
+
 ## P1 caveats (accepted, revisit if they bite)
 
 - **Metronome bleeds into captures** when it's on (it plays into the post-master main

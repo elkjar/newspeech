@@ -3353,6 +3353,10 @@ static LOOP_VIZ_GRAINS: [AtomicU32; LOOP_GRAIN_SLOTS * 2] =
 // zero-init reads as 0.0 — the audio thread republishes every block while
 // the unit runs, and JS treats <0 OR no-saving state as "no bar".
 static LOOP_VIZ_BOUNCE: AtomicU32 = AtomicU32::new(0);
+// NOISE unit ping LEDs (L, R) — peak-hold envelopes (fire to 1.0 on each
+// edge ping, ~100ms decay per block) so the 30Hz UI poll catches flashes
+// the way a real LED's persistence does. The Mörser's tuning LED, lifted.
+static NOISE_VIZ_PING: [AtomicU32; 2] = [const { AtomicU32::new(0) }; 2];
 // Cap for the per-stream sample-accurate pending-trigger queue. The
 // audio thread pre-allocates this many slots so pushes never realloc;
 // overflow drops with `PENDING_TRIGGER_DROPS` for diagnostics.
@@ -3861,12 +3865,48 @@ enum MixerCommand {
   // from the vari-speed playhead, so SPEED becomes pure time for the loop
   // layer: timestretch, reverse-at-pitch, frozen slice at stop. Off =
   // tape physics (pitch follows speed).
+  // NOISE unit (P1, Mörser-shaped — docs/loop-resample.md §NOISE): a second
+  // capture off the same post-master ring, played by a simple vari-speed
+  // head into: [+ clocked digital noise] → stereo WASP-grit SVF (tanh in
+  // the resonance loop; per-channel resonance via res±width; LP/BP tap) →
+  // always-on distortion → own return. The clocked noise ALSO jitters the
+  // cutoff (the Mörser's noise→CV normalling) — clock at bar divisions or
+  // free Hz. Sounds with an EMPTY capture (noise alone through the filter).
+  NoiseCapture {
+    start_frame: u64,
+    end_frame: u64,
+  },
+  NoiseStop,
+  NoiseParams {
+    // 0 = LOOP INSERT (Loop A routes THROUGH the chain — wet-only, and the
+    // save bounce prints the post-noise signal); 1 = own capture
+    // (parallel second bed); 2 = none (self-sounding noise box).
+    source: u8,
+    speed: f32,
+    drive: f32,      // 0..1 → 1..24x input gain INTO the filter (the WASP
+                     // level-sensitivity — pushing it IS the sound)
+    cutoff: f32,     // 0..1 norm (log-mapped to Hz)
+    res: f32,        // 0..1
+    width: f32,      // 0..1 — L/R resonance offset (stereo instability)
+    mode: u8,        // 0 = LP, 1 = BP
+    noise: f32,      // 0..1 noise level into the audio path
+    cv: f32,         // 0..1 noise→cutoff jitter depth (octaves at full)
+    clock_frames: f32,
+    clock_synced: bool,
+    level: f32,      // 0..2 return level
+    fx_send: f32,
+    rev_send: f32,
+    del_send: f32,
+  },
   LoopParams {
     speed: f32,
     pitch: f32,
     loop_lock: bool,
     loop_level: f32,
     grain_level: f32,
+    fx_send: f32,
+    rev_send: f32,
+    del_send: f32,
     size: f32,
     random: f32,
     grains: u32,
@@ -4872,6 +4912,52 @@ impl AudioEngine {
     self.push_command(MixerCommand::LoopGain { gain })
   }
 
+  pub fn noise_capture(&self, start_frame: u64, end_frame: u64) -> Result<(), String> {
+    self.push_command(MixerCommand::NoiseCapture { start_frame, end_frame })
+  }
+
+  pub fn noise_stop(&self) -> Result<(), String> {
+    self.push_command(MixerCommand::NoiseStop)
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  pub fn noise_params(
+    &self,
+    source: u8,
+    speed: f32,
+    drive: f32,
+    cutoff: f32,
+    res: f32,
+    width: f32,
+    mode: u8,
+    noise: f32,
+    cv: f32,
+    clock_frames: f32,
+    clock_synced: bool,
+    level: f32,
+    fx_send: f32,
+    rev_send: f32,
+    del_send: f32,
+  ) -> Result<(), String> {
+    self.push_command(MixerCommand::NoiseParams {
+      source,
+      speed,
+      drive,
+      cutoff,
+      res,
+      width,
+      mode,
+      noise,
+      cv,
+      clock_frames,
+      clock_synced,
+      level,
+      fx_send,
+      rev_send,
+      del_send,
+    })
+  }
+
   // Save-to-library bounce — mirrors start-combined-recording: rb + hound
   // writer + recorder worker, but fed by the loop unit's output tap and
   // self-stopping after `frames`.
@@ -4946,6 +5032,9 @@ impl AudioEngine {
     size_dev: f32,
     pitch_dev: f32,
     rate_dev: f32,
+    fx_send: f32,
+    rev_send: f32,
+    del_send: f32,
   ) -> Result<(), String> {
     self.push_command(MixerCommand::LoopParams {
       speed,
@@ -4953,6 +5042,9 @@ impl AudioEngine {
       loop_lock,
       loop_level,
       grain_level,
+      fx_send,
+      rev_send,
+      del_send,
       size,
       random,
       grains,
@@ -5519,6 +5611,70 @@ fn build_stream(
   let mut loop_bounce: Option<(HeapProd<f32>, u64, u64, u64, Arc<AtomicBool>)> =
     None;
   let mut loop_bounce_started = false;
+  // NOISE unit (Mörser-shaped). Own capture buffer off the shared ring; a
+  // plain vari-speed head (no grains — that's the LOOP unit's vocabulary).
+  let mut noise_buf_l: Vec<f32> = vec![0.0; loop_ring_frames];
+  let mut noise_buf_r: Vec<f32> = vec![0.0; loop_ring_frames];
+  let mut noise_len: usize = 0;
+  let mut noise_anchor: u64 = 0;
+  let mut noise_capture_active = false;
+  let mut noise_pos: f64 = 0.0;
+  let mut noise_speed: f32 = 1.0;
+  let mut noise_drive: f32 = 0.25;
+  let mut noise_cutoff: f32 = 0.6;
+  let mut noise_res: f32 = 0.4;
+  let mut noise_width: f32 = 0.0;
+  let mut noise_mode: u8 = 0;
+  let mut noise_amt: f32 = 0.3;
+  let mut noise_cv: f32 = 0.2;
+  let mut noise_clock_frames: f32 = 6000.0;
+  let mut noise_clock_synced: bool = false;
+  let mut noise_level: f32 = 0.0; // unit silent until raised
+  // Clock + sample&hold state: held noise values (audio L/R + cutoff
+  // jitter), absolute next-tick frame, SVF states per channel, current
+  // filter coefficient (recomputed on clock ticks / param pushes).
+  let mut noise_source: u8 = 0; // 0 loop-insert · 1 own capture · 2 none
+  let mut noise_next_clock: f64 = 0.0;
+  let mut noise_hold_l: f32 = 0.0;
+  let mut noise_hold_r: f32 = 0.0;
+  // Edge-ping state: the noise hits the filter as TRANSITIONS, not held
+  // levels — each bit flip fires a short decaying pulse that pings the
+  // resonance (the Mörser morse-code mechanic). Runs of unchanged bits =
+  // silence gaps; the cv step retunes each ping.
+  let mut noise_bit_l: bool = false;
+  let mut noise_bit_r: bool = false;
+  let mut noise_ping_l: f32 = 0.0;
+  let mut noise_ping_r: f32 = 0.0;
+  let mut noise_jit: f32 = 0.0; // held cutoff jitter, bipolar
+  let mut noise_rng: u32 = 0x51f0_beef;
+  let mut noise_svf: [(f32, f32); 2] = [(0.0, 0.0); 2]; // (lp, bp) per ch
+  // DC blocker per channel (x1, y1) — the asymmetric in-loop clipper
+  // generates DC, which would otherwise latch the lp integrator under
+  // drive and pin the unit silent (the "level turns off the output" bug).
+  let mut noise_dcb: [(f32, f32); 2] = [(0.0, 0.0); 2];
+  // Block scratch carrying the loop unit's output into the noise unit
+  // (insert routing) and onward to the bounce tap — the bounce always
+  // prints the FINAL signal (post-noise when inserted).
+  let mut loop_send_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut loop_send_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  // Unit → FX-bus sends, ONE BLOCK DEFERRED: the units run downstream of
+  // the FX section (post-master, where the capture ring lives), so their
+  // sends accumulate here and enter the mangler/reverb/delay inputs at the
+  // TOP of the next block (~block of latency — inaudible on send material).
+  // Consequence, deliberate: unit FX tails re-enter the pre-master mix and
+  // therefore future captures — generational resampling through the buses.
+  let mut units_fx_carry_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut units_fx_carry_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut units_rev_carry_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut units_rev_carry_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut units_del_carry_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut units_del_carry_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut loop_fx_send: f32 = 0.0;
+  let mut loop_rev_send: f32 = 0.0;
+  let mut loop_del_send: f32 = 0.0;
+  let mut noise_fx_send: f32 = 0.0;
+  let mut noise_rev_send: f32 = 0.0;
+  let mut noise_del_send: f32 = 0.0;
   // Cheap grain-spray randomness (xorshift) — never allocates.
   let mut loop_rng: u32 = 0x9e37_79b9;
   let nominal_channels = channels as usize;
@@ -6040,6 +6196,13 @@ fn build_stream(
                 stop.store(true, Ordering::Release);
                 loop_bounce_started = false;
               }
+              noise_capture_active = false;
+              noise_len = 0;
+              // Panic silences the NOISE unit outright — a self-sounding
+              // filter is a runaway source like any FX tail.
+              noise_level = 0.0;
+              noise_svf = [(0.0, 0.0); 2];
+              noise_dcb = [(0.0, 0.0); 2];
               LOOP_VIZ_POS.store((-1.0f32).to_bits(), Ordering::Relaxed);
               LOOP_VIZ_BOUNCE.store((-1.0f32).to_bits(), Ordering::Relaxed);
             }
@@ -6197,6 +6360,98 @@ fn build_stream(
                 loop_gain = gain.clamp(0.0, 1.5);
               }
             }
+            MixerCommand::NoiseCapture { start_frame, end_frame } => {
+              // Same retroactive modular-slice copy as LoopCapture, into
+              // the NOISE unit's own buffer.
+              let now = ENGINE_FRAMES.load(Ordering::Relaxed);
+              let len = end_frame.saturating_sub(start_frame) as usize;
+              let ring_len = loop_ring_l.len();
+              let oldest = now.saturating_sub(ring_len as u64);
+              if len > 0
+                && len <= ring_len
+                && start_frame >= oldest
+                && end_frame <= now
+              {
+                let s0 = (start_frame % ring_len as u64) as usize;
+                let first = (ring_len - s0).min(len);
+                noise_buf_l[..first]
+                  .copy_from_slice(&loop_ring_l[s0..s0 + first]);
+                noise_buf_r[..first]
+                  .copy_from_slice(&loop_ring_r[s0..s0 + first]);
+                if first < len {
+                  let rest = len - first;
+                  noise_buf_l[first..len].copy_from_slice(&loop_ring_l[..rest]);
+                  noise_buf_r[first..len].copy_from_slice(&loop_ring_r[..rest]);
+                }
+                noise_len = len;
+                noise_anchor = end_frame;
+                noise_capture_active = true;
+                noise_pos = 0.0;
+              }
+            }
+            MixerCommand::NoiseStop => {
+              noise_capture_active = false;
+              noise_len = 0;
+            }
+            MixerCommand::NoiseParams {
+              source,
+              speed,
+              drive,
+              cutoff,
+              res,
+              width,
+              mode,
+              noise,
+              cv,
+              clock_frames,
+              clock_synced,
+              level,
+              fx_send,
+              rev_send,
+              del_send,
+            } => {
+              noise_source = source.min(2);
+              if speed.is_finite() {
+                noise_speed = speed.clamp(-4.0, 4.0);
+              }
+              if drive.is_finite() {
+                noise_drive = drive.clamp(0.0, 1.0);
+              }
+              if cutoff.is_finite() {
+                noise_cutoff = cutoff.clamp(0.0, 1.0);
+              }
+              if res.is_finite() {
+                noise_res = res.clamp(0.0, 1.0);
+              }
+              if width.is_finite() {
+                noise_width = width.clamp(0.0, 1.0);
+              }
+              noise_mode = mode.min(1);
+              if noise.is_finite() {
+                noise_amt = noise.clamp(0.0, 1.0);
+              }
+              if cv.is_finite() {
+                noise_cv = cv.clamp(0.0, 1.0);
+              }
+              if clock_frames.is_finite() {
+                // Floor 4 frames — audio-rate clocks turn the LFSR into
+                // pitched digital hash (the Mörser noise color range).
+                noise_clock_frames = clock_frames.clamp(4.0, 4_000_000.0);
+              }
+              noise_clock_synced = clock_synced;
+              if level.is_finite() {
+                noise_level = level.clamp(0.0, 2.0);
+              }
+              if fx_send.is_finite() {
+                noise_fx_send = fx_send.clamp(0.0, 1.0);
+              }
+              if rev_send.is_finite() {
+                noise_rev_send = rev_send.clamp(0.0, 1.0);
+              }
+              if del_send.is_finite() {
+                noise_del_send = del_send.clamp(0.0, 1.0);
+              }
+            }
             MixerCommand::LoopBounce { producer, frames, align_frames, stop } => {
               // Replace any bounce in flight — finalize it first.
               if let Some((_, _, _, _, old_stop)) = loop_bounce.take() {
@@ -6217,6 +6472,9 @@ fn build_stream(
               loop_lock: lock,
               loop_level,
               grain_level,
+              fx_send,
+              rev_send,
+              del_send,
               size,
               random,
               grains,
@@ -6238,6 +6496,15 @@ fn build_stream(
               }
               if grain_level.is_finite() {
                 loop_grain_level = grain_level.clamp(0.0, 2.0);
+              }
+              if fx_send.is_finite() {
+                loop_fx_send = fx_send.clamp(0.0, 1.0);
+              }
+              if rev_send.is_finite() {
+                loop_rev_send = rev_send.clamp(0.0, 1.0);
+              }
+              if del_send.is_finite() {
+                loop_del_send = del_send.clamp(0.0, 1.0);
               }
               if size.is_finite() {
                 loop_size = size.clamp(0.0, 1.0);
@@ -6390,12 +6657,21 @@ fn build_stream(
         // tap into these during the voice loop below.
         let rev_frames = frames.min(REVERB_SCRATCH);
         for i in 0..rev_frames {
-          fxbus_l[i] = 0.0;
-          fxbus_r[i] = 0.0;
-          rev_send_l[i] = 0.0;
-          rev_send_r[i] = 0.0;
-          delay_send_l[i] = 0.0;
-          delay_send_r[i] = 0.0;
+          // Seed the buses with LAST block's unit sends (loop/noise →
+          // mangler/reverb/delay, one block deferred), then clear the
+          // carries for this block's accumulation.
+          fxbus_l[i] = units_fx_carry_l[i];
+          fxbus_r[i] = units_fx_carry_r[i];
+          rev_send_l[i] = units_rev_carry_l[i];
+          rev_send_r[i] = units_rev_carry_r[i];
+          delay_send_l[i] = units_del_carry_l[i];
+          delay_send_r[i] = units_del_carry_r[i];
+          units_fx_carry_l[i] = 0.0;
+          units_fx_carry_r[i] = 0.0;
+          units_rev_carry_l[i] = 0.0;
+          units_rev_carry_r[i] = 0.0;
+          units_del_carry_l[i] = 0.0;
+          units_del_carry_r[i] = 0.0;
           rhythm_l[i] = 0.0;
           rhythm_r[i] = 0.0;
           melody_l[i] = 0.0;
@@ -7300,6 +7576,14 @@ fn build_stream(
             loop_ring_l[w] = l;
             loop_ring_r[w] = r;
           }
+          // Loop→noise routing, decided per block: inserted = Loop A
+          // routes THROUGH the noise chain (direct injection suppressed;
+          // the bounce prints the post-noise signal). noise level 0 =
+          // implicit bypass (loop injects direct again).
+          let noise_inserted = noise_source == 0 && noise_level > 0.001;
+          let sframes = frames.min(REVERB_SCRATCH);
+          loop_send_l[..sframes].fill(0.0);
+          loop_send_r[..sframes].fill(0.0);
           if loop_active && loop_len > 0 {
             // P2 read engine (Morphagene/ADDAC flavor). Two regimes:
             //  - TAPE (size ≥ 0.98): vari-speed head at `speed`, thru-zero
@@ -7492,36 +7776,27 @@ fn build_stream(
               }
               let out_l = l * loop_gain;
               let out_r = r * loop_gain;
-              if n_ch >= 2 {
-                buf[frame * n_ch] += out_l;
-                buf[frame * n_ch + 1] += out_r;
-              } else {
-                buf[frame * n_ch] += 0.5 * (out_l + out_r);
+              // Stash for the noise unit (insert routing) and the bounce
+              // tap, which now lives downstream of the routing.
+              if frame < REVERB_SCRATCH {
+                loop_send_l[frame] = out_l;
+                loop_send_r[frame] = out_r;
+                // Unit → FX sends (pre-routing tap: fires even when the
+                // dry path is inserted into the noise unit).
+                units_fx_carry_l[frame] += out_l * loop_fx_send;
+                units_fx_carry_r[frame] += out_r * loop_fx_send;
+                units_rev_carry_l[frame] += out_l * loop_rev_send;
+                units_rev_carry_r[frame] += out_r * loop_rev_send;
+                units_del_carry_l[frame] += out_l * loop_del_send;
+                units_del_carry_r[frame] += out_r * loop_del_send;
               }
-              // Loop-bounce tap — the unit's own output only. Waits for
-              // the bar grid so the file re-loops cleanly.
-              let mut bounce_done = false;
-              if let Some((prod, remaining, _total, align, stop)) =
-                loop_bounce.as_mut()
-              {
-                if !loop_bounce_started
-                  && (abs - loop_anchor) % (*align).max(1) == 0
-                {
-                  loop_bounce_started = true;
+              if !noise_inserted {
+                if n_ch >= 2 {
+                  buf[frame * n_ch] += out_l;
+                  buf[frame * n_ch + 1] += out_r;
+                } else {
+                  buf[frame * n_ch] += 0.5 * (out_l + out_r);
                 }
-                if loop_bounce_started {
-                  let _ = prod.try_push(out_l);
-                  let _ = prod.try_push(out_r);
-                  *remaining = remaining.saturating_sub(1);
-                  if *remaining == 0 {
-                    stop.store(true, Ordering::Release);
-                    bounce_done = true;
-                  }
-                }
-              }
-              if bounce_done {
-                loop_bounce = None;
-                loop_bounce_started = false;
               }
             }
             // Publish viz once per block: playhead fraction + per-grain
@@ -7558,6 +7833,228 @@ fn build_stream(
               LOOP_VIZ_GRAINS[i * 2].store(pos.to_bits(), Ordering::Relaxed);
               LOOP_VIZ_GRAINS[i * 2 + 1]
                 .store(env.to_bits(), Ordering::Relaxed);
+            }
+          }
+
+          // ---- NOISE unit (Mörser-shaped) ------------------------------
+          // Runs whenever its return level is up — WITH or WITHOUT a
+          // capture (empty = the clocked noise alone through the filter,
+          // the Mörser self-sounding trick). Placed after the ring tap, so
+          // like the loop unit its output is never re-captured.
+          if noise_level > 0.001 {
+            let sr_f = sr_f32.max(1.0);
+            // Cutoff base: log map 40..12k; clock-held jitter shifts it in
+            // octaves (the noise→CV normalling). Recomputed on clock ticks.
+            let fc_of = |jit: f32| -> f32 {
+              let base = 40.0 * 300.0_f32.powf(noise_cutoff);
+              (base * 2.0_f32.powf(jit * noise_cv * 2.0))
+                .clamp(30.0, (sr_f * 0.24).min(14000.0))
+            };
+            // Coefficient for the 2x-OVERSAMPLED inner loop (two half-steps
+            // per sample) — the plain Chamberlin falls into a Nyquist limit
+            // cycle above ~sr/6, which read as "cranking the filter kills
+            // the output". Half-stepping keeps the full range stable.
+            let mut f_coef = 2.0
+              * (std::f32::consts::PI * fc_of(noise_jit) / (2.0 * sr_f)).sin();
+            // Per-channel damping from res ± width — the stereo
+            // instability. res→1 = edge of self-oscillation; the tanh in
+            // the loop keeps a scream musical instead of exploding.
+            let damp = |r: f32| 2.0 * (1.0 - r.clamp(0.0, 0.98));
+            let q_l = damp(noise_res + noise_width * 0.5);
+            let q_r = damp(noise_res - noise_width * 0.5);
+            let clk_interval = noise_clock_frames.max(4.0) as f64;
+            let in_gain = 1.0 + noise_drive * 23.0;
+            // Ping decay ~4ms — short enough that slow clocks read as
+            // discrete dots, long enough to kick the resonance.
+            let ping_decay = (-1.0 / (0.004 * sr_f)).exp();
+            let nlen_f = noise_len as f64;
+            for frame in 0..frames {
+              let abs = block_start_frame + frame as u64;
+              // Clock tick: hold new noise values (audio L/R + cutoff
+              // jitter) and reschedule — bar-grid anchored when synced.
+              if (abs as f64) >= noise_next_clock {
+                // HARD LFSR bits, not smoothed random — ±1 held values
+                // are the digital hash; at audio-rate clocks this is a
+                // pitched bitstream (the Mörser noise color).
+                let mut bit = || {
+                  noise_rng ^= noise_rng << 13;
+                  noise_rng ^= noise_rng >> 17;
+                  noise_rng ^= noise_rng << 5;
+                  noise_rng & 1 != 0
+                };
+                let b_l = bit();
+                let b_r = bit();
+                // Fire a ping only on a TRANSITION — irregular flip runs
+                // are the morse rhythm. Polarity follows the new bit.
+                if b_l != noise_bit_l {
+                  noise_ping_l = if b_l { 1.0 } else { -1.0 };
+                  noise_bit_l = b_l;
+                  NOISE_VIZ_PING[0].store(1.0f32.to_bits(), Ordering::Relaxed);
+                }
+                if b_r != noise_bit_r {
+                  noise_ping_r = if b_r { 1.0 } else { -1.0 };
+                  noise_bit_r = b_r;
+                  NOISE_VIZ_PING[1].store(1.0f32.to_bits(), Ordering::Relaxed);
+                }
+                noise_hold_l = if b_l { 0.8 } else { -0.8 };
+                noise_hold_r = if b_r { 0.8 } else { -0.8 };
+                // Cutoff jitter keeps a graded value (bit pairs → 4 steps)
+                // so cv reads as stepped CV, not pure square FM.
+                let j = ((noise_rng >> 1) & 3) as f32 / 1.5 - 1.0;
+                noise_jit = j;
+                f_coef = 2.0
+                  * (std::f32::consts::PI * fc_of(noise_jit) / (2.0 * sr_f))
+                    .sin();
+                noise_next_clock = if noise_clock_synced {
+                  let anchor = if noise_capture_active {
+                    noise_anchor
+                  } else {
+                    loop_anchor
+                  };
+                  let rel = abs.saturating_sub(anchor) as f64;
+                  anchor as f64
+                    + ((rel / clk_interval).floor() + 1.0) * clk_interval
+                } else {
+                  abs as f64 + clk_interval
+                };
+              }
+              // Source per selector: Loop A's output (insert), own
+              // capture at vari-speed, or nothing (self-sounding).
+              let (mut xl, mut xr) = (0.0f32, 0.0f32);
+              match noise_source {
+                0 => {
+                  if frame < REVERB_SCRATCH {
+                    xl = loop_send_l[frame];
+                    xr = loop_send_r[frame];
+                  }
+                }
+                1 => {
+                  if noise_capture_active
+                    && noise_len > 0
+                    && noise_speed.abs() >= 0.02
+                    && abs >= noise_anchor
+                  {
+                    noise_pos =
+                      loop_wrap(noise_pos + noise_speed as f64, nlen_f);
+                    xl = loop_read(&noise_buf_l, noise_len, noise_pos);
+                    xr = loop_read(&noise_buf_r, noise_len, noise_pos);
+                  }
+                }
+                _ => {}
+              }
+              // Edge pings, decaying between clock ticks — not held DC.
+              xl = (xl + noise_ping_l * noise_amt * 1.4) * in_gain;
+              xr = (xr + noise_ping_r * noise_amt * 1.4) * in_gain;
+              noise_ping_l *= ping_decay;
+              noise_ping_r *= ping_decay;
+              // WASP-grit Chamberlin SVF — the CMOS misbehavior lives in
+              // three places: input DRIVE (level-sensitivity: pushing the
+              // filter IS the sound), an ASYMMETRIC nonlinearity in the
+              // loop (even harmonics, like a mis-biased inverter), and
+              // resonance SQUELCH (damping rises with signal level, so
+              // the resonance chokes under load instead of ringing clean).
+              let asym = |v: f32| (v + 0.14 * v * v).tanh();
+              // 2x-oversampled loop: two half-steps per sample. Leaky lp
+              // integrator bleeds off the DC the asymmetric clipper
+              // injects, so the filter can't latch.
+              let (mut lp_l, mut bp_l) = noise_svf[0];
+              let (mut lp_r, mut bp_r) = noise_svf[1];
+              for _ in 0..2 {
+                let sq_l = q_l * (1.0 + 0.6 * bp_l.abs());
+                lp_l = (lp_l + f_coef * bp_l) * 0.9995;
+                let hp_l = xl - lp_l - sq_l * bp_l;
+                bp_l = asym(bp_l + f_coef * hp_l);
+                let sq_r = q_r * (1.0 + 0.6 * bp_r.abs());
+                lp_r = (lp_r + f_coef * bp_r) * 0.9995;
+                let hp_r = xr - lp_r - sq_r * bp_r;
+                bp_r = asym(bp_r + f_coef * hp_r);
+              }
+              noise_svf[0] = (lp_l, bp_l);
+              noise_svf[1] = (lp_r, bp_r);
+              let (raw_l, raw_r) = if noise_mode == 0 {
+                (lp_l, lp_r)
+              } else {
+                (bp_l, bp_r)
+              };
+              // DC blocker (~10Hz one-pole) ahead of the output stage —
+              // a residual offset would otherwise saturate the output
+              // tanh into a constant and read as silence.
+              let (x1_l, y1_l) = noise_dcb[0];
+              let tap_l = raw_l - x1_l + 0.995 * y1_l;
+              noise_dcb[0] = (raw_l, tap_l);
+              let (x1_r, y1_r) = noise_dcb[1];
+              let tap_r = raw_r - x1_r + 0.995 * y1_r;
+              noise_dcb[1] = (raw_r, tap_r);
+              // Always-on distortion — DE philosophy, no blend knob.
+              let comp = 1.0 / (1.0 + noise_drive * 1.5);
+              let out_l = (tap_l * 2.2 * comp).tanh() * 0.9 * noise_level;
+              let out_r = (tap_r * 2.2 * comp).tanh() * 0.9 * noise_level;
+              if n_ch >= 2 {
+                buf[frame * n_ch] += out_l;
+                buf[frame * n_ch + 1] += out_r;
+              } else {
+                buf[frame * n_ch] += 0.5 * (out_l + out_r);
+              }
+              // The bounce scratch carries the chain's TOTAL output in
+              // every routing: inserted → the noise out REPLACES the loop
+              // signal (which was suppressed from direct injection);
+              // capt/off → it ADDS on top of the loop's direct out. SAVE
+              // always prints what these two units produce together —
+              // "the saved file is basically silent" (capt/off setups
+              // weren't taped at all) was the bug.
+              if frame < REVERB_SCRATCH {
+                if noise_inserted {
+                  loop_send_l[frame] = out_l;
+                  loop_send_r[frame] = out_r;
+                } else {
+                  loop_send_l[frame] += out_l;
+                  loop_send_r[frame] += out_r;
+                }
+                units_fx_carry_l[frame] += out_l * noise_fx_send;
+                units_fx_carry_r[frame] += out_r * noise_fx_send;
+                units_rev_carry_l[frame] += out_l * noise_rev_send;
+                units_rev_carry_r[frame] += out_r * noise_rev_send;
+                units_del_carry_l[frame] += out_l * noise_del_send;
+                units_del_carry_r[frame] += out_r * noise_del_send;
+              }
+            }
+            // LED persistence decay, once per block (~100ms fall).
+            for led in NOISE_VIZ_PING.iter() {
+              let v = f32::from_bits(led.load(Ordering::Relaxed)) * 0.90;
+              led.store(v.to_bits(), Ordering::Relaxed);
+            }
+          }
+
+          // Bounce pass — prints the final loop-chain signal from the
+          // scratch (post-noise when inserted). Same bar-grid wait and
+          // self-stop as before, relocated downstream of the routing.
+          if loop_bounce.is_some() {
+            let mut bounce_done = false;
+            for frame in 0..sframes {
+              let abs = block_start_frame + frame as u64;
+              if let Some((prod, remaining, _total, align, stop)) =
+                loop_bounce.as_mut()
+              {
+                if !loop_bounce_started
+                  && abs.saturating_sub(loop_anchor) % (*align).max(1) == 0
+                {
+                  loop_bounce_started = true;
+                }
+                if loop_bounce_started {
+                  let _ = prod.try_push(loop_send_l[frame]);
+                  let _ = prod.try_push(loop_send_r[frame]);
+                  *remaining = remaining.saturating_sub(1);
+                  if *remaining == 0 {
+                    stop.store(true, Ordering::Release);
+                    bounce_done = true;
+                    break;
+                  }
+                }
+              }
+            }
+            if bounce_done {
+              loop_bounce = None;
+              loop_bounce_started = false;
             }
           }
         }
@@ -8353,6 +8850,59 @@ pub fn audio_loop_stop() -> Result<(), String> {
   engine().loop_stop()
 }
 
+#[tauri::command]
+pub fn audio_noise_capture(start_frame: f64, end_frame: f64) -> Result<(), String> {
+  if !start_frame.is_finite()
+    || !end_frame.is_finite()
+    || start_frame < 0.0
+    || end_frame <= start_frame
+  {
+    return Err("invalid capture span".to_string());
+  }
+  engine().noise_capture(start_frame as u64, end_frame as u64)
+}
+
+#[tauri::command]
+pub fn audio_noise_stop() -> Result<(), String> {
+  engine().noise_stop()
+}
+
+// NOISE unit params — see MixerCommand::NoiseParams.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn audio_noise_params(
+  source: u8,
+  speed: f32,
+  drive: f32,
+  cutoff: f32,
+  res: f32,
+  width: f32,
+  mode: u8,
+  noise: f32,
+  cv: f32,
+  clock_frames: f32,
+  clock_synced: bool,
+  level: f32,
+  fx_send: f32,
+  rev_send: f32,
+  del_send: f32,
+) -> Result<(), String> {
+  engine().noise_params(
+    source, speed, drive, cutoff, res, width, mode, noise, cv, clock_frames,
+    clock_synced, level, fx_send, rev_send, del_send,
+  )
+}
+
+// NOISE unit ping LEDs — (L, R) peak-hold envelopes 0..1. Polled ~30Hz by
+// the NOISE tab while open.
+#[tauri::command]
+pub fn audio_noise_viz() -> Vec<f32> {
+  NOISE_VIZ_PING
+    .iter()
+    .map(|a| f32::from_bits(a.load(Ordering::Relaxed)))
+    .collect()
+}
+
 // Save-to-library: bounce `frames` stereo frames of the loop unit's output
 // to `path`, starting at the next bar-grid point (`align_frames`). Emits
 // `recorder:finalized` with label "loop" when the WAV is done.
@@ -8398,10 +8948,14 @@ pub fn audio_loop_params(
   size_dev: f32,
   pitch_dev: f32,
   rate_dev: f32,
+  fx_send: f32,
+  rev_send: f32,
+  del_send: f32,
 ) -> Result<(), String> {
   engine().loop_params(
     speed, pitch, loop_lock, loop_level, grain_level, size, random, grains,
-    spawn_frames, rate_synced, size_dev, pitch_dev, rate_dev,
+    spawn_frames, rate_synced, size_dev, pitch_dev, rate_dev, fx_send,
+    rev_send, del_send,
   )
 }
 

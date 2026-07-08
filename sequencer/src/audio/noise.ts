@@ -1,0 +1,235 @@
+// NOISE unit (docs/loop-resample.md §NOISE) — the JS side of
+// MixerCommand::NoiseParams/NoiseCapture. Mörser-shaped: clocked digital
+// noise into both the audio path and the cutoff CV of a stereo WASP-grit
+// filter, with an always-on distortion. Three input routings:
+//   0 LOOP  — true insert: Loop A routes THROUGH the chain (wet-only; the
+//             loop's SAVE bounce prints the post-noise signal),
+//   1 CAPT  — its own retroactive bar-quantized capture (second bed),
+//   2 OFF   — no input: the noise source alone through the filter (the
+//             Mörser self-sounding trick).
+// Session singleton like audio/perform.ts and audio/loops.ts; never
+// persisted. Level defaults to 0 — the unit is silent until raised.
+
+import { engineSampleRate, framesNow } from './engineClock';
+import {
+  noiseCaptureSpan,
+  noiseParamsNative,
+  noiseStopNative,
+} from './nativeEngine';
+import {
+  RATE_DIVISIONS,
+  RATE_DIVISION_LABELS,
+  SPEED_LADDER,
+  barAnchor,
+  speedFromKnob,
+} from './loops';
+
+// Must match LOOP_RING_SECONDS in audio.rs (shared ring).
+const RING_SECONDS = 32;
+
+export { RATE_DIVISION_LABELS as NOISE_CLOCK_LABELS };
+export { SPEED_LADDER as NOISE_SPEED_LADDER };
+
+export type NoiseSource = 0 | 1 | 2; // loop-insert · own capture · none
+
+interface NoiseState {
+  source: NoiseSource;
+  bars: number | null; // own-capture length; null = empty
+  speedKnob: number; // SPEED_LADDER position (capture playback)
+  drive: number; // 0..1 → 1..24x input gain into the filter
+  cutoff: number; // 0..1
+  res: number; // 0..1
+  width: number; // 0..1 L/R resonance offset
+  mode: 0 | 1; // LP · BP
+  noise: number; // 0..1 noise into audio
+  cv: number; // 0..1 noise into cutoff
+  clockSynced: boolean;
+  clockDivIdx: number;
+  clockHz: number;
+  level: number; // 0..1.5 return
+  fxSend: number;
+  revSend: number;
+  delSend: number;
+}
+
+const state: NoiseState = {
+  source: 0,
+  bars: null,
+  speedKnob: 11 / 12, // +1x
+  drive: 0.25,
+  cutoff: 0.6,
+  res: 0.4,
+  width: 0,
+  mode: 0,
+  noise: 0.3,
+  cv: 0.2,
+  clockSynced: false,
+  clockDivIdx: 4, // 1/16 when synced
+  clockHz: 240, // digital-hash territory by default when free
+  level: 0,
+  fxSend: 0,
+  revSend: 0,
+  delSend: 0,
+};
+
+const listeners = new Set<() => void>();
+let version = 0;
+function notify() {
+  version++;
+  for (const l of listeners) l();
+}
+
+export function subscribeNoise(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+
+export function noiseVersion(): number {
+  return version;
+}
+
+export function noiseValues(): NoiseState {
+  return { ...state };
+}
+
+function clockFramesNow(): number {
+  if (state.clockSynced) {
+    const a = barAnchor();
+    const bar = a ? a.barFrames : engineSampleRate() * 2;
+    return bar * RATE_DIVISIONS[state.clockDivIdx];
+  }
+  return engineSampleRate() / state.clockHz;
+}
+
+function push() {
+  void noiseParamsNative({
+    source: state.source,
+    speed: speedFromKnob(state.speedKnob),
+    drive: state.drive,
+    cutoff: state.cutoff,
+    res: state.res,
+    width: state.width,
+    mode: state.mode,
+    noise: state.noise,
+    cv: state.cv,
+    clockFrames: clockFramesNow(),
+    clockSynced: state.clockSynced,
+    level: state.level,
+    fxSend: state.fxSend,
+    revSend: state.revSend,
+    delSend: state.delSend,
+  });
+}
+
+export function setNoiseSource(source: NoiseSource) {
+  if (source === state.source) return;
+  state.source = source;
+  notify();
+  push();
+}
+
+export function setNoiseMode(mode: 0 | 1) {
+  if (mode === state.mode) return;
+  state.mode = mode;
+  notify();
+  push();
+}
+
+export function setNoiseParam(
+  key:
+    | 'speedKnob'
+    | 'drive'
+    | 'cutoff'
+    | 'res'
+    | 'width'
+    | 'noise'
+    | 'cv'
+    | 'fxSend'
+    | 'revSend'
+    | 'delSend',
+  value: number,
+) {
+  const v = Math.max(0, Math.min(1, value));
+  if (v === state[key]) return;
+  state[key] = v;
+  notify();
+  push();
+}
+
+export function setNoiseLevel(gain: number) {
+  const g = Math.max(0, Math.min(1.5, gain));
+  if (g === state.level) return;
+  state.level = g;
+  notify();
+  push();
+}
+
+export function setNoiseClockDiv(idx: number) {
+  const i = Math.max(0, Math.min(RATE_DIVISIONS.length - 1, Math.round(idx)));
+  if (i === state.clockDivIdx) return;
+  state.clockDivIdx = i;
+  notify();
+  push();
+}
+
+export function setNoiseClockHz(hz: number) {
+  const r = Math.max(0.5, Math.min(8000, hz));
+  if (r === state.clockHz) return;
+  state.clockHz = r;
+  notify();
+  push();
+}
+
+export function toggleNoiseClockSynced() {
+  state.clockSynced = !state.clockSynced;
+  notify();
+  push();
+}
+
+// Free clock reaches AUDIO RATE (0.5Hz..8kHz exp) — at audio-rate clocks
+// the LFSR is pitched digital hash, the Mörser noise color range.
+export function noiseClockHzFromKnob(knob: number): number {
+  return 0.5 * Math.pow(16000, Math.max(0, Math.min(1, knob)));
+}
+
+export function noiseClockKnobFromHz(hz: number): number {
+  return Math.log(Math.max(0.5, hz) / 0.5) / Math.log(16000);
+}
+
+// Capture the last `bars` bars of the mix into the NOISE unit's own buffer
+// (used by source = CAPT). Same retroactive bar math as the loop unit.
+export function noiseCaptureBars(bars: number): boolean {
+  const a = barAnchor();
+  if (!a) return false;
+  const now = framesNow();
+  let end = a.frame;
+  while (end > now) end -= a.barFrames;
+  const len = Math.round(bars * a.barFrames);
+  const start = end - len;
+  const oldest = now - (RING_SECONDS - 1) * engineSampleRate();
+  if (start < 0 || start < oldest) return false;
+  void noiseCaptureSpan(Math.round(start), Math.round(end));
+  push();
+  state.bars = bars;
+  notify();
+  return true;
+}
+
+export function noiseStop() {
+  if (state.bars === null) return;
+  state.bars = null;
+  notify();
+  void noiseStopNative();
+}
+
+// Panic silences the unit engine-side (level → 0 there); mirror it.
+export function noiseOnPanic() {
+  if (state.level === 0 && state.bars === null) return;
+  state.level = 0;
+  state.bars = null;
+  notify();
+}
+
+// Dev: engine-consumer module — force a full reload on change (matches
+// perform.ts / loops.ts).
+if (import.meta.hot) import.meta.hot.accept(() => window.location.reload());

@@ -1056,6 +1056,43 @@ export async function loopStopNative(): Promise<void> {
   await invoke<void>('audio_loop_stop');
 }
 
+// NOISE unit (Mörser-shaped second unit) — capture/stop/params.
+export async function noiseCaptureSpan(
+  startFrame: number,
+  endFrame: number,
+): Promise<void> {
+  await invoke<void>('audio_noise_capture', { startFrame, endFrame });
+}
+
+export async function noiseStopNative(): Promise<void> {
+  await invoke<void>('audio_noise_stop');
+}
+
+export async function noiseParamsNative(params: {
+  source: number; // 0 loop-insert · 1 own capture · 2 none
+  speed: number;
+  drive: number;
+  cutoff: number;
+  res: number;
+  width: number;
+  mode: number; // 0 LP · 1 BP
+  noise: number;
+  cv: number;
+  clockFrames: number;
+  clockSynced: boolean;
+  level: number;
+  fxSend: number;
+  revSend: number;
+  delSend: number;
+}): Promise<void> {
+  await invoke<void>('audio_noise_params', params);
+}
+
+// NOISE unit ping LEDs — [L, R] peak-hold envelopes 0..1.
+export async function noiseViz(): Promise<number[]> {
+  return await invoke<number[]>('audio_noise_viz');
+}
+
 // Save-to-library bounce: `frames` stereo frames of the loop unit's output
 // to `path`, starting at the next bar-grid point. Finalize arrives via the
 // `recorder:finalized` event with label "loop".
@@ -1088,6 +1125,9 @@ export async function loopParamsNative(params: {
   sizeDev: number;
   pitchDev: number;
   rateDev: number;
+  fxSend: number;
+  revSend: number;
+  delSend: number;
 }): Promise<void> {
   await invoke<void>('audio_loop_params', params);
 }
