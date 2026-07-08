@@ -403,6 +403,7 @@ pub fn run() {
       audio::audio_noise_stop,
       audio::audio_noise_params,
       audio::audio_noise_viz,
+      audio::audio_noise_scope,
       audio::audio_loop_gain,
       audio::audio_loop_params,
       audio::audio_loop_viz,

@@ -144,7 +144,7 @@ equilibrium textures, unlike the rejected re-crush idea.
 - Engine: `MixerCommand::NoiseCapture/NoiseStop/NoiseParams`; `loop_send_l/r` block scratch
   carries loop→noise→bounce; Panic zeroes level + SVF state (a self-oscillating filter is a
   runaway source). JS: `src/audio/noise.ts` + `NoisePanel.tsx` (FX-style groups: input /
-  filter / noise / out), `noise` ScreenMode.
+  filter / noise / clock / sends / out), `noise` ScreenMode.
 - **Character pass (same day — Chris: "doesn't really feel like the Mörser"):** the gap was
   level-sensitivity + asymmetry + noise hardness. Added: **DRIVE** (1–24x input gain INTO
   the filter — pushing it is the sound; output stage compensates so LEVEL stays a fader) ·
@@ -169,8 +169,25 @@ equilibrium textures, unlike the rejected re-crush idea.
   loop's sends fire even when inserted into NOISE. Deliberate consequence: unit FX tails
   re-enter the pre-master mix and therefore future captures — generational resampling
   through the buses.
-- **Open (NOISE):** SIGNAL clock mode (Spektrum, incl. Loop-A cross-clocking), LFO
-  addressability, viz, its own save path when in CAPT mode.
+- **SIGNAL clock mode, LANDED (Spektrum-shaped — the v2 twist Chris asked to hear):**
+  clock modes are sync · free · **signal**: in signal, ticks derive from a clock-source's
+  ZERO CROSSINGS through a divider ladder (/1../64) — the clock rate IS the material's
+  pitch/brightness (a held bass = pings pitch-locked to its fundamental; bright material =
+  hash; SILENCE STOPS THE CLOCK, the texture wakes with the music). Hysteresis SENS knob
+  keeps the noise floor from clocking it / gates the clock to loud material. Sources:
+  SELF (its own input — true Spektrum self-reference) · LOOP A (default — two captures
+  intermodulating, the ecosystem patch) · MIX (the whole sequencer is the clock). Engine:
+  sign-state detector with threshold + divider counter, sharing the timer path's tick body.
+- **UI pass (final-review round, mirrors the LOOPS anatomy):** output **scope** on the
+  left (scrolling min/max of the PRE-level saturator out, ~1/2s window — lock-free ring
+  `NOISE_SCOPE`, `audio_noise_scope`, 30Hz imperative poll; keeps scrolling to flat when
+  bypassed so it never freezes stale content) · **capture stack** (1/2/4/8/stop) stacked
+  vertically riding the scope's edge like the loop view, dimmed unless CAPT · **CLOCK is
+  its own group**: one flat five-way column (sync · free · self · loop · mix — the signal
+  sources fold signal mode in, so every clock state is one press from anywhere; replaced
+  the blind ○-cycle + revealed sub-group) with clock + sens knobs stacked beside it
+  (`setNoiseClockMode` is timer-only; `setNoiseClockSrc` enters signal mode).
+- **Open (NOISE):** LFO addressability, its own save path when in CAPT mode.
 
 ## P1 caveats (accepted, revisit if they bite)
 

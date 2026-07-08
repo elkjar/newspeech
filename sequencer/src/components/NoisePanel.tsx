@@ -14,11 +14,15 @@ import {
   setNoiseParam,
   setNoiseSource,
   subscribeNoise,
-  toggleNoiseClockSynced,
+  setNoiseClockMode,
+  setNoiseClockSrc,
+  setNoiseXDiv,
+  XING_DIVS,
+  XING_DIV_LABELS,
   type NoiseSource,
 } from '../audio/noise';
 import { noiseClockKnobFromHz } from '../audio/noise';
-import { noiseViz } from '../audio/nativeEngine';
+import { noiseScope, noiseViz } from '../audio/nativeEngine';
 import { RATE_DIVISIONS, speedFromKnob } from '../audio/loops';
 
 // Ping LEDs — the Mörser's tuning light, lifted. Two dots (L/R: the
@@ -60,6 +64,82 @@ function PingLeds() {
   );
 }
 
+// Output scope — scrolling min/max waveform of the unit's PRE-level output
+// (~1/2s window), polled ~30Hz from the lock-free engine ring and drawn
+// imperatively (same anatomy as the LOOPS view's LoopWave). Ring order:
+// data[0] is the write cursor; the column AT the cursor is the oldest, so
+// drawing from the cursor puts newest at the right edge.
+function NoiseScope() {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const draw = (data: number[] | null) => {
+      const canvas = canvasRef.current;
+      const wrap = wrapRef.current;
+      if (!canvas || !wrap) return;
+      const width = Math.floor(wrap.clientWidth);
+      const height = Math.floor(wrap.clientHeight);
+      if (width <= 0 || height <= 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== width * dpr) canvas.width = width * dpr;
+      if (canvas.height !== height * dpr) canvas.height = height * dpr;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      const mid = height / 2;
+      const amp = mid - 3;
+      if (!data) {
+        // Engine not open — the idle line, same as LoopWave.
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.fillRect(0, mid, width, 1);
+        return;
+      }
+      const cols = (data.length - 1) / 2;
+      const pos = data[0] | 0;
+      // Zero-anchored fill, same brightness as the loop waveform. A silent
+      // unit reads as a 1px flatline — scope language.
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      for (let x = 0; x < width; x++) {
+        const col = Math.min(cols - 1, Math.floor((x / width) * cols));
+        const idx = (pos + col) % cols;
+        const mn = data[1 + idx * 2];
+        const mx = data[2 + idx * 2];
+        const yTop = mid - Math.max(mx, 0) * amp;
+        const yBot = mid - Math.min(mn, 0) * amp;
+        ctx.fillRect(x, yTop, 1, Math.max(1, yBot - yTop));
+      }
+    };
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const data = await noiseScope();
+        if (cancelled) return;
+        draw(data);
+      } catch {
+        draw(null);
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 33);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+  return (
+    <div ref={wrapRef} className="w-1/4 shrink-0 self-stretch">
+      <canvas
+        ref={canvasRef}
+        style={{ width: '100%', height: '100%', display: 'block' }}
+        className="border border-white/15 bg-black/40"
+        title="noise unit output — scrolling scope, ~1/2s window (pre-LEVEL: shows the unit's voice even while the return is low)"
+      />
+    </div>
+  );
+}
+
 // NOISE tab (docs/loop-resample.md §NOISE) — the Mörser-shaped second unit.
 // Groups + dividers match the FX/master section. INPUT picks the routing:
 // LOOP (true insert — Loop A routes through this chain, wet-only, and the
@@ -77,9 +157,9 @@ function Divider() {
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex flex-col items-center justify-center gap-2">
       <span className="text-[9px] uppercase tracking-widest text-white/40">{label}</span>
-      <div className="flex items-start gap-3">{children}</div>
+      <div className="flex items-center gap-3">{children}</div>
     </div>
   );
 }
@@ -91,6 +171,7 @@ function PKnob({
   onChange,
   bipolar = false,
   title,
+  disabled = false,
 }: {
   label: string;
   valueText: string;
@@ -98,10 +179,21 @@ function PKnob({
   onChange: (v: number) => void;
   bipolar?: boolean;
   title?: string;
+  // Inert under the current settings (wrong source/mode) — dimmed and
+  // non-interactive, but the title still explains what it would do.
+  disabled?: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      <Knob size={40} value={value} onChange={onChange} bipolar={bipolar} title={title ?? label} />
+    <div
+      className={[
+        'flex flex-col items-center gap-1 transition-opacity',
+        disabled ? 'opacity-30' : '',
+      ].join(' ')}
+      title={disabled ? (title ?? label) : undefined}
+    >
+      <div className={disabled ? 'pointer-events-none' : ''}>
+        <Knob size={40} value={value} onChange={onChange} bipolar={bipolar} title={title ?? label} />
+      </div>
       <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">{label}</span>
       <span className="text-[10px] tabular-nums opacity-50">{valueText}</span>
     </div>
@@ -158,11 +250,52 @@ export function NoisePanel() {
   const v = noiseValues();
 
   return (
-    <div className="h-full p-3 flex flex-col justify-center gap-3">
-      <div className="flex items-stretch justify-center gap-4">
-        <Group label="input">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex gap-1.5">
+    <div className="h-full p-3 flex items-stretch gap-4">
+      <NoiseScope />
+      {/* Capture stack — bar lengths + stop riding the scope's right edge,
+          mirroring the LOOPS view; live only for the CAPT source. */}
+      <div className="flex flex-col gap-1.5 shrink-0 self-stretch justify-center">
+        {CAPTURE_BARS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => noiseCaptureBars(n)}
+            onContextMenu={(e) => e.preventDefault()}
+            disabled={v.source !== 1}
+            title={`capture the last ${n} bar${n === 1 ? '' : 's'} of the mix into the noise unit (CAPT source)`}
+            className={[
+              'w-12 h-9 border text-[11px] uppercase tracking-widest transition-colors select-none',
+              v.source !== 1
+                ? 'border-white/10 text-white/25 cursor-default'
+                : v.bars === n
+                  ? 'bg-white text-ink border-white'
+                  : 'border-white/20 text-white/60 hover:text-white hover:border-white',
+            ].join(' ')}
+          >
+            {n}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={noiseStop}
+          onContextMenu={(e) => e.preventDefault()}
+          disabled={v.source !== 1 || v.bars === null}
+          title="drop the noise unit's capture"
+          className={[
+            'w-12 h-9 border text-[11px] uppercase tracking-widest transition-colors select-none',
+            v.source !== 1 || v.bars === null
+              ? 'border-white/10 text-white/25 cursor-default'
+              : 'border-white/40 text-white/80 hover:text-white hover:border-white',
+          ].join(' ')}
+        >
+          stop
+        </button>
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col justify-center gap-3">
+        <div className="flex items-center justify-center gap-4">
+          <Divider />
+          <Group label="input">
+            <div className="flex flex-col gap-1.5">
               {(
                 [
                   [0, 'loop', 'Loop A routes THROUGH this chain (wet-only; loop SAVE prints the post-noise output)'],
@@ -180,176 +313,199 @@ export function NoisePanel() {
                 />
               ))}
             </div>
-            <div className="flex gap-1.5 items-end">
-              {CAPTURE_BARS.map((n) => (
-                <SlotButton
-                  key={n}
-                  label={`${n}`}
-                  active={v.bars === n}
-                  disabled={v.source !== 1}
-                  onClick={() => noiseCaptureBars(n)}
-                  title={`capture the last ${n} bar${n === 1 ? '' : 's'} into the noise unit`}
-                />
-              ))}
+            <PKnob
+              label="speed"
+              valueText={speedLabel(v.speedKnob)}
+              value={v.speedKnob}
+              bipolar
+              disabled={v.source !== 1}
+              onChange={(x) => setNoiseParam('speedKnob', x)}
+              title="capture playback vari-speed (octave ladder, thru-zero) — CAPT source only"
+            />
+          </Group>
+          <Divider />
+          <Group label="filter">
+            <PKnob
+              label="drive"
+              valueText={`${Math.round(v.drive * 100)}`}
+              value={v.drive}
+              onChange={(x) => setNoiseParam('drive', x)}
+              title="input gain INTO the filter (1–24x) — the WASP level-sensitivity: pushing it is the sound; resonance squelches under load"
+            />
+            <PKnob
+              label="cutoff"
+              valueText={`${Math.round(v.cutoff * 100)}`}
+              value={v.cutoff}
+              onChange={(x) => setNoiseParam('cutoff', x)}
+              title="WASP-grit filter cutoff (40hz–12k log) — the clocked noise jitters it via cv"
+            />
+            <PKnob
+              label="res"
+              valueText={`${Math.round(v.res * 100)}`}
+              value={v.res}
+              onChange={(x) => setNoiseParam('res', x)}
+              title="resonance — top of range rides the edge of self-oscillation (the tanh keeps the scream musical)"
+            />
+            <PKnob
+              label="width"
+              valueText={`${Math.round(v.width * 100)}`}
+              value={v.width}
+              onChange={(x) => setNoiseParam('width', x)}
+              title="L/R resonance offset — stereo instability"
+            />
+            <div className="flex flex-col gap-1.5 pt-1">
               <SlotButton
-                label="stop"
-                wide
-                active={false}
-                disabled={v.source !== 1 || v.bars === null}
-                onClick={noiseStop}
-                title="drop the noise unit's capture"
+                label="lp"
+                active={v.mode === 0}
+                onClick={() => setNoiseMode(0)}
+                title="lowpass tap"
+              />
+              <SlotButton
+                label="bp"
+                active={v.mode === 1}
+                onClick={() => setNoiseMode(1)}
+                title="bandpass tap"
+              />
+            </div>
+          </Group>
+          <Divider />
+          <div className="flex flex-col items-center justify-center gap-2">
+            <span className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-white/40">
+              noise
+              <PingLeds />
+            </span>
+            <div className="flex items-center gap-3">
+              <PKnob
+                label="noise"
+                valueText={`${Math.round(v.noise * 100)}`}
+                value={v.noise}
+                onChange={(x) => setNoiseParam('noise', x)}
+                title="clocked digital noise into the audio path (excites the resonance)"
+              />
+              <PKnob
+                label="cv"
+                valueText={`${Math.round(v.cv * 100)}`}
+                value={v.cv}
+                onChange={(x) => setNoiseParam('cv', x)}
+                title="clocked noise into the cutoff (±2 octaves at full) — the morse-code/rainforest maker"
               />
             </div>
           </div>
-          <PKnob
-            label="speed"
-            valueText={speedLabel(v.speedKnob)}
-            value={v.speedKnob}
-            bipolar
-            onChange={(x) => setNoiseParam('speedKnob', x)}
-            title="capture playback vari-speed (octave ladder, thru-zero) — CAPT source only"
-          />
-        </Group>
-        <Divider />
-        <Group label="filter">
-          <PKnob
-            label="drive"
-            valueText={`${Math.round(v.drive * 100)}`}
-            value={v.drive}
-            onChange={(x) => setNoiseParam('drive', x)}
-            title="input gain INTO the filter (1–24x) — the WASP level-sensitivity: pushing it is the sound; resonance squelches under load"
-          />
-          <PKnob
-            label="cutoff"
-            valueText={`${Math.round(v.cutoff * 100)}`}
-            value={v.cutoff}
-            onChange={(x) => setNoiseParam('cutoff', x)}
-            title="WASP-grit filter cutoff (40hz–12k log) — the clocked noise jitters it via cv"
-          />
-          <PKnob
-            label="res"
-            valueText={`${Math.round(v.res * 100)}`}
-            value={v.res}
-            onChange={(x) => setNoiseParam('res', x)}
-            title="resonance — top of range rides the edge of self-oscillation (the tanh keeps the scream musical)"
-          />
-          <PKnob
-            label="width"
-            valueText={`${Math.round(v.width * 100)}`}
-            value={v.width}
-            onChange={(x) => setNoiseParam('width', x)}
-            title="L/R resonance offset — stereo instability"
-          />
-          <div className="flex flex-col gap-1.5 pt-1">
-            <SlotButton
-              label="lp"
-              active={v.mode === 0}
-              onClick={() => setNoiseMode(0)}
-              title="lowpass tap"
-            />
-            <SlotButton
-              label="bp"
-              active={v.mode === 1}
-              onClick={() => setNoiseMode(1)}
-              title="bandpass tap"
-            />
-          </div>
-        </Group>
-        <Divider />
-        <div className="flex flex-col items-center gap-2">
-          <span className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-white/40">
-            noise
-            <PingLeds />
-          </span>
-          <div className="flex items-start gap-3">
-          <PKnob
-            label="noise"
-            valueText={`${Math.round(v.noise * 100)}`}
-            value={v.noise}
-            onChange={(x) => setNoiseParam('noise', x)}
-            title="clocked digital noise into the audio path (excites the resonance)"
-          />
-          <PKnob
-            label="cv"
-            valueText={`${Math.round(v.cv * 100)}`}
-            value={v.cv}
-            onChange={(x) => setNoiseParam('cv', x)}
-            title="clocked noise into the cutoff (±2 octaves at full) — the morse-code/rainforest maker"
-          />
-          <div className="flex flex-col items-center gap-1">
+          <Divider />
+          <Group label="clock">
+            <div className="flex flex-col gap-1.5">
+              <SlotButton
+                label="sync"
+                active={v.clockMode === 0 && v.clockSynced}
+                onClick={() => setNoiseClockMode('sync')}
+                title="timer clock, bar divisions — grid-anchored (the chatter locks to the groove)"
+              />
+              <SlotButton
+                label="free"
+                active={v.clockMode === 0 && !v.clockSynced}
+                onClick={() => setNoiseClockMode('free')}
+                title="timer clock, free-running hz — slow = stepped CV blips, audio-rate = pitched digital hash"
+              />
+              <SlotButton
+                label="self"
+                active={v.clockMode === 1 && v.clockSrc === 0}
+                onClick={() => setNoiseClockSrc(0)}
+                title="signal clock — the unit's own input's zero crossings tick it (true Spektrum self-reference; silence stops the clock)"
+              />
+              <SlotButton
+                label="loop"
+                active={v.clockMode === 1 && v.clockSrc === 1}
+                onClick={() => setNoiseClockSrc(1)}
+                title="signal clock — Loop A's output ticks it (two captures intermodulating, the ecosystem patch)"
+              />
+              <SlotButton
+                label="mix"
+                active={v.clockMode === 1 && v.clockSrc === 2}
+                onClick={() => setNoiseClockSrc(2)}
+                title="signal clock — the whole live mix ticks it"
+              />
+            </div>
+            <div className="flex flex-col items-center gap-1.5">
+              <PKnob
+                label="clock"
+                valueText={
+                  v.clockMode === 1
+                    ? XING_DIV_LABELS[v.xDivIdx]
+                    : v.clockSynced
+                      ? NOISE_CLOCK_LABELS[v.clockDivIdx]
+                      : v.clockHz >= 1000
+                        ? `${(v.clockHz / 1000).toFixed(1)}k`
+                        : v.clockHz >= 10
+                          ? `${v.clockHz.toFixed(0)}hz`
+                          : `${v.clockHz.toFixed(1)}hz`
+                }
+                value={
+                  v.clockMode === 1
+                    ? v.xDivIdx / (XING_DIVS.length - 1)
+                    : v.clockSynced
+                      ? v.clockDivIdx / (RATE_DIVISIONS.length - 1)
+                      : noiseClockKnobFromHz(v.clockHz)
+                }
+                onChange={(x) =>
+                  v.clockMode === 1
+                    ? setNoiseXDiv(x * (XING_DIVS.length - 1))
+                    : v.clockSynced
+                      ? setNoiseClockDiv(x * (RATE_DIVISIONS.length - 1))
+                      : setNoiseClockHz(noiseClockHzFromKnob(x))
+                }
+                title={
+                  v.clockMode === 1
+                    ? 'crossing divider — ticks every Nth zero crossing of the clock source (audio-rate pitches → gesture rate)'
+                    : v.clockSynced
+                      ? 'noise clock — bar divisions, grid-anchored (the chatter locks to the groove)'
+                      : 'noise clock — free, 0.5hz to 8k: slow = stepped CV blips, audio-rate = pitched digital hash'
+                }
+              />
+              <PKnob
+                label="sens"
+                valueText={`${Math.round(v.sens * 100)}`}
+                value={v.sens}
+                disabled={v.clockMode !== 1}
+                onChange={(x) => setNoiseParam('sens', x)}
+                title="crossing hysteresis (signal clocks only) — low: everything clocks it; high: only loud material gets to be the clock"
+              />
+            </div>
+          </Group>
+          <Divider />
+          <Group label="sends">
             <PKnob
-              label="clock"
-              valueText={
-                v.clockSynced
-                  ? NOISE_CLOCK_LABELS[v.clockDivIdx]
-                  : v.clockHz >= 1000
-                    ? `${(v.clockHz / 1000).toFixed(1)}k`
-                    : v.clockHz >= 10
-                      ? `${v.clockHz.toFixed(0)}hz`
-                      : `${v.clockHz.toFixed(1)}hz`
-              }
-              value={
-                v.clockSynced
-                  ? v.clockDivIdx / (RATE_DIVISIONS.length - 1)
-                  : noiseClockKnobFromHz(v.clockHz)
-              }
-              onChange={(x) =>
-                v.clockSynced
-                  ? setNoiseClockDiv(x * (RATE_DIVISIONS.length - 1))
-                  : setNoiseClockHz(noiseClockHzFromKnob(x))
-              }
-              title={
-                v.clockSynced
-                  ? 'noise clock — bar divisions, grid-anchored (the chatter locks to the groove)'
-                  : 'noise clock — free, 0.5hz to 8k: slow = stepped CV blips, audio-rate = pitched digital hash'
-              }
+              label="fx"
+              valueText={`${Math.round(v.fxSend * 100)}`}
+              value={v.fxSend}
+              onChange={(x) => setNoiseParam('fxSend', x)}
+              title="unit output → mangler bus"
             />
-            <button
-              type="button"
-              onClick={toggleNoiseClockSynced}
-              className="flex items-center gap-1 text-[9px] uppercase tracking-widest bg-transparent border-0 text-white/50 hover:text-white transition-colors"
-              title="clocked (divisions of the bar) vs free (hz)"
-            >
-              <span>{v.clockSynced ? '●' : '○'}</span>
-              <span>sync</span>
-            </button>
-          </div>
-          </div>
+            <PKnob
+              label="verb"
+              valueText={`${Math.round(v.revSend * 100)}`}
+              value={v.revSend}
+              onChange={(x) => setNoiseParam('revSend', x)}
+              title="unit output → reverb bus"
+            />
+            <PKnob
+              label="dly"
+              valueText={`${Math.round(v.delSend * 100)}`}
+              value={v.delSend}
+              onChange={(x) => setNoiseParam('delSend', x)}
+              title="unit output → delay bus"
+            />
+          </Group>
+          <Divider />
+          <Group label="out">
+            <PKnob
+              label="level"
+              valueText={`${Math.round(v.level * 100)}`}
+              value={Math.min(1, v.level / 1.5)}
+              onChange={(x) => setNoiseLevel(x * 1.5)}
+              title="unit return level — 0 bypasses (LOOP source injects direct again); distortion is always on, no blend"
+            />
+          </Group>
         </div>
-        <Divider />
-        <Group label="sends">
-          <PKnob
-            label="fx"
-            valueText={`${Math.round(v.fxSend * 100)}`}
-            value={v.fxSend}
-            onChange={(x) => setNoiseParam('fxSend', x)}
-            title="unit output → mangler bus"
-          />
-          <PKnob
-            label="verb"
-            valueText={`${Math.round(v.revSend * 100)}`}
-            value={v.revSend}
-            onChange={(x) => setNoiseParam('revSend', x)}
-            title="unit output → reverb bus"
-          />
-          <PKnob
-            label="dly"
-            valueText={`${Math.round(v.delSend * 100)}`}
-            value={v.delSend}
-            onChange={(x) => setNoiseParam('delSend', x)}
-            title="unit output → delay bus"
-          />
-        </Group>
-        <Divider />
-        <Group label="out">
-          <PKnob
-            label="level"
-            valueText={`${Math.round(v.level * 100)}`}
-            value={Math.min(1, v.level / 1.5)}
-            onChange={(x) => setNoiseLevel(x * 1.5)}
-            title="unit return level — 0 bypasses (LOOP source injects direct again); distortion is always on, no blend"
-          />
-        </Group>
       </div>
     </div>
   );

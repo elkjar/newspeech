@@ -28,6 +28,10 @@ import {
 const RING_SECONDS = 32;
 
 export { RATE_DIVISION_LABELS as NOISE_CLOCK_LABELS };
+
+// Signal-clock crossing dividers (the Spektrum's divider switches, laddered).
+export const XING_DIVS = [1, 2, 4, 8, 16, 64];
+export const XING_DIV_LABELS = ['/1', '/2', '/4', '/8', '/16', '/64'];
 export { SPEED_LADDER as NOISE_SPEED_LADDER };
 
 export type NoiseSource = 0 | 1 | 2; // loop-insert · own capture · none
@@ -46,6 +50,12 @@ interface NoiseState {
   clockSynced: boolean;
   clockDivIdx: number;
   clockHz: number;
+  // Clock mode: 0 = timer (sync/free above), 1 = SIGNAL (Spektrum) — ticks
+  // from a signal's zero crossings through a divider.
+  clockMode: 0 | 1;
+  clockSrc: 0 | 1 | 2; // self-input · loop A · mix
+  xDivIdx: number; // index into XING_DIVS
+  sens: number; // 0..1 crossing hysteresis
   level: number; // 0..1.5 return
   fxSend: number;
   revSend: number;
@@ -66,6 +76,10 @@ const state: NoiseState = {
   clockSynced: false,
   clockDivIdx: 4, // 1/16 when synced
   clockHz: 240, // digital-hash territory by default when free
+  clockMode: 0,
+  clockSrc: 1, // loop A — the ecosystem patch by default
+  xDivIdx: 3, // /8
+  sens: 0.2,
   level: 0,
   fxSend: 0,
   revSend: 0,
@@ -114,6 +128,10 @@ function push() {
     cv: state.cv,
     clockFrames: clockFramesNow(),
     clockSynced: state.clockSynced,
+    clockMode: state.clockMode,
+    clockSrc: state.clockSrc,
+    clockDiv: XING_DIVS[state.xDivIdx],
+    sens: state.sens,
     level: state.level,
     fxSend: state.fxSend,
     revSend: state.revSend,
@@ -144,6 +162,7 @@ export function setNoiseParam(
     | 'width'
     | 'noise'
     | 'cv'
+    | 'sens'
     | 'fxSend'
     | 'revSend'
     | 'delSend',
@@ -180,8 +199,32 @@ export function setNoiseClockHz(hz: number) {
   push();
 }
 
-export function toggleNoiseClockSynced() {
-  state.clockSynced = !state.clockSynced;
+// The clock selector is one flat five-way column (no blind cycle, no
+// revealed sub-group): sync · free are the timer modes; self · loop · mix
+// are the SIGNAL mode (Spektrum crossings) with its source folded in —
+// every state is one press from anywhere.
+export function setNoiseClockMode(mode: 'sync' | 'free') {
+  const synced = mode === 'sync';
+  if (state.clockMode === 0 && state.clockSynced === synced) return;
+  state.clockMode = 0;
+  state.clockSynced = synced;
+  notify();
+  push();
+}
+
+// Selecting a signal source IS selecting signal mode.
+export function setNoiseClockSrc(src: 0 | 1 | 2) {
+  if (state.clockMode === 1 && src === state.clockSrc) return;
+  state.clockMode = 1;
+  state.clockSrc = src;
+  notify();
+  push();
+}
+
+export function setNoiseXDiv(idx: number) {
+  const i = Math.max(0, Math.min(XING_DIVS.length - 1, Math.round(idx)));
+  if (i === state.xDivIdx) return;
+  state.xDivIdx = i;
   notify();
   push();
 }

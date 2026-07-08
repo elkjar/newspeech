@@ -1080,6 +1080,10 @@ export async function noiseParamsNative(params: {
   cv: number;
   clockFrames: number;
   clockSynced: boolean;
+  clockMode: number;
+  clockSrc: number;
+  clockDiv: number;
+  sens: number;
   level: number;
   fxSend: number;
   revSend: number;
@@ -1091,6 +1095,12 @@ export async function noiseParamsNative(params: {
 // NOISE unit ping LEDs — [L, R] peak-hold envelopes 0..1.
 export async function noiseViz(): Promise<number[]> {
   return await invoke<number[]>('audio_noise_viz');
+}
+
+// NOISE unit output scope — [writePos, min0, max0, min1, max1, ...]; the
+// column at writePos is the oldest (rotate so newest sits at the right).
+export async function noiseScope(): Promise<number[]> {
+  return await invoke<number[]>('audio_noise_scope');
 }
 
 // Save-to-library bounce: `frames` stereo frames of the loop unit's output

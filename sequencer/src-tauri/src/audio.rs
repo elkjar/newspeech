@@ -3357,6 +3357,26 @@ static LOOP_VIZ_BOUNCE: AtomicU32 = AtomicU32::new(0);
 // edge ping, ~100ms decay per block) so the 30Hz UI poll catches flashes
 // the way a real LED's persistence does. The Mörser's tuning LED, lifted.
 static NOISE_VIZ_PING: [AtomicU32; 2] = [const { AtomicU32::new(0) }; 2];
+// NOISE unit output scope — scrolling min/max columns of the unit's
+// PRE-level output (the unit's voice; LEVEL is just the return fader, so
+// the scope stays readable while you dial the sound in quiet). The audio
+// thread pushes one column per NOISE_SCOPE_DECIM frames (~2.7ms → ~1/2s
+// window); the NOISE tab polls ~30Hz. Interleaved (min,max) f32 bits plus
+// a write cursor — same lock-free shape as the ping LEDs.
+const NOISE_SCOPE_COLS: usize = 192;
+const NOISE_SCOPE_DECIM: u32 = 128;
+static NOISE_SCOPE: [AtomicU32; NOISE_SCOPE_COLS * 2] =
+  [const { AtomicU32::new(0) }; NOISE_SCOPE_COLS * 2];
+static NOISE_SCOPE_POS: AtomicU32 = AtomicU32::new(0);
+
+fn noise_scope_push(min: f32, max: f32) {
+  let pos =
+    NOISE_SCOPE_POS.load(Ordering::Relaxed) as usize % NOISE_SCOPE_COLS;
+  NOISE_SCOPE[pos * 2].store(min.to_bits(), Ordering::Relaxed);
+  NOISE_SCOPE[pos * 2 + 1].store(max.to_bits(), Ordering::Relaxed);
+  NOISE_SCOPE_POS
+    .store(((pos + 1) % NOISE_SCOPE_COLS) as u32, Ordering::Relaxed);
+}
 // Cap for the per-stream sample-accurate pending-trigger queue. The
 // audio thread pre-allocates this many slots so pushes never realloc;
 // overflow drops with `PENDING_TRIGGER_DROPS` for diagnostics.
@@ -3893,6 +3913,17 @@ enum MixerCommand {
     cv: f32,         // 0..1 noise→cutoff jitter depth (octaves at full)
     clock_frames: f32,
     clock_synced: bool,
+    // SIGNAL CLOCK (Spektrum-shaped): clock_mode 1 derives ticks from a
+    // signal's zero crossings instead of the timer — clock rate IS the
+    // material's pitch/brightness. clock_src: 0 = the unit's own input,
+    // 1 = Loop A's output, 2 = the post-master mix. clock_div divides
+    // crossings (/1../64 — audio-rate pitches pulled to gesture rate);
+    // sens sets the hysteresis threshold (noise floor must not clock it;
+    // raised, only loud material gets to be the clock).
+    clock_mode: u8,
+    clock_src: u8,
+    clock_div: u32,
+    sens: f32,
     level: f32,      // 0..2 return level
     fx_send: f32,
     rev_send: f32,
@@ -4934,6 +4965,10 @@ impl AudioEngine {
     cv: f32,
     clock_frames: f32,
     clock_synced: bool,
+    clock_mode: u8,
+    clock_src: u8,
+    clock_div: u32,
+    sens: f32,
     level: f32,
     fx_send: f32,
     rev_send: f32,
@@ -4951,6 +4986,10 @@ impl AudioEngine {
       cv,
       clock_frames,
       clock_synced,
+      clock_mode,
+      clock_src,
+      clock_div,
+      sens,
       level,
       fx_send,
       rev_send,
@@ -5630,13 +5669,19 @@ fn build_stream(
   let mut noise_clock_frames: f32 = 6000.0;
   let mut noise_clock_synced: bool = false;
   let mut noise_level: f32 = 0.0; // unit silent until raised
-  // Clock + sample&hold state: held noise values (audio L/R + cutoff
-  // jitter), absolute next-tick frame, SVF states per channel, current
-  // filter coefficient (recomputed on clock ticks / param pushes).
+  // Clock + sample&hold state: held cutoff jitter, absolute next-tick
+  // frame, SVF states per channel, current filter coefficient
+  // (recomputed on clock ticks / param pushes).
   let mut noise_source: u8 = 0; // 0 loop-insert · 1 own capture · 2 none
+  let mut noise_clock_mode: u8 = 0; // 0 timer (sync/free) · 1 signal
+  let mut noise_clock_src: u8 = 0; // 0 self-input · 1 loop A · 2 mix
+  let mut noise_clock_div: u32 = 8;
+  let mut noise_sens: f32 = 0.2;
+  // Signal-clock detector: hysteresis sign state (+1/-1/0 unarmed) and
+  // the crossing divider counter.
+  let mut noise_xing_sign: i8 = 0;
+  let mut noise_xing_count: u32 = 0;
   let mut noise_next_clock: f64 = 0.0;
-  let mut noise_hold_l: f32 = 0.0;
-  let mut noise_hold_r: f32 = 0.0;
   // Edge-ping state: the noise hits the filter as TRANSITIONS, not held
   // levels — each bit flip fires a short decaying pulse that pings the
   // resonance (the Mörser morse-code mechanic). Runs of unchanged bits =
@@ -5652,6 +5697,10 @@ fn build_stream(
   // generates DC, which would otherwise latch the lp integrator under
   // drive and pin the unit silent (the "level turns off the output" bug).
   let mut noise_dcb: [(f32, f32); 2] = [(0.0, 0.0); 2];
+  // Scope decimator accumulators (min/max over NOISE_SCOPE_DECIM frames).
+  let mut noise_scope_min: f32 = 0.0;
+  let mut noise_scope_max: f32 = 0.0;
+  let mut noise_scope_n: u32 = 0;
   // Block scratch carrying the loop unit's output into the noise unit
   // (insert routing) and onward to the bounce tap — the bounce always
   // prints the FINAL signal (post-noise when inserted).
@@ -6405,6 +6454,10 @@ fn build_stream(
               cv,
               clock_frames,
               clock_synced,
+              clock_mode,
+              clock_src,
+              clock_div,
+              sens,
               level,
               fx_send,
               rev_send,
@@ -6439,6 +6492,12 @@ fn build_stream(
                 noise_clock_frames = clock_frames.clamp(4.0, 4_000_000.0);
               }
               noise_clock_synced = clock_synced;
+              noise_clock_mode = clock_mode.min(1);
+              noise_clock_src = clock_src.min(2);
+              noise_clock_div = clock_div.clamp(1, 256);
+              if sens.is_finite() {
+                noise_sens = sens.clamp(0.0, 1.0);
+              }
               if level.is_finite() {
                 noise_level = level.clamp(0.0, 2.0);
               }
@@ -7870,9 +7929,90 @@ fn build_stream(
             let nlen_f = noise_len as f64;
             for frame in 0..frames {
               let abs = block_start_frame + frame as u64;
-              // Clock tick: hold new noise values (audio L/R + cutoff
-              // jitter) and reschedule — bar-grid anchored when synced.
-              if (abs as f64) >= noise_next_clock {
+              // Source per selector: Loop A's output (insert), own
+              // capture at vari-speed, or nothing (self-sounding). Read
+              // FIRST — the signal clock may need this frame's input.
+              let (mut xl, mut xr) = (0.0f32, 0.0f32);
+              match noise_source {
+                0 => {
+                  if frame < REVERB_SCRATCH {
+                    xl = loop_send_l[frame];
+                    xr = loop_send_r[frame];
+                  }
+                }
+                1 => {
+                  if noise_capture_active
+                    && noise_len > 0
+                    && noise_speed.abs() >= 0.02
+                    && abs >= noise_anchor
+                  {
+                    noise_pos =
+                      loop_wrap(noise_pos + noise_speed as f64, nlen_f);
+                    xl = loop_read(&noise_buf_l, noise_len, noise_pos);
+                    xr = loop_read(&noise_buf_r, noise_len, noise_pos);
+                  }
+                }
+                _ => {}
+              }
+              // Clock decision. Timer mode: absolute next-tick frame
+              // (bar-grid anchored when synced). SIGNAL mode (Spektrum):
+              // ticks from the clock-source's zero crossings through a
+              // divider — the clock rate IS the material's pitch and
+              // brightness; silence stops the clock dead. Hysteresis
+              // (sens) keeps the noise floor from clocking it.
+              let mut do_tick = false;
+              if noise_clock_mode == 1 {
+                let cs = match noise_clock_src {
+                  0 => 0.5 * (xl + xr),
+                  1 => {
+                    if frame < REVERB_SCRATCH {
+                      0.5 * (loop_send_l[frame] + loop_send_r[frame])
+                    } else {
+                      0.0
+                    }
+                  }
+                  _ => {
+                    if n_ch >= 2 {
+                      0.5 * (buf[frame * n_ch] + buf[frame * n_ch + 1])
+                    } else {
+                      buf[frame * n_ch]
+                    }
+                  }
+                };
+                let thr = 0.005 + noise_sens * 0.12;
+                let sign_now: i8 = if cs > thr {
+                  1
+                } else if cs < -thr {
+                  -1
+                } else {
+                  0
+                };
+                if sign_now != 0 {
+                  if noise_xing_sign != 0 && sign_now != noise_xing_sign {
+                    noise_xing_count += 1;
+                    if noise_xing_count >= noise_clock_div {
+                      noise_xing_count = 0;
+                      do_tick = true;
+                    }
+                  }
+                  noise_xing_sign = sign_now;
+                }
+              } else if (abs as f64) >= noise_next_clock {
+                do_tick = true;
+                noise_next_clock = if noise_clock_synced {
+                  let anchor = if noise_capture_active {
+                    noise_anchor
+                  } else {
+                    loop_anchor
+                  };
+                  let rel = abs.saturating_sub(anchor) as f64;
+                  anchor as f64
+                    + ((rel / clk_interval).floor() + 1.0) * clk_interval
+                } else {
+                  abs as f64 + clk_interval
+                };
+              }
+              if do_tick {
                 // HARD LFSR bits, not smoothed random — ±1 held values
                 // are the digital hash; at audio-rate clocks this is a
                 // pitched bitstream (the Mörser noise color).
@@ -7896,8 +8036,6 @@ fn build_stream(
                   noise_bit_r = b_r;
                   NOISE_VIZ_PING[1].store(1.0f32.to_bits(), Ordering::Relaxed);
                 }
-                noise_hold_l = if b_l { 0.8 } else { -0.8 };
-                noise_hold_r = if b_r { 0.8 } else { -0.8 };
                 // Cutoff jitter keeps a graded value (bit pairs → 4 steps)
                 // so cv reads as stepped CV, not pure square FM.
                 let j = ((noise_rng >> 1) & 3) as f32 / 1.5 - 1.0;
@@ -7905,42 +8043,6 @@ fn build_stream(
                 f_coef = 2.0
                   * (std::f32::consts::PI * fc_of(noise_jit) / (2.0 * sr_f))
                     .sin();
-                noise_next_clock = if noise_clock_synced {
-                  let anchor = if noise_capture_active {
-                    noise_anchor
-                  } else {
-                    loop_anchor
-                  };
-                  let rel = abs.saturating_sub(anchor) as f64;
-                  anchor as f64
-                    + ((rel / clk_interval).floor() + 1.0) * clk_interval
-                } else {
-                  abs as f64 + clk_interval
-                };
-              }
-              // Source per selector: Loop A's output (insert), own
-              // capture at vari-speed, or nothing (self-sounding).
-              let (mut xl, mut xr) = (0.0f32, 0.0f32);
-              match noise_source {
-                0 => {
-                  if frame < REVERB_SCRATCH {
-                    xl = loop_send_l[frame];
-                    xr = loop_send_r[frame];
-                  }
-                }
-                1 => {
-                  if noise_capture_active
-                    && noise_len > 0
-                    && noise_speed.abs() >= 0.02
-                    && abs >= noise_anchor
-                  {
-                    noise_pos =
-                      loop_wrap(noise_pos + noise_speed as f64, nlen_f);
-                    xl = loop_read(&noise_buf_l, noise_len, noise_pos);
-                    xr = loop_read(&noise_buf_r, noise_len, noise_pos);
-                  }
-                }
-                _ => {}
               }
               // Edge pings, decaying between clock ticks — not held DC.
               xl = (xl + noise_ping_l * noise_amt * 1.4) * in_gain;
@@ -7987,8 +8089,22 @@ fn build_stream(
               noise_dcb[1] = (raw_r, tap_r);
               // Always-on distortion — DE philosophy, no blend knob.
               let comp = 1.0 / (1.0 + noise_drive * 1.5);
-              let out_l = (tap_l * 2.2 * comp).tanh() * 0.9 * noise_level;
-              let out_r = (tap_r * 2.2 * comp).tanh() * 0.9 * noise_level;
+              let sat_l = (tap_l * 2.2 * comp).tanh() * 0.9;
+              let sat_r = (tap_r * 2.2 * comp).tanh() * 0.9;
+              let out_l = sat_l * noise_level;
+              let out_r = sat_r * noise_level;
+              // Scope tap — mono sum of the pre-level saturator output,
+              // decimated to min/max columns in the lock-free ring.
+              let mono = 0.5 * (sat_l + sat_r);
+              noise_scope_min = noise_scope_min.min(mono);
+              noise_scope_max = noise_scope_max.max(mono);
+              noise_scope_n += 1;
+              if noise_scope_n >= NOISE_SCOPE_DECIM {
+                noise_scope_push(noise_scope_min, noise_scope_max);
+                noise_scope_min = 0.0;
+                noise_scope_max = 0.0;
+                noise_scope_n = 0;
+              }
               if n_ch >= 2 {
                 buf[frame * n_ch] += out_l;
                 buf[frame * n_ch + 1] += out_r;
@@ -8022,6 +8138,16 @@ fn build_stream(
             for led in NOISE_VIZ_PING.iter() {
               let v = f32::from_bits(led.load(Ordering::Relaxed)) * 0.90;
               led.store(v.to_bits(), Ordering::Relaxed);
+            }
+          } else {
+            // Bypassed — keep the scope scrolling so it drains to a flat
+            // line instead of freezing the last active content.
+            noise_scope_min = 0.0;
+            noise_scope_max = 0.0;
+            noise_scope_n += frames as u32;
+            while noise_scope_n >= NOISE_SCOPE_DECIM {
+              noise_scope_n -= NOISE_SCOPE_DECIM;
+              noise_scope_push(0.0, 0.0);
             }
           }
 
@@ -8882,6 +9008,10 @@ pub fn audio_noise_params(
   cv: f32,
   clock_frames: f32,
   clock_synced: bool,
+  clock_mode: u8,
+  clock_src: u8,
+  clock_div: u32,
+  sens: f32,
   level: f32,
   fx_send: f32,
   rev_send: f32,
@@ -8889,7 +9019,8 @@ pub fn audio_noise_params(
 ) -> Result<(), String> {
   engine().noise_params(
     source, speed, drive, cutoff, res, width, mode, noise, cv, clock_frames,
-    clock_synced, level, fx_send, rev_send, del_send,
+    clock_synced, clock_mode, clock_src, clock_div, sens, level, fx_send,
+    rev_send, del_send,
   )
 }
 
@@ -8901,6 +9032,19 @@ pub fn audio_noise_viz() -> Vec<f32> {
     .iter()
     .map(|a| f32::from_bits(a.load(Ordering::Relaxed)))
     .collect()
+}
+
+// NOISE unit output scope — [write_pos, min0, max0, min1, max1, ...].
+// Ring order: the column AT write_pos is the oldest; the tab rotates so
+// newest lands at the right edge. Polled ~30Hz while the NOISE tab is open.
+#[tauri::command]
+pub fn audio_noise_scope() -> Vec<f32> {
+  let mut v = Vec::with_capacity(NOISE_SCOPE_COLS * 2 + 1);
+  v.push(NOISE_SCOPE_POS.load(Ordering::Relaxed) as f32);
+  for a in NOISE_SCOPE.iter() {
+    v.push(f32::from_bits(a.load(Ordering::Relaxed)));
+  }
+  v
 }
 
 // Save-to-library: bounce `frames` stereo frames of the loop unit's output
