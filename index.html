@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a0a0a">
 <title>NEWSPEECH // audio/video experimentation</title>
-<meta name="description" content="newspeech — audio/video experimentation.">
+<meta name="description" content="newspeech — audio/video experimentation. live code, a generative sequencer, visualizers, samples.">
 <meta property="og:title" content="NEWSPEECH // audio/video experimentation">
-<meta property="og:description" content="newspeech — audio/video experimentation.">
+<meta property="og:description" content="newspeech — audio/video experimentation. live code, a generative sequencer, visualizers, samples.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // audio/video experimentation">
-<meta name="twitter:description" content="newspeech — audio/video experimentation.">
+<meta name="twitter:description" content="newspeech — audio/video experimentation. live code, a generative sequencer, visualizers, samples.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
@@ -35,31 +35,41 @@
   }
 
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow: hidden; }
-  body {
-    min-height: 100vh;
+  html { scroll-snap-type: y mandatory; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow-x: hidden; }
+
+  /* full-screen vignette blocks — hero first, then one per feature */
+  .vignette {
+    position: relative;
+    height: 100vh;
+    height: 100svh;
+    overflow: hidden;
+    scroll-snap-align: start;
+  }
+
+  #hero {
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
   }
 
   /* canvas sized to the visible region (left 80vw) so visualizer content
      sits entirely outside the bg-mask on the right — no rendered pixels
      are hidden behind the mask. body bg #050505 matches the mask color so
-     the right 20vw still reads as a single solid panel. */
+     the right 20vw still reads as a single solid panel. absolute (not
+     fixed) so the hero scrolls away with its section. */
   #bg {
-    position: fixed;
+    position: absolute;
     top: 0;
     left: 0;
     width: 80vw;
-    height: 100vh;
+    height: 100%;
     z-index: 0;
     pointer-events: none;
   }
 
   #bg-mask {
-    position: fixed;
+    position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
@@ -68,6 +78,12 @@
     z-index: 1;
     pointer-events: none;
   }
+
+  /* core.js creates the telemetry HUD as a fixed viewport overlay (right for
+     the non-scrolling visualizer pages) — here it belongs to the hero, so pin
+     it to the document top and let it scroll away with the section. its
+     explicit width/height (copied from #bg) keep it hero-sized despite inset:0. */
+  canvas#hud-overlay { position: absolute !important; }
 
   #stage {
     position: relative;
@@ -86,7 +102,7 @@
   }
 
   #links {
-    position: fixed;
+    position: absolute;
     left: 72px;
     bottom: 72px;
     z-index: 2;
@@ -108,10 +124,115 @@
   }
   #links a span { display: inline-block; }
 
+  #scroll-hint {
+    position: absolute;
+    right: 72px;
+    bottom: 72px;
+    z-index: 2;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  /* ---- feature vignettes ---- */
+  /* same construction as the hero: viz canvas confined to one side, a solid
+     panel (the copy) hard-masks the other — alternating sides per section. */
+  .vignette .viz {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: 62vw;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .vignette.viz-right .viz { right: 0; }
+  .vignette.viz-left  .viz { left: 0; }
+
+  .vignette .copy {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 38vw;
+    z-index: 1;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 72px 64px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .vignette.viz-right .copy { left: 0; }
+  .vignette.viz-left  .copy { right: 0; }
+
+  .copy .kicker {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin-bottom: 28px;
+  }
+  .copy h2 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(44px, 5.5vw, 96px);
+    line-height: 1;
+    letter-spacing: 0.01em;
+    font-weight: normal;
+    margin: 0 0 28px;
+    user-select: none;
+  }
+  .copy h2 span { display: inline-block; }
+  .copy .badge {
+    display: inline-block;
+    width: fit-content;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    padding: 6px 10px;
+    margin: 0 0 26px;
+    opacity: 0.85;
+  }
+  .copy p {
+    font-size: 13px;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.78);
+    max-width: 44ch;
+    margin: 0 0 14px;
+  }
+  .copy .cta {
+    display: inline-flex;
+    width: fit-content;
+    margin-top: 26px;
+    padding: 16px 22px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: var(--fg);
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+  .copy .cta span { display: inline-block; }
+  .copy .aux {
+    margin-top: 20px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    opacity: 0.5;
+  }
+  .copy .aux a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  .copy .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
 
   /* mobile: push the text up the viewport, center+stack the dialog */
   @media (max-width: 640px) {
-    body {
+    #hero {
       align-items: flex-start;
       padding-top: 22vh;
     }
@@ -128,29 +249,99 @@
       padding: 22px 28px;
     }
     #links a { justify-content: center; }
+    #scroll-hint {
+      right: 50%;
+      transform: translateX(50%);
+      bottom: 20px;
+    }
+  }
+
+  /* mobile vignettes: viz full-bleed behind, copy bottom-anchored over a
+     gradient so the hard side-mask construction relaxes into a fade */
+  @media (max-width: 720px) {
+    .vignette .viz { width: 100%; left: 0; right: 0; }
+    .vignette .copy {
+      left: 0;
+      right: 0;
+      top: auto;
+      bottom: 0;
+      width: 100%;
+      background: linear-gradient(rgba(5, 5, 5, 0) 0%, rgba(5, 5, 5, 0.9) 30%, var(--bg) 65%);
+      justify-content: flex-end;
+      padding: 120px 28px 52px;
+    }
   }
 </style>
 </head>
 <body>
 
-<canvas id="bg"></canvas>
-<div id="bg-mask"></div>
-<div id="stage" aria-label="newspeech">NEWSPEECH</div>
+<section class="vignette" id="hero">
+  <canvas id="bg"></canvas>
+  <div id="bg-mask"></div>
+  <div id="stage" aria-label="newspeech">NEWSPEECH</div>
 
+  <nav id="links">
+    <a href="live.html" data-link>code</a>
+    <a href="samples.html" data-link>samples</a>
+    <a href="visualizers.html" data-link>visuals</a>
+    <a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" data-link>instagram</a>
+    <!--
+    <a href="#" data-link>downloads</a>
+    <a href="#" data-link>words</a>
+    <a href="#" data-link>shows</a>
+    <a href="#" data-link>apple music</a>
+    <a href="#" data-link>s****fy</a>
+    -->
+  </nav>
 
-<nav id="links">
-  <a href="live.html" data-link>code</a>
-  <a href="samples.html" data-link>samples</a>
-  <a href="visualizers.html" data-link>visuals</a>
-  <a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" data-link>instagram</a>
-  <!--
-  <a href="#" data-link>downloads</a>
-  <a href="#" data-link>words</a>
-  <a href="#" data-link>shows</a>
-  <a href="#" data-link>apple music</a>
-  <a href="#" data-link>s****fy</a>
-  -->
-</nav>
+  <div id="scroll-hint" aria-hidden="true">scroll ↓</div>
+</section>
+
+<section class="vignette viz-right" id="v-code">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">01 / code</div>
+    <h2 data-link>code</h2>
+    <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
+    <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
+    <a class="cta" href="live.html" data-link>open the repl</a>
+    <div class="aux">built on <a href="https://strudel.cc" target="_blank" rel="noopener noreferrer">strudel</a> / <a href="https://tidalcycles.org" target="_blank" rel="noopener noreferrer">tidalcycles</a></div>
+  </div>
+</section>
+
+<section class="vignette viz-left" id="v-sequence">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">02 / sequence</div>
+    <h2 data-link>sequence</h2>
+    <span class="badge">coming soon</span>
+    <p>a step sequencer with a chord-relative harmonic engine. set a root and a scale, author chords by degree — the rest of the band harmonizes against whatever played last.</p>
+    <p>built to play itself, mostly: mutation dials on every row, five global macros, sixteen banks. arriving as a native macos app.</p>
+    <a class="cta" href="sequencer-readme.html" data-link>read the readme</a>
+  </div>
+</section>
+
+<section class="vignette viz-right" id="v-visuals">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">03 / visual</div>
+    <h2 data-link>visual</h2>
+    <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
+    <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
+    <a class="cta" href="visualizers.html" data-link>browse the index</a>
+  </div>
+</section>
+
+<section class="vignette viz-left" id="v-samples">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">04 / sample</div>
+    <h2 data-link>sample</h2>
+    <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
+    <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
+    <a class="cta" href="samples.html" data-link>open the library</a>
+  </div>
+</section>
 
 <script src="core.js"></script>
 <script>
@@ -995,10 +1186,17 @@ function frame(t) {
   const dt = (t - lastT) / 1000;
   lastT = t;
 
-  updateHover(t);
   mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
 
-  MODES[currentMode](t, dt);
+  // hero only renders while its section is on-screen; the vignette canvases
+  // below likewise gate on their own IntersectionObservers.
+  if (heroVisible) {
+    updateHover(t);
+    MODES[currentMode](t, dt);
+  }
+  for (const v of vizSections) {
+    if (v.visible) v.draw(v, t, dt);
+  }
 
   // tickInputs clears the HUD overlay each frame and drives the grain layer;
   // tickTelemetry then renders the picked widgets onto the cleared HUD.
@@ -1028,6 +1226,7 @@ window.addEventListener("mousemove", (e) => {
 // click = punch event: chroma + tear at click Y + texture rebuild + chevron reroll
 window.addEventListener("click", (e) => {
   if (e.target.closest("#debug")) return; // debug panel handles its own clicks
+  if (!heroVisible) return; // hero punch effects only while the hero is on-screen
   // chroma flash (slightly longer than ambient flashes)
   stage.classList.add("chroma");
   setTimeout(() => stage.classList.remove("chroma"), 140);
@@ -1093,6 +1292,439 @@ poisson(
   }
 );
 
+// ================= feature vignettes =================
+// each section below the hero owns a canvas + draw function. they share the
+// page intensity envelope and only render while their section is on-screen.
+
+const heroSection = document.getElementById("hero");
+let heroVisible = true;
+new IntersectionObserver(
+  (entries) => { heroVisible = entries[0].isIntersecting; },
+  { threshold: 0.02 }
+).observe(heroSection);
+
+// scroll hint: poisson-flicker instead of a tween, same vocabulary as the rest
+const scrollHint = document.getElementById("scroll-hint");
+poisson(
+  () => 0.35 + 0.3 * intensity(),
+  () => {
+    scrollHint.style.opacity = "0.12";
+    setTimeout(() => { scrollHint.style.opacity = ""; }, 80 + Math.random() * 140);
+  }
+);
+
+const vizSections = [];
+function registerViz(sectionId, draw) {
+  const section = document.getElementById(sectionId);
+  const cv = section.querySelector("canvas.viz");
+  const vctx = cv.getContext("2d");
+  const v = { draw, ctx: vctx, w: 0, h: 0, visible: false, state: {} };
+  function fit() {
+    const r = cv.getBoundingClientRect();
+    v.w = r.width;
+    v.h = r.height;
+    cv.width = Math.max(1, Math.floor(r.width * dpr));
+    cv.height = Math.max(1, Math.floor(r.height * dpr));
+    vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    v.state = {}; // layout-dependent state rebuilds lazily on next draw
+  }
+  window.addEventListener("resize", fit);
+  fit();
+  new IntersectionObserver(
+    (entries) => { v.visible = entries[0].isIntersecting; },
+    { threshold: 0.02 }
+  ).observe(section);
+  vizSections.push(v);
+}
+
+// ---- 01 code: strudel lines drifting upward, REPL evaluation flashes,
+// transient char corruption (rebuilt from source each frame, so it heals) ----
+const CODE_POOL = [
+  's("bd*2 [~ sd] hh*4").bank("tr909")',
+  'note("c2 eb2 g2 bb2").s("sawtooth").lpf(sine.range(200, 2000))',
+  '$: s("hh*8").gain(saw.slow(4))',
+  'n("0 [2 4] <3 5> 7").scale("c:minor").s("piano")',
+  's("bd sd").sometimesBy(.3, x => x.speed(2))',
+  'stack(s("bd*4"), s("~ cp"), note("c1*2").s("sine"))',
+  '$: n(run(8)).scale("c:dorian").s("sawtooth").cutoff(800)',
+  's("jvbass*4").every(4, rev).shape(.4)',
+  'note("<c2 f1>").s("supersaw").slow(2).room(.6)',
+  's("hh*16").degradeBy(.4).pan(rand)',
+  'n("0 .. 7").off(1/8, x => x.add(12)).s("triangle")',
+  's("breaks165").fit().chop(16).rev()',
+];
+function drawCodeViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  if (!state.lines) {
+    state.lines = [];
+    const n = Math.max(8, Math.floor(h / 60));
+    for (let i = 0; i < n; i++) {
+      state.lines.push({
+        txt: CODE_POOL[(Math.random() * CODE_POOL.length) | 0],
+        x: w * (0.08 + Math.random() * 0.3),
+        y: (i + Math.random()) * (h / n),
+        speed: 6 + Math.random() * 16,
+        alpha: 0.16 + Math.random() * 0.30,
+        flash: 0,
+      });
+    }
+  }
+  const env = intensity();
+  c.clearRect(0, 0, w, h);
+  c.font = "13px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textBaseline = "middle";
+  c.textAlign = "left";
+  for (const L of state.lines) {
+    L.y -= L.speed * (0.4 + 0.9 * env) * dt;
+    if (L.y < -16) {
+      L.y = h + 16;
+      L.txt = CODE_POOL[(Math.random() * CODE_POOL.length) | 0];
+      L.x = w * (0.08 + Math.random() * 0.3);
+      L.alpha = 0.16 + Math.random() * 0.30;
+    }
+    if (Math.random() < dt * (0.05 + 0.20 * env)) L.flash = 1;
+    L.flash *= Math.pow(0.002, dt);
+
+    let txt = L.txt;
+    if (Math.random() < 0.03 + 0.05 * env) {
+      const chars = [...txt];
+      const hits = 1 + ((Math.random() * 3) | 0);
+      for (let k = 0; k < hits; k++) {
+        chars[(Math.random() * chars.length) | 0] =
+          SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+      }
+      txt = chars.join("");
+    }
+
+    if (L.flash > 0.04) {
+      // evaluation: inverted block behind the line, like the REPL highlight
+      const tw = c.measureText(txt).width;
+      c.fillStyle = `rgba(255, 255, 255, ${(L.flash * 0.92).toFixed(3)})`;
+      c.fillRect(L.x - 6, L.y - 10, tw + 12, 20);
+    }
+    const textA = L.alpha + (1 - L.alpha) * L.flash;
+    c.fillStyle = L.flash > 0.5
+      ? "rgba(5, 5, 5, 0.95)"
+      : `rgba(255, 255, 255, ${textA.toFixed(3)})`;
+    c.fillText(txt, L.x, L.y);
+  }
+}
+
+// ---- 02 sequence: 16×8 step grid, sweeping playhead, cells mutating ----
+function drawSeqViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  const COLS = 16, ROWS = 8;
+  if (!state.cells) {
+    state.cells = [];
+    for (let r = 0; r < ROWS; r++) {
+      const row = [];
+      const density = r === 0 ? 0.45 : 0.15 + Math.random() * 0.25;
+      for (let col = 0; col < COLS; col++) {
+        row.push(Math.random() < density ? 0.25 + Math.random() * 0.35 : 0);
+      }
+      state.cells.push(row);
+    }
+    state.step = 0;
+    state.acc = 0;
+    state.pulse = 0;
+  }
+  const stepDur = 60 / 124 / 4; // 124bpm sixteenths
+  state.acc += dt;
+  while (state.acc >= stepDur) {
+    state.acc -= stepDur;
+    state.step = (state.step + 1) % COLS;
+    state.pulse = 1;
+    // mutation: occasionally flip a cell on/off
+    if (Math.random() < 0.22) {
+      const r = (Math.random() * ROWS) | 0;
+      const col = (Math.random() * COLS) | 0;
+      state.cells[r][col] = state.cells[r][col] ? 0 : 0.25 + Math.random() * 0.35;
+    }
+  }
+  state.pulse *= Math.pow(0.001, dt);
+
+  c.clearRect(0, 0, w, h);
+  // narrow canvases have the copy panel over their lower half — bias up
+  const mobile = w < 720;
+  const cs = Math.min((w * (mobile ? 0.86 : 0.72)) / COLS, (h * 0.62) / ROWS);
+  const gap = cs * 0.18;
+  const gw = COLS * cs, gh = ROWS * cs;
+  const gx = (w - gw) / 2, gy = (mobile ? h * 0.26 : h / 2) - gh / 2;
+
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textBaseline = "alphabetic";
+  c.textAlign = "left";
+  c.fillStyle = "rgba(255, 255, 255, 0.35)";
+  c.fillText(`bank 03 · scene a · ${String(state.step + 1).padStart(2, "0")}/16`, gx, gy - 16);
+
+  // playhead column
+  c.fillStyle = "rgba(255, 255, 255, 0.05)";
+  c.fillRect(gx + state.step * cs, gy - cs * 0.35, cs, gh + cs * 0.7);
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let col = 0; col < COLS; col++) {
+      const x = gx + col * cs, y = gy + r * cs;
+      const a = state.cells[r][col];
+      const size = cs - gap;
+      if (a > 0) {
+        c.fillStyle = col === state.step
+          ? `rgba(255, 255, 255, ${(0.55 + 0.45 * state.pulse).toFixed(3)})`
+          : `rgba(255, 255, 255, ${a.toFixed(3)})`;
+        c.fillRect(x + gap / 2, y + gap / 2, size, size);
+      } else {
+        c.strokeStyle = "rgba(255, 255, 255, 0.10)";
+        c.lineWidth = 1;
+        c.strokeRect(x + gap / 2 + 0.5, y + gap / 2 + 0.5, size - 1, size - 1);
+      }
+    }
+  }
+}
+
+// ---- 03 visuals: index-sheet of six live micro-tiles, one per visualizer
+// family. tiles keep trails via per-tile fade fills instead of a full clear ----
+const TILE_GAP = 14;
+const drawTile = {
+  streaks(c, T, t, dt, env) {
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const y = T.y + Math.random() * T.h;
+      const x = T.x + Math.random() * T.w * 0.7;
+      const len = 10 + Math.random() * T.w * 0.5;
+      const a = Math.pow(Math.random(), 3) * 0.5 + 0.02;
+      c.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
+      c.fillRect(x, y, len, 1);
+    }
+  },
+  grid(c, T, t, dt, env) {
+    c.fillStyle = "rgba(5, 5, 5, 0.5)";
+    c.fillRect(T.x, T.y, T.w, T.h);
+    const sp = 7;
+    const off = (t * 0.004) % sp;
+    c.strokeStyle = "rgba(255, 255, 255, 0.30)";
+    c.lineWidth = 1;
+    c.beginPath();
+    for (let y = T.y; y < T.y + T.h; y += sp) { c.moveTo(T.x, y); c.lineTo(T.x + T.w, y); }
+    c.stroke();
+    c.save();
+    c.translate(T.x + T.w / 2, T.y + T.h / 2);
+    c.rotate(0.05 + 0.12 * Math.sin(t / 9000 + T.seed));
+    c.translate(-(T.x + T.w / 2), -(T.y + T.h / 2));
+    c.beginPath();
+    for (let y = T.y - T.h; y < T.y + T.h * 2; y += sp) { c.moveTo(T.x - T.w, y + off); c.lineTo(T.x + T.w * 2, y + off); }
+    c.stroke();
+    c.restore();
+  },
+  rings(c, T, t, dt, env) {
+    if (Math.random() < dt * (0.8 + 2 * env)) T.rings.push({ r: 2 });
+    const maxR = Math.hypot(T.w, T.h) / 2;
+    c.lineWidth = 1;
+    for (let i = T.rings.length - 1; i >= 0; i--) {
+      const R = T.rings[i];
+      R.r += (14 + 40 * env) * dt;
+      const a = Math.max(0, 1 - R.r / maxR) * 0.6;
+      if (a <= 0.01) { T.rings.splice(i, 1); continue; }
+      c.strokeStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
+      c.beginPath();
+      c.arc(T.x + T.w / 2, T.y + T.h / 2, R.r, 0, Math.PI * 2);
+      c.stroke();
+    }
+  },
+  stars(c, T, t, dt, env) {
+    if (!T.particles) {
+      T.particles = [];
+      for (let i = 0; i < 40; i++) {
+        T.particles.push({ x: Math.random(), y: Math.random(), z: 0.05 + Math.random() * 0.95 });
+      }
+    }
+    c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    for (const p of T.particles) {
+      p.z -= dt * (0.10 + 0.25 * env);
+      if (p.z <= 0.03) { p.x = Math.random(); p.y = Math.random(); p.z = 1; }
+      const px = T.x + T.w / 2 + ((p.x - 0.5) / p.z) * T.w * 0.5;
+      const py = T.y + T.h / 2 + ((p.y - 0.5) / p.z) * T.h * 0.5;
+      if (px < T.x || px > T.x + T.w || py < T.y || py > T.y + T.h) continue;
+      const ch = ".,+*oO#"[Math.min(6, ((1 - p.z) * 7) | 0)];
+      c.fillStyle = `rgba(255, 255, 255, ${Math.min(1, 1.1 - p.z).toFixed(3)})`;
+      c.fillText(ch, px, py);
+    }
+  },
+  swarm(c, T, t, dt, env) {
+    if (!T.particles) {
+      T.particles = [];
+      for (let i = 0; i < 160; i++) {
+        T.particles.push({
+          x: Math.random() * T.w,
+          y: Math.random() * T.h,
+          dir: ((Math.random() * 8) | 0) * Math.PI / 4,
+          turn: 0,
+        });
+      }
+    }
+    const sp = 26 + 50 * env;
+    c.fillStyle = "rgba(230, 230, 230, 0.7)";
+    for (const p of T.particles) {
+      p.turn -= dt;
+      if (p.turn <= 0) {
+        p.dir = ((Math.random() * 8) | 0) * Math.PI / 4;
+        p.turn = 0.1 + Math.random() * 0.5;
+      }
+      p.x += Math.cos(p.dir) * sp * dt;
+      p.y += Math.sin(p.dir) * sp * dt;
+      if (p.x < 0) p.x += T.w; else if (p.x >= T.w) p.x -= T.w;
+      if (p.y < 0) p.y += T.h; else if (p.y >= T.h) p.y -= T.h;
+      c.fillRect(T.x + p.x, T.y + p.y, 1, 1);
+    }
+  },
+  chevron(c, T, t, dt, env) {
+    if (!T.particles) T.particles = [{ t: 0.2 }, { t: 0.55 }, { t: 0.85 }];
+    c.lineWidth = 1.5;
+    for (const ch of T.particles) {
+      ch.t += dt * 0.25 * (0.6 + 0.8 * env);
+      if (ch.t >= 1) ch.t = 0;
+      const fade = Math.min(ch.t / 0.12, (1 - ch.t) / 0.15, 1);
+      const vx = T.x + T.w * (0.15 + 0.75 * ch.t);
+      const vy = T.y + T.h / 2;
+      const ang = (30 + 40 * ch.t) * Math.PI / 180;
+      const dx = Math.cos(ang) * T.w, dy = Math.sin(ang) * T.w;
+      c.strokeStyle = `rgba(255, 255, 255, ${(0.8 * fade).toFixed(3)})`;
+      c.beginPath();
+      c.moveTo(vx - dx, vy - dy);
+      c.lineTo(vx, vy);
+      c.lineTo(vx - dx, vy + dy);
+      c.stroke();
+    }
+  },
+};
+function drawVisualsViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  if (!state.tiles) {
+    const kinds = ["streaks", "grid", "rings", "stars", "swarm", "chevron"];
+    // narrow canvases have the copy panel over their lower half — pack the
+    // tile wall 3-wide into the top region instead of centering it
+    const mobile = w < 720;
+    const cols = (w >= h || mobile) ? 3 : 2;
+    const rows = Math.ceil(kinds.length / cols);
+    const tw = (w * (mobile ? 0.92 : 0.86)) / cols;
+    const th = (mobile ? h * 0.40 : h * 0.72) / rows;
+    const ox = (w - tw * cols) / 2;
+    const oy = mobile ? h * 0.07 : (h - th * rows) / 2;
+    state.tiles = kinds.map((kind, i) => ({
+      kind,
+      x: ox + (i % cols) * tw + TILE_GAP / 2,
+      y: oy + ((i / cols) | 0) * th + TILE_GAP / 2,
+      w: tw - TILE_GAP,
+      h: th - TILE_GAP,
+      seed: Math.random() * 1000,
+      particles: null,
+      rings: [],
+    }));
+  }
+  const env = intensity();
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  for (const T of state.tiles) {
+    c.save();
+    c.beginPath();
+    c.rect(T.x, T.y, T.w, T.h);
+    c.clip();
+    c.fillStyle = "rgba(5, 5, 5, 0.30)";
+    c.fillRect(T.x, T.y, T.w, T.h);
+    drawTile[T.kind](c, T, t, dt, env);
+    c.restore();
+    c.strokeStyle = "rgba(255, 255, 255, 0.18)";
+    c.lineWidth = 1;
+    c.strokeRect(T.x + 0.5, T.y + 0.5, T.w - 1, T.h - 1);
+    c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+    c.textAlign = "left";
+    c.textBaseline = "alphabetic";
+    c.fillStyle = "rgba(255, 255, 255, 0.4)";
+    c.fillText(T.kind, T.x + 8, T.y + T.h - 8);
+  }
+}
+
+// ---- 04 samples: sliced kit waveform, sweeping playhead, retrigger jumps ----
+function drawSamplesViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  const x0 = w * 0.06, x1 = w * 0.94;
+  if (!state.wave) {
+    const N = Math.max(300, Math.floor(x1 - x0)); // one sample per pixel column
+    const NOTES = ["C1", "E1", "Gs1", "C2", "E2", "Gs2", "C3", "E3"];
+    const wave = new Float32Array(N);
+    const slices = [];
+    const per = N / NOTES.length;
+    for (let s = 0; s < NOTES.length; s++) {
+      const start = Math.floor(s * per + per * 0.06);
+      slices.push({ i: start, label: `kit-${NOTES[s]}.wav`, flash: 0 });
+      const len = Math.floor(per * (0.45 + Math.random() * 0.4));
+      const decay = 3 + Math.random() * 4;
+      const tone = 0.02 + Math.random() * 0.10;
+      for (let k = 0; k < len && start + k < N; k++) {
+        const p = k / len;
+        const envA = Math.min(1, k / (len * 0.02 + 1)) * Math.exp(-p * decay);
+        wave[start + k] = (Math.sin(k * tone * Math.PI * 2) * 0.6 + (Math.random() * 2 - 1) * 0.4) * envA;
+      }
+    }
+    state.wave = wave;
+    state.slices = slices;
+    state.head = 0;
+    state.headSpeed = N / 14; // full sweep ~14s at env=0.5
+  }
+  const env = intensity();
+  const N = state.wave.length;
+
+  const lastHead = state.head;
+  state.head += state.headSpeed * (0.5 + env) * dt;
+  if (state.head >= N) state.head -= N;
+  // occasional retrigger: jump the playhead to a random slice start
+  if (Math.random() < dt * (0.06 + 0.25 * env)) {
+    const s = state.slices[(Math.random() * state.slices.length) | 0];
+    state.head = s.i;
+    s.flash = 1;
+  }
+  for (const s of state.slices) {
+    if (lastHead <= s.i && state.head > s.i) s.flash = 1;
+    s.flash *= Math.pow(0.01, dt);
+  }
+
+  c.clearRect(0, 0, w, h);
+  // narrow canvases have the copy panel over their lower half — bias up
+  const midY = w < 720 ? h * 0.27 : h / 2;
+  const amp = h * (w < 720 ? 0.14 : 0.22);
+  const px = (i) => x0 + (i / N) * (x1 - x0);
+
+  for (let i = 0; i < N; i++) {
+    const val = Math.abs(state.wave[i]);
+    if (val < 0.004) continue;
+    c.fillStyle = i < state.head ? "rgba(255, 255, 255, 0.55)" : "rgba(255, 255, 255, 0.22)";
+    c.fillRect(px(i), midY - val * amp, (x1 - x0) / N + 0.5, val * amp * 2);
+  }
+  c.fillStyle = "rgba(255, 255, 255, 0.12)";
+  c.fillRect(x0, midY, x1 - x0, 1);
+
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+  for (let si = 0; si < state.slices.length; si++) {
+    const s = state.slices[si];
+    const x = px(s.i);
+    c.fillStyle = `rgba(255, 255, 255, ${(0.3 + 0.7 * s.flash).toFixed(3)})`;
+    c.fillRect(x, midY - amp - 26, 1, amp * 2 + 40);
+    if (w < 640 && si % 2) continue; // thin labels out on narrow canvases
+    c.fillStyle = `rgba(255, 255, 255, ${(0.35 + 0.6 * s.flash).toFixed(3)})`;
+    c.fillText(s.label, x + 5, midY - amp - 30);
+  }
+
+  const hx = px(state.head);
+  c.fillStyle = "rgba(255, 255, 255, 0.9)";
+  c.fillRect(hx, midY - amp - 34, 1, amp * 2 + 60);
+}
+
+registerViz("v-code", drawCodeViz);
+registerViz("v-sequence", drawSeqViz);
+registerViz("v-visuals", drawVisualsViz);
+registerViz("v-samples", drawSamplesViz);
+
 // ---- link hover: cycle each char through the zxx variants ----
 // bold is intentionally excluded — its glyph metrics differ enough from the
 // others that it forces the link wider than the locked width.
@@ -1125,15 +1757,19 @@ async function setupLinks() {
     // lock EACH character span to its max width across the default + every
     // cycled variant, so the link's width is the sum of fixed slots — the box
     // can no longer flex regardless of which variant a slot is rendering.
-    for (const s of charSpans) {
-      let maxW = s.getBoundingClientRect().width;
-      for (const fam of LINK_FONT_CYCLE) {
-        s.style.fontFamily = `"${fam}", monospace`;
-        const w = s.getBoundingClientRect().width;
-        if (w > maxW) maxW = w;
+    // headings skip the lock: nothing reflows around them, and padding every
+    // slot to the widest variant reads as huge letter-spacing at display sizes.
+    if (!link.matches("h2")) {
+      for (const s of charSpans) {
+        let maxW = s.getBoundingClientRect().width;
+        for (const fam of LINK_FONT_CYCLE) {
+          s.style.fontFamily = `"${fam}", monospace`;
+          const w = s.getBoundingClientRect().width;
+          if (w > maxW) maxW = w;
+        }
+        s.style.fontFamily = "";
+        s.style.width = `${(Math.ceil(maxW * 10) / 10).toFixed(1)}px`;
       }
-      s.style.fontFamily = "";
-      s.style.width = `${(Math.ceil(maxW * 10) / 10).toFixed(1)}px`;
     }
 
     // each char starts at a different point in the cycle so they desync
