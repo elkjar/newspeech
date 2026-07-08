@@ -81,8 +81,12 @@ export function panicKill(): void {
   }
   midiPanic();
   // Hard voice kill + FX-buffer clear. Overrides the graceful texture
-  // fade a normal stop would do — this is the emergency path.
+  // fade a normal stop would do — this is the emergency path. Rust also
+  // drops any held resample loop; mirror it in the JS unit state so the
+  // loops tab never shows a ghost loop (dynamic import — transport must
+  // not pull the loops module graph in at boot).
   void audioPanic();
+  void import('./loops').then((m) => m.loopsOnPanic());
 }
 
 // Song mode reached the end of its rows (loop off): announce stop to clock

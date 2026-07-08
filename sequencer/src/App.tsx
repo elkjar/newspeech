@@ -98,7 +98,8 @@ import {
   type NativeLfo,
   type LfoDestKind,
 } from './audio/nativeEngine';
-import { initEngineClock, frameAtTime, engineNow } from './audio/engineClock';
+import { initEngineClock, frameAtTime, engineNow, engineSampleRate } from './audio/engineClock';
+import { noteBarBoundary } from './audio/loops';
 import {
   allocRevoiceNoteId,
   registerChord,
@@ -596,6 +597,12 @@ export function App() {
       // BEFORE commit overwrites them; tickBar runs AFTER commit so it sees
       // the just-swapped activeBank as the lerp target.
       if (!redispatch && globalStep % 32 === 0) {
+        // Feed the loop/resample unit's bar anchor — capture spans are
+        // computed from the most recent bar boundary (audio/loops.ts).
+        noteBarBoundary(
+          frameAtTime(when),
+          Math.round(32 * stepDuration * engineSampleRate()),
+        );
         // Snapshot the active bank/scene/song BEFORE any commit so we can
         // tell afterward whether a swap landed this bar. A swap means the
         // about-to-be-pushed new track params would otherwise retune the

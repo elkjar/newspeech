@@ -66,7 +66,9 @@ function parentDir(path: string): string {
 }
 
 function flushFinalizedToast(): void {
-  const takes = pendingFinalized;
+  // Loop-bounce takes toast from audio/loops.ts (different copy + rescan
+  // side-effect) — exclude them from the generic recording toast.
+  const takes = pendingFinalized.filter((t) => t.label !== 'loop');
   pendingFinalized = [];
   finalizeTimer = null;
   if (takes.length === 0) return;

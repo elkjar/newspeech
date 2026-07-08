@@ -978,6 +978,15 @@ impl RecorderState {
 
 static RECORDER_STATE: OnceLock<RecorderState> = OnceLock::new();
 
+// Stop-flag of the loop bounce in flight (if any) — reachable from the
+// stream-teardown path, which can't see the audio thread's locals. Without
+// this, closing/reopening the device mid-bounce would leave the worker
+// spinning forever on an open file.
+fn loop_bounce_teardown() -> &'static Mutex<Option<Arc<AtomicBool>>> {
+  static CELL: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
+  CELL.get_or_init(|| Mutex::new(None))
+}
+
 fn recorder_state() -> &'static RecorderState {
   RECORDER_STATE.get_or_init(RecorderState::new)
 }
@@ -3320,6 +3329,30 @@ fn apply_lfo(base: f32, depth: f32, out: f32) -> f32 {
 
 const VOICE_POOL_SIZE: usize = 64;
 const TRIGGER_QUEUE_CAPACITY: usize = 256;
+// Loop/resample capture ring length. 32s holds 8 bars down to ~60bpm; a
+// capture span longer than the ring is rejected at drain.
+const LOOP_RING_SECONDS: usize = 32;
+
+// Loop-unit visualization channel — lock-free statics the audio thread
+// writes and the `audio_loop_viz`/`audio_loop_peaks` commands read, so the
+// LOOPS tab can draw the captured waveform + live playhead/grains without
+// touching the callback. Peaks are min/max f32 bit-patterns per column,
+// filled during LoopCapture (subsampled — a visual, not a measurement);
+// VERSION bumps per capture so JS knows when to re-fetch. POS is the
+// playhead as a 0..1 fraction (bits of -1.0 = unit inactive); GRAINS pack
+// 8 × (position fraction, window level) — position -1.0 = slot idle.
+const LOOP_PEAK_COLS: usize = 512;
+const LOOP_GRAIN_SLOTS: usize = 8;
+static LOOP_VIZ_PEAKS: [AtomicU32; LOOP_PEAK_COLS * 2] =
+  [const { AtomicU32::new(0) }; LOOP_PEAK_COLS * 2];
+static LOOP_VIZ_VERSION: AtomicU32 = AtomicU32::new(0);
+static LOOP_VIZ_POS: AtomicU32 = AtomicU32::new(0);
+static LOOP_VIZ_GRAINS: [AtomicU32; LOOP_GRAIN_SLOTS * 2] =
+  [const { AtomicU32::new(0) }; LOOP_GRAIN_SLOTS * 2];
+// Bounce progress 0..1 as f32 bits; -1.0 = no bounce in flight. Note the
+// zero-init reads as 0.0 — the audio thread republishes every block while
+// the unit runs, and JS treats <0 OR no-saving state as "no bar".
+static LOOP_VIZ_BOUNCE: AtomicU32 = AtomicU32::new(0);
 // Cap for the per-stream sample-accurate pending-trigger queue. The
 // audio thread pre-allocates this many slots so pushes never realloc;
 // overflow drops with `PENDING_TRIGGER_DROPS` for diagnostics.
@@ -3770,6 +3803,79 @@ enum MixerCommand {
   // incoming scene's params (pushed moments later) then can't retune the
   // tails (a resonance jump would otherwise self-oscillate into a crash).
   FreezeVoiceParams,
+  // Loop/resample capture unit (P1). The audio thread keeps an
+  // always-writing post-master ring indexed by absolute engine frame, so
+  // a capture is a modular slice of the PAST — grab the bars you just
+  // heard, not the ones about to play. Playback is phase-locked to the
+  // capture end ((frame - end_frame) % len), which makes the punch
+  // seamless: the loop continues the mix in bar phase. The ring taps the
+  // mix BEFORE loop playback injects, so loops can never re-capture
+  // themselves (the Bluebox is output-only).
+  LoopCapture {
+    start_frame: u64,
+    end_frame: u64,
+  },
+  LoopStop,
+  LoopGain {
+    gain: f32,
+  },
+  // P2 manipulation layer (Morphagene/ADDAC-112 flavored). speed =
+  // thru-zero vari-speed, JS-side quantized to the octave ladder
+  // ±(0.25/0.5/1/2/4) + 0 — octave ratios keep both pitch and the loop's
+  // bar phase musically coherent; size = grain size norm (1.0 =
+  // whole-loop tape mode, below = windowed grains down to ~20ms);
+  // random = start-point randomness 0..1 (0 = grains at the playhead,
+  // 1 = uniformly anywhere in the loop — ±half-loop offset depth, wrap
+  // makes it truly uniform); grains = concurrent grain voices 1..8 (new
+  // spawns steal the oldest); rate_hz = grain spawn rate 0.5..60,
+  // independent of size (sparse blips ↔ dense cloud).
+  // Per-control DEVIATION (the ADDAC 112 concept): each grain rolls its
+  // own value within ±dev of the base — size_dev in size octaves (4^±dev),
+  // pitch_dev in pitch octaves (2^±2dev), rate_dev as spawn-interval
+  // jitter. `random` is position's deviation. All 0..1.
+  // pitch: fixed grain read rate (octave ladder, signed = direction);
+  // 0.0 = FOLLOW speed (tape-chained, the default). A fixed pitch under a
+  // slow/stopped playhead is granular TIMESTRETCH — the periodic windows
+  // re-reading the same material are the artifact.
+  // loop_level / grain_level: INDEPENDENT layer outputs (Chris's
+  // correction of the earlier crossfade read) — the tape loop and the
+  // grain cloud are two modules over the same capture, each with its own
+  // return level into the mix. Both up = both heard; either can be silent.
+  // spawn_frames: grain spawn interval in device frames (JS converts from
+  // clock divisions or free Hz); rate_synced: when true, spawns anchor to
+  // the capture's bar grid (spawn ON the grid, not just at grid rate).
+  // Bounce the loop unit's OUTPUT (post-mangle, post-gain — what you
+  // hear) to a WAV via the recorder-worker pattern: the audio thread
+  // pushes `frames` stereo frames starting at the next bar-grid point
+  // ((abs − anchor) % align == 0, so the file re-loops cleanly), then
+  // fires `stop` and the worker finalizes. This is the save-to-library
+  // path (docs/loop-resample.md P4).
+  LoopBounce {
+    producer: HeapProd<f32>,
+    frames: u64,
+    align_frames: u64,
+    stop: Arc<AtomicBool>,
+  },
+  // loop_lock: pitch-lock the TAPE layer — a two-head overlap-add
+  // stretcher (85ms triangular windows, 50% hop) reads at native pitch
+  // from the vari-speed playhead, so SPEED becomes pure time for the loop
+  // layer: timestretch, reverse-at-pitch, frozen slice at stop. Off =
+  // tape physics (pitch follows speed).
+  LoopParams {
+    speed: f32,
+    pitch: f32,
+    loop_lock: bool,
+    loop_level: f32,
+    grain_level: f32,
+    size: f32,
+    random: f32,
+    grains: u32,
+    spawn_frames: f32,
+    rate_synced: bool,
+    size_dev: f32,
+    pitch_dev: f32,
+    rate_dev: f32,
+  },
 }
 
 #[derive(Clone, Copy)]
@@ -4738,6 +4844,126 @@ impl AudioEngine {
     Ok(())
   }
 
+  // Loop/resample capture unit — see MixerCommand::LoopCapture.
+  fn push_command(&self, cmd: MixerCommand) -> Result<(), String> {
+    let mut guard = self
+      .state
+      .trigger_producer
+      .lock()
+      .map_err(|e| format!("producer lock: {}", e))?;
+    let producer = guard
+      .as_mut()
+      .ok_or_else(|| "audio device not open".to_string())?;
+    producer
+      .try_push(cmd)
+      .map_err(|_| "trigger queue full".to_string())?;
+    Ok(())
+  }
+
+  pub fn loop_capture(&self, start_frame: u64, end_frame: u64) -> Result<(), String> {
+    self.push_command(MixerCommand::LoopCapture { start_frame, end_frame })
+  }
+
+  pub fn loop_stop(&self) -> Result<(), String> {
+    self.push_command(MixerCommand::LoopStop)
+  }
+
+  pub fn loop_gain(&self, gain: f32) -> Result<(), String> {
+    self.push_command(MixerCommand::LoopGain { gain })
+  }
+
+  // Save-to-library bounce — mirrors start-combined-recording: rb + hound
+  // writer + recorder worker, but fed by the loop unit's output tap and
+  // self-stopping after `frames`.
+  pub fn loop_bounce(
+    &self,
+    app: tauri::AppHandle,
+    path: String,
+    frames: u64,
+    align_frames: u64,
+  ) -> Result<(), String> {
+    let sr = self.state.sample_rate.load(Ordering::Acquire);
+    if sr == 0 {
+      return Err("audio device not open".to_string());
+    }
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+      std::fs::create_dir_all(parent)
+        .map_err(|e| format!("create dir '{}': {}", parent.display(), e))?;
+    }
+    const QUEUE_SAMPLES: usize = 480_000;
+    let (prod, cons) = HeapRb::<f32>::new(QUEUE_SAMPLES).split();
+    let spec = hound::WavSpec {
+      channels: 2,
+      sample_rate: sr,
+      bits_per_sample: 32,
+      sample_format: hound::SampleFormat::Float,
+    };
+    let writer = hound::WavWriter::create(&path, spec)
+      .map_err(|e| format!("create wav '{}': {}", path, e))?;
+    let stop = Arc::new(AtomicBool::new(false));
+    if let Ok(mut g) = loop_bounce_teardown().lock() {
+      if let Some(prev) = g.replace(Arc::clone(&stop)) {
+        prev.store(true, Ordering::Release);
+      }
+    }
+    spawn_recorder_worker(
+      app,
+      "loop",
+      path.clone(),
+      writer,
+      cons,
+      Arc::clone(&stop),
+    );
+    match self.push_command(MixerCommand::LoopBounce {
+      producer: prod,
+      frames,
+      align_frames,
+      stop: Arc::clone(&stop),
+    }) {
+      Ok(()) => Ok(()),
+      Err(e) => {
+        // Worker is already spinning — finalize the empty take so it
+        // exits instead of idling on an open file forever.
+        stop.store(true, Ordering::Release);
+        Err(e)
+      }
+    }
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  pub fn loop_params(
+    &self,
+    speed: f32,
+    pitch: f32,
+    loop_lock: bool,
+    loop_level: f32,
+    grain_level: f32,
+    size: f32,
+    random: f32,
+    grains: u32,
+    spawn_frames: f32,
+    rate_synced: bool,
+    size_dev: f32,
+    pitch_dev: f32,
+    rate_dev: f32,
+  ) -> Result<(), String> {
+    self.push_command(MixerCommand::LoopParams {
+      speed,
+      pitch,
+      loop_lock,
+      loop_level,
+      grain_level,
+      size,
+      random,
+      grains,
+      spawn_frames,
+      rate_synced,
+      size_dev,
+      pitch_dev,
+      rate_dev,
+    })
+  }
+
   // Transport-stop texture fade. Fade time arrives in seconds; convert
   // to frames at the device sample rate (the audio thread counts down in
   // frames). Only texture-role voices are affected.
@@ -4846,6 +5072,11 @@ impl AudioEngine {
 // blocking any new take). Called at the top of Open and Close so an
 // in-flight take cleanly finalizes with everything captured so far.
 fn stop_recorders_for_stream_teardown() {
+  if let Ok(mut g) = loop_bounce_teardown().lock() {
+    if let Some(stop) = g.take() {
+      stop.store(true, Ordering::Release);
+    }
+  }
   let r = recorder_state();
   if r.combined_enabled.swap(false, Ordering::AcqRel) {
     r.combined_stop.store(true, Ordering::Release);
@@ -4958,6 +5189,26 @@ fn fnv1a_32(bytes: &[u8]) -> u32 {
     h = h.wrapping_mul(0x0100_0193);
   }
   h
+}
+
+// Loop-unit read helpers (P2). Linear interpolation is deliberate — the
+// loop unit is a mangler, and interp artifacts at extreme vari-speed are
+// character (same stance as the tape/grain reads).
+#[inline]
+fn loop_wrap(pos: f64, len: f64) -> f64 {
+  let mut p = pos % len;
+  if p < 0.0 {
+    p += len;
+  }
+  p
+}
+
+#[inline]
+fn loop_read(buf: &[f32], len: usize, pos: f64) -> f32 {
+  let i0 = (pos as usize).min(len - 1);
+  let frac = (pos - i0 as f64) as f32;
+  let i1 = if i0 + 1 >= len { 0 } else { i0 + 1 };
+  buf[i0] + (buf[i1] - buf[i0]) * frac
 }
 
 // Drops a PendingTrigger into a voice slot — picks an inactive slot,
@@ -5212,6 +5463,64 @@ fn build_stream(
   let mut rhythm_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut melody_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut melody_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  // Loop/resample capture unit (P1): a post-master ring the callback always
+  // writes (indexed by absolute frame — a capture span is a modular slice),
+  // plus the loop buffer it plays back from. Allocated once here; the
+  // capture copy is a ≤2-segment memcpy (~ms worst case for a full-ring
+  // span), nothing on the hot path resizes. State is callback-local, so a
+  // stream reopen (device change) drops any held loop — accepted for P1.
+  let loop_ring_frames = (sample_rate as usize) * LOOP_RING_SECONDS;
+  let mut loop_ring_l: Vec<f32> = vec![0.0; loop_ring_frames];
+  let mut loop_ring_r: Vec<f32> = vec![0.0; loop_ring_frames];
+  let mut loop_buf_l: Vec<f32> = vec![0.0; loop_ring_frames];
+  let mut loop_buf_r: Vec<f32> = vec![0.0; loop_ring_frames];
+  let mut loop_len: usize = 0;
+  let mut loop_anchor: u64 = 0;
+  let mut loop_gain: f32 = 0.8;
+  let mut loop_active = false;
+  // P2 manipulation state (Morphagene/ADDAC flavor). The playhead is a
+  // fractional position integrated at `speed` per frame — at exactly 1.0
+  // it reproduces P1's bar-locked phase; anywhere else the unit detaches
+  // from the grid and becomes an instrument. Grain slots are fixed (4),
+  // spawned on a countdown, each a windowed read whose rate carries the
+  // vari-speed pitch (thru-zero: negative = reverse grains).
+  let mut loop_pos: f64 = 0.0;
+  let mut loop_speed: f32 = 1.0;
+  let mut loop_size: f32 = 1.0; // 1.0 = whole-loop tape mode
+  let mut loop_random: f32 = 0.0;
+  let mut loop_pitch: f32 = 0.0; // 0 = follow speed
+  let mut loop_tape_level: f32 = 1.0; // tape-layer return level
+  let mut loop_grain_level: f32 = 0.0; // grain-layer return level
+  let mut loop_lock: bool = false; // pitch-locked (OLA) tape layer
+  // OLA stretcher heads for the locked tape layer: (position, phase).
+  // phase < 0 = idle. Two heads at 50% hop, triangular windows (sum = 1).
+  let mut loop_ola: [(f64, f64); 2] = [(0.0, -1.0), (0.0, -1.0)];
+  let mut loop_ola_next: usize = 0;
+  let mut loop_ola_countdown: f64 = 0.0;
+  let mut loop_size_dev: f32 = 0.0;
+  let mut loop_pitch_dev: f32 = 0.0;
+  let mut loop_rate_dev: f32 = 0.0;
+  let mut loop_grain_count: usize = 4;
+  let mut loop_spawn_frames: f32 = 6000.0;
+  let mut loop_rate_synced: bool = false;
+  // Absolute engine frame of the next grain spawn (f64 — carries jitter).
+  let mut loop_next_spawn: f64 = 0.0;
+  #[derive(Clone, Copy, Default)]
+  struct LoopGrain {
+    active: bool,
+    start: f64,  // loop-buffer position at spawn (frames)
+    phase: f64,  // frames elapsed within the grain (0..dur)
+    dur: f64,    // grain length in frames
+    rate: f64,   // signed read rate (vari-speed pitch)
+  }
+  let mut loop_grains: [LoopGrain; LOOP_GRAIN_SLOTS] =
+    [LoopGrain::default(); LOOP_GRAIN_SLOTS];
+  // In-flight loop bounce: (producer, remaining, total, align, stop flag).
+  let mut loop_bounce: Option<(HeapProd<f32>, u64, u64, u64, Arc<AtomicBool>)> =
+    None;
+  let mut loop_bounce_started = false;
+  // Cheap grain-spray randomness (xorshift) — never allocates.
+  let mut loop_rng: u32 = 0x9e37_79b9;
   let nominal_channels = channels as usize;
   let nominal_sr = sample_rate as f32;
   let device_sr_f64 = sample_rate as f64;
@@ -5723,6 +6032,16 @@ fn build_stream(
               // detector envelopes, leaving the output dead even after the
               // FX buses are cleared. Coefficients are untouched.
               master_stage.reset_state();
+              // Panic also drops a held resample loop — it's a sounding
+              // source like any other.
+              loop_active = false;
+              loop_len = 0;
+              if let Some((_, _, _, _, stop)) = loop_bounce.take() {
+                stop.store(true, Ordering::Release);
+                loop_bounce_started = false;
+              }
+              LOOP_VIZ_POS.store((-1.0f32).to_bits(), Ordering::Relaxed);
+              LOOP_VIZ_BOUNCE.store((-1.0f32).to_bits(), Ordering::Relaxed);
             }
             MixerCommand::ReleaseNote { note_id, fade_frames } => {
               if note_id != 0 && fade_frames > 0 {
@@ -5787,6 +6106,158 @@ fn build_stream(
                     tp.delay_send(),
                   ));
                 }
+              }
+            }
+            MixerCommand::LoopCapture { start_frame, end_frame } => {
+              // Copy the requested span out of the post-master ring.
+              // ENGINE_FRAMES here = this block's start = exactly how far
+              // the ring has been written, so end_frame <= now guarantees
+              // the whole span exists; the oldest check guards wrap-around
+              // overwrite. The JS side quantizes to rendered bar
+              // boundaries, so rejects only happen on clock skew or spans
+              // longer than the ring — both silently ignored.
+              let now = ENGINE_FRAMES.load(Ordering::Relaxed);
+              let len = end_frame.saturating_sub(start_frame) as usize;
+              let ring_len = loop_ring_l.len();
+              let oldest = now.saturating_sub(ring_len as u64);
+              if len > 0
+                && len <= ring_len
+                && start_frame >= oldest
+                && end_frame <= now
+              {
+                let s0 = (start_frame % ring_len as u64) as usize;
+                let first = (ring_len - s0).min(len);
+                loop_buf_l[..first].copy_from_slice(&loop_ring_l[s0..s0 + first]);
+                loop_buf_r[..first].copy_from_slice(&loop_ring_r[s0..s0 + first]);
+                if first < len {
+                  let rest = len - first;
+                  loop_buf_l[first..len].copy_from_slice(&loop_ring_l[..rest]);
+                  loop_buf_r[first..len].copy_from_slice(&loop_ring_r[..rest]);
+                }
+                loop_len = len;
+                loop_anchor = end_frame;
+                loop_active = true;
+                // Fresh capture: playhead re-anchors to the capture end so
+                // speed=1 playback stays bar-phase-locked (P1 semantics).
+                // Params are STICKY across captures — a performance stance:
+                // recapturing under a mangled setting keeps the mangle.
+                loop_pos = 0.0;
+                for g in loop_grains.iter_mut() {
+                  g.active = false;
+                }
+                loop_next_spawn = 0.0; // spawn immediately, on-grid
+                // Viz peaks — subsampled min/max per column (≤64 reads
+                // each; a picture, not a measurement). Version bump tells
+                // JS to re-fetch.
+                let per = (len as f64) / (LOOP_PEAK_COLS as f64);
+                for col in 0..LOOP_PEAK_COLS {
+                  let i0 = (col as f64 * per) as usize;
+                  let i1 =
+                    ((((col + 1) as f64) * per) as usize).min(len).max(i0 + 1);
+                  let step = ((i1 - i0) / 64).max(1);
+                  let mut mn = f32::MAX;
+                  let mut mx = f32::MIN;
+                  let mut i = i0;
+                  while i < i1 {
+                    let s = 0.5 * (loop_buf_l[i] + loop_buf_r[i]);
+                    if s < mn {
+                      mn = s;
+                    }
+                    if s > mx {
+                      mx = s;
+                    }
+                    i += step;
+                  }
+                  if mn > mx {
+                    mn = 0.0;
+                    mx = 0.0;
+                  }
+                  LOOP_VIZ_PEAKS[col * 2].store(mn.to_bits(), Ordering::Relaxed);
+                  LOOP_VIZ_PEAKS[col * 2 + 1]
+                    .store(mx.to_bits(), Ordering::Relaxed);
+                }
+                LOOP_VIZ_VERSION.fetch_add(1, Ordering::Release);
+              }
+            }
+            MixerCommand::LoopStop => {
+              loop_active = false;
+              loop_len = 0;
+              for g in loop_grains.iter_mut() {
+                g.active = false;
+              }
+              if let Some((_, _, _, _, stop)) = loop_bounce.take() {
+                stop.store(true, Ordering::Release);
+                loop_bounce_started = false;
+              }
+              LOOP_VIZ_POS.store((-1.0f32).to_bits(), Ordering::Relaxed);
+              LOOP_VIZ_BOUNCE.store((-1.0f32).to_bits(), Ordering::Relaxed);
+            }
+            MixerCommand::LoopGain { gain } => {
+              if gain.is_finite() {
+                loop_gain = gain.clamp(0.0, 1.5);
+              }
+            }
+            MixerCommand::LoopBounce { producer, frames, align_frames, stop } => {
+              // Replace any bounce in flight — finalize it first.
+              if let Some((_, _, _, _, old_stop)) = loop_bounce.take() {
+                old_stop.store(true, Ordering::Release);
+              }
+              loop_bounce_started = false;
+              if loop_active && loop_len > 0 && frames > 0 {
+                loop_bounce =
+                  Some((producer, frames, frames, align_frames.max(1), stop));
+              } else {
+                // Unit empty (JS guards this) — finalize an empty take.
+                stop.store(true, Ordering::Release);
+              }
+            }
+            MixerCommand::LoopParams {
+              speed,
+              pitch,
+              loop_lock: lock,
+              loop_level,
+              grain_level,
+              size,
+              random,
+              grains,
+              spawn_frames,
+              rate_synced,
+              size_dev,
+              pitch_dev,
+              rate_dev,
+            } => {
+              if speed.is_finite() {
+                loop_speed = speed.clamp(-4.0, 4.0);
+              }
+              if pitch.is_finite() {
+                loop_pitch = pitch.clamp(-4.0, 4.0);
+              }
+              loop_lock = lock;
+              if loop_level.is_finite() {
+                loop_tape_level = loop_level.clamp(0.0, 2.0);
+              }
+              if grain_level.is_finite() {
+                loop_grain_level = grain_level.clamp(0.0, 2.0);
+              }
+              if size.is_finite() {
+                loop_size = size.clamp(0.0, 1.0);
+              }
+              if random.is_finite() {
+                loop_random = random.clamp(0.0, 1.0);
+              }
+              loop_grain_count = (grains as usize).clamp(1, loop_grains.len());
+              if spawn_frames.is_finite() {
+                loop_spawn_frames = spawn_frames.clamp(32.0, 4_000_000.0);
+              }
+              loop_rate_synced = rate_synced;
+              if size_dev.is_finite() {
+                loop_size_dev = size_dev.clamp(0.0, 1.0);
+              }
+              if pitch_dev.is_finite() {
+                loop_pitch_dev = pitch_dev.clamp(0.0, 1.0);
+              }
+              if rate_dev.is_finite() {
+                loop_rate_dev = rate_dev.clamp(0.0, 1.0);
               }
             }
             MixerCommand::FadeTextures { fade_frames } => {
@@ -6812,6 +7283,285 @@ fn build_stream(
           );
         }
 
+        // 5.5) Loop/resample capture unit. ORDER MATTERS: the ring taps
+        // the post-master mix FIRST, then loop playback injects — so the
+        // ring never contains the loops themselves (output-only, like the
+        // Bluebox: captures can't eat earlier captures). Injection lands
+        // BEFORE the recorder taps below, so recordings DO include the
+        // loop layer. Gen-guarded like the engine clock — a zombie stream
+        // must not write the ring.
+        if is_current_stream {
+          let ring_len = loop_ring_l.len();
+          for frame in 0..frames {
+            let abs = block_start_frame + frame as u64;
+            let w = (abs % ring_len as u64) as usize;
+            let l = buf[frame * n_ch];
+            let r = if n_ch >= 2 { buf[frame * n_ch + 1] } else { l };
+            loop_ring_l[w] = l;
+            loop_ring_r[w] = r;
+          }
+          if loop_active && loop_len > 0 {
+            // P2 read engine (Morphagene/ADDAC flavor). Two regimes:
+            //  - TAPE (size ≥ 0.98): vari-speed head at `speed`, thru-zero
+            //    (negative = reverse, |speed| < 0.02 = stopped tape =
+            //    silence), pitch follows speed. At exactly 1.0 this is
+            //    P1's bar-locked playback.
+            //  - GRAIN (size < 0.98): the playhead crawls at `speed`;
+            //    windowed grains (parabolic window — no trig on the hot
+            //    path) spawn on a countdown at the playhead + scan offset,
+            //    each reading at rate `speed` (thru-zero pitch). At
+            //    stopped speed grains read at native pitch — the frozen
+            //    drone. Morph = overlap (1..4 voices) + position spray
+            //    past 0.5.
+            let len_f = loop_len as f64;
+            let stopped = loop_speed.abs() < 0.02;
+            // Grain size is FULL-RANGE (mix owns the tape↔grain balance):
+            // exponential 20ms..~1.8s, clamped to the loop and floored so
+            // a window always has shape.
+            let grain_dur = {
+              let t = loop_size.clamp(0.0, 1.0) as f64;
+              let secs = 0.02 * 90.0_f64.powf(t);
+              (secs * sr_f32 as f64).min(len_f).max(64.0)
+            };
+            // Independent layer levels — tape loop and grain cloud are
+            // two modules over the same capture, each with its own return.
+            let g_tape = loop_tape_level;
+            let g_grain = loop_grain_level;
+            let tape_on = g_tape > 0.001;
+            let grains_on = g_grain > 0.001;
+            // Position deviation: ±half-loop at full — wrap makes the
+            // start point truly uniform over the loop at random = 1.
+            let random_amt = (loop_random as f64) * 0.5 * len_f;
+            let spawn_interval = loop_spawn_frames.max(32.0) as f64;
+            // Overlap gain compensation — estimate concurrent grains from
+            // duration/interval, capped by the voice count; stacked windows
+            // otherwise pump the level way past the source.
+            let concurrent =
+              (grain_dur / spawn_interval).clamp(1.0, loop_grain_count as f64);
+            let grain_norm = (1.0 / concurrent.sqrt()) as f32;
+            for frame in 0..frames {
+              let abs = block_start_frame + frame as u64;
+              if abs < loop_anchor {
+                continue;
+              }
+              loop_pos = loop_wrap(loop_pos + loop_speed as f64, len_f);
+              let mut l = 0.0f32;
+              let mut r = 0.0f32;
+              if tape_on {
+                if loop_lock {
+                  // Pitch-locked OLA: heads spawn every half-window at the
+                  // playhead and read forward at native pitch; triangular
+                  // windows at 50% overlap sum to unity. Runs even at
+                  // stopped speed (frozen slice — deliberate).
+                  let w_frames = (sr_f32 as f64 * 0.085).max(256.0);
+                  let hop = w_frames * 0.5;
+                  loop_ola_countdown -= 1.0;
+                  if loop_ola_countdown <= 0.0 {
+                    loop_ola_countdown = hop;
+                    loop_ola[loop_ola_next] = (loop_pos, 0.0);
+                    loop_ola_next = (loop_ola_next + 1) % 2;
+                  }
+                  let mut tl = 0.0f32;
+                  let mut tr = 0.0f32;
+                  for (hpos, hphase) in loop_ola.iter_mut() {
+                    if *hphase < 0.0 {
+                      continue;
+                    }
+                    let t = *hphase / w_frames;
+                    let w = (1.0 - (2.0 * t - 1.0).abs()) as f32;
+                    let p = loop_wrap(*hpos + *hphase, len_f);
+                    tl += loop_read(&loop_buf_l, loop_len, p) * w;
+                    tr += loop_read(&loop_buf_r, loop_len, p) * w;
+                    *hphase += 1.0;
+                    if *hphase >= w_frames {
+                      *hphase = -1.0;
+                    }
+                  }
+                  l += tl * g_tape;
+                  r += tr * g_tape;
+                } else if !stopped {
+                  l += loop_read(&loop_buf_l, loop_len, loop_pos) * g_tape;
+                  r += loop_read(&loop_buf_r, loop_len, loop_pos) * g_tape;
+                }
+              }
+              if grains_on {
+                if (abs as f64) >= loop_next_spawn {
+                  // Schedule the next spawn: synced mode anchors to the
+                  // capture's bar grid (loop_anchor IS a bar boundary), so
+                  // spawns land ON the grid; free mode just steps forward.
+                  // rate_dev jitters around either.
+                  let base_next = if loop_rate_synced {
+                    let rel = (abs - loop_anchor) as f64;
+                    loop_anchor as f64
+                      + ((rel / spawn_interval).floor() + 1.0) * spawn_interval
+                  } else {
+                    abs as f64 + spawn_interval
+                  };
+                  loop_next_spawn = base_next;
+                  // Pick a slot within the first `loop_grain_count`: a free
+                  // one, else steal the OLDEST (highest phase) — a spawn
+                  // must always sound, and stealing the nearly-finished
+                  // grain is the least audible cut.
+                  let window = &mut loop_grains[..loop_grain_count];
+                  let slot = match window.iter().position(|g| !g.active) {
+                    Some(i) => i,
+                    None => {
+                      let mut oldest = 0;
+                      for (i, g) in window.iter().enumerate() {
+                        if g.phase / g.dur > window[oldest].phase
+                          / window[oldest].dur
+                        {
+                          oldest = i;
+                        }
+                      }
+                      oldest
+                    }
+                  };
+                  // One bipolar roll per deviated control — every grain
+                  // is its own event when the deviations are up (ADDAC
+                  // 112's per-control deviation concept).
+                  let mut roll = || {
+                    loop_rng ^= loop_rng << 13;
+                    loop_rng ^= loop_rng >> 17;
+                    loop_rng ^= loop_rng << 5;
+                    (loop_rng as f64 / u32::MAX as f64) * 2.0 - 1.0
+                  };
+                  let jitter = if random_amt > 0.0 { roll() * random_amt } else { 0.0 };
+                  let dur_g = if loop_size_dev > 0.0 {
+                    (grain_dur * 4.0_f64.powf(roll() * loop_size_dev as f64))
+                      .clamp(64.0, len_f)
+                  } else {
+                    grain_dur
+                  };
+                  // FOLLOW chains grain pitch to the playhead (tape);
+                  // a fixed pitch decouples them — timestretch.
+                  let base_rate = if loop_pitch != 0.0 {
+                    loop_pitch as f64
+                  } else if stopped {
+                    1.0
+                  } else {
+                    loop_speed as f64
+                  };
+                  // Pitch deviation is QUANTIZED to fifths and octaves
+                  // (Chris's call — musical scatter, not detune haze): the
+                  // deviation amount opens the interval ladder, and each
+                  // grain rolls a uniform pick from what's open. Full dev =
+                  // ±2 octaves in fifth/octave steps.
+                  const DEV_INTERVALS: [f64; 9] =
+                    [0.0, 7.0, -7.0, 12.0, -12.0, 19.0, -19.0, 24.0, -24.0];
+                  let rate_g = if loop_pitch_dev > 0.0 {
+                    let max_idx = ((loop_pitch_dev as f64)
+                      * (DEV_INTERVALS.len() - 1) as f64)
+                      .round() as usize;
+                    let pick =
+                      ((roll().abs()) * (max_idx as f64 + 1.0)) as usize;
+                    let semis = DEV_INTERVALS[pick.min(max_idx)];
+                    base_rate * 2.0_f64.powf(semis / 12.0)
+                  } else {
+                    base_rate
+                  };
+                  if loop_rate_dev > 0.0 {
+                    loop_next_spawn +=
+                      roll() * loop_rate_dev as f64 * 0.9 * spawn_interval;
+                  }
+                  let g = &mut window[slot];
+                  g.active = true;
+                  g.start = loop_wrap(loop_pos + jitter, len_f);
+                  g.phase = 0.0;
+                  g.dur = dur_g;
+                  g.rate = rate_g;
+                }
+                let mut gl = 0.0f32;
+                let mut gr = 0.0f32;
+                for g in loop_grains.iter_mut() {
+                  if !g.active {
+                    continue;
+                  }
+                  let t = (g.phase / g.dur) as f32;
+                  let w = 4.0 * t * (1.0 - t); // parabolic window
+                  let p = loop_wrap(g.start + g.phase * g.rate, len_f);
+                  gl += loop_read(&loop_buf_l, loop_len, p) * w;
+                  gr += loop_read(&loop_buf_r, loop_len, p) * w;
+                  g.phase += 1.0;
+                  if g.phase >= g.dur {
+                    g.active = false;
+                  }
+                }
+                l += gl * grain_norm * g_grain;
+                r += gr * grain_norm * g_grain;
+              }
+              let out_l = l * loop_gain;
+              let out_r = r * loop_gain;
+              if n_ch >= 2 {
+                buf[frame * n_ch] += out_l;
+                buf[frame * n_ch + 1] += out_r;
+              } else {
+                buf[frame * n_ch] += 0.5 * (out_l + out_r);
+              }
+              // Loop-bounce tap — the unit's own output only. Waits for
+              // the bar grid so the file re-loops cleanly.
+              let mut bounce_done = false;
+              if let Some((prod, remaining, _total, align, stop)) =
+                loop_bounce.as_mut()
+              {
+                if !loop_bounce_started
+                  && (abs - loop_anchor) % (*align).max(1) == 0
+                {
+                  loop_bounce_started = true;
+                }
+                if loop_bounce_started {
+                  let _ = prod.try_push(out_l);
+                  let _ = prod.try_push(out_r);
+                  *remaining = remaining.saturating_sub(1);
+                  if *remaining == 0 {
+                    stop.store(true, Ordering::Release);
+                    bounce_done = true;
+                  }
+                }
+              }
+              if bounce_done {
+                loop_bounce = None;
+                loop_bounce_started = false;
+              }
+            }
+            // Publish viz once per block: playhead fraction + per-grain
+            // (position, window level). Relaxed — a picture, not a clock.
+            LOOP_VIZ_POS.store(
+              ((loop_pos / len_f) as f32).to_bits(),
+              Ordering::Relaxed,
+            );
+            // Bounce progress — 0 while waiting for the bar grid, fraction
+            // while printing, -1 when idle (completion published here too:
+            // the tuple is None by the time this block ends).
+            let bounce_prog = match loop_bounce.as_ref() {
+              Some((_, remaining, total, _, _)) => {
+                if loop_bounce_started && *total > 0 {
+                  1.0 - (*remaining as f32 / *total as f32)
+                } else {
+                  0.0
+                }
+              }
+              None => -1.0,
+            };
+            LOOP_VIZ_BOUNCE.store(bounce_prog.to_bits(), Ordering::Relaxed);
+            for (i, g) in loop_grains.iter().enumerate() {
+              let (pos, env) = if g.active && grains_on {
+                let t = (g.phase / g.dur) as f32;
+                (
+                  (loop_wrap(g.start + g.phase * g.rate, len_f) / len_f)
+                    as f32,
+                  4.0 * t * (1.0 - t),
+                )
+              } else {
+                (-1.0, 0.0)
+              };
+              LOOP_VIZ_GRAINS[i * 2].store(pos.to_bits(), Ordering::Relaxed);
+              LOOP_VIZ_GRAINS[i * 2 + 1]
+                .store(env.to_bits(), Ordering::Relaxed);
+            }
+          }
+        }
+
         // 6) Recorder tap — push the post-master stereo bus into the
         // combined queue + push section scratches into the splits
         // queues, when armed. Producers live in audio-thread-local
@@ -6981,6 +7731,39 @@ pub fn list_devices() -> Result<Vec<DeviceInfo>, String> {
 #[tauri::command]
 pub fn audio_list_output_devices() -> Result<Vec<DeviceInfo>, String> {
   list_devices()
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeviceDefaultConfig {
+  pub sample_rate: u32,
+  pub channels: u32,
+}
+
+// Lightweight probe for the JS device-rate watch: the named device's (or
+// system default's) CURRENT default output config only — no
+// supported-config range scans. ASYNC so it runs off the main thread:
+// the watch polls every 2s, and a synchronous command doing CoreAudio
+// property reads (slow with Bluetooth present) hitched the whole UI at
+// poll cadence (2026-07-07, "app is still SUPER sluggish"). Full
+// enumeration stays reserved for boot / Settings / actual reopens.
+#[tauri::command]
+pub async fn audio_device_default_config(
+  device_name: String,
+) -> Option<DeviceDefaultConfig> {
+  let host = cpal::default_host();
+  let device = if device_name.is_empty() || device_name == "default" {
+    host.default_output_device()?
+  } else {
+    host
+      .output_devices()
+      .ok()?
+      .find(|d| d.name().map(|n| n == device_name).unwrap_or(false))?
+  };
+  let cfg = device.default_output_config().ok()?;
+  Some(DeviceDefaultConfig {
+    sample_rate: cfg.sample_rate().0,
+    channels: cfg.channels() as u32,
+  })
 }
 
 #[tauri::command]
@@ -7547,6 +8330,119 @@ pub fn audio_fade_textures(fade_secs: f32) -> Result<(), String> {
 #[tauri::command]
 pub fn audio_freeze_voice_params() -> Result<(), String> {
   engine().freeze_voice_params()
+}
+
+// Loop/resample capture — copy [start_frame, end_frame) out of the
+// post-master ring and loop it bar-phase-locked. Frames are absolute
+// engine-clock positions in the PAST (retroactive capture). See
+// MixerCommand::LoopCapture.
+#[tauri::command]
+pub fn audio_loop_capture(start_frame: f64, end_frame: f64) -> Result<(), String> {
+  if !start_frame.is_finite()
+    || !end_frame.is_finite()
+    || start_frame < 0.0
+    || end_frame <= start_frame
+  {
+    return Err("invalid capture span".to_string());
+  }
+  engine().loop_capture(start_frame as u64, end_frame as u64)
+}
+
+#[tauri::command]
+pub fn audio_loop_stop() -> Result<(), String> {
+  engine().loop_stop()
+}
+
+// Save-to-library: bounce `frames` stereo frames of the loop unit's output
+// to `path`, starting at the next bar-grid point (`align_frames`). Emits
+// `recorder:finalized` with label "loop" when the WAV is done.
+#[tauri::command]
+pub fn audio_loop_bounce(
+  app: tauri::AppHandle,
+  path: String,
+  frames: f64,
+  align_frames: f64,
+) -> Result<(), String> {
+  if !frames.is_finite() || frames < 1.0 {
+    return Err("frames must be a positive number".to_string());
+  }
+  if path.trim().is_empty() {
+    return Err("path must be non-empty".to_string());
+  }
+  engine().loop_bounce(app, path, frames as u64, align_frames.max(1.0) as u64)
+}
+
+#[tauri::command]
+pub fn audio_loop_gain(gain: f32) -> Result<(), String> {
+  engine().loop_gain(gain)
+}
+
+// P2 manipulation params — speed (thru-zero, octave-ladder quantized
+// JS-side), size (grain size norm, 1 = tape mode), random (start-point
+// randomness 0..1), grains (concurrent voices 1..8), rate_hz (spawn rate
+// 0.5..60), plus per-control deviations (ADDAC 112 style, 0..1 each).
+// See MixerCommand::LoopParams.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn audio_loop_params(
+  speed: f32,
+  pitch: f32,
+  loop_lock: bool,
+  loop_level: f32,
+  grain_level: f32,
+  size: f32,
+  random: f32,
+  grains: u32,
+  spawn_frames: f32,
+  rate_synced: bool,
+  size_dev: f32,
+  pitch_dev: f32,
+  rate_dev: f32,
+) -> Result<(), String> {
+  engine().loop_params(
+    speed, pitch, loop_lock, loop_level, grain_level, size, random, grains,
+    spawn_frames, rate_synced, size_dev, pitch_dev, rate_dev,
+  )
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoopViz {
+  pub version: u32,
+  // Playhead as a 0..1 fraction of the loop; negative = unit inactive.
+  pub pos: f32,
+  // Bounce progress 0..1; negative = no save in flight.
+  pub bounce: f32,
+  // 8 × (position fraction, window level); position -1 = slot idle.
+  pub grains: Vec<f32>,
+}
+
+// Live loop-unit picture for the LOOPS tab — playhead + grain positions,
+// written by the audio thread once per block into lock-free statics.
+// Polled ~30Hz while the tab is open; `version` tells the poller when the
+// captured waveform changed (re-fetch peaks).
+#[tauri::command]
+pub fn audio_loop_viz() -> LoopViz {
+  let mut grains = Vec::with_capacity(LOOP_GRAIN_SLOTS * 2);
+  for a in LOOP_VIZ_GRAINS.iter() {
+    grains.push(f32::from_bits(a.load(Ordering::Relaxed)));
+  }
+  LoopViz {
+    version: LOOP_VIZ_VERSION.load(Ordering::Acquire),
+    pos: f32::from_bits(LOOP_VIZ_POS.load(Ordering::Relaxed)),
+    bounce: f32::from_bits(LOOP_VIZ_BOUNCE.load(Ordering::Relaxed)),
+    grains,
+  }
+}
+
+// Captured-loop waveform peaks (512 columns × min/max, interleaved) —
+// filled at capture time. Fetched once per version change, not polled.
+#[tauri::command]
+pub fn audio_loop_peaks() -> Vec<f32> {
+  let mut out = Vec::with_capacity(LOOP_PEAK_COLS * 2);
+  for a in LOOP_VIZ_PEAKS.iter() {
+    out.push(f32::from_bits(a.load(Ordering::Relaxed)));
+  }
+  out
 }
 
 // Phase 6: push the full LFO panel state (rate / depth / destinations

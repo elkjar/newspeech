@@ -78,6 +78,21 @@ export async function listOutputDevices(): Promise<NativeDeviceInfo[]> {
   return raw.map(normalizeDevice);
 }
 
+// Lightweight probe: one device's CURRENT default config, off the main
+// thread (async Rust command) and without the supported-range scans the
+// full enumeration does. This is what the rate watch polls — the full
+// listOutputDevices every 2s was hitching the whole UI (sync command =
+// main thread + slow CoreAudio reads with Bluetooth present).
+export async function deviceDefaultConfig(
+  deviceName: string,
+): Promise<{ sampleRate: number; channels: number } | null> {
+  const raw = await invoke<{ sample_rate: number; channels: number } | null>(
+    'audio_device_default_config',
+    { deviceName },
+  );
+  return raw ? { sampleRate: raw.sample_rate, channels: raw.channels } : null;
+}
+
 export async function openOutputDevice(opts: {
   deviceName: string;
   channels: number;
@@ -303,26 +318,32 @@ async function checkDeviceRate(): Promise<void> {
   if (!currentOpen || rateWatchBusy) return;
   rateWatchBusy = true;
   try {
-    const devices = await listOutputDevices();
     const open = currentOpen;
-    // Device gone (unplugged / renamed) — don't device-hop mid-session;
-    // boot fallback handles it on next launch, Settings handles it now.
-    const dev = devices.find((d) => d.name === open.deviceName);
-    if (!dev) return;
-    const freshRate = dev.defaultSampleRate || 0;
+    // Cheap poll: default-config probe only (async command, off the main
+    // thread). Device gone (unplugged / renamed) — don't device-hop
+    // mid-session; boot fallback handles it next launch, Settings now.
+    const probe = await deviceDefaultConfig(open.deviceName);
+    if (!probe) return;
+    const freshRate = probe.sampleRate || 0;
     if (freshRate <= 0) return;
     if (anchorDefaultRate === null) {
       // First look after a deliberate open — record the baseline only.
       anchorDefaultRate = freshRate;
       return;
     }
+    if (freshRate === anchorDefaultRate) return;
+    // Rate actually changed — NOW pay for one full enumeration to get the
+    // device's real channel ceiling for the reopen clamp. (The probe's
+    // default channel count is not a ceiling — a multi-out interface
+    // reports its default pair there, and clamping to it would tear down
+    // a 16-channel rig.)
+    const devices = await listOutputDevices();
+    const dev = devices.find((d) => d.name === open.deviceName);
+    if (!dev) return;
     const wantChannels = Math.min(
       desiredChannels ?? open.channels,
       Math.max(1, dev.maxOutputChannels),
     );
-    const rateChanged = freshRate !== anchorDefaultRate;
-    const channelsChanged = wantChannels !== open.channels;
-    if (!rateChanged && !channelsChanged) return;
     const next = {
       deviceName: open.deviceName,
       channels: wantChannels,
@@ -1019,6 +1040,72 @@ export async function fadeTextures(fadeSecs: number): Promise<void> {
 // untouched. See MixerCommand::FlushPending.
 export async function flushPendingTriggers(minFrame: number): Promise<void> {
   await invoke<void>('audio_flush_pending', { minFrame });
+}
+
+// Loop/resample capture unit — copy an absolute engine-frame span (in the
+// PAST — retroactive capture) out of the post-master ring and loop it
+// bar-phase-locked. See src/audio/loops.ts for the bar math.
+export async function loopCaptureSpan(
+  startFrame: number,
+  endFrame: number,
+): Promise<void> {
+  await invoke<void>('audio_loop_capture', { startFrame, endFrame });
+}
+
+export async function loopStopNative(): Promise<void> {
+  await invoke<void>('audio_loop_stop');
+}
+
+// Save-to-library bounce: `frames` stereo frames of the loop unit's output
+// to `path`, starting at the next bar-grid point. Finalize arrives via the
+// `recorder:finalized` event with label "loop".
+export async function loopBounceNative(
+  path: string,
+  frames: number,
+  alignFrames: number,
+): Promise<void> {
+  await invoke<void>('audio_loop_bounce', { path, frames, alignFrames });
+}
+
+export async function loopGainNative(gain: number): Promise<void> {
+  await invoke<void>('audio_loop_gain', { gain });
+}
+
+// P2 manipulation params — speed (thru-zero, octave-ladder values), size
+// (grain size norm, 1 = tape mode), scan/spray (0..1), grains (1..8),
+// rateHz (grain spawn rate 0.5..60).
+export async function loopParamsNative(params: {
+  speed: number;
+  pitch: number;
+  loopLock: boolean;
+  loopLevel: number;
+  grainLevel: number;
+  size: number;
+  random: number;
+  grains: number;
+  spawnFrames: number;
+  rateSynced: boolean;
+  sizeDev: number;
+  pitchDev: number;
+  rateDev: number;
+}): Promise<void> {
+  await invoke<void>('audio_loop_params', params);
+}
+
+export interface NativeLoopViz {
+  version: number;
+  pos: number; // 0..1 playhead fraction; negative = unit inactive
+  bounce: number; // save progress 0..1; negative = no save in flight
+  grains: number[]; // 8 × (position fraction, window level); pos -1 = idle
+}
+
+export async function loopViz(): Promise<NativeLoopViz> {
+  return await invoke<NativeLoopViz>('audio_loop_viz');
+}
+
+// 512 columns × interleaved min/max of the captured loop.
+export async function loopPeaks(): Promise<number[]> {
+  return await invoke<number[]>('audio_loop_peaks');
 }
 
 // Freeze in-flight voice DSP params (filter cutoff/resonance + fx send)

@@ -6,6 +6,7 @@ import { StepInspector } from './StepInspector';
 import { PianoRoll } from './PianoRoll';
 import { InstrumentEditor } from './InstrumentEditor';
 import { PerformPanel } from './PerformPanel';
+import { LoopsPanel } from './LoopsPanel';
 
 // The top multi-mode "screen" — ROLL / LFO / FX / MASTER / PARAMS /
 // AUTOMATION / PERFORM.
@@ -22,6 +23,7 @@ const MODES: { id: ScreenMode; label: string }[] = [
   { id: 'fx', label: 'fx' },
   { id: 'master', label: 'master' },
   { id: 'perform', label: 'perform' },
+  { id: 'loops', label: 'loops' },
 ];
 
 // Mode tabs + backtick cycle. Rendered on the title line, not above the screen,
@@ -98,6 +100,7 @@ export function ChannelScreen() {
           </div>
         )}
         {screenMode === 'perform' && <PerformPanel />}
+        {screenMode === 'loops' && <LoopsPanel />}
         {/* PARAMS + AUTOMATION share one mounted editor (so a held preview
             survives switching between the two halves); the `view` prop selects
             which half renders. */}

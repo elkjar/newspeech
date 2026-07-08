@@ -22,6 +22,8 @@ export type LFODestKnobGlobal =
   | 'glitchChance' | 'glitchMix'
   | 'reverbSize' | 'reverbMix' | 'reverbDiffusion' | 'reverbDamping'
   | 'preSaturationDrive'
+  | 'loopSpeed' | 'loopPitch' | 'loopSize' | 'loopRandom' | 'loopRate'
+  | 'loopLevel' | 'loopGrainLevel'
   | 'masterInput' | 'masterComp' | 'masterDrive' | 'masterBias' | 'masterMix' | 'masterHiCut' | 'masterTrim' | 'masterGateThreshold';
 // Per-instrument editor knobs the global LFO can reach (keyed by the focused
 // track's id at bind time). Distinct from LFODestKnobTrack because these live on
