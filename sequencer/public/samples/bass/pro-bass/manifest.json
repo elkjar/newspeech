@@ -1,0 +1,107 @@
+{
+  "name": "pro-bass",
+  "voices": {
+    "pro-bass": {
+      "label": "pro bass",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "pro-bass-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "pro-bass-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "pro-bass-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "pro-bass-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "pro-bass-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "pro-bass-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "pro-bass-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "pro-bass-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "pro-bass-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "pro-bass-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "pro-bass-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "pro-bass-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "pro-bass-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "pro-bass-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "pro-bass-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "pro-bass-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "name": "Casio_MA-101",
+  "voices": {
+    "chh": {
+      "files": [
+        "chh/MA101 CHH1.wav",
+        "chh/MA101 CHH2.wav"
+      ],
+      "gain": 0.7,
+      "label": "chh"
+    },
+    "kick": {
+      "files": [
+        "kick/MA101 KICK.wav"
+      ],
+      "gain": 0.7,
+      "label": "kick"
+    },
+    "perc": {
+      "files": [
+        "perc/MA101 PERC1.wav",
+        "perc/MA101 PERC2.wav",
+        "perc/MA101 PERC3.wav"
+      ],
+      "gain": 0.7,
+      "label": "perc"
+    },
+    "rim": {
+      "files": [
+        "rim/MA101 RIM.wav"
+      ],
+      "gain": 0.7,
+      "label": "rim"
+    },
+    "snare": {
+      "files": [
+        "snare/MA101 SNR1.wav",
+        "snare/MA101 SNR2.wav"
+      ],
+      "gain": 0.7,
+      "label": "snare"
+    },
+    "tom": {
+      "files": [
+        "tom/MA101 TOM.wav"
+      ],
+      "gain": 0.7,
+      "label": "tom"
+    },
+    "snare-rev": {
+      "files": [
+        "snare/MA101 SNR1.wav",
+        "snare/MA101 SNR2.wav"
+      ],
+      "gain": 0.7,
+      "label": "snare rev",
+      "edits": {
+        "loopMode": "rev",
+        "reverbSend": 1,
+        "delaySend": 1
+      }
+    }
+  }
+}

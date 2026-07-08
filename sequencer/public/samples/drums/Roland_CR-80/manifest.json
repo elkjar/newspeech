@@ -1,0 +1,62 @@
+{
+  "name": "Roland_CR-80",
+  "voices": {
+    "chh": {
+      "label": "chh",
+      "gain": 0.7,
+      "files": [
+        "chh/CR80_Chh.wav"
+      ]
+    },
+    "crash": {
+      "label": "crash",
+      "gain": 0.7,
+      "files": [
+        "crash/CR80_Crash.wav"
+      ]
+    },
+    "kick": {
+      "label": "kick",
+      "gain": 0.7,
+      "files": [
+        "kick/CR80_BD.wav"
+      ]
+    },
+    "ohh": {
+      "label": "ohh",
+      "gain": 0.7,
+      "files": [
+        "ohh/CR80_Ohh.wav"
+      ]
+    },
+    "ride": {
+      "label": "ride",
+      "gain": 0.7,
+      "files": [
+        "ride/CR80_Ride.wav"
+      ]
+    },
+    "scratch": {
+      "label": "scratch",
+      "gain": 0.7,
+      "files": [
+        "scratch/CR80_Scratch1.wav",
+        "scratch/CR80_Scratch2.wav"
+      ]
+    },
+    "snare": {
+      "label": "snare",
+      "gain": 0.7,
+      "files": [
+        "snare/CR80_Snare.wav"
+      ]
+    },
+    "tom": {
+      "label": "tom",
+      "gain": 0.7,
+      "files": [
+        "tom/CR80_Tom.wav"
+      ]
+    }
+  }
+}

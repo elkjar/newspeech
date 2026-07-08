@@ -1,0 +1,243 @@
+{
+  "name": "Roland TR-909",
+  "voices": {
+    "chh": {
+      "label": "chh",
+      "gain": 0.7,
+      "files": [
+        "chh/HHCD0.WAV",
+        "chh/HHCD2.WAV",
+        "chh/HHCD4.WAV",
+        "chh/HHCD6.WAV",
+        "chh/HHCD8.WAV",
+        "chh/HHCDA.WAV"
+      ]
+    },
+    "clap": {
+      "label": "clap",
+      "gain": 0.7,
+      "files": [
+        "clap/HANDCLP1.WAV",
+        "clap/HANDCLP2.WAV"
+      ]
+    },
+    "crash": {
+      "label": "crash",
+      "gain": 0.7,
+      "files": [
+        "crash/CSHD0.WAV",
+        "crash/CSHD2.WAV",
+        "crash/CSHD4.WAV",
+        "crash/CSHD6.WAV",
+        "crash/CSHD8.WAV",
+        "crash/CSHDA.WAV"
+      ]
+    },
+    "hat-clop": {
+      "label": "hat-clop",
+      "gain": 0.7,
+      "files": [
+        "hat-clop/CLOP1.WAV",
+        "hat-clop/CLOP2.WAV",
+        "hat-clop/CLOP3.WAV",
+        "hat-clop/CLOP4.WAV"
+      ]
+    },
+    "hat-opcl": {
+      "label": "hat-opcl",
+      "gain": 0.7,
+      "files": [
+        "hat-opcl/OPCL1.WAV",
+        "hat-opcl/OPCL2.WAV",
+        "hat-opcl/OPCL3.WAV",
+        "hat-opcl/OPCL4.WAV"
+      ]
+    },
+    "kick": {
+      "label": "kick",
+      "gain": 0.7,
+      "files": [
+        "kick/BT0A0A7.WAV",
+        "kick/BT0A0D0.WAV",
+        "kick/BT0A0D3.WAV",
+        "kick/BT0A0DA.WAV",
+        "kick/BT0AAD0.WAV",
+        "kick/BT0AADA.WAV",
+        "kick/BT3A0D0.WAV",
+        "kick/BT3A0D3.WAV",
+        "kick/BT3A0D7.WAV",
+        "kick/BT3A0DA.WAV",
+        "kick/BT3AAD0.WAV",
+        "kick/BT3AADA.WAV",
+        "kick/BT7A0D0.WAV",
+        "kick/BT7A0D3.WAV",
+        "kick/BT7A0D7.WAV",
+        "kick/BT7A0DA.WAV",
+        "kick/BT7AAD0.WAV",
+        "kick/BT7AADA.WAV",
+        "kick/BTAA0D0.WAV",
+        "kick/BTAA0D3.WAV",
+        "kick/BTAA0D7.WAV",
+        "kick/BTAA0DA.WAV",
+        "kick/BTAAAD0.WAV",
+        "kick/BTAAADA.WAV"
+      ]
+    },
+    "ohh": {
+      "label": "ohh",
+      "gain": 0.7,
+      "files": [
+        "ohh/HHOD0.WAV",
+        "ohh/HHOD2.WAV",
+        "ohh/HHOD4.WAV",
+        "ohh/HHOD6.WAV",
+        "ohh/HHOD8.WAV",
+        "ohh/HHODA.WAV"
+      ]
+    },
+    "ride": {
+      "label": "ride",
+      "gain": 0.7,
+      "files": [
+        "ride/RIDED0.WAV",
+        "ride/RIDED2.WAV",
+        "ride/RIDED4.WAV",
+        "ride/RIDED6.WAV",
+        "ride/RIDED8.WAV",
+        "ride/RIDEDA.WAV"
+      ]
+    },
+    "rim": {
+      "label": "rim",
+      "gain": 0.7,
+      "files": [
+        "rim/RIM127.WAV",
+        "rim/RIM63.WAV"
+      ]
+    },
+    "snare": {
+      "label": "snare",
+      "gain": 0.7,
+      "files": [
+        "snare/ST0T0S0.WAV",
+        "snare/ST0T0S3.WAV",
+        "snare/ST0T0S7.WAV",
+        "snare/ST0T0SA.WAV",
+        "snare/ST0T3S3.WAV",
+        "snare/ST0T3S7.WAV",
+        "snare/ST0T3SA.WAV",
+        "snare/ST0T7S3.WAV",
+        "snare/ST0T7S7.WAV",
+        "snare/ST0T7SA.WAV",
+        "snare/ST0TAS3.WAV",
+        "snare/ST0TAS7.WAV",
+        "snare/ST0TASA.WAV",
+        "snare/ST3T0S0.WAV",
+        "snare/ST3T0S3.WAV",
+        "snare/ST3T0S7.WAV",
+        "snare/ST3T0SA.WAV",
+        "snare/ST3T3S3.WAV",
+        "snare/ST3T3S7.WAV",
+        "snare/ST3T3SA.WAV",
+        "snare/ST3T7S3.WAV",
+        "snare/ST3T7S7.WAV",
+        "snare/ST3T7SA.WAV",
+        "snare/ST3TAS3.WAV",
+        "snare/ST3TAS7.WAV",
+        "snare/ST3TASA.WAV",
+        "snare/ST7T0S0.WAV",
+        "snare/ST7T0S3.WAV",
+        "snare/ST7T0S7.WAV",
+        "snare/ST7T0SA.WAV",
+        "snare/ST7T3S3.WAV",
+        "snare/ST7T3S7.WAV",
+        "snare/ST7T3SA.WAV",
+        "snare/ST7T7S3.WAV",
+        "snare/ST7T7S7.WAV",
+        "snare/ST7T7SA.WAV",
+        "snare/ST7TAS3.WAV",
+        "snare/ST7TAS7.WAV",
+        "snare/ST7TASA.WAV",
+        "snare/STAT0S0.WAV",
+        "snare/STAT0S3.WAV",
+        "snare/STAT0S7.WAV",
+        "snare/STAT0SA.WAV",
+        "snare/STAT3S3.WAV",
+        "snare/STAT3S7.WAV",
+        "snare/STAT3SA.WAV",
+        "snare/STAT7S3.WAV",
+        "snare/STAT7S7.WAV",
+        "snare/STAT7SA.WAV",
+        "snare/STATAS3.WAV",
+        "snare/STATAS7.WAV",
+        "snare/STATASA.WAV"
+      ]
+    },
+    "tom-h": {
+      "label": "tom-h",
+      "gain": 0.7,
+      "files": [
+        "tom-h/HT0D0.WAV",
+        "tom-h/HT0D3.WAV",
+        "tom-h/HT0D7.WAV",
+        "tom-h/HT0DA.WAV",
+        "tom-h/HT3D0.WAV",
+        "tom-h/HT3D3.WAV",
+        "tom-h/HT3D7.WAV",
+        "tom-h/HT3DA.WAV",
+        "tom-h/HT7D0.WAV",
+        "tom-h/HT7D3.WAV",
+        "tom-h/HT7D7.WAV",
+        "tom-h/HT7DA.WAV",
+        "tom-h/HTAD0.WAV",
+        "tom-h/HTAD3.WAV",
+        "tom-h/HTAD7.WAV",
+        "tom-h/HTADA.WAV"
+      ]
+    },
+    "tom-l": {
+      "label": "tom-l",
+      "gain": 0.7,
+      "files": [
+        "tom-l/LT0D0.WAV",
+        "tom-l/LT0D3.WAV",
+        "tom-l/LT0D7.WAV",
+        "tom-l/LT0DA.WAV",
+        "tom-l/LT3D0.WAV",
+        "tom-l/LT3D3.WAV",
+        "tom-l/LT3D7.WAV",
+        "tom-l/LT3DA.WAV",
+        "tom-l/LT7D0.WAV",
+        "tom-l/LT7D3.WAV",
+        "tom-l/LT7D7.WAV",
+        "tom-l/LT7DA.WAV",
+        "tom-l/LTAD0.WAV",
+        "tom-l/LTAD3.WAV",
+        "tom-l/LTAD7.WAV",
+        "tom-l/LTADA.WAV"
+      ]
+    },
+    "tom-m": {
+      "label": "tom-m",
+      "gain": 0.7,
+      "files": [
+        "tom-m/MT0D0.WAV",
+        "tom-m/MT0D3.WAV",
+        "tom-m/MT0D7.WAV",
+        "tom-m/MT0DA.WAV",
+        "tom-m/MT3D0.WAV",
+        "tom-m/MT3D3.WAV",
+        "tom-m/MT3D7.WAV",
+        "tom-m/MT3DA.WAV",
+        "tom-m/MT7D0.WAV",
+        "tom-m/MT7D3.WAV",
+        "tom-m/MT7D7.WAV",
+        "tom-m/MT7DA.WAV",
+        "tom-m/MTAD0.WAV",
+        "tom-m/MTAD3.WAV",
+        "tom-m/MTAD7.WAV",
+        "tom-m/MTADA.WAV"
+      ]
+    }
+  }
+}

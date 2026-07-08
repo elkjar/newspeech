@@ -1,0 +1,217 @@
+{
+  "name": "Roland TR-808",
+  "voices": {
+    "chh": {
+      "label": "chh",
+      "gain": 0.7,
+      "files": [
+        "chh/CH.WAV"
+      ]
+    },
+    "clap": {
+      "label": "clap",
+      "gain": 0.7,
+      "files": [
+        "clap/CP.WAV"
+      ]
+    },
+    "claves": {
+      "label": "claves",
+      "gain": 0.7,
+      "files": [
+        "claves/CL.WAV"
+      ]
+    },
+    "conga-h": {
+      "label": "conga-h",
+      "gain": 0.7,
+      "files": [
+        "conga-h/HC00.WAV",
+        "conga-h/HC10.WAV",
+        "conga-h/HC25.WAV",
+        "conga-h/HC50.WAV",
+        "conga-h/HC75.WAV"
+      ]
+    },
+    "conga-l": {
+      "label": "conga-l",
+      "gain": 0.7,
+      "files": [
+        "conga-l/LC00.WAV",
+        "conga-l/LC10.WAV",
+        "conga-l/LC25.WAV",
+        "conga-l/LC50.WAV",
+        "conga-l/LC75.WAV"
+      ]
+    },
+    "conga-m": {
+      "label": "conga-m",
+      "gain": 0.7,
+      "files": [
+        "conga-m/MC00.WAV",
+        "conga-m/MC10.WAV",
+        "conga-m/MC25.WAV",
+        "conga-m/MC50.WAV",
+        "conga-m/MC75.WAV"
+      ]
+    },
+    "cowbell": {
+      "label": "cowbell",
+      "gain": 0.7,
+      "files": [
+        "cowbell/CB.WAV"
+      ]
+    },
+    "crash": {
+      "label": "crash",
+      "gain": 0.7,
+      "files": [
+        "crash/CY0000.WAV",
+        "crash/CY0010.WAV",
+        "crash/CY0025.WAV",
+        "crash/CY0050.WAV",
+        "crash/CY0075.WAV",
+        "crash/CY1000.WAV",
+        "crash/CY1010.WAV",
+        "crash/CY1025.WAV",
+        "crash/CY1050.WAV",
+        "crash/CY1075.WAV",
+        "crash/CY2500.WAV",
+        "crash/CY2510.WAV",
+        "crash/CY2525.WAV",
+        "crash/CY2550.WAV",
+        "crash/CY2575.WAV",
+        "crash/CY5000.WAV",
+        "crash/CY5010.WAV",
+        "crash/CY5025.WAV",
+        "crash/CY5050.WAV",
+        "crash/CY5075.WAV",
+        "crash/CY7500.WAV",
+        "crash/CY7510.WAV",
+        "crash/CY7525.WAV",
+        "crash/CY7550.WAV",
+        "crash/CY7575.WAV"
+      ]
+    },
+    "kick": {
+      "label": "kick",
+      "gain": 0.7,
+      "files": [
+        "kick/BD0000.WAV",
+        "kick/BD0010.WAV",
+        "kick/BD0025.WAV",
+        "kick/BD0050.WAV",
+        "kick/BD0075.WAV",
+        "kick/BD1000.WAV",
+        "kick/BD1010.WAV",
+        "kick/BD1025.WAV",
+        "kick/BD1050.WAV",
+        "kick/BD1075.WAV",
+        "kick/BD2500.WAV",
+        "kick/BD2510.WAV",
+        "kick/BD2525.WAV",
+        "kick/BD2550.WAV",
+        "kick/BD2575.WAV",
+        "kick/BD5000.WAV",
+        "kick/BD5010.WAV",
+        "kick/BD5025.WAV",
+        "kick/BD5050.WAV",
+        "kick/BD5075.WAV",
+        "kick/BD7500.WAV",
+        "kick/BD7510.WAV",
+        "kick/BD7525.WAV",
+        "kick/BD7550.WAV",
+        "kick/BD7575.WAV"
+      ]
+    },
+    "maracas": {
+      "label": "maracas",
+      "gain": 0.7,
+      "files": [
+        "maracas/MA.WAV"
+      ]
+    },
+    "ohh": {
+      "label": "ohh",
+      "gain": 0.7,
+      "files": [
+        "ohh/OH00.WAV",
+        "ohh/OH10.WAV",
+        "ohh/OH25.WAV",
+        "ohh/OH50.WAV",
+        "ohh/OH75.WAV"
+      ]
+    },
+    "rim": {
+      "label": "rim",
+      "gain": 0.7,
+      "files": [
+        "rim/RS.WAV"
+      ]
+    },
+    "snare": {
+      "label": "snare",
+      "gain": 0.7,
+      "files": [
+        "snare/SD0000.WAV",
+        "snare/SD0010.WAV",
+        "snare/SD0025.WAV",
+        "snare/SD0050.WAV",
+        "snare/SD0075.WAV",
+        "snare/SD1000.WAV",
+        "snare/SD1010.WAV",
+        "snare/SD1025.WAV",
+        "snare/SD1050.WAV",
+        "snare/SD1075.WAV",
+        "snare/SD2500.WAV",
+        "snare/SD2510.WAV",
+        "snare/SD2525.WAV",
+        "snare/SD2550.WAV",
+        "snare/SD2575.WAV",
+        "snare/SD5000.WAV",
+        "snare/SD5010.WAV",
+        "snare/SD5025.WAV",
+        "snare/SD5050.WAV",
+        "snare/SD5075.WAV",
+        "snare/SD7500.WAV",
+        "snare/SD7510.WAV",
+        "snare/SD7525.WAV",
+        "snare/SD7550.WAV",
+        "snare/SD7575.WAV"
+      ]
+    },
+    "tom-h": {
+      "label": "tom-h",
+      "gain": 0.7,
+      "files": [
+        "tom-h/HT00.WAV",
+        "tom-h/HT10.WAV",
+        "tom-h/HT25.WAV",
+        "tom-h/HT50.WAV",
+        "tom-h/HT75.WAV"
+      ]
+    },
+    "tom-l": {
+      "label": "tom-l",
+      "gain": 0.7,
+      "files": [
+        "tom-l/LT00.WAV",
+        "tom-l/LT10.WAV",
+        "tom-l/LT25.WAV",
+        "tom-l/LT50.WAV",
+        "tom-l/LT75.WAV"
+      ]
+    },
+    "tom-m": {
+      "label": "tom-m",
+      "gain": 0.7,
+      "files": [
+        "tom-m/MT00.WAV",
+        "tom-m/MT10.WAV",
+        "tom-m/MT25.WAV",
+        "tom-m/MT50.WAV",
+        "tom-m/MT75.WAV"
+      ]
+    }
+  }
+}

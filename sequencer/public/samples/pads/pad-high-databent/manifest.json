@@ -1,0 +1,107 @@
+{
+  "name": "pad-high-databent",
+  "voices": {
+    "pad-high-databent": {
+      "label": "pad high databent",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "pad-high-databent-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "pad-high-databent-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "pad-high-databent-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "pad-high-databent-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "pad-high-databent-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "pad-high-databent-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "pad-high-databent-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "pad-high-databent-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "pad-high-databent-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "pad-high-databent-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "pad-high-databent-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "pad-high-databent-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "pad-high-databent-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "pad-high-databent-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "pad-high-databent-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "pad-high-databent-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

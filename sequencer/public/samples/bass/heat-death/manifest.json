@@ -1,0 +1,107 @@
+{
+  "name": "heat-death",
+  "voices": {
+    "heat-death": {
+      "label": "heat death",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "heat-death-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "heat-death-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "heat-death-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "heat-death-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "heat-death-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "heat-death-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "heat-death-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "heat-death-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "heat-death-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "heat-death-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "heat-death-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "heat-death-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "heat-death-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "heat-death-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "heat-death-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "heat-death-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

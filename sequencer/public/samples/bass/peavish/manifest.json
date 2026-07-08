@@ -1,0 +1,110 @@
+{
+  "name": "peavish",
+  "voices": {
+    "peavish": {
+      "gain": 0.7,
+      "label": "peavish",
+      "roots": [
+        {
+          "files": [
+            "peavish-C1.wav"
+          ],
+          "midi": 24
+        },
+        {
+          "files": [
+            "peavish-E1.wav"
+          ],
+          "midi": 28
+        },
+        {
+          "files": [
+            "peavish-Gs1.wav"
+          ],
+          "midi": 32
+        },
+        {
+          "files": [
+            "peavish-C2.wav"
+          ],
+          "midi": 36
+        },
+        {
+          "files": [
+            "peavish-E2.wav"
+          ],
+          "midi": 40
+        },
+        {
+          "files": [
+            "peavish-Gs2.wav"
+          ],
+          "midi": 44
+        },
+        {
+          "files": [
+            "peavish-C3.wav"
+          ],
+          "midi": 48
+        },
+        {
+          "files": [
+            "peavish-E3.wav"
+          ],
+          "midi": 52
+        },
+        {
+          "files": [
+            "peavish-Gs3.wav"
+          ],
+          "midi": 56
+        },
+        {
+          "files": [
+            "peavish-C4.wav"
+          ],
+          "midi": 60
+        },
+        {
+          "files": [
+            "peavish-E4.wav"
+          ],
+          "midi": 64
+        },
+        {
+          "files": [
+            "peavish-Gs4.wav"
+          ],
+          "midi": 68
+        },
+        {
+          "files": [
+            "peavish-C5.wav"
+          ],
+          "midi": 72
+        },
+        {
+          "files": [
+            "peavish-E5.wav"
+          ],
+          "midi": 76
+        },
+        {
+          "files": [
+            "peavish-Gs5.wav"
+          ],
+          "midi": 80
+        },
+        {
+          "files": [
+            "peavish-C6.wav"
+          ],
+          "midi": 84
+        }
+      ],
+      "edits": {
+        "saturation": 0
+      }
+    }
+  }
+}

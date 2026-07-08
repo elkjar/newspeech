@@ -1,0 +1,107 @@
+{
+  "name": "nasa-databent",
+  "voices": {
+    "nasa-databent": {
+      "label": "nasa databent",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "nasa-databent-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "nasa-databent-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "nasa-databent-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "nasa-databent-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "nasa-databent-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "nasa-databent-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "nasa-databent-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "nasa-databent-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "nasa-databent-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "nasa-databent-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "nasa-databent-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "nasa-databent-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "nasa-databent-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "nasa-databent-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "nasa-databent-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "nasa-databent-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

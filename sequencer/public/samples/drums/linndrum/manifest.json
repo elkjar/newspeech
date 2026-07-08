@@ -1,0 +1,39 @@
+{
+  "name": "linndrum",
+  "voices": {
+    "hits": {
+      "label": "hits",
+      "gain": 0.7,
+      "files": [
+        "cabasa.wav",
+        "chh.wav",
+        "chhl.wav",
+        "chhs.wav",
+        "clap.wav",
+        "conga.wav",
+        "congah.wav",
+        "congahh.wav",
+        "congal.wav",
+        "congall.wav",
+        "congalll.wav",
+        "cowb.wav",
+        "crash.wav",
+        "kick.wav",
+        "kickme.wav",
+        "ride.wav",
+        "sd.wav",
+        "sdh.wav",
+        "sdl.wav",
+        "sst.wav",
+        "ssth.wav",
+        "sstl.wav",
+        "tamb.wav",
+        "tom.wav",
+        "tomh.wav",
+        "tomhh.wav",
+        "toml.wav",
+        "tomll.wav"
+      ]
+    }
+  }
+}

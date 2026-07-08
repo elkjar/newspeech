@@ -1,0 +1,107 @@
+{
+  "name": "saw",
+  "voices": {
+    "saw": {
+      "label": "saw",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "saw-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "saw-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "saw-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "saw-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "saw-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "saw-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "saw-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "saw-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "saw-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "saw-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "saw-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "saw-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "saw-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "saw-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "saw-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "saw-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

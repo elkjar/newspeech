@@ -1,0 +1,85 @@
+{
+  "name": "sludge",
+  "voices": {
+    "808": {
+      "files": [
+        "808/808.wav"
+      ],
+      "gain": 0.7,
+      "label": "808"
+    },
+    "chh": {
+      "files": [
+        "CHH/TIGHT-HAT.wav"
+      ],
+      "gain": 0.7,
+      "label": "chh"
+    },
+    "hat": {
+      "files": [
+        "HAT/Sludge Static Hat _ @slapdat.xyz.wav"
+      ],
+      "gain": 0.7,
+      "label": "hat"
+    },
+    "kick": {
+      "files": [
+        "KICK/Sludge Grime Kick _ @slapdat.xyz.wav"
+      ],
+      "gain": 0.7,
+      "label": "kick"
+    },
+    "ohh": {
+      "files": [
+        "OHH/Sludge Slag OHat _ @slapdat.xyz.wav"
+      ],
+      "gain": 0.7,
+      "label": "ohh"
+    },
+    "perc1": {
+      "files": [
+        "PERC1/! Sludge Boneclack Perc _ @slapdat.xyz.wav"
+      ],
+      "gain": 0.7,
+      "label": "perc1"
+    },
+    "perc2": {
+      "files": [
+        "PERC2/Sludge Mudthud Perc _ @slapdat.xyz.wav"
+      ],
+      "gain": 0.7,
+      "label": "perc2"
+    },
+    "perc3": {
+      "files": [
+        "PERC3/Sludge Shrapnel Perc _ @slapdat.xyz.wav"
+      ],
+      "gain": 0.7,
+      "label": "perc3"
+    },
+    "perc4": {
+      "files": [
+        "PERC4/Sludge Sledge Perc _ @slapdat.xyz.wav"
+      ],
+      "gain": 0.7,
+      "label": "perc4"
+    },
+    "plat-grain": {
+      "files": [
+        "KICK/Sludge Grime Kick _ @slapdat.xyz.wav"
+      ],
+      "gain": 0.7,
+      "label": "plat grain",
+      "edits": {
+        "playmode": "granular",
+        "granular": {
+          "grainMs": 74.14463362559746,
+          "position": 0.21941134508177232,
+          "shape": "gauss",
+          "direction": "fwd",
+          "spray": 0.19
+        }
+      }
+    }
+  }
+}

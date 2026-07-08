@@ -1,0 +1,107 @@
+{
+  "name": "triangle",
+  "voices": {
+    "triangle": {
+      "label": "triangle",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "triangle-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "triangle-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "triangle-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "triangle-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "triangle-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "triangle-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "triangle-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "triangle-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "triangle-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "triangle-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "triangle-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "triangle-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "triangle-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "triangle-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "triangle-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "triangle-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

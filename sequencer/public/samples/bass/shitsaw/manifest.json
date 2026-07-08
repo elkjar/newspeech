@@ -1,0 +1,218 @@
+{
+  "name": "shitsaw",
+  "voices": {
+    "shitsaw": {
+      "gain": 0.7,
+      "label": "shitsaw",
+      "roots": [
+        {
+          "files": [
+            "shitsaw-C1.wav"
+          ],
+          "midi": 24
+        },
+        {
+          "files": [
+            "shitsaw-E1.wav"
+          ],
+          "midi": 28
+        },
+        {
+          "files": [
+            "shitsaw-Gs1.wav"
+          ],
+          "midi": 32
+        },
+        {
+          "files": [
+            "shitsaw-C2.wav"
+          ],
+          "midi": 36
+        },
+        {
+          "files": [
+            "shitsaw-E2.wav"
+          ],
+          "midi": 40
+        },
+        {
+          "files": [
+            "shitsaw-Gs2.wav"
+          ],
+          "midi": 44
+        },
+        {
+          "files": [
+            "shitsaw-C3.wav"
+          ],
+          "midi": 48
+        },
+        {
+          "files": [
+            "shitsaw-E3.wav"
+          ],
+          "midi": 52
+        },
+        {
+          "files": [
+            "shitsaw-Gs3.wav"
+          ],
+          "midi": 56
+        },
+        {
+          "files": [
+            "shitsaw-C4.wav"
+          ],
+          "midi": 60
+        },
+        {
+          "files": [
+            "shitsaw-E4.wav"
+          ],
+          "midi": 64
+        },
+        {
+          "files": [
+            "shitsaw-Gs4.wav"
+          ],
+          "midi": 68
+        },
+        {
+          "files": [
+            "shitsaw-C5.wav"
+          ],
+          "midi": 72
+        },
+        {
+          "files": [
+            "shitsaw-E5.wav"
+          ],
+          "midi": 76
+        },
+        {
+          "files": [
+            "shitsaw-Gs5.wav"
+          ],
+          "midi": 80
+        },
+        {
+          "files": [
+            "shitsaw-C6.wav"
+          ],
+          "midi": 84
+        }
+      ]
+    },
+    "shitsaw-gran": {
+      "gain": 0.7,
+      "label": "shitsaw gran",
+      "roots": [
+        {
+          "files": [
+            "shitsaw-C1.wav"
+          ],
+          "midi": 24
+        },
+        {
+          "files": [
+            "shitsaw-E1.wav"
+          ],
+          "midi": 28
+        },
+        {
+          "files": [
+            "shitsaw-Gs1.wav"
+          ],
+          "midi": 32
+        },
+        {
+          "files": [
+            "shitsaw-C2.wav"
+          ],
+          "midi": 36
+        },
+        {
+          "files": [
+            "shitsaw-E2.wav"
+          ],
+          "midi": 40
+        },
+        {
+          "files": [
+            "shitsaw-Gs2.wav"
+          ],
+          "midi": 44
+        },
+        {
+          "files": [
+            "shitsaw-C3.wav"
+          ],
+          "midi": 48
+        },
+        {
+          "files": [
+            "shitsaw-E3.wav"
+          ],
+          "midi": 52
+        },
+        {
+          "files": [
+            "shitsaw-Gs3.wav"
+          ],
+          "midi": 56
+        },
+        {
+          "files": [
+            "shitsaw-C4.wav"
+          ],
+          "midi": 60
+        },
+        {
+          "files": [
+            "shitsaw-E4.wav"
+          ],
+          "midi": 64
+        },
+        {
+          "files": [
+            "shitsaw-Gs4.wav"
+          ],
+          "midi": 68
+        },
+        {
+          "files": [
+            "shitsaw-C5.wav"
+          ],
+          "midi": 72
+        },
+        {
+          "files": [
+            "shitsaw-E5.wav"
+          ],
+          "midi": 76
+        },
+        {
+          "files": [
+            "shitsaw-Gs5.wav"
+          ],
+          "midi": 80
+        },
+        {
+          "files": [
+            "shitsaw-C6.wav"
+          ],
+          "midi": 84
+        }
+      ],
+      "edits": {
+        "end": 0.3057977103245457,
+        "start": 0.10683620418023317,
+        "playmode": "granular",
+        "reverbSend": 0.3,
+        "delaySend": 0.52,
+        "bitDepth": 16,
+        "saturation": 0.16
+      }
+    }
+  }
+}

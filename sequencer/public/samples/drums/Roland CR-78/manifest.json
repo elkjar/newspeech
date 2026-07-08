@@ -1,0 +1,112 @@
+{
+  "name": "Roland CR-78",
+  "voices": {
+    "bongo-h": {
+      "label": "bongo-h",
+      "gain": 0.7,
+      "files": [
+        "bongo-h/Bongo High.wav"
+      ]
+    },
+    "bongo-l": {
+      "label": "bongo-l",
+      "gain": 0.7,
+      "files": [
+        "bongo-l/Bongo Low.wav"
+      ]
+    },
+    "chh": {
+      "label": "chh",
+      "gain": 0.7,
+      "files": [
+        "chh/HiHat.wav"
+      ]
+    },
+    "chh-accent": {
+      "label": "chh-accent",
+      "gain": 0.7,
+      "files": [
+        "chh-accent/HiHat Accent.wav"
+      ]
+    },
+    "chh-metal": {
+      "label": "chh-metal",
+      "gain": 0.7,
+      "files": [
+        "chh-metal/HiHat Metal.wav"
+      ]
+    },
+    "conga-l": {
+      "label": "conga-l",
+      "gain": 0.7,
+      "files": [
+        "conga-l/Conga Low.wav"
+      ]
+    },
+    "cowbell": {
+      "label": "cowbell",
+      "gain": 0.7,
+      "files": [
+        "cowbell/Cowbell.wav"
+      ]
+    },
+    "cymbal": {
+      "label": "cymbal",
+      "gain": 0.7,
+      "files": [
+        "cymbal/Cymbal.wav"
+      ]
+    },
+    "guiro": {
+      "label": "guiro",
+      "gain": 0.7,
+      "files": [
+        "guiro/Guiro 1.wav",
+        "guiro/Guiro 2.wav"
+      ]
+    },
+    "kick": {
+      "label": "kick",
+      "gain": 0.7,
+      "files": [
+        "kick/Kick.wav"
+      ]
+    },
+    "kick-accent": {
+      "label": "kick-accent",
+      "gain": 0.7,
+      "files": [
+        "kick-accent/Kick Accent.wav"
+      ]
+    },
+    "rim": {
+      "label": "rim",
+      "gain": 0.7,
+      "files": [
+        "rim/Rim Shot.wav"
+      ]
+    },
+    "snare": {
+      "label": "snare",
+      "gain": 0.7,
+      "files": [
+        "snare/Snare.wav"
+      ]
+    },
+    "snare-accent": {
+      "label": "snare-accent",
+      "gain": 0.7,
+      "files": [
+        "snare-accent/Snare Accent.wav"
+      ]
+    },
+    "tamb": {
+      "label": "tamb",
+      "gain": 0.7,
+      "files": [
+        "tamb/Tamb 1.wav",
+        "tamb/Tamb 2.wav"
+      ]
+    }
+  }
+}

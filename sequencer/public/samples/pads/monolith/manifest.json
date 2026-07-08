@@ -1,0 +1,107 @@
+{
+  "name": "monolith",
+  "voices": {
+    "monolith": {
+      "label": "monolith",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "monolith-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "monolith-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "monolith-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "monolith-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "monolith-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "monolith-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "monolith-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "monolith-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "monolith-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "monolith-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "monolith-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "monolith-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "monolith-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "monolith-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "monolith-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "monolith-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "name": "distant-pad-databent",
+  "voices": {
+    "distant-pad-databent": {
+      "label": "distant pad databent",
+      "gain": 0.7,
+      "roots": [
+        {
+          "midi": 24,
+          "files": [
+            "distant-pad-databent-C1.wav"
+          ]
+        },
+        {
+          "midi": 28,
+          "files": [
+            "distant-pad-databent-E1.wav"
+          ]
+        },
+        {
+          "midi": 32,
+          "files": [
+            "distant-pad-databent-Gs1.wav"
+          ]
+        },
+        {
+          "midi": 36,
+          "files": [
+            "distant-pad-databent-C2.wav"
+          ]
+        },
+        {
+          "midi": 40,
+          "files": [
+            "distant-pad-databent-E2.wav"
+          ]
+        },
+        {
+          "midi": 44,
+          "files": [
+            "distant-pad-databent-Gs2.wav"
+          ]
+        },
+        {
+          "midi": 48,
+          "files": [
+            "distant-pad-databent-C3.wav"
+          ]
+        },
+        {
+          "midi": 52,
+          "files": [
+            "distant-pad-databent-E3.wav"
+          ]
+        },
+        {
+          "midi": 56,
+          "files": [
+            "distant-pad-databent-Gs3.wav"
+          ]
+        },
+        {
+          "midi": 60,
+          "files": [
+            "distant-pad-databent-C4.wav"
+          ]
+        },
+        {
+          "midi": 64,
+          "files": [
+            "distant-pad-databent-E4.wav"
+          ]
+        },
+        {
+          "midi": 68,
+          "files": [
+            "distant-pad-databent-Gs4.wav"
+          ]
+        },
+        {
+          "midi": 72,
+          "files": [
+            "distant-pad-databent-C5.wav"
+          ]
+        },
+        {
+          "midi": 76,
+          "files": [
+            "distant-pad-databent-E5.wav"
+          ]
+        },
+        {
+          "midi": 80,
+          "files": [
+            "distant-pad-databent-Gs5.wav"
+          ]
+        },
+        {
+          "midi": 84,
+          "files": [
+            "distant-pad-databent-C6.wav"
+          ]
+        }
+      ]
+    }
+  }
+}
