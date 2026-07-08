@@ -1,66 +1,396 @@
 {
   "name": "Alesis_HR16A",
   "voices": {
-    "hits": {
-      "label": "hits",
+    "808": {
+      "label": "808",
       "gain": 0.7,
       "files": [
-        "Alesis_HR16A_01.wav",
-        "Alesis_HR16A_02.wav",
-        "Alesis_HR16A_03.wav",
-        "Alesis_HR16A_04.wav",
-        "Alesis_HR16A_05.wav",
-        "Alesis_HR16A_06.wav",
-        "Alesis_HR16A_07.wav",
-        "Alesis_HR16A_08.wav",
-        "Alesis_HR16A_09.wav",
-        "Alesis_HR16A_10.wav",
-        "Alesis_HR16A_11.wav",
-        "Alesis_HR16A_12.wav",
-        "Alesis_HR16A_13.wav",
-        "Alesis_HR16A_14.wav",
-        "Alesis_HR16A_15.wav",
-        "Alesis_HR16A_16.wav",
-        "Alesis_HR16A_17.wav",
-        "Alesis_HR16A_18.wav",
-        "Alesis_HR16A_19.wav",
-        "Alesis_HR16A_20.wav",
-        "Alesis_HR16A_21.wav",
-        "Alesis_HR16A_22.wav",
-        "Alesis_HR16A_23.wav",
-        "Alesis_HR16A_24.wav",
-        "Alesis_HR16A_25.wav",
-        "Alesis_HR16A_26.wav",
-        "Alesis_HR16A_27.wav",
-        "Alesis_HR16A_28.wav",
-        "Alesis_HR16A_29.wav",
-        "Alesis_HR16A_30.wav",
-        "Alesis_HR16A_31.wav",
-        "Alesis_HR16A_32.wav",
-        "Alesis_HR16A_33.wav",
-        "Alesis_HR16A_34.wav",
-        "Alesis_HR16A_35.wav",
-        "Alesis_HR16A_36.wav",
-        "Alesis_HR16A_37.wav",
-        "Alesis_HR16A_38.wav",
-        "Alesis_HR16A_39.wav",
-        "Alesis_HR16A_40.wav",
-        "Alesis_HR16A_41.wav",
-        "Alesis_HR16A_42.wav",
-        "Alesis_HR16A_43.wav",
-        "Alesis_HR16A_44.wav",
-        "Alesis_HR16A_45.wav",
-        "Alesis_HR16A_46.wav",
-        "Alesis_HR16A_47.wav",
-        "Alesis_HR16A_48.wav",
-        "Alesis_HR16A_49.wav",
-        "Alesis_HR16A_50.wav",
-        "Alesis_HR16A_51.wav",
-        "Alesis_HR16A_52.wav",
-        "Alesis_HR16A_53.wav",
-        "Alesis_HR16A_54.wav",
-        "Alesis_HR16A_55.wav",
-        "Alesis_HR16A_56.wav"
+        "808/808.wav"
+      ]
+    },
+    "808-2": {
+      "label": "808-2",
+      "gain": 0.7,
+      "files": [
+        "808-2/808-2.wav"
+      ]
+    },
+    "blip": {
+      "label": "blip",
+      "gain": 0.7,
+      "files": [
+        "blip/blip.wav"
+      ]
+    },
+    "blip-2": {
+      "label": "blip-2",
+      "gain": 0.7,
+      "files": [
+        "blip-2/blip-2.wav"
+      ]
+    },
+    "block": {
+      "label": "block",
+      "gain": 0.7,
+      "files": [
+        "block/block.wav"
+      ]
+    },
+    "block-2": {
+      "label": "block-2",
+      "gain": 0.7,
+      "files": [
+        "block-2/block-2.wav"
+      ]
+    },
+    "block-3": {
+      "label": "block-3",
+      "gain": 0.7,
+      "files": [
+        "block-3/block-3.wav"
+      ]
+    },
+    "clap": {
+      "label": "clap",
+      "gain": 0.7,
+      "files": [
+        "clap/clap.wav"
+      ]
+    },
+    "cymbal": {
+      "label": "cymbal",
+      "gain": 0.7,
+      "files": [
+        "cymbal/cymbal.wav"
+      ]
+    },
+    "cymbal-2": {
+      "label": "cymbal-2",
+      "gain": 0.7,
+      "files": [
+        "cymbal-2/cymbal-2.wav"
+      ]
+    },
+    "glass": {
+      "label": "glass",
+      "gain": 0.7,
+      "files": [
+        "glass/glass.wav"
+      ]
+    },
+    "hat-c": {
+      "label": "hat-c",
+      "gain": 0.7,
+      "files": [
+        "hat-c/hat-c.wav"
+      ]
+    },
+    "hat-c-2": {
+      "label": "hat-c-2",
+      "gain": 0.7,
+      "files": [
+        "hat-c-2/hat-c-2.wav"
+      ]
+    },
+    "hat-c-3": {
+      "label": "hat-c-3",
+      "gain": 0.7,
+      "files": [
+        "hat-c-3/hat-c-3.wav"
+      ]
+    },
+    "hat-c-4": {
+      "label": "hat-c-4",
+      "gain": 0.7,
+      "files": [
+        "hat-c-4/hat-c-4.wav"
+      ]
+    },
+    "hat-c-5": {
+      "label": "hat-c-5",
+      "gain": 0.7,
+      "files": [
+        "hat-c-5/hat-c-5.wav"
+      ]
+    },
+    "hat-c-6": {
+      "label": "hat-c-6",
+      "gain": 0.7,
+      "files": [
+        "hat-c-6/hat-c-6.wav"
+      ]
+    },
+    "hat-o": {
+      "label": "hat-o",
+      "gain": 0.7,
+      "files": [
+        "hat-o/hat-o.wav"
+      ]
+    },
+    "hat-o-3": {
+      "label": "hat-o-3",
+      "gain": 0.7,
+      "files": [
+        "hat-o-3/hat-o-3.wav"
+      ]
+    },
+    "kick": {
+      "label": "kick",
+      "gain": 0.7,
+      "files": [
+        "kick/kick.wav"
+      ]
+    },
+    "kick-2": {
+      "label": "kick-2",
+      "gain": 0.7,
+      "files": [
+        "kick-2/kick-2.wav"
+      ]
+    },
+    "kick-3": {
+      "label": "kick-3",
+      "gain": 0.7,
+      "files": [
+        "kick-3/kick-3.wav"
+      ]
+    },
+    "kick-4": {
+      "label": "kick-4",
+      "gain": 0.7,
+      "files": [
+        "kick-4/kick-4.wav"
+      ]
+    },
+    "kick-5": {
+      "label": "kick-5",
+      "gain": 0.7,
+      "files": [
+        "kick-5/kick-5.wav"
+      ]
+    },
+    "kick-6": {
+      "label": "kick-6",
+      "gain": 0.7,
+      "files": [
+        "kick-6/kick-6.wav"
+      ]
+    },
+    "perc": {
+      "label": "perc",
+      "gain": 0.7,
+      "files": [
+        "perc/perc.wav"
+      ]
+    },
+    "perc-10": {
+      "label": "perc-10",
+      "gain": 0.7,
+      "files": [
+        "perc-10/perc-10.wav"
+      ]
+    },
+    "perc-2": {
+      "label": "perc-2",
+      "gain": 0.7,
+      "files": [
+        "perc-2/perc-2.wav"
+      ]
+    },
+    "perc-3": {
+      "label": "perc-3",
+      "gain": 0.7,
+      "files": [
+        "perc-3/perc-3.wav"
+      ]
+    },
+    "perc-4": {
+      "label": "perc-4",
+      "gain": 0.7,
+      "files": [
+        "perc-4/perc-4.wav"
+      ]
+    },
+    "perc-5": {
+      "label": "perc-5",
+      "gain": 0.7,
+      "files": [
+        "perc-5/perc-5.wav"
+      ]
+    },
+    "perc-6": {
+      "label": "perc-6",
+      "gain": 0.7,
+      "files": [
+        "perc-6/perc-6.wav"
+      ]
+    },
+    "perc-7": {
+      "label": "perc-7",
+      "gain": 0.7,
+      "files": [
+        "perc-7/perc-7.wav"
+      ]
+    },
+    "perc-8": {
+      "label": "perc-8",
+      "gain": 0.7,
+      "files": [
+        "perc-8/perc-8.wav"
+      ]
+    },
+    "perc-9": {
+      "label": "perc-9",
+      "gain": 0.7,
+      "files": [
+        "perc-9/perc-9.wav"
+      ]
+    },
+    "ping": {
+      "label": "ping",
+      "gain": 0.7,
+      "files": [
+        "ping/ping.wav"
+      ]
+    },
+    "ride": {
+      "label": "ride",
+      "gain": 0.7,
+      "files": [
+        "ride/ride.wav"
+      ]
+    },
+    "rim": {
+      "label": "rim",
+      "gain": 0.7,
+      "files": [
+        "rim/rim.wav"
+      ]
+    },
+    "rim-2": {
+      "label": "rim-2",
+      "gain": 0.7,
+      "files": [
+        "rim-2/rim-2.wav"
+      ]
+    },
+    "snare-10": {
+      "label": "snare-10",
+      "gain": 0.7,
+      "files": [
+        "snare-10/snare-10.wav"
+      ]
+    },
+    "snare-11": {
+      "label": "snare-11",
+      "gain": 0.7,
+      "files": [
+        "snare-11/snare-11.wav"
+      ]
+    },
+    "snare-12": {
+      "label": "snare-12",
+      "gain": 0.7,
+      "files": [
+        "snare-12/snare-12.wav"
+      ]
+    },
+    "snare-13": {
+      "label": "snare-13",
+      "gain": 0.7,
+      "files": [
+        "snare-13/snare-13.wav"
+      ]
+    },
+    "snare-14": {
+      "label": "snare-14",
+      "gain": 0.7,
+      "files": [
+        "snare-14/snare-14.wav"
+      ]
+    },
+    "snare-15": {
+      "label": "snare-15",
+      "gain": 0.7,
+      "files": [
+        "snare-15/snare-15.wav"
+      ]
+    },
+    "snare-16": {
+      "label": "snare-16",
+      "gain": 0.7,
+      "files": [
+        "snare-16/snare-16.wav"
+      ]
+    },
+    "snare-17": {
+      "label": "snare-17",
+      "gain": 0.7,
+      "files": [
+        "snare-17/snare-17.wav"
+      ]
+    },
+    "snare-18": {
+      "label": "snare-18",
+      "gain": 0.7,
+      "files": [
+        "snare-18/snare-18.wav"
+      ]
+    },
+    "snare-3": {
+      "label": "snare-3",
+      "gain": 0.7,
+      "files": [
+        "snare-3/snare-3.wav"
+      ]
+    },
+    "snare-7": {
+      "label": "snare-7",
+      "gain": 0.7,
+      "files": [
+        "snare-7/snare-7.wav"
+      ]
+    },
+    "snare-8": {
+      "label": "snare-8",
+      "gain": 0.7,
+      "files": [
+        "snare-8/snare-8.wav"
+      ]
+    },
+    "snare-9": {
+      "label": "snare-9",
+      "gain": 0.7,
+      "files": [
+        "snare-9/snare-9.wav"
+      ]
+    },
+    "tom-3": {
+      "label": "tom-3",
+      "gain": 0.7,
+      "files": [
+        "tom-3/tom-3.wav"
+      ]
+    },
+    "tom-4": {
+      "label": "tom-4",
+      "gain": 0.7,
+      "files": [
+        "tom-4/tom-4.wav"
+      ]
+    },
+    "tom-5": {
+      "label": "tom-5",
+      "gain": 0.7,
+      "files": [
+        "tom-5/tom-5.wav"
+      ]
+    },
+    "tom-6": {
+      "label": "tom-6",
+      "gain": 0.7,
+      "files": [
+        "tom-6/tom-6.wav"
       ]
     }
   }
