@@ -176,7 +176,9 @@
   }
   .copy h2 {
     font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: clamp(44px, 5.5vw, 96px);
+    /* sized against the 38vw copy panel: "sequence" (8 chars) must fit inside
+       38vw minus padding at every viewport, so scale gentler than the panel */
+    font-size: clamp(38px, 4.2vw, 72px);
     line-height: 1;
     letter-spacing: 0.01em;
     font-weight: normal;
