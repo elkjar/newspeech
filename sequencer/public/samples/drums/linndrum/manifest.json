@@ -1,38 +1,200 @@
 {
   "name": "linndrum",
   "voices": {
-    "hits": {
-      "label": "hits",
+    "cabasa": {
+      "label": "cabasa",
       "gain": 0.7,
       "files": [
-        "cabasa.wav",
-        "chh.wav",
-        "chhl.wav",
-        "chhs.wav",
-        "clap.wav",
-        "conga.wav",
-        "congah.wav",
-        "congahh.wav",
-        "congal.wav",
-        "congall.wav",
-        "congalll.wav",
-        "cowb.wav",
-        "crash.wav",
-        "kick.wav",
-        "kickme.wav",
-        "ride.wav",
-        "sd.wav",
-        "sdh.wav",
-        "sdl.wav",
-        "sst.wav",
-        "ssth.wav",
-        "sstl.wav",
-        "tamb.wav",
-        "tom.wav",
-        "tomh.wav",
-        "tomhh.wav",
-        "toml.wav",
-        "tomll.wav"
+        "cabasa/cabasa.wav"
+      ]
+    },
+    "chh": {
+      "label": "chh",
+      "gain": 0.7,
+      "files": [
+        "chh/chh.wav"
+      ]
+    },
+    "chhl": {
+      "label": "chhl",
+      "gain": 0.7,
+      "files": [
+        "chhl/chhl.wav"
+      ]
+    },
+    "chhs": {
+      "label": "chhs",
+      "gain": 0.7,
+      "files": [
+        "chhs/chhs.wav"
+      ]
+    },
+    "clap": {
+      "label": "clap",
+      "gain": 0.7,
+      "files": [
+        "clap/clap.wav"
+      ]
+    },
+    "conga": {
+      "label": "conga",
+      "gain": 0.7,
+      "files": [
+        "conga/conga.wav"
+      ]
+    },
+    "congah": {
+      "label": "congah",
+      "gain": 0.7,
+      "files": [
+        "congah/congah.wav"
+      ]
+    },
+    "congahh": {
+      "label": "congahh",
+      "gain": 0.7,
+      "files": [
+        "congahh/congahh.wav"
+      ]
+    },
+    "congal": {
+      "label": "congal",
+      "gain": 0.7,
+      "files": [
+        "congal/congal.wav"
+      ]
+    },
+    "congall": {
+      "label": "congall",
+      "gain": 0.7,
+      "files": [
+        "congall/congall.wav"
+      ]
+    },
+    "congalll": {
+      "label": "congalll",
+      "gain": 0.7,
+      "files": [
+        "congalll/congalll.wav"
+      ]
+    },
+    "cowb": {
+      "label": "cowb",
+      "gain": 0.7,
+      "files": [
+        "cowb/cowb.wav"
+      ]
+    },
+    "crash": {
+      "label": "crash",
+      "gain": 0.7,
+      "files": [
+        "crash/crash.wav"
+      ]
+    },
+    "kick": {
+      "label": "kick",
+      "gain": 0.7,
+      "files": [
+        "kick/kick.wav"
+      ]
+    },
+    "kickme": {
+      "label": "kickme",
+      "gain": 0.7,
+      "files": [
+        "kickme/kickme.wav"
+      ]
+    },
+    "ride": {
+      "label": "ride",
+      "gain": 0.7,
+      "files": [
+        "ride/ride.wav"
+      ]
+    },
+    "sd": {
+      "label": "sd",
+      "gain": 0.7,
+      "files": [
+        "sd/sd.wav"
+      ]
+    },
+    "sdh": {
+      "label": "sdh",
+      "gain": 0.7,
+      "files": [
+        "sdh/sdh.wav"
+      ]
+    },
+    "sdl": {
+      "label": "sdl",
+      "gain": 0.7,
+      "files": [
+        "sdl/sdl.wav"
+      ]
+    },
+    "sst": {
+      "label": "sst",
+      "gain": 0.7,
+      "files": [
+        "sst/sst.wav"
+      ]
+    },
+    "ssth": {
+      "label": "ssth",
+      "gain": 0.7,
+      "files": [
+        "ssth/ssth.wav"
+      ]
+    },
+    "sstl": {
+      "label": "sstl",
+      "gain": 0.7,
+      "files": [
+        "sstl/sstl.wav"
+      ]
+    },
+    "tamb": {
+      "label": "tamb",
+      "gain": 0.7,
+      "files": [
+        "tamb/tamb.wav"
+      ]
+    },
+    "tom": {
+      "label": "tom",
+      "gain": 0.7,
+      "files": [
+        "tom/tom.wav"
+      ]
+    },
+    "tomh": {
+      "label": "tomh",
+      "gain": 0.7,
+      "files": [
+        "tomh/tomh.wav"
+      ]
+    },
+    "tomhh": {
+      "label": "tomhh",
+      "gain": 0.7,
+      "files": [
+        "tomhh/tomhh.wav"
+      ]
+    },
+    "toml": {
+      "label": "toml",
+      "gain": 0.7,
+      "files": [
+        "toml/toml.wav"
+      ]
+    },
+    "tomll": {
+      "label": "tomll",
+      "gain": 0.7,
+      "files": [
+        "tomll/tomll.wav"
       ]
     }
   }
