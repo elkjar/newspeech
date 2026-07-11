@@ -918,8 +918,11 @@ export async function setMasterBypass(bypass: boolean): Promise<void> {
 // filename. Rust opens the WAV (16-bit PCM, stereo, device sample
 // rate), spawns a worker thread that drains a lock-free queue, and
 // audio callback pushes interleaved samples each block.
-export async function startRecordingCombined(path: string): Promise<void> {
-  await invoke<void>('audio_start_recording_combined', { path });
+export async function startRecordingCombined(
+  path: string,
+  startFrame = 0,
+): Promise<void> {
+  await invoke<void>('audio_start_recording_combined', { path, startFrame });
 }
 
 // Sends StopCombinedRecording to the audio thread; worker drains the
@@ -942,6 +945,7 @@ export async function startRecordingStems(opts: {
   delayPath: string;
   trackIds: string[];
   trackPaths: string[];
+  startFrame?: number;
 }): Promise<void> {
   await invoke<void>('audio_start_recording_stems', {
     stemDir: opts.stemDir,
@@ -951,6 +955,7 @@ export async function startRecordingStems(opts: {
     delayPath: opts.delayPath,
     trackIds: opts.trackIds,
     trackPaths: opts.trackPaths,
+    startFrame: opts.startFrame ?? 0,
   });
 }
 

@@ -3680,6 +3680,10 @@ enum MixerCommand {
   // and writes WAV.
   StartCombinedRecording {
     producer: HeapProd<f32>,
+    // Absolute ENGINE_FRAMES at which capture should begin — aligned to the
+    // first musical downbeat so WAV frame 0 = the downbeat (no leading
+    // dead-space, on-grid in the DAW). 0 = start immediately (legacy).
+    start_frame: u64,
   },
   StopCombinedRecording,
   StartSplitsRecording {
@@ -3698,6 +3702,8 @@ enum MixerCommand {
     reverb: Option<HeapProd<f32>>,
     delay: Option<HeapProd<f32>>,
     tracks: Box<[Option<HeapProd<f32>>; MAX_STEMS]>,
+    // Aligned capture start (see StartCombinedRecording::start_frame).
+    start_frame: u64,
   },
   StopStemsRecording,
   Trigger {
@@ -4463,6 +4469,7 @@ impl AudioEngine {
     &self,
     app: tauri::AppHandle,
     path: String,
+    start_frame: u64,
   ) -> Result<(), String> {
     let r = recorder_state();
     if r.combined_enabled.load(Ordering::Acquire) {
@@ -4511,7 +4518,10 @@ impl AudioEngine {
         .as_mut()
         .ok_or_else(|| "audio device not open".to_string())?;
       producer
-        .try_push(MixerCommand::StartCombinedRecording { producer: prod })
+        .try_push(MixerCommand::StartCombinedRecording {
+          producer: prod,
+          start_frame,
+        })
         .map_err(|_| "command queue full (start recording)".to_string())
     })();
     if let Err(e) = arm {
@@ -4663,6 +4673,7 @@ impl AudioEngine {
     delay_path: String,
     track_ids: Vec<String>,
     track_paths: Vec<String>,
+    start_frame: u64,
   ) -> Result<(), String> {
     let r = recorder_state();
     if r.stems_enabled.load(Ordering::Acquire) {
@@ -4742,6 +4753,7 @@ impl AudioEngine {
           reverb: Some(reverb),
           delay: Some(delay),
           tracks,
+          start_frame,
         })
         .map_err(|_| "command queue full (start stems)".to_string())
     })();
@@ -5577,6 +5589,10 @@ fn build_stream(
   let mut delay_rec_producer: Option<HeapProd<f32>> = None;
   let mut stem_rec_producers: [Option<HeapProd<f32>>; MAX_STEMS] =
     std::array::from_fn(|_| None);
+  // Absolute ENGINE_FRAMES at which the current take should begin capturing,
+  // so WAV frame 0 lands on the first musical downbeat (no leading dead-space).
+  // Set by the Start*Recording commands; 0 = capture immediately.
+  let mut rec_start_frame: u64 = 0;
   // Per-track dry scratch (accumulated in the voice loop). fx_stem is a
   // snapshot of the mangler bus taken before reverb/delay fold in (overwritten
   // via copy, so no per-block clear). Allocated once here, never on the hot
@@ -6611,11 +6627,15 @@ fn build_stream(
               // realloc on the audio thread.
               pending_triggers.retain(|p| p.target_frame < min_frame);
             }
-            MixerCommand::StartCombinedRecording { producer } => {
+            MixerCommand::StartCombinedRecording {
+              producer,
+              start_frame,
+            } => {
               // Drop any prior producer (worker thread observes via
               // try_pop returning None once it's gone). Install the
-              // new one — subsequent blocks start pushing samples.
+              // new one — pushes begin once ENGINE_FRAMES >= start_frame.
               combined_rec_producer = Some(producer);
+              rec_start_frame = start_frame;
             }
             MixerCommand::StopCombinedRecording => {
               // Dropping the producer signals end-of-stream to the
@@ -6626,6 +6646,8 @@ fn build_stream(
             MixerCommand::StartSplitsRecording { rhythm, melody } => {
               rhythm_rec_producer = Some(rhythm);
               melody_rec_producer = Some(melody);
+              // Splits keep the legacy "capture immediately" behaviour.
+              rec_start_frame = 0;
             }
             MixerCommand::StopSplitsRecording => {
               rhythm_rec_producer = None;
@@ -6637,6 +6659,7 @@ fn build_stream(
               reverb,
               delay,
               tracks,
+              start_frame,
             } => {
               // Move the boxed per-track producer array into audio-thread
               // state (the emptied box frees once, off the hot path). All
@@ -6646,6 +6669,7 @@ fn build_stream(
               reverb_rec_producer = reverb;
               delay_rec_producer = delay;
               stem_rec_producers = *tracks;
+              rec_start_frame = start_frame;
             }
             MixerCommand::StopStemsRecording => {
               // Drop every producer → each worker drains + finalizes.
@@ -8190,15 +8214,24 @@ fn build_stream(
         // queues, when armed. Producers live in audio-thread-local
         // state (set/cleared via Start/Stop*Recording commands) so no
         // locking happens on the audio thread.
+        //
+        // Head alignment: drop any frames in this block that precede
+        // rec_start_frame so WAV frame 0 = the first musical downbeat (no
+        // leading dead-space, on-grid in the DAW). block_start_frame + i =
+        // the absolute frame of output frame i. rec_start_frame = 0 (splits /
+        // legacy) makes rec_skip 0, i.e. capture from the block start.
+        let rec_skip = rec_start_frame.saturating_sub(block_start_frame) as usize;
+        let rec_skip_f = rec_skip.min(frames);
+        let rec_skip_r = rec_skip.min(rev_frames);
         if let Some(prod) = combined_rec_producer.as_mut() {
           if n_ch >= 2 {
-            for frame in 0..frames {
+            for frame in rec_skip_f..frames {
               // Best-effort whole-frame push — if the queue is full
               // (worker stalled), drop frames rather than block.
               push_rec_frame(prod, buf[frame * n_ch], buf[frame * n_ch + 1]);
             }
           } else if n_ch == 1 {
-            for frame in 0..frames {
+            for frame in rec_skip_f..frames {
               let s = buf[frame * n_ch];
               push_rec_frame(prod, s, s);
             }
@@ -8209,12 +8242,12 @@ fn build_stream(
         // pre-master raw voice signal — matches the web splits tap
         // point and gives DAWs a clean stem per section.
         if let Some(prod) = rhythm_rec_producer.as_mut() {
-          for frame in 0..rev_frames {
+          for frame in rec_skip_r..rev_frames {
             push_rec_frame(prod, rhythm_l[frame], rhythm_r[frame]);
           }
         }
         if let Some(prod) = melody_rec_producer.as_mut() {
-          for frame in 0..rev_frames {
+          for frame in rec_skip_r..rev_frames {
             push_rec_frame(prod, melody_l[frame], melody_r[frame]);
           }
         }
@@ -8224,34 +8257,34 @@ fn build_stream(
         // this block); stems[i] = per-track dry. All sample-locked.
         if let Some(prod) = master_rec_producer.as_mut() {
           if n_ch >= 2 {
-            for frame in 0..frames {
+            for frame in rec_skip_f..frames {
               push_rec_frame(prod, buf[frame * n_ch], buf[frame * n_ch + 1]);
             }
           } else if n_ch == 1 {
-            for frame in 0..frames {
+            for frame in rec_skip_f..frames {
               let s = buf[frame * n_ch];
               push_rec_frame(prod, s, s);
             }
           }
         }
         if let Some(prod) = fx_rec_producer.as_mut() {
-          for frame in 0..rev_frames {
+          for frame in rec_skip_r..rev_frames {
             push_rec_frame(prod, fx_stem_l[frame], fx_stem_r[frame]);
           }
         }
         if let Some(prod) = reverb_rec_producer.as_mut() {
-          for frame in 0..rev_frames {
+          for frame in rec_skip_r..rev_frames {
             push_rec_frame(prod, reverb_out_l[frame], reverb_out_r[frame]);
           }
         }
         if let Some(prod) = delay_rec_producer.as_mut() {
-          for frame in 0..rev_frames {
+          for frame in rec_skip_r..rev_frames {
             push_rec_frame(prod, delay_out_l[frame], delay_out_r[frame]);
           }
         }
         for idx in 0..MAX_STEMS {
           if let Some(prod) = stem_rec_producers[idx].as_mut() {
-            for frame in 0..rev_frames {
+            for frame in rec_skip_r..rev_frames {
               push_rec_frame(prod, stem_l[idx][frame], stem_r[idx][frame]);
             }
           }
@@ -8829,8 +8862,9 @@ pub fn audio_set_master_bypass(bypass: bool) -> Result<(), String> {
 pub fn audio_start_recording_combined(
   app: tauri::AppHandle,
   path: String,
+  start_frame: u64,
 ) -> Result<(), String> {
-  engine().start_recording_combined(app, path)
+  engine().start_recording_combined(app, path, start_frame)
 }
 
 #[tauri::command]
@@ -8873,6 +8907,7 @@ pub fn audio_start_recording_stems(
   delay_path: String,
   track_ids: Vec<String>,
   track_paths: Vec<String>,
+  start_frame: u64,
 ) -> Result<(), String> {
   engine().start_recording_stems(
     app,
@@ -8883,6 +8918,7 @@ pub fn audio_start_recording_stems(
     delay_path,
     track_ids,
     track_paths,
+    start_frame,
   )
 }
 

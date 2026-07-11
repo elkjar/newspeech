@@ -1,6 +1,6 @@
 // Bind the Launch Control XL3 (DAW mode) to the sequencer store.
 //
-// Layout (Chris's mixer-strip spec, now hardware-viable via value-sync):
+// Layout (the mixer-strip spec, hardware-viable via value-sync):
 //   top encoder row    → sequencer macros: density·motion·drift·chaos·tension
 //                        + master input·drive·mix  (global, don't follow page;
 //                        order matches the on-screen MacroStrip)
@@ -43,16 +43,15 @@ import {
 } from './launchControlXL3';
 import { sourceIsMelodic, sourceLabel } from '../instruments/library';
 import {
-  BLUEBOX_CHANNELS,
-  BLUEBOX_CH_COUNT,
-  blueboxChannel,
-  setBlueboxLevel,
-  setBlueboxReverb,
-  setBlueboxDelay,
-  setBlueboxPan,
-  toggleBlueboxMute,
-  toggleBlueboxSolo,
-} from './bluebox';
+  activeMixerProfile,
+  mixerChannel,
+  setMixerLevel,
+  setMixerReverb,
+  setMixerDelay,
+  setMixerPan,
+  toggleMixerMute,
+  toggleMixerSolo,
+} from './externalMixer';
 
 type StoreState = ReturnType<typeof useSequencerStore.getState>;
 
@@ -86,11 +85,12 @@ const TOP_TARGETS: GlobalTarget[] = [
 ];
 
 // Which surface the controller is driving. 'sequence' = the existing sequencer
-// strip (macros / mutation / cutoff / mute-solo). 'mixer' = the Bluebox mixer
+// strip (macros / mutation / cutoff / mute-solo). 'mixer' = the external-mixer
 // page (faders → channel levels, encoder rows → reverb/delay/pan sends, buttons
-// → mute/solo, emitted as CC to the configured Bluebox port — see the mixer-page
-// section below + bluebox.ts). The page-flip button (transport 'page') toggles
-// between them; the page button LED shows which we're on (lit = mixer).
+// → mute/solo, emitted as CC to the configured mixer port — see the mixer-page
+// section below + externalMixer.ts). The page-flip button (transport 'page')
+// toggles between them; the page button LED shows which we're on (lit = mixer).
+// With no mixer profile selected the mixer page is inert — page-down is a no-op.
 export type SurfaceMode = 'sequence' | 'mixer';
 let surfaceMode: SurfaceMode = 'sequence';
 const surfaceModeListeners = new Set<(m: SurfaceMode) => void>();
@@ -124,9 +124,9 @@ let lastDisplayMode: SurfaceMode | null = null;
 // Fader soft-takeover: engage only once the fader crosses the live value.
 const faderPickup: Array<{ trackId: string; engaged: boolean; lastIn: number } | null> =
   new Array(8).fill(null);
-// Same idea for the mixer page's level faders, keyed by Bluebox channel index
+// Same idea for the mixer page's level faders, keyed by mixer channel index
 // (the faders are physical, shared with the sequence page, so a flip must not
-// jump a Bluebox level until the fader catches up to it).
+// jump a mixer level until the fader catches up to it).
 const mixerFaderPickup: Array<{ engaged: boolean; lastIn: number } | null> = new Array(8).fill(
   null
 );
@@ -300,11 +300,12 @@ function darkSurface(): void {
 const DISPLAY_STATIONARY = 0x35; // configure/text target
 const DISPLAY_ARRANGEMENT_3LINE = 0x02; // arrangement 2: Title / Name / Value
 const DISPLAY_TRIGGER = 0x7f; // bits0-4 = 31 → bring the display up with current contents
-// Three-line page banner: [Title, Name, Value].
-const PAGE_BANNER: Record<SurfaceMode, readonly [string, string, string]> = {
-  sequence: ['[newspeech]', 'SEQUENCE', `v${__APP_VERSION__}`],
-  mixer: ['[newspeech]', 'MIXER', 'bluebox'],
-};
+// Three-line page banner: [Title, Name, Value]. The mixer page shows the
+// active profile's name (data-driven — see externalMixer.ts).
+function pageBanner(mode: SurfaceMode): readonly [string, string, string] {
+  if (mode === 'sequence') return ['[newspeech]', 'SEQUENCE', `v${__APP_VERSION__}`];
+  return ['[newspeech]', 'MIXER', activeMixerProfile()?.name ?? ''];
+}
 
 // Show the current page's banner on the stationary display — only on page
 // change. Set the arrangement, fill the three fields, then trigger (the device
@@ -312,7 +313,7 @@ const PAGE_BANNER: Record<SurfaceMode, readonly [string, string, string]> = {
 function syncDisplay(): void {
   if (lastDisplayMode === surfaceMode) return;
   lastDisplayMode = surfaceMode;
-  const [title, name, value] = PAGE_BANNER[surfaceMode];
+  const [title, name, value] = pageBanner(surfaceMode);
   configureDisplay(DISPLAY_STATIONARY, DISPLAY_ARRANGEMENT_3LINE);
   setDisplayText(DISPLAY_STATIONARY, 0, title);
   setDisplayText(DISPLAY_STATIONARY, 1, name);
@@ -375,23 +376,23 @@ function syncControlLabels(): void {
   }
 }
 
-// --- mixer page (Bluebox) ---------------------------------------------------
-// Physical layout → Bluebox params, 6 role channels in column order:
-//   faders 0..5        → channel level     (pickup; CC 21..26)
-//   encoder row 1 (top)→ reverb send       (value-sync; CC 31..36)
-//   encoder row 2 (mid)→ delay send        (value-sync; CC 41..46)
-//   encoder row 3 (bot)→ pan               (value-sync; CC 51..56)
-//   button row 1 (top) → mute toggle       (LED = muted; CC 61..66)
-//   button row 2 (bot) → solo toggle       (LED = soloed; CC 71..76)
-// Columns 6..7 (faders 6-7, the 3rd of each control trio, buttons 6-7/14-15)
-// are unused and stay dark. CC numbers live in bluebox.ts.
+// --- mixer page (external mixer) ---------------------------------------------
+// Physical layout → mixer params, profile channels in column order:
+//   faders             → channel level     (pickup)
+//   encoder row 1 (top)→ reverb send       (value-sync)
+//   encoder row 2 (mid)→ delay send        (value-sync)
+//   encoder row 3 (bot)→ pan               (value-sync)
+//   button row 1 (top) → mute toggle       (LED = muted)
+//   button row 2 (bot) → solo toggle       (LED = soloed)
+// Columns past the profile's channel count are unused and stay dark. CC
+// numbers + channel labels live in the active profile (externalMixer.ts).
 
 type MixerEncKind = 'reverb' | 'delay' | 'pan';
 
 // Encoder index → which channel + param, or null for an unused column.
-function mixerEncoder(i: number): { ch: number; kind: MixerEncKind } | null {
+function mixerEncoder(i: number, chCount: number): { ch: number; kind: MixerEncKind } | null {
   const col = i % 8;
-  if (col >= BLUEBOX_CH_COUNT) return null;
+  if (col >= chCount) return null;
   const row = Math.floor(i / 8); // 0 top, 1 mid, 2 bottom
   if (row === 0) return { ch: col, kind: 'reverb' };
   if (row === 1) return { ch: col, kind: 'delay' };
@@ -400,14 +401,14 @@ function mixerEncoder(i: number): { ch: number; kind: MixerEncKind } | null {
 }
 
 // Button index → channel + mute/solo, or null for an unused column.
-function mixerButton(i: number): { ch: number; solo: boolean } | null {
+function mixerButton(i: number, chCount: number): { ch: number; solo: boolean } | null {
   const col = i % 8;
-  if (col >= BLUEBOX_CH_COUNT) return null;
+  if (col >= chCount) return null;
   return { ch: col, solo: i >= 8 };
 }
 
 function mixerEncValue(m: { ch: number; kind: MixerEncKind }): number {
-  const ch = blueboxChannel(m.ch);
+  const ch = mixerChannel(m.ch);
   if (!ch) return 0;
   return m.kind === 'reverb' ? ch.reverb : m.kind === 'delay' ? ch.delay : ch.pan;
 }
@@ -415,8 +416,11 @@ function mixerEncValue(m: { ch: number; kind: MixerEncKind }): number {
 // Push the mixer page's LEDs + encoder positions (diffed against the shared
 // last* arrays). Encoder rings show send/pan brightness; buttons show mute/solo.
 function syncMixerSurface(): void {
+  const profile = activeMixerProfile();
+  if (!profile) return;
+  const chCount = profile.channels.length;
   for (let i = 0; i < ENC_COUNT; i++) {
-    const m = mixerEncoder(i);
+    const m = mixerEncoder(i, chCount);
     if (!m) continue; // unused column → leave dark
     const val = mixerEncValue(m);
     if (Math.abs(val - lastEncPos[i]) > 1) {
@@ -429,10 +433,10 @@ function syncMixerSurface(): void {
     }
   }
   for (let i = 0; i < BTN_COUNT; i++) {
-    const m = mixerButton(i);
+    const m = mixerButton(i, chCount);
     let level = LED_OFF;
     if (m) {
-      const ch = blueboxChannel(m.ch);
+      const ch = mixerChannel(m.ch);
       if (ch) level = (m.solo ? ch.solo : ch.mute) ? LED_ON : LED_OFF;
     }
     if (level === lastBtnLed[i]) continue;
@@ -446,24 +450,28 @@ function syncMixerSurface(): void {
   }
 }
 
-// Per-control names for the mixer page (static — channel names don't change).
+// Per-control names for the mixer page (static per profile — channel names
+// don't change while a profile is active).
 function syncMixerLabels(): void {
+  const profile = activeMixerProfile();
+  if (!profile) return;
+  const chCount = profile.channels.length;
   for (let i = 0; i < ENC_COUNT; i++) {
-    const m = mixerEncoder(i);
+    const m = mixerEncoder(i, chCount);
     const suffix = m ? (m.kind === 'reverb' ? 'RVB' : m.kind === 'delay' ? 'DLY' : 'PAN') : '';
-    setCtrlLabel(CTRL_ENC_TARGET + i, m ? `${BLUEBOX_CHANNELS[m.ch]} ${suffix}` : '');
+    setCtrlLabel(CTRL_ENC_TARGET + i, m ? `${profile.channels[m.ch]} ${suffix}` : '');
   }
   for (let i = 0; i < 8; i++) {
-    setCtrlLabel(CTRL_FADER_TARGET + i, i < BLUEBOX_CH_COUNT ? `${BLUEBOX_CHANNELS[i]} LVL` : '');
+    setCtrlLabel(CTRL_FADER_TARGET + i, i < chCount ? `${profile.channels[i]} LVL` : '');
   }
 }
 
-// Fader → Bluebox level with the same soft-takeover as the sequence page, but
-// against the channel's app-side level (open-loop; the Bluebox can't report).
+// Fader → mixer level with the same soft-takeover as the sequence page, but
+// against the channel's app-side level (open-loop; the mixer can't report).
 function handleMixerFader(e: XL3Event): void {
   const c = e.index;
-  const ch = blueboxChannel(c);
-  if (!ch) return; // fader 6/7 → no channel
+  const ch = mixerChannel(c);
+  if (!ch) return; // fader past the profile's channel count → no channel
   const cur01 = ch.level / 127;
   const in01 = e.value / 127;
   let st = mixerFaderPickup[c];
@@ -482,17 +490,19 @@ function handleMixerFader(e: XL3Event): void {
   } else {
     st.lastIn = in01;
   }
-  setBlueboxLevel(c, e.value);
+  setMixerLevel(c, e.value);
 }
 
 function handleMixerEncoder(e: XL3Event): void {
-  const m = mixerEncoder(e.index);
+  const profile = activeMixerProfile();
+  if (!profile) return;
+  const m = mixerEncoder(e.index, profile.channels.length);
   if (!m) return;
   // Record the reported position so syncMixerSurface won't fight the turn.
   lastEncPos[e.index] = e.value;
-  if (m.kind === 'reverb') setBlueboxReverb(m.ch, e.value);
-  else if (m.kind === 'delay') setBlueboxDelay(m.ch, e.value);
-  else setBlueboxPan(m.ch, e.value);
+  if (m.kind === 'reverb') setMixerReverb(m.ch, e.value);
+  else if (m.kind === 'delay') setMixerDelay(m.ch, e.value);
+  else setMixerPan(m.ch, e.value);
   if (e.value !== lastEncLed[e.index]) {
     setEncoderLed(e.index, e.value);
     lastEncLed[e.index] = e.value;
@@ -501,9 +511,11 @@ function handleMixerEncoder(e: XL3Event): void {
 
 function handleMixerButton(e: XL3Event): void {
   if (!e.pressed) return; // momentary; act on press
-  const m = mixerButton(e.index);
+  const profile = activeMixerProfile();
+  if (!profile) return;
+  const m = mixerButton(e.index, profile.channels.length);
   if (!m) return;
-  const on = m.solo ? toggleBlueboxSolo(m.ch) : toggleBlueboxMute(m.ch);
+  const on = m.solo ? toggleMixerSolo(m.ch) : toggleMixerMute(m.ch);
   const level = on ? LED_ON : LED_OFF;
   setButtonLed(e.index, level);
   lastBtnLed[e.index] = level;
@@ -511,6 +523,8 @@ function handleMixerButton(e: XL3Event): void {
 
 function setSurfaceMode(mode: SurfaceMode): void {
   if (mode === surfaceMode) return;
+  // The mixer page only exists when a profile is active.
+  if (mode === 'mixer' && !activeMixerProfile()) return;
   surfaceMode = mode;
   resetState();
   if (mode === 'mixer') darkSurface(); // clear the now-stale sequence LEDs
@@ -527,9 +541,14 @@ function handleEvent(e: XL3Event): void {
     if (e.pressed) setSurfaceMode(e.transport === 'pageUp' ? 'sequence' : 'mixer');
     return;
   }
-  // Mixer page: faders/encoders/buttons drive the Bluebox via CC out. Transport
-  // play stays global so start/stop works from either page.
+  // Mixer page: faders/encoders/buttons drive the external mixer via CC out.
+  // Transport play stays global so start/stop works from either page.
   if (surfaceMode === 'mixer') {
+    // Profile turned off (settings) while on the mixer page → fall back.
+    if (!activeMixerProfile()) {
+      setSurfaceMode('sequence');
+      return;
+    }
     if (e.kind === 'fader') handleMixerFader(e);
     else if (e.kind === 'encoder') handleMixerEncoder(e);
     else if (e.kind === 'button') handleMixerButton(e);

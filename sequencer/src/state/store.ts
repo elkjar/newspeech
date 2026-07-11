@@ -320,24 +320,62 @@ function writePersistedClockOut(v: string[]): void {
   }
 }
 
-// The MIDI output the XL3 mixer page emits Bluebox CC to (one device, one port).
-// Rig routing like the clock-out port: persisted across launches, not in .seq.
-const LS_BLUEBOX_PORT = 'newspeech.sequencer.blueboxPort';
+// External-mixer control (the XL3 mixer page): which mixer profile is active
+// (see externalMixer.ts presets; null = feature off) and the MIDI output its
+// CC goes to (one device, one port). Rig routing like the clock-out port:
+// persisted across launches, not in .seq.
+const LS_EXTERNAL_MIXER_PORT = 'newspeech.sequencer.externalMixerPort';
+// Pre-profile key (when the mixer page was hardwired to the Bluebox). Read as
+// a fallback so an existing rig keeps its port across the upgrade.
+const LS_EXTERNAL_MIXER_PORT_LEGACY = 'newspeech.sequencer.blueboxPort';
+const LS_EXTERNAL_MIXER_PROFILE = 'newspeech.sequencer.externalMixerProfile';
+// Explicit "user turned it off" sentinel — distinguishes a deliberate off from
+// a missing key, so the legacy-port migration below can't resurrect a profile
+// the user disabled.
+const EXTERNAL_MIXER_PROFILE_OFF = 'off';
 
-function readPersistedBlueboxPort(): string | null {
+function readPersistedExternalMixerPort(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
-    return localStorage.getItem(LS_BLUEBOX_PORT) || null;
+    return (
+      localStorage.getItem(LS_EXTERNAL_MIXER_PORT) ||
+      localStorage.getItem(LS_EXTERNAL_MIXER_PORT_LEGACY) ||
+      null
+    );
   } catch {
     return null;
   }
 }
 
-function writePersistedBlueboxPort(v: string | null): void {
+function writePersistedExternalMixerPort(v: string | null): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    if (v) localStorage.setItem(LS_BLUEBOX_PORT, v);
-    else localStorage.removeItem(LS_BLUEBOX_PORT);
+    if (v) localStorage.setItem(LS_EXTERNAL_MIXER_PORT, v);
+    else localStorage.removeItem(LS_EXTERNAL_MIXER_PORT);
+    localStorage.removeItem(LS_EXTERNAL_MIXER_PORT_LEGACY);
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
+function readPersistedExternalMixerProfile(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const v = localStorage.getItem(LS_EXTERNAL_MIXER_PROFILE);
+    if (v === EXTERNAL_MIXER_PROFILE_OFF) return null;
+    if (v) return v;
+    // Migration: a machine with a legacy bluebox port configured was using the
+    // bluebox profile by definition — default it in so the rig keeps working.
+    return readPersistedExternalMixerPort() ? 'bluebox' : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedExternalMixerProfile(v: string | null): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LS_EXTERNAL_MIXER_PROFILE, v ?? EXTERNAL_MIXER_PROFILE_OFF);
   } catch {
     /* quota / private mode — silent */
   }
@@ -346,7 +384,7 @@ function writePersistedBlueboxPort(v: string | null): void {
 // External-clock follow is rig routing too: whether Sequence is the clock
 // master ('internal') or slaves to an external master ('external'), and which
 // input port carries that master's clock. Persisted across launches, not in
-// .seq — same reasoning as the clock-out / bluebox ports above.
+// .seq — same reasoning as the clock-out / external-mixer ports above.
 const LS_SYNC_SOURCE = 'newspeech.sequencer.syncSource';
 const LS_MIDI_CLOCK_IN = 'newspeech.sequencer.midiClockInPort';
 
@@ -796,9 +834,12 @@ export interface SequencerState {
   // HMR module-instance drift. Transient — not persisted.
   clockFollowLocked: boolean;
   setClockFollowLocked: (locked: boolean) => void;
-  // MIDI output the XL3 mixer page sends Bluebox mixer CC to; null = unset.
-  blueboxPort: string | null;
-  setBlueboxPort: (port: string | null) => void;
+  // External-mixer control (XL3 mixer page): active profile id (null = off)
+  // and the MIDI output the mixer CC goes to.
+  externalMixerProfileId: string | null;
+  setExternalMixerProfileId: (id: string | null) => void;
+  externalMixerPort: string | null;
+  setExternalMixerPort: (port: string | null) => void;
   viewSection: TrackSection;
   density: number;
   chaos: number;
@@ -1365,7 +1406,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   syncSource: readPersistedSyncSource(),
   midiClockInPort: readPersistedClockIn(),
   clockFollowLocked: false,
-  blueboxPort: readPersistedBlueboxPort(),
+  externalMixerProfileId: readPersistedExternalMixerProfile(),
+  externalMixerPort: readPersistedExternalMixerPort(),
   midiRecInputPort: null,
   songTitle: null,
   docPath: null,
@@ -1509,9 +1551,13 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set({ midiClockInPort });
   },
   setClockFollowLocked: (clockFollowLocked) => set({ clockFollowLocked }),
-  setBlueboxPort: (blueboxPort) => {
-    writePersistedBlueboxPort(blueboxPort);
-    set({ blueboxPort });
+  setExternalMixerProfileId: (externalMixerProfileId) => {
+    writePersistedExternalMixerProfile(externalMixerProfileId);
+    set({ externalMixerProfileId });
+  },
+  setExternalMixerPort: (externalMixerPort) => {
+    writePersistedExternalMixerPort(externalMixerPort);
+    set({ externalMixerPort });
   },
   setTrackSource: (trackId, source) => {
     // Voice changes propagate band-wide: active tracks AND every saved bank

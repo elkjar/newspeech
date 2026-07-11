@@ -34,6 +34,7 @@ export function tapTempo(): void {
 }
 import { engineNow, frameAtTime } from './engineClock';
 import { fadeTextures, audioPanic } from './nativeEngine';
+import { setPendingRecordStartFrame } from './nativeRecorder';
 
 // Texture voices ring down over this many seconds when transport stops,
 // rather than playing their (often minute-long) sample out to the end.
@@ -112,15 +113,21 @@ export async function togglePlayback(): Promise<void> {
     await prepareForPlay();
     // Count-in: one bar of clicks before the first scheduler step. The
     // scheduler's first tick is pushed by `nativeScheduleClickIn`'s
-    // returned pattern-start time. Recorder (if armed) starts at
-    // `setPlaying(true)` and captures the clicks too — DAW alignment cue
-    // lives in the WAV. All times are engine-clock seconds.
-    const lookahead = 0.05;
+    // returned pattern-start time. The recorder (if armed) is frame-aligned
+    // to `firstStepTime` below, so it opens the WAV ON the first musical
+    // downbeat — count-in clicks are NOT captured (they play before it).
+    // All times are engine-clock seconds.
+    //
+    // When armed with NO count-in, widen the lead so the recorder command
+    // has time to install its producer on the audio thread before that
+    // downbeat frame (the WAV is created synchronously in the invoke, so a
+    // 50ms lead can be too tight); count-in already provides ample headroom.
+    const lookahead = store.armed && !store.clickIn ? 0.2 : 0.05;
     let firstStepTime = engineNow() + lookahead;
     if (store.clickIn) {
-      // Fire the bundled synthetic click samples via `triggerSample`
-      // with sample-accurate delaySecs. The count-in plays through the
-      // cpal output (and into the native recorder's combined WAV).
+      // Fire the bundled synthetic click samples via `triggerSample` with
+      // sample-accurate delaySecs. The count-in plays through the cpal
+      // output; the recorder starts after it, at the downbeat.
       firstStepTime = await nativeScheduleClickIn(firstStepTime, store.bpm);
     }
     // Song mode: every play starts the arrangement from the top (row 0), so a
@@ -136,6 +143,10 @@ export async function togglePlayback(): Promise<void> {
       store.engageArrangementTarget(arr.rows[0].scene, arr.rows[0].bank);
       store.applyArrangementRowMutes(0);
     }
+    // Stash the aligned capture frame for the recorder (armed takes read it
+    // when the `armed && playing` subscription fires start()). Must be set
+    // before setPlaying(true) triggers that subscription.
+    setPendingRecordStartFrame(frameAtTime(firstStepTime));
     scheduler.start(firstStepTime);
     // Sequence is the clock master: announce transport to followers. The
     // pulse stream itself flows from the scheduler step subscriber in App.tsx.

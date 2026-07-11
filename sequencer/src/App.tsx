@@ -2055,6 +2055,17 @@ export function App() {
       const tag = (document.activeElement?.tagName || '').toUpperCase();
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
+      // Stream window — deliberately unlisted: no UI button, just this chord.
+      // (After the input-focus guard so it can't shadow paste-and-match-style
+      // in text fields.)
+      if (NATIVE && (e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        void invoke('toggle_stream_window').catch((err) =>
+          console.error('toggle_stream_window failed', err)
+        );
+        return;
+      }
+
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         togglePlayback();
@@ -2224,42 +2235,8 @@ export function App() {
                   <circle cx="11" cy="7" r="1" fill="white" fillOpacity="0.6" />
                 </svg>
               </button>
-              {NATIVE && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void invoke('toggle_stream_window').catch((e) =>
-                      console.error('toggle_stream_window failed', e)
-                    );
-                  }}
-                  title="toggle stream window"
-                  aria-label="toggle stream window"
-                  style={{ width: 20, height: 20 }}
-                  className="bg-transparent border border-white/15 hover:border-white/50 transition-colors inline-flex items-center justify-center"
-                >
-                  <svg viewBox="0 0 14 14" width="12" height="12">
-                    <rect
-                      x="2"
-                      y="3"
-                      width="10"
-                      height="7"
-                      fill="none"
-                      stroke="white"
-                      strokeOpacity="0.6"
-                      strokeWidth="1"
-                    />
-                    <line
-                      x1="5"
-                      y1="11.5"
-                      x2="9"
-                      y2="11.5"
-                      stroke="white"
-                      strokeOpacity="0.6"
-                      strokeWidth="1"
-                    />
-                  </svg>
-                </button>
-              )}
+              {/* Stream window is deliberately unlisted here — no button.
+                  Toggle via Cmd/Ctrl+Shift+V (see the keydown handler). */}
               <InstrumentDirtyBadge />
             </div>
             <ScreenModeTabs />

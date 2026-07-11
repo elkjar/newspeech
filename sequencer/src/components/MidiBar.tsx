@@ -20,6 +20,7 @@ import {
   getClockDebug,
   getFollowedBpm,
 } from '../audio/clockFollow';
+import { EXTERNAL_MIXER_PRESETS } from '../midi/externalMixer';
 
 const NATIVE = isTauri();
 
@@ -427,7 +428,7 @@ function MidiClockOutSelector() {
           type="button"
           onClick={() => setAdding(true)}
           className={`inline-flex items-center px-2 text-[11px] uppercase tracking-widest text-white/45 hover:text-white transition-colors focus:outline-none ${ROW_HEIGHT}`}
-          title="add a second clock destination (e.g. bluebox record-sync)"
+          title="add a second clock destination (e.g. a recorder's record-sync)"
         >
           + add output
         </button>
@@ -436,13 +437,42 @@ function MidiClockOutSelector() {
   );
 }
 
-// The MIDI output the XL3 mixer page emits Bluebox mixer CC to. One device =
-// one port, so this is a plain single-select (unlike clock-out, which fans to
-// several followers). Independent of the note/CC + clock destinations above.
-function BlueboxPortSelector() {
+// The XL3 mixer page → external hardware mixer. WHICH mixer is a data profile
+// (channel labels + CC layout — see externalMixer.ts presets); the port is
+// where its CC goes. Profile off = the feature is dark (the XL3 page-flip
+// won't engage) and the port select is hidden.
+function ExternalMixerRow() {
+  const profileId = useSequencerStore((s) => s.externalMixerProfileId);
+  const setProfileId = useSequencerStore((s) => s.setExternalMixerProfileId);
+  return (
+    <>
+      <select
+        value={profileId ?? ''}
+        onChange={(e) => setProfileId(e.target.value || null)}
+        className={`select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[120px] ${ROW_HEIGHT}`}
+        title="external mixer the xl3 mixer page drives (off = page disabled)"
+      >
+        <option value="" className="bg-[#050505]">
+          off
+        </option>
+        {EXTERNAL_MIXER_PRESETS.map((p) => (
+          <option key={p.id} value={p.id} className="bg-[#050505]">
+            {p.name}
+          </option>
+        ))}
+      </select>
+      {profileId && <ExternalMixerPortSelector />}
+    </>
+  );
+}
+
+// One device = one port, so this is a plain single-select (unlike clock-out,
+// which fans to several followers). Independent of the note/CC + clock
+// destinations above.
+function ExternalMixerPortSelector() {
   const outputs = useMIDIOutputs();
-  const port = useSequencerStore((s) => s.blueboxPort);
-  const setPort = useSequencerStore((s) => s.setBlueboxPort);
+  const port = useSequencerStore((s) => s.externalMixerPort);
+  const setPort = useSequencerStore((s) => s.setExternalMixerPort);
   const status = midiOutStatus();
   const noOutputs = outputs.length === 0;
   const showStale = !!port && !outputs.some((o) => o.id === port);
@@ -459,8 +489,8 @@ function BlueboxPortSelector() {
           : status === 'denied'
             ? 'midi access denied'
             : port
-              ? `xl3 mixer page → bluebox cc → ${port}${showStale ? ' (disconnected)' : ''}`
-              : 'midi port the xl3 mixer page sends bluebox cc to'
+              ? `xl3 mixer page → mixer cc → ${port}${showStale ? ' (disconnected)' : ''}`
+              : 'midi port the xl3 mixer page sends mixer cc to'
       }
     >
       <option value="" className="bg-[#050505]">
@@ -690,8 +720,8 @@ export function MidiBar() {
         <ClockRow />
       </div>
       <div className="flex items-center gap-2">
-        <span className={labelCls}>bluebox</span>
-        <BlueboxPortSelector />
+        <span className={labelCls}>mixer</span>
+        <ExternalMixerRow />
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <span className={labelCls}>mapping</span>

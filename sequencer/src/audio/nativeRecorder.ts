@@ -107,7 +107,19 @@ function joinPath(dir: string, name: string): string {
   return dir.endsWith('/') ? dir + name : dir + '/' + name;
 }
 
+// Absolute engine frame the next take should begin capturing at — the first
+// musical downbeat, so the WAV opens on the grid with no leading dead-space.
+// Set by `togglePlayback` (transport.ts) right before it flips `playing` true,
+// read + cleared when the recorder actually starts. 0 = capture immediately.
+let pendingStartFrame = 0;
+export function setPendingRecordStartFrame(frame: number): void {
+  pendingStartFrame = Math.max(0, Math.floor(frame));
+}
+
 async function start(): Promise<void> {
+  // Consume the aligned start frame stashed by togglePlayback for this run.
+  const startFrame = pendingStartFrame;
+  pendingStartFrame = 0;
   // If a previous take is still ringing out its tail, supersede it and finalize
   // it now — the native recorder is single-take, so the old file must close
   // before we open a new one.
@@ -156,10 +168,11 @@ async function start(): Promise<void> {
         delayPath: joinPath(stemDir, '04_delay.wav'),
         trackIds: s.tracks.map((t) => t.id),
         trackPaths,
+        startFrame,
       });
     } else {
       // "multi" OFF → a single combined "quick mix" WAV.
-      await startRecordingCombined(joinPath(dir, `${prefix}.wav`));
+      await startRecordingCombined(joinPath(dir, `${prefix}.wav`), startFrame);
     }
   } catch (err) {
     console.warn('[nativeRecorder] start failed:', err);
