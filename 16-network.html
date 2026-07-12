@@ -201,7 +201,12 @@ function step(dt) {
   // diameter on screen. perspective scales by FOCAL/(FOCAL - z_world) so
   // closer nodes project further from center and render larger.
   const scale = params.spread * Math.min(cw, ch) * 0.5;
-  const stretchX = Math.max(0.1, params.stretch);
+  // stretch runs along the frame's LONG axis — vertical in a portrait reel
+  // (1080×1920), horizontal on the wide desktop site. one slider, orientation-aware.
+  const stretch = Math.max(0.1, params.stretch);
+  const portrait = ch >= cw;
+  const stretchX = portrait ? 1 : stretch;
+  const stretchY = portrait ? stretch : 1;
   const cx = cw * 0.5;
   const cyS = ch * 0.5;
   proj.length = nodes.length;
@@ -221,7 +226,7 @@ function step(dt) {
     // is preserved so links stay the same after compensation below.
     proj[i] = {
       sx: cx + rx * scale * persp * stretchX,
-      sy: cyS + ry * scale * persp,
+      sy: cyS + ry * scale * persp * stretchY,
       persp,
       depth: rz,
       pulse: n.pulse,
@@ -241,15 +246,16 @@ function step(dt) {
   const DEPTH_BUCKETS = 4;
   const bucketPaths = [];
   for (let i = 0; i < ALPHA_BUCKETS * DEPTH_BUCKETS; i++) bucketPaths.push(new Path2D());
-  // undo the horizontal stretch in link distance so the connectivity graph
-  // is identical to the unstretched cloud — stretching only changes the
-  // visual layout, not which pairs link.
-  const invStretch = 1 / stretchX;
+  // undo the stretch in link distance so the connectivity graph is identical
+  // to the unstretched cloud — stretching only changes the visual layout, not
+  // which pairs link. compensate whichever axis is stretched.
+  const invStretchX = 1 / stretchX;
+  const invStretchY = 1 / stretchY;
   for (let i = 0; i < nodes.length; i++) {
     const a = proj[i];
     for (let j = i + 1; j < nodes.length; j++) {
       const b = proj[j];
-      const dx = (b.sx - a.sx) * invStretch, dy = b.sy - a.sy;
+      const dx = (b.sx - a.sx) * invStretchX, dy = (b.sy - a.sy) * invStretchY;
       const d2 = dx * dx + dy * dy;
       if (d2 > linkR2) continue;
       const d = Math.sqrt(d2);
