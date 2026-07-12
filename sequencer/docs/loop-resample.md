@@ -110,7 +110,11 @@ move: sequence → capture → mangle → save → re-sequence.
   `spawn_recorder_worker` label "loop" (32f stereo WAV, `recorder:finalized` event;
   nativeRecorder's generic toast excludes the label — loops.ts owns the toast + triggers
   `scanAndLoadUserSamples` so the WAV registers as a voice immediately). Path:
-  `<samples dir>/loops/loop-<bpm>bpm-<bars>bar-<stamp>.wav` — bpm derives from the CAPTURED
+  `<samples dir>/textures/<stem>/<stem>.wav` (stem = `loop-<bpm>bpm-<bars>bar-<stamp>`) — each
+  loop gets its OWN kit folder under `textures/` because the scanner only descends the fixed
+  CATEGORIES list and treats loose top-level files as non-kits (a bare `loops/` folder is
+  never scanned). `textures/` → `texture` role, so it registers as a rootless texture voice.
+  bpm derives from the CAPTURED
   bar length (the material's actual tempo, Chris's ask). Teardown safety: the in-flight
   bounce's stop flag is registered in a global (`loop_bounce_teardown`) fired by
   `stop_recorders_for_stream_teardown`; LoopStop/Panic/replacement bounces finalize the

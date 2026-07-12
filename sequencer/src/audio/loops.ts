@@ -456,8 +456,10 @@ async function installBounceListener() {
   );
 }
 
-// Bounce the held loop to `<samples dir>/loops/<bpm>bpm-<bars>bar-<stamp>
-// .wav`. BPM derives from the CAPTURED bar length (the material's actual
+// Bounce the held loop to `<samples dir>/textures/<stem>/<stem>.wav`
+// (stem = `loop-<bpm>bpm-<bars>bar-<stamp>`), its own kit folder so the
+// scanner picks it up as a texture voice. BPM derives from the CAPTURED
+// bar length (the material's actual
 // tempo, even if the clock moved since). Resolves false when nothing is
 // held or a save is already running.
 export async function saveLoop(): Promise<boolean> {
@@ -484,7 +486,14 @@ export async function saveLoop(): Promise<boolean> {
     ? `${passBars}`
     : passBars.toFixed(1);
   const stamp = new Date().toISOString().replace(/\D/g, '').slice(2, 12);
-  const path = `${dir}/loops/loop-${bpm}bpm-${barsLabel}bar-${stamp}.wav`;
+  // Land each loop in its OWN kit folder under `textures/` — the scanner
+  // (samples.rs `list_sample_kits`) only descends the fixed CATEGORIES
+  // list and treats each child of a category folder as a kit DIRECTORY,
+  // skipping loose files. `textures/` maps to the `texture` role (voices.ts
+  // — "processed loops"), so a single-WAV kit registers as its own texture
+  // instrument on rescan. `loop_bounce` create_dir_all's the parent.
+  const stem = `loop-${bpm}bpm-${barsLabel}bar-${stamp}`;
+  const path = `${dir}/textures/${stem}/${stem}.wav`;
   saving = true;
   notify();
   try {
