@@ -84,7 +84,11 @@ pub fn list_sample_kits(dir: String) -> Result<Vec<SampleKitEntry>, String> {
             //      alongside subfolders are ignored.
             let manifest_json = if manifest_path.is_file() {
                 match fs::read_to_string(&manifest_path) {
-                    Ok(c) => c,
+                    // Overlay subfolder-per-voice discovery on top of the
+                    // declared manifest so a NEW voice/break folder dropped
+                    // into a kit that already has a manifest still registers
+                    // (manifest entries win — they carry saved edits/labels).
+                    Ok(c) => merge_subfolder_voices(&c, &kit_dir),
                     Err(err) => {
                         eprintln!("skipping {}: {err}", manifest_path.display());
                         continue;
@@ -309,6 +313,42 @@ fn synthesize_manifest_from_folder(kit_dir: &Path, kit_name: &str) -> Option<Str
         "voices": { kit_name: voice_body }
     });
     serde_json::to_string(&manifest).ok()
+}
+
+// A kit's manifest.json historically REPLACED folder auto-discovery: only the
+// voices it declared registered, so dropping a new voice/break subfolder into a
+// kit that already had a manifest left it invisible until it was hand-added.
+// This makes the manifest an OVERLAY instead — every subfolder-per-voice
+// directory auto-registers, and manifest entries (which carry saved edits,
+// labels, gain, slices) WIN for the voices they declare. New folders appear on
+// the next scan; already-authored voices keep their saved state.
+//
+// Only the subfolder-per-voice layout is merged. Flat-layout kits (rooted or
+// round-robin WAVs at the top level) have no subfolders, so the manifest is
+// returned verbatim — matching the pre-existing synthesis split and avoiding a
+// spurious extra voice. A malformed manifest is returned unchanged (the caller
+// still surfaces it; we don't silently drop the user's edits).
+fn merge_subfolder_voices(raw: &str, kit_dir: &Path) -> String {
+    let subfolder_voices = collect_subfolder_voices(kit_dir);
+    if subfolder_voices.is_empty() {
+        return raw.to_string();
+    }
+    let mut root: serde_json::Value = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(_) => return raw.to_string(),
+    };
+    let voices = match root.get_mut("voices").and_then(|v| v.as_object_mut()) {
+        Some(v) => v,
+        None => return raw.to_string(),
+    };
+    for (voice_id, files) in subfolder_voices {
+        if voices.contains_key(&voice_id) {
+            continue; // manifest declares this voice — its entry wins
+        }
+        let label = voice_id.replace(['-', '_'], " ");
+        voices.insert(voice_id, json!({ "label": label, "gain": 0.7, "files": files }));
+    }
+    serde_json::to_string(&root).unwrap_or_else(|_| raw.to_string())
 }
 
 // Walks one level into `kit_dir` looking for subfolders that contain audio
