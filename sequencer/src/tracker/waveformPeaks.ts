@@ -90,6 +90,55 @@ export async function loadVoiceMono(voiceId: string): Promise<VoiceMono | null> 
   return out;
 }
 
+// Reduce a fraction window [from, to] of the mono buffer to `columns` peaks.
+// Like reduce(), but scoped to a sub-span so a zoomed slice-mode view stays at
+// ~1 sample-column per pixel instead of upscaling a fit-to-width array (which
+// blurs). `frames` in the result is the FULL sample length so callers keep
+// their absolute time math (duration, min-gap) — only the columns are windowed.
+function reduceWindow(
+  mono: Float32Array,
+  frames: number,
+  columns: number,
+  from: number,
+  to: number,
+): WaveformPeaks {
+  const f0 = Math.max(0, Math.min(frames - 1, Math.floor(from * frames)));
+  const f1 = Math.max(f0 + 1, Math.min(frames, Math.ceil(to * frames)));
+  const span = f1 - f0;
+  const per = span / columns;
+  const peaks = new Float32Array(columns * 2);
+  let carry = mono[f0] ?? 0;
+  for (let col = 0; col < columns; col++) {
+    const i0 = f0 + Math.floor(col * per);
+    const i1 = Math.min(f1, Math.max(i0 + 1, f0 + Math.floor((col + 1) * per)));
+    let min = carry;
+    let max = carry;
+    for (let i = i0; i < i1; i++) {
+      const s = mono[i];
+      if (s < min) min = s;
+      if (s > max) max = s;
+    }
+    if (i1 > i0) carry = mono[i1 - 1];
+    peaks[col * 2] = min;
+    peaks[col * 2 + 1] = max;
+  }
+  return { peaks, columns, frames };
+}
+
+// Peaks for a fraction window of a voice's sample, reduced from the cached mono
+// buffer (one decode per voice, no re-decode per zoom step). Used by slice-mode
+// zoom/scroll: pass the visible [from, to] and `columns = pixel width`.
+export async function loadVoicePeaksWindow(
+  voiceId: string,
+  columns: number,
+  from: number,
+  to: number,
+): Promise<WaveformPeaks | null> {
+  const m = await loadVoiceMono(voiceId);
+  if (!m) return null;
+  return reduceWindow(m.mono, m.frames, columns, from, to);
+}
+
 // Load (and cache) the waveform peaks for a voice at a target column count.
 // Returns null when the voice has no resolvable sample. The cache key folds in
 // the column count so a wider editor recomputes rather than upscaling.

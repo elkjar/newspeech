@@ -7,7 +7,7 @@
 // rest of the Sequence UI.
 import { useEffect, useRef, useState } from 'react';
 import type { LoopMode } from '../instruments/voiceEditsStore';
-import { loadVoicePeaks, type WaveformPeaks } from '../tracker/waveformPeaks';
+import { loadVoicePeaks, loadVoicePeaksWindow, type WaveformPeaks } from '../tracker/waveformPeaks';
 import { onSliceHit } from '../audio/sliceHits';
 
 interface Props {
@@ -70,6 +70,34 @@ export function Waveform({
   const [activeSlice, setActiveSlice] = useState<number | null>(null);
   const hitTimer = useRef<number | null>(null);
 
+  // Slice-mode zoom/scroll (view state only — never persisted). `zoom` ≥ 1 is
+  // the horizontal magnification; `offset` is the left edge of the viewport as a
+  // fraction of the sample. Visible window = [offset, offset + 1/zoom]. Peaks are
+  // re-reduced from the cached mono buffer over that window so the view stays
+  // sharp at ~1 sample-column per pixel. Refs mirror the state so the non-passive
+  // wheel handler reads fresh values without re-binding on every zoom step.
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState(0);
+  const zoomRef = useRef(1);
+  const offsetRef = useRef(0);
+  zoomRef.current = zoom;
+  offsetRef.current = offset;
+  const scrollTrackRef = useRef<HTMLDivElement>(null);
+  const scrollDragRef = useRef<{ startX: number; startOffset: number } | null>(null);
+  const MAX_ZOOM = 100;
+  const clampOffset = (o: number, z: number): number =>
+    Math.max(0, Math.min(1 - 1 / z, o));
+  // Effective viewport — collapses to the whole sample outside slice mode so
+  // trim/granular rendering and hit-testing are untouched.
+  const viewSpan = sliceMode ? 1 / zoom : 1;
+  const viewStart = sliceMode ? offset : 0;
+
+  // Reset the view whenever the focused sample changes.
+  useEffect(() => {
+    setZoom(1);
+    setOffset(0);
+  }, [voiceId]);
+
   // Track the rendered width so peaks resolve at ~1 column per pixel.
   useEffect(() => {
     const el = wrapRef.current;
@@ -82,11 +110,21 @@ export function Waveform({
     return () => ro.disconnect();
   }, []);
 
+  // Clear the peaks on a sample or width change so a stale waveform doesn't
+  // linger while the new one decodes; zoom/pan changes below just replace them.
+  useEffect(() => {
+    setPeaks(null);
+  }, [voiceId, width]);
+
   useEffect(() => {
     if (width <= 0) return;
     let cancelled = false;
-    setPeaks(null);
-    loadVoicePeaks(voiceId, width).then((p) => {
+    // Slice mode reduces just the visible window (keeps the zoomed view sharp);
+    // trim/granular always show the whole sample fit-to-width.
+    const load = sliceMode
+      ? loadVoicePeaksWindow(voiceId, width, viewStart, viewStart + viewSpan)
+      : loadVoicePeaks(voiceId, width);
+    load.then((p) => {
       if (cancelled) return;
       setPeaks(p);
       if (p) onDuration?.(p.frames / 44100);
@@ -94,7 +132,7 @@ export function Waveform({
     return () => {
       cancelled = true;
     };
-  }, [voiceId, width]);
+  }, [voiceId, width, sliceMode, viewStart, viewSpan]);
 
   // Live active-slice highlight: subscribe to the dispatch-path slice hits for
   // this voice, hold the last-fired index, and clear it ~260ms after the last
@@ -155,6 +193,9 @@ export function Waveform({
     ctx.clearRect(0, 0, width, HEIGHT);
     const mid = HEIGHT / 2;
     const amp = mid - 3;
+    // Sample-fraction → canvas-x through the viewport. Outside slice mode the
+    // viewport is the whole sample, so this is just `frac * width`.
+    const fx = (frac: number): number => ((frac - viewStart) / viewSpan) * width;
 
     // The "bright" window: the whole sample in slice mode, the trim region in
     // sample mode, the grain window in granular mode (read position → grainFrac).
@@ -193,8 +234,10 @@ export function Waveform({
       // faint alternating cell shading so adjacent slices read as distinct. The
       // implied last edge (sample end) isn't drawn — the waveform edge marks it.
       for (let i = 0; i < slices!.length; i++) {
-        const mx = slices![i] * width;
-        const nx = (i + 1 < slices!.length ? slices![i + 1] : 1) * width;
+        const mx = fx(slices![i]);
+        const nx = fx(i + 1 < slices!.length ? slices![i + 1] : 1);
+        // Skip cells wholly off either edge of the zoomed viewport.
+        if (nx < 0 || mx > width) continue;
         const isActive = i === activeSlice;
         if (isActive) {
           // The slice the sequence is currently firing — a bright wash over the
@@ -252,9 +295,9 @@ export function Waveform({
       ctx.fillRect(exp - 3, 0, 3, 6);
     }
 
-    // Playhead + direction caret.
-    if (playhead != null && playhead >= 0) {
-      const px = playhead * width;
+    // Playhead + direction caret. Hidden when it falls outside the zoomed view.
+    if (playhead != null && playhead >= 0 && playhead >= viewStart && playhead <= viewStart + viewSpan) {
+      const px = fx(playhead);
       ctx.strokeStyle = 'rgba(255,255,255,1)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -277,11 +320,69 @@ export function Waveform({
       ctx.closePath();
       ctx.fill();
     }
-  }, [peaks, width, start, end, playhead, loopMode, granular?.position, granular?.grainMs, sliceMode, slices, activeSlice]);
+  }, [peaks, width, start, end, playhead, loopMode, granular?.position, granular?.grainMs, sliceMode, slices, activeSlice, viewStart, viewSpan]);
+
+  // Wheel = zoom anchored under the cursor; two-finger horizontal scroll = pan.
+  // Attached natively (not via React's passive onWheel) so preventDefault stops
+  // the page/panel from scrolling underneath. Reads live zoom/offset from refs.
+  useEffect(() => {
+    const cv = canvasRef.current;
+    if (!cv || !sliceMode || width <= 0) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const z0 = zoomRef.current;
+      const o0 = offsetRef.current;
+      const span0 = 1 / z0;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        // Pan: one content-pixel per scroll-pixel.
+        const next = clampOffset(o0 + (e.deltaX / width) * span0, z0);
+        offsetRef.current = next;
+        setOffset(next);
+      } else {
+        // Zoom about the cursor so the pointed-at sample stays put.
+        const rect = cv.getBoundingClientRect();
+        const px = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const z1 = Math.max(1, Math.min(MAX_ZOOM, z0 * Math.exp(-e.deltaY * 0.0015)));
+        const anchor = o0 + px * span0;
+        const o1 = clampOffset(anchor - px * (1 / z1), z1);
+        zoomRef.current = z1;
+        offsetRef.current = o1;
+        setZoom(z1);
+        setOffset(o1);
+      }
+    };
+    cv.addEventListener('wheel', onWheel, { passive: false });
+    return () => cv.removeEventListener('wheel', onWheel);
+  }, [sliceMode, width]);
+
+  // Scrollbar thumb drag → set the viewport offset.
+  const onScrollDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    scrollDragRef.current = { startX: e.clientX, startOffset: offsetRef.current };
+  };
+  const onScrollMove = (e: React.PointerEvent) => {
+    const d = scrollDragRef.current;
+    const track = scrollTrackRef.current;
+    if (!d || !track) return;
+    const tw = track.getBoundingClientRect().width || 1;
+    const next = clampOffset(d.startOffset + (e.clientX - d.startX) / tw, zoomRef.current);
+    offsetRef.current = next;
+    setOffset(next);
+  };
+  const onScrollUp = (e: React.PointerEvent) => {
+    scrollDragRef.current = null;
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  };
 
   const xToFrac = (clientX: number): number => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const viewFrac = (clientX - rect.left) / rect.width; // 0..1 across the viewport
+    return Math.max(0, Math.min(1, viewStart + viewFrac * viewSpan));
   };
   const applyDrag = (which: 'start' | 'end', frac: number) => {
     if (which === 'start') onChange({ start: Math.min(frac, end - 0.001) });
@@ -307,8 +408,9 @@ export function Waveform({
       const frac = xToFrac(e.clientX);
       canvasRef.current!.setPointerCapture(e.pointerId);
       // Nearest marker within the grab threshold → drag it (or alt/⌘-click to
-      // remove). Otherwise a bare region click auditions that slice.
-      const hitFrac = 6 / (width || 1);
+      // remove). Otherwise a bare region click auditions that slice. The 6px
+      // threshold scales with zoom (fewer sample-fractions per pixel when in).
+      const hitFrac = (6 / (width || 1)) * viewSpan;
       let nearest = -1;
       let nd = Infinity;
       for (let i = 0; i < slices!.length; i++) {
@@ -406,6 +508,21 @@ export function Waveform({
         onPointerLeave={onUp}
         onDoubleClick={onDoubleClick}
       />
+      {sliceMode && zoom > 1 && (
+        <div
+          ref={scrollTrackRef}
+          className="relative h-1.5 mt-1 bg-white/10"
+          title={`zoom ${zoom.toFixed(1)}× — drag to scroll, wheel to zoom out`}
+        >
+          <div
+            className="absolute inset-y-0 bg-white/40 hover:bg-white/60 cursor-grab active:cursor-grabbing"
+            style={{ left: `${offset * 100}%`, width: `${viewSpan * 100}%`, minWidth: 8 }}
+            onPointerDown={onScrollDown}
+            onPointerMove={onScrollMove}
+            onPointerUp={onScrollUp}
+          />
+        </div>
+      )}
     </div>
   );
 }
