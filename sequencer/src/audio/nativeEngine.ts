@@ -575,6 +575,18 @@ export interface TriggerOpts {
       direction: number;
       spray: number;
     };
+    // Per-instrument wavetable (editor Phase D). on=false → normal sample
+    // playback. windowFrames = frames per single-cycle window; position 0..1
+    // scans the table; morph crossfades adjacent windows on sweep; hz is the
+    // played note's fundamental (single-cycle osc pitch, window-size-independent).
+    wavetable?: {
+      on: boolean;
+      windowFrames: number;
+      position: number;
+      morph: boolean;
+      smooth?: boolean; // wavetable smoother: engine bakes + reads a smoothed copy
+      hz: number;
+    };
 }
 
 // Flatten (path, opts) into the Rust TriggerSpec IPC shape — shared by
@@ -618,6 +630,12 @@ function buildTriggerSpec(path: string, opts: TriggerOpts): Record<string, unkno
     granShape: opts.granular?.shape ?? null,
     granDir: opts.granular?.direction ?? null,
     granSpray: opts.granular?.spray ?? null,
+    wtOn: opts.wavetable?.on ?? null,
+    wtWindowFrames: opts.wavetable?.windowFrames ?? null,
+    wtPosNorm: opts.wavetable?.position ?? null,
+    wtMorph: opts.wavetable?.morph ?? null,
+    wtHz: opts.wavetable?.hz ?? null,
+    wtSmooth: opts.wavetable?.smooth ?? null,
   };
 }
 
@@ -664,6 +682,13 @@ export async function setMonitorVoice(noteId: number): Promise<void> {
 // voice, or a negative value when none is playing. Polled while previewing.
 export async function getMonitorPlayhead(): Promise<number> {
   return invoke<number>('audio_monitor_playhead');
+}
+
+// Live wavetable scan (0..1) of the monitored voice, incl. the continuous wtPos
+// LFO + automation, or negative when the monitored voice isn't a wavetable.
+// Polled while previewing so the editor's zoomed visualizer tracks the engine.
+export async function getMonitorWtScan(): Promise<number> {
+  return invoke<number>('audio_monitor_wt_scan');
 }
 
 // Live re-pitch of a tagged, in-flight voice. `ratio` is the playback-rate
@@ -732,6 +757,7 @@ export type LfoDestKind =
   | 'trackDelaySend'
   | 'trackTune'
   | 'trackFineTune'
+  | 'trackWtPosition'
   | 'reverbSize'
   | 'reverbMix'
   | 'reverbDiffusion'

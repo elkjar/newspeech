@@ -32,6 +32,12 @@ interface Props {
   slices?: number[] | null;
   onSlicesChange?: (slices: number[]) => void;
   onSlicePreview?: (index: number, on: boolean) => void;
+  // Wavetable mode: when set, a fourth display mode — the current window (the
+  // single cycle being read) draws as a bright band and a draggable cursor scans
+  // the scan position across the table. The playhead (when playing) shows the
+  // live automation-swept window. null = not wavetable mode.
+  wavetable?: { position: number; windowFrames: number } | null;
+  onWavetablePosition?: (position: number) => void;
   // Reports the decoded sample duration (seconds) once peaks load, so callers
   // can show position/grain in seconds (the Tracker measures position in s).
   onDuration?: (secs: number) => void;
@@ -52,6 +58,8 @@ export function Waveform({
   slices = null,
   onSlicesChange,
   onSlicePreview,
+  wavetable = null,
+  onWavetablePosition,
   onDuration,
 }: Props) {
   const sliceMode = slices != null;
@@ -87,10 +95,28 @@ export function Waveform({
   const MAX_ZOOM = 100;
   const clampOffset = (o: number, z: number): number =>
     Math.max(0, Math.min(1 - 1 / z, o));
-  // Effective viewport — collapses to the whole sample outside slice mode so
-  // trim/granular rendering and hit-testing are untouched.
-  const viewSpan = sliceMode ? 1 / zoom : 1;
-  const viewStart = sliceMode ? offset : 0;
+
+  // Wavetable window geometry. The frame count is always the FULL sample (the
+  // windowed peak loader returns it even for a sub-span load), so window math is
+  // stable across the zoomed reloads. windowFrames = one cycle; the sample tiles
+  // into `wtCount` whole windows; the scan position (0..1) resolves to an integer
+  // window INDEX (position 0 = window 1 = frames [0, windowFrames), etc.) — the
+  // Tracker treats WtPos as a hard window number, not a continuous scrub.
+  const wtMode = wavetable != null;
+  const wtFrames = peaks?.frames ?? 0;
+  const wtWin = wtMode && wtFrames > 0 ? Math.max(2, Math.min(wtFrames, wavetable!.windowFrames)) : 0;
+  const wtCount = wtWin > 0 ? Math.max(1, Math.floor(wtFrames / wtWin)) : 1;
+  const wtIndex = wtMode
+    ? Math.max(0, Math.min(wtCount - 1, Math.round(wavetable!.position * (wtCount - 1))))
+    : 0;
+  const wtFrom = wtWin > 0 ? (wtIndex * wtWin) / wtFrames : 0;
+  const wtSpan = wtWin > 0 ? wtWin / wtFrames : 1;
+
+  // Effective viewport. Slice mode = user zoom/scroll; wavetable mode = ZOOMED to
+  // the current window (it fills the whole visualizer, Tracker-style); everything
+  // else = the whole sample (trim/granular rendering + hit-testing untouched).
+  const viewSpan = sliceMode ? 1 / zoom : wtMode && wtWin > 0 ? wtSpan : 1;
+  const viewStart = sliceMode ? offset : wtMode && wtWin > 0 ? wtFrom : 0;
 
   // Reset the view whenever the focused sample changes.
   useEffect(() => {
@@ -119,9 +145,12 @@ export function Waveform({
   useEffect(() => {
     if (width <= 0) return;
     let cancelled = false;
-    // Slice mode reduces just the visible window (keeps the zoomed view sharp);
-    // trim/granular always show the whole sample fit-to-width.
-    const load = sliceMode
+    // Slice + wavetable modes reduce just the visible window (keeps the zoomed
+    // view sharp at ~1 sample-column/pixel); trim/granular show the whole sample
+    // fit-to-width. Wavetable's first pass (before frames are known) falls back
+    // to a full load to discover the frame count, then re-runs windowed.
+    const windowed = sliceMode || (wtMode && wtWin > 0);
+    const load = windowed
       ? loadVoicePeaksWindow(voiceId, width, viewStart, viewStart + viewSpan)
       : loadVoicePeaks(voiceId, width);
     load.then((p) => {
@@ -132,7 +161,7 @@ export function Waveform({
     return () => {
       cancelled = true;
     };
-  }, [voiceId, width, sliceMode, viewStart, viewSpan]);
+  }, [voiceId, width, sliceMode, wtMode, wtWin, viewStart, viewSpan]);
 
   // Live active-slice highlight: subscribe to the dispatch-path slice hits for
   // this voice, hold the last-fired index, and clear it ~260ms after the last
@@ -180,6 +209,7 @@ export function Waveform({
     return Math.max(1, Math.min(1000, ms));
   };
 
+
   // Redraw on any geometry/playhead change.
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -199,8 +229,11 @@ export function Waveform({
 
     // The "bright" window: the whole sample in slice mode, the trim region in
     // sample mode, the grain window in granular mode (read position → grainFrac).
-    const winStart = sliceMode ? 0 : granular ? granular.position : start;
-    const winEnd = sliceMode ? 1 : granular ? Math.min(1, granular.position + grainFrac) : end;
+    // Bright window: the whole canvas in slice + wavetable modes (both fill the
+    // viewport), the grain window in granular, the trim region otherwise.
+    const winStart = sliceMode || wtMode ? 0 : granular ? granular.position : start;
+    const winEnd =
+      sliceMode || wtMode ? 1 : granular ? Math.min(1, granular.position + grainFrac) : end;
 
     if (peaks) {
       // fillRect with a 1px height floor — stroked zero-height lines draw
@@ -277,6 +310,21 @@ export function Waveform({
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.fillRect(lx - 1.5, 0, 3, 6);
       ctx.fillRect(rx - 1.5, HEIGHT - 6, 3, 6);
+    } else if (wtMode) {
+      // Wavetable: the current window fills the whole visualizer (zoomed in),
+      // Tracker-style. No handles — the scan (which window) is set by the
+      // position control / dragging the canvas. A faint centreline + a corner
+      // window-index label orient the view; the zeroed cycle reads as a scope.
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, mid);
+      ctx.lineTo(width, mid);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = '9px ui-monospace, monospace';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`win ${wtIndex + 1}/${wtCount}`, 4, 4);
     } else {
       // Window handles.
       const sxp = start * width;
@@ -320,7 +368,7 @@ export function Waveform({
       ctx.closePath();
       ctx.fill();
     }
-  }, [peaks, width, start, end, playhead, loopMode, granular?.position, granular?.grainMs, sliceMode, slices, activeSlice, viewStart, viewSpan]);
+  }, [peaks, width, start, end, playhead, loopMode, granular?.position, granular?.grainMs, wtMode, wtIndex, wtCount, sliceMode, slices, activeSlice, viewStart, viewSpan]);
 
   // Wheel = zoom anchored under the cursor; two-finger horizontal scroll = pan.
   // Attached natively (not via React's passive onWheel) so preventDefault stops
@@ -384,6 +432,15 @@ export function Waveform({
     const viewFrac = (clientX - rect.left) / rect.width; // 0..1 across the viewport
     return Math.max(0, Math.min(1, viewStart + viewFrac * viewSpan));
   };
+  // Wavetable scan: map the raw canvas x (0..1 across the FULL width, independent
+  // of the zoom) to the nearest whole window, then to the normalized base
+  // position — so dragging left→right scrubs the whole table window-by-window.
+  const wtScanTo = (clientX: number) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const raw = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const idx = wtCount > 1 ? Math.round(raw * (wtCount - 1)) : 0;
+    onWavetablePosition?.(wtCount > 1 ? idx / (wtCount - 1) : 0);
+  };
   const applyDrag = (which: 'start' | 'end', frac: number) => {
     if (which === 'start') onChange({ start: Math.min(frac, end - 0.001) });
     else onChange({ end: Math.max(frac, start + 0.001) });
@@ -434,6 +491,11 @@ export function Waveform({
     }
     const frac = xToFrac(e.clientX);
     canvasRef.current!.setPointerCapture(e.pointerId);
+    if (wtMode) {
+      dragRef.current = 'start'; // generic "dragging" flag; scan follows the cursor
+      wtScanTo(e.clientX);
+      return;
+    }
     if (granular) {
       // 'end' = resize (right edge), 'start' = move (left edge / band). Pick the
       // nearer edge; the right edge wins only when it's the closer of the two.
@@ -465,6 +527,10 @@ export function Waveform({
     }
     if (!dragRef.current) return;
     const frac = xToFrac(e.clientX);
+    if (wtMode) {
+      wtScanTo(e.clientX);
+      return;
+    }
     if (granular) {
       if (dragRef.current === 'end') onGranularGrain?.(fracToGrainMs(frac - granular.position));
       else onGranularPosition?.(frac);

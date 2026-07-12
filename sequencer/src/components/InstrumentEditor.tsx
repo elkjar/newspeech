@@ -23,12 +23,15 @@ import {
   DEFAULT_ENV_MOD,
   DEFAULT_LFO_MOD,
   DEFAULT_GRANULAR,
+  DEFAULT_WAVETABLE,
+  WT_WINDOW_SIZES,
   type LoopMode,
   type FilterType,
   type Playmode,
   type GranularEdit,
   type GrainShape,
   type GrainDir,
+  type WavetableEdit,
   type VoiceEdit,
 } from '../instruments/voiceEditsStore';
 import { useSequencerStore, type Track } from '../state/store';
@@ -36,7 +39,7 @@ import { ModEnvSection, ModLfoSection, ModHeader, type DepthCfg } from './ModSec
 import { voiceLabel } from '../audio/voices';
 import { saveVoiceInline, saveVoiceAs, voiceIsSaveable } from '../instruments/saveInstrument';
 import { monitorNote, monitorRelease } from '../audio/monitor';
-import { setMonitorVoice, getMonitorPlayhead } from '../audio/nativeEngine';
+import { setMonitorVoice, getMonitorPlayhead, getMonitorWtScan } from '../audio/nativeEngine';
 import { Waveform } from './Waveform';
 import { EnvelopeGraph } from './EnvelopeGraph';
 import { Knob } from './Knob';
@@ -120,6 +123,10 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const [saveAsName, setSaveAsName] = useState('');
   const [exportState, setExportState] = useState<'idle' | 'working' | 'ok' | 'err'>('idle');
   const [playhead, setPlayhead] = useState<number | null>(null);
+  // Live wavetable scan (0..1) from the engine while previewing — reflects the
+  // continuous wtPos LFO + automation, so the visualizer shows the swept window.
+  // null = not previewing a wavetable voice → the visualizer uses the set position.
+  const [wtLiveScan, setWtLiveScan] = useState<number | null>(null);
   const [durationSecs, setDurationSecs] = useState(0);
   const previewId = useRef(0);
   const pollRef = useRef<number | null>(null);
@@ -156,6 +163,14 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
       1,
     ) *
       999;
+  // Wavetable scan position as a global-LFO destination (per-note drift), same
+  // pattern as grain position. Drives the visualizer's zoomed window live.
+  const wtPosRouted = useRoutedLFOs(track?.id ?? '', 'wtPosition');
+  const modWtPos = useLFOValue(
+    edit?.wavetable?.position ?? DEFAULT_WAVETABLE.position,
+    wtPosRouted,
+    1,
+  );
 
   const stopPreview = () => {
     if (previewId.current && previewTrack.current) {
@@ -170,6 +185,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
     }
     previewTrack.current = null;
     setPlayhead(null);
+    setWtLiveScan(null);
     void setMonitorVoice(0);
   };
 
@@ -250,6 +266,34 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
     setVoiceEdit(voiceId, { granular: { ...granular, ...patch } });
   const granPosLfo = edit?.granPosLfo ?? DEFAULT_LFO_MOD;
   const granPosEnv = edit?.granPosEnv ?? DEFAULT_ENV_MOD;
+  // Wavetable (Phase D). wtPos* are the wavetable-position automation (a
+  // contextual 5th modulation column, shown only in wavetable mode).
+  const wavetable = { ...DEFAULT_WAVETABLE, ...(edit?.wavetable ?? {}) };
+  const isWt = playmode === 'wavetable';
+  const setWavetable = (patch: Partial<WavetableEdit>) =>
+    setVoiceEdit(voiceId, { wavetable: { ...wavetable, ...patch } });
+  const wtPosLfo = edit?.wtPosLfo ?? DEFAULT_LFO_MOD;
+  const wtPosEnv = edit?.wtPosEnv ?? DEFAULT_ENV_MOD;
+  // Window count + the current window INDEX. The scan position is a hard window
+  // number (Tracker-style: window 1 = frames [0, windowSize), window 2 =
+  // [windowSize, 2·windowSize), …), so the position control snaps to whole
+  // windows. Count ≈ decoded frames / windowSize (frames ≈ duration × 44.1k, the
+  // decode rate; the engine recomputes exactly against the sample's own frames).
+  const wtWindowCount =
+    durationSecs > 0
+      ? Math.max(1, Math.floor((durationSecs * 44100) / wavetable.windowSize))
+      : 1;
+  // Effective scan the visualizer shows: the engine's LIVE scan while previewing
+  // (reflects the continuous LFO + automation), else the LFO-modulated set
+  // position. The displayed window index tracks it so the readout matches the
+  // zoomed view.
+  const wtEffPos = wtLiveScan ?? modWtPos;
+  const wtIndex =
+    wtWindowCount > 1 ? Math.round(wtEffPos * (wtWindowCount - 1)) : 0;
+  const setWtWindow = (idx: number) =>
+    setWavetable({
+      position: wtWindowCount > 1 ? Math.max(0, Math.min(1, idx / (wtWindowCount - 1))) : 0,
+    });
 
   // The cutoff LFO/env modulate the filter cutoff, so they do nothing while the
   // filter is off — interacting with either switches it on (to LP).
@@ -291,6 +335,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const panMx = setMutex('panLfo', panLfo, 'panEnv', panEnv);
   const pitchMx = setMutex('pitchLfo', pitchLfo, 'pitchEnv', pitchEnv);
   const granMx = setMutex('granPosLfo', granPosLfo, 'granPosEnv', granPosEnv);
+  const wtMx = setMutex('wtPosLfo', wtPosLfo, 'wtPosEnv', wtPosEnv);
 
   const startPreview = () => {
     const id = ++previewId.current;
@@ -300,6 +345,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
     if (pollRef.current != null) window.clearInterval(pollRef.current);
     pollRef.current = window.setInterval(() => {
       void getMonitorPlayhead().then((p) => setPlayhead(p >= 0 ? p : null));
+      void getMonitorWtScan().then((s) => setWtLiveScan(s >= 0 ? s : null));
     }, PLAYHEAD_POLL_MS);
   };
   const doExport = async () => {
@@ -364,6 +410,13 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
           slices={isSlice ? slices : null}
           onSlicesChange={(s) => setVoiceEdit(voiceId, { slices: s })}
           onSlicePreview={previewSlice}
+          wavetable={
+            isWt ? { position: wtEffPos, windowFrames: wavetable.windowSize } : null
+          }
+          onWavetablePosition={(p) => {
+            markManualOverride(track.id, 'wtPosition');
+            setWavetable({ position: p });
+          }}
           onDuration={setDurationSecs}
         />
         <div
@@ -377,6 +430,19 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             {durationSecs > 0
               ? `${(modGrainPos * durationSecs).toFixed(3)}s`
               : `${(modGrainPos * 100).toFixed(0)}%`}
+          </span>
+        </div>
+        <div
+          className={`flex justify-between text-[9px] uppercase tracking-widest tabular-nums px-1 -mt-2 ${
+            isWt ? 'text-white/40' : 'hidden'
+          }`}
+        >
+          <span>
+            window {wavetable.windowSize}f · {wtWindowCount} win
+          </span>
+          <span>
+            win {wtIndex + 1} · smp {wtIndex * wavetable.windowSize + 1}–
+            {(wtIndex + 1) * wavetable.windowSize}
           </span>
         </div>
       </div>
@@ -628,6 +694,60 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             </LabeledStack>
           </>
         )}
+        {/* wavetable mode: window-size selector · scan position (LFO-bindable) +
+            morph toggle. The played note sets the pitch; position picks the
+            window (a hard window index); the wtPos automation (automation tab) +
+            a routed LFO sweep it continuously through held notes. */}
+        {isWt && (
+          <>
+            <LabeledStack label="window">
+              <div className="grid grid-cols-2 gap-1 items-stretch">
+                {WT_WINDOW_SIZES.map((w) => (
+                  <SegButton
+                    key={w}
+                    active={wavetable.windowSize === w}
+                    onClick={() => setWavetable({ windowSize: w })}
+                  >
+                    {w}
+                  </SegButton>
+                ))}
+              </div>
+            </LabeledStack>
+            <Divider />
+            <LabeledStack label="scan">
+              <div className="flex items-start gap-2">
+                <LfoBindKnob
+                  trackId={track.id}
+                  knob="wtPosition"
+                  label="position"
+                  value={wavetable.position}
+                  display={(v) =>
+                    `win ${(wtWindowCount > 1 ? Math.round(v * (wtWindowCount - 1)) : 0) + 1}/${wtWindowCount}`
+                  }
+                  onChange={(v) => setWtWindow(Math.round(v * (wtWindowCount - 1)))}
+                />
+                <div className="flex flex-col gap-1 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setWavetable({ morph: !wavetable.morph })}
+                    className="text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-colors select-none whitespace-nowrap text-left"
+                    title="crossfade adjacent windows on sweep (on) vs stepped window switch (off)"
+                  >
+                    {wavetable.morph ? '●' : '○'} morph
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWavetable({ smooth: !wavetable.smooth })}
+                    className="text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-colors select-none whitespace-nowrap text-left"
+                    title="wavetable smoother — reads a per-window smoothed copy so arbitrary samples stop crunching (like the Tracker's smoother tool); off keeps the raw table"
+                  >
+                    {wavetable.smooth ? '●' : '○'} smooth
+                  </button>
+                </div>
+              </div>
+            </LabeledStack>
+          </>
+        )}
       </div>
     </div>
   );
@@ -735,6 +855,27 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
               depthCfg={DEPTH_UNIT}
               compact
               onChange={(p) => granMx.env(p)}
+            />
+          </div>
+        )}
+
+        {/* WT POSITION — contextual: wavetable mode only (.pti automations[3]) */}
+        {isWt && (
+          <div className="flex-1 min-w-0">
+            <ModLfoSection
+              label="wt pos lfo"
+              value={wtPosLfo}
+              depthCfg={DEPTH_UNIT}
+              bpm={bpm}
+              compact
+              onChange={(p) => wtMx.lfo(p)}
+            />
+            <ModEnvSection
+              label="wt pos env"
+              value={wtPosEnv}
+              depthCfg={DEPTH_UNIT}
+              compact
+              onChange={(p) => wtMx.env(p)}
             />
           </div>
         )}
@@ -1022,11 +1163,11 @@ function gridSlices(n: number): number[] {
 }
 
 // Playmode selector — same segmented-tab visual as the main screen tabs.
-// sample + granular are live; slice + wavetable are scaffolded (disabled).
+// sample / slice / wavetable / granular are all live.
 const PLAYMODES: { id: Playmode; label: string; ready: boolean }[] = [
   { id: 'sample', label: 'sample', ready: true },
   { id: 'slice', label: 'slice', ready: true },
-  { id: 'wavetable', label: 'wavetable', ready: false },
+  { id: 'wavetable', label: 'wavetable', ready: true },
   { id: 'granular', label: 'granular', ready: true },
 ];
 

@@ -11,6 +11,7 @@ import {
   voiceBitDepth,
   voiceMods,
   voiceGranular,
+  voiceWavetable,
   voiceSlices,
   type ModSpec,
 } from '../instruments/voiceEditsStore';
@@ -130,6 +131,14 @@ class SamplePlayer {
       direction: number;
       spray: number;
     };
+    wavetable: {
+      on: boolean;
+      windowFrames: number;
+      position: number;
+      morph: boolean;
+      smooth: boolean; // engine bakes + reads a smoothed table copy
+      hz: number; // played note's fundamental (single-cycle osc pitch)
+    };
   } | null {
     const data = this.voices.get(voice);
     if (!data || data.banks.length === 0) return null;
@@ -219,6 +228,25 @@ class SamplePlayer {
       const lenNorm = (granular.grainMs - 1) / 999;
       granular.grainMs = 1 + modulated(lenNorm, lfos, trackId, 'grainLength') * 999;
     }
+    // Wavetable (Phase D). on=false leaves normal sample playback. The played
+    // note sets the oscillator pitch (single-cycle osc) — a fundamental in Hz,
+    // window-size-independent. No note (drum-row trigger) → fall back to the
+    // scene root so a wavetable voice still sounds on the rhythm side.
+    const wt = voiceWavetable(voice);
+    const wtNote = midiNote ?? useSequencerStore.getState().rootNote;
+    // NOTE: the global app-LFO on wtPosition is applied CONTINUOUSLY in the
+    // engine (TrackWtPosition dest → per-track wt_pos_mod, added to the voice's
+    // scan every frame), NOT sampled per-note here — so it sweeps the window
+    // through a held note like an oscillator. We send the static base position;
+    // the engine folds in the LFO + the per-instrument wtPos automation.
+    const wavetable = {
+      on: wt.on,
+      windowFrames: wt.windowSize,
+      position: wt.position,
+      morph: wt.morph,
+      smooth: wt.smooth,
+      hz: 440 * Math.pow(2, (wtNote - 69) / 12),
+    };
     return {
       path,
       pitch,
@@ -238,6 +266,7 @@ class SamplePlayer {
       lfoDepth: lfo.depth,
       mods: voiceMods(voice),
       granular,
+      wavetable,
     };
   }
 

@@ -162,6 +162,99 @@ fn samples_registry() -> &'static Mutex<HashMap<String, Arc<SampleData>>> {
   SAMPLES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+// --- wavetable smoother ---
+// App-side equivalent of the Tracker's "Wavetable Smoother" tool. Arbitrary
+// (non-wavetable-formatted) samples looped as single cycles are intrinsically
+// crunchy — transient-dense windows read as rough buzz (measured 2026-07-12:
+// read-delta bursts >0.1 FS whenever the scan sat in a pad's attack region).
+// A voice triggering with wt_on + wt_smooth reads a BAKED variant instead:
+// each windowFrames slice is treated as one cycle and smoothed with a
+// CIRCULAR triangular kernel (two passes of a circular moving average, total
+// width ~wf/16 → keeps roughly the first 16 harmonics). Periodic filtering
+// makes every cycle exactly loop-continuous AND rounds intra-window
+// transients — the two things arbitrary samples lack. Each window is then
+// RMS-matched to its source (makeup capped 4×) so the table keeps its level
+// contour without near-silent windows blowing up. Bakes run on the COMMAND
+// thread (never the audio thread), once per (sample identity, window size);
+// the source sample in the registry is untouched.
+fn wavetable_smoothed(src: &Arc<SampleData>, window_frames: f32) -> Arc<SampleData> {
+  static CACHE: OnceLock<Mutex<HashMap<(usize, usize, u32), Arc<SampleData>>>> =
+    OnceLock::new();
+  let fc = src.frame_count();
+  let wf = (window_frames.max(2.0) as f64).min((fc as f64 - 2.0).max(2.0)) as usize;
+  if wf < 8 || fc < wf {
+    return src.clone();
+  }
+  // Key on Arc identity + length: registry reloads at a recycled address
+  // with a different frame count can't alias.
+  let key = (Arc::as_ptr(src) as usize, src.frames.len(), wf as u32);
+  let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+  if let Some(hit) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
+    return hit;
+  }
+  let ch = src.channels.max(1) as usize;
+  let window_count = fc / wf;
+  let mut frames = src.frames.clone();
+  // Half-width per pass; 2 passes ≈ triangle of ~wf/4 → keeps only the first
+  // ~4 harmonics of each cycle. Deliberately STRONG (Chris 2026-07-12: "the
+  // source really doesn't matter, smooth it to whatever works") — the toggle
+  // turns any material into a soft, oscillator-like tone that cannot rasp,
+  // especially at the small windows (128/256) he actually plays.
+  let h = (wf / 16).max(1);
+  let len = (2 * h + 1) as f64;
+  let mut cyc = vec![0.0f32; wf];
+  let mut tmp = vec![0.0f32; wf];
+  let mut prefix = vec![0.0f64; wf + 1];
+  for w in 0..window_count {
+    let base = w * wf;
+    for c in 0..ch {
+      for i in 0..wf {
+        cyc[i] = frames[(base + i) * ch + c];
+      }
+      let in_sq: f64 = cyc.iter().map(|v| (*v as f64) * (*v as f64)).sum();
+      for _pass in 0..2 {
+        prefix[0] = 0.0;
+        for i in 0..wf {
+          prefix[i + 1] = prefix[i] + cyc[i] as f64;
+        }
+        let total = prefix[wf];
+        for i in 0..wf {
+          let a = i as isize - h as isize;
+          let b = i as isize + h as isize;
+          let sum = if a >= 0 && (b as usize) < wf {
+            prefix[b as usize + 1] - prefix[a as usize]
+          } else {
+            // kernel wraps the cycle boundary: tail of the cycle + head
+            let a_m = a.rem_euclid(wf as isize) as usize;
+            let b_m = b.rem_euclid(wf as isize) as usize;
+            (total - prefix[a_m]) + prefix[b_m + 1]
+          };
+          tmp[i] = (sum / len) as f32;
+        }
+        std::mem::swap(&mut cyc, &mut tmp);
+      }
+      let out_sq: f64 = cyc.iter().map(|v| (*v as f64) * (*v as f64)).sum();
+      let g = if out_sq > 1e-12 {
+        ((in_sq / out_sq).sqrt() as f32).min(4.0)
+      } else {
+        1.0
+      };
+      for i in 0..wf {
+        frames[(base + i) * ch + c] = cyc[i] * g;
+      }
+    }
+  }
+  let baked = Arc::new(SampleData {
+    channels: src.channels,
+    sample_rate: src.sample_rate,
+    frames,
+  });
+  if let Ok(mut c) = cache.lock() {
+    c.insert(key, baked.clone());
+  }
+  baked
+}
+
 fn load_wav(path: &str) -> Result<SampleData, String> {
   let reader = hound::WavReader::open(Path::new(path))
     .map_err(|e| format!("open wav: {}", e))?;
@@ -271,6 +364,12 @@ pub struct TrackParams {
   tune_mod_semis: AtomicU32,
   finetune_base_norm: AtomicU32,
   finetune_mod_semis: AtomicU32,
+  // Continuous wavetable-scan modulation (TrackWtPosition LFO dest). A bipolar
+  // deviation (0 = no LFO) added to the wavetable voice's scan position EVERY
+  // frame, so a routed LFO sweeps the window through a held note — the global
+  // LFO on wtPosition behaves like an oscillator's wavetable-position mod, not a
+  // per-note snapshot. Reset to 0 in the snap-back pass.
+  wt_pos_mod: AtomicU32,
   // Stem-recording slot (1-based track index; 0 = not captured). Set per
   // track when a stems recording arms (start_recording_stems); voices
   // snapshot it at creation into Voice.rec_track so the per-track dry tap
@@ -312,6 +411,7 @@ impl TrackParams {
       tune_mod_semis: AtomicU32::new(0.0_f32.to_bits()),
       finetune_base_norm: AtomicU32::new(0.5_f32.to_bits()),
       finetune_mod_semis: AtomicU32::new(0.0_f32.to_bits()),
+      wt_pos_mod: AtomicU32::new(0.0_f32.to_bits()),
       rec_track: AtomicU32::new(0),
     }
   }
@@ -364,6 +464,9 @@ impl TrackParams {
   }
   fn finetune_mod_semis(&self) -> f32 {
     f32::from_bits(self.finetune_mod_semis.load(Ordering::Relaxed))
+  }
+  fn wt_pos_mod(&self) -> f32 {
+    f32::from_bits(self.wt_pos_mod.load(Ordering::Relaxed))
   }
   // IPC writes the user-knob value to base AND the post-mapping/post-no-mod
   // value to effective. When an LFO is later routed, the audio thread
@@ -442,6 +545,11 @@ impl TrackParams {
   }
   fn write_finetune_mod_semis(&self, v: f32) {
     self.finetune_mod_semis.store(v.to_bits(), Ordering::Release);
+  }
+  // Wavetable-scan deviation writer (audio thread / LFO compute). Bipolar
+  // fraction added to the voice's scan (0 = no LFO).
+  fn write_wt_pos_mod(&self, v: f32) {
+    self.wt_pos_mod.store(v.to_bits(), Ordering::Release);
   }
 }
 
@@ -1646,11 +1754,19 @@ fn lfo_eval(shape: u8, phase: f32, rand_val: f32) -> f32 {
 
 // Number of generic modulator slots (editor B2 full grid). Fixed roles, agreed
 // with the JS MOD_SLOT map: 0 vol-LFO (tremolo) · 1 pan-env · 2 pan-LFO ·
-// 3 cutoff-env · 4 pitch-env · 5 pitch-LFO · 6 granPos-LFO · 7 granPos-env.
-// (Vol-env = the amp envelope and cutoff-LFO = the bespoke filter LFO live
-// outside this array; slots 6/7 sweep the granular read position, granular
-// playmode only.)
-const MOD_SLOTS: usize = 8;
+// 3 cutoff-env · 4 pitch-env · 5 pitch-LFO · 6 granPos-LFO · 7 granPos-env ·
+// 8 wtPos-LFO · 9 wtPos-env. (Vol-env = the amp envelope and cutoff-LFO = the
+// bespoke filter LFO live outside this array; slots 6/7 sweep the granular read
+// position, granular playmode only; slots 8/9 sweep the wavetable scan position,
+// wavetable playmode only.)
+const MOD_SLOTS: usize = 10;
+
+// Wavetable single-cycle loop-seam crossfade length, as a fraction of the window
+// (one cycle). Smooths the wrap discontinuity that otherwise clicks at the
+// fundamental. Bigger = smoother/cleaner but blends more of the neighbouring
+// window into each cycle (more timbral coloration); smaller = brighter but the
+// seam click returns. 0.15 = a gentle round-off.
+const WT_SEAM_FRAC: f64 = 0.15;
 
 // Grain window envelope (granular playmode, editor Phase C). Shapes one grain
 // over its phase 0..1: square (flat with short raised-cosine edges to declick
@@ -3110,6 +3226,7 @@ pub enum LfoDestKind {
   TrackDelaySend,
   TrackTune,
   TrackFineTune,
+  TrackWtPosition,
   ReverbSize,
   ReverbMix,
   ReverbDiffusion,
@@ -3141,7 +3258,8 @@ impl LfoDestKind {
         | LfoDestKind::TrackReverbSend
         | LfoDestKind::TrackDelaySend
         | LfoDestKind::TrackTune
-        | LfoDestKind::TrackFineTune,
+        | LfoDestKind::TrackFineTune
+        | LfoDestKind::TrackWtPosition,
     )
   }
 }
@@ -3264,6 +3382,7 @@ fn install_lfo_snapshot(lfos: Vec<LfoIpc>) {
       // than to a base — the static tune already lives in each voice's rate.
       params.write_tune_mod_semis(0.0);
       params.write_finetune_mod_semis(0.0);
+      params.write_wt_pos_mod(0.0);
     }
   }
 
@@ -3441,6 +3560,11 @@ static PENDING_TRIGGER_DROPS: std::sync::atomic::AtomicU32 =
 static MONITOR_NOTE_ID: std::sync::atomic::AtomicU64 =
   std::sync::atomic::AtomicU64::new(0);
 static MONITOR_POS: AtomicU32 = AtomicU32::new(0); // f32 bits; <0 = none
+// Live wavetable scan (0..1) of the monitored voice — the resolved scan position
+// INCLUDING self-morph deviation + wtPos automation, so the editor's zoomed
+// visualizer can track what the engine is actually reading (deviation is
+// engine-only; the JS side can't recompute it). f32 bits; <0 = none/not wt.
+static MONITOR_WT_SCAN: AtomicU32 = AtomicU32::new(0);
 
 // Loop-seam crossfade length. fwd/bwd loops jump from play_end→play_start
 // (or vice-versa), so the waveform is discontinuous at the seam and clicks
@@ -3635,6 +3759,40 @@ struct Voice {
   // PRNG so the scatter doesn't perturb the cutoff-LFO's random sequence.
   gran_spray: f32,
   gran_rng: u32,
+  // Wavetable (editor Phase D). When wt_on, the voice is a single-cycle
+  // oscillator: the sample is a bank of `wt_window_frames`-frame windows (each
+  // one cycle), the played note `wt_hz` sets the pitch (phase advances
+  // wt_window_frames·wt_hz/sr per output sample, wrapping at one window), and
+  // `wt_pos_norm` (+ the wtPos mods, slots 8/9) scans which window is read.
+  // wt_morph crossfades the two nearest windows during a sweep; off = stepped.
+  // wt_phase is the in-window read position in frames (0..wt_window_frames).
+  wt_on: bool,
+  wt_window_frames: f64,
+  wt_pos_norm: f32,
+  wt_morph: bool,
+  wt_hz: f32,
+  wt_phase: f64,
+  // Per-frame smoothed TrackWtPosition deviation. The global LFO writes
+  // wt_pos_mod once per BLOCK (k-rate); adding it raw steps the scan at every
+  // block edge — a hard waveform jump (up to ~0.6 FS measured) per block on a
+  // swept voice, audible as intermittent crunch. One-pole smoothed (~4ms) the
+  // sweep glides instead. NaN = seed from the first block's value (so a voice
+  // triggered mid-sweep starts AT the LFO, no onset slew).
+  wt_track_scan: f64,
+  // Stepped (morph-off) read: the window playing the current cycle, and the
+  // seam's pending destination window. Re-picking the window per frame flips
+  // content mid-cycle whenever the scan moves — a hard splice. Instead the
+  // in-flight cycle keeps its window; the target is latched at seam entry,
+  // the tail crossfades toward ITS pre-start frames, and the switch lands
+  // sample-continuously on the phase wrap. -1 = latch from the live scan.
+  wt_wi_cur: f64,
+  wt_wi_next: f64,
+  // Wavetable smoother: v.sample is the BAKED variant (each window circularly
+  // smoothed + gain-matched independently). Baked windows are periodic and
+  // mutually discontinuous at their edges, so the read wraps WITHIN the
+  // window (circular Catmull, no seam, no AA box — content is pre-band-limited)
+  // and a stepped switch fades A(ph)→B(ph).
+  wt_smooth: bool,
 }
 
 impl Default for Voice {
@@ -3706,6 +3864,16 @@ impl Default for Voice {
       gran_base_latched: 0.0,
       gran_spray: 0.0,
       gran_rng: 0x1234_5678,
+      wt_on: false,
+      wt_window_frames: 2048.0,
+      wt_pos_norm: 0.0,
+      wt_morph: true,
+      wt_hz: 261.63,
+      wt_phase: 0.0,
+      wt_track_scan: f64::NAN,
+      wt_wi_cur: -1.0,
+      wt_wi_next: -1.0,
+      wt_smooth: false,
     }
   }
 }
@@ -3824,6 +3992,19 @@ enum MixerCommand {
     gran_shape: u8,
     gran_dir: u8,
     gran_spray: f32,
+    // Wavetable (editor Phase D). wt_on switches the voice to a single-cycle
+    // oscillator read-head: wt_window_frames source frames = one cycle, the
+    // played note (wt_hz) sets the pitch, position 0..1 scans the windows,
+    // morph crossfades adjacent windows on a sweep.
+    wt_on: bool,
+    wt_window_frames: f32,
+    wt_pos_norm: f32,
+    wt_morph: bool,
+    wt_hz: f32,
+    // Wavetable smoother: the sample Arc was already swapped for the baked
+    // (circularly-smoothed) variant on the command thread; the flag switches
+    // the voice to the circular in-window read (see the wt branch).
+    wt_smooth: bool,
   },
   StopAll,
   // Hard panic: stop every voice (like StopAll) AND clear the reverb + delay
@@ -4065,6 +4246,14 @@ struct PendingTrigger {
   gran_shape: u8,
   gran_dir: u8,
   gran_spray: f32,
+  // Wavetable (editor Phase D). wt_window_frames resolved (snapped, clamped) at
+  // queue time; wt_hz = played note fundamental.
+  wt_on: bool,
+  wt_window_frames: f64,
+  wt_pos_norm: f32,
+  wt_morph: bool,
+  wt_hz: f32,
+  wt_smooth: bool, // sample is the baked variant → circular in-window read
 }
 
 // --- shared state ---
@@ -4317,6 +4506,12 @@ impl AudioEngine {
     gran_shape: u8,
     gran_dir: u8,
     gran_spray: f32,
+    wt_on: bool,
+    wt_window_frames: f32,
+    wt_pos_norm: f32,
+    wt_morph: bool,
+    wt_hz: f32,
+    wt_smooth: bool,
   ) -> Result<(), String> {
     let sample = {
       let registry = samples_registry()
@@ -4326,6 +4521,14 @@ impl AudioEngine {
         .get(&path)
         .cloned()
         .ok_or_else(|| format!("sample not loaded: {}", path))?
+    };
+    // Wavetable smoother: swap in the baked variant (cached; first trigger
+    // per sample+window bakes on this command thread — the audio thread
+    // never sees anything but a normal Arc<SampleData>).
+    let sample = if wt_on && wt_smooth {
+      wavetable_smoothed(&sample, wt_window_frames)
+    } else {
+      sample
     };
     let track_params = track_id
       .as_deref()
@@ -4389,6 +4592,12 @@ impl AudioEngine {
       gran_shape,
       gran_dir,
       gran_spray,
+      wt_on,
+      wt_window_frames,
+      wt_pos_norm,
+      wt_morph,
+      wt_hz,
+      wt_smooth,
     };
     let mut guard = self
       .state
@@ -5573,6 +5782,18 @@ fn claim_voice_slot(
   v.gran_base_latched = (p.gran_pos_norm.clamp(0.0, 1.0) as f64) * (gran_fc - 2.0).max(0.0);
   v.gran_spray = p.gran_spray;
   v.gran_rng = 0x1234_5678 ^ (slot as u32).wrapping_mul(0x9e37_79b9);
+  // Wavetable: copy params and reset the in-window read phase to the start of
+  // the first cycle.
+  v.wt_on = p.wt_on;
+  v.wt_window_frames = p.wt_window_frames;
+  v.wt_pos_norm = p.wt_pos_norm;
+  v.wt_morph = p.wt_morph;
+  v.wt_hz = p.wt_hz;
+  v.wt_phase = 0.0;
+  v.wt_track_scan = f64::NAN; // seed from the first block's LFO value
+  v.wt_wi_cur = -1.0; // stepped mode latches from the live scan on first frame
+  v.wt_wi_next = -1.0;
+  v.wt_smooth = p.wt_smooth;
 }
 
 fn build_stream(
@@ -5982,6 +6203,18 @@ fn build_stream(
                   tp.write_finetune_mod_semis((modded - base) * 2.0);
                 }
               }
+              // Wavetable scan: a bipolar deviation around 0 (added to the
+              // voice's scan every frame). Swings around a 0.5 center. The raw
+              // swing (∝ depth) maps onto a big chunk of the table, so a little
+              // depth already crossed many windows — scale the swing by
+              // total_depth again (→ ∝ depth²) so low depths are gentle while
+              // full depth still reaches ±half the table (a full-table sweep).
+              LfoDestKind::TrackWtPosition => {
+                if let Some(tp) = group.track_params.as_ref() {
+                  let modded = apply_lfo(0.5, total_depth, out);
+                  tp.write_wt_pos_mod((modded - 0.5) * total_depth);
+                }
+              }
               LfoDestKind::ReverbSize => {
                 let r = reverb_state();
                 r.write_size_eff(apply_lfo(r.size_base(), total_depth, out));
@@ -6158,6 +6391,12 @@ fn build_stream(
               gran_shape,
               gran_dir,
               gran_spray,
+              wt_on,
+              wt_window_frames,
+              wt_pos_norm,
+              wt_morph,
+              wt_hz,
+              wt_smooth,
             } => {
               let pan_clamped = pan.clamp(-1.0, 1.0);
               let angle =
@@ -6218,6 +6457,12 @@ fn build_stream(
               let gran_grain_frames = ((gran_grain_ms.max(1.0) as f64) * 0.001
                 * device_sr_f64)
                 .clamp(2.0, (fc - 2.0).max(2.0));
+              // Wavetable: clamp the window to [2, sample length] frames. A
+              // window larger than the sample yields a single-window table (one
+              // fixed cycle), which is fine. Device rate is irrelevant here — the
+              // window is a frame count, and pitch comes from wt_hz.
+              let wt_window_frames =
+                (wt_window_frames.max(2.0) as f64).min((fc - 2.0).max(2.0));
               // Resolve the firing deadline to an absolute engine frame.
               // 0 = immediate (claim below); relative delays anchor to
               // THIS block's start so they keep their old semantics.
@@ -6271,6 +6516,12 @@ fn build_stream(
                 gran_shape,
                 gran_dir,
                 gran_spray: gran_spray.clamp(0.0, 1.0),
+                wt_on,
+                wt_window_frames,
+                wt_pos_norm: wt_pos_norm.clamp(0.0, 1.0),
+                wt_morph,
+                wt_hz: wt_hz.max(0.0),
+                wt_smooth,
               };
               if pending.target_frame == 0 {
                 claim_voice_slot(
@@ -6930,6 +7181,73 @@ fn build_stream(
               (l, r)
             }
           };
+          // Anti-aliased read: a box-average of `n` source frames centred on
+          // `p`. Used by the wavetable oscillator when it DOWNSAMPLES — a big
+          // window read as one cycle steps many source frames per output sample
+          // (e.g. a 2048-frame window at C3 ≈ 5.5 frames/sample), so point
+          // sampling aliases the window content into broadband crunch. Averaging
+          // ~`step` frames is a cheap box low-pass that kills most of it. n<=1
+          // falls back to the interpolating read (upsampling / near-unity).
+          let read_avg = |p: f64, n: usize| -> (f32, f32) {
+            if n <= 1 {
+              return read_at(p);
+            }
+            // CONTINUOUS box average: the window edges get fractional weights,
+            // so the average slides smoothly with `p`. The previous version
+            // truncated the bounds to integers — as the read head strided,
+            // whole frames popped in/out of the average, stepping the output
+            // by ~|frame|/n at content-dependent positions (measured ≈0.1 FS
+            // on hot pad material ≈100/s — the residual wavetable "crunch",
+            // random-feeling because it tracks content, not notes or blocks).
+            let half = n as f64 * 0.5;
+            let lo = (p - half).max(0.0);
+            let hi = (p + half).min(frame_count.saturating_sub(1) as f64);
+            if hi - lo < 1.0 {
+              return read_at(p);
+            }
+            let i0 = lo.ceil() as usize; // first fully-covered frame
+            let i1 = (hi.floor() as usize).min(frame_count.saturating_sub(1));
+            let mut suml = 0.0f32;
+            let mut sumr = 0.0f32;
+            let mut weight = (i1 + 1 - i0) as f32;
+            for i in i0..=i1 {
+              if sample_channels == 1 {
+                let s = frames_slice[i];
+                suml += s;
+                sumr += s;
+              } else {
+                suml += frames_slice[i * 2];
+                sumr += frames_slice[i * 2 + 1];
+              }
+            }
+            let wl = (i0 as f64 - lo) as f32; // partial coverage of frame i0-1
+            if wl > 0.0 && i0 >= 1 {
+              let i = i0 - 1;
+              if sample_channels == 1 {
+                let s = frames_slice[i] * wl;
+                suml += s;
+                sumr += s;
+              } else {
+                suml += frames_slice[i * 2] * wl;
+                sumr += frames_slice[i * 2 + 1] * wl;
+              }
+              weight += wl;
+            }
+            let wr = (hi - i1 as f64) as f32; // partial coverage of frame i1+1
+            if wr > 0.0 && i1 + 1 < frame_count {
+              let i = i1 + 1;
+              if sample_channels == 1 {
+                let s = frames_slice[i] * wr;
+                suml += s;
+                sumr += s;
+              } else {
+                suml += frames_slice[i * 2] * wr;
+                sumr += frames_slice[i * 2 + 1] * wr;
+              }
+              weight += wr;
+            }
+            (suml / weight, sumr / weight)
+          };
           // Per-track tuning LFO deviation (semitones), read once per block —
           // it's k-rate (the LFO compute writes it once per block). Folded into
           // the per-frame pitch_factor below alongside the mod-grid pitch. A
@@ -6942,6 +7260,21 @@ fn build_stream(
               .map(|p| p.tune_mod_semis() + p.finetune_mod_semis())
               .unwrap_or(0.0)
           };
+          // Continuous wavetable-scan deviation from a routed global LFO
+          // (TrackWtPosition). k-rate (LFO compute updates it per block); added
+          // to the wt voice's scan below so the window sweeps through held notes.
+          // Frozen (swap-caught) voices keep their scan — no incoming-LFO retune.
+          let track_wtpos: f32 = if v.frozen_params.is_some() {
+            0.0
+          } else {
+            track_params_ref.map(|p| p.wt_pos_mod()).unwrap_or(0.0)
+          };
+          // One-pole coefficient (~4ms time constant) for the per-frame
+          // smoothing of track_wtpos inside the wt read: the LFO compute lands
+          // once per block, and adding the step raw jumps the scan at every
+          // block edge. Computed once per block (exp is off the per-sample path).
+          let wt_track_k: f64 =
+            1.0 - (-1.0_f64 / (0.004 * (sr_f32 as f64).max(1.0))).exp();
           // Loop geometry is constant across the block. xf = seam crossfade
           // length, capped at half the span so short loops still blend.
           let span = v.play_end - v.play_start;
@@ -6989,6 +7322,17 @@ fn build_stream(
               0.0
             };
             let mod_granpos = granpos_lfo + v.mods[7].value(mod_elapsed, mod_hold);
+            // Wavetable-position offset (slots 8/9). Same unipolar-forward
+            // shaping as granular position: the LFO is remapped to a 0..1 sweep
+            // × depth so it scans the table forward from the set position; the
+            // envelope (slot 9) is already a positive ramp.
+            let wtpos_lfo = if v.mods[8].on {
+              ((lfo_eval(v.mods[8].shape, v.mods[8].phase, v.mods[8].rand) + 1.0) * 0.5)
+                * v.mods[8].depth
+            } else {
+              0.0
+            };
+            let mod_wtpos = wtpos_lfo + v.mods[9].value(mod_elapsed, mod_hold);
             // Pan modulation: recompute equal-power gains around the base pan.
             if mod_pan != 0.0 {
               let pan_eff = (v.pan_base + mod_pan).clamp(-1.0, 1.0);
@@ -7005,7 +7349,193 @@ fn build_stream(
             // ring until the envelope/note-off/voice-steal stops them).
             let pos;
             let (mut ls, mut rs);
-            if v.gran_on {
+            if v.wt_on {
+              // Wavetable: single-cycle oscillator. The sample is a bank of
+              // `wf`-frame windows (each one cycle); the played note (wt_hz) sets
+              // the pitch by advancing the in-window phase wf·hz/sr per output
+              // sample (one window = one cycle), and the scan position (+ the
+              // wtPos mods, slots 8/9) picks which window is read. `morph`
+              // crossfades the two nearest windows so a sweep glides; off snaps
+              // to the nearest window. The scan doesn't advance with playback
+              // (it's a table lookup, not a read-through), so the voice never
+              // ends by position — it rings until the envelope / note-off / steal.
+              let wf = v.wt_window_frames.max(2.0);
+              let last = (frame_count as f64 - 2.0).max(0.0);
+              let window_count = (frame_count as f64 / wf).floor().max(1.0);
+              // Smooth the k-rate TrackWtPosition deviation per frame (one-pole,
+              // ~4ms). The global LFO writes wt_pos_mod once per BLOCK; added
+              // raw, a swept scan STEPS at every block edge — a hard waveform
+              // jump (up to ~0.6 FS, ~25-90/s measured offline) heard as
+              // intermittent crunch. Smoothed, the sweep glides through the
+              // table. A static scan is bit-identical: state == target from the
+              // seed on. (The instrument wtPos mods, slots 8/9, are already
+              // evaluated per frame — only the track write is k-rate.)
+              if v.wt_track_scan.is_nan() {
+                v.wt_track_scan = track_wtpos as f64;
+              }
+              v.wt_track_scan +=
+                (track_wtpos as f64 - v.wt_track_scan) * wt_track_k;
+              let scan = ((v.wt_pos_norm + mod_wtpos) as f64 + v.wt_track_scan)
+                .clamp(0.0, 1.0);
+              // Publish the live scan for the editor's visualizer when this is the
+              // monitored voice (so the zoomed window tracks deviation + automation).
+              if v.note_id != 0 && v.note_id == MONITOR_NOTE_ID.load(Ordering::Relaxed) {
+                MONITOR_WT_SCAN.store((scan as f32).to_bits(), Ordering::Relaxed);
+              }
+              let wpos = scan * (window_count - 1.0);
+              let ph = v.wt_phase.min(wf); // in-window read offset (frames)
+              // Crossfade between adjacent windows when morph is on: a moving
+              // scan (LFO / automation) read in stepped mode jumps a whole window
+              // at each boundary — a hard discontinuity that reads as roughness.
+              // Morph keeps every read at the same phase (pitch = wt_hz) and just
+              // blends waveform content, so a swept scan stays clean. Stepped
+              // (morph off) is the lo-fi character choice for a static window.
+              let smooth = v.wt_morph && window_count > 1.0;
+              // Frames the read head steps per output sample = wf·hz/sr. When
+              // > ~1 the window is DOWNSAMPLED (a big window crammed into one
+              // period), so box-average ~step frames to band-limit and kill the
+              // aliasing crunch; ≤1.5 uses the interpolating read (bright).
+              let step = wf * (v.wt_hz as f64) / (sr_f32 as f64).max(1.0);
+              let aa_n = if step > 1.5 {
+                (step.round() as usize).min(64)
+              } else {
+                1
+              };
+              // Read ONE cycle of window `base`, looped seamlessly. Looping a
+              // wf-frame slice wraps sample[base+wf-1] → sample[base] every
+              // cycle; those rarely match, so the raw wrap clicks at the
+              // fundamental — the buzzy "crunch" heard even on small windows.
+              // Fix = the loop-seam crossfade the regular loop path already uses:
+              // over the last `xf` frames, fade the window's tail into the frames
+              // just before it (base-xf..base), which are contiguous with base —
+              // so the wrap (base⁻ → base) is sample-continuous. Composes with the
+              // anti-alias read. Wider xf = smoother but more neighbour bleed.
+              let xf = (wf * WT_SEAM_FRAC).clamp(1.0, wf * 0.5);
+              // Baked (smoother) tables: each window is circularly smoothed +
+              // gain-matched INDEPENDENTLY, so windows are periodic but
+              // mutually discontinuous at their edges. Read with in-window
+              // WRAPPED Catmull — taps never cross into a neighbor, the wrap
+              // is exactly continuous, and the AA box is unnecessary (the
+              // bake band-limits to ~16 harmonics).
+              let wt_baked = v.wt_smooth;
+              let wf_u = (wf as usize).max(2);
+              let read_cycle_baked = |base: f64| -> (f32, f32) {
+                let b = base as usize;
+                let i0 = (ph.floor() as usize).min(wf_u - 1);
+                let frac = (ph - i0 as f64) as f32;
+                let i = i0 as isize;
+                let tap_idx = |j: isize| -> usize {
+                  let m = j.rem_euclid(wf_u as isize) as usize;
+                  (b + m).min(frame_count.saturating_sub(1))
+                };
+                if sample_channels == 1 {
+                  let s = catmull(
+                    frames_slice[tap_idx(i - 1)],
+                    frames_slice[tap_idx(i)],
+                    frames_slice[tap_idx(i + 1)],
+                    frames_slice[tap_idx(i + 2)],
+                    frac,
+                  );
+                  (s, s)
+                } else {
+                  let l = catmull(
+                    frames_slice[tap_idx(i - 1) * 2],
+                    frames_slice[tap_idx(i) * 2],
+                    frames_slice[tap_idx(i + 1) * 2],
+                    frames_slice[tap_idx(i + 2) * 2],
+                    frac,
+                  );
+                  let r = catmull(
+                    frames_slice[tap_idx(i - 1) * 2 + 1],
+                    frames_slice[tap_idx(i) * 2 + 1],
+                    frames_slice[tap_idx(i + 1) * 2 + 1],
+                    frames_slice[tap_idx(i + 2) * 2 + 1],
+                    frac,
+                  );
+                  (l, r)
+                }
+              };
+              // `seam_base` is the window whose START the wrap will land on:
+              // the same window for morph/static reads (today's behavior), the
+              // PENDING window in stepped mode so a window switch splices
+              // sample-continuously at the wrap instead of mid-cycle. Baked
+              // tables fade A(ph)→B(ph) instead — both circular, so the wrap
+              // lands exactly on B's continuation.
+              let read_cycle = |base: f64, seam_base: f64| -> (f32, f32) {
+                if wt_baked {
+                  let main = read_cycle_baked(base);
+                  if seam_base != base && ph > wf - xf {
+                    let t = ((ph - (wf - xf)) / xf) as f32;
+                    let seam = read_cycle_baked(seam_base);
+                    return (
+                      main.0 + (seam.0 - main.0) * t,
+                      main.1 + (seam.1 - main.1) * t,
+                    );
+                  }
+                  return main;
+                }
+                let main = read_avg((base + ph).clamp(0.0, last), aa_n);
+                if ph > wf - xf {
+                  let t = ((ph - (wf - xf)) / xf) as f32;
+                  let seam =
+                    read_avg((seam_base + ph - wf).clamp(0.0, last), aa_n);
+                  (main.0 + (seam.0 - main.0) * t, main.1 + (seam.1 - main.1) * t)
+                } else {
+                  main
+                }
+              };
+              let wi_target = wpos.round().min(window_count - 1.0);
+              if smooth {
+                let wi0 = wpos.floor();
+                let wi1 = (wi0 + 1.0).min(window_count - 1.0);
+                let t = (wpos - wi0) as f32;
+                let (l0, r0) = read_cycle(wi0 * wf, wi0 * wf);
+                let (l1, r1) = read_cycle(wi1 * wf, wi1 * wf);
+                ls = l0 + (l1 - l0) * t;
+                rs = r0 + (r1 - r0) * t;
+                pos = (wi0 * wf + ph).clamp(0.0, last);
+              } else {
+                // Stepped (morph off): the cycle in flight keeps ITS window —
+                // re-picking per frame flips content mid-cycle whenever the
+                // scan moves, a hard splice (the measured swept-scan clicks).
+                // The destination window is latched at seam ENTRY (a target
+                // that moves mid-blend also clicks), the tail crossfades
+                // toward the destination's pre-start frames, and the switch
+                // lands exactly on the phase wrap. Static scan: cur == next ==
+                // target, identical to the plain read.
+                if v.wt_wi_cur < 0.0 {
+                  v.wt_wi_cur = wi_target;
+                }
+                if ph > wf - xf && v.wt_wi_next < 0.0 {
+                  v.wt_wi_next = wi_target;
+                }
+                let seam_wi = if v.wt_wi_next >= 0.0 {
+                  v.wt_wi_next
+                } else {
+                  wi_target
+                };
+                let (l, r) = read_cycle(v.wt_wi_cur * wf, seam_wi * wf);
+                ls = l;
+                rs = r;
+                pos = (v.wt_wi_cur * wf + ph).clamp(0.0, last);
+              }
+              v.position = pos; // publish for the editor playhead readback
+              // Advance the single-cycle phase; wrap at one window. Higher notes
+              // sweep the window faster (higher pitch), matching an oscillator.
+              v.wt_phase += step;
+              if v.wt_phase >= wf {
+                v.wt_phase %= wf;
+                // The seam just faded the tail onto the pending window's start —
+                // promote it. No pending: track the live target so a stale
+                // window can't stick across cycles.
+                v.wt_wi_cur = if v.wt_wi_next >= 0.0 {
+                  v.wt_wi_next
+                } else {
+                  wi_target
+                };
+                v.wt_wi_next = -1.0;
+              }
+            } else if v.gran_on {
               // `gran_read` advances through the grain at the playback rate
               // (rate·pitch) and wraps at `grain_len` SOURCE frames, so the grain
               // RATE tracks pitch — higher notes fire grains faster, lower notes
@@ -7269,7 +7799,7 @@ fn build_stream(
               // wrap / grain repeat is continuous and a fade there would dip).
               // Forward one-shot (0) heads for play_end; reverse one-shot (4)
               // reads backward, so its end is play_start.
-              let to_end = if !v.gran_on && (v.loop_mode == 0 || v.loop_mode == 4) {
+              let to_end = if !v.gran_on && !v.wt_on && (v.loop_mode == 0 || v.loop_mode == 4) {
                 let frames = if v.loop_mode == 4 {
                   pos - v.play_start
                 } else {
@@ -7418,8 +7948,9 @@ fn build_stream(
             }
             // Granular advances its own in-grain read head above; the base
             // position is mod-swept, not playback-advanced, so skip the normal
-            // position advance for granular voices.
-            if !v.gran_on {
+            // position advance for granular voices. Wavetable likewise scans by
+            // position (its phase advances in the branch above), not read-through.
+            if !v.gran_on && !v.wt_on {
               v.position += v.rate * pitch_factor * v.play_dir;
             }
             // Advance the rate glide (portamento) one frame. Linear ramp of
@@ -8672,6 +9203,13 @@ pub struct TriggerSpec {
   pub gran_shape: Option<u8>,
   pub gran_dir: Option<u8>,
   pub gran_spray: Option<f32>,
+  pub wt_on: Option<bool>,
+  pub wt_window_frames: Option<f32>,
+  pub wt_pos_norm: Option<f32>,
+  pub wt_morph: Option<bool>,
+  pub wt_hz: Option<f32>,
+  // Wavetable smoother (Tracker parity tool): bake + read a smoothed copy.
+  pub wt_smooth: Option<bool>,
 }
 
 // Resolve a TriggerSpec's defaults and queue it on the mixer ring.
@@ -8728,6 +9266,12 @@ fn queue_trigger(spec: TriggerSpec) -> Result<(), String> {
     spec.gran_shape.unwrap_or(0),
     spec.gran_dir.unwrap_or(0),
     spec.gran_spray.unwrap_or(0.0),
+    spec.wt_on.unwrap_or(false),
+    spec.wt_window_frames.unwrap_or(2048.0),
+    spec.wt_pos_norm.unwrap_or(0.0),
+    spec.wt_morph.unwrap_or(true),
+    spec.wt_hz.unwrap_or(261.63),
+    spec.wt_smooth.unwrap_or(false),
   )
 }
 
@@ -8768,6 +9312,12 @@ pub fn audio_set_monitor_voice(note_id: u64) {
   MONITOR_NOTE_ID.store(note_id, Ordering::Relaxed);
   if note_id == 0 {
     MONITOR_POS.store((-1.0_f32).to_bits(), Ordering::Relaxed);
+    MONITOR_WT_SCAN.store((-1.0_f32).to_bits(), Ordering::Relaxed);
+  } else {
+    // Reset the wt scan to "none" until the (possibly wt) voice publishes one —
+    // so a non-wt monitored voice leaves it negative and the editor falls back
+    // to the set position rather than reading a stale scan.
+    MONITOR_WT_SCAN.store((-1.0_f32).to_bits(), Ordering::Relaxed);
   }
 }
 
@@ -8776,6 +9326,14 @@ pub fn audio_set_monitor_voice(note_id: u64) {
 #[tauri::command]
 pub fn audio_monitor_playhead() -> f32 {
   f32::from_bits(MONITOR_POS.load(Ordering::Relaxed))
+}
+
+// Live wavetable scan (0..1) of the monitored voice incl. self-morph deviation +
+// automation, or negative when the monitored voice isn't a wavetable. Polled by
+// the editor so the zoomed visualizer tracks the window the engine is reading.
+#[tauri::command]
+pub fn audio_monitor_wt_scan() -> f32 {
+  f32::from_bits(MONITOR_WT_SCAN.load(Ordering::Relaxed))
 }
 
 #[tauri::command]

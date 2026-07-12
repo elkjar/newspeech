@@ -369,6 +369,7 @@ pub fn run() {
       audio::audio_repitch_note,
       audio::audio_set_monitor_voice,
       audio::audio_monitor_playhead,
+      audio::audio_monitor_wt_scan,
       audio::audio_set_track_filter,
       audio::audio_set_track_filters_bulk,
       audio::audio_set_reverb_params,

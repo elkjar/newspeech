@@ -184,6 +184,33 @@ export const DEFAULT_GRANULAR: GranularEdit = {
   spray: 0.19,
 };
 
+// Per-instrument wavetable (editor Phase D). The Tracker wavetable engine treats
+// the sample as a bank of fixed-size windows (windowSize frames each = one cycle
+// of a single-cycle oscillator); the PLAYED NOTE sets the pitch (the sample's own
+// duration/rate no longer drives playback) and `position` scans which window is
+// read. position is swept by the wavetable-position automation (wtPosLfo /
+// wtPosEnv → .pti automations[3]). `morph` crossfades between the two nearest
+// windows during a sweep (smooth); off = stepped nearest-window switch.
+export const WT_WINDOW_SIZES = [32, 64, 128, 256, 512, 1024, 2048] as const;
+
+export interface WavetableEdit {
+  windowSize: number; // frames per window (single cycle); one of WT_WINDOW_SIZES
+  position: number; // 0..1 scan across the windows (.pti wavetableCurrentWindow)
+  morph: boolean; // crossfade adjacent windows on sweep (true) vs stepped (false)
+  smooth?: boolean; // wavetable smoother (Tracker parity tool): the engine bakes
+                    // + reads a per-window circularly-smoothed copy so arbitrary
+                    // (non-wavetable-formatted) samples stop crunching. App-side
+                    // only — .pti export doesn't carry it (the Tracker's smoother
+                    // is a destructive sample edit). Default off.
+}
+
+export const DEFAULT_WAVETABLE: WavetableEdit = {
+  windowSize: 2048,
+  position: 0,
+  morph: true,
+  smooth: false,
+};
+
 // Generic modulators (editor B2 full grid). Each modulation TARGET (volume,
 // pan, cutoff, pitch) can carry an envelope and/or an LFO; they sum onto the
 // target's base value in the engine. Two existing specials are NOT folded in
@@ -235,6 +262,8 @@ export const MOD_SLOT = {
   pitchLfo: 5,
   granPosLfo: 6, // granular read position (.pti automations[4]); granular mode only
   granPosEnv: 7,
+  wtPosLfo: 8, // wavetable scan position (.pti automations[3]); wavetable mode only
+  wtPosEnv: 9,
 } as const;
 
 export interface VoiceEdit {
@@ -278,6 +307,10 @@ export interface VoiceEdit {
   granular?: GranularEdit; // grain params (only used when playmode === 'granular')
   granPosLfo?: LfoMod; // sweeps granular read position; depth in sample fraction
   granPosEnv?: EnvMod; // depth in sample fraction
+  // Wavetable (Phase D):
+  wavetable?: WavetableEdit; // window/position/morph (only when playmode === 'wavetable')
+  wtPosLfo?: LfoMod; // sweeps wavetable scan position; depth in position fraction
+  wtPosEnv?: EnvMod; // depth in position fraction
   // Slice (Phase D, S1): sorted slice START points as 0..1 fractions of the
   // sample (≤48, matching the .pti slices[48]). Slice i spans [slices[i],
   // slices[i+1] ?? end). Only used when playmode === 'slice'; the played note
@@ -352,9 +385,15 @@ export function voiceMods(voiceId: string): ModSpec[] {
   // Granular-position automation only matters in granular mode (it sweeps the
   // grain read position). Skip the slots otherwise so non-granular voices carry
   // no extra modulators.
-  if ((e.playmode ?? 'sample') === 'granular') {
+  const pm = e.playmode ?? 'sample';
+  if (pm === 'granular') {
     out.push(lfoSpec(MOD_SLOT.granPosLfo, e.granPosLfo, bpm));
     out.push(envSpec(MOD_SLOT.granPosEnv, e.granPosEnv));
+  } else if (pm === 'wavetable') {
+    // Wavetable-position automation (slots 8/9 → .pti automations[3]) sweeps the
+    // scan window; only meaningful in wavetable mode.
+    out.push(lfoSpec(MOD_SLOT.wtPosLfo, e.wtPosLfo, bpm));
+    out.push(envSpec(MOD_SLOT.wtPosEnv, e.wtPosEnv));
   }
   return out.filter((m): m is ModSpec => m !== null);
 }
@@ -381,6 +420,28 @@ export function voiceGranular(voiceId: string): {
     shape: GRAIN_SHAPE_CODE[g.shape],
     direction: GRAIN_DIR_CODE[g.direction],
     spray: g.spray ?? DEFAULT_GRANULAR.spray,
+  };
+}
+
+// Wavetable params resolved for the audio path. `on` gates the single-cycle
+// oscillator read-head; windowSize is frames-per-cycle, position 0..1 the scan.
+// Off (with default params) when the voice isn't in wavetable mode.
+export function voiceWavetable(voiceId: string): {
+  on: boolean;
+  windowSize: number;
+  position: number;
+  morph: boolean;
+  smooth: boolean;
+} {
+  const e = resolvedVoiceEdit(voiceId);
+  const on = (e?.playmode ?? 'sample') === 'wavetable';
+  const w = e?.wavetable ?? DEFAULT_WAVETABLE;
+  return {
+    on,
+    windowSize: w.windowSize ?? DEFAULT_WAVETABLE.windowSize,
+    position: w.position ?? DEFAULT_WAVETABLE.position,
+    morph: w.morph ?? DEFAULT_WAVETABLE.morph,
+    smooth: w.smooth ?? false,
   };
 }
 

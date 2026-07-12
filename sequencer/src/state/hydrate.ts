@@ -51,6 +51,7 @@ const VALID_KNOBS: LFODestKnob[] = [
   'tension',
   'grainLength',
   'grainPosition',
+  'wtPosition',
 ];
 
 function validDest(d: unknown): LFODestination | null {

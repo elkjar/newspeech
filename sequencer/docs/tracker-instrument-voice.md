@@ -40,9 +40,11 @@ library voice and repoints the focused track to it.
 
 ### Genuinely still open
 
-1. **Slice + wavetable playmodes** — disabled scaffolds in `PlaymodeTabs` (`ready: false`). Wavetable
-   also activates the last unwired automation target (`WtPos` → `automations[3]`). **Slice now has a
-   firmed execution plan — see "Slice mode — execution plan (firmed 2026-07-07)" below.**
+1. ~~**Slice + wavetable playmodes**~~ **DONE.** Slice shipped 0.15.0 (see "Slice mode — execution
+   plan" below). **Wavetable BUILT 2026-07-12** (app-only, not committed; pending app audition +
+   hardware verify) — the last playmode, and it wired the final automation target `WtPos →
+   automations[3]`. See "Wavetable mode — BUILT 2026-07-12" below. All four playmodes (sample / slice /
+   wavetable / granular) are now live.
 2. **Generic-mod `.pti` automation export wiring** — `exportPti.ts` writes only `automations[0]`
    (amp env), `[2]` (cutoff LFO) and `[4]` (granular pos). The rest of the *modulation grid* (pan → [1],
    tremolo → [0] LFO side, cutoff-env → [2] env side, pitch → [5] Finetune) is **unserialized**. The
@@ -641,11 +643,104 @@ the granular-position automation → **automations[4]** (LFO if `granPosLfo.on`,
 - **slice / wavetable** still unbuilt (the disabled tabs). WtPos→automations[3] still unwired.
 - The 6 generic-mod export slots (pan/pitch/tremolo/cutoff-env) remain unwired pending hardware verification.
 
-## NEXT PHASE — wavetable + slice playback (granular DONE 2026-06-18)
+## Wavetable mode — BUILT 2026-07-12 (app-only, not committed; pending app audition + hardware verify)
+
+The **last playmode** — closes the set (sample / slice / wavetable / granular all live) and wired the
+final unwired automation target `WtPos → automations[3]`. `cargo check` + `tsc` both clean. Mirrors the
+granular pattern end-to-end (store → accessor → `samplePlayer` → IPC → `audio.rs` read-head → editor →
+export). Needs a **full app reload** (samplePlayer + `audio.rs` = full Tauri rebuild, not HMR).
+
+**The model — single-cycle wavetable oscillator.** The sample becomes a bank of fixed-size windows
+(`windowSize ∈ {32,64,128,256,512,1024,2048}` frames, each = one cycle). The **played note sets the
+pitch** — the in-window phase advances `windowSize · noteHz / deviceRate` per output sample and wraps at
+one window, so the fundamental is note-driven and window-size-independent (higher notes sweep the window
+faster). This means the sample's own duration/rate **no longer drives playback** — a 2 s pad becomes a
+static timbre at the note pitch, scannable only via `WtPos`. Faithful to the Tracker; local audition is
+approximate-not-parity as usual, the `.pti` carries the truth.
+
+**Decisions (Chris, 2026-07-12):** (1) **WtPos sweep = morph toggle, crossfade default** — `morph` on
+crossfades the two nearest windows (smooth, Serum-style); off snaps to the nearest window (stepped,
+grittier). Per-instrument, defaults on. (2) **Scope = wavetable only** — the 4 remaining generic-mod
+export slots (open item 2) stay deferred (hardware-gated, Tracker not on hand).
+
+**Files / shape:**
+- **Store** (`voiceEditsStore.ts`): `WavetableEdit {windowSize, position, morph}` + `DEFAULT_WAVETABLE`
+  (2048 / 0 / morph on) + `WT_WINDOW_SIZES`; `wavetable?`/`wtPosLfo?`/`wtPosEnv?` on `VoiceEdit`;
+  `voiceWavetable()` accessor (gated on `playmode === 'wavetable'`). New engine mod slots **8 (wtPos-LFO)
+  / 9 (wtPos-env)** in `MOD_SLOT`; `voiceMods` appends them only in wavetable mode.
+- **`samplePlayer.ts`**: returns a `wavetable {on, windowFrames, position, morph, hz}` block; `hz` from
+  the played `midiNote` (fallback: scene root for an un-noted drum-row trigger).
+- **IPC** (`nativeEngine.ts` + `TriggerSpec`): `wtOn/wtWindowFrames/wtPosNorm/wtMorph/wtHz` threaded to
+  the command; all 6 trigger call sites (3 App.tsx + 3 monitor.ts) forward `pick.wavetable`.
+- **Engine** (`audio.rs`): `MOD_SLOTS 8 → 10`; `wt_*` fields on `Voice`/`MixerCommand::Trigger`/
+  `PendingTrigger` + `wt_phase` runtime; `claim_voice_slot` resets phase; read loop gains a
+  `if v.wt_on {…} else if v.gran_on {…} else {…}` branch (morph = lerp two `read_at` windows, else the
+  rounded window; phase advances `wf·hz/sr`, wraps at `wf`); `mod_wtpos` accumulated from slots 8/9;
+  declick out-fade + normal position-advance skipped for wavetable (it scans, never reads through —
+  rings until env / note-off / steal, like granular).
+- **Editor** (`InstrumentEditor.tsx`): wavetable tab `ready: true`; mode-specific column = window-size
+  selector (2-col grid) + **position control that steps through whole windows** (`win k/N`, snapped) +
+  `●/○ morph` toggle; readout shows the window + its sample range; contextual **WT POSITION** automation
+  column (wtPos LFO/env) on the automation tab.
+- **Waveform** (`Waveform.tsx`): 4th display mode — **the current window fills the whole visualizer,
+  zoomed in, Tracker-style** (reuses the slice-zoom windowed-peak loader; `viewStart`/`viewSpan` = the
+  window span). Dragging the canvas scans window-by-window across the table; live playhead shows the
+  read position within the displayed cycle; a `win k/N` corner label orients the scan. (Rev 2026-07-12
+  per Chris: the first cut drew the window as a tiny band across the whole sample — wrong; the Tracker
+  zooms so one window = full width, and **WtPos is a hard window index** — window 1 = frames
+  `[0, windowSize)`, window 2 = `[windowSize, 2·windowSize)`, …, not a continuous scrub.)
+- **Export** (`exportPti.ts`): playmode precedence gran > slice > **wt** > loop; `sample.type =
+  Wavetable`, `sample.wavetable = {windowSize (snapped), windowCount = floor(frames/windowSize)}`,
+  `wavetableCurrentWindow` from position; WtPos → `automations[3]` (env-XOR-LFO, mirrors the granular
+  `[4]` block).
+
+**Position modulation — added 2026-07-12 (same session, Chris):**
+- ~~**`deviation` self-morph**~~ **REMOVED 2026-07-12** (Chris: "the deviation thing is not working,
+  let's just remove that. The LFO does the job."). Was a per-instrument engine-side random-walk drift of
+  the scan; ripped out of the whole chain (`WavetableEdit`, `samplePlayer`, IPC, `audio.rs` `wt_dev*` +
+  drift state + `WT_DEV_HZ`, editor knob). The `MONITOR_WT_SCAN` live-scan readback was KEPT — it still
+  drives the visualizer from the continuous LFO + automation.
+- **Visualizer tracks the live scan** — the engine publishes the resolved scan (`MONITOR_WT_SCAN`, incl.
+  the continuous LFO + wtPos automation) for the monitored voice via `audio_monitor_wt_scan`; the editor
+  polls it (`getMonitorWtScan`, ~30 Hz while previewing) and drives the zoomed window + readout from it
+  (`wtEffPos = wtLiveScan ?? modWtPos`), so a held preview with a routed LFO visibly sweeps the window.
+- **`wtPosition` as a global app-LFO destination — CONTINUOUS in the engine (revised 2026-07-12 on
+  Chris's "for this to work as an oscillator it needs the LFO applied constantly vs every step-fire").**
+  First cut sampled it per-note in `samplePlayer` (frozen for the note's duration — wrong for a held
+  oscillator note). Now it's a **native per-track LFO destination** (`TrackWtPosition`), computed every
+  block on the audio thread exactly like `TrackTune`: `TrackParams.wt_pos_mod` (bipolar deviation, LFO
+  compute writes `(apply_lfo(0.5,…) − 0.5) × total_depth` — the extra `× total_depth` makes the response
+  **quadratic in depth** so low depths are gentle and full depth still sweeps the whole table; Chris
+  2026-07-12 "does A LOT with very little"), and the wt voice adds `track_params.wt_pos_mod()` to its
+  scan **every frame** (frozen voices exempt) — so a routed LFO sweeps the window through a held note.
+  `samplePlayer` no longer JS-modulates the position (would double-apply); it sends the static base and
+  the engine folds in the LFO + the per-instrument automation (slots 8/9) + deviation. Wiring:
+  `LfoDestKind::TrackWtPosition` + `is_per_track` + reset pass + compute-loop case (`audio.rs`),
+  `'trackWtPosition'` in `nativeEngine.ts` LfoDestKind + `App.tsx` KNOB_MAP + per-track dest filter.
+  Editor position control is an `LfoBindKnob` (click-to-route); the visualizer follows the live engine
+  scan (`MONITOR_WT_SCAN`) while previewing, so the continuous sweep is visible. Distinct from the
+  per-instrument wtPos automation (slots 8/9 → `.pti[3]`, also continuous, what serializes to hardware).
+
+**Wavetable "crunch" — FIXED IN CODE 2026-07-12 (pending ear-verify).** The intermittent crunch was the
+k-rate `TrackWtPosition` LFO write stepping the scan at every block edge (plus, in stepped mode, per-frame
+window re-picks splicing content mid-cycle) — proven and measured by an offline port of the read branch
+(clicks up to 0.58 FS, ~25/s under a sweep; a truly static read renders with zero discontinuities). Fixes:
+(1) `wt_track_scan` one-pole (~4 ms) smooths the track LFO deviation per frame; (2) stepped mode latches
+the destination window at seam entry and switches exactly on the phase wrap via the seam crossfade
+(`wt_wi_cur`/`wt_wi_next`; window switches now quantize to cycle boundaries). Static-scan behavior is
+bit-identical. A `[wt-dbg]` jump-detector (monitored voice, ≤2 logs/s) stays in until confirmed. Full
+analysis + verify steps in **`docs/wavetable-crunch-debug.md`**.
+
+**⚠️ Still owed:** app audition by ear (does the osc pitch-track + morph feel right); **hardware verify**
+— load a wavetable `.pti` on the Tracker, confirm it reads as Wavetable playmode with the right window
+size and the WtPos automation moves (delay-probe lesson: a correct-looking map ≠ honored on device).
+
+## NEXT PHASE (historical) — wavetable + slice playback (granular DONE 2026-06-18)
 
 The editable-instrument foundation (params + modulation grid + redesigned editor) and **granular** are in.
 Next: the remaining `.pti` playmodes — **Wavetable (6)** and **Slice (4/5)** — wavetable also activates the
-last unwired automation target (`WtPos` → `automations[3]`).
+last unwired automation target (`WtPos` → `automations[3]`). *(Both now built — see the wavetable section
+above and the slice execution plan below.)*
 
 **UI direction (Chris, 2026-06-18):**
 - A **playmode selector is the first choice, sitting next to the sample visualizer** (sample / slice /

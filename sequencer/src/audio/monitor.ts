@@ -112,6 +112,7 @@ export function monitorNote(
     lfoDepth: pick.lfoDepth,
     mods: pick.mods,
     granular: pick.granular,
+    wavetable: pick.wavetable,
   });
 }
 
@@ -188,6 +189,7 @@ export function monitorChord(
       lfoDepth: pick.lfoDepth,
       mods: pick.mods,
       granular: pick.granular,
+      wavetable: pick.wavetable,
     });
   });
 }
@@ -253,6 +255,7 @@ export function monitorDrum(track: Track, velocity: number): void {
     lfoDepth: pick.lfoDepth,
     mods: pick.mods,
     granular: pick.granular,
+    wavetable: pick.wavetable,
   });
 }
 

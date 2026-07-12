@@ -13,6 +13,7 @@ import Tracker, {
   InstrumentFilterType,
   GranularShape,
   GranularType,
+  SampleType,
   LFO_SHAPE,
   LFO_SPEED,
 } from '@polyend/tracker-lib';
@@ -30,6 +31,7 @@ import {
   voiceFilter,
   voiceFilterLfo,
   voiceGranular,
+  voiceWavetable,
   voiceSlices,
   resolveVoiceEnvelope,
   resolvedVoiceEdit,
@@ -50,6 +52,15 @@ DIVISION_TO_SPEED['1/1'] = LFO_SPEED.S1;
 const PTI_MAX_RESONANCE = 4.3; // .pti resonance ceiling (our 0..1 maps onto it)
 
 const PTI_MAX_POINT = 65535; // 16-bit frame addressing ceiling
+
+// The Tracker's discrete wavetable window sizes; other values "may cause errors"
+// per the lib docs, so snap the authored size to the nearest valid one on export.
+const WT_WINDOWS = [32, 64, 128, 256, 512, 1024, 2048];
+function nearestWtWindow(size: number): number {
+  return WT_WINDOWS.reduce((best, w) =>
+    Math.abs(w - size) < Math.abs(best - size) ? w : best,
+  );
+}
 
 export interface ResolvedSample {
   url: string; // `${baseUrl}/${file}` — a filesystem path (native) or a URL (web)
@@ -143,17 +154,21 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
     // 0..1 / loop off) reproduce the prior full-length one-shot export.
     const trim = voiceTrim(voiceId);
     const gran = voiceGranular(voiceId);
+    const wt = voiceWavetable(voiceId); // on only in wavetable mode
     const slices = voiceSlices(voiceId); // non-empty only in slice mode
     const isSlice = slices.length > 0;
-    // Playmode precedence: granular (7) > slice (4) > the loop-derived mode
-    // (off→OneShot 0 · fwd 1 · bwd 2 · ping 3 — codes match the enum 1:1). The
-    // app-only reverse one-shot (`rev`, code 4) collides with Slice's code, so
-    // clamp it to OneShot.
+    // Playmode precedence: granular (7) > slice (4) > wavetable (6) > the
+    // loop-derived mode (off→OneShot 0 · fwd 1 · bwd 2 · ping 3 — codes match the
+    // enum 1:1). Modes are mutually exclusive (one `playmode`), so the order only
+    // matters as a tiebreak. The app-only reverse one-shot (`rev`, code 4)
+    // collides with Slice's code, so clamp it to OneShot.
     inst.playmode = gran.on
       ? InstrumentPlayMode.Granular
       : isSlice
         ? InstrumentPlayMode.Slice
-        : ((trim.loop === 4 ? 0 : trim.loop) as InstrumentPlayMode);
+        : wt.on
+          ? InstrumentPlayMode.Wavetable
+          : ((trim.loop === 4 ? 0 : trim.loop) as InstrumentPlayMode);
     inst.volume = voiceGainOverride(voiceId);
     inst.tune = Math.max(-24, Math.min(24, Math.round(voiceTune(voiceId))));
     // Fine pitch trim → the .pti `finetune` field (integer cents, ±100). Separate
@@ -277,6 +292,49 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
           inst.automations[4].enabled = true;
           inst.automations[4].isLFO = false;
           inst.automations[4].envelope = {
+            amount: Math.max(0, Math.min(1, Math.abs(posEnv.depth))),
+            delay: 0,
+            attack: Math.max(0, Math.round(posEnv.attack * 1000)),
+            decay: Math.max(0, Math.round(posEnv.decay * 1000)),
+            sustain: Math.max(0, Math.min(1, posEnv.sustain)),
+            release: Math.max(0, Math.round(posEnv.release * 1000)),
+          };
+        }
+      }
+    }
+    // Wavetable params (Phase D) → the .pti sample-type + window fields + scan
+    // automation. The sample becomes a bank of windowSize-frame single-cycle
+    // windows; windowCount tiles the (44.1k) sample; wavetableCurrentWindow is
+    // the starting scan index. windowSize must be one of the Tracker's discrete
+    // sizes — snap to the nearest. Position → automations[3] (Wavetable Position).
+    if (wt.on) {
+      const windowSize = nearestWtWindow(wt.windowSize);
+      const windowCount = Math.max(1, Math.floor(frames / windowSize));
+      inst.sample.type = SampleType.Wavetable;
+      inst.sample.wavetable = { windowSize, windowCount };
+      inst.wavetableCurrentWindow = Math.max(
+        0,
+        Math.min(windowCount - 1, Math.round(Math.max(0, Math.min(1, wt.position)) * (windowCount - 1))),
+      );
+      // Wavetable-position automation → automations[3]. Same env-XOR-LFO slot
+      // shape as the granular position (slot 4); read through the resolver so
+      // saved + unsaved edits both export.
+      const edit = resolvedVoiceEdit(voiceId);
+      const posLfo = edit?.wtPosLfo;
+      const posEnv = edit?.wtPosEnv;
+      if (inst.automations[3]) {
+        if (posLfo?.on) {
+          inst.automations[3].enabled = true;
+          inst.automations[3].isLFO = true;
+          inst.automations[3].lfo = {
+            shape: LFO_SHAPE_CODE[posLfo.shape] as LFO_SHAPE,
+            speed: DIVISION_TO_SPEED[posLfo.division],
+            amount: Math.max(0, Math.min(1, Math.abs(posLfo.depth))),
+          };
+        } else if (posEnv?.on) {
+          inst.automations[3].enabled = true;
+          inst.automations[3].isLFO = false;
+          inst.automations[3].envelope = {
             amount: Math.max(0, Math.min(1, Math.abs(posEnv.depth))),
             delay: 0,
             attack: Math.max(0, Math.round(posEnv.attack * 1000)),

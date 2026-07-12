@@ -38,6 +38,7 @@ export type LFODestKnobGlobal =
 export type LFODestKnobInstrument =
   | 'grainLength'
   | 'grainPosition'
+  | 'wtPosition'
   | 'reverbSend'
   | 'delaySend'
   // Continuous pitch drift around the static tune/finetune. Modulated in Rust

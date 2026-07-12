@@ -903,6 +903,7 @@ export function App() {
                     lfoDepth: pick.lfoDepth,
                     mods: pick.mods,
                     granular: pick.granular,
+                    wavetable: pick.wavetable,
                   } });
                 }
                 void triggerBatch(batch);
@@ -1024,6 +1025,7 @@ export function App() {
                   lfoDepth: pick.lfoDepth,
                   mods: pick.mods,
                   granular: pick.granular,
+                  wavetable: pick.wavetable,
                 } });
                 if (pick.chokeGroup) chokeApplied = true;
                 if (noteId !== undefined && targetMidi !== undefined) {
@@ -1167,6 +1169,7 @@ export function App() {
             lfoDepth: pick.lfoDepth,
             mods: pick.mods,
             granular: pick.granular,
+            wavetable: pick.wavetable,
           });
           nextTones.push({ noteId, midi });
         }
@@ -1838,6 +1841,7 @@ export function App() {
       delaySend: 'trackDelaySend',
       tune: 'trackTune',
       finetune: 'trackFineTune',
+      wtPosition: 'trackWtPosition',
       reverbSize: 'reverbSize',
       reverbMix: 'reverbMix',
       reverbDiffusion: 'reverbDiffusion',
@@ -1874,7 +1878,8 @@ export function App() {
             native === 'trackReverbSend' ||
             native === 'trackDelaySend' ||
             native === 'trackTune' ||
-            native === 'trackFineTune'
+            native === 'trackFineTune' ||
+            native === 'trackWtPosition'
           ) {
             if (d.trackId === GLOBAL_TRACK_ID) continue;
             destinations.push({ knob: native, trackId: d.trackId });
