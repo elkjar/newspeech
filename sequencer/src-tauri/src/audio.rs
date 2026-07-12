@@ -109,6 +109,44 @@ impl SampleData {
   }
 }
 
+// Snap an INTERIOR slice/trim boundary back to the nearest zero crossing at or
+// before `target` (searching up to `window` source frames), so a one-shot that
+// starts or stops mid-waveform doesn't step from/to a non-zero value and click.
+// Backward-biased on purpose: a slice cut sits on a transient, so we only ever
+// back up into the quieter pre-onset material — never forward past the attack
+// peak, which would soften the hit. Mono-summed so the test is channel-agnostic.
+// Returns `target` unchanged when no crossing is found in the window (the caller
+// only snaps genuine interior cuts, and the ~1ms declick fade covers the rest).
+fn snap_zero_crossing_back(sample: &SampleData, target: f64, window: usize) -> f64 {
+  let ch = sample.channels.max(1) as usize;
+  let fc = sample.frame_count();
+  if fc < 2 || window == 0 {
+    return target;
+  }
+  let t = (target.round() as isize).clamp(1, (fc - 1) as isize);
+  let mono = |f: isize| -> f32 {
+    let base = f as usize * ch;
+    let mut s = 0.0f32;
+    for c in 0..ch {
+      s += sample.frames[base + c];
+    }
+    s
+  };
+  let lo = (t - window as isize).max(1);
+  let mut f = t;
+  let mut cur = mono(f);
+  while f > lo {
+    let prev = mono(f - 1);
+    // Sign change (or a sample landing on zero) between f-1 and f → crossing.
+    if (prev <= 0.0 && cur >= 0.0) || (prev >= 0.0 && cur <= 0.0) {
+      return f as f64;
+    }
+    cur = prev;
+    f -= 1;
+  }
+  target
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct SampleLoadInfo {
   pub path: String,
@@ -3327,7 +3365,13 @@ fn apply_lfo(base: f32, depth: f32, out: f32) -> f32 {
 
 // --- voice pool ---
 
-const VOICE_POOL_SIZE: usize = 64;
+// Pre-allocated voice slots (realtime-safe: the audio thread never allocates).
+// Not a hardware limit — CPU scales with SIMULTANEOUSLY-SOUNDING voices, not the
+// pool size (inactive slots early-continue in the render loop), so a generous
+// pool is nearly free. Bumped 64→256 because dense slice sequencing (16th notes
+// on random over a break, whose one-shot tails overlap) exhausted 64 and forced
+// voice stealing, which clicks.
+const VOICE_POOL_SIZE: usize = 256;
 const TRIGGER_QUEUE_CAPACITY: usize = 256;
 // Loop/resample capture ring length. 32s holds 8 bars down to ~60bpm; a
 // capture span longer than the ring is rejected at drain.
@@ -5363,7 +5407,7 @@ fn loop_read(buf: &[f32], len: usize, pos: f64) -> f32 {
 // ramp before this trigger claims its slot.
 fn claim_voice_slot(
   voices: &mut [Voice],
-  steal_cursor: &mut usize,
+  _steal_cursor: &mut usize,
   p: PendingTrigger,
   start_frame: usize,
   sample_rate_f: f32,
@@ -5407,9 +5451,20 @@ fn claim_voice_slot(
   let slot = (0..VOICE_POOL_SIZE)
     .find(|i| !voices[*i].active)
     .unwrap_or_else(|| {
-      let s = *steal_cursor;
-      *steal_cursor = (*steal_cursor + 1) % VOICE_POOL_SIZE;
-      s
+      // Pool exhausted → steal the OLDEST voice (most frames played, so most
+      // likely decayed toward its tail). Cutting the quietest candidate makes
+      // the smallest step, which the new voice's declick fade-in then masks.
+      // Round-robin stealing cut arbitrary mid-transient voices, which popped
+      // on dense 16th-note slice sequencing that overflowed the pool.
+      let mut oldest = 0usize;
+      let mut most = 0u32;
+      for (i, v) in voices.iter().enumerate() {
+        if v.frames_played >= most {
+          most = v.frames_played;
+          oldest = i;
+        }
+      }
+      oldest
     });
   let v = &mut voices[slot];
   v.sample = Some(p.sample);
@@ -6122,10 +6177,25 @@ fn build_stream(
               // i0+1 and i0+2). Hence play_end <= fc - 2.
               let fc = sample.frame_count() as f64;
               let last = (fc - 2.0).max(0.0);
-              let play_start =
+              let mut play_start =
                 (start_frac.clamp(0.0, 1.0) as f64 * fc).clamp(0.0, last);
-              let play_end = (end_frac.clamp(0.0, 1.0) as f64 * fc)
+              let mut play_end = (end_frac.clamp(0.0, 1.0) as f64 * fc)
                 .clamp(play_start + 1.0, last.max(play_start + 1.0));
+              // Zero-crossing snap of INTERIOR slice/trim cuts (not the sample's
+              // true start/end) so one-shot boundaries land on zero and don't
+              // pop. Slice mode chops a break into mid-waveform windows, so this
+              // is where the clicks come from; ~2ms search window. Full-length
+              // playback (start 0 / end 1) is left alone so a kick keeps its
+              // attack. Pairs with the existing declick fade further down.
+              let zc_window = ((sample.sample_rate as f64) * 0.002) as usize;
+              if start_frac > 0.0001 {
+                play_start = snap_zero_crossing_back(sample.as_ref(), play_start, zc_window)
+                  .clamp(0.0, last);
+              }
+              if end_frac < 0.9999 {
+                play_end = snap_zero_crossing_back(sample.as_ref(), play_end, zc_window)
+                  .clamp(play_start + 1.0, last.max(play_start + 1.0));
+              }
               // Per-instrument filter — build the biquad once here so the
               // audio thread just copies coefficients into the voice.
               let inst_filter_on = inst_filter_type >= 1 && inst_filter_type <= 3;
@@ -6220,15 +6290,19 @@ fn build_stream(
               }
             }
             MixerCommand::StopAll => {
+              // Ramp voices out over ~7ms instead of a hard cut. An instant
+              // active=false steps the output to zero mid-waveform and clicks
+              // (the pop on transport Stop). The release machinery fades each
+              // voice and self-deactivates + cleans up when it reaches zero
+              // (see the per-frame release counter). Voices already releasing
+              // keep their ramp. pending_triggers still clears immediately so
+              // nothing new fires after Stop.
+              let fade_frames = (sr_f32 * 0.007).max(1.0) as u32;
               for v in voices.iter_mut() {
-                v.active = false;
-                v.sample = None;
-                v.track_params = None;
-                v.filter.reset();
-                v.start_frame = 0;
-                v.release_remaining = 0;
-                v.release_total = 0;
-                v.is_texture = false;
+                if v.active && v.release_remaining == 0 {
+                  v.release_remaining = fade_frames;
+                  v.release_total = fade_frames;
+                }
               }
               pending_triggers.clear();
             }
@@ -7177,16 +7251,18 @@ fn build_stream(
                 break;
               }
             }
-            // Declick: flat (non-enveloped) voices get a ~1ms linear fade
-            // at the trigger and at the natural sample end, so samples not
-            // trimmed to a zero-crossing don't click on start / cutoff.
+            // Declick: flat (non-enveloped) voices get a ~3ms raised-cosine
+            // fade at the trigger and at the natural sample end, so samples
+            // not trimmed to a zero-crossing don't click on start / cutoff.
             // Enveloped voices skip this — their ADSR already ramps both
             // ends. fade_in tracks output frames since trigger; fade_out
             // tracks output frames until the sample runs out (rate-scaled,
             // so it holds at pitched playback). Overlap on a very short
-            // sample just yields a gentle bell — still click-free.
+            // sample just yields a gentle bell — still click-free. Pairs with
+            // the zero-crossing snap at trigger time (which starts us in the
+            // pre-onset quiet), so this length costs almost no transient punch.
             if !v.env_active {
-              let declick = (sr_f32 * 0.001).max(1.0);
+              let declick = (sr_f32 * 0.003).max(1.0);
               let fade_in = (v.frames_played as f32 / declick).min(1.0);
               // Fade toward the window end for one-shots; looped AND granular
               // voices have no natural end, so they skip the out-fade (the loop
@@ -7204,7 +7280,12 @@ fn build_stream(
                 f32::INFINITY
               };
               let fade_out = (to_end / declick).min(1.0);
-              let g = fade_in.min(fade_out);
+              // Raised-cosine (Hann half-window) shaping: a bare linear ramp has
+              // slope corners at 0 and 1 that themselves tick on transient-rich
+              // material — the S-curve has zero slope at both ends, so it fades
+              // silently. 0.5-0.5cos(π·t): 0→0, 1→1.
+              let lin = fade_in.min(fade_out);
+              let g = 0.5 - 0.5 * (lin * std::f32::consts::PI).cos();
               ls *= g;
               rs *= g;
             }
