@@ -30,6 +30,7 @@ import {
   voiceFilter,
   voiceFilterLfo,
   voiceGranular,
+  voiceSlices,
   resolveVoiceEnvelope,
   resolvedVoiceEdit,
   LFO_SHAPE_CODE,
@@ -142,13 +143,17 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
     // 0..1 / loop off) reproduce the prior full-length one-shot export.
     const trim = voiceTrim(voiceId);
     const gran = voiceGranular(voiceId);
-    // Granular playmode (7) overrides the loop-derived playmode; otherwise the
-    // loop mode IS the playmode (off→OneShot 0 · fwd 1 · bwd 2 · ping 3 — codes
-    // match the enum 1:1). The app-only reverse one-shot (`rev`, code 4) has no
-    // `.pti` equivalent (4 is Slice there), so clamp it to OneShot.
+    const slices = voiceSlices(voiceId); // non-empty only in slice mode
+    const isSlice = slices.length > 0;
+    // Playmode precedence: granular (7) > slice (4) > the loop-derived mode
+    // (off→OneShot 0 · fwd 1 · bwd 2 · ping 3 — codes match the enum 1:1). The
+    // app-only reverse one-shot (`rev`, code 4) collides with Slice's code, so
+    // clamp it to OneShot.
     inst.playmode = gran.on
       ? InstrumentPlayMode.Granular
-      : ((trim.loop === 4 ? 0 : trim.loop) as InstrumentPlayMode);
+      : isSlice
+        ? InstrumentPlayMode.Slice
+        : ((trim.loop === 4 ? 0 : trim.loop) as InstrumentPlayMode);
     inst.volume = voiceGainOverride(voiceId);
     inst.tune = Math.max(-24, Math.min(24, Math.round(voiceTune(voiceId))));
     // Fine pitch trim → the .pti `finetune` field (integer cents, ±100). Separate
@@ -180,6 +185,22 @@ export async function exportVoiceToPti(voiceId: string): Promise<PtiExportResult
     // to start/end — no independent loop-point control in this slice).
     inst.loopPoint1 = startPt;
     inst.loopPoint2 = endPt;
+    // Slice points (Slice playmode) → the .pti slices[48] array. Each is a
+    // fraction → frame point via the same 16-bit ceiling as start/end. numSlices
+    // is documented 0..47, so a maxed 48-slice edit drops its last cut on export
+    // (the two final slices merge) — flagged for hardware verify along with the
+    // open question of whether points resolve as raw 44.1k frames (long breaks
+    // >65535 frames truncate) or normalized units. selectedSlice anchors slice 0.
+    if (isSlice) {
+      const pts = new Array<number>(48).fill(0);
+      const nSlices = Math.min(slices.length, 47);
+      for (let i = 0; i < nSlices; i++) {
+        pts[i] = Math.round(Math.max(0, Math.min(1, slices[i])) * last);
+      }
+      inst.slices = pts;
+      inst.numSlices = nSlices;
+      inst.selectedSlice = 0;
+    }
     // Per-instrument filter. type 0 = off; 1/2/3 → LowPass/HighPass/BandPass.
     // cutoff is normalized 0..1 in both models; resonance maps our 0..1 onto
     // the .pti 0..4.3 range.

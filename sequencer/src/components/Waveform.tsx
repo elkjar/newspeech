@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LoopMode } from '../instruments/voiceEditsStore';
 import { loadVoicePeaks, type WaveformPeaks } from '../tracker/waveformPeaks';
+import { onSliceHit } from '../audio/sliceHits';
 
 interface Props {
   voiceId: string;
@@ -23,6 +24,14 @@ interface Props {
   granular?: { position: number; grainMs: number } | null;
   onGranularPosition?: (position: number) => void;
   onGranularGrain?: (grainMs: number) => void;
+  // Slice mode: when set (even empty), a third display mode — the whole waveform
+  // reads bright and each slice start-point draws a marker line + top tab (with
+  // faint alternating cell shading). Takes precedence over granular/trim. null =
+  // not slice mode. Editable (S2b): drag a marker to move, double-click empty to
+  // add, alt/⌘-click a marker to remove, single-click a region to audition it.
+  slices?: number[] | null;
+  onSlicesChange?: (slices: number[]) => void;
+  onSlicePreview?: (index: number, on: boolean) => void;
   // Reports the decoded sample duration (seconds) once peaks load, so callers
   // can show position/grain in seconds (the Tracker measures position in s).
   onDuration?: (secs: number) => void;
@@ -40,15 +49,26 @@ export function Waveform({
   granular = null,
   onGranularPosition,
   onGranularGrain,
+  slices = null,
+  onSlicesChange,
+  onSlicePreview,
   onDuration,
 }: Props) {
+  const sliceMode = slices != null;
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [peaks, setPeaks] = useState<WaveformPeaks | null>(null);
   const [width, setWidth] = useState(0);
   const dragRef = useRef<'start' | 'end' | null>(null);
+  const sliceDragRef = useRef<number | null>(null); // index of the marker being dragged
+  const slicePreviewingRef = useRef(false); // a region-click audition is held
   const lastPh = useRef<number | null>(null);
   const dirRef = useRef(1); // inferred playhead travel direction (+1 / -1)
+  // The slice the sequence most recently fired (slice mode) — lit in the draw
+  // pass, auto-clears shortly after the last hit so it goes dark when playback
+  // stops. Driven by the dispatch-path sliceHit telemetry, filtered to this voice.
+  const [activeSlice, setActiveSlice] = useState<number | null>(null);
+  const hitTimer = useRef<number | null>(null);
 
   // Track the rendered width so peaks resolve at ~1 column per pixel.
   useEffect(() => {
@@ -75,6 +95,24 @@ export function Waveform({
       cancelled = true;
     };
   }, [voiceId, width]);
+
+  // Live active-slice highlight: subscribe to the dispatch-path slice hits for
+  // this voice, hold the last-fired index, and clear it ~260ms after the last
+  // hit so it darkens when the sequence stops. Same-index consecutive hits keep
+  // resetting the clear timer (stays lit); a new index re-renders the cell.
+  useEffect(() => {
+    setActiveSlice(null);
+    const off = onSliceHit((hitVoice, index) => {
+      if (hitVoice !== voiceId) return;
+      setActiveSlice(index);
+      if (hitTimer.current != null) window.clearTimeout(hitTimer.current);
+      hitTimer.current = window.setTimeout(() => setActiveSlice(null), 260);
+    });
+    return () => {
+      off();
+      if (hitTimer.current != null) window.clearTimeout(hitTimer.current);
+    };
+  }, [voiceId]);
 
   // Infer travel direction from the position delta (works for all loop modes,
   // including pingpong where the sign flips at the turns).
@@ -118,10 +156,10 @@ export function Waveform({
     const mid = HEIGHT / 2;
     const amp = mid - 3;
 
-    // The "bright" window: the trim region in sample mode, the grain window in
-    // granular mode (read position → grainFrac, computed above).
-    const winStart = granular ? granular.position : start;
-    const winEnd = granular ? Math.min(1, granular.position + grainFrac) : end;
+    // The "bright" window: the whole sample in slice mode, the trim region in
+    // sample mode, the grain window in granular mode (read position → grainFrac).
+    const winStart = sliceMode ? 0 : granular ? granular.position : start;
+    const winEnd = sliceMode ? 1 : granular ? Math.min(1, granular.position + grainFrac) : end;
 
     if (peaks) {
       // fillRect with a 1px height floor — stroked zero-height lines draw
@@ -150,7 +188,33 @@ export function Waveform({
       ctx.fillRect(0, mid, width, 1);
     }
 
-    if (granular) {
+    if (sliceMode) {
+      // Slice markers: a vertical line + top grab-tab at each slice start, with
+      // faint alternating cell shading so adjacent slices read as distinct. The
+      // implied last edge (sample end) isn't drawn — the waveform edge marks it.
+      for (let i = 0; i < slices!.length; i++) {
+        const mx = slices![i] * width;
+        const nx = (i + 1 < slices!.length ? slices![i + 1] : 1) * width;
+        const isActive = i === activeSlice;
+        if (isActive) {
+          // The slice the sequence is currently firing — a bright wash over the
+          // whole cell so you can watch the pattern walk the break.
+          ctx.fillStyle = 'rgba(255,255,255,0.28)';
+          ctx.fillRect(mx, 0, Math.max(1, nx - mx), HEIGHT);
+        } else if (i % 2 === 1) {
+          ctx.fillStyle = 'rgba(255,255,255,0.05)';
+          ctx.fillRect(mx, 0, Math.max(1, nx - mx), HEIGHT);
+        }
+        ctx.strokeStyle = isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(mx, 0);
+        ctx.lineTo(mx, HEIGHT);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(mx - 1, 0, 3, 6);
+      }
+    } else if (granular) {
       // Grain window band + two draggable edges: left = read position, right =
       // grain length. Drag the band/left to move, the right edge to resize.
       const lx = winStart * width;
@@ -213,7 +277,7 @@ export function Waveform({
       ctx.closePath();
       ctx.fill();
     }
-  }, [peaks, width, start, end, playhead, loopMode, granular?.position, granular?.grainMs]);
+  }, [peaks, width, start, end, playhead, loopMode, granular?.position, granular?.grainMs, sliceMode, slices, activeSlice]);
 
   const xToFrac = (clientX: number): number => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -223,7 +287,49 @@ export function Waveform({
     if (which === 'start') onChange({ start: Math.min(frac, end - 0.001) });
     else onChange({ end: Math.max(frac, start + 0.001) });
   };
+
+  // --- slice-mode editing helpers (S2b) ---
+  // Min spacing between markers, ~20ms of the sample so cuts can't stack.
+  const sliceMinGap = (): number => (peaks ? (0.02 * 44100) / peaks.frames : 0.005);
+  // The slice a fraction falls in: the last start-point ≤ frac (0 if before all).
+  const sliceIndexAt = (frac: number): number => {
+    if (!slices || slices.length === 0) return 0;
+    let idx = 0;
+    for (let i = 0; i < slices.length; i++) {
+      if (slices[i] <= frac) idx = i;
+      else break;
+    }
+    return idx;
+  };
+
   const onDown = (e: React.PointerEvent) => {
+    if (sliceMode) {
+      const frac = xToFrac(e.clientX);
+      canvasRef.current!.setPointerCapture(e.pointerId);
+      // Nearest marker within the grab threshold → drag it (or alt/⌘-click to
+      // remove). Otherwise a bare region click auditions that slice.
+      const hitFrac = 6 / (width || 1);
+      let nearest = -1;
+      let nd = Infinity;
+      for (let i = 0; i < slices!.length; i++) {
+        const d = Math.abs(slices![i] - frac);
+        if (d < nd) {
+          nd = d;
+          nearest = i;
+        }
+      }
+      if (nearest >= 0 && nd <= hitFrac) {
+        if (e.altKey || e.metaKey) {
+          onSlicesChange?.(slices!.filter((_, i) => i !== nearest));
+        } else {
+          sliceDragRef.current = nearest;
+        }
+        return;
+      }
+      slicePreviewingRef.current = true;
+      onSlicePreview?.(sliceIndexAt(frac), true);
+      return;
+    }
     const frac = xToFrac(e.clientX);
     canvasRef.current!.setPointerCapture(e.pointerId);
     if (granular) {
@@ -242,6 +348,19 @@ export function Waveform({
     applyDrag(which, frac);
   };
   const onMove = (e: React.PointerEvent) => {
+    if (sliceMode) {
+      if (sliceDragRef.current == null) return;
+      const i = sliceDragRef.current;
+      const frac = xToFrac(e.clientX);
+      const gap = sliceMinGap();
+      // Clamp between neighbours so the array stays sorted (index stable).
+      const lo = i > 0 ? slices![i - 1] + gap : 0;
+      const hi = i + 1 < slices!.length ? slices![i + 1] - gap : 1;
+      const next = slices!.slice();
+      next[i] = Math.max(lo, Math.min(hi, frac));
+      onSlicesChange?.(next);
+      return;
+    }
     if (!dragRef.current) return;
     const frac = xToFrac(e.clientX);
     if (granular) {
@@ -252,6 +371,11 @@ export function Waveform({
     applyDrag(dragRef.current, frac);
   };
   const onUp = (e: React.PointerEvent) => {
+    if (sliceMode && slicePreviewingRef.current) {
+      slicePreviewingRef.current = false;
+      onSlicePreview?.(0, false);
+    }
+    sliceDragRef.current = null;
     dragRef.current = null;
     try {
       canvasRef.current!.releasePointerCapture(e.pointerId);
@@ -259,17 +383,28 @@ export function Waveform({
       /* pointer already released */
     }
   };
+  // Double-click empty space adds a marker there (rejected if it would stack on
+  // an existing one or exceed the 48-point .pti cap).
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if (!sliceMode || !slices) return;
+    if (slices.length >= 48) return;
+    const frac = xToFrac(e.clientX);
+    const gap = sliceMinGap();
+    if (slices.some((s) => Math.abs(s - frac) < gap)) return;
+    onSlicesChange?.([...slices, frac].sort((a, b) => a - b));
+  };
 
   return (
     <div ref={wrapRef} className="mb-3">
       <canvas
         ref={canvasRef}
         style={{ width: '100%', height: HEIGHT, touchAction: 'none', display: 'block' }}
-        className="border border-white/15 bg-black/40 cursor-ew-resize"
+        className={`border border-white/15 bg-black/40 ${sliceMode ? 'cursor-pointer' : 'cursor-ew-resize'}`}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerLeave={onUp}
+        onDoubleClick={onDoubleClick}
       />
     </div>
   );

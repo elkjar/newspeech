@@ -11,8 +11,10 @@ import {
   voiceBitDepth,
   voiceMods,
   voiceGranular,
+  voiceSlices,
   type ModSpec,
 } from '../instruments/voiceEditsStore';
+import { scaleDegreeOf, snapToScale } from './scale';
 
 export type SampleId = string;
 
@@ -108,6 +110,9 @@ class SamplePlayer {
     start: number;
     end: number;
     loop: number;
+    // Slice mode: the index of the slice this note selected (for the editor
+    // waveform's live "which slice is firing" highlight). null when not slicing.
+    sliceIndex: number | null;
     filterType: number;
     cutoff: number;
     resonance: number;
@@ -128,8 +133,17 @@ class SamplePlayer {
   } | null {
     const data = this.voices.get(voice);
     if (!data || data.banks.length === 0) return null;
+    // Slice mode (playmode 'slice' + authored slices): the played NOTE selects a
+    // slice window of ONE sample rather than repitching. Both the nearest-root
+    // bank selection and the note→pitch derivation are bypassed — every note
+    // reads bank 0 at pitch 1 (tune/finetune still apply as static offsets), and
+    // the trigger window is overridden with the mapped slice's span below.
+    // (S1 limit: a multisample voice reads only bank 0 in slice mode; slice
+    // targets are overwhelmingly single-sample breaks.)
+    const slices = voiceSlices(voice);
+    const sliceMode = slices.length > 0 && midiNote !== undefined;
     let bankIdx = 0;
-    if (midiNote !== undefined) {
+    if (!sliceMode && midiNote !== undefined) {
       let bestDiff = Infinity;
       for (let i = 0; i < data.banks.length; i++) {
         const root = data.banks[i].root;
@@ -147,7 +161,7 @@ class SamplePlayer {
     const path = bank.paths[idx % bank.paths.length];
     data.rrIndex.set(bankIdx, (idx + 1) % bank.paths.length);
     let pitch = 1.0;
-    if (midiNote !== undefined && bank.root !== null) {
+    if (!sliceMode && midiNote !== undefined && bank.root !== null) {
       pitch = Math.pow(2, (midiNote - bank.root) / 12);
     }
     // Per-voice instrument edits (global, app-only) fold in here — the single
@@ -161,6 +175,32 @@ class SamplePlayer {
     // Sample window + loop (A3). start/end as 0..1 fractions, loop as the
     // native loop_mode code; defaults (0/1/off) leave playback unchanged.
     const trim = voiceTrim(voice);
+    let start = trim.start;
+    let end = trim.end;
+    let loop = trim.loop;
+    let sliceIndex: number | null = null;
+    if (sliceMode) {
+      // Map the note to a slice by its SCALE-DEGREE above the scene tonic (not
+      // chromatic distance), so consecutive scale steps walk slices one-by-one
+      // and EVERY slice is reachable from a scale-quantized pattern (Chris,
+      // 2026-07-11). The tonic → slice 0; each degree up → the next slice,
+      // wrapping mod numSlices. Off-scale notes snap to the nearest scale tone
+      // first (chromatic scale → degree == semitone, so it degrades to the old
+      // chromatic behavior for un-quantized voices). Slice i spans
+      // [slices[i], slices[i+1] ?? trim.end); one-shot (loop off).
+      const n = slices.length;
+      const st = useSequencerStore.getState();
+      const note = Math.round(midiNote!);
+      const deg =
+        scaleDegreeOf(note, st.rootNote, st.scale) ??
+        scaleDegreeOf(snapToScale(note, st.rootNote, st.scale), st.rootNote, st.scale) ??
+        0;
+      const i = ((deg % n) + n) % n;
+      sliceIndex = i;
+      start = slices[i];
+      end = i + 1 < n ? slices[i + 1] : trim.end;
+      loop = 0;
+    }
     // Per-instrument filter (B1). type 0 = off (engine bypasses).
     const filter = voiceFilter(voice);
     // Cutoff LFO (B2). depth 0 = off.
@@ -184,9 +224,10 @@ class SamplePlayer {
       pitch,
       voiceGain: data.gain * voiceGainOverride(voice),
       chokeGroup: this.chokeGroups.get(voice) ?? null,
-      start: trim.start,
-      end: trim.end,
-      loop: trim.loop,
+      start,
+      end,
+      loop,
+      sliceIndex,
       filterType: filter.type,
       cutoff: filter.cutoff,
       resonance: filter.resonance,

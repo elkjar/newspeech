@@ -62,6 +62,7 @@ function resolveMutationProfile(name: string | undefined): MutationProfile | und
 function inferRoleFromKitPath(kitPath: string): VoiceRole {
   const trimmed = kitPath.startsWith('user/') ? kitPath.slice('user/'.length) : kitPath;
   if (trimmed.startsWith('drums/')) return 'drum';
+  if (trimmed.startsWith('breaks/')) return 'drum';
   if (trimmed.startsWith('pads/')) return 'pad';
   if (trimmed.startsWith('bass/')) return 'bass';
   if (trimmed.startsWith('textures/')) return 'texture';
@@ -153,7 +154,9 @@ function inferCategoryFromKitPath(kitPath: string): VoiceCategory {
   // (instruments, pads, future categories) is melodic. Pad-specific dispatch
   // is keyed off VoiceDef.type === 'pad', not category.
   const trimmed = kitPath.startsWith('user/') ? kitPath.slice('user/'.length) : kitPath;
-  return trimmed.startsWith('drums/') ? 'drum' : 'melodic';
+  // `drums/` and `breaks/` both land on the rhythm (drum) section — breaks are
+  // full loops chopped in the slice-mode editor. Everything else is melodic.
+  return trimmed.startsWith('drums/') || trimmed.startsWith('breaks/') ? 'drum' : 'melodic';
 }
 
 export function registerKit(

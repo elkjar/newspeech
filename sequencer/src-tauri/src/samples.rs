@@ -31,8 +31,13 @@ pub struct SampleKitEntry {
 // the rest). The frontend's PICKER groups by the FOLDER NAME itself
 // (`instruments` / `pads` / `textures` / `bass`) — that subcategory is
 // inferred from the kit path on the JS side.
-const CATEGORIES: [(&str, &str); 5] = [
+const CATEGORIES: [(&str, &str); 6] = [
     ("drums", "drum"),
+    // `breaks` is a rhythm-section (drum-category) folder for full
+    // breakbeat loops. Each subfolder is a break; the slice-mode editor
+    // chops it into per-degree hits (see docs/tracker-instrument-voice.md).
+    // Drum-category so break voices land on the same track section as kits.
+    ("breaks", "drum"),
     ("instruments", "melodic"),
     ("pads", "melodic"),
     ("bass", "melodic"),

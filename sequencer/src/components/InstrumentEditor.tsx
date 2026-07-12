@@ -41,6 +41,8 @@ import { Waveform } from './Waveform';
 import { EnvelopeGraph } from './EnvelopeGraph';
 import { Knob } from './Knob';
 import { exportVoiceToPti } from '../tracker/exportPti';
+import { analyzeVoiceOnsets, pickOnsets, type OnsetAnalysis } from '../tracker/sliceDetect';
+import { quantize } from '../audio/scale';
 import { markManualOverride, type LFODestKnob } from '../audio/lfo';
 import { useRoutedLFOs } from '../hooks/useRoutedLFOs';
 import { useLFOValue } from '../hooks/useLFOValue';
@@ -110,6 +112,8 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const resetVoiceEdit = useVoiceEditsStore((s) => s.resetVoiceEdit);
   const setTrackSource = useSequencerStore((s) => s.setTrackSource);
   const bpm = useSequencerStore((s) => s.bpm);
+  const rootNote = useSequencerStore((s) => s.rootNote);
+  const scale = useSequencerStore((s) => s.scale);
 
   const [saveState, setSaveState] = useState<'idle' | 'working' | 'ok' | 'err'>('idle');
   const [saveAsMode, setSaveAsMode] = useState(false);
@@ -119,6 +123,13 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const [durationSecs, setDurationSecs] = useState(0);
   const previewId = useRef(0);
   const pollRef = useRef<number | null>(null);
+  // Cached onset analysis for auto-slice, keyed by the voice it was computed on
+  // (so a focus change re-analyzes the new sample rather than reusing stale novelty).
+  const sliceAnalysis = useRef<{ voiceId: string; a: OnsetAnalysis } | null>(null);
+  // Slice audition (click a slice region in the waveform) — its own monitor id +
+  // track so it doesn't tangle with the held C3 preview button.
+  const slicePreviewId = useRef(0);
+  const slicePreviewTrack = useRef<Track | null>(null);
   // The track a held preview was started on, so cleanup can release the right
   // note even after the focused track changes.
   const previewTrack = useRef<Track | null>(null);
@@ -149,6 +160,9 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const stopPreview = () => {
     if (previewId.current && previewTrack.current) {
       monitorRelease(previewTrack.current, previewId.current);
+    }
+    if (slicePreviewId.current && slicePreviewTrack.current) {
+      monitorRelease(slicePreviewTrack.current, slicePreviewId.current);
     }
     if (pollRef.current != null) {
       window.clearInterval(pollRef.current);
@@ -202,6 +216,36 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
   const playmode = edit?.playmode ?? 'sample';
   const granular = { ...DEFAULT_GRANULAR, ...(edit?.granular ?? {}) };
   const isGran = playmode === 'granular';
+  // Slice (Phase D, S1/S2): sorted 0..1 start-points; the note selects a slice.
+  const isSlice = playmode === 'slice';
+  const slices = edit?.slices ?? EMPTY_SLICES;
+  const sliceSensitivity = edit?.sliceSensitivity ?? 0.5;
+  // Auto-slice (S2): analyze the sample's onsets once (cached in the ref by
+  // voiceId), then pick slices at the given sensitivity. Cheap on repeat, so the
+  // sensitivity knob re-slices live as it turns; AUTO runs it at the stored value.
+  const runAutoSlice = async (sens: number) => {
+    let a: OnsetAnalysis | null =
+      sliceAnalysis.current?.voiceId === voiceId ? sliceAnalysis.current.a : null;
+    if (!a) {
+      a = await analyzeVoiceOnsets(voiceId);
+      if (a) sliceAnalysis.current = { voiceId, a };
+    }
+    if (!a) return;
+    setVoiceEdit(voiceId, { slices: pickOnsets(a, sens) });
+  };
+  // Audition a slice: fire (or release) the note that maps to slice `index` under
+  // the scale-degree mapping — `quantize(root, scale, index)` sits `index` degrees
+  // above the tonic, so pickNativeSample resolves it back to slice `index`.
+  const previewSlice = (index: number, on: boolean) => {
+    if (!track) return;
+    if (on) {
+      const id = ++slicePreviewId.current;
+      slicePreviewTrack.current = track;
+      monitorNote(track, quantize(rootNote, scale, index), 0.9, id);
+    } else if (slicePreviewTrack.current && slicePreviewId.current) {
+      monitorRelease(slicePreviewTrack.current, slicePreviewId.current);
+    }
+  };
   const setGranular = (patch: Partial<GranularEdit>) =>
     setVoiceEdit(voiceId, { granular: { ...granular, ...patch } });
   const granPosLfo = edit?.granPosLfo ?? DEFAULT_LFO_MOD;
@@ -317,6 +361,9 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
             markManualOverride(track.id, 'grainLength');
             setGranular({ grainMs: ms });
           }}
+          slices={isSlice ? slices : null}
+          onSlicesChange={(s) => setVoiceEdit(voiceId, { slices: s })}
+          onSlicePreview={previewSlice}
           onDuration={setDurationSecs}
         />
         <div
@@ -464,7 +511,7 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
         </LabeledStack>
         <Divider />
         {/* loop (sample mode) — label on top, buttons stacked vertically */}
-        {!isGran && (
+        {playmode === 'sample' && (
           <LabeledStack label="loop">
             <div className="flex flex-col gap-1 items-stretch">
               {(['off', 'fwd', 'bwd', 'rev', 'pingpong'] as LoopMode[]).map((m) => (
@@ -477,6 +524,48 @@ export function InstrumentEditor({ view }: { view: 'params' | 'automation' }) {
                 </SegButton>
               ))}
             </div>
+          </LabeledStack>
+        )}
+        {/* slices (slice mode) — AUTO (transient detect) + sensitivity knob, plus
+            ÷4/÷8/÷16 equal-grid fallbacks + clear. Notes select slices
+            chromatically from C1 (wrapping), played unpitched. Manual marker
+            editing is S2b. */}
+        {isSlice && (
+          <LabeledStack label="slices">
+            <div className="flex items-start gap-3">
+              <div className="flex flex-col gap-1 items-stretch">
+                <SegButton active={false} onClick={() => void runAutoSlice(sliceSensitivity)}>
+                  auto
+                </SegButton>
+                {([4, 8, 16] as const).map((n) => (
+                  <SegButton
+                    key={n}
+                    active={slices.length === n}
+                    onClick={() => setVoiceEdit(voiceId, { slices: gridSlices(n) })}
+                  >
+                    ÷{n}
+                  </SegButton>
+                ))}
+                <SegButton
+                  active={slices.length === 0}
+                  onClick={() => setVoiceEdit(voiceId, { slices: [] })}
+                >
+                  clear
+                </SegButton>
+              </div>
+              <TopKnob
+                label="sens"
+                value={sliceSensitivity}
+                display={`${Math.round(sliceSensitivity * 100)}%`}
+                onChange={(v) => {
+                  setVoiceEdit(voiceId, { sliceSensitivity: v });
+                  void runAutoSlice(v);
+                }}
+              />
+            </div>
+            <span className="text-[9px] uppercase tracking-widest text-white/40 text-center mt-1">
+              {slices.length} slc
+            </span>
           </LabeledStack>
         )}
         {/* grain (granular mode): direction column · grain (shape + scatter) */}
@@ -921,11 +1010,22 @@ function LfoBindKnob({
   );
 }
 
+// Stable empty-slice reference so a slice-less voice doesn't hand Waveform a
+// fresh [] each render (which would redraw every frame via its deps).
+const EMPTY_SLICES: number[] = [];
+
+// Equal-grid slice start-points: n evenly-spaced points across the whole sample
+// ([0, 1/n, 2/n, …]); slice i then spans [points[i], points[i+1] ?? 1). The
+// instant-audible S1 slicing before transient detection (S2) lands.
+function gridSlices(n: number): number[] {
+  return Array.from({ length: n }, (_, i) => i / n);
+}
+
 // Playmode selector — same segmented-tab visual as the main screen tabs.
 // sample + granular are live; slice + wavetable are scaffolded (disabled).
 const PLAYMODES: { id: Playmode; label: string; ready: boolean }[] = [
   { id: 'sample', label: 'sample', ready: true },
-  { id: 'slice', label: 'slice', ready: false },
+  { id: 'slice', label: 'slice', ready: true },
   { id: 'wavetable', label: 'wavetable', ready: false },
   { id: 'granular', label: 'granular', ready: true },
 ];

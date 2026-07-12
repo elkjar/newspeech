@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSequencerStore, type Track, type Step } from '../state/store';
 import { midiToName, quantize, octaveDegrees } from '../audio/scale';
 import { sourceIsMelodic, sourceLabel } from '../instruments/library';
+import { voiceSlices } from '../instruments/voiceEditsStore';
 import {
   peekStepAccRung,
   type AccumulatorCfg,
@@ -90,6 +91,8 @@ export function StepInspector() {
   const scale = useSequencerStore((s) => s.scale);
   const setStepChordVoicing = useSequencerStore((s) => s.setStepChordVoicing);
   const setStepAccumulator = useSequencerStore((s) => s.setStepAccumulator);
+  const setStepPitch = useSequencerStore((s) => s.setStepPitch);
+  const setStepSliceRandom = useSequencerStore((s) => s.setStepSliceRandom);
 
   // tieAnchor (the white square in the grid) acts as a click-pin: once set,
   // the inspector locks to that step so hover/mouse-leave can't yank it away
@@ -111,6 +114,16 @@ export function StepInspector() {
   );
   const step =
     track && activeSelection ? displayedStep(track, activeSelection.index) ?? null : null;
+
+  // Slice-mode (break) voice: a per-step chop selector replaces the melodic
+  // note editors. sliceCount 0 → not a slice voice, UI stays hidden. slice
+  // index is stored in step.pitch (0-based, wrapped); sliceRandom overrides it.
+  const sliceCount =
+    track && track.source.kind === 'voice' ? voiceSlices(track.source.id).length : 0;
+  const sliceVoice = sliceCount > 0;
+  const sliceRandom = step?.sliceRandom === true;
+  const sliceIdx =
+    sliceVoice && step ? ((step.pitch % sliceCount) + sliceCount) % sliceCount : 0;
 
   let big = '—';
   let bigOctave = '';
@@ -149,6 +162,8 @@ export function StepInspector() {
       } else {
         big = midiToName(quantize(rootNote, scale, step.pitch));
       }
+    } else if (sliceVoice) {
+      big = sliceRandom ? 'RND' : `SL ${sliceIdx + 1}`;
     } else {
       big = sourceLabel(track.source).toUpperCase();
     }
@@ -229,6 +244,35 @@ export function StepInspector() {
           </div>
         </div>
       </div>
+      {sliceVoice && step && track && activeSelection && (
+        <div className="flex items-center gap-3 mt-3 pt-2 border-t border-white/10 text-[10px] uppercase tracking-widest">
+          <LabeledSelect
+            label="slice"
+            value={String(sliceIdx)}
+            onChange={(v) => setStepPitch(track.id, activeSelection.index, Number(v))}
+            plocked={!sliceRandom}
+            disabled={sliceRandom}
+            title="which chop this step fires (of the voice's slices)"
+          >
+            {Array.from({ length: sliceCount }, (_, i) => (
+              <option key={i} value={i} className="bg-[#050505]">
+                {i + 1}
+              </option>
+            ))}
+          </LabeledSelect>
+          {/* Modifier toggle — labeled circle, no border (see project convention). */}
+          <button
+            type="button"
+            onClick={() => setStepSliceRandom(track.id, activeSelection.index, !sliceRandom)}
+            className={`text-[10px] uppercase tracking-widest transition-colors ${
+              sliceRandom ? 'text-white' : 'text-white/45 hover:text-white/80'
+            }`}
+            title="random — re-roll a fresh slice each time this step fires (overrides the picked slice)"
+          >
+            {sliceRandom ? '● random' : '○ random'}
+          </button>
+        </div>
+      )}
       {showChord && (
         <div className="flex items-center gap-2 mt-3 pt-2 border-t border-white/10 text-[10px] uppercase tracking-widest">
           <LabeledSelect

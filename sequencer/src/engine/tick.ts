@@ -18,6 +18,7 @@ import type { Step, Track, TrackSection } from '../state/store';
 import { RATE_STRIDE, MAX_STEPS } from '../state/store';
 import type { MutationProfile } from '../audio/voices';
 import { isPadVoice, voicePadConfig } from '../audio/voices';
+import { voiceSlices } from '../instruments/voiceEditsStore';
 import type { ChordContext } from '../audio/chordContext';
 import { chordToneMidi } from '../audio/chordContext';
 import {
@@ -945,6 +946,12 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
     const noteSpan = stutter ? subDur : rowStepDuration;
     const harmonicShift = melodic ? inputs.harmonicOffset : 0;
 
+    // Slice (break) voices: a sample with authored slices (playmode 'slice').
+    // On a non-melodic row these otherwise dispatch with no note and never
+    // enter samplePlayer's slice path — resolve the per-step slice below.
+    const sliceCount =
+      track.source.kind === 'voice' ? voiceSlices(track.source.id).length : 0;
+
     let rootMidi: number | undefined;
     let voiceIntervals: number[] = [0];
     // Set only for sustaining (pad) chord-master triggers — carries the
@@ -1034,6 +1041,19 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
       if (rootMidi !== undefined && track.octave !== 0) {
         rootMidi += track.octave * 12;
       }
+    } else if (sliceCount > 0 && track.source.kind === 'voice') {
+      // Slice (break) voice on a non-melodic row. Resolve the per-step slice
+      // selection into a note that samplePlayer's degree→slice map fires as
+      // exactly that chop (quantize(root,scale,idx) round-trips to degree idx).
+      // `step.sliceRandom` → a fresh random slice each fire (re-rolls per fire
+      // since this runs per dispatch); otherwise the authored index (step.pitch,
+      // wrapped mod count). Track octave is deliberately NOT applied — the
+      // Inspector dropdown addresses slices 1:1.
+      const idx =
+        step.sliceRandom === true
+          ? Math.floor(Math.random() * sliceCount)
+          : ((pitch % sliceCount) + sliceCount) % sliceCount;
+      rootMidi = quantize(inputs.rootNote, inputs.scale, idx);
     }
 
     // Chord-master mute split tail — chord context has already been published

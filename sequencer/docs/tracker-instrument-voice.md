@@ -677,39 +677,129 @@ established (manual + Backstage): the Tracker's own sample editor auto-slices fr
 is authoring: better/tunable slicing on the laptop, auditioned natively, landing on the device as-is
 via `slices[48]`. Same author-here/render-there philosophy as granular.
 
-**S1 — slices data + playback (audible end-to-end with grid slices, zero Rust).**
-- `voiceEditsStore.ts`: `VoiceEdit.slices?: number[]` — sorted 0..1 fractions, ≤48 — + `voiceSlices()`
-  accessor. Flip `PlaymodeTabs` slice → `ready: true`.
-- `samplePlayer.pickNativeSample` (the single chokepoint): when `playmode === 'slice'` and slices
-  exist, map `midiNote` → slice index and override the returned `start`/`end` with that slice's window
-  (`[slices[i], slices[i+1] ?? trim.end]`), `loop = off`. **Note selects, doesn't repitch** (pitch = 1;
-  tune/finetune still apply as static offsets). Mapping: chromatic from C1 (MIDI 36), **wrapping
-  `mod numSlices`** so every key always plays a slice (audible-default bias).
-- Reuses the A3 `play_start`/`play_end` machinery verbatim — no engine work in S1.
-- `Waveform.tsx`: slice-mode overlay = thin marker lines + top tabs (third display mode next to
-  trim/granular).
-- Editor cluster (slice mode): minimal — **÷4 / ÷8 / ÷16 equal-grid buttons + clear**. Grid slicing
-  gives instant audible material before transient detection exists.
+**S1 — slices data + playback — BUILT 2026-07-11 (app-only, not committed; PENDING app audition).**
+Zero-Rust, reuses the A3 trigger machinery verbatim; `tsc` clean. Files: `voiceEditsStore.ts`,
+`samplePlayer.ts`, `Waveform.tsx`, `InstrumentEditor.tsx`.
+- `voiceEditsStore.ts`: `VoiceEdit.slices?: number[]` (sorted 0..1 fractions, ≤48) + `voiceSlices()`
+  accessor (gated on `playmode === 'slice'`, returns `[]` otherwise). `PlaymodeTabs` slice →
+  `ready: true`.
+- `samplePlayer.pickNativeSample` (the single chokepoint): `sliceMode = slices.length > 0 && midiNote`.
+  When on, **both the nearest-root bank selection AND the note→pitch derivation are bypassed** — every
+  note reads **bank 0** at pitch 1 (tune/finetune still apply as static offsets) — and the returned
+  `start`/`end`/`loop` are overridden with the mapped slice's window (`[slices[i], slices[i+1] ??
+  trim.end)`, `loop = off`). **Mapping = SCALE-DEGREE, not chromatic (Chris, 2026-07-11):** `deg =
+  scaleDegreeOf(note, rootNote, scale)` (octave-aware degree above the scene tonic; off-scale notes
+  `snapToScale` first), `i = ((deg % n) + n) % n`. So consecutive scale steps walk slices one-by-one and
+  **every slice is reachable from a quantized `.seq`** (a chromatic-scale voice degrades to the old
+  semitone-per-slice behavior, since degree == semitone there). Reads the live `rootNote`/`scale` from
+  the store at trigger. **S1 limit:** a multisample voice reads only bank 0 in slice mode (slice targets
+  are single-sample breaks); the RR index still advances (harmless on 1-path banks). Both flow to every
+  native trigger site for free (playback + preview).
+- **Live active-slice highlight (2026-07-11):** `pickNativeSample` also returns `sliceIndex`; the App.tsx
+  playback + arp dispatch paths `emitSliceHit(voice, index)` (`src/audio/sliceHits.ts`, a bare pub/sub,
+  no-op when nobody subscribes). The editor `Waveform` subscribes (filtered to its voice), holds the
+  last-fired index with a ~260ms clear timer, and washes that cell bright — so you watch the pattern
+  walk the break. Darkens when playback stops.
+- `Waveform.tsx`: new `slices?: number[] | null` prop = third display mode (precedes granular/trim) —
+  whole waveform bright, a marker line + top grab-tab at each slice start, faint alternating cell
+  shading. **Display-only in S1** (pointer handlers early-return; manual marker editing is S2). Playhead
+  still sweeps the played slice.
+- `InstrumentEditor.tsx`: slice cluster in the mode-specific column = **÷4 / ÷8 / ÷16 equal-grid buttons
+  + clear** (`gridSlices(n) = [0, 1/n, …]`) + a `N slc` readout. Loop cluster now gated `playmode ===
+  'sample'` (was `!isGran`). `EMPTY_SLICES` module const keeps the slice-less Waveform prop stable.
+- **Audition checklist:** reload the Sequence app (samplePlayer edit needs a JS reload, no cargo
+  rebuild); slice a break voice ÷8, play a chromatic run from C1 up — each semitone should fire the next
+  slice, wrapping after 8; confirm the markers render and the playhead sweeps the fired slice; confirm
+  sample-mode voices are untouched.
 
 **S2 — auto-slice from transients + sensitivity + manual marker editing.**
-- Detection in JS on the decoded mono buffer (extend the `waveformPeaks` cache to retain the decoded
-  buffer rather than re-decoding): windowed RMS envelope; onset where the short-window level rises
-  past `sensitivity ×` the trailing average; ~30ms min-gap guard; cap 48. Same rise-detection idea as
-  the `slice-samples` pipeline.
-- UI: **AUTO button + sensitivity knob** — twisting re-runs detection live (the control the hardware
-  lacks). Markers: click empty adds, drag moves, alt-click removes.
-- Click within a slice's span previews that slice (`monitorNote` with the mapped note).
 
-**S3 — export + save + hardware verify (the gate).**
-- `exportPti.ts`: `playmode = Slice (4)` when the edit says slice; `slices[i]` = fraction → point
-  (same `PTI_MAX_POINT` path as start/end); `numSlices`.
+**S2a (auto-slice + sensitivity) — BUILT 2026-07-11 (app-only, not committed; PENDING app audition).**
+`tsc` clean; HMR-live. Files: `waveformPeaks.ts`, `sliceDetect.ts` (NEW), `voiceEditsStore.ts`,
+`InstrumentEditor.tsx`.
+- `waveformPeaks.loadVoiceMono(voiceId)`: decodes + downmixes to a cached mono `Float32Array` (at the
+  44.1k decode rate), retained separately from the peaks cache so detection doesn't re-decode.
+- `sliceDetect.ts`: split EXPENSIVE/CHEAP so the knob re-slices live. `analyzeVoiceOnsets(voiceId)` (once
+  per voice, cached) = ~5ms-hop RMS envelope → **log-energy positive-difference novelty** (log
+  compression makes soft ghost-notes comparable to loud kicks, so sensitivity behaves across the dynamic
+  range). `pickOnsets(analysis, sensitivity)` (cheap) = local-max peak-pick with an adaptive
+  trailing-mean threshold `factor` (3.5→1.1) + absolute `floor` (0.28·max→0.03·max), both eased by
+  sensitivity, ~30ms min-gap guard, always leads with slice 0, keeps the strongest ≤ `MAX_SLICES`.
+  **`MAX_SLICES = 48` (the .pti format bound, Chris 2026-07-11).** Considered a tighter playability cap
+  (slices trigger by scale-degree; the step grid clamps pitch to ±14 degrees, so ~15 slices are reachable
+  straight up from root and ~29 with below-root wrap) but Chris chose to keep the full 48 — the per-track
+  OCTAVE shift (±4) plus the degree wrap make the upper slices reachable as a deliberate register move,
+  and he likes that feel. Density is tuned with sensitivity, not a count cap.
+- `VoiceEdit.sliceSensitivity?` (0..1, default 0.5) — a tool param, remembered per voice; re-runs
+  detection only when the knob is turned or AUTO pressed, never on load (so it can't clobber slices on
+  focus).
+- Editor slice cluster: **AUTO button** (detect at the stored sensitivity) + **sens knob** (twisting
+  re-slices live — the control the hardware lacks), alongside the S1 ÷4/÷8/÷16 grid fallbacks + clear.
+  `sliceAnalysis` ref caches the analysis keyed by voiceId (re-analyzes on focus change).
+- **Audition:** slice a break → AUTO → play a chromatic run from C1 (each key = the next onset); turn
+  sens up/down to add/remove hits; ÷N grid still there as a fallback.
+
+**S2b (manual marker editing + click-preview) — BUILT 2026-07-11 (app-only, not committed).** `tsc`
+clean; HMR-live. Files: `Waveform.tsx`, `InstrumentEditor.tsx`. The slice-mode Waveform pointer handlers
+(display-only stubs in S1) now edit: **drag a marker** to move it (clamped between neighbours, ~20ms
+min-gap, order stays sorted so the index is stable) · **double-click** empty space to add a marker
+(rejected if it would stack within min-gap or exceed 48) · **alt/⌘-click** a marker to remove it ·
+**single-click a region** to audition that slice. New props `onSlicesChange`/`onSlicePreview`; the editor
+wires `onSlicesChange → setVoiceEdit({slices})` and `onSlicePreview → previewSlice(index, on)`, which
+fires `monitorNote(track, quantize(rootNote, scale, index), …)` on its own `slicePreviewId`/track (so it
+doesn't tangle with the held-C3 preview button) — the quantized note maps back through `pickNativeSample`
+to exactly slice `index`. Cursor is `pointer` in slice mode; `stopPreview` also releases a held slice
+audition on unmount.
+
+**S3 — export + save — BUILT 2026-07-11 (app-only, not committed); HARDWARE VERIFY still owed.** `tsc`
+clean. File: `exportPti.ts`.
+- Playmode precedence now **granular (7) > slice (4) > loop-derived**: `isSlice = voiceSlices(id).length
+  > 0` → `inst.playmode = InstrumentPlayMode.Slice`. Slice points → `inst.slices` (a fresh 48-length
+  array, fraction → frame point via the same `last`/`PTI_MAX_POINT` ceiling as start/end),
+  `inst.numSlices`, `inst.selectedSlice = 0`.
+- **numSlices is documented 0..47** (the `slices` array has 48 slots but the count field caps at 47), so
+  a maxed 48-slice edit exports **47** (last cut dropped → final two slices merge). Flagged.
+- **Save round-trips for free:** `slices` is a `VoiceEdit` field, and `saveInstrument` bakes the whole
+  `resolvedVoiceEdit` into the manifest `edits` (JSON), so the array survives save → rescan →
+  `resolvedVoiceEdit` with no extra code. (Bench-verify the array actually round-trips.)
 - ⚠️ **Open format question, verify on device:** points are written as raw 44.1k frame offsets clamped
   to 65535 (~1.49s). Slicing long breaks is THE slice use case, so a >1.5s sliced sample is the
   hardware test: do points resolve as raw frames (long samples truncate) or normalized units? The
   Rhodes long-sample probe (2026-06-17) was exported but the addressing result was never recorded —
-  this test answers both.
-- Save: `slices` rides `VoiceEdit` → manifest `edits` like every other field — verify the ARRAY
-  survives the save → rescan → `resolvedVoiceEdit` round-trip.
+  this test answers both. Also confirm on device whether numSlices actually caps at 47 or allows 48.
+
+**`breaks/` category — BUILT 2026-07-11.** A sixth top-level sample category, sibling to
+`drums/`/`pads/`/etc., that scans as **drum-category** so break-loop voices land on the RHYTHM
+(drum) track section — the natural home for a chopped break. Wiring: `samples.rs` `CATEGORIES` gains
+`("breaks", "drum")` (so the scanner descends into `breaks/` and pre-seeds the folder on first
+launch); `manifestRegistry.ts` `inferCategoryFromKitPath` + `inferRoleFromKitPath` map `breaks/` →
+category `'drum'` / role `'drum'` (DRUM_MUTATION; kick/hat id-heuristics no-op on break names);
+`SampleLibraryPane.tsx` `FOLDER_ORDER` lists it after `drums`. The VoicePicker drum section already
+filters `category === 'drum'`, so break kits appear there with no picker change. **Layout:** each
+break needs its own SUBFOLDER (subfolder-per-voice), e.g. `breaks/<pack>/amen/amen.wav` → kit
+`<pack>`, one voice per break — loose WAVs directly in a kit folder merge into a single round-robin
+voice. Workflow: pick a break onto a rhythm track → slice-mode editor (AUTO/sens or ÷N) → play.
+
+**Per-step slice sequencing on the rhythm side — BUILT 2026-07-11 (app-only, not committed).** `tsc`
+clean. The gap: a break on a drum row dispatched with NO note (`rootMidi` only ever set inside
+`tick.ts`'s `if (melodic)` branch), so `samplePlayer`'s slice path (gated on `midiNote`) never engaged
+— every step played the whole loop from the top, with no way to pick a chop. Fix, three files:
+- `engine/tick.ts`: compute `sliceCount = voiceSlices(voiceId).length`; add an `else if (sliceCount > 0)`
+  note-resolution branch that sets `rootMidi = quantize(root, scale, idx)` — which round-trips through
+  samplePlayer's degree→slice map so slice == `idx`. `idx` = `step.sliceRandom ? floor(rand*n) :
+  step.pitch mod n`. Random re-rolls per fire (tick runs per dispatch). Track OCTAVE shift deliberately
+  skipped for slice voices so the Inspector dropdown addresses slices 1:1.
+- `state/store.ts`: `Step.sliceRandom?: boolean` (sparse plock, sits beside `chordVoicing`/`accumulator`)
+  + `setStepSliceRandom` (false collapses to undefined). Slice INDEX reuses `step.pitch` (0-based) — no
+  new field, `setStepPitch` doesn't clamp so indices past the melodic ±14 are fine. `hydrate.ts`
+  round-trips the flag; export is a wholesale `JSON.stringify` so the index + flag both persist.
+- `components/StepInspector.tsx`: for a slice voice (sliceCount>0) the melodic note editors are replaced
+  by a **`slice` dropdown (1…N)** + a **`○/● random` modifier toggle** (labeled-circle, no border per
+  convention). Big label shows `SL n` / `RND`. Click any drum step (handleClick isn't section-gated) →
+  pick its chop. Selection persists under the random toggle (dropdown dims when random is on).
+- **Audition (needs a FULL app reload — engine edit is stale under HMR):** slice a break ÷8 → drop it on
+  a rhythm row → click steps, set each to a different slice (or flip `random`) → play; watch the editor
+  waveform's live slice-highlight walk the pattern.
 
 **S4 — deferred:** BeatSlice (5); piano-roll slice-number ergonomics; Launchpad slice pads.
 

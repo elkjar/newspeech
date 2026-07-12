@@ -13,8 +13,8 @@ import { rescanAllKits, resolveUserSamplesDir } from '../instruments/userSamples
 import { type RegisteredKit } from '../instruments/manifestRegistry';
 import { ConfirmDialog } from './ConfirmDialog';
 
-type Folder = 'drums' | 'instruments' | 'pads' | 'bass' | 'textures';
-const FOLDER_ORDER: Folder[] = ['drums', 'instruments', 'pads', 'bass', 'textures'];
+type Folder = 'drums' | 'breaks' | 'instruments' | 'pads' | 'bass' | 'textures';
+const FOLDER_ORDER: Folder[] = ['drums', 'breaks', 'instruments', 'pads', 'bass', 'textures'];
 
 interface KitGroup {
   key: string;

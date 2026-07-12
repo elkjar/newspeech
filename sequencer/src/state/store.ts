@@ -76,6 +76,10 @@ export interface Step {
   // `step` scale-degrees each time this step fires (see audio/accumulator.ts).
   // Undefined → no climb. Sparse plock, same shape as chordVoicing.
   accumulator?: AccumulatorCfg;
+  // Optional per-step slice-random flag for slice-mode (break) voices. When
+  // true, the step ignores its authored slice (step.pitch) and fires a fresh
+  // random slice each time (see engine/tick.ts). Sparse plock — undefined off.
+  sliceRandom?: boolean;
 }
 
 export interface EuclideanParams {
@@ -932,6 +936,7 @@ export interface SequencerState {
   setScale: (scale: Scale) => void;
   toggleStep: (trackId: string, index: number) => void;
   setStepPitch: (trackId: string, index: number, pitch: number) => void;
+  setStepSliceRandom: (trackId: string, index: number, on: boolean) => void;
   setStepVelocity: (trackId: string, index: number, velocity: number) => void;
   setStepOn: (trackId: string, index: number, on: boolean) => void;
   setStepProbability: (trackId: string, index: number, probability: number) => void;
@@ -1809,6 +1814,17 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         const steps = t.steps.slice();
         steps[index] = { ...steps[index], pitch };
         return { ...t, steps, lastPitch: pitch };
+      }),
+    })),
+  // Slice-mode random flag (break voices). Sparse: false collapses to undefined
+  // so it doesn't bloat the .seq for the common (fixed-slice) case.
+  setStepSliceRandom: (trackId, index, on) =>
+    set((state) => ({
+      tracks: state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const steps = t.steps.slice();
+        steps[index] = { ...steps[index], sliceRandom: on || undefined };
+        return { ...t, steps };
       }),
     })),
   setStepVelocity: (trackId, index, velocity) =>

@@ -278,6 +278,16 @@ export interface VoiceEdit {
   granular?: GranularEdit; // grain params (only used when playmode === 'granular')
   granPosLfo?: LfoMod; // sweeps granular read position; depth in sample fraction
   granPosEnv?: EnvMod; // depth in sample fraction
+  // Slice (Phase D, S1): sorted slice START points as 0..1 fractions of the
+  // sample (≤48, matching the .pti slices[48]). Slice i spans [slices[i],
+  // slices[i+1] ?? end). Only used when playmode === 'slice'; the played note
+  // selects a slice by its scale-degree above the scene tonic (wrapping) and
+  // plays it unpitched — so every slice is reachable from a quantized pattern.
+  slices?: number[];
+  sliceSensitivity?: number; // auto-slice transient sensitivity 0..1; default 0.5.
+                             // Higher = more onsets detected. A tool param (the
+                             // AUTO detector's control), remembered per voice;
+                             // re-runs detection only when turned, not on load.
 }
 
 // One modulator, resolved for the audio path. slot = MOD_SLOT role; isLfo
@@ -372,6 +382,19 @@ export function voiceGranular(voiceId: string): {
     direction: GRAIN_DIR_CODE[g.direction],
     spray: g.spray ?? DEFAULT_GRANULAR.spray,
   };
+}
+
+// Slice start-points for a voice, resolved for the audio path. Non-empty only
+// when the voice is in slice mode AND has authored slices; empty otherwise (the
+// trigger then behaves as a normal sample). samplePlayer maps the played note to
+// a slice index and overrides the trigger window with that slice's span. The
+// stored array is authored sorted/ascending (the editor's grid buttons), first
+// point at 0; trusted as-is here (defensive sort is S2's manual-marker concern).
+export function voiceSlices(voiceId: string): number[] {
+  const e = resolvedVoiceEdit(voiceId);
+  if ((e?.playmode ?? 'sample') !== 'slice') return [];
+  const s = e?.slices;
+  return s && s.length > 0 ? s : [];
 }
 
 // Resolved amplitude envelope for a voice: the authored edit (when enabled)

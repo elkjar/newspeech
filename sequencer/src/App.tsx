@@ -100,6 +100,7 @@ import {
 } from './audio/nativeEngine';
 import { initEngineClock, frameAtTime, engineNow, engineSampleRate } from './audio/engineClock';
 import { noteBarBoundary } from './audio/loops';
+import { emitSliceHit } from './audio/sliceHits';
 import {
   allocRevoiceNoteId,
   registerChord,
@@ -847,6 +848,7 @@ export function App() {
                     ev.midi !== undefined ? ev.midi + interval : undefined;
                   const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi, ev.trackId);
                   if (!pick) continue;
+                  if (pick.sliceIndex !== null) emitSliceHit(ev.voice, pick.sliceIndex);
                   // Continuous loop modes need a synthetic gate so they don't
                   // ring forever (see the standard-path note below). Monophonic
                   // choke ends earlier tones; the gate bounds the final one.
@@ -971,6 +973,9 @@ export function App() {
                   ev.midi !== undefined ? ev.midi + interval : undefined;
                 const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi, ev.trackId);
                 if (!pick) continue;
+                // Slice-mode telemetry: flash the fired slice in the editor
+                // waveform (no-op when nobody's watching the params tab).
+                if (pick.sliceIndex !== null) emitSliceHit(ev.voice, pick.sliceIndex);
                 const noteId =
                   reVoiceable && targetMidi !== undefined
                     ? allocRevoiceNoteId()

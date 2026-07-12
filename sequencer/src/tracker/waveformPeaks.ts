@@ -59,6 +59,37 @@ function reduce(buf: AudioBuffer, columns: number): WaveformPeaks {
   return { peaks, columns, frames };
 }
 
+// Decoded mono buffer for a voice, retained for analysis (slice-mode onset
+// detection). Same resolve/decode path as the peaks, cached separately by
+// voiceId (column-independent). decodeAudioData resamples to the context rate
+// (44.1k), so `sampleRate` is 44100 — consistent with the peaks + slice fractions.
+export interface VoiceMono {
+  mono: Float32Array;
+  frames: number;
+  sampleRate: number;
+}
+
+const monoCache = new Map<string, VoiceMono>();
+
+export async function loadVoiceMono(voiceId: string): Promise<VoiceMono | null> {
+  const hit = monoCache.get(voiceId);
+  if (hit) return hit;
+  const resolved = resolveExportSample(voiceId);
+  if (!resolved) return null;
+  const ab = await readBytes(resolved);
+  const buf = await ctx().decodeAudioData(ab.slice(0));
+  const frames = buf.length;
+  const nch = buf.numberOfChannels;
+  const mono = new Float32Array(frames);
+  for (let c = 0; c < nch; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < frames; i++) mono[i] += d[i] / nch;
+  }
+  const out: VoiceMono = { mono, frames, sampleRate: buf.sampleRate };
+  monoCache.set(voiceId, out);
+  return out;
+}
+
 // Load (and cache) the waveform peaks for a voice at a target column count.
 // Returns null when the voice has no resolvable sample. The cache key folds in
 // the column count so a wider editor recomputes rather than upscaling.

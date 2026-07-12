@@ -77,6 +77,7 @@ export function hydrateStep(saved: Partial<Step>): Step {
     tieToNext: saved.tieToNext ?? false,
     ...(chord ? { chordVoicing: chord } : {}),
     ...(acc ? { accumulator: acc } : {}),
+    ...(saved.sliceRandom ? { sliceRandom: true } : {}),
   };
 }
 
