@@ -8,10 +8,18 @@ move: sequence → capture → mangle → save → re-sequence.
 
 ## Topology decisions (from the design conversation, 2026-07-07)
 
-- **Output-only, like the Bluebox.** The capture ring taps the post-master mix BEFORE loop
-  playback injects, so loops can never re-capture themselves. Returns are parallel layers
-  into the mix. (Chris: "everything comes back through it, but it's only for output.")
-- **Retroactive, bar-quantized capture.** The audio thread always writes a 32s post-master
+- **Output-only, like the Bluebox.** The capture ring taps the mix BEFORE loop playback
+  injects, so loops can never re-capture themselves. Returns are parallel layers into the
+  mix. (Chris: "everything comes back through it, but it's only for output.")
+- **Master moved to the END of the chain (2026-07-12, was pre-units).** Chris tried to
+  globally cut highs and the noise unit escaped the EQ — the master stage originally ran
+  before the units injected. Now: mix → FX buses → ring tap → loop unit → noise unit →
+  MASTER → recorder taps. The units get the global EQ/comp/drive/gate; the ring is
+  therefore PRE-master (captures hold the raw mix and get mastered live on playback — one
+  master pass either way, and master moves after a capture now shape held loops). Unit
+  SAVE bounces still print the units' own dry-chain output. Recorder combined/master taps
+  stay post-master.
+- **Retroactive, bar-quantized capture.** The audio thread always writes a 32s pre-master
   ring indexed by absolute engine frame. "Capture 4 bars" grabs the four bars you just
   HEARD (ending at the newest rendered bar boundary) — catch-and-stick, same philosophy as
   freeze and the perform repeat.
@@ -28,7 +36,8 @@ move: sequence → capture → mangle → save → re-sequence.
 - **P1 — one unit, LANDED 2026-07-07.** Engine: `LOOP_RING_SECONDS = 32` ring + loop buffer
   (callback-local, allocated at stream build; capture copy is a ≤2-segment memcpy),
   `MixerCommand::LoopCapture{start_frame,end_frame}/LoopStop/LoopGain`, injection to main
-  pair 0/1 post-master pre-recorder, gen-guarded like the engine clock. Panic drops the
+  pair 0/1 pre-recorder (post-master at P1; pre-master since the 2026-07-12
+  master-to-end reorder), gen-guarded like the engine clock. Panic drops the
   loop. JS: `src/audio/loops.ts` (bar anchor fed from the dispatcher's bar commit;
   `captureBars(n)` walks the anchor back to rendered audio and computes the span;
   session-singleton UI state). UI: LOOPS tab (`LoopsPanel.tsx`) — capture pads 1/2/4/8
@@ -209,7 +218,7 @@ equilibrium textures, unlike the rejected re-crush idea.
 
 ## P1 caveats (accepted, revisit if they bite)
 
-- **Metronome bleeds into captures** when it's on (it plays into the post-master main
+- **Metronome bleeds into captures** when it's on (it plays into the main
   pair). Obvious when it happens; dedicated exclusion later if annoying.
 - **Tempo changes unlock phase** — the loop is frames, not bars; a tempo move after
   capture drifts it against the grid. Rate-follow is a P2+ decision.

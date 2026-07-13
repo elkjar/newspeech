@@ -1,5 +1,5 @@
 // Loop/resample capture unit (P1, docs/loop-resample.md) — the JS side of
-// MixerCommand::LoopCapture. The audio thread keeps a 32s post-master ring;
+// MixerCommand::LoopCapture. The audio thread keeps a 32s pre-master ring;
 // this module owns the bar math (which absolute frame span to grab) and the
 // UI-facing unit state. Same session-singleton shape as audio/perform.ts:
 // captures are performance state, never persisted; saving a loop to the

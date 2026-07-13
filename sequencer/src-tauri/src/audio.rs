@@ -4059,7 +4059,7 @@ enum MixerCommand {
   // tails (a resonance jump would otherwise self-oscillate into a crash).
   FreezeVoiceParams,
   // Loop/resample capture unit (P1). The audio thread keeps an
-  // always-writing post-master ring indexed by absolute engine frame, so
+  // always-writing pre-master ring indexed by absolute engine frame, so
   // a capture is a modular slice of the PAST — grab the bars you just
   // heard, not the ones about to play. Playback is phase-locked to the
   // capture end ((frame - end_frame) % len), which makes the punch
@@ -4117,7 +4117,7 @@ enum MixerCommand {
   // layer: timestretch, reverse-at-pitch, frozen slice at stop. Off =
   // tape physics (pitch follows speed).
   // NOISE unit (P1, Mörser-shaped — docs/loop-resample.md §NOISE): a second
-  // capture off the same post-master ring, played by a simple vari-speed
+  // capture off the same pre-master ring, played by a simple vari-speed
   // head into: [+ clocked digital noise] → stereo WASP-grit SVF (tanh in
   // the resonance loop; per-channel resonance via res±width; LP/BP tap) →
   // always-on distortion → own return. The clocked noise ALSO jitters the
@@ -4148,7 +4148,7 @@ enum MixerCommand {
     // SIGNAL CLOCK (Spektrum-shaped): clock_mode 1 derives ticks from a
     // signal's zero crossings instead of the timer — clock rate IS the
     // material's pitch/brightness. clock_src: 0 = the unit's own input,
-    // 1 = Loop A's output, 2 = the post-master mix. clock_div divides
+    // 1 = Loop A's output, 2 = the pre-master mix. clock_div divides
     // crossings (/1../64 — audio-rate pitches pulled to gesture rate);
     // sens sets the hysteresis threshold (noise floor must not clock it;
     // raised, only loud material gets to be the clock).
@@ -5887,7 +5887,7 @@ fn build_stream(
   let mut rhythm_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut melody_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut melody_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
-  // Loop/resample capture unit (P1): a post-master ring the callback always
+  // Loop/resample capture unit (P1): a pre-master ring the callback always
   // writes (indexed by absolute frame — a capture span is a modular slice),
   // plus the loop buffer it plays back from. Allocated once here; the
   // capture copy is a ≤2-segment memcpy (~ms worst case for a full-ring
@@ -6000,7 +6000,7 @@ fn build_stream(
   let mut loop_send_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut loop_send_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   // Unit → FX-bus sends, ONE BLOCK DEFERRED: the units run downstream of
-  // the FX section (post-master, where the capture ring lives), so their
+  // the FX section (pre-master, where the capture ring lives), so their
   // sends accumulate here and enter the mangler/reverb/delay inputs at the
   // TOP of the next block (~block of latency — inaudible on send material).
   // Consequence, deliberate: unit FX tails re-enter the pre-master mix and
@@ -6663,7 +6663,7 @@ fn build_stream(
               }
             }
             MixerCommand::LoopCapture { start_frame, end_frame } => {
-              // Copy the requested span out of the post-master ring.
+              // Copy the requested span out of the pre-master ring.
               // ENGINE_FRAMES here = this block's start = exactly how far
               // the ring has been written, so end_frame <= now guarantees
               // the whole span exists; the oldest check guards wrap-around
@@ -8200,68 +8200,14 @@ fn build_stream(
           }
         }
 
-        // 5) Master stage — final tone-shaping on channels 0+1. Sits
-        // AFTER the FX bus output has mixed in. In multi-out mode the
-        // master chain is SKIPPED ENTIRELY: per-voice stems on higher
-        // channels stay pre-master AND the FX-bus pair stays pre-
-        // master too, so the DAW (or FOH) drives its own master.
-        if !multi_out_now {
-          let ms = master_state();
-          let input = master_input_linear(f32::from_bits(
-            ms.input.load(Ordering::Relaxed),
-          ));
-          let lo_cut_idx =
-            master_lo_cut_index(ms.lo_cut.load(Ordering::Relaxed));
-          let hi_cut_hz = master_hi_cut_hz(f32::from_bits(
-            ms.hi_cut.load(Ordering::Relaxed),
-          ));
-          let trim = master_trim_linear(f32::from_bits(
-            ms.trim.load(Ordering::Relaxed),
-          ));
-          let comp_amount = f32::from_bits(ms.comp_amount.load(Ordering::Relaxed));
-          let comp_attack_ms = MASTER_COMP_ATTACK_MS[(ms
-            .comp_attack
-            .load(Ordering::Relaxed) as usize)
-            .min(MASTER_COMP_ATTACK_MS.len() - 1)];
-          let comp_release_ms = MASTER_COMP_RELEASE_MS[(ms
-            .comp_release
-            .load(Ordering::Relaxed) as usize)
-            .min(MASTER_COMP_RELEASE_MS.len() - 1)];
-          let dist_mode = ms.dist_mode.load(Ordering::Relaxed);
-          let dist_drive = f32::from_bits(ms.dist_drive.load(Ordering::Relaxed));
-          let dist_bias = f32::from_bits(ms.dist_bias.load(Ordering::Relaxed));
-          let dist_mix = f32::from_bits(ms.dist_mix.load(Ordering::Relaxed));
-          let gate_enabled = ms.gate_enabled.load(Ordering::Relaxed);
-          let gate_threshold_norm =
-            f32::from_bits(ms.gate_threshold.load(Ordering::Relaxed));
-          let master_bypass = ms.bypass.load(Ordering::Relaxed);
-          master_stage.update_filters(lo_cut_idx, hi_cut_hz);
-          master_stage.process_block(
-            buf,
-            frames,
-            n_ch,
-            input,
-            trim,
-            comp_amount,
-            comp_attack_ms,
-            comp_release_ms,
-            dist_mode,
-            dist_drive,
-            dist_bias,
-            dist_mix,
-            gate_enabled,
-            gate_threshold_norm,
-            master_bypass,
-          );
-        }
-
-        // 5.5) Loop/resample capture unit. ORDER MATTERS: the ring taps
-        // the post-master mix FIRST, then loop playback injects — so the
+        // 5) Loop/resample capture unit. ORDER MATTERS: the ring taps
+        // the pre-master mix FIRST, then loop playback injects — so the
         // ring never contains the loops themselves (output-only, like the
         // Bluebox: captures can't eat earlier captures). Injection lands
-        // BEFORE the recorder taps below, so recordings DO include the
-        // loop layer. Gen-guarded like the engine clock — a zombie stream
-        // must not write the ring.
+        // BEFORE the master stage and the recorder taps below, so the
+        // units get mastered and recordings include them. Gen-guarded
+        // like the engine clock — a zombie stream must not write the
+        // ring.
         if is_current_stream {
           let ring_len = loop_ring_l.len();
           for frame in 0..frames {
@@ -8823,6 +8769,67 @@ fn build_stream(
               loop_bounce_started = false;
             }
           }
+        }
+
+        // 5.5) Master stage — final tone-shaping on channels 0+1, at the
+        // END of the chain (moved 2026-07-12, was pre-units): the loop
+        // and noise units inject above, so the global EQ/comp/drive/gate
+        // shape them too — "cut the highs" reaches the noise unit. The
+        // capture ring therefore holds the PRE-master mix and captures
+        // get mastered live on playback — one master pass either way,
+        // and master moves made after a capture now affect held loops.
+        // In multi-out mode the master chain is SKIPPED ENTIRELY:
+        // per-voice stems on higher channels stay pre-master AND the
+        // FX-bus pair stays pre-master too, so the DAW (or FOH) drives
+        // its own master.
+        if !multi_out_now {
+          let ms = master_state();
+          let input = master_input_linear(f32::from_bits(
+            ms.input.load(Ordering::Relaxed),
+          ));
+          let lo_cut_idx =
+            master_lo_cut_index(ms.lo_cut.load(Ordering::Relaxed));
+          let hi_cut_hz = master_hi_cut_hz(f32::from_bits(
+            ms.hi_cut.load(Ordering::Relaxed),
+          ));
+          let trim = master_trim_linear(f32::from_bits(
+            ms.trim.load(Ordering::Relaxed),
+          ));
+          let comp_amount = f32::from_bits(ms.comp_amount.load(Ordering::Relaxed));
+          let comp_attack_ms = MASTER_COMP_ATTACK_MS[(ms
+            .comp_attack
+            .load(Ordering::Relaxed) as usize)
+            .min(MASTER_COMP_ATTACK_MS.len() - 1)];
+          let comp_release_ms = MASTER_COMP_RELEASE_MS[(ms
+            .comp_release
+            .load(Ordering::Relaxed) as usize)
+            .min(MASTER_COMP_RELEASE_MS.len() - 1)];
+          let dist_mode = ms.dist_mode.load(Ordering::Relaxed);
+          let dist_drive = f32::from_bits(ms.dist_drive.load(Ordering::Relaxed));
+          let dist_bias = f32::from_bits(ms.dist_bias.load(Ordering::Relaxed));
+          let dist_mix = f32::from_bits(ms.dist_mix.load(Ordering::Relaxed));
+          let gate_enabled = ms.gate_enabled.load(Ordering::Relaxed);
+          let gate_threshold_norm =
+            f32::from_bits(ms.gate_threshold.load(Ordering::Relaxed));
+          let master_bypass = ms.bypass.load(Ordering::Relaxed);
+          master_stage.update_filters(lo_cut_idx, hi_cut_hz);
+          master_stage.process_block(
+            buf,
+            frames,
+            n_ch,
+            input,
+            trim,
+            comp_amount,
+            comp_attack_ms,
+            comp_release_ms,
+            dist_mode,
+            dist_drive,
+            dist_bias,
+            dist_mix,
+            gate_enabled,
+            gate_threshold_norm,
+            master_bypass,
+          );
         }
 
         // 6) Recorder tap — push the post-master stereo bus into the
@@ -9635,7 +9642,7 @@ pub fn audio_freeze_voice_params() -> Result<(), String> {
 }
 
 // Loop/resample capture — copy [start_frame, end_frame) out of the
-// post-master ring and loop it bar-phase-locked. Frames are absolute
+// pre-master ring and loop it bar-phase-locked. Frames are absolute
 // engine-clock positions in the PAST (retroactive capture). See
 // MixerCommand::LoopCapture.
 #[tauri::command]
