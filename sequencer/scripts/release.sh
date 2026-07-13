@@ -175,7 +175,7 @@ node -e "
 STABLE_DMG="$BUNDLE_DIR/dmg/Sequence.dmg"
 cp -f "$DMG" "$STABLE_DMG"
 
-echo "  publishing GitHub Release sequence-v$VERSION…"
+echo "  publishing GitHub Release sequence-v${VERSION}…"
 gh release create "sequence-v$VERSION" \
   --title "Sequence $VERSION" \
   --notes "$SUMMARY" \
