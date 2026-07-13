@@ -63,7 +63,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SEQ_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$SEQ_DIR"
 
-BUNDLE="src-tauri/target/release/bundle/macos/Sequence.app"
+# Universal (arm64 + x86_64) since 0.18.1 — an Intel tester hit "unsupported
+# on this Mac" with the aarch64-only 0.18.0. Tauri lipo-merges both targets;
+# bundle output moves under target/universal-apple-darwin/.
+TAURI_TARGET="universal-apple-darwin"
+BUNDLE="src-tauri/target/$TAURI_TARGET/release/bundle/macos/Sequence.app"
 INSTALLED="/Applications/Sequence.app"
 
 die() { echo "✗ $*" >&2; exit 1; }
@@ -85,6 +89,10 @@ echo "  $CURRENT → $VERSION"
 echo "  typecheck…"
 npx tsc --noEmit || die "tsc failed — fix types before releasing"
 
+# Universal build needs both Rust std targets installed.
+rustup target list --installed | grep -q '^x86_64-apple-darwin$' \
+  || die "x86_64-apple-darwin Rust target missing — run: rustup target add x86_64-apple-darwin"
+
 # --- 2. bump (single source of truth) --------------------------------------
 step "bump package.json → $VERSION"
 node -e "const f='package.json',p=require('./'+f);p.version='$VERSION';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
@@ -97,7 +105,7 @@ if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
 else
   echo "  ⚠ APPLE_SIGNING_IDENTITY not set — UNSIGNED build (testers hit Gatekeeper)"
 fi
-npm run tauri:build
+npm run tauri:build -- --target "$TAURI_TARGET"
 
 [ -d "$BUNDLE" ] || die "expected bundle not found at $BUNDLE"
 BUILT_VER="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$BUNDLE/Contents/Info.plist")"
@@ -117,8 +125,8 @@ git commit -q -m "sequencer: $VERSION — $SUMMARY"
 git push origin main
 
 # --- 6. distribution: staple dmg + GitHub Release + updater manifest -------
-BUNDLE_DIR="$SEQ_DIR/src-tauri/target/release/bundle"
-DMG="$BUNDLE_DIR/dmg/Sequence_${VERSION}_aarch64.dmg"
+BUNDLE_DIR="$SEQ_DIR/src-tauri/target/$TAURI_TARGET/release/bundle"
+DMG="$BUNDLE_DIR/dmg/Sequence_${VERSION}_universal.dmg"
 UPDATER_TGZ="$BUNDLE_DIR/macos/Sequence.app.tar.gz"
 UPDATER_SIG="$BUNDLE_DIR/macos/Sequence.app.tar.gz.sig"
 
@@ -161,12 +169,12 @@ node -e "
     version: '$VERSION',
     notes: process.argv[1],
     pub_date: '$PUB_DATE',
-    platforms: {
-      'darwin-aarch64': {
-        signature: process.argv[2],
-        url: 'https://github.com/elkjar/newspeech/releases/download/sequence-v$VERSION/Sequence.app.tar.gz',
-      },
-    },
+    // One universal artifact, listed under both arch keys so installed
+    // aarch64 apps AND Intel installs resolve their platform entry.
+    platforms: Object.fromEntries(['darwin-aarch64', 'darwin-x86_64'].map(k => [k, {
+      signature: process.argv[2],
+      url: 'https://github.com/elkjar/newspeech/releases/download/sequence-v$VERSION/Sequence.app.tar.gz',
+    }])),
   }, null, 2) + '\n');
 " "$SUMMARY" "$SIG_CONTENT"
 
