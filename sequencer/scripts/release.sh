@@ -48,8 +48,12 @@ if [ -f "$(dirname "${BASH_SOURCE[0]}")/../.release-env" ]; then
 fi
 
 # Updater artifacts (createUpdaterArtifacts in tauri.conf.json) are signed
-# with the Tauri updater key — required for every build now.
-export TAURI_SIGNING_PRIVATE_KEY_PATH="${TAURI_SIGNING_PRIVATE_KEY_PATH:-$HOME/.tauri/sequence-updater.key}"
+# with the Tauri updater key — required for every build now. The CLI only
+# reads the key CONTENT from TAURI_SIGNING_PRIVATE_KEY (the _PATH variant is
+# ignored, verified 2026-07-13), so cat the file into it.
+UPDATER_KEY_PATH="${TAURI_SIGNING_PRIVATE_KEY_PATH:-$HOME/.tauri/sequence-updater.key}"
+[ -f "$UPDATER_KEY_PATH" ] || { echo "✗ updater key missing at $UPDATER_KEY_PATH" >&2; exit 1; }
+export TAURI_SIGNING_PRIVATE_KEY="$(cat "$UPDATER_KEY_PATH")"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
 
 VERSION="${1:-}"

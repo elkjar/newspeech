@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Unlisted tester-download page — not linked from anywhere on the site.
+     Keep out of search indexes; the URL itself is the invite. -->
+<meta name="robots" content="noindex, nofollow">
+<title>sequence — download</title>
+<style>
+  @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
+  :root { --fg: #ddd; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: #050505;
+    color: var(--fg);
+    font-family: "zxx-sans", ui-monospace, SFMono-Regular, Menlo, monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+  }
+  main { max-width: 46ch; }
+  .kicker {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: 34px;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    margin: 0 0 24px;
+  }
+  p {
+    font-size: 13px;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.78);
+    margin: 0 0 14px;
+  }
+  .cta {
+    display: inline-flex;
+    width: fit-content;
+    margin-top: 22px;
+    padding: 16px 22px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: var(--fg);
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.04em;
+  }
+  .cta:hover { background: rgba(255, 255, 255, 0.08); }
+  .aux {
+    margin-top: 18px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    opacity: 0.55;
+  }
+  .notes {
+    margin-top: 40px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: 22px;
+  }
+  .notes p { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="kicker">newspeech</div>
+  <h1>sequence</h1>
+  <p>a step sequencer with a chord-relative harmonic engine. set a root and a scale, author chords by degree — the rest of the band harmonizes against whatever played last.</p>
+  <p>you have this link because chris sent it to you. it isn't published anywhere else — treat it accordingly.</p>
+  <a class="cta" href="https://github.com/elkjar/newspeech/releases/latest/download/Sequence.dmg">download for macos</a>
+  <div class="aux">apple silicon · auto-updates itself</div>
+
+  <div class="notes">
+    <p>install: open the dmg, drag sequence to applications.</p>
+    <p>first run: macos will ask for microphone access — that's how the app enumerates audio devices; say yes.</p>
+    <p>samples: the app reads kits from <code>~/documents/sequence/samples</code>, organized as <code>drums/ bass/ instruments/ pads/ textures/ breaks/ loops/</code> — one folder of wavs per kit. it starts empty; a starter pack is coming.</p>
+    <p>updates arrive in-app — it checks on launch and asks before installing.</p>
+  </div>
+</main>
+</body>
+</html>
