@@ -43,6 +43,11 @@
     color: rgba(255, 255, 255, 0.78);
     margin: 0 0 14px;
   }
+  p a {
+    color: var(--fg);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
   .cta {
     display: inline-flex;
     width: fit-content;
@@ -79,15 +84,15 @@
 <main>
   <div class="kicker">newspeech</div>
   <h1>sequence</h1>
-  <p>a step sequencer with a chord-relative harmonic engine. set a root and a scale, author chords by degree — the rest of the band harmonizes against whatever played last.</p>
-  <p>you have this link because chris sent it to you. it isn't published anywhere else — treat it accordingly.</p>
+  <p>hello friends, welcome to my madness. as you know from listening to me blather on for the last couple months, i've been building this software based sequencer. this app is the culmination of that effort and i'd love your thoughts and ideas. there is A LOT of functionality in here and zero documentation (yay!) so please just hit me up with any questions or concerns.</p>
+  <p>everything audio related is based on samples, which are also <a href="samples.html">available for download here</a>, but the app is also capable of sending out midi if you want to control your hardware.</p>
   <a class="cta" href="https://github.com/elkjar/newspeech/releases/latest/download/Sequence.dmg">download for macos</a>
   <div class="aux">apple silicon · auto-updates itself</div>
 
   <div class="notes">
     <p>install: open the dmg, drag sequence to applications.</p>
     <p>first run: macos will ask for microphone access — that's how the app enumerates audio devices; say yes.</p>
-    <p>samples: the app reads kits from <code>~/documents/sequence/samples</code>, organized as <code>drums/ bass/ instruments/ pads/ textures/ breaks/ loops/</code> — one folder of wavs per kit. it starts empty; a starter pack is coming.</p>
+    <p>samples: the app reads kits from <code>~/documents/sequence/samples</code>, organized as <code>drums/ bass/ instruments/ pads/ textures/ breaks/ loops/</code> — one folder of wavs per kit. it starts empty — grab kits from the <a href="samples.html">sample library</a> and unzip each into its category folder (e.g. <code>drums/blck_noir/</code>).</p>
     <p>updates arrive in-app — it checks on launch and asks before installing.</p>
   </div>
 </main>
