@@ -12,7 +12,7 @@ import { listen } from '@tauri-apps/api/event';
 // Static import (not dynamic) — a dynamic import of a not-yet-optimized dep
 // makes vite dev re-optimize and force-reload the page MID-BOOT, which boots
 // the app twice and stacks two cpal streams (the zombie-stream noise mode).
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow, currentMonitor, LogicalSize } from '@tauri-apps/api/window';
 import { PerformanceButton } from './components/PerformanceDialog';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -315,6 +315,44 @@ export function App() {
       }
     }
   };
+
+  // Fit-to-screen. The layout is designed for 1500×920 logical; 13" MacBooks
+  // are 1440×900. The window can shrink below the design size (tauri.conf
+  // minWidth 1024) and the whole UI zooms down uniformly — same layout,
+  // slightly smaller, nothing clips. Zoom only ever scales DOWN (capped at 1).
+  useEffect(() => {
+    const DESIGN_W = 1500;
+    const DESIGN_H = 920;
+    const fit = () => {
+      const zoom = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H, 1);
+      document.documentElement.style.setProperty('zoom', String(zoom));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    // The fixed 1500×960 initial window opens partially offscreen on a
+    // smaller display — clamp it to the monitor once at boot (size isn't
+    // persisted, so this runs every launch on small screens).
+    if (NATIVE) {
+      void (async () => {
+        try {
+          const mon = await currentMonitor();
+          if (!mon) return;
+          const s = mon.size.toLogical(mon.scaleFactor);
+          if (s.width < 1500 || s.height < 960) {
+            const win = getCurrentWindow();
+            // -70 leaves room for the menu bar + window title bar.
+            await win.setSize(
+              new LogicalSize(Math.min(s.width, 1500), Math.min(s.height - 70, 960)),
+            );
+            await win.center();
+          }
+        } catch (err) {
+          console.error('[fit] monitor clamp failed:', err);
+        }
+      })();
+    }
+    return () => window.removeEventListener('resize', fit);
+  }, []);
 
   useEffect(() => {
     if (NATIVE) document.body.classList.add('tauri-native');
