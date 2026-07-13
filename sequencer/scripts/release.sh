@@ -135,8 +135,16 @@ step "distribution"
 [ -f "$UPDATER_SIG" ] || die "updater signature not found at $UPDATER_SIG"
 
 # Tauri notarizes + staples the .app when APPLE_* env is present; the dmg
-# needs its own notarization pass so the download mounts clean.
-if [ -n "${APPLE_ID:-}" ]; then
+# needs its own notarization pass so the download mounts clean. API-key auth
+# (APPLE_API_KEY_PATH/APPLE_API_KEY/APPLE_API_ISSUER) preferred — Apple-ID
+# auth 403'd on a fresh membership 2026-07-13.
+if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+  echo "  notarizing dmg via API key (this waits on Apple)…"
+  xcrun notarytool submit "$DMG" \
+    --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" \
+    --wait || die "dmg notarization failed"
+  xcrun stapler staple "$DMG"
+elif [ -n "${APPLE_ID:-}" ]; then
   echo "  notarizing dmg (this waits on Apple)…"
   xcrun notarytool submit "$DMG" \
     --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" \
