@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Cut a Sequence release: bump → build → install → commit → push.
+# Cut a Sequence release: bump → build → commit → push → publish.
 #
 #   bash scripts/release.sh <version> "<summary>"
 #   e.g.  bash scripts/release.sh 0.8.7 "arp mode + per-track swing"
@@ -12,11 +12,9 @@
 #      tauri.conf.json reads "../package.json", Cargo.toml stays 0.0.0, and the
 #      Info.plist version keys are injected by Tauri. Never hand-edit those.
 #   3. Build the app: `npm run tauri:build` (release profile).
-#   4. Install: replace /Applications/Sequence.app with the fresh bundle. Every
-#      release ships the app too, not just the web deploy.
-#   5. Commit "sequencer: <version> — <summary>" and push main → Netlify
+#   4. Commit "sequencer: <version> — <summary>" and push main → Netlify
 #      auto-deploys www.newspeechsound.com.
-#   6. Distribution (when signing secrets are present): the build is already
+#   5. Distribution (when signing secrets are present): the build is already
 #      Developer-ID-signed + notarized by Tauri (env vars below); we staple
 #      the dmg, generate the updater manifest (latest.json), and publish a
 #      GitHub Release with dmg + updater artifact — installed apps poll
@@ -68,7 +66,6 @@ cd "$SEQ_DIR"
 # bundle output moves under target/universal-apple-darwin/.
 TAURI_TARGET="universal-apple-darwin"
 BUNDLE="src-tauri/target/$TAURI_TARGET/release/bundle/macos/Sequence.app"
-INSTALLED="/Applications/Sequence.app"
 
 die() { echo "✗ $*" >&2; exit 1; }
 step() { echo; echo "▶ $*"; }
@@ -111,20 +108,19 @@ npm run tauri:build -- --target "$TAURI_TARGET"
 BUILT_VER="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$BUNDLE/Contents/Info.plist")"
 [ "$BUILT_VER" = "$VERSION" ] || die "built app is $BUILT_VER, expected $VERSION"
 
-# --- 4. install to /Applications -------------------------------------------
-step "install → $INSTALLED"
-rm -rf "$INSTALLED"
-cp -R "$BUNDLE" "$INSTALLED"
-echo "  installed $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$INSTALLED/Contents/Info.plist")"
+# NOTE: no install-to-/Applications step (dropped 2026-07-13, Chris's call).
+# The installed app updates itself via the auto-updater like every tester
+# machine — launching Sequence after a release prompts for the new version,
+# which also dogfoods the update path on every cut.
 
-# --- 5. commit + push ------------------------------------------------------
+# --- 4. commit + push ------------------------------------------------------
 step "commit + push main"
 cd "$(git rev-parse --show-toplevel)"
 git add -A
 git commit -q -m "sequencer: $VERSION — $SUMMARY"
 git push origin main
 
-# --- 6. distribution: staple dmg + GitHub Release + updater manifest -------
+# --- 5. distribution: staple dmg + GitHub Release + updater manifest -------
 BUNDLE_DIR="$SEQ_DIR/src-tauri/target/$TAURI_TARGET/release/bundle"
 DMG="$BUNDLE_DIR/dmg/Sequence_${VERSION}_universal.dmg"
 UPDATER_TGZ="$BUNDLE_DIR/macos/Sequence.app.tar.gz"
@@ -132,8 +128,8 @@ UPDATER_SIG="$BUNDLE_DIR/macos/Sequence.app.tar.gz.sig"
 
 if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
   echo
-  echo "✓ released $VERSION — main pushed, app installed. (No signing identity:"
-  echo "  skipped GitHub Release / updater publish — installed testers were NOT updated.)"
+  echo "✓ released $VERSION — main pushed. (No signing identity:"
+  echo "  skipped GitHub Release / updater publish — installed apps were NOT updated.)"
   exit 0
 fi
 
@@ -190,5 +186,6 @@ gh release create "sequence-v$VERSION" \
   "$DMG" "$STABLE_DMG" "$UPDATER_TGZ" "$UPDATER_SIG" "$LATEST_JSON"
 
 echo
-echo "✓ released $VERSION — main pushed (Netlify deploying), app installed,"
+echo "✓ released $VERSION — main pushed (Netlify deploying),"
 echo "  GitHub Release published (dmg + updater manifest live)."
+echo "  Launch Sequence to pick up $VERSION via the auto-updater."
