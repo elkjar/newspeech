@@ -15,6 +15,7 @@ import { MidiBar } from './MidiBar';
 import { InstrumentLibraryPane } from './InstrumentLibraryPane';
 import { SampleLibraryPane } from './SampleLibraryPane';
 import { NativeAudioPanel } from './NativeAudioPanel';
+import { runUpdateCheck } from '../updater';
 import pkg from '../../package.json';
 
 const NATIVE = isTauri();
@@ -38,6 +39,8 @@ export function SettingsDialog({
   const [isCustomUserSamplesDir, setIsCustomUserSamplesDir] = useState(false);
   const [rescanStatus, setRescanStatus] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [view, setView] = useState<'main' | 'instruments' | 'samples'>('main');
 
   // Reset to main view whenever the dialog closes so reopening always
@@ -211,7 +214,7 @@ export function SettingsDialog({
         {view === 'main' ? (
           <div className="flex-1 overflow-y-auto -mx-2 pl-2 pr-4 flex flex-col normal-case tracking-normal text-[12px]">
             {NATIVE && (
-              <Section label="native audio (phase 0)">
+              <Section label="audio">
                 <NativeAudioPanel />
               </Section>
             )}
@@ -289,9 +292,37 @@ export function SettingsDialog({
         )}
 
         <div className="flex items-center justify-between mt-5">
-          <span className="text-[10px] uppercase tracking-widest text-white/30 tabular-nums">
-            v{APP_VERSION}
-          </span>
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-[10px] uppercase tracking-widest text-white/30 tabular-nums">
+              v{APP_VERSION}
+            </span>
+            {NATIVE && (
+              <button
+                type="button"
+                disabled={checkingUpdate}
+                onClick={() => {
+                  setCheckingUpdate(true);
+                  setUpdateStatus('checking…');
+                  void runUpdateCheck(true).then((status) => {
+                    setUpdateStatus(status);
+                    setCheckingUpdate(false);
+                  });
+                }}
+                className={
+                  checkingUpdate
+                    ? 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/10 text-white/20 cursor-not-allowed'
+                    : 'px-2 py-0.5 text-[10px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors'
+                }
+              >
+                check for updates
+              </button>
+            )}
+            {updateStatus && (
+              <span className="text-[10px] tracking-widest text-white/40 truncate">
+                {updateStatus}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
