@@ -193,15 +193,18 @@ function effectiveParams() {
     grainLevel: m(state.grainLevel / 1.5, 'loopGrainLevel') * 1.5,
     size: m(state.size, 'loopSize'),
     random: m(state.random, 'loopRandom'),
-    grains: Math.round(state.grains),
+    // Grains modulate in knob space (0..1 over the 1..8 count) and round —
+    // an LFO steps through voice counts, same quantized-after-modulation
+    // rule as the ladders.
+    grains: Math.round(1 + m((state.grains - 1) / 7, 'loopGrains') * 7),
     spawnFrames: spawnFramesFromPos(m(rateKnobPos(), 'loopRate')),
     rateSynced: state.rateSynced,
     sizeDev: state.sizeDev,
     pitchDev: state.pitchDev,
     rateDev: state.rateDev,
-    fxSend: state.fxSend,
-    revSend: state.revSend,
-    delSend: state.delSend,
+    fxSend: m(state.fxSend, 'loopFxSend'),
+    revSend: m(state.revSend, 'loopRevSend'),
+    delSend: m(state.delSend, 'loopDelSend'),
   };
 }
 
@@ -331,6 +334,9 @@ const PARAM_LFO_KNOB: Partial<Record<string, LFODestKnobGlobal>> = {
   pitchKnob: 'loopPitch',
   size: 'loopSize',
   random: 'loopRandom',
+  fxSend: 'loopFxSend',
+  revSend: 'loopRevSend',
+  delSend: 'loopDelSend',
 };
 
 export function setLoopParam(
@@ -381,6 +387,7 @@ export function setLoopGrains(count: number) {
   const c = Math.max(1, Math.min(8, Math.round(count)));
   if (c === state.grains) return;
   state.grains = c;
+  markManualOverride(GLOBAL_TRACK_ID, 'loopGrains');
   notify();
   pushParams();
 }

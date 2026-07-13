@@ -24,6 +24,14 @@ import {
 import { noiseClockKnobFromHz } from '../audio/noise';
 import { noiseScope, noiseViz } from '../audio/nativeEngine';
 import { RATE_DIVISIONS, speedFromKnob } from '../audio/loops';
+import { GLOBAL_TRACK_ID, type LFO, type LFODestKnobGlobal } from '../audio/lfo';
+import { useLFOValue } from '../hooks/useLFOValue';
+import { useRoutedLFOs } from '../hooks/useRoutedLFOs';
+import { useSequencerStore } from '../state/store';
+
+// Stable empty list for knobs without an LFO destination (same trick as
+// FXPanel — a fresh [] per render would look like a routing change).
+const EMPTY_LFO_LIST: LFO[] = [];
 
 // Ping LEDs — the Mörser's tuning light, lifted. Two dots (L/R: the
 // bitstreams are independent, so the stereo flicker is information),
@@ -142,8 +150,9 @@ function NoiseScope() {
 
 // NOISE tab (docs/loop-resample.md §NOISE) — the Mörser-shaped second unit.
 // Groups + dividers match the FX/master section. INPUT picks the routing:
-// LOOP (true insert — Loop A routes through this chain, wet-only, and the
-// loop's SAVE prints the post-noise output) · CAPT (own bar-quantized
+// INS (true insert — Loop A routes through this chain, wet-only, and the
+// loop's SAVE prints the post-noise output) · PAR (parallel — Loop A feeds
+// the chain but keeps its direct out; send/return) · CAP (own bar-quantized
 // capture — a second bed) · OFF (self-sounding: the clocked noise alone
 // through the filter). The digital noise is clocked (bar divisions or free
 // Hz) and feeds BOTH the audio path and the cutoff (the hardware's
@@ -172,6 +181,7 @@ function PKnob({
   bipolar = false,
   title,
   disabled = false,
+  lfoKnob,
 }: {
   label: string;
   valueText: string;
@@ -182,7 +192,30 @@ function PKnob({
   // Inert under the current settings (wrong source/mode) — dimmed and
   // non-interactive, but the title still explains what it would do.
   disabled?: boolean;
+  // Global LFO destination — click during LFO-select toggles routing, the
+  // visual swings with routed LFOs (same pattern as the LOOPS/FX knobs).
+  lfoKnob?: LFODestKnobGlobal;
 }) {
+  const selectingLFO = useSequencerStore((st) => st.selectingLFO);
+  const toggleLFODestination = useSequencerStore((st) => st.toggleLFODestination);
+  const routedForKnob = useRoutedLFOs(GLOBAL_TRACK_ID, lfoKnob ?? 'density');
+  const routed = lfoKnob ? routedForKnob : EMPTY_LFO_LIST;
+  const displayValue = useLFOValue(value, routed, 1);
+  const onModulationClick =
+    lfoKnob && selectingLFO !== null
+      ? () =>
+          toggleLFODestination(selectingLFO, {
+            trackId: GLOBAL_TRACK_ID,
+            knob: lfoKnob,
+          })
+      : undefined;
+  const lfoLabels = routed.map((l) => `L${l.id + 1}`).join(',');
+  const modulationLabel =
+    selectingLFO !== null
+      ? lfoLabels || undefined
+      : routed.length > 0
+        ? lfoLabels
+        : undefined;
   return (
     <div
       className={[
@@ -192,7 +225,16 @@ function PKnob({
       title={disabled ? (title ?? label) : undefined}
     >
       <div className={disabled ? 'pointer-events-none' : ''}>
-        <Knob size={40} value={value} onChange={onChange} bipolar={bipolar} title={title ?? label} />
+        <Knob
+          size={40}
+          value={value}
+          displayValue={displayValue}
+          onChange={onChange}
+          bipolar={bipolar}
+          title={title ?? label}
+          onModulationClick={onModulationClick}
+          modulationLabel={modulationLabel}
+        />
       </div>
       <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">{label}</span>
       <span className="text-[10px] tabular-nums opacity-50">{valueText}</span>
@@ -253,7 +295,7 @@ export function NoisePanel() {
     <div className="h-full p-3 flex items-stretch gap-4">
       <NoiseScope />
       {/* Capture stack — bar lengths + stop riding the scope's right edge,
-          mirroring the LOOPS view; live only for the CAPT source. */}
+          mirroring the LOOPS view; live only for the CAP source. */}
       <div className="flex flex-col gap-1.5 shrink-0 self-stretch justify-center">
         {CAPTURE_BARS.map((n) => (
           <button
@@ -261,11 +303,11 @@ export function NoisePanel() {
             type="button"
             onClick={() => noiseCaptureBars(n)}
             onContextMenu={(e) => e.preventDefault()}
-            disabled={v.source !== 1}
-            title={`capture the last ${n} bar${n === 1 ? '' : 's'} of the mix into the noise unit (CAPT source)`}
+            disabled={v.source !== 2}
+            title={`capture the last ${n} bar${n === 1 ? '' : 's'} of the mix into the noise unit (CAP source)`}
             className={[
               'w-12 h-9 border text-[11px] uppercase tracking-widest transition-colors select-none',
-              v.source !== 1
+              v.source !== 2
                 ? 'border-white/10 text-white/25 cursor-default'
                 : v.bars === n
                   ? 'bg-white text-ink border-white'
@@ -279,11 +321,11 @@ export function NoisePanel() {
           type="button"
           onClick={noiseStop}
           onContextMenu={(e) => e.preventDefault()}
-          disabled={v.source !== 1 || v.bars === null}
+          disabled={v.source !== 2 || v.bars === null}
           title="drop the noise unit's capture"
           className={[
             'w-12 h-9 border text-[11px] uppercase tracking-widest transition-colors select-none',
-            v.source !== 1 || v.bars === null
+            v.source !== 2 || v.bars === null
               ? 'border-white/10 text-white/25 cursor-default'
               : 'border-white/40 text-white/80 hover:text-white hover:border-white',
           ].join(' ')}
@@ -298,9 +340,10 @@ export function NoisePanel() {
             <div className="flex flex-col gap-1.5">
               {(
                 [
-                  [0, 'loop', 'Loop A routes THROUGH this chain (wet-only; loop SAVE prints the post-noise output)'],
-                  [1, 'capt', 'own bar-quantized capture — a second bed alongside Loop A'],
-                  [2, 'off', 'no input — the clocked noise alone through the filter (self-sounding)'],
+                  [0, 'ins', 'insert: Loop A routes THROUGH this chain (wet-only; loop SAVE prints the post-noise output)'],
+                  [1, 'par', 'parallel: Loop A feeds this chain but keeps its direct out — send/return (SAVE prints loop + noise)'],
+                  [2, 'cap', 'own bar-quantized capture — a second bed alongside Loop A'],
+                  [3, 'off', 'no input — the clocked noise alone through the filter (self-sounding)'],
                 ] as [NoiseSource, string, string][]
               ).map(([src, label, title]) => (
                 <SlotButton
@@ -315,18 +358,20 @@ export function NoisePanel() {
             </div>
             <PKnob
               label="speed"
+              lfoKnob="noiseSpeed"
               valueText={speedLabel(v.speedKnob)}
               value={v.speedKnob}
               bipolar
-              disabled={v.source !== 1}
+              disabled={v.source !== 2}
               onChange={(x) => setNoiseParam('speedKnob', x)}
-              title="capture playback vari-speed (octave ladder, thru-zero) — CAPT source only"
+              title="capture playback vari-speed (octave ladder, thru-zero) — CAP source only"
             />
           </Group>
           <Divider />
           <Group label="filter">
             <PKnob
               label="drive"
+              lfoKnob="noiseDrive"
               valueText={`${Math.round(v.drive * 100)}`}
               value={v.drive}
               onChange={(x) => setNoiseParam('drive', x)}
@@ -334,6 +379,7 @@ export function NoisePanel() {
             />
             <PKnob
               label="cutoff"
+              lfoKnob="noiseCutoff"
               valueText={`${Math.round(v.cutoff * 100)}`}
               value={v.cutoff}
               onChange={(x) => setNoiseParam('cutoff', x)}
@@ -341,6 +387,7 @@ export function NoisePanel() {
             />
             <PKnob
               label="res"
+              lfoKnob="noiseRes"
               valueText={`${Math.round(v.res * 100)}`}
               value={v.res}
               onChange={(x) => setNoiseParam('res', x)}
@@ -348,6 +395,7 @@ export function NoisePanel() {
             />
             <PKnob
               label="width"
+              lfoKnob="noiseWidth"
               valueText={`${Math.round(v.width * 100)}`}
               value={v.width}
               onChange={(x) => setNoiseParam('width', x)}
@@ -377,6 +425,7 @@ export function NoisePanel() {
             <div className="flex items-center gap-3">
               <PKnob
                 label="noise"
+                lfoKnob="noiseAmt"
                 valueText={`${Math.round(v.noise * 100)}`}
                 value={v.noise}
                 onChange={(x) => setNoiseParam('noise', x)}
@@ -384,6 +433,7 @@ export function NoisePanel() {
               />
               <PKnob
                 label="cv"
+                lfoKnob="noiseCv"
                 valueText={`${Math.round(v.cv * 100)}`}
                 value={v.cv}
                 onChange={(x) => setNoiseParam('cv', x)}
@@ -428,6 +478,7 @@ export function NoisePanel() {
             <div className="flex flex-col items-center gap-1.5">
               <PKnob
                 label="clock"
+                lfoKnob="noiseClock"
                 valueText={
                   v.clockMode === 1
                     ? XING_DIV_LABELS[v.xDivIdx]
@@ -463,6 +514,7 @@ export function NoisePanel() {
               />
               <PKnob
                 label="sens"
+                lfoKnob="noiseSens"
                 valueText={`${Math.round(v.sens * 100)}`}
                 value={v.sens}
                 disabled={v.clockMode !== 1}
@@ -475,6 +527,7 @@ export function NoisePanel() {
           <Group label="sends">
             <PKnob
               label="fx"
+              lfoKnob="noiseFxSend"
               valueText={`${Math.round(v.fxSend * 100)}`}
               value={v.fxSend}
               onChange={(x) => setNoiseParam('fxSend', x)}
@@ -482,6 +535,7 @@ export function NoisePanel() {
             />
             <PKnob
               label="verb"
+              lfoKnob="noiseRevSend"
               valueText={`${Math.round(v.revSend * 100)}`}
               value={v.revSend}
               onChange={(x) => setNoiseParam('revSend', x)}
@@ -489,6 +543,7 @@ export function NoisePanel() {
             />
             <PKnob
               label="dly"
+              lfoKnob="noiseDelSend"
               valueText={`${Math.round(v.delSend * 100)}`}
               value={v.delSend}
               onChange={(x) => setNoiseParam('delSend', x)}
@@ -499,10 +554,11 @@ export function NoisePanel() {
           <Group label="out">
             <PKnob
               label="level"
+              lfoKnob="noiseLevel"
               valueText={`${Math.round(v.level * 100)}`}
               value={Math.min(1, v.level / 1.5)}
               onChange={(x) => setNoiseLevel(x * 1.5)}
-              title="unit return level — 0 bypasses (LOOP source injects direct again); distortion is always on, no blend"
+              title="unit return level — 0 bypasses (an INS loop injects direct again); distortion is always on, no blend"
             />
           </Group>
         </div>

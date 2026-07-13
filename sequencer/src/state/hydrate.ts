@@ -19,6 +19,7 @@ import {
   snapshotInstrumentMidi,
 } from './store';
 import {
+  ALL_DEST_KNOBS,
   defaultLFOs,
   LFO_RATES,
   LFO_SHAPES,
@@ -36,23 +37,10 @@ import {
 } from '../audio/chords';
 import { bankEntropyTotal } from '../ghost/entropy';
 
-const VALID_KNOBS: LFODestKnob[] = [
-  'mutation',
-  'rowRatchet',
-  'fxSend',
-  'pan',
-  'gain',
-  'filterCutoff',
-  'filterResonance',
-  'density',
-  'motion',
-  'drift',
-  'chaos',
-  'tension',
-  'grainLength',
-  'grainPosition',
-  'wtPosition',
-];
+// Complete, compile-checked knob list from lfo.ts — this used to be a
+// stale literal whitelist, which silently dropped routings to any knob
+// added after it was written (loop/tape/master/voicing…) on every load.
+const VALID_KNOBS: LFODestKnob[] = ALL_DEST_KNOBS;
 
 function validDest(d: unknown): LFODestination | null {
   if (!d || typeof d !== 'object') return null;

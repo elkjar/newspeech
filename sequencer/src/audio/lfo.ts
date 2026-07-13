@@ -23,7 +23,11 @@ export type LFODestKnobGlobal =
   | 'reverbSize' | 'reverbMix' | 'reverbDiffusion' | 'reverbDamping'
   | 'preSaturationDrive'
   | 'loopSpeed' | 'loopPitch' | 'loopSize' | 'loopRandom' | 'loopRate'
-  | 'loopLevel' | 'loopGrainLevel'
+  | 'loopLevel' | 'loopGrainLevel' | 'loopGrains'
+  | 'loopFxSend' | 'loopRevSend' | 'loopDelSend'
+  | 'noiseSpeed' | 'noiseDrive' | 'noiseCutoff' | 'noiseRes' | 'noiseWidth'
+  | 'noiseAmt' | 'noiseCv' | 'noiseClock' | 'noiseSens' | 'noiseLevel'
+  | 'noiseFxSend' | 'noiseRevSend' | 'noiseDelSend'
   | 'masterInput' | 'masterComp' | 'masterDrive' | 'masterBias' | 'masterMix' | 'masterHiCut' | 'masterTrim' | 'masterGateThreshold';
 // Per-instrument editor knobs the global LFO can reach (keyed by the focused
 // track's id at bind time). Distinct from LFODestKnobTrack because these live on
@@ -51,6 +55,81 @@ export type LFODestKnob =
   | LFODestKnobTrack
   | LFODestKnobGlobal
   | LFODestKnobInstrument;
+
+// Every routable knob, as a Record so tsc enforces completeness: adding a
+// knob to the unions above without listing it here is a compile error.
+// hydrate.ts validates persisted routings against this — a knob missing
+// from the valid set is SILENTLY DROPPED on load (the pre-2026-07-12 bug:
+// a stale literal whitelist ate loop/tape/master/voicing routings saved
+// into .seq files).
+const DEST_KNOB_SET: Record<LFODestKnob, true> = {
+  mutation: true,
+  rowRatchet: true,
+  fxSend: true,
+  pan: true,
+  gain: true,
+  filterCutoff: true,
+  filterResonance: true,
+  density: true,
+  motion: true,
+  drift: true,
+  chaos: true,
+  tension: true,
+  voicing: true,
+  tapePosition: true,
+  tapeLength: true,
+  tapeMix: true,
+  tapeGrainRate: true,
+  tapeGrainMix: true,
+  glitchChance: true,
+  glitchMix: true,
+  reverbSize: true,
+  reverbMix: true,
+  reverbDiffusion: true,
+  reverbDamping: true,
+  preSaturationDrive: true,
+  loopSpeed: true,
+  loopPitch: true,
+  loopSize: true,
+  loopRandom: true,
+  loopRate: true,
+  loopLevel: true,
+  loopGrainLevel: true,
+  loopGrains: true,
+  loopFxSend: true,
+  loopRevSend: true,
+  loopDelSend: true,
+  noiseSpeed: true,
+  noiseDrive: true,
+  noiseCutoff: true,
+  noiseRes: true,
+  noiseWidth: true,
+  noiseAmt: true,
+  noiseCv: true,
+  noiseClock: true,
+  noiseSens: true,
+  noiseLevel: true,
+  noiseFxSend: true,
+  noiseRevSend: true,
+  noiseDelSend: true,
+  masterInput: true,
+  masterComp: true,
+  masterDrive: true,
+  masterBias: true,
+  masterMix: true,
+  masterHiCut: true,
+  masterTrim: true,
+  masterGateThreshold: true,
+  grainLength: true,
+  grainPosition: true,
+  wtPosition: true,
+  reverbSend: true,
+  delaySend: true,
+  tune: true,
+  finetune: true,
+};
+
+export const ALL_DEST_KNOBS = Object.keys(DEST_KNOB_SET) as LFODestKnob[];
 
 // Sentinel trackId used in LFODestination when the destination is a global
 // macro rather than a per-track knob. Lets the same routing list cover both.

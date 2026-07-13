@@ -140,11 +140,14 @@ equilibrium textures, unlike the rejected re-crush idea.
   (grid-anchored, chatter locks to the groove) or free Hz via the same sync-toggle pattern
   as the grain rate.
 - **INPUT routing (Chris's flow: "loop → manipulate → add noise → export"):** stepped
-  source — **LOOP** (default; true insert: Loop A routes THROUGH the chain, its direct
+  source — **INS** (default; true insert: Loop A routes THROUGH the chain, its direct
   injection suppressed, wet-only; the loop SAVE bounce prints the POST-NOISE signal via the
-  relocated bounce tap on the send scratch) · **CAPT** (own retroactive bar-quantized
-  capture off the shared ring + vari-speed head — a second bed) · **OFF** (self-sounding:
-  noise alone through the filter). Level 0 = implicit bypass (loop injects direct again).
+  relocated bounce tap on the send scratch) · **PAR** (parallel, added 2026-07-12 on
+  Chris's ask: same Loop A feed but the direct injection stays — send/return instead of
+  insert, loop gain vs unit LEVEL is the balance; SAVE prints loop + noise summed) ·
+  **CAP** (own retroactive bar-quantized capture off the shared ring + vari-speed head — a
+  second bed) · **OFF** (self-sounding: noise alone through the filter). Level 0 = implicit
+  bypass (loop injects direct again).
 - Engine: `MixerCommand::NoiseCapture/NoiseStop/NoiseParams`; `loop_send_l/r` block scratch
   carries loop→noise→bounce; Panic zeroes level + SVF state (a self-oscillating filter is a
   runaway source). JS: `src/audio/noise.ts` + `NoisePanel.tsx` (FX-style groups: input /
@@ -159,9 +162,9 @@ equilibrium textures, unlike the rejected re-crush idea.
   stepped CV blips, audio-rate = pitched digital hash, the Mörser noise color; default
   240Hz).
 - **SAVE prints the chain's TOTAL output in every routing** (fixed after Chris's
-  silent-file report): inserted → noise REPLACES the loop in the bounce scratch; capt/off →
-  noise ADDS on top of the loop's direct out. Previously capt/off setups weren't taped at
-  all. Also same-session: ping LEDs (L/R peak-hold atomics, ~100ms persistence, 30Hz
+  silent-file report): inserted → noise REPLACES the loop in the bounce scratch;
+  par/cap/off → noise ADDS on top of the loop's direct out. Previously cap/off setups
+  weren't taped at all. Also same-session: ping LEDs (L/R peak-hold atomics, ~100ms persistence, 30Hz
   imperative poll — the Mörser tuning light), edge-ping noise injection (transitions ping
   the resonance — the morse mechanic; held-DC was the miss), 2x-oversampled SVF (high
   cutoff no longer collapses into a Nyquist limit cycle), DC-latch fix (leaky lp + DC
@@ -191,7 +194,18 @@ equilibrium textures, unlike the rejected re-crush idea.
   sources fold signal mode in, so every clock state is one press from anywhere; replaced
   the blind ○-cycle + revealed sub-group) with clock + sens knobs stacked beside it
   (`setNoiseClockMode` is timer-only; `setNoiseClockSrc` enters signal mode).
-- **Open (NOISE):** LFO addressability, its own save path when in CAPT mode.
+- **LFO addressability, LANDED 2026-07-12 (both units complete):** every continuous knob
+  on both tabs is a global-LFO destination — loop added grains + fx/verb/dly sends to the
+  original seven; NOISE got all thirteen (speed, drive, cutoff, res, width, noise, cv,
+  clock, sens, level, fx/verb/dly). Same knob-space rule as the loop unit (ladders stay
+  quantized under modulation; NOISE clock modulates the ladder of whichever clock mode is
+  active), same 30Hz effective-value push (noise's runs unconditionally, change-gated, so
+  an LFO on LEVEL can open a unit sitting at 0 — and a bar-synced clock now follows tempo
+  changes without a knob touch). Toggles and the shift-drag deviations are deliberately
+  not destinations. Same session: fixed `hydrate.ts`'s stale `VALID_KNOBS` whitelist that
+  silently dropped persisted LFO routings to any post-2026-05 knob (loop/tape/master/
+  voicing…) on load — now a compile-checked complete list (`ALL_DEST_KNOBS` in lfo.ts).
+- **Open (NOISE):** its own save path when in CAP mode.
 
 ## P1 caveats (accepted, revisit if they bite)
 

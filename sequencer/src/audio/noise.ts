@@ -1,16 +1,25 @@
 // NOISE unit (docs/loop-resample.md §NOISE) — the JS side of
 // MixerCommand::NoiseParams/NoiseCapture. Mörser-shaped: clocked digital
 // noise into both the audio path and the cutoff CV of a stereo WASP-grit
-// filter, with an always-on distortion. Three input routings:
-//   0 LOOP  — true insert: Loop A routes THROUGH the chain (wet-only; the
-//             loop's SAVE bounce prints the post-noise signal),
-//   1 CAPT  — its own retroactive bar-quantized capture (second bed),
-//   2 OFF   — no input: the noise source alone through the filter (the
-//             Mörser self-sounding trick).
+// filter, with an always-on distortion. Four input routings:
+//   0 INS  — true insert: Loop A routes THROUGH the chain (wet-only; the
+//            loop's SAVE bounce prints the post-noise signal),
+//   1 PAR  — parallel: Loop A feeds the chain but keeps its direct out —
+//            send/return instead of insert (SAVE prints loop + noise),
+//   2 CAP  — its own retroactive bar-quantized capture (second bed),
+//   3 OFF  — no input: the noise source alone through the filter (the
+//            Mörser self-sounding trick).
 // Session singleton like audio/perform.ts and audio/loops.ts; never
 // persisted. Level defaults to 0 — the unit is silent until raised.
 
 import { engineSampleRate, framesNow } from './engineClock';
+import {
+  GLOBAL_TRACK_ID,
+  markManualOverride,
+  modulated,
+  type LFODestKnobGlobal,
+} from './lfo';
+import { useSequencerStore } from '../state/store';
 import {
   noiseCaptureSpan,
   noiseParamsNative,
@@ -34,7 +43,7 @@ export const XING_DIVS = [1, 2, 4, 8, 16, 64];
 export const XING_DIV_LABELS = ['/1', '/2', '/4', '/8', '/16', '/64'];
 export { SPEED_LADDER as NOISE_SPEED_LADDER };
 
-export type NoiseSource = 0 | 1 | 2; // loop-insert · own capture · none
+export type NoiseSource = 0 | 1 | 2 | 3; // insert · parallel · own capture · none
 
 interface NoiseState {
   source: NoiseSource;
@@ -106,38 +115,73 @@ export function noiseValues(): NoiseState {
   return { ...state };
 }
 
-function clockFramesNow(): number {
+// CLOCK knob position (0..1) for the current mode — the space LFOs ride in
+// (same convention as the loop RATE knob: modulation steps the ladder the
+// knob currently edits, whichever mode that is).
+function clockKnobPos(): number {
+  if (state.clockMode === 1) return state.xDivIdx / (XING_DIVS.length - 1);
+  if (state.clockSynced)
+    return state.clockDivIdx / (RATE_DIVISIONS.length - 1);
+  return noiseClockKnobFromHz(state.clockHz);
+}
+
+function clockFramesFromPos(pos: number): number {
   if (state.clockSynced) {
     const a = barAnchor();
     const bar = a ? a.barFrames : engineSampleRate() * 2;
-    return bar * RATE_DIVISIONS[state.clockDivIdx];
+    const idx = Math.round(pos * (RATE_DIVISIONS.length - 1));
+    return bar * RATE_DIVISIONS[idx];
   }
-  return engineSampleRate() / state.clockHz;
+  return engineSampleRate() / noiseClockHzFromKnob(pos);
 }
 
-function push() {
-  void noiseParamsNative({
+// Effective (LFO-modulated) params. Same rule as the loop unit: every
+// routed LFO rides the KNOB space (0..1), so the speed/clock ladders stay
+// quantized after modulation. `modulated()` is base-passthrough with
+// nothing routed and honours the hand-override ramp.
+function effectiveParams() {
+  const lfos = useSequencerStore.getState().lfos;
+  const m = (base: number, knob: LFODestKnobGlobal) =>
+    Math.max(0, Math.min(1, modulated(base, lfos, GLOBAL_TRACK_ID, knob)));
+  const clockPos = m(clockKnobPos(), 'noiseClock');
+  return {
     source: state.source,
-    speed: speedFromKnob(state.speedKnob),
-    drive: state.drive,
-    cutoff: state.cutoff,
-    res: state.res,
-    width: state.width,
+    speed: speedFromKnob(m(state.speedKnob, 'noiseSpeed')),
+    drive: m(state.drive, 'noiseDrive'),
+    cutoff: m(state.cutoff, 'noiseCutoff'),
+    res: m(state.res, 'noiseRes'),
+    width: m(state.width, 'noiseWidth'),
     mode: state.mode,
-    noise: state.noise,
-    cv: state.cv,
-    clockFrames: clockFramesNow(),
+    noise: m(state.noise, 'noiseAmt'),
+    cv: m(state.cv, 'noiseCv'),
+    clockFrames: clockFramesFromPos(clockPos),
     clockSynced: state.clockSynced,
     clockMode: state.clockMode,
     clockSrc: state.clockSrc,
-    clockDiv: XING_DIVS[state.xDivIdx],
-    sens: state.sens,
-    level: state.level,
-    fxSend: state.fxSend,
-    revSend: state.revSend,
-    delSend: state.delSend,
-  });
+    clockDiv: XING_DIVS[Math.round(clockPos * (XING_DIVS.length - 1))],
+    sens: m(state.sens, 'noiseSens'),
+    level: m(state.level / 1.5, 'noiseLevel') * 1.5,
+    fxSend: m(state.fxSend, 'noiseFxSend'),
+    revSend: m(state.revSend, 'noiseRevSend'),
+    delSend: m(state.delSend, 'noiseDelSend'),
+  };
 }
+
+let lastPushed = '';
+function push(force = false) {
+  const p = effectiveParams();
+  const key = JSON.stringify(p);
+  if (!force && key === lastPushed) return;
+  lastPushed = key;
+  void noiseParamsNative(p);
+}
+
+// LFO driver — ~30Hz effective-value push, matching the loop unit's. Runs
+// unconditionally (the unit can sound with no capture, and an LFO on LEVEL
+// must be able to open a unit sitting at 0); the change gate makes the
+// idle cost a stringify + compare. Also keeps a bar-synced clock honest
+// across tempo changes (clockFrames re-derives from the live bar anchor).
+setInterval(() => push(), 33);
 
 export function setNoiseSource(source: NoiseSource) {
   if (source === state.source) return;
@@ -152,6 +196,20 @@ export function setNoiseMode(mode: 0 | 1) {
   notify();
   push();
 }
+
+const PARAM_LFO_KNOB: Partial<Record<string, LFODestKnobGlobal>> = {
+  speedKnob: 'noiseSpeed',
+  drive: 'noiseDrive',
+  cutoff: 'noiseCutoff',
+  res: 'noiseRes',
+  width: 'noiseWidth',
+  noise: 'noiseAmt',
+  cv: 'noiseCv',
+  sens: 'noiseSens',
+  fxSend: 'noiseFxSend',
+  revSend: 'noiseRevSend',
+  delSend: 'noiseDelSend',
+};
 
 export function setNoiseParam(
   key:
@@ -171,6 +229,8 @@ export function setNoiseParam(
   const v = Math.max(0, Math.min(1, value));
   if (v === state[key]) return;
   state[key] = v;
+  const lfoKnob = PARAM_LFO_KNOB[key];
+  if (lfoKnob) markManualOverride(GLOBAL_TRACK_ID, lfoKnob);
   notify();
   push();
 }
@@ -179,6 +239,7 @@ export function setNoiseLevel(gain: number) {
   const g = Math.max(0, Math.min(1.5, gain));
   if (g === state.level) return;
   state.level = g;
+  markManualOverride(GLOBAL_TRACK_ID, 'noiseLevel');
   notify();
   push();
 }
@@ -187,6 +248,7 @@ export function setNoiseClockDiv(idx: number) {
   const i = Math.max(0, Math.min(RATE_DIVISIONS.length - 1, Math.round(idx)));
   if (i === state.clockDivIdx) return;
   state.clockDivIdx = i;
+  markManualOverride(GLOBAL_TRACK_ID, 'noiseClock');
   notify();
   push();
 }
@@ -195,6 +257,7 @@ export function setNoiseClockHz(hz: number) {
   const r = Math.max(0.5, Math.min(8000, hz));
   if (r === state.clockHz) return;
   state.clockHz = r;
+  markManualOverride(GLOBAL_TRACK_ID, 'noiseClock');
   notify();
   push();
 }
@@ -225,6 +288,7 @@ export function setNoiseXDiv(idx: number) {
   const i = Math.max(0, Math.min(XING_DIVS.length - 1, Math.round(idx)));
   if (i === state.xDivIdx) return;
   state.xDivIdx = i;
+  markManualOverride(GLOBAL_TRACK_ID, 'noiseClock');
   notify();
   push();
 }
@@ -240,7 +304,7 @@ export function noiseClockKnobFromHz(hz: number): number {
 }
 
 // Capture the last `bars` bars of the mix into the NOISE unit's own buffer
-// (used by source = CAPT). Same retroactive bar math as the loop unit.
+// (used by source = CAP). Same retroactive bar math as the loop unit.
 export function noiseCaptureBars(bars: number): boolean {
   const a = barAnchor();
   if (!a) return false;
@@ -252,7 +316,9 @@ export function noiseCaptureBars(bars: number): boolean {
   const oldest = now - (RING_SECONDS - 1) * engineSampleRate();
   if (start < 0 || start < oldest) return false;
   void noiseCaptureSpan(Math.round(start), Math.round(end));
-  push();
+  // Force a re-sync on every capture — same reasoning as the loop unit
+  // (webview reload resets JS state while the engine remembers).
+  push(true);
   state.bars = bars;
   notify();
   return true;

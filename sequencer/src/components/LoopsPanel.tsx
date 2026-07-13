@@ -481,6 +481,7 @@ export function LoopsPanel() {
             />
             <ParamKnob
               label="grains"
+              lfoKnob="loopGrains"
               valueText={`${grains}`}
               value={(grains - 1) / 7}
               onChange={(v) => setLoopGrains(1 + v * 7)}
@@ -546,6 +547,7 @@ export function LoopsPanel() {
           <LoopGroup label="sends">
             <ParamKnob
               label="fx"
+              lfoKnob="loopFxSend"
               valueText={`${Math.round(fxSend * 100)}`}
               value={fxSend}
               onChange={(v) => setLoopParam('fxSend', v)}
@@ -553,6 +555,7 @@ export function LoopsPanel() {
             />
             <ParamKnob
               label="verb"
+              lfoKnob="loopRevSend"
               valueText={`${Math.round(revSend * 100)}`}
               value={revSend}
               onChange={(v) => setLoopParam('revSend', v)}
@@ -560,6 +563,7 @@ export function LoopsPanel() {
             />
             <ParamKnob
               label="dly"
+              lfoKnob="loopDelSend"
               valueText={`${Math.round(delSend * 100)}`}
               value={delSend}
               onChange={(v) => setLoopParam('delSend', v)}

@@ -4129,9 +4129,10 @@ enum MixerCommand {
   },
   NoiseStop,
   NoiseParams {
-    // 0 = LOOP INSERT (Loop A routes THROUGH the chain — wet-only, and the
-    // save bounce prints the post-noise signal); 1 = own capture
-    // (parallel second bed); 2 = none (self-sounding noise box).
+    // 0 = INS (Loop A routes THROUGH the chain — wet-only, the save
+    // bounce prints the post-noise signal); 1 = PAR (Loop A feeds the
+    // chain in parallel — its direct injection stays, noise adds on top);
+    // 2 = CAP (own capture — a second bed); 3 = OFF (self-sounding).
     source: u8,
     speed: f32,
     drive: f32,      // 0..1 → 1..24x input gain INTO the filter (the WASP
@@ -5964,7 +5965,7 @@ fn build_stream(
   // Clock + sample&hold state: held cutoff jitter, absolute next-tick
   // frame, SVF states per channel, current filter coefficient
   // (recomputed on clock ticks / param pushes).
-  let mut noise_source: u8 = 0; // 0 loop-insert · 1 own capture · 2 none
+  let mut noise_source: u8 = 0; // 0 INS · 1 PAR · 2 CAP (own capture) · 3 OFF
   let mut noise_clock_mode: u8 = 0; // 0 timer (sync/free) · 1 signal
   let mut noise_clock_src: u8 = 0; // 0 self-input · 1 loop A · 2 mix
   let mut noise_clock_div: u32 = 8;
@@ -6804,7 +6805,7 @@ fn build_stream(
               rev_send,
               del_send,
             } => {
-              noise_source = source.min(2);
+              noise_source = source.min(3);
               if speed.is_finite() {
                 noise_speed = speed.clamp(-4.0, 4.0);
               }
@@ -8271,10 +8272,12 @@ fn build_stream(
             loop_ring_l[w] = l;
             loop_ring_r[w] = r;
           }
-          // Loop→noise routing, decided per block: inserted = Loop A
-          // routes THROUGH the noise chain (direct injection suppressed;
-          // the bounce prints the post-noise signal). noise level 0 =
-          // implicit bypass (loop injects direct again).
+          // Loop→noise routing, decided per block. INS = Loop A routes
+          // THROUGH the noise chain (direct injection suppressed; the
+          // bounce prints the post-noise signal). PAR feeds the chain the
+          // same way but leaves the direct injection alone — send/return
+          // instead of insert. noise level 0 = implicit bypass (loop
+          // injects direct again).
           let noise_inserted = noise_source == 0 && noise_level > 0.001;
           let sframes = frames.min(REVERB_SCRATCH);
           loop_send_l[..sframes].fill(0.0);
@@ -8565,18 +8568,19 @@ fn build_stream(
             let nlen_f = noise_len as f64;
             for frame in 0..frames {
               let abs = block_start_frame + frame as u64;
-              // Source per selector: Loop A's output (insert), own
+              // Source per selector: Loop A's output (INS insert / PAR
+              // parallel — same feed, routing differs downstream), own
               // capture at vari-speed, or nothing (self-sounding). Read
               // FIRST — the signal clock may need this frame's input.
               let (mut xl, mut xr) = (0.0f32, 0.0f32);
               match noise_source {
-                0 => {
+                0 | 1 => {
                   if frame < REVERB_SCRATCH {
                     xl = loop_send_l[frame];
                     xr = loop_send_r[frame];
                   }
                 }
-                1 => {
+                2 => {
                   if noise_capture_active
                     && noise_len > 0
                     && noise_speed.abs() >= 0.02
@@ -8750,9 +8754,9 @@ fn build_stream(
               // The bounce scratch carries the chain's TOTAL output in
               // every routing: inserted → the noise out REPLACES the loop
               // signal (which was suppressed from direct injection);
-              // capt/off → it ADDS on top of the loop's direct out. SAVE
-              // always prints what these two units produce together —
-              // "the saved file is basically silent" (capt/off setups
+              // par/cap/off → it ADDS on top of the loop's direct out.
+              // SAVE always prints what these two units produce together —
+              // "the saved file is basically silent" (cap/off setups
               // weren't taped at all) was the bug.
               if frame < REVERB_SCRATCH {
                 if noise_inserted {
