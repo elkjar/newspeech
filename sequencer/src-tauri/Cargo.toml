@@ -34,6 +34,8 @@ hound = "3.5"
 ringbuf = "0.4"
 rand = { version = "0.8", default-features = false, features = ["small_rng"] }
 arc-swap = "1.7"
+tauri-plugin-updater = "2.10.1"
+tauri-plugin-process = "2.3.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # objc2 family — the supported successor to the (now EOL) cocoa/objc crates.

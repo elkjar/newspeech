@@ -221,7 +221,7 @@
 <script>
 // =========================================================================
 // SAMPLE SOURCE
-// hardcoded category → pack map. each pack's manifest.json (already on disk
+// hardcoded category → pack map. each pack's kit.seqkit (already on disk
 // under sequencer/public/samples/<cat>/<pack>/) provides the file list. fetched
 // at page load, decoded lazily on expand.
 // =========================================================================
@@ -307,13 +307,13 @@ async function buildManifest() {
     for (const pack of packs) {
       const baseUrl = `${SAMPLE_BASE}/${cat}/${pack}`;
       try {
-        const m = await fetch(`${baseUrl}/manifest.json`).then((r) => {
+        const m = await fetch(`${baseUrl}/kit.seqkit`).then((r) => {
           if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
           return r.json();
         });
         catNode.children.push(packToNode(pack, m, baseUrl));
       } catch (err) {
-        console.warn(`samples: failed to load ${cat}/${pack}/manifest.json`, err);
+        console.warn(`samples: failed to load ${cat}/${pack}/kit.seqkit`, err);
       }
     }
     tree.push(catNode);
@@ -729,7 +729,7 @@ function drawAndTick(state) {
 
 // =========================================================================
 // pack-level zip download — client-side via JSZip. fetches every leaf under
-// the pack's subtree + its manifest.json, zips them with paths relative to
+// the pack's subtree + its kit.seqkit, zips them with paths relative to
 // the pack root, and saves as newspeech-<pack>.zip. blocked while in flight
 // to prevent duplicate fires.
 // =========================================================================
@@ -765,12 +765,12 @@ async function zipPack(btn, packPath, packName) {
   let done = 0;
   let failed = 0;
 
-  // pull manifest.json too so the zip is a self-contained pack
+  // pull kit.seqkit too so the zip is a self-contained pack
   try {
-    const m = await fetch(`${baseUrl}/manifest.json`);
-    if (m.ok) zip.file("manifest.json", await m.arrayBuffer());
+    const m = await fetch(`${baseUrl}/kit.seqkit`);
+    if (m.ok) zip.file("kit.seqkit", await m.arrayBuffer());
   } catch (err) {
-    console.warn(`zipPack: manifest.json fetch failed for ${packPath}`, err);
+    console.warn(`zipPack: kit.seqkit fetch failed for ${packPath}`, err);
   }
 
   // serial fetches keep the progress label readable + avoid hammering a single

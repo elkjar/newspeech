@@ -1,6 +1,6 @@
 // User samples directory scanning. The Tauri app lets the user point at any
-// folder on disk and have its `{drums,instruments,pads}/<kit>/manifest.json`
-// files discovered at runtime — no rebuild required when new sample packs
+// folder on disk and have its `{drums,instruments,pads}/<kit>/kit.seqkit`
+// manifests (legacy name: manifest.json) discovered at runtime — no rebuild required when new sample packs
 // land. Web build can't do this (browsers can't enumerate disk paths), so
 // this lives behind the Tauri-only invoke surface.
 //
@@ -72,9 +72,27 @@ pub fn list_sample_kits(dir: String) -> Result<Vec<SampleKitEntry>, String> {
                 Some(n) => n.to_string(),
                 None => continue,
             };
-            let manifest_path = kit_dir.join("manifest.json");
+            let manifest_path = kit_dir.join("kit.seqkit");
+            // `kit.seqkit` is the kit manifest (same JSON as the legacy
+            // manifest.json — renamed 2026-07-13 to join the .seq/.seqcomp/
+            // .seqset family). Legacy kits auto-migrate: a manifest.json
+            // with no kit.seqkit beside it is renamed in place on scan, so
+            // old packs and the Dropbox master converge without a manual
+            // sweep. Rename failure (read-only volume) falls back to
+            // reading manifest.json where it sits.
+            let legacy_path = kit_dir.join("manifest.json");
+            let manifest_path = if manifest_path.is_file() {
+                manifest_path
+            } else if legacy_path.is_file() {
+                match fs::rename(&legacy_path, &manifest_path) {
+                    Ok(()) => manifest_path,
+                    Err(_) => legacy_path,
+                }
+            } else {
+                manifest_path
+            };
             // Manifest resolution:
-            //   1. If manifest.json exists → use it verbatim (full control).
+            //   1. If kit.seqkit exists → use it verbatim (full control).
             //   2. Else, attempt to synthesize. Two layouts handled:
             //        a) Subfolders-of-WAVs (one voice per subfolder, matches
             //           bundled drum-kit layout: KICK/, SNARE/, OHH/, ...).

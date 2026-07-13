@@ -1,0 +1,16 @@
+# Distribution secrets for scripts/release.sh — copy to sequencer/.release-env
+# (gitignored) and fill in. Without this file the script builds + installs
+# locally but skips signing/notarization/GitHub publish.
+
+# Exact name from `security find-identity -v -p codesigning`
+APPLE_SIGNING_IDENTITY="Developer ID Application: YOUR NAME (TEAMID)"
+
+# Notarization (notarytool). APPLE_PASSWORD is an app-specific password
+# from account.apple.com, NOT your Apple ID password.
+APPLE_ID="you@example.com"
+APPLE_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+APPLE_TEAM_ID="TEAMID"
+
+# Updater artifact signing key (defaults to this path if unset).
+# TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/sequence-updater.key"
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""

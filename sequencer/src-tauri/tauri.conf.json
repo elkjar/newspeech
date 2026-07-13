@@ -32,7 +32,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
+    "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "hardenedRuntime": true,
+      "entitlements": "./Entitlements.plist"
+    },
     "fileAssociations": [
       {
         "ext": ["seq", "seqcomp"],
@@ -51,6 +57,14 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM0NEJGNEExMDk4NDQ2NzgKUldSNFJvUUpvZlJMTkMvVmNkVDNCTEF5WGFwNXdvS1psK3NjQ0NFeksrOVRZNUxlVjNLNms4REUK",
+      "endpoints": [
+        "https://github.com/elkjar/newspeech/releases/latest/download/latest.json"
+      ]
     }
   }
 }

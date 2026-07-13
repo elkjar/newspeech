@@ -16,12 +16,41 @@
 #      release ships the app too, not just the web deploy.
 #   5. Commit "sequencer: <version> — <summary>" and push main → Netlify
 #      auto-deploys www.newspeechsound.com.
+#   6. Distribution (when signing secrets are present): the build is already
+#      Developer-ID-signed + notarized by Tauri (env vars below); we staple
+#      the dmg, generate the updater manifest (latest.json), and publish a
+#      GitHub Release with dmg + updater artifact — installed apps poll
+#      /releases/latest/download/latest.json (tauri-plugin-updater).
+#
+# Secrets live in sequencer/.release-env (gitignored), sourced if present:
+#   APPLE_SIGNING_IDENTITY  "Developer ID Application: Name (TEAMID)"
+#   APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID   (notarytool; app-specific pw)
+# The updater keypair is ~/.tauri/sequence-updater.key (no password). Losing
+# it orphans every installed app — back it up.
+#
+# NOTE: the dmg bundler runs a Finder AppleScript styling pass — run this
+# script from a GUI terminal session, not headless/SSH.
 #
 set -euo pipefail
 
 # cargo isn't on the default PATH in non-login shells.
 # shellcheck disable=SC1090
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+
+# Distribution secrets (signing identity + notarization credentials).
+# set -a exports everything the file defines so the Tauri build subprocess
+# (which does the actual codesign + notarize) sees them.
+# shellcheck disable=SC1091
+if [ -f "$(dirname "${BASH_SOURCE[0]}")/../.release-env" ]; then
+  set -a
+  source "$(dirname "${BASH_SOURCE[0]}")/../.release-env"
+  set +a
+fi
+
+# Updater artifacts (createUpdaterArtifacts in tauri.conf.json) are signed
+# with the Tauri updater key — required for every build now.
+export TAURI_SIGNING_PRIVATE_KEY_PATH="${TAURI_SIGNING_PRIVATE_KEY_PATH:-$HOME/.tauri/sequence-updater.key}"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
 
 VERSION="${1:-}"
 SUMMARY="${2:-}"
@@ -58,6 +87,12 @@ node -e "const f='package.json',p=require('./'+f);p.version='$VERSION';require('
 
 # --- 3. build --------------------------------------------------------------
 step "build (npm run tauri:build)"
+if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  echo "  signing as: $APPLE_SIGNING_IDENTITY"
+  [ -n "${APPLE_ID:-}" ] && echo "  notarizing as: $APPLE_ID (team ${APPLE_TEAM_ID:-?})"
+else
+  echo "  ⚠ APPLE_SIGNING_IDENTITY not set — UNSIGNED build (testers hit Gatekeeper)"
+fi
 npm run tauri:build
 
 [ -d "$BUNDLE" ] || die "expected bundle not found at $BUNDLE"
@@ -77,5 +112,63 @@ git add -A
 git commit -q -m "sequencer: $VERSION — $SUMMARY"
 git push origin main
 
+# --- 6. distribution: staple dmg + GitHub Release + updater manifest -------
+BUNDLE_DIR="$SEQ_DIR/src-tauri/target/release/bundle"
+DMG="$BUNDLE_DIR/dmg/Sequence_${VERSION}_aarch64.dmg"
+UPDATER_TGZ="$BUNDLE_DIR/macos/Sequence.app.tar.gz"
+UPDATER_SIG="$BUNDLE_DIR/macos/Sequence.app.tar.gz.sig"
+
+if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  echo
+  echo "✓ released $VERSION — main pushed, app installed. (No signing identity:"
+  echo "  skipped GitHub Release / updater publish — installed testers were NOT updated.)"
+  exit 0
+fi
+
+step "distribution"
+[ -f "$DMG" ] || die "dmg not found at $DMG"
+[ -f "$UPDATER_TGZ" ] || die "updater artifact not found at $UPDATER_TGZ"
+[ -f "$UPDATER_SIG" ] || die "updater signature not found at $UPDATER_SIG"
+
+# Tauri notarizes + staples the .app when APPLE_* env is present; the dmg
+# needs its own notarization pass so the download mounts clean.
+if [ -n "${APPLE_ID:-}" ]; then
+  echo "  notarizing dmg (this waits on Apple)…"
+  xcrun notarytool submit "$DMG" \
+    --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+    --wait || die "dmg notarization failed"
+  xcrun stapler staple "$DMG"
+fi
+
+echo "  writing latest.json…"
+LATEST_JSON="$BUNDLE_DIR/latest.json"
+SIG_CONTENT="$(cat "$UPDATER_SIG")"
+PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+node -e "
+  require('fs').writeFileSync('$LATEST_JSON', JSON.stringify({
+    version: '$VERSION',
+    notes: process.argv[1],
+    pub_date: '$PUB_DATE',
+    platforms: {
+      'darwin-aarch64': {
+        signature: process.argv[2],
+        url: 'https://github.com/elkjar/newspeech/releases/download/sequence-v$VERSION/Sequence.app.tar.gz',
+      },
+    },
+  }, null, 2) + '\n');
+" "$SUMMARY" "$SIG_CONTENT"
+
+# A stable-named copy rides along so the site can link
+# releases/latest/download/Sequence.dmg without a per-version URL.
+STABLE_DMG="$BUNDLE_DIR/dmg/Sequence.dmg"
+cp -f "$DMG" "$STABLE_DMG"
+
+echo "  publishing GitHub Release sequence-v$VERSION…"
+gh release create "sequence-v$VERSION" \
+  --title "Sequence $VERSION" \
+  --notes "$SUMMARY" \
+  "$DMG" "$STABLE_DMG" "$UPDATER_TGZ" "$UPDATER_SIG" "$LATEST_JSON"
+
 echo
-echo "✓ released $VERSION — main pushed (Netlify deploying), app installed."
+echo "✓ released $VERSION — main pushed (Netlify deploying), app installed,"
+echo "  GitHub Release published (dmg + updater manifest live)."

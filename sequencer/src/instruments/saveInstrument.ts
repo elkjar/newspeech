@@ -1,7 +1,7 @@
 // Save the in-app instrument editor's edits into the global sample library.
 //
 // The library is the source of truth: a voice's saved params live in its user
-// kit's on-disk manifest.json (`ManifestVoiceMeta.edits`), and the editor's
+// kit's on-disk kit.seqkit manifest (`ManifestVoiceMeta.edits`), and the editor's
 // `voiceEditsStore` is just the UNSAVED working layer overlaid on top (see
 // resolvedVoiceEdit). Nothing is written into `.seq` files — edits are global.
 //
@@ -13,7 +13,7 @@
 //    is untouched.
 //
 // Tauri-only (user kits live on a writable filesystem dir). The Rust scanner
-// reads manifest.json verbatim when present (samples.rs), so the `edits` field
+// reads kit.seqkit verbatim when present (samples.rs), so the `edits` field
 // round-trips; we re-scan at save time to get the authoritative BARE-id
 // manifest (registry ids are namespaced `<prefix>-<bareId>`).
 
@@ -86,7 +86,7 @@ async function writeKitManifest(
   manifest: ExtendedSampleManifest,
 ): Promise<void> {
   await invoke('save_text_file', {
-    path: `${absoluteDir}/manifest.json`,
+    path: `${absoluteDir}/kit.seqkit`,
     contents: JSON.stringify(manifest, null, 2),
   });
 }

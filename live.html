@@ -1295,7 +1295,7 @@ patchSelect.addEventListener("change", () => {
 })();
 
 // ---- newspeech sample registration ------------------------------------
-// fetches each pack's manifest.json from the same location samples.html and
+// fetches each pack's kit.seqkit from the same location samples.html and
 // the sequencer use, then calls strudel's global `samples()` to make the
 // pack's voices addressable by their voice id. drum voices register as flat
 // file lists (s("kick"), s("kick:3")). pitched voices register as midi-keyed
@@ -1324,7 +1324,7 @@ async function registerNewspeechSamples() {
       const baseUrl = `${NEWSPEECH_SAMPLE_BASE}/${cat}/${pack}`;
       let manifest;
       try {
-        const r = await fetch(`${baseUrl}/manifest.json`);
+        const r = await fetch(`${baseUrl}/kit.seqkit`);
         if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
         manifest = await r.json();
       } catch (err) {

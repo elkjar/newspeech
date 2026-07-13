@@ -120,5 +120,24 @@ export default defineConfig({
         }
       },
     },
+    // The zxx-* fonts live at the repo root (shared with the site pages) and
+    // are served in dev by the passthrough middleware above — which means a
+    // built app has no /fonts/ at all and falls back to system fonts. Copy
+    // them into dist so the release .app carries the family.
+    {
+      name: 'newspeech-copy-fonts',
+      apply: 'build',
+      closeBundle() {
+        const src = path.resolve(__dirname, '../fonts');
+        const dest = path.resolve(__dirname, 'dist/fonts');
+        if (!fs.existsSync(src)) return;
+        fs.mkdirSync(dest, { recursive: true });
+        for (const f of fs.readdirSync(src)) {
+          if (f.endsWith('.woff2')) {
+            fs.copyFileSync(path.join(src, f), path.join(dest, f));
+          }
+        }
+      },
+    },
   ],
 });
