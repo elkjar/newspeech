@@ -197,11 +197,11 @@ BUILT_VST3="$JUCE_PROJECT_DIR/Builds/MacOSX/build/Release/GlitchFX.vst3"
 [ -d "$BUILT_VST3" ] || { echo "ERROR: VST3 build produced no .vst3"; exit 1; }
 
 # --- 5. Install both bundles.
-echo "▸ Installing AU to $INSTALL_DIR/$INSTALL_NAME…"
+echo "▸ Installing AU to $INSTALL_DIR/${INSTALL_NAME}…"
 rm -rf "$INSTALL_DIR/$INSTALL_NAME"
 cp -R "$BUILT" "$INSTALL_DIR/$INSTALL_NAME"
 
-echo "▸ Installing VST3 to $VST3_INSTALL_DIR/$VST3_INSTALL_NAME…"
+echo "▸ Installing VST3 to $VST3_INSTALL_DIR/${VST3_INSTALL_NAME}…"
 mkdir -p "$VST3_INSTALL_DIR"
 rm -rf "$VST3_INSTALL_DIR/$VST3_INSTALL_NAME"
 cp -R "$BUILT_VST3" "$VST3_INSTALL_DIR/$VST3_INSTALL_NAME"

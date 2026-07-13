@@ -47,8 +47,14 @@ fi
 
 : "${APPLE_TEAM_ID:?APPLE_TEAM_ID not set — fill in $SIGNING_CONFIG or export it}"
 : "${APPLE_DEV_ID_NAME:?APPLE_DEV_ID_NAME not set — fill in $SIGNING_CONFIG or export it}"
-: "${APPLE_ID:?APPLE_ID not set — fill in $SIGNING_CONFIG or export it}"
-: "${APPLE_APP_PWD:?APPLE_APP_PWD not set — fill in $SIGNING_CONFIG or export it}"
+# notarytool auth: App Store Connect API key preferred (APPLE_API_KEY_PATH /
+# APPLE_API_KEY / APPLE_API_ISSUER — same trio release.sh uses); falls back
+# to Apple-ID + app-specific password. Apple-ID auth 403s on some accounts
+# ("Invalid or inaccessible developer team ID") where the API key works.
+if [ -z "${APPLE_API_KEY_PATH:-}" ]; then
+  : "${APPLE_ID:?APPLE_ID not set (and no APPLE_API_KEY_PATH) — fill in $SIGNING_CONFIG or export it}"
+  : "${APPLE_APP_PWD:?APPLE_APP_PWD not set (and no APPLE_API_KEY_PATH) — fill in $SIGNING_CONFIG or export it}"
+fi
 
 # --- Sanity-check the signing identity is actually installed ---
 if ! security find-identity -v -p codesigning | grep -q "$APPLE_DEV_ID_NAME"; then
@@ -86,10 +92,13 @@ echo "▸ Zipping for notarization → $ZIP"
 # --- 3. Submit to Apple's notary service ---
 echo "▸ Submitting to notarytool (blocks until Apple responds; usually minutes)…"
 NOTARY_LOG="$(mktemp -t glitch-notary)"
+if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+  NOTARY_AUTH=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
+else
+  NOTARY_AUTH=(--apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PWD")
+fi
 if xcrun notarytool submit "$ZIP" \
-    --apple-id "$APPLE_ID" \
-    --team-id "$APPLE_TEAM_ID" \
-    --password "$APPLE_APP_PWD" \
+    "${NOTARY_AUTH[@]}" \
     --wait \
     --output-format plist > "$NOTARY_LOG" 2>&1; then
   if grep -q "<string>Accepted</string>" "$NOTARY_LOG"; then
