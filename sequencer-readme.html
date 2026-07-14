@@ -273,7 +273,8 @@
 
     <h2>rows</h2>
     <p>left of each grid, per row: the voice picker, a row-settings button, a record-arm dot, six knobs — <span class="kbd">gain</span>, <span class="kbd">pan</span>, <span class="kbd">cutoff</span>, <span class="kbd">res</span>, <span class="kbd">fx send</span>, <span class="kbd">mutation</span> — then mute and solo. ⌘/ctrl-click mute to clear the whole row.</p>
-    <p>row settings holds the pattern math — <span class="kbd">len</span> (1–64), euclidean <span class="kbd">hits</span>, <span class="kbd">rot</span>ation, step <span class="kbd">rate</span> — plus, on melodic rows, the default chord voicing (C / E / I / S), the <span class="kbd">interp</span> follow mode and octave, and per-row output routing.</p>
+    <p>row settings holds the pattern math — <span class="kbd">len</span> (1–64), euclidean <span class="kbd">hits</span>, <span class="kbd">rot</span>ation, step <span class="kbd">rate</span> — plus, on melodic rows, the row's default chord voicing — <span class="kbd">C</span> / <span class="kbd">E</span> / <span class="kbd">I</span> / <span class="kbd">S</span>: degree, extension, inversion, spread — the <span class="kbd">interp</span> follow mode and octave, and per-row output routing.</p>
+    <p>the voicing set here is what every plain step plays. per-step exceptions are authored in the roll tab's inspector, on top of this default — change the default later and every step you haven't overridden follows it.</p>
     <p>rows longer than sixteen steps grow page buttons above the grid. next to them sits a timing-lock dot: locked, mutation only changes notes and leaves the rhythm alone.</p>
 
     <h2>the screen</h2>
@@ -290,6 +291,7 @@
     <h2 class="sub">roll</h2>
     <p>a piano-roll view of the focused row, plus the step inspector. while playing, the authored pattern dims and the notes actually sounding — after mutation, fills, chance — draw bright on top. this is where you watch the machine edit.</p>
     <p>the inspector edits whichever step you last clicked: velocity / chance / ratchet / timing / gate readouts, per-step chord overrides (degree, extension, inversion, spread) on chord-capable rows, slice choice (or per-hit random) on sliced voices, and the accumulator — a per-step climbing ladder with its own step size, range and wrap / bounce / hold shape.</p>
+    <p>the chord dropdowns here show the row default, dimmed, until you change one — that writes an override onto just that step (the labels go bright). <span class="kbd">×</span> clears it back to the row default.</p>
 
     <h2 class="sub">lfo</h2>
     <p>four global lfos, each with a depth knob and a shape button (sin · tri · saw · sqr). click a cell to select it, then click any bindable knob anywhere in the app — row knobs, fx, master, loops, noise, instrument sends — to route the lfo there; click again to unroute, <span class="kbd">esc</span> to deselect. a routed knob shows a small <span class="kbd">L#</span> tag and animates with the modulation; grabbing it by hand overrides the lfo.</p>
