@@ -30,6 +30,7 @@
   @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")   format("woff2"); font-display: swap; }
 
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   html, body { margin: 0; padding: 0; background: #050505; color: #fff; }
   body {
     min-height: 100vh;
@@ -56,7 +57,33 @@
   }
   header a:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
 
-  main { max-width: 720px; }
+  main { max-width: 720px; margin-left: 200px; }
+
+  nav#rail {
+    position: fixed;
+    top: 130px;
+    left: 72px;
+    width: 160px;
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  nav#rail::-webkit-scrollbar { display: none; }
+  nav#rail a {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: rgba(255, 255, 255, 0.4);
+    padding: 3px 0;
+    line-height: 1.4;
+  }
+  nav#rail a.sub { padding-left: 14px; color: rgba(255, 255, 255, 0.3); }
+  nav#rail a:hover { color: rgba(255, 255, 255, 0.85); }
+  nav#rail a.active { color: rgba(255, 255, 255, 0.95); }
+
+  h1, h2 { scroll-margin-top: 28px; }
 
   h1 {
     font-family: "zxx-sans", ui-monospace, monospace;
@@ -133,6 +160,50 @@
   }
   a.inline:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
 
+  #rail-toggle {
+    display: none;
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 20;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(5, 5, 5, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 2px;
+    padding: 10px 14px;
+    cursor: pointer;
+  }
+
+  @media (max-width: 1140px) {
+    nav#rail { display: none; }
+    main { margin-left: 0; }
+    #rail-toggle { display: block; }
+
+    body.rail-open { overflow: hidden; }
+    body.rail-open nav#rail {
+      display: block;
+      position: fixed;
+      inset: 0;
+      width: auto;
+      max-height: none;
+      z-index: 15;
+      background: rgba(5, 5, 5, 0.94);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      padding: 64px 36px 96px;
+      overflow-y: auto;
+    }
+    body.rail-open nav#rail a {
+      font-size: 14px;
+      padding: 9px 0;
+    }
+    body.rail-open nav#rail a.sub { padding-left: 20px; }
+  }
+
   @media (max-width: 720px) {
     body { padding: 36px 24px 64px; }
     header { flex-wrap: wrap; gap: 14px 20px; margin-bottom: 40px; }
@@ -146,12 +217,41 @@
     <span class="label"><a href="index.html">newspeech</a> / sequence / readme.txt</span>
   </header>
 
+  <nav id="rail" aria-label="sections"></nav>
+  <button id="rail-toggle" aria-expanded="false">sections</button>
+
   <main>
     <h1 data-link>about sequence</h1>
-    <p>a step sequencer with a chord-relative harmonic engine. instead of authoring notes one at a time, you set a scene (a root note and a scale), pick chord shapes by degree, and the rest of the band auto-harmonizes against whatever you played last.</p>
-    <p>it's built to play itself, mostly. you set up the relationships, crank the mutation knob, and listen.</p>
+    <p>welcome friends. sequence is a sample driven (but also midi!) step sequencer with a chord-relative harmonic engine. while you can treat it fully as a 'place steps on a grid' sequencer, it is also able to be harmonically aware and can shift your patterns beyond the initial placements. this doc helps run through the surface of what this can do — if you have any questions please don't hesitate to hit up <a class="inline" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener">@newspeechsound</a> on instagram and i'll talk you through any issues!</p>
+    <p>also — please share whatever you make! i'm so curious about what this will turn into with your help.</p>
+    <p style="opacity: 0.55;">— chris elkjar, july 2026</p>
 
-    <h2>two sections</h2>
+    <h2>quickstart</h2>
+    <p>from a blank app to sound:</p>
+    <ul>
+      <li>click the <span class="kbd">—</span> button at the left of any row and pick a voice. voices load from your samples folder (settings → user samples).</li>
+      <li><strong>⌘/ctrl-click steps to place notes.</strong> the same gesture removes them. a plain click only selects a step — it never places one.</li>
+      <li>press <span class="kbd">space</span>.</li>
+      <li>toggle between <span class="kbd">rhythm</span> and <span class="kbd">melody</span> at the bottom of the rack — eight rows each.</li>
+      <li>set bpm, root and scale in the transport bar. change root or scale mid-play and everything reharmonizes instantly.</li>
+      <li>turn up a row's <span class="kbd">mutation</span> dial and let it drift.</li>
+    </ul>
+
+    <h2>the grid</h2>
+    <p>every gesture on a step:</p>
+    <dl>
+      <dt>⌘/ctrl click</dt><dd>toggle the step on/off — this is how notes are placed and removed.</dd>
+      <dt>click</dt><dd>select the step. selection pins it for the roll tab's inspector and for ↑/↓ editing, and sets the tie anchor.</dd>
+      <dt>shift click</dt><dd>tie — ties or unties the run of steps between the anchor and the clicked step (melodic rows).</dd>
+      <dt>drag ↑↓</dt><dd>edit the current mode's value on a lit step — pitch in notes mode (melodic rows), otherwise velocity, chance, ratchet, timing or gate.</dd>
+      <dt>shift drag</dt><dd>velocity, whatever mode you're in.</dd>
+      <dt>⌘/ctrl drag</dt><dd>chance, whatever mode you're in.</dd>
+      <dt>scroll</dt><dd>same edits as dragging — hover a step and scroll. the shift/⌘ overrides apply here too.</dd>
+    </dl>
+    <p>edit modes are the six buttons in the transport (keys <span class="kbd">1</span>–<span class="kbd">6</span>): notes, velocity, chance, ratchet, timing, gate. with a step selected, <span class="kbd">↑</span>/<span class="kbd">↓</span> nudges its value in the current mode.</p>
+    <p>the grid always shows the pattern as you authored it. mutation, density fills and chance-misses happen in the audio — and in the roll tab's live overlay — without rewriting your steps.</p>
+
+    <h2>rhythm + melody</h2>
     <p>drum and melodic, toggled at the bottom of the rack.</p>
     <p>drum rows trigger one sound per step — kicks, snares, hats, percussion. eight rows.</p>
     <p>melodic rows play pitched material. eight rows too, but they aren't equal — their behavior depends on where they sit in the stack.</p>
@@ -171,23 +271,81 @@
       <dt>drone</dt><dd>holds the chord master's root every step. authored pitch is ignored.</dd>
     </dl>
 
-    <h2>authoring</h2>
-    <p>click any step to open the inspector. melodic rows get four chord dropdowns: degree (<span class="kbd">C</span>), extension (<span class="kbd">E</span>), inversion (<span class="kbd">I</span>), spread (<span class="kbd">S</span>). the chord master authors the actual chord per step; other rows can override their row defaults per step too if you want one-off harmonic moments.</p>
-    <p>the scene root and scale live in the transport bar at the bottom. change either mid-play and every chord, every follower row, instantly reharmonizes.</p>
+    <h2>rows</h2>
+    <p>left of each grid, per row: the voice picker, a row-settings button, a record-arm dot, six knobs — <span class="kbd">gain</span>, <span class="kbd">pan</span>, <span class="kbd">cutoff</span>, <span class="kbd">res</span>, <span class="kbd">fx send</span>, <span class="kbd">mutation</span> — then mute and solo. ⌘/ctrl-click mute to clear the whole row.</p>
+    <p>row settings holds the pattern math — <span class="kbd">len</span> (1–64), euclidean <span class="kbd">hits</span>, <span class="kbd">rot</span>ation, step <span class="kbd">rate</span> — plus, on melodic rows, the default chord voicing (C / E / I / S), the <span class="kbd">interp</span> follow mode and octave, and per-row output routing.</p>
+    <p>rows longer than sixteen steps grow page buttons above the grid. next to them sits a timing-lock dot: locked, mutation only changes notes and leaves the rhythm alone.</p>
+
+    <h2>the screen</h2>
+    <p>the panel at the top is tabbed: params · automation · roll · lfo · fx · master · perform · loops · noise. <span class="kbd">`</span> cycles through them. params, automation and roll follow the focused row; everything else is global.</p>
+
+    <h2 class="sub">params</h2>
+    <p>the instrument editor for the focused row's voice. a waveform display with draggable start/end trim (wheel zooms, two-finger scroll pans), four playmodes — <span class="kbd">sample</span>, <span class="kbd">slice</span>, <span class="kbd">wavetable</span>, <span class="kbd">granular</span> — and the sound-shaping stack: volume / tune / finetune, reverb and delay sends, an lp/hp/bp filter, and a drive + bit-crush stage.</p>
+    <p>each playmode brings its own group: loop modes for sample, auto/grid slicing with a sensitivity knob for slice, window size + scan position for wavetable, grain shape/length/position/scatter for granular. in slice mode, double-click the waveform to add a marker, drag one to move it, alt/⌘-click to remove it, click a region to audition it.</p>
+    <p>edits apply to the instrument everywhere it's used. <span class="kbd">save</span> / <span class="kbd">save as</span> to keep them, <span class="kbd">revert</span> to discard, <span class="kbd">export .pti</span> to take the voice to a polyend tracker.</p>
+
+    <h2 class="sub">automation</h2>
+    <p>per-instrument modulation. each target — volume, cutoff, pan, pitch, plus grain position or wavetable position when the playmode has one — gets an lfo or an envelope, one or the other. lfos have a shape, a tempo-synced division and a depth; envelopes are a draggable adsr curve plus depth.</p>
+
+    <h2 class="sub">roll</h2>
+    <p>a piano-roll view of the focused row, plus the step inspector. while playing, the authored pattern dims and the notes actually sounding — after mutation, fills, chance — draw bright on top. this is where you watch the machine edit.</p>
+    <p>the inspector edits whichever step you last clicked: velocity / chance / ratchet / timing / gate readouts, per-step chord overrides (degree, extension, inversion, spread) on chord-capable rows, slice choice (or per-hit random) on sliced voices, and the accumulator — a per-step climbing ladder with its own step size, range and wrap / bounce / hold shape.</p>
+
+    <h2 class="sub">lfo</h2>
+    <p>four global lfos, each with a depth knob and a shape button (sin · tri · saw · sqr). click a cell to select it, then click any bindable knob anywhere in the app — row knobs, fx, master, loops, noise, instrument sends — to route the lfo there; click again to unroute, <span class="kbd">esc</span> to deselect. a routed knob shows a small <span class="kbd">L#</span> tag and animates with the modulation; grabbing it by hand overrides the lfo.</p>
+
+    <h2 class="sub">fx</h2>
+    <p>the global send-fx chain: a pre-drive, a tape stage (position, length, reverse, hold, grain rate/mix, mix), glitch (chance, mix), reverb (size, diffusion, damping — it's a fully wet return; the amount comes from the per-row and per-instrument sends), and a synced delay (time, feedback, ping-pong, lo-fi).</p>
+
+    <h2 class="sub">master</h2>
+    <p>the output chain, with a preset dropdown at the left: input gain and lo-cut, a compressor (amount, attack, release), a distortion stage (mode, drive, bias, mix), then hi-cut, trim, an output gate and bypass.</p>
+
+    <h2 class="sub">perform</h2>
+    <p>live punch-ins over whatever's running. hold a <span class="kbd">repeat</span> pad for momentary beat-repeat; everything else latches on click — tune, filter, bits, scrub, chop, sat, verb, delay, plus a <span class="kbd">rev</span> pad that plays new triggers as reverse one-shots. the track pads along the bottom choose which rows get punched (none selected = all of them). toggle <span class="kbd">set</span> to drag new values into the slots; leave it off so a stray scroll can't rewrite your rig.</p>
+
+    <h2 class="sub">loops</h2>
+    <p>a tape-loop / resampler unit. the capture buttons grab the last 1, 2, 4 or 8 bars of the mix — retroactively, bar-locked, seamless. the loop layer plays the buffer back with thru-zero <span class="kbd">speed</span> (a pitch-<span class="kbd">lock</span> toggle turns that into pure timestretch) while the granular layer chews the same buffer: pitch, grain size, voice count, spawn rate (synced or free), start-point randomness, its own level. shift-drag speed / pitch / size / rate to add per-grain deviation. sends to fx, reverb and delay; <span class="kbd">save</span> bounces the loop's output into your samples library as a new voice.</p>
+
+    <h2 class="sub">noise</h2>
+    <p>a digital-noise unit built around a wasp-style filter (drive, cutoff, resonance, stereo width, lp/bp taps). its input can be an insert on the loop unit, a parallel return, its own bar-quantized capture with vari-speed playback, or nothing at all — self-sounding clocked noise. the <span class="kbd">noise</span> knob feeds noise into the audio path; <span class="kbd">cv</span> feeds it into the cutoff. the clock can sync to the grid, run free, or derive from signal zero-crossings — its own input, the loop unit, or the whole mix — which is where the interesting cross-rhythms come from.</p>
 
     <h2>the mutation knob</h2>
     <p>every row has a mutation dial. it introduces controlled randomness within the row's authored material — velocity jitter, pitch jumps within an octave, gate-length wobble, ties flipping on and off.</p>
     <p>on the chord master, mutation also does harmonic work: drop a tone from the chord, borrow a chord from the parallel mode (major ↔ minor), shuffle inversion, shift the spread. crank it and the band reharmonizes itself in real time.</p>
 
-    <h2>macros + banks</h2>
-    <p>five global macros — <span class="kbd">density</span>, <span class="kbd">chaos</span>, <span class="kbd">motion</span>, <span class="kbd">drift</span>, <span class="kbd">tension</span> — modulate the whole rig at once. five floor-to-ceiling dials for everything.</p>
-    <p>sixteen bank slots let you snap and recall full states, bar-quantized — move between progressions without dropouts.</p>
+    <h2>macros</h2>
+    <p>the strip at the top right. <span class="kbd">freeze</span> holds the current state; <span class="kbd">auto</span> hands the wheel to the ghost — it walks the scene/pattern graph on its own, morphs the macros between patterns and plays fills into transitions. the readout under it counts bars to its next move.</p>
+    <p>six knobs modulate the whole rig at once:</p>
+    <dl>
+      <dt>density</dt><dd>bipolar. below center, thins hits (offbeats drop first, downbeats survive); above, fills empty steps.</dd>
+      <dt>motion</dt><dd>bipolar harmonic motion — bar-aligned pitch jumps, size and direction from the knob.</dd>
+      <dt>drift</dt><dd>how often those motion jumps actually fire; also drifts pad voicings.</dd>
+      <dt>chaos</dt><dd>multiplies every row's mutation amount.</dd>
+      <dt>tension</dt><dd>biases mutation toward stable or colorful moves.</dd>
+      <dt>voicing</dt><dd>opens chords up — inversion, spread, extensions — never below what you authored.</dd>
+    </dl>
+
+    <h2>craft a song</h2>
+    <p>the pad rows above the rack. <span class="kbd">pattern</span> pads snapshot and recall full rack states, bar-quantized — click to queue (swaps at the next boundary), shift-click to save the current state into a slot, ⌘/ctrl-click to clear, drag to reorder. <span class="kbd">scene</span> pads work the same one level up — a scene holds a whole set of patterns plus its settings.</p>
+    <p><span class="kbd">song</span> opens the arrangement view: rows of scene + pattern + bar count, each with a per-track mute overlay, played top to bottom when engaged. song mode overrides the ghost's autonomous walking.</p>
+
+    <h2>recording</h2>
+    <p>arm <span class="kbd">rec</span> in the transport; capture starts on play and keeps writing after stop until the reverb and delay tails ring out. with <span class="kbd">multi</span> off you get one mixed wav; on, a full stems folder — master, fx, reverb and delay buses plus a dry wav per track. <span class="kbd">count</span> adds a one-bar count-in; <span class="kbd">metro</span> is a click that never reaches the recording. takes land in the recordings folder set in settings.</p>
+
+    <h2>midi</h2>
+    <p>settings → midi. pick a record-input port, arm a row (the dot next to its knobs), and play: with the transport running, notes overdub quantized under the playhead; stopped, hovering a step writes the note onto that step. incoming notes snap to the current scale.</p>
+    <p>the clock row makes sequence a clock master (24-ppqn out, one or two destinations) or a follower. mappings bind hardware ccs to any knob or pad via learn mode — or load the launch control xl3 preset for a full pre-built surface. a launchpad in programmer mode edits the grid directly.</p>
 
     <h2>keys</h2>
     <dl>
       <dt>space</dt><dd>play / stop</dd>
-      <dt>1 – 6</dt><dd>edit mode: live, velocity, chance, ratchet, timing, gate</dd>
+      <dt>1 – 6</dt><dd>edit mode: notes, velocity, chance, ratchet, timing, gate</dd>
       <dt>↑ / ↓</dt><dd>bump the selected step's value in the current edit mode</dd>
+      <dt>`</dt><dd>cycle the screen tabs</dd>
+      <dt>hold r</dt><dd>momentary beat-repeat; 1 – 9 while held sets the repeat length</dd>
+      <dt>⌘/ctrl s</dt><dd>save (add shift for save-as)</dd>
+      <dt>⌘/ctrl o</dt><dd>open a .seq</dd>
+      <dt>⌘/ctrl .</dt><dd>panic — stop the transport, kill every voice, clear the tails</dd>
     </dl>
 
     <p style="margin-top: 56px;"><a class="inline" href="index.html">↩ back to newspeech</a></p>
@@ -289,6 +447,53 @@ async function setupLinks() {
 }
 
 setupLinks();
+
+function setupRail() {
+  const rail = document.getElementById("rail");
+  const heads = [...document.querySelectorAll("main h1, main h2")];
+
+  const links = heads.map(h => {
+    const label = h.tagName === "H1" ? "about" : h.textContent;
+    if (!h.id) {
+      h.id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    }
+    const a = document.createElement("a");
+    a.href = `#${h.id}`;
+    a.textContent = label;
+    if (h.classList.contains("sub")) a.classList.add("sub");
+    rail.appendChild(a);
+    return a;
+  });
+
+  let ticking = false;
+  function spy() {
+    ticking = false;
+    let cur = 0;
+    for (let i = 0; i < heads.length; i++) {
+      if (heads[i].getBoundingClientRect().top <= 120) cur = i;
+    }
+    links.forEach((a, i) => a.classList.toggle("active", i === cur));
+  }
+  window.addEventListener("scroll", () => {
+    if (!ticking) { ticking = true; requestAnimationFrame(spy); }
+  }, { passive: true });
+  spy();
+
+  const toggle = document.getElementById("rail-toggle");
+  function setOpen(open) {
+    document.body.classList.toggle("rail-open", open);
+    toggle.textContent = open ? "close" : "sections";
+    toggle.setAttribute("aria-expanded", String(open));
+  }
+  toggle.addEventListener("click", () => {
+    setOpen(!document.body.classList.contains("rail-open"));
+  });
+  rail.addEventListener("click", e => {
+    if (e.target.tagName === "A") setOpen(false);
+  });
+}
+
+setupRail();
 </script>
 </body>
 </html>
