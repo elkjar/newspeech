@@ -32,7 +32,7 @@ export function tapTempo(): void {
   const bpm = Math.max(40, Math.min(240, Math.round(60000 / avgMs)));
   useSequencerStore.getState().setBpm(bpm);
 }
-import { engineNow, frameAtTime } from './engineClock';
+import { engineNow, frameAtTime, engineSampleRate } from './engineClock';
 import { fadeTextures, audioPanic } from './nativeEngine';
 import { setPendingRecordStartFrame } from './nativeRecorder';
 
@@ -124,6 +124,7 @@ export async function togglePlayback(): Promise<void> {
     // 50ms lead can be too tight); count-in already provides ample headroom.
     const lookahead = store.armed && !store.clickIn ? 0.2 : 0.05;
     let firstStepTime = engineNow() + lookahead;
+    firstStepTime = await quantizeStartToHeldGrid(firstStepTime, store.bpm);
     if (store.clickIn) {
       // Fire the bundled synthetic click samples via `triggerSample` with
       // sample-accurate delaySecs. The count-in plays through the cpal
@@ -153,6 +154,33 @@ export async function togglePlayback(): Promise<void> {
     clockTransportStart();
     store.setPlaying(true);
   }
+}
+
+// A held loop/noise capture keeps cycling through a transport stop on the
+// bar grid it was captured against (absolute engine frames — the counter
+// never stops). A plain start() lays a fresh grid wherever the press
+// landed, so the still-ringing loop comes back phase-rotated. Rather than
+// re-anchor the loop (an audible jump mid-ring-out), quantize the first
+// step onto the capture's grid: ≤1 bar of extra play latency and the loop,
+// its grain-spawn grid, and the noise clock all re-lock untouched. Skipped
+// when the tempo moved since capture (that lock is gone regardless — the
+// documented tempo caveat) or the engine counter reset under the anchor
+// (stream reopen). Count-in composes: it pushes the pattern start out by
+// exactly one bar, which stays on the grid since the tempo matched.
+// Dynamic imports match panicKill — transport must not pull the loops
+// module graph in at boot.
+async function quantizeStartToHeldGrid(t: number, bpm: number): Promise<number> {
+  const [loops, noise] = await Promise.all([import('./loops'), import('./noise')]);
+  const grid = loops.heldLoopGrid() ?? noise.noiseHeldGrid();
+  if (!grid || grid.barFrames <= 0) return t;
+  const barFramesNow = (240 / bpm) * engineSampleRate(); // 32 steps × 60/(bpm·8)
+  if (Math.abs(barFramesNow - grid.barFrames) > barFramesNow * 0.001) return t;
+  const target = frameAtTime(t);
+  if (grid.frame > target) return t;
+  const next =
+    grid.frame +
+    Math.ceil((target - grid.frame) / grid.barFrames) * grid.barFrames;
+  return next / engineSampleRate();
 }
 
 // Native count-in: 4 quarter-note clicks fired through the trigger

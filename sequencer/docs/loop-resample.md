@@ -222,6 +222,16 @@ equilibrium textures, unlike the rejected re-crush idea.
   pair). Obvious when it happens; dedicated exclusion later if annoying.
 - **Tempo changes unlock phase** — the loop is frames, not bars; a tempo move after
   capture drifts it against the grid. Rate-follow is a P2+ decision.
+- **Stop/start re-locks by quantizing PLAY, not the loop (2026-07-14, Chris's call).**
+  A held capture cycles through a transport stop on its original frame grid; a plain
+  restart used to lay a fresh grid wherever the press landed, bringing the loop back
+  phase-rotated. Now play with a loop (or NOISE CAP bed) held quantizes the first step
+  onto the capture's bar grid (`quantizeStartToHeldGrid` in `transport.ts`) — ≤1 bar of
+  play latency, and the ring-out never glitches because the loop is untouched; grain
+  spawns and the noise clock re-lock for free. Skipped when tempo moved since capture
+  (lock is gone regardless, see above), after a stream reopen (stale anchor), and after
+  a webview reload (JS forgot the grid; engine still holds the loop). Count-in composes —
+  it pushes the pattern start out exactly one bar, still on grid.
 - **Stream reopen drops the loop** (unit state is callback-local; the device-rate watch
   reopening mid-hold kills it). JS mirrors on panic only — a reopen can leave the tab
   showing a loop that died; punch STOP or recapture.

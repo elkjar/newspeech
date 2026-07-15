@@ -44,6 +44,18 @@ export function noteBarBoundary(frame: number, frames: number) {
   barFrames = frames;
 }
 
+// Grid of the HELD capture — anchor frame (the capture end, a bar boundary
+// of the grid that was running) + bar length at capture tempo. A snapshot,
+// not the live barFrames: tempo moves after capture, the held loop doesn't.
+// Transport reads this on play — a loop keeps cycling through a stop on its
+// original frame grid, so play quantizes its first step onto this grid
+// rather than re-anchoring the loop (an audible jump mid-ring-out).
+let capturedGrid: { frame: number; barFrames: number } | null = null;
+
+export function heldLoopGrid(): { frame: number; barFrames: number } | null {
+  return state.bars === null ? null : capturedGrid;
+}
+
 // Shared with the NOISE unit (audio/noise.ts) — same retroactive
 // bar-quantized capture math over the same engine ring.
 export function barAnchor(): { frame: number; barFrames: number } | null {
@@ -264,6 +276,7 @@ export function captureBars(bars: number): boolean {
   const oldest = now - (RING_SECONDS - 1) * engineSampleRate();
   if (start < 0 || start < oldest) return false;
   void loopCaptureSpan(Math.round(start), Math.round(end));
+  capturedGrid = { frame: Math.round(end), barFrames };
   // Re-sync params on every capture — Rust keeps its own sticky copy, but
   // a webview reload resets JS state while the engine remembers; capture
   // is the natural re-sync point.

@@ -303,6 +303,15 @@ export function noiseClockKnobFromHz(hz: number): number {
   return Math.log(Math.max(0.5, hz) / 0.5) / Math.log(16000);
 }
 
+// Grid of the HELD capture — same role as the loop unit's capturedGrid
+// (see loops.ts): transport quantizes play onto this grid so a CAP bed
+// ringing through a stop comes back bar-locked.
+let capturedGrid: { frame: number; barFrames: number } | null = null;
+
+export function noiseHeldGrid(): { frame: number; barFrames: number } | null {
+  return state.bars === null ? null : capturedGrid;
+}
+
 // Capture the last `bars` bars of the mix into the NOISE unit's own buffer
 // (used by source = CAP). Same retroactive bar math as the loop unit.
 export function noiseCaptureBars(bars: number): boolean {
@@ -316,6 +325,7 @@ export function noiseCaptureBars(bars: number): boolean {
   const oldest = now - (RING_SECONDS - 1) * engineSampleRate();
   if (start < 0 || start < oldest) return false;
   void noiseCaptureSpan(Math.round(start), Math.round(end));
+  capturedGrid = { frame: Math.round(end), barFrames: a.barFrames };
   // Force a re-sync on every capture — same reasoning as the loop unit
   // (webview reload resets JS state while the engine remembers).
   push(true);
