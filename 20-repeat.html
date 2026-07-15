@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
-<title>NEWSPEECH // feed</title>
+<title>NEWSPEECH // repeat</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="description" content="newspeech — audio/video experimentation.">
-<meta property="og:title" content="NEWSPEECH // feed">
+<meta property="og:title" content="NEWSPEECH // repeat">
 <meta property="og:description" content="newspeech — audio/video experimentation.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://www.newspeechsound.com/19-feed.html">
+<meta property="og:url" content="https://www.newspeechsound.com/20-repeat.html">
 <meta property="og:site_name" content="NEWSPEECH">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
@@ -19,7 +19,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NEWSPEECH // feed">
+<meta name="twitter:title" content="NEWSPEECH // repeat">
 <meta name="twitter:description" content="newspeech — audio/video experimentation.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
@@ -50,7 +50,7 @@
 <canvas id="bg"></canvas>
 
 <div id="panel">
-  <div class="panel-title">feed · params · [0] toggle</div>
+  <div class="panel-title">repeat · params · [0] toggle</div>
   <div class="panel-source">
     <div class="src-row">
       <span class="src-name">source</span>
@@ -59,48 +59,44 @@
     <input id="src-file" type="file" accept="image/*,video/*">
   </div>
   <label>
-    <span class="name">zoom</span><span class="val"></span>
-    <input type="range" min="1" max="2" step="0.01" data-k="zoom">
+    <span class="name">loop length</span><span class="val"></span>
+    <input type="range" min="2" max="16" step="1" data-k="loopLen">
   </label>
   <label>
-    <span class="name">pulse</span><span class="val"></span>
-    <input type="range" min="0" max="1" step="0.01" data-k="pulse">
+    <span class="name">engage rate</span><span class="val"></span>
+    <input type="range" min="0.05" max="3" step="0.05" data-k="engageRate">
   </label>
   <label>
-    <span class="name">sweep rate</span><span class="val"></span>
-    <input type="range" min="0" max="8" step="0.1" data-k="sweepRate">
+    <span class="name">hold time</span><span class="val"></span>
+    <input type="range" min="0.1" max="3" step="0.05" data-k="holdTime">
   </label>
   <label>
-    <span class="name">sweep glow</span><span class="val"></span>
-    <input type="range" min="0" max="1" step="0.01" data-k="sweepGlow">
+    <span class="name">ratchet</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="ratchet">
   </label>
   <label>
-    <span class="name">vhs</span><span class="val"></span>
-    <input type="range" min="0" max="1" step="0.01" data-k="vhs">
-  </label>
-  <label>
-    <span class="name">dropouts</span><span class="val"></span>
-    <input type="range" min="0" max="8" step="0.1" data-k="dropouts">
+    <span class="name">audio boost</span><span class="val"></span>
+    <input type="range" min="0" max="10" step="0.1" data-k="audioBoost">
   </label>
 </div>
 
 <script src="core.js"></script>
 <script>
-// feed — the source video nearly untouched; the newspeech treatment does the
-// work (global grayscale/contrast/grid, grain overlay, telemetry markers).
-// The page's own layer is audio: exposure pulses with intensity(), and
-// horizontal scan sweeps (stroke + hazeAlongLine, so the global haze slider
-// shapes them) travel the frame at an intensity-driven rate.
-const { intensity, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry, hazeAlongLine, drawSoftDot } = Newspeech;
+// repeat — a visual beat-repeat pedal. Live passthrough feeds a ring buffer of
+// recent frames; on a trigger (beat-locked when a tempo is set, dt-spawned
+// probability when free-running) playback freezes into a short micro-loop that
+// stutters, optionally ratcheting (window halves over the hold), then releases
+// back to live. Capture pauses during the loop so the window can't be
+// overwritten mid-stutter.
+const { intensity, bpm, beatPhase, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry, drawSoftDot } = Newspeech;
 installInputs();
 
 const params = {
-  zoom: 1,
-  pulse: 0.5,
-  sweepRate: 2.5,
-  sweepGlow: 0.6,
-  vhs: 0.6,
-  dropouts: 3,
+  loopLen: 8,
+  engageRate: 0.6,
+  holdTime: 0.8,
+  ratchet: 0.5,
+  audioBoost: 3,
 };
 
 const canvas = document.getElementById("bg");
@@ -108,6 +104,25 @@ const ctx = canvas.getContext("2d");
 
 let viewW, viewH, dpr, cw, ch;
 let imgW = 0, imgH = 0;
+
+// Ring buffer follows the VIEWPORT aspect at a fixed pixel budget (480×270
+// worth) — a fixed landscape buffer would double-cover-crop portrait viewports.
+const RING_BUDGET = 480 * 270;
+let RING_W = 480, RING_H = 270;
+const RING_N = 96;
+const ring = [];
+for (let i = 0; i < RING_N; i++) {
+  const c = document.createElement("canvas");
+  c.width = RING_W; c.height = RING_H;
+  ring.push(c);
+}
+let ringHead = 0;
+let ringFilled = 0;
+
+// loop state machine
+let mode = "live";
+let loopStart = 0, loopLen = 0, loopElapsed = 0, loopHold = 0, frameStep = 0;
+let prevPhase = 0;
 
 const statusEl = document.getElementById("src-status");
 function setStatus(text, isErr) {
@@ -136,6 +151,9 @@ function stopVideo() {
   try { videoEl.load(); } catch (_) {}
   videoEl = null;
   if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+  ringHead = 0;
+  ringFilled = 0;
+  mode = "live";
 }
 
 async function loadImageSource(file) {
@@ -199,157 +217,131 @@ function resize() {
   viewH = window.innerHeight;
   cw = Math.floor(viewW * dpr);
   ch = Math.floor(viewH * dpr);
+  const rw = Math.max(64, Math.round(Math.sqrt(RING_BUDGET * (cw / ch))));
+  const rh = Math.max(64, Math.round(RING_BUDGET / rw));
+  if (rw !== RING_W || rh !== RING_H) {
+    RING_W = rw;
+    RING_H = rh;
+    // resizing clears each canvas; captured history is stale — drop it and any
+    // loop that pointed into it.
+    for (const c of ring) { c.width = RING_W; c.height = RING_H; }
+    ringHead = 0;
+    ringFilled = 0;
+    mode = "live";
+  }
   canvas.width = cw;
   canvas.height = ch;
   canvas.style.width = viewW + "px";
   canvas.style.height = viewH + "px";
+  ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, cw, ch);
 }
 window.addEventListener("resize", resize);
 
-// scan sweeps — horizontal lines traveling top→bottom, alpha enveloped over
-// their life. Spawned per-frame from dt (not core poisson/setTimeout) so the
-// offline renderer's virtual clock drives them deterministically.
-const sweeps = [];
-const MAX_SWEEPS = 12;
-function spawnSweep() {
-  if (sweeps.length >= MAX_SWEEPS) return;
-  sweeps.push({ t: 0, life: 0.9 + Math.random() * 0.9 });
+function captureFrame(src) {
+  const target = ring[ringHead];
+  const tctx = target.getContext("2d");
+  const scale = Math.max(RING_W / imgW, RING_H / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+  tctx.fillStyle = "#000";
+  tctx.fillRect(0, 0, RING_W, RING_H);
+  tctx.drawImage(src, (RING_W - drawW) * 0.5, (RING_H - drawH) * 0.5, drawW, drawH);
+  ringHead = (ringHead + 1) % RING_N;
+  if (ringFilled < RING_N) ringFilled++;
 }
 
-// vhs tracking-error layer. Per-slice horizontal jitter is quantized to a
-// 30Hz step clock and hashed per slice×step — it strobes like tape noise
-// instead of boiling per-frame. Tracking-loss episodes (dt-spawned, like the
-// sweeps) ramp the jitter and walk a displaced tear band down the frame; a
-// head-switch speckle bar sits pinned to the bottom edge; dropouts are short
-// white dashes. Slice gaps left by big jitter stay transparent on purpose —
-// the bg grid reading through is the signal-loss tell.
-const VHS_SLICES = 28;
-let vhsT = 0;
-const hash01 = (n) => {
-  const s = Math.sin(n) * 43758.5453123;
-  return s - Math.floor(s);
-};
-const tracking = { active: false, t: 0, life: 1 };
-const dropouts = [];
-const MAX_DROPOUTS = 24;
+function engageLoop(holdSeconds) {
+  if (ringFilled < 2) return;
+  const L = Math.max(2, Math.min(Math.round(params.loopLen), ringFilled));
+  const newest = (ringHead - 1 + RING_N) % RING_N;
+  loopStart = (newest - L + 1 + RING_N) % RING_N;
+  loopLen = L;
+  loopElapsed = 0;
+  frameStep = 0;
+  loopHold = Math.max(0.1, holdSeconds);
+  mode = "loop";
+}
+
+function drawCover(image, iw, ih) {
+  const scale = Math.max(cw / iw, ch / ih);
+  const drawW = iw * scale;
+  const drawH = ih * scale;
+  ctx.drawImage(image, (cw - drawW) * 0.5, (ch - drawH) * 0.5, drawW, drawH);
+}
 
 function step(dt) {
   const env = intensity();
   ctx.clearRect(0, 0, cw, ch);
 
-  vhsT += dt;
-  const stepIdx = Math.floor(vhsT * 30);
-
-  // tracking-loss episodes — more frequent when the music is loud.
-  if (tracking.active) {
-    tracking.t += dt;
-    if (tracking.t >= tracking.life) tracking.active = false;
-  } else if (params.vhs > 0.001 && Math.random() < (0.12 + 0.55 * env) * dt) {
-    tracking.active = true;
-    tracking.t = 0;
-    tracking.life = 0.4 + Math.random() * 1.0;
-  }
-  const loss = tracking.active ? Math.sin(Math.PI * Math.min(1, tracking.t / tracking.life)) : 0;
-
   const src = videoEl && videoEl.readyState >= 2 ? videoEl : imgEl;
-  if (src && imgW > 0) {
-    // cover-fit × zoom, centered. Exposure breathes with intensity: alpha
-    // dips toward the site black when the music does.
-    const scale = Math.max(cw / imgW, ch / imgH) * Math.max(1, params.zoom);
-    const drawW = imgW * scale;
-    const drawH = imgH * scale;
-    const dx = (cw - drawW) * 0.5;
-    const dy = (ch - drawH) * 0.5;
-    ctx.globalAlpha = 1 - params.pulse * 0.5 * (1 - env);
-    if (params.vhs > 0.001) {
-      // per-slice jitter; cover-fit guarantees every view row maps inside the
-      // source, so the slice→source row math needs no clamping.
-      const amp = params.vhs * (0.8 + loss * 10) * 2.2 * dpr;
-      const sliceH = Math.ceil(ch / VHS_SLICES);
-      for (let i = 0; i < VHS_SLICES; i++) {
-        const y0 = i * sliceH;
-        const h = Math.min(sliceH, ch - y0);
-        if (h <= 0) break;
-        const jx = (hash01(i * 127.1 + stepIdx * 311.7) - 0.5) * 2 * amp;
-        ctx.drawImage(src, 0, (y0 - dy) / scale, imgW, h / scale, dx + jx, y0, drawW, h);
-      }
-      if (loss > 0.05) {
-        // sync tear — a displaced band walking top→bottom over the episode.
-        const tearH = ch * (0.03 + 0.05 * loss);
-        const ty = Math.max(0, Math.min(ch - tearH, ((tracking.t / tracking.life) * 1.2 - 0.1) * ch));
-        const off = (hash01(stepIdx * 71.3) - 0.3) * cw * 0.18 * loss;
-        ctx.drawImage(src, 0, (ty - dy) / scale, imgW, tearH / scale, dx + off, ty, drawW, tearH);
-      }
-    } else {
-      ctx.drawImage(src, dx, dy, drawW, drawH);
-    }
-    ctx.globalAlpha = 1;
-
-    if (params.vhs > 0.001) {
-      // head-switch noise bar pinned to the bottom edge.
-      const barH = Math.max(2 * dpr, ch * 0.02);
-      const barY = ch - barH;
-      ctx.fillStyle = "#fff";
-      for (let k = 0; k < 46; k++) {
-        const r1 = hash01(k * 17.7 + stepIdx * 97.3);
-        const r2 = hash01(k * 39.1 + stepIdx * 53.9);
-        if (r1 < 0.4) continue;
-        ctx.globalAlpha = params.vhs * (0.08 + 0.4 * r2) * (0.5 + loss);
-        ctx.fillRect(r1 * cw, barY + r2 * (barH - dpr), (2 + r2 * 26) * dpr, Math.max(1, dpr));
-      }
-      ctx.globalAlpha = 1;
-    }
-  } else {
+  if (!src || imgW === 0) {
     // no source yet — breathing signal glow so the page reads before a pick
     // (raw alpha: must stay visible with the haze slider at 0).
     const r = Math.min(cw, ch);
     drawSoftDot(ctx, cw * 0.5, ch * 0.5, r * (0.7 + 0.15 * env), 0.28 + 0.3 * env, true);
+    tickMarkers(dt);
+    tickTelemetry(dt);
+    return;
   }
 
-  const rate = params.sweepRate * (0.35 + 1.3 * env);
-  if (Math.random() < rate * dt) spawnSweep();
+  if (mode === "live") {
+    captureFrame(src);
 
-  for (let k = sweeps.length - 1; k >= 0; k--) {
-    const s = sweeps[k];
-    s.t += dt;
-    const u = s.t / s.life;
-    if (u >= 1) { sweeps.splice(k, 1); continue; }
-    const y = u * ch;
-    const a = Math.sin(Math.PI * u) * params.sweepGlow;
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = dpr;
-    ctx.globalAlpha = a * 0.14;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(cw, y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    hazeAlongLine(ctx, 0, y, cw, y, { samples: 6, jitter: 9 * dpr, alpha: a * 0.09, size: 1.4 });
+    const b = bpm();
+    if (b > 0) {
+      // beat-locked: engage only on beat boundaries so captures land on the
+      // grid; hold rounds to a whole number of beats.
+      const phase = beatPhase();
+      const secPerBeat = 60 / b;
+      if (phase < prevPhase) {
+        const p = Math.min(1, params.engageRate * secPerBeat * (1 + env * params.audioBoost));
+        if (Math.random() < p) {
+          const beats = Math.max(1, Math.round(params.holdTime / secPerBeat));
+          engageLoop(beats * secPerBeat);
+        }
+      }
+      prevPhase = phase;
+    } else {
+      const rate = params.engageRate * (1 + env * params.audioBoost);
+      if (Math.random() < rate * dt) engageLoop(params.holdTime);
+    }
   }
 
-  // tape dropouts — short-lived white dashes, denser when loud or tracking is lost.
-  const dropRate = params.dropouts * (0.4 + 1.4 * env) * (0.5 + loss * 2);
-  if (dropouts.length < MAX_DROPOUTS && Math.random() < dropRate * dt) {
-    dropouts.push({
-      x: Math.random() * cw,
-      y: Math.random() * ch,
-      w: (20 + Math.random() * 140) * dpr,
-      t: 0,
-      life: 0.06 + Math.random() * 0.09,
-    });
-  }
-  ctx.fillStyle = "#fff";
-  for (let k = dropouts.length - 1; k >= 0; k--) {
-    const d = dropouts[k];
-    d.t += dt;
-    if (d.t >= d.life) { dropouts.splice(k, 1); continue; }
-    const u = d.t / d.life;
-    ctx.globalAlpha = 0.55 * Math.sin(Math.PI * u);
-    ctx.fillRect(d.x + u * 30 * dpr, d.y, d.w * (1 - u * 0.4), Math.max(1, 1.5 * dpr));
-  }
-  ctx.globalAlpha = 1;
+  if (mode === "loop") {
+    loopElapsed += dt;
+    if (loopElapsed >= loopHold || ringFilled === 0) {
+      mode = "live";
+    } else {
+      // ratchet: the loop window halves in stages over the hold — 8→4→2 at the
+      // default — for a rush toward the release.
+      const u = loopElapsed / loopHold;
+      const halvings = Math.round(params.ratchet * 3);
+      const stage = Math.min(halvings, Math.floor(u * (halvings + 1)));
+      const w = Math.max(1, loopLen >> stage);
+      const idx = (loopStart + (frameStep % w)) % RING_N;
+      frameStep++;
+      drawCover(ring[idx], RING_W, RING_H);
 
+      // the tell: brightness lift + frame-edge flicker so the freeze reads as
+      // intentional, alternating with the stutter.
+      const flick = (frameStep & 1) ? 0.09 : 0.03;
+      ctx.fillStyle = "#fff";
+      ctx.globalAlpha = flick;
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2 * dpr;
+      ctx.globalAlpha = (frameStep & 1) ? 0.22 : 0.10;
+      ctx.strokeRect(dpr, dpr, cw - 2 * dpr, ch - 2 * dpr);
+      ctx.globalAlpha = 1;
+
+      tickMarkers(dt);
+      tickTelemetry(dt);
+      return;
+    }
+  }
+
+  drawCover(src, imgW, imgH);
   tickMarkers(dt);
   tickTelemetry(dt);
 }
@@ -374,6 +366,7 @@ installMarkers({
 });
 
 installTelemetry({ params });
+
 installPanel(params);
 
 // reel-render hook: load a source by URL (reuses the existing file loader via
@@ -403,6 +396,12 @@ window.__seekSource = (t) => new Promise((res) => {
 document.getElementById("src-file").addEventListener("change", (e) => {
   const f = e.target.files && e.target.files[0];
   if (f) loadSource(f);
+});
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  // click → force a loop right now (restarts the stutter if one is running)
+  engageLoop(params.holdTime);
 });
 </script>
 </body>

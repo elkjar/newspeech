@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // timeshear</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio/video experimentation.">
+<meta property="og:title" content="NEWSPEECH // timeshear">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/22-timeshear.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // timeshear">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+
+  #panel .panel-source {
+    display: grid; gap: 6px; margin-bottom: 14px;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  #panel .panel-source .src-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #panel .panel-source .src-name { font-size: 10px; text-transform: uppercase; letter-spacing: 0.10em; opacity: 0.55; }
+  #panel .panel-source .src-status { font-size: 10px; letter-spacing: 0.04em; opacity: 0.45; font-variant-numeric: tabular-nums; }
+  #panel .panel-source .src-status.err { color: rgba(255, 180, 180, 0.95); opacity: 0.9; }
+  #panel .panel-source input[type="file"] { font-size: 10px; color: rgba(255, 255, 255, 0.75); width: 100%; }
+  #panel .panel-source input[type="file"]::file-selector-button {
+    background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18); padding: 4px 8px;
+    font-family: inherit; font-size: 10px; letter-spacing: 0.04em;
+    cursor: pointer; margin-right: 8px;
+  }
+  #panel .panel-source input[type="file"]::file-selector-button:hover { background: rgba(255, 255, 255, 0.16); }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">timeshear · params · [0] toggle</div>
+  <div class="panel-source">
+    <div class="src-row">
+      <span class="src-name">source</span>
+      <span class="src-status" id="src-status">no source</span>
+    </div>
+    <input id="src-file" type="file" accept="video/*">
+  </div>
+  <label>
+    <span class="name">bands</span><span class="val"></span>
+    <input type="range" min="2" max="48" step="1" data-k="bands">
+  </label>
+  <label>
+    <span class="name">spread</span><span class="val"></span>
+    <input type="range" min="0" max="90" step="1" data-k="spread">
+  </label>
+  <label>
+    <span class="name">pattern</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="pattern">
+  </label>
+  <label>
+    <span class="name">reroll rate</span><span class="val"></span>
+    <input type="range" min="0" max="8" step="0.1" data-k="rerollRate">
+  </label>
+  <label>
+    <span class="name">audio amount</span><span class="val"></span>
+    <input type="range" min="0" max="4" step="0.05" data-k="audioAmount">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+// timeshear — full-frame strip delay. A ring buffer holds recent frames; the
+// output is rebuilt as horizontal bands, each blitted from a different depth
+// in the buffer, so anything moving shears apart at band boundaries. The
+// delay-per-band pattern morphs linear ramp → alternating → random; random
+// offsets re-roll on the beat (or a dt-spawned trigger when free-running).
+const { intensity, bandLevel, bpm, beatPhase, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry, drawSoftDot } = Newspeech;
+installInputs();
+
+const params = {
+  bands: 12,
+  spread: 48,
+  pattern: 0.5,
+  rerollRate: 1.5,
+  audioAmount: 1.5,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+let viewW, viewH, dpr, cw, ch;
+let imgW = 0, imgH = 0;
+
+// ring buffer of recent frames. Dims follow the VIEWPORT aspect at a fixed
+// pixel budget (480×270 worth) — a fixed landscape buffer would double-
+// cover-crop portrait viewports (9:16 → middle slice → blown up again).
+const PROC_BUDGET = 480 * 270;
+const RING_N = 96;
+let RING_W = 480, RING_H = 270;
+let ring = [];
+let ringHead = 0;
+let ringFilled = 0;
+
+function buildRing() {
+  ring = [];
+  for (let i = 0; i < RING_N; i++) {
+    const c = document.createElement("canvas");
+    c.width = RING_W; c.height = RING_H;
+    ring.push(c);
+  }
+  ringHead = 0;
+  ringFilled = 0;
+}
+
+const composeCanvas = document.createElement("canvas");
+let composeCtx = null;
+function buildCompose() {
+  composeCanvas.width = RING_W;
+  composeCanvas.height = RING_H;
+  composeCtx = composeCanvas.getContext("2d");
+  composeCtx.imageSmoothingEnabled = false;
+}
+
+// per-band random delay factors [0,1]; sized past the bands slider max.
+const rnd = new Float32Array(64);
+function reroll() {
+  for (let i = 0; i < rnd.length; i++) rnd[i] = Math.random();
+}
+reroll();
+
+const statusEl = document.getElementById("src-status");
+function setStatus(text, isErr) {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.classList.toggle("err", !!isErr);
+}
+
+let videoEl = null;
+let videoUrl = null;
+
+function stopVideo() {
+  if (!videoEl) return;
+  try { videoEl.pause(); } catch (_) {}
+  videoEl.removeAttribute("src");
+  try { videoEl.load(); } catch (_) {}
+  videoEl = null;
+  if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+  ringHead = 0;
+  ringFilled = 0;
+}
+
+function loadVideoSource(file) {
+  return new Promise((resolve) => {
+    videoUrl = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.src = videoUrl;
+    v.loop = true;
+    v.muted = true;
+    v.playsInline = true;
+    v.autoplay = true;
+    v.addEventListener("loadedmetadata", () => {
+      imgW = v.videoWidth;
+      imgH = v.videoHeight;
+      videoEl = v;
+      v.play().catch((err) => {
+        console.warn("video play blocked:", err);
+        setStatus("video play blocked", true);
+      });
+      setStatus(`${imgW}×${imgH} · video`);
+      resolve();
+    }, { once: true });
+    v.addEventListener("error", () => {
+      console.warn("video load failed");
+      setStatus("video load failed", true);
+      if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+      resolve();
+    }, { once: true });
+  });
+}
+
+async function loadSource(file) {
+  setStatus("loading…");
+  stopVideo();
+  if (file && file.type && file.type.startsWith("video/")) {
+    return loadVideoSource(file);
+  }
+  setStatus("video required", true);
+}
+
+function captureFrame() {
+  if (!videoEl || videoEl.readyState < 2) return; // sample paused+seeked too (offline render)
+  const target = ring[ringHead];
+  const tctx = target.getContext("2d");
+  const scale = Math.max(RING_W / imgW, RING_H / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+  const offX = (RING_W - drawW) * 0.5;
+  const offY = (RING_H - drawH) * 0.5;
+  tctx.fillStyle = "#000";
+  tctx.fillRect(0, 0, RING_W, RING_H);
+  tctx.drawImage(videoEl, offX, offY, drawW, drawH);
+  ringHead = (ringHead + 1) % RING_N;
+  if (ringFilled < RING_N) ringFilled++;
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  cw = Math.floor(viewW * dpr);
+  ch = Math.floor(viewH * dpr);
+  const pw = Math.max(64, Math.round(Math.sqrt(PROC_BUDGET * (cw / ch))));
+  const ph = Math.max(64, Math.round(PROC_BUDGET / pw));
+  if (pw !== RING_W || ph !== RING_H || ring.length === 0) {
+    RING_W = pw;
+    RING_H = ph;
+    buildRing();
+    buildCompose();
+  }
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, cw, ch);
+}
+window.addEventListener("resize", resize);
+
+// delay factor [0,1] for band i of B: pattern slider morphs
+// linear ramp (0) → alternating (0.5) → per-band random (1).
+function delayFactor(i, B) {
+  const u = B > 1 ? i / (B - 1) : 0;
+  const dLin = u;
+  const dAlt = (i % 2) ? 1 : 0;
+  const dRnd = rnd[i % rnd.length];
+  const p = params.pattern;
+  if (p <= 0.5) {
+    const t = p / 0.5;
+    return dLin * (1 - t) + dAlt * t;
+  }
+  const t = (p - 0.5) / 0.5;
+  return dAlt * (1 - t) + dRnd * t;
+}
+
+let prevPhase = 0;
+function step(dt) {
+  const env = intensity();
+
+  // re-roll random offsets: on the beat when tempo is set, otherwise from a
+  // dt-spawned trigger so the offline renderer's virtual clock drives it.
+  if (bpm() > 0) {
+    const ph = beatPhase();
+    if (ph < prevPhase) reroll();
+    prevPhase = ph;
+  } else if (Math.random() < params.rerollRate * (0.4 + 1.2 * env) * dt) {
+    reroll();
+  }
+
+  ctx.clearRect(0, 0, cw, ch);
+
+  if (ringFilled === 0) {
+    // no source yet — breathing signal glow so the page reads before a pick
+    // (raw alpha: must stay visible with the haze slider at 0).
+    const r = Math.min(cw, ch);
+    drawSoftDot(ctx, cw * 0.5, ch * 0.5, r * (0.7 + 0.15 * env), 0.28 + 0.3 * env, true);
+    tickMarkers(dt);
+    tickTelemetry(dt);
+    return;
+  }
+
+  // delay spread rides the low band (intensity when mic is off) on top of a
+  // base so the shear stays dramatic in silence.
+  const bl = bandLevel("low");
+  const lvl = bl > 0 ? bl : env;
+  const spreadFrames = Math.min(RING_N - 1, params.spread * (0.6 + params.audioAmount * lvl));
+
+  const newest = (ringHead - 1 + RING_N) % RING_N;
+  const B = Math.max(2, params.bands | 0);
+  for (let i = 0; i < B; i++) {
+    const y0 = Math.round((i / B) * RING_H);
+    const y1 = Math.round(((i + 1) / B) * RING_H);
+    const bandH = y1 - y0;
+    if (bandH <= 0) continue;
+    let age = Math.round(delayFactor(i, B) * spreadFrames);
+    if (age >= ringFilled) age = ringFilled - 1;
+    if (age < 0) age = 0;
+    const idx = (newest - age + RING_N) % RING_N;
+    composeCtx.drawImage(ring[idx], 0, y0, RING_W, bandH, 0, y0, RING_W, bandH);
+  }
+
+  // upscale compose → main, cover-fit
+  const scale = Math.max(cw / RING_W, ch / RING_H);
+  const drawW = RING_W * scale;
+  const drawH = RING_H * scale;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(composeCanvas, (cw - drawW) * 0.5, (ch - drawH) * 0.5, drawW, drawH);
+
+  tickMarkers(dt);
+  tickTelemetry(dt);
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dtRaw = (t - lastT) / 1000;
+  lastT = t;
+  const dt = Math.min(0.05, dtRaw);
+  tickInputs(dt);
+  captureFrame();
+  step(dt);
+  requestAnimationFrame(frame);
+}
+
+resize();
+requestAnimationFrame(frame);
+
+installMarkers({
+  params,
+  getSource: () => (videoEl && videoEl.readyState >= 2) ? videoEl : null,
+  getSourceDims: () => ({ w: imgW, h: imgH }),
+});
+
+installTelemetry({ params });
+
+installPanel(params);
+
+// reel-render hook: load a source by URL (reuses the existing file loader via
+// fetch→File) and seek it per frame for the offline renderer / studio preview.
+window.__loadSourceUrl = async (url, opts) => {
+  const blob = await fetch(url).then((r) => r.blob());
+  const file = new File([blob], blob.type.startsWith("video") ? "src.mp4" : "src.png", { type: blob.type });
+  await loadSource(file);
+  if (opts && opts.paused && videoEl) { try { videoEl.pause(); } catch (e) {} videoEl.autoplay = false; }
+};
+window.__seekSource = (t) => new Promise((res) => {
+  if (!videoEl) return res();
+  // resolve only once a decoded frame is actually available, so the offline
+  // renderer never screenshots a blank pre-decode frame — notably the first
+  // frame, where the target time already equals currentTime.
+  const ready = () => {
+    if (videoEl.readyState >= 2) return res();
+    videoEl.addEventListener("loadeddata", () => res(), { once: true });
+  };
+  const d = videoEl.duration || 0;
+  const tt = d > 0 ? (t % d) : t;
+  if (Math.abs((videoEl.currentTime || 0) - tt) < 0.001) return ready();
+  videoEl.addEventListener("seeked", ready, { once: true });
+  try { videoEl.currentTime = tt; } catch (e) { videoEl.removeEventListener("seeked", ready); ready(); }
+});
+
+document.getElementById("src-file").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadSource(f);
+});
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  // click → re-roll the per-band offsets for instant feedback
+  reroll();
+});
+</script>
+</body>
+</html>

@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
-<title>NEWSPEECH // feed</title>
+<title>NEWSPEECH // mosh</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="description" content="newspeech — audio/video experimentation.">
-<meta property="og:title" content="NEWSPEECH // feed">
+<meta property="og:title" content="NEWSPEECH // mosh">
 <meta property="og:description" content="newspeech — audio/video experimentation.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://www.newspeechsound.com/19-feed.html">
+<meta property="og:url" content="https://www.newspeechsound.com/21-mosh.html">
 <meta property="og:site_name" content="NEWSPEECH">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
@@ -19,7 +19,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NEWSPEECH // feed">
+<meta name="twitter:title" content="NEWSPEECH // mosh">
 <meta name="twitter:description" content="newspeech — audio/video experimentation.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
@@ -50,7 +50,7 @@
 <canvas id="bg"></canvas>
 
 <div id="panel">
-  <div class="panel-title">feed · params · [0] toggle</div>
+  <div class="panel-title">mosh · params · [0] toggle</div>
   <div class="panel-source">
     <div class="src-row">
       <span class="src-name">source</span>
@@ -59,48 +59,43 @@
     <input id="src-file" type="file" accept="image/*,video/*">
   </div>
   <label>
-    <span class="name">zoom</span><span class="val"></span>
-    <input type="range" min="1" max="2" step="0.01" data-k="zoom">
+    <span class="name">threshold</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="threshold">
   </label>
   <label>
-    <span class="name">pulse</span><span class="val"></span>
-    <input type="range" min="0" max="1" step="0.01" data-k="pulse">
+    <span class="name">block size</span><span class="val"></span>
+    <input type="range" min="2" max="20" step="1" data-k="blockSize">
   </label>
   <label>
-    <span class="name">sweep rate</span><span class="val"></span>
-    <input type="range" min="0" max="8" step="0.1" data-k="sweepRate">
+    <span class="name">rot</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="rot">
   </label>
   <label>
-    <span class="name">sweep glow</span><span class="val"></span>
-    <input type="range" min="0" max="1" step="0.01" data-k="sweepGlow">
+    <span class="name">flush sense</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="flushSense">
   </label>
   <label>
-    <span class="name">vhs</span><span class="val"></span>
-    <input type="range" min="0" max="1" step="0.01" data-k="vhs">
-  </label>
-  <label>
-    <span class="name">dropouts</span><span class="val"></span>
-    <input type="range" min="0" max="8" step="0.1" data-k="dropouts">
+    <span class="name">audio amount</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="audioAmt">
   </label>
 </div>
 
 <script src="core.js"></script>
 <script>
-// feed — the source video nearly untouched; the newspeech treatment does the
-// work (global grayscale/contrast/grid, grain overlay, telemetry markers).
-// The page's own layer is audio: exposure pulses with intensity(), and
-// horizontal scan sweeps (stroke + hazeAlongLine, so the global haze slider
-// shapes them) travel the frame at an intensity-driven rate.
-const { intensity, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry, hazeAlongLine, drawSoftDot } = Newspeech;
+// mosh — frame-difference datamosh. A held image only refreshes where the
+// source has moved past a threshold; everything else freezes and rots
+// (darkens + speckles) until an onset / intensity spike flushes the whole
+// frame clean. Louder music lowers the threshold, so quiet passages stick
+// and decay while loud ones pull the live feed back through.
+const { intensity, onset, audioActive, drawSoftDot, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry } = Newspeech;
 installInputs();
 
 const params = {
-  zoom: 1,
-  pulse: 0.5,
-  sweepRate: 2.5,
-  sweepGlow: 0.6,
-  vhs: 0.6,
-  dropouts: 3,
+  threshold: 0.4,
+  blockSize: 4,
+  rot: 0.5,
+  flushSense: 0.5,
+  audioAmt: 0.7,
 };
 
 const canvas = document.getElementById("bg");
@@ -108,6 +103,16 @@ const ctx = canvas.getContext("2d");
 
 let viewW, viewH, dpr, cw, ch;
 let imgW = 0, imgH = 0;
+
+// Working buffer follows the VIEWPORT aspect at a fixed pixel budget (720×405
+// worth) — same pattern as 13-pixelsort, so portrait viewports aren't
+// double-cover-cropped.
+const PROC_BUDGET = 720 * 405;
+let PROC_W = 720, PROC_H = 405;
+
+const procCanvas = document.createElement("canvas");
+procCanvas.width = PROC_W; procCanvas.height = PROC_H;
+const procCtx = procCanvas.getContext("2d", { willReadFrequently: true });
 
 const statusEl = document.getElementById("src-status");
 function setStatus(text, isErr) {
@@ -189,6 +194,7 @@ async function loadSource(file) {
   setStatus("loading…");
   stopVideo();
   imgEl = null;
+  held = null;
   if (file && file.type && file.type.startsWith("video/")) return loadVideoSource(file);
   return loadImageSource(file);
 }
@@ -199,157 +205,148 @@ function resize() {
   viewH = window.innerHeight;
   cw = Math.floor(viewW * dpr);
   ch = Math.floor(viewH * dpr);
+  const pw = Math.max(64, Math.round(Math.sqrt(PROC_BUDGET * (cw / ch))));
+  const ph = Math.max(64, Math.round(PROC_BUDGET / pw));
+  if (pw !== PROC_W || ph !== PROC_H) {
+    PROC_W = pw;
+    PROC_H = ph;
+    procCanvas.width = PROC_W;
+    procCanvas.height = PROC_H;
+    // held pixels live in proc space — stale dimensions would blit garbage;
+    // drop the buffer, it re-seeds from the next frame.
+    held = null;
+  }
   canvas.width = cw;
   canvas.height = ch;
   canvas.style.width = viewW + "px";
   canvas.style.height = viewH + "px";
+  ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, cw, ch);
 }
 window.addEventListener("resize", resize);
 
-// scan sweeps — horizontal lines traveling top→bottom, alpha enveloped over
-// their life. Spawned per-frame from dt (not core poisson/setTimeout) so the
-// offline renderer's virtual clock drives them deterministically.
-const sweeps = [];
-const MAX_SWEEPS = 12;
-function spawnSweep() {
-  if (sweeps.length >= MAX_SWEEPS) return;
-  sweeps.push({ t: 0, life: 0.9 + Math.random() * 0.9 });
-}
+// held frame + per-block stale ages. All refresh decisions happen per block
+// (not per pixel) so the diff pass stays cheap and the look stays chunky.
+let held = null;      // ImageData in proc space
+let ages = null;      // Float32Array, seconds since each block last refreshed
+let gridW = 0, gridH = 0, gridB = 0;
+let flushPending = false;
+let prevEnv = 0;
+let flushCool = 0;
 
-// vhs tracking-error layer. Per-slice horizontal jitter is quantized to a
-// 30Hz step clock and hashed per slice×step — it strobes like tape noise
-// instead of boiling per-frame. Tracking-loss episodes (dt-spawned, like the
-// sweeps) ramp the jitter and walk a displaced tear band down the frame; a
-// head-switch speckle bar sits pinned to the bottom edge; dropouts are short
-// white dashes. Slice gaps left by big jitter stay transparent on purpose —
-// the bg grid reading through is the signal-loss tell.
-const VHS_SLICES = 28;
-let vhsT = 0;
-const hash01 = (n) => {
-  const s = Math.sin(n) * 43758.5453123;
-  return s - Math.floor(s);
-};
-const tracking = { active: false, t: 0, life: 1 };
-const dropouts = [];
-const MAX_DROPOUTS = 24;
+function ensureGrid() {
+  const B = Math.max(2, Math.round(params.blockSize));
+  const gw = Math.ceil(PROC_W / B);
+  const gh = Math.ceil(PROC_H / B);
+  if (B !== gridB || gw !== gridW || gh !== gridH) {
+    gridB = B; gridW = gw; gridH = gh;
+    ages = new Float32Array(gw * gh);
+  }
+}
 
 function step(dt) {
   const env = intensity();
   ctx.clearRect(0, 0, cw, ch);
 
-  vhsT += dt;
-  const stepIdx = Math.floor(vhsT * 30);
-
-  // tracking-loss episodes — more frequent when the music is loud.
-  if (tracking.active) {
-    tracking.t += dt;
-    if (tracking.t >= tracking.life) tracking.active = false;
-  } else if (params.vhs > 0.001 && Math.random() < (0.12 + 0.55 * env) * dt) {
-    tracking.active = true;
-    tracking.t = 0;
-    tracking.life = 0.4 + Math.random() * 1.0;
-  }
-  const loss = tracking.active ? Math.sin(Math.PI * Math.min(1, tracking.t / tracking.life)) : 0;
-
   const src = videoEl && videoEl.readyState >= 2 ? videoEl : imgEl;
-  if (src && imgW > 0) {
-    // cover-fit × zoom, centered. Exposure breathes with intensity: alpha
-    // dips toward the site black when the music does.
-    const scale = Math.max(cw / imgW, ch / imgH) * Math.max(1, params.zoom);
-    const drawW = imgW * scale;
-    const drawH = imgH * scale;
-    const dx = (cw - drawW) * 0.5;
-    const dy = (ch - drawH) * 0.5;
-    ctx.globalAlpha = 1 - params.pulse * 0.5 * (1 - env);
-    if (params.vhs > 0.001) {
-      // per-slice jitter; cover-fit guarantees every view row maps inside the
-      // source, so the slice→source row math needs no clamping.
-      const amp = params.vhs * (0.8 + loss * 10) * 2.2 * dpr;
-      const sliceH = Math.ceil(ch / VHS_SLICES);
-      for (let i = 0; i < VHS_SLICES; i++) {
-        const y0 = i * sliceH;
-        const h = Math.min(sliceH, ch - y0);
-        if (h <= 0) break;
-        const jx = (hash01(i * 127.1 + stepIdx * 311.7) - 0.5) * 2 * amp;
-        ctx.drawImage(src, 0, (y0 - dy) / scale, imgW, h / scale, dx + jx, y0, drawW, h);
-      }
-      if (loss > 0.05) {
-        // sync tear — a displaced band walking top→bottom over the episode.
-        const tearH = ch * (0.03 + 0.05 * loss);
-        const ty = Math.max(0, Math.min(ch - tearH, ((tracking.t / tracking.life) * 1.2 - 0.1) * ch));
-        const off = (hash01(stepIdx * 71.3) - 0.3) * cw * 0.18 * loss;
-        ctx.drawImage(src, 0, (ty - dy) / scale, imgW, tearH / scale, dx + off, ty, drawW, tearH);
-      }
-    } else {
-      ctx.drawImage(src, dx, dy, drawW, drawH);
-    }
-    ctx.globalAlpha = 1;
-
-    if (params.vhs > 0.001) {
-      // head-switch noise bar pinned to the bottom edge.
-      const barH = Math.max(2 * dpr, ch * 0.02);
-      const barY = ch - barH;
-      ctx.fillStyle = "#fff";
-      for (let k = 0; k < 46; k++) {
-        const r1 = hash01(k * 17.7 + stepIdx * 97.3);
-        const r2 = hash01(k * 39.1 + stepIdx * 53.9);
-        if (r1 < 0.4) continue;
-        ctx.globalAlpha = params.vhs * (0.08 + 0.4 * r2) * (0.5 + loss);
-        ctx.fillRect(r1 * cw, barY + r2 * (barH - dpr), (2 + r2 * 26) * dpr, Math.max(1, dpr));
-      }
-      ctx.globalAlpha = 1;
-    }
-  } else {
+  if (!src || imgW === 0) {
     // no source yet — breathing signal glow so the page reads before a pick
     // (raw alpha: must stay visible with the haze slider at 0).
     const r = Math.min(cw, ch);
     drawSoftDot(ctx, cw * 0.5, ch * 0.5, r * (0.7 + 0.15 * env), 0.28 + 0.3 * env, true);
+    tickMarkers(dt);
+    tickTelemetry(dt);
+    return;
   }
 
-  const rate = params.sweepRate * (0.35 + 1.3 * env);
-  if (Math.random() < rate * dt) spawnSweep();
+  procCtx.fillStyle = "#000";
+  procCtx.fillRect(0, 0, PROC_W, PROC_H);
+  const scale = Math.max(PROC_W / imgW, PROC_H / imgH);
+  const drawW = imgW * scale;
+  const drawH = imgH * scale;
+  procCtx.drawImage(src, (PROC_W - drawW) * 0.5, (PROC_H - drawH) * 0.5, drawW, drawH);
+  const cur = procCtx.getImageData(0, 0, PROC_W, PROC_H);
 
-  for (let k = sweeps.length - 1; k >= 0; k--) {
-    const s = sweeps[k];
-    s.t += dt;
-    const u = s.t / s.life;
-    if (u >= 1) { sweeps.splice(k, 1); continue; }
-    const y = u * ch;
-    const a = Math.sin(Math.PI * u) * params.sweepGlow;
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = dpr;
-    ctx.globalAlpha = a * 0.14;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(cw, y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    hazeAlongLine(ctx, 0, y, cw, y, { samples: 6, jitter: 9 * dpr, alpha: a * 0.09, size: 1.4 });
+  ensureGrid();
+
+  // flush triggers: click, low/mid onset when the mic is on, or intensity
+  // rising through a high bar when it's off (tempo pulses cross it on-beat).
+  flushCool = Math.max(0, flushCool - dt);
+  let flush = flushPending;
+  flushPending = false;
+  if (!flush && flushCool === 0 && params.flushSense > 0) {
+    if (audioActive()) {
+      flush = onset("low") || onset("mid");
+    } else {
+      const bar = 0.95 - params.flushSense * 0.35;
+      flush = prevEnv < bar && env >= bar;
+    }
+    if (flush) flushCool = 2.2 - params.flushSense * 1.5;
+  }
+  prevEnv = env;
+
+  if (!held || flush || held.width !== PROC_W || held.height !== PROC_H) {
+    held = cur;
+    if (ages) ages.fill(0);
+  } else {
+    const hd = held.data;
+    const cd = cur.data;
+    const B = gridB;
+    // louder → lower threshold → more of the live feed pushes through.
+    const effThr = (6 + params.threshold * 110) * (1 - 0.9 * params.audioAmt * env);
+    const rotF = 1 - params.rot * 0.4 * dt;
+    for (let by = 0; by < gridH; by++) {
+      const y0 = by * B;
+      const y1 = Math.min(PROC_H, y0 + B);
+      for (let bx = 0; bx < gridW; bx++) {
+        const x0 = bx * B;
+        const x1 = Math.min(PROC_W, x0 + B);
+        // mean abs green-channel diff (≈ luma), stride 2 in both axes.
+        let sum = 0, n = 0;
+        for (let y = y0; y < y1; y += 2) {
+          let o = (y * PROC_W + x0) * 4 + 1;
+          for (let x = x0; x < x1; x += 2, o += 8) {
+            const d = cd[o] - hd[o];
+            sum += d < 0 ? -d : d;
+            n++;
+          }
+        }
+        const gi = by * gridW + bx;
+        if (n > 0 && sum / n > effThr) {
+          for (let y = y0; y < y1; y++) {
+            const ro = (y * PROC_W + x0) * 4;
+            hd.set(cd.subarray(ro, ro + (x1 - x0) * 4), ro);
+          }
+          ages[gi] = 0;
+        } else if (params.rot > 0) {
+          ages[gi] += dt;
+          for (let y = y0; y < y1; y++) {
+            let o = (y * PROC_W + x0) * 4;
+            for (let x = x0; x < x1; x++, o += 4) {
+              hd[o] *= rotF;
+              hd[o + 1] *= rotF;
+              hd[o + 2] *= rotF;
+            }
+          }
+          if (ages[gi] > 0.4 && Math.random() < params.rot * 0.12) {
+            const sx = x0 + ((Math.random() * (x1 - x0)) | 0);
+            const sy = y0 + ((Math.random() * (y1 - y0)) | 0);
+            const so = (sy * PROC_W + sx) * 4;
+            const v = Math.random() < 0.5 ? 255 : 0;
+            hd[so] = hd[so + 1] = hd[so + 2] = v;
+          }
+        }
+      }
+    }
   }
 
-  // tape dropouts — short-lived white dashes, denser when loud or tracking is lost.
-  const dropRate = params.dropouts * (0.4 + 1.4 * env) * (0.5 + loss * 2);
-  if (dropouts.length < MAX_DROPOUTS && Math.random() < dropRate * dt) {
-    dropouts.push({
-      x: Math.random() * cw,
-      y: Math.random() * ch,
-      w: (20 + Math.random() * 140) * dpr,
-      t: 0,
-      life: 0.06 + Math.random() * 0.09,
-    });
-  }
-  ctx.fillStyle = "#fff";
-  for (let k = dropouts.length - 1; k >= 0; k--) {
-    const d = dropouts[k];
-    d.t += dt;
-    if (d.t >= d.life) { dropouts.splice(k, 1); continue; }
-    const u = d.t / d.life;
-    ctx.globalAlpha = 0.55 * Math.sin(Math.PI * u);
-    ctx.fillRect(d.x + u * 30 * dpr, d.y, d.w * (1 - u * 0.4), Math.max(1, 1.5 * dpr));
-  }
-  ctx.globalAlpha = 1;
+  procCtx.putImageData(held, 0, 0);
 
+  const mScale = Math.max(cw / PROC_W, ch / PROC_H);
+  const mW = PROC_W * mScale;
+  const mH = PROC_H * mScale;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(procCanvas, (cw - mW) * 0.5, (ch - mH) * 0.5, mW, mH);
   tickMarkers(dt);
   tickTelemetry(dt);
 }
@@ -374,6 +371,7 @@ installMarkers({
 });
 
 installTelemetry({ params });
+
 installPanel(params);
 
 // reel-render hook: load a source by URL (reuses the existing file loader via
@@ -403,6 +401,12 @@ window.__seekSource = (t) => new Promise((res) => {
 document.getElementById("src-file").addEventListener("change", (e) => {
   const f = e.target.files && e.target.files[0];
   if (f) loadSource(f);
+});
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  // click → flush the held frame for instant feedback
+  flushPending = true;
 });
 </script>
 </body>
