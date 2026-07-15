@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // feed</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio/video experimentation.">
+<meta property="og:title" content="NEWSPEECH // feed">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/19-feed.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // feed">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+
+  #panel .panel-source {
+    display: grid; gap: 6px; margin-bottom: 14px;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  #panel .panel-source .src-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #panel .panel-source .src-name { font-size: 10px; text-transform: uppercase; letter-spacing: 0.10em; opacity: 0.55; }
+  #panel .panel-source .src-status { font-size: 10px; letter-spacing: 0.04em; opacity: 0.45; font-variant-numeric: tabular-nums; }
+  #panel .panel-source .src-status.err { color: rgba(255, 180, 180, 0.95); opacity: 0.9; }
+  #panel .panel-source input[type="file"] { font-size: 10px; color: rgba(255, 255, 255, 0.75); width: 100%; }
+  #panel .panel-source input[type="file"]::file-selector-button {
+    background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18); padding: 4px 8px;
+    font-family: inherit; font-size: 10px; letter-spacing: 0.04em;
+    cursor: pointer; margin-right: 8px;
+  }
+  #panel .panel-source input[type="file"]::file-selector-button:hover { background: rgba(255, 255, 255, 0.16); }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">feed · params · [0] toggle</div>
+  <div class="panel-source">
+    <div class="src-row">
+      <span class="src-name">source</span>
+      <span class="src-status" id="src-status">no source</span>
+    </div>
+    <input id="src-file" type="file" accept="image/*,video/*">
+  </div>
+  <label>
+    <span class="name">zoom</span><span class="val"></span>
+    <input type="range" min="1" max="2" step="0.01" data-k="zoom">
+  </label>
+  <label>
+    <span class="name">pulse</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="pulse">
+  </label>
+  <label>
+    <span class="name">sweep rate</span><span class="val"></span>
+    <input type="range" min="0" max="8" step="0.1" data-k="sweepRate">
+  </label>
+  <label>
+    <span class="name">sweep glow</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="sweepGlow">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+// feed — the source video nearly untouched; the newspeech treatment does the
+// work (global grayscale/contrast/grid, grain overlay, telemetry markers).
+// The page's own layer is audio: exposure pulses with intensity(), and
+// horizontal scan sweeps (stroke + hazeAlongLine, so the global haze slider
+// shapes them) travel the frame at an intensity-driven rate.
+const { intensity, installInputs, tickInputs, installPanel, installMarkers, tickMarkers, installTelemetry, tickTelemetry, hazeAlongLine, drawSoftDot } = Newspeech;
+installInputs();
+
+const params = {
+  zoom: 1,
+  pulse: 0.5,
+  sweepRate: 2.5,
+  sweepGlow: 0.6,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+
+let viewW, viewH, dpr, cw, ch;
+let imgW = 0, imgH = 0;
+
+const statusEl = document.getElementById("src-status");
+function setStatus(text, isErr) {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.classList.toggle("err", !!isErr);
+}
+
+let videoEl = null;
+let videoUrl = null;
+let imgEl = null;
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`image load failed: ${url}`));
+    img.src = url;
+  });
+}
+
+function stopVideo() {
+  if (!videoEl) return;
+  try { videoEl.pause(); } catch (_) {}
+  videoEl.removeAttribute("src");
+  try { videoEl.load(); } catch (_) {}
+  videoEl = null;
+  if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+}
+
+async function loadImageSource(file) {
+  let url = null, revoke = false;
+  try {
+    url = URL.createObjectURL(file);
+    revoke = true;
+    const img = await loadImage(url);
+    imgW = img.naturalWidth;
+    imgH = img.naturalHeight;
+    imgEl = img;
+    setStatus(`${imgW}×${imgH}`);
+  } catch (err) {
+    console.warn("image load failed:", err);
+    setStatus("load failed", true);
+  } finally {
+    if (revoke && url) URL.revokeObjectURL(url);
+  }
+}
+
+function loadVideoSource(file) {
+  return new Promise((resolve) => {
+    videoUrl = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.src = videoUrl;
+    v.loop = true;
+    v.muted = true;
+    v.playsInline = true;
+    v.autoplay = true;
+    v.addEventListener("loadedmetadata", () => {
+      imgW = v.videoWidth;
+      imgH = v.videoHeight;
+      videoEl = v;
+      v.play().catch((err) => {
+        console.warn("video play blocked:", err);
+        setStatus("video play blocked", true);
+      });
+      setStatus(`${imgW}×${imgH} · video`);
+      resolve();
+    }, { once: true });
+    v.addEventListener("error", () => {
+      console.warn("video load failed");
+      setStatus("video load failed", true);
+      if (videoUrl) { URL.revokeObjectURL(videoUrl); videoUrl = null; }
+      resolve();
+    }, { once: true });
+  });
+}
+
+async function loadSource(file) {
+  setStatus("loading…");
+  stopVideo();
+  imgEl = null;
+  if (file && file.type && file.type.startsWith("video/")) return loadVideoSource(file);
+  return loadImageSource(file);
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  cw = Math.floor(viewW * dpr);
+  ch = Math.floor(viewH * dpr);
+  canvas.width = cw;
+  canvas.height = ch;
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.clearRect(0, 0, cw, ch);
+}
+window.addEventListener("resize", resize);
+
+// scan sweeps — horizontal lines traveling top→bottom, alpha enveloped over
+// their life. Spawned per-frame from dt (not core poisson/setTimeout) so the
+// offline renderer's virtual clock drives them deterministically.
+const sweeps = [];
+const MAX_SWEEPS = 12;
+function spawnSweep() {
+  if (sweeps.length >= MAX_SWEEPS) return;
+  sweeps.push({ t: 0, life: 0.9 + Math.random() * 0.9 });
+}
+
+function step(dt) {
+  const env = intensity();
+  ctx.clearRect(0, 0, cw, ch);
+
+  const src = videoEl && videoEl.readyState >= 2 ? videoEl : imgEl;
+  if (src && imgW > 0) {
+    // cover-fit × zoom, centered. Exposure breathes with intensity: alpha
+    // dips toward the site black when the music does.
+    const scale = Math.max(cw / imgW, ch / imgH) * Math.max(1, params.zoom);
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
+    ctx.globalAlpha = 1 - params.pulse * 0.5 * (1 - env);
+    ctx.drawImage(src, (cw - drawW) * 0.5, (ch - drawH) * 0.5, drawW, drawH);
+    ctx.globalAlpha = 1;
+  } else {
+    // no source yet — breathing signal glow so the page reads before a pick
+    // (raw alpha: must stay visible with the haze slider at 0).
+    const r = Math.min(cw, ch);
+    drawSoftDot(ctx, cw * 0.5, ch * 0.5, r * (0.7 + 0.15 * env), 0.28 + 0.3 * env, true);
+  }
+
+  const rate = params.sweepRate * (0.35 + 1.3 * env);
+  if (Math.random() < rate * dt) spawnSweep();
+
+  for (let k = sweeps.length - 1; k >= 0; k--) {
+    const s = sweeps[k];
+    s.t += dt;
+    const u = s.t / s.life;
+    if (u >= 1) { sweeps.splice(k, 1); continue; }
+    const y = u * ch;
+    const a = Math.sin(Math.PI * u) * params.sweepGlow;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = dpr;
+    ctx.globalAlpha = a * 0.14;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(cw, y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    hazeAlongLine(ctx, 0, y, cw, y, { samples: 6, jitter: 9 * dpr, alpha: a * 0.09, size: 1.4 });
+  }
+
+  tickMarkers(dt);
+  tickTelemetry(dt);
+}
+
+let lastT = performance.now();
+function frame(t) {
+  const dtRaw = (t - lastT) / 1000;
+  lastT = t;
+  const dt = Math.min(0.05, dtRaw);
+  tickInputs(dt);
+  step(dt);
+  requestAnimationFrame(frame);
+}
+
+resize();
+requestAnimationFrame(frame);
+
+installMarkers({
+  params,
+  getSource: () => (videoEl && videoEl.readyState >= 2) ? videoEl : imgEl,
+  getSourceDims: () => ({ w: imgW, h: imgH }),
+});
+
+installTelemetry({ params });
+installPanel(params);
+
+// reel-render hook: load a source by URL (reuses the existing file loader via
+// fetch→File) and seek it per frame for the offline renderer / studio preview.
+window.__loadSourceUrl = async (url, opts) => {
+  const blob = await fetch(url).then((r) => r.blob());
+  const file = new File([blob], blob.type.startsWith("video") ? "src.mp4" : "src.png", { type: blob.type });
+  await loadSource(file);
+  if (opts && opts.paused && videoEl) { try { videoEl.pause(); } catch (e) {} videoEl.autoplay = false; }
+};
+window.__seekSource = (t) => new Promise((res) => {
+  if (!videoEl) return res();
+  // resolve only once a decoded frame is actually available, so the offline
+  // renderer never screenshots a blank pre-decode frame — notably the first
+  // frame, where the target time already equals currentTime.
+  const ready = () => {
+    if (videoEl.readyState >= 2) return res();
+    videoEl.addEventListener("loadeddata", () => res(), { once: true });
+  };
+  const d = videoEl.duration || 0;
+  const tt = d > 0 ? (t % d) : t;
+  if (Math.abs((videoEl.currentTime || 0) - tt) < 0.001) return ready();
+  videoEl.addEventListener("seeked", ready, { once: true });
+  try { videoEl.currentTime = tt; } catch (e) { videoEl.removeEventListener("seeked", ready); ready(); }
+});
+
+document.getElementById("src-file").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadSource(f);
+});
+</script>
+</body>
+</html>
