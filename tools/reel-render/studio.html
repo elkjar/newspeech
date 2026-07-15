@@ -98,6 +98,10 @@
     </label>
 
     <div class="row">
+      <label><span class="name">width</span><input id="vw" type="number" min="240" max="4320" step="2" value="1080" /></label>
+      <label><span class="name">height</span><input id="vh" type="number" min="240" max="4320" step="2" value="1920" /></label>
+    </div>
+    <div class="row">
       <label><span class="name">scale</span><input id="scale" type="number" min="1" max="4" step="0.5" value="2" /></label>
       <label><span class="name">gain</span><input id="gain" type="number" min="0.1" max="5" step="0.1" value="1" /></label>
     </div>
@@ -105,6 +109,10 @@
       <label><span class="name">seconds</span><input id="seconds" type="number" min="1" max="600" step="1" value="30" /></label>
       <label><span class="name">fps</span><input id="fps" type="number" min="12" max="60" step="1" value="30" /></label>
     </div>
+    <label style="flex-direction:row; align-items:center; gap:8px;">
+      <input id="len-source" type="checkbox" />
+      <span class="name">length = source video <span style="opacity:.45">(full clip; ignores seconds)</span></span>
+    </label>
     <label style="flex-direction:row; align-items:center; gap:8px;">
       <input id="jpeg" type="checkbox" checked />
       <span class="name">fast frames (jpeg) — uncheck for lossless png</span>
@@ -140,7 +148,10 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const W = 1080, H = 1920;
+// Frame size follows the width/height fields (default 9:16 reel); preview
+// stage and render both read these so the look is tuned at the real aspect.
+const frameW = () => Math.max(240, parseInt($('vw').value, 10) || 1080);
+const frameH = () => Math.max(240, parseInt($('vh').value, 10) || 1920);
 
 // ---- audio analysis (mirrors core.js tickAudio: 1024 fft, 8/25/60% bands,
 //      smoothing lerps, peak/onset detector) ----
@@ -248,7 +259,7 @@ function stop() {
 //      element sizing matches the render, then CSS-scale to fit the stage ----
 function sizePreview() {
   const scale = parseFloat($('scale').value) || 2;
-  const lw = Math.round(W / scale), lh = Math.round(H / scale);
+  const lw = Math.round(frameW() / scale), lh = Math.round(frameH() / scale);
   const stage = document.querySelector('.stage');
   const fit = Math.min((stage.clientHeight - 24) / lh, (stage.clientWidth - 24) / lw);
   const vf = $('viz');
@@ -557,6 +568,8 @@ async function render() {
     page: segments[0] ? segments[0].page : currentPageName(),
     audio: $('audio').value || null,
     scale: parseFloat($('scale').value) || 2,
+    width: frameW(),
+    height: frameH(),
     gain: parseFloat($('gain').value) || 1,
     seconds: total,
     fps: parseInt($('fps').value, 10) || 30,
@@ -581,6 +594,9 @@ async function render() {
     body.localStorage = st.localStorage;
     body.source = st.source;
     body.automation = [];
+    // Full-clip length: only meaningful with a video source and no recorded
+    // performance timeline (segment cut math needs a numeric total).
+    if ($('len-source').checked && body.source) body.seconds = 'source';
   }
   $('render').disabled = true;
   setStatus('rendering ' + body.seconds + 's of ' + body.page + ' … (this runs the offline pipeline; watch the terminal for frame progress)');
@@ -614,6 +630,8 @@ async function render() {
   $('audio-browse').addEventListener('click', () => browse('audio'));
   $('source-browse').addEventListener('click', () => browse('source'));
   $('scale').addEventListener('change', sizePreview);
+  $('vw').addEventListener('change', sizePreview);
+  $('vh').addEventListener('change', sizePreview);
   $('play').addEventListener('click', play);
   $('stop').addEventListener('click', stop);
   $('render').addEventListener('click', render);

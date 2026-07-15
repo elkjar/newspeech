@@ -251,6 +251,8 @@ async function runRender(res, a, body) {
     join(HERE, 'render.mjs'),
     '--fps', String(body.fps ?? 30),
     '--scale', String(body.scale ?? 2),
+    '--width', String(body.width ?? 1080),
+    '--height', String(body.height ?? 1920),
     '--gain', String(body.gain ?? 1),
     '--out', outPath,
   ];

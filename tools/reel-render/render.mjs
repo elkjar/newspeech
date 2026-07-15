@@ -26,20 +26,24 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..'); // repo root (where core.js + N-*.html live)
-const W = 1080;
-const H = 1920;
+// Default frame = 9:16 reel; --width/--height override for other formats
+// (16:9 masters, 4K, …). Pages are viewport-driven so the look follows.
+const DEFAULT_W = 1080;
+const DEFAULT_H = 1920;
 
 // ---- args ----------------------------------------------------------------
 function parseArgs(argv) {
-  const a = { page: '1-streaks', seconds: 8, fps: 30, seed: 1, scale: 2, out: 'reel.mp4', audio: null, gain: 1, state: null, preset: 'veryfast', jpeg: false, keepFrames: false, sourceAudio: false };
+  const a = { page: '1-streaks', seconds: 8, fps: 30, seed: 1, scale: 2, width: DEFAULT_W, height: DEFAULT_H, out: 'reel.mp4', audio: null, gain: 1, state: null, preset: 'veryfast', jpeg: false, keepFrames: false, sourceAudio: false };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     const v = argv[i + 1];
     if (k === '--page') { a.page = v; i++; }
-    else if (k === '--seconds') { a.seconds = parseFloat(v); i++; }
+    else if (k === '--seconds') { a.seconds = v === 'source' ? 'source' : parseFloat(v); i++; }
     else if (k === '--fps') { a.fps = parseInt(v, 10); i++; }
     else if (k === '--seed') { a.seed = parseInt(v, 10); i++; }
     else if (k === '--scale') { a.scale = parseFloat(v); i++; }
+    else if (k === '--width') { a.width = parseInt(v, 10); i++; }
+    else if (k === '--height') { a.height = parseInt(v, 10); i++; }
     else if (k === '--out') { a.out = v; i++; }
     else if (k === '--audio') { a.audio = v; i++; }
     else if (k === '--gain') { a.gain = parseFloat(v); i++; }
@@ -157,6 +161,21 @@ function syntheticFeature(i, fps) {
   };
 }
 
+// Clip duration in seconds via ffprobe (for seconds:'source' segments).
+function probeDuration(path) {
+  return new Promise((res, rej) => {
+    const p = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path]);
+    let out = '';
+    p.stdout.on('data', (d) => (out += d));
+    p.on('error', rej);
+    p.on('close', (code) => {
+      const d = parseFloat(out);
+      if (code === 0 && d > 0) res(d);
+      else rej(new Error('ffprobe could not read duration of ' + path));
+    });
+  });
+}
+
 // One long-lived ffmpeg: PNG frames arrive on stdin (image2pipe), optional
 // audio is a second input, H.264 + lossless ALAC out. Encoding overlaps frame
 // capture and nothing hits disk (no PNG sequence, no re-read pass).
@@ -171,6 +190,9 @@ function startFfmpegPipe(a, outPath, seconds, audioPath) {
     // bare audio file or a video clip we're lifting the audio off of (its video
     // streams stay unmapped; the composited frames already carry the picture).
     ...(audioPath ? ['-map', '1:a:0', '-c:a', 'alac'] : []),
+    // Crop-to-even guard: fractional --scale × custom --width/--height can
+    // land odd pixel dimensions, which yuv420p rejects. 1px trim at most.
+    '-vf', 'crop=trunc(iw/2)*2:trunc(ih/2)*2',
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', a.preset || 'veryfast',
     '-movflags', '+faststart', outPath,
   );
@@ -221,6 +243,18 @@ async function main() {
     allowedSources.add(abs);
     seg.sourceUrl = `/source?p=${encodeURIComponent(abs)}`;
   }
+  const VIDEO_SRC_RE = /\.(mp4|mov|webm|m4v)$/i;
+  // seconds:'source' = run the segment for its source clip's full duration
+  // (ffprobe). Works per segment, so a timeline can mix fixed and full-clip
+  // lengths.
+  for (const seg of segments) {
+    if (seg.seconds !== 'source') continue;
+    if (!seg.sourceAbs || !VIDEO_SRC_RE.test(seg.sourceAbs)) {
+      console.error(`seconds=source needs a video source (segment ${seg.page})`);
+      process.exit(1);
+    }
+    seg.seconds = await probeDuration(seg.sourceAbs);
+  }
   const totalSeconds = segments.reduce((s, seg) => s + (seg.seconds || 0), 0);
   const totalFrames = Math.round(totalSeconds * a.fps);
 
@@ -229,7 +263,6 @@ async function main() {
   // so the reel keeps the clip's own sound under the overlays. That only makes
   // sense for one continuous clip, so it's single-segment only — a hard-cut
   // timeline keeps using --audio.
-  const VIDEO_SRC_RE = /\.(mp4|mov|webm|m4v)$/i;
   const wantSourceAudio = a.sourceAudio || state?.useSourceAudio;
   let audioPath = a.audio ? resolve(process.cwd(), a.audio) : null;
   let audioFromSource = false;
@@ -270,9 +303,16 @@ async function main() {
   // --scale renders each page at a smaller LOGICAL viewport (W/scale × H/scale)
   // with a matching deviceScaleFactor — elements are `scale`× bigger/legible,
   // captured frame still a crisp WxH. Pages are DPR-correct, so no page changes.
-  const logicalW = Math.round(W / a.scale);
-  const logicalH = Math.round(H / a.scale);
-  const browser = await chromium.launch();
+  // Round the logical viewport so output pixels (logical × scale) land even —
+  // yuv420p rejects odd dimensions.
+  const logicalW = Math.round(a.width / a.scale / 2) * 2;
+  const logicalH = Math.round(a.height / a.scale / 2) * 2;
+  // channel:'chromium' = the NEW headless mode (full browser, GPU video path).
+  // The default headless SHELL decodes video with crushed levels (blacks
+  // lifted ~0.07→0.10, whites 0.96→0.65 measured on a pool clip) — source
+  // pages sample that luminance, so renders came out washed-out/brighter
+  // than the studio preview. New headless matches headed decode exactly.
+  const browser = await chromium.launch({ channel: 'chromium' });
   const page = await browser.newPage({ viewport: { width: logicalW, height: logicalH }, deviceScaleFactor: a.scale });
   await page.addInitScript(initScript(a.seed)); // re-applies on every navigation: clock/random/rAF reset per segment
   page.on('console', (m) => { if (m.type() === 'error') console.log('  [page error]', m.text()); });
