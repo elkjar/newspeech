@@ -104,7 +104,11 @@ const ctx = canvas.getContext("2d");
 let viewW, viewH, dpr, cw, ch;
 let imgW = 0, imgH = 0;
 
-const PROC_W = 720, PROC_H = 405;
+// Sort buffer follows the VIEWPORT aspect at a fixed pixel budget (720×405
+// worth) — a fixed landscape buffer double-cover-crops portrait viewports
+// (9:16 source → middle slice → blown up again on the way out).
+const PROC_BUDGET = 720 * 405;
+let PROC_W = 720, PROC_H = 405;
 
 const procCanvas = document.createElement("canvas");
 procCanvas.width = PROC_W; procCanvas.height = PROC_H;
@@ -200,6 +204,17 @@ function resize() {
   viewH = window.innerHeight;
   cw = Math.floor(viewW * dpr);
   ch = Math.floor(viewH * dpr);
+  const pw = Math.max(64, Math.round(Math.sqrt(PROC_BUDGET * (cw / ch))));
+  const ph = Math.max(64, Math.round(PROC_BUDGET / pw));
+  if (pw !== PROC_W || ph !== PROC_H) {
+    PROC_W = pw;
+    PROC_H = ph;
+    procCanvas.width = PROC_W;
+    procCanvas.height = PROC_H;
+    // band y/h live in proc space — stale coordinates would sort the wrong
+    // rows (or get skipped by the bounds guard); drop them, new ones spawn.
+    bands.length = 0;
+  }
   canvas.width = cw;
   canvas.height = ch;
   canvas.style.width = viewW + "px";
