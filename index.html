@@ -87,16 +87,21 @@
        5px 0 0 #ff00ff;
   }
 
-  #links {
+  /* ---- top block: nav row + subscribe row, both scroll away with the hero ---- */
+  #top {
     position: absolute;
-    left: 72px;
-    bottom: 72px;
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: 2;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  #links {
     display: flex;
     gap: 32px;
-    padding: 32px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 22px 72px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
     font-size: 13px;
     line-height: 18px; /* fixed in px so swapping fonts can't shift line-box height */
     letter-spacing: 0.04em;
@@ -109,6 +114,49 @@
     cursor: pointer;
   }
   #links a span { display: inline-block; }
+
+  #subscribe {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 12px 72px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    font-size: 12px;
+    line-height: 18px;
+    letter-spacing: 0.04em;
+  }
+  #subscribe .hp { display: none; }
+  #subscribe .sub-label {
+    opacity: 0.55;
+    cursor: pointer;
+  }
+  #subscribe input[type="email"] {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    color: var(--fg);
+    font: inherit;
+    letter-spacing: 0.04em;
+    padding: 7px 12px;
+    width: 260px;
+    border-radius: 0;
+    outline: none;
+  }
+  #subscribe input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
+  #subscribe input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
+  #subscribe button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: var(--fg);
+    font: inherit;
+    letter-spacing: 0.04em;
+    padding: 7px 16px;
+    cursor: pointer;
+  }
+  #subscribe button:hover { background: rgba(255, 255, 255, 0.08); }
+  #subscribe button:disabled { opacity: 0.4; cursor: default; }
+  #subscribe button span { display: inline-block; }
+  #subscribe .sub-msg { opacity: 0.85; letter-spacing: 0.06em; }
+  #subscribe .sub-msg.err { opacity: 0.55; }
 
   #scroll-hint {
     position: absolute;
@@ -218,25 +266,32 @@
   }
   .copy .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
 
-  /* mobile: push the text up the viewport, center+stack the dialog */
+  /* mobile: top block compresses, stage drops below it */
   @media (max-width: 640px) {
     #hero {
       align-items: flex-start;
-      padding-top: 22vh;
+      padding-top: 38vh;
     }
     #stage {
       font-size: clamp(44px, 14vw, 84px);
     }
     #links {
-      left: 50%;
-      bottom: 64px;
-      transform: translateX(-50%);
-      flex-direction: column;
-      align-items: center;
-      gap: 14px;
-      padding: 22px 28px;
+      flex-wrap: wrap;
+      gap: 14px 18px;
+      padding: 16px 20px;
     }
-    #links a { justify-content: center; }
+    #subscribe {
+      flex-wrap: wrap;
+      gap: 10px 12px;
+      padding: 12px 20px;
+    }
+    #subscribe .sub-label { flex-basis: 100%; }
+    #subscribe input[type="email"] {
+      flex: 1 1 140px;
+      min-width: 0;
+      width: auto;
+      font-size: 16px; /* <16px makes iOS Safari zoom the page on focus */
+    }
     #scroll-hint {
       right: 50%;
       transform: translateX(50%);
@@ -267,21 +322,30 @@
   <canvas id="bg"></canvas>
   <div id="stage" aria-label="newspeech">NEWSPEECH</div>
 
-  <nav id="links">
-    <a href="#v-sequence" data-link>sequence</a>
-    <a href="#v-texture" data-link>texture</a>
-    <a href="#v-samples" data-link>samples</a>
-    <a href="#v-visuals" data-link>visuals</a>
-    <a href="#v-code" data-link>code</a>
-    <a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" data-link>instagram</a>
-    <!--
-    <a href="#" data-link>downloads</a>
-    <a href="#" data-link>words</a>
-    <a href="#" data-link>shows</a>
-    <a href="#" data-link>apple music</a>
-    <a href="#" data-link>s****fy</a>
-    -->
-  </nav>
+  <header id="top">
+    <nav id="links">
+      <a href="#v-sequence" data-link>sequence</a>
+      <a href="#v-texture" data-link>texture</a>
+      <a href="#v-samples" data-link>samples</a>
+      <a href="#v-visuals" data-link>visuals</a>
+      <a href="#v-code" data-link>code</a>
+      <a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" data-link>instagram</a>
+      <!--
+      <a href="#" data-link>downloads</a>
+      <a href="#" data-link>words</a>
+      <a href="#" data-link>shows</a>
+      <a href="#" data-link>apple music</a>
+      <a href="#" data-link>s****fy</a>
+      -->
+    </nav>
+    <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field">
+      <input type="hidden" name="form-name" value="subscribe">
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <label class="sub-label" for="sub-email" data-link>mailing list — releases + new tools</label>
+      <input id="sub-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+      <button type="submit" data-link>subscribe</button>
+    </form>
+  </header>
 
   <div id="scroll-hint" aria-hidden="true">scroll ↓</div>
 </section>
@@ -1175,7 +1239,13 @@ function pickTelemetryOnLoad() {
   }
   return picked;
 }
-Newspeech.installTelemetry({ params: {}, enabled: pickTelemetryOnLoad() });
+Newspeech.installTelemetry({
+  params: {},
+  enabled: pickTelemetryOnLoad(),
+  // keep the widget stack clear of the nav + subscribe bars (height varies
+  // with wrapping, so measure live rather than hard-coding)
+  padTop: () => document.getElementById("top").offsetHeight + 24,
+});
 
 let lastT = performance.now();
 function frame(t) {
@@ -1222,6 +1292,7 @@ window.addEventListener("mousemove", (e) => {
 // click = punch event: chroma + tear at click Y + texture rebuild + chevron reroll
 window.addEventListener("click", (e) => {
   if (e.target.closest("#debug")) return; // debug panel handles its own clicks
+  if (e.target.closest("#top")) return;   // nav + subscribe bar are functional surface
   if (!heroVisible) return; // hero punch effects only while the hero is on-screen
   // chroma flash (slightly longer than ambient flashes)
   stage.classList.add("chroma");
@@ -1925,6 +1996,35 @@ async function setupLinks() {
 }
 
 setupLinks();
+
+// ---- subscribe: AJAX post to Netlify Forms so the page never navigates ----
+// the form markup carries data-netlify + the form-name hidden field, so
+// Netlify's build-time detection registers it; runtime we just POST the
+// urlencoded pairs to "/" and swap in a confirmation. only works on the
+// deployed site — local POSTs 404 and fall into the error branch.
+const subForm = document.getElementById("subscribe");
+subForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = subForm.querySelector("button");
+  btn.disabled = true;
+  const oldMsg = subForm.querySelector(".sub-msg");
+  if (oldMsg) oldMsg.remove();
+  try {
+    const res = await fetch("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(new FormData(subForm)).toString(),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    subForm.innerHTML = '<span class="sub-msg">signal received — you\'re on the list</span>';
+  } catch (err) {
+    btn.disabled = false;
+    const msg = document.createElement("span");
+    msg.className = "sub-msg err";
+    msg.textContent = "transmission failed — try again";
+    subForm.appendChild(msg);
+  }
+});
 </script>
 </body>
 </html>
