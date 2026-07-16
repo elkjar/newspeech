@@ -47,10 +47,11 @@
     scroll-snap-align: start;
   }
 
+  /* solid nav bar in flow at the top, subscribe dialog centered (margin:auto)
+     in the visualizer space beneath it */
   #hero {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
   }
 
   /* full-bleed hero canvas. absolute (not fixed) so the hero scrolls away
@@ -65,47 +66,41 @@
     pointer-events: none;
   }
 
-  /* core.js creates the telemetry HUD as a fixed viewport overlay (right for
-     the non-scrolling visualizer pages) — here it belongs to the hero, so pin
-     it to the document top and let it scroll away with the section. its
-     explicit width/height (copied from #bg) keep it hero-sized despite inset:0. */
-  canvas#hud-overlay { position: absolute !important; }
-
+  /* wordmark lives in the middle of the nav bar — same glitch treatment,
+     nav scale */
   #stage {
-    position: relative;
-    z-index: 1;
     font-family: "zxx-sans", monospace;
-    font-size: clamp(32px, 6vw, 90px);
-    letter-spacing: 0.02em;
+    font-size: clamp(18px, 2vw, 26px);
+    letter-spacing: 0.04em;
     line-height: 1;
     user-select: none;
+    padding: 0 16px;
   }
   #stage span { display: inline-block; will-change: transform; }
   #stage.chroma {
     text-shadow:
-      -5px 0 0 #00ffff,
-       5px 0 0 #ff00ff;
+      -2px 0 0 #00ffff,
+       2px 0 0 #ff00ff;
   }
 
-  /* ---- top block: nav row + subscribe row, both scroll away with the hero ---- */
+  /* ---- top bar: solid background, wordmark centered between the links ---- */
   #top {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    position: relative; /* in-flow, but painted above the absolute canvas */
     z-index: 2;
+    background: var(--bg);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
 
   #links {
     display: flex;
+    align-items: center;
+    justify-content: center;
     gap: 32px;
-    padding: 22px 72px;
+    padding: 20px 40px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
     font-size: 13px;
     line-height: 18px; /* fixed in px so swapping fonts can't shift line-box height */
     letter-spacing: 0.04em;
-    background: transparent;
   }
   #links a {
     color: var(--fg);
@@ -115,15 +110,27 @@
   }
   #links a span { display: inline-block; }
 
+  /* ---- subscribe: bordered dialog centered over the hero visualizer ---- */
   #subscribe {
+    position: relative;
+    z-index: 1;
+    margin: auto; /* centers in the space left under the nav bar */
     display: flex;
+    flex-direction: column;
     align-items: center;
     gap: 18px;
-    padding: 12px 72px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 32px 40px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(5, 5, 5, 0.8);
     font-size: 12px;
     line-height: 18px;
     letter-spacing: 0.04em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  #subscribe .sub-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   #subscribe .hp { display: none; }
   #subscribe .sub-label {
@@ -266,30 +273,27 @@
   }
   .copy .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
 
-  /* mobile: top block compresses, stage drops below it */
+  /* mobile: wordmark takes the top row of the bar, links wrap beneath it */
   @media (max-width: 640px) {
-    #hero {
-      align-items: flex-start;
-      padding-top: 38vh;
-    }
-    #stage {
-      font-size: clamp(44px, 14vw, 84px);
-    }
     #links {
       flex-wrap: wrap;
-      gap: 14px 18px;
-      padding: 16px 20px;
+      gap: 12px 18px;
+      padding: 14px 20px;
+    }
+    #stage {
+      order: -1;
+      flex-basis: 100%;
+      text-align: center;
+      font-size: 26px;
+      padding: 4px 0 10px;
     }
     #subscribe {
-      flex-wrap: wrap;
-      gap: 10px 12px;
-      padding: 12px 20px;
+      margin: auto 24px;
+      padding: 26px 24px;
     }
-    #subscribe .sub-label { flex-basis: 100%; }
+    #subscribe .sub-row { flex-wrap: wrap; justify-content: center; }
     #subscribe input[type="email"] {
-      flex: 1 1 140px;
-      min-width: 0;
-      width: auto;
+      width: min(70vw, 280px);
       font-size: 16px; /* <16px makes iOS Safari zoom the page on focus */
     }
     #scroll-hint {
@@ -320,13 +324,13 @@
 
 <section class="vignette" id="hero">
   <canvas id="bg"></canvas>
-  <div id="stage" aria-label="newspeech">NEWSPEECH</div>
 
   <header id="top">
     <nav id="links">
       <a href="#v-sequence" data-link>sequence</a>
       <a href="#v-texture" data-link>texture</a>
       <a href="#v-samples" data-link>samples</a>
+      <div id="stage" aria-label="newspeech">NEWSPEECH</div>
       <a href="#v-visuals" data-link>visuals</a>
       <a href="#v-code" data-link>code</a>
       <a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" data-link>instagram</a>
@@ -338,14 +342,17 @@
       <a href="#" data-link>s****fy</a>
       -->
     </nav>
-    <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field">
-      <input type="hidden" name="form-name" value="subscribe">
-      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-      <label class="sub-label" for="sub-email" data-link>mailing list — releases + new tools</label>
+  </header>
+
+  <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field">
+    <input type="hidden" name="form-name" value="subscribe">
+    <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+    <label class="sub-label" for="sub-email" data-link>mailing list — releases + new tools</label>
+    <div class="sub-row">
       <input id="sub-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
       <button type="submit" data-link>subscribe</button>
-    </form>
-  </header>
+    </div>
+  </form>
 
   <div id="scroll-hint" aria-hidden="true">scroll ↓</div>
 </section>
@@ -472,7 +479,7 @@ for (const s of spans) {
   );
 }
 
-const JITTER_X = 6;
+const JITTER_X = 4; // nav-scale wordmark: keep jitter inside the bar
 for (const s of spans) {
   poisson(
     () => 0.030 + 0.270 * intensity() + 0.8 * s._hoverI,
@@ -644,8 +651,8 @@ poisson(
 // revival is a probabilistic binary flicker (alive/dead) whose alive-bias ramps
 // 0→1 across REVIVE_MS, instead of a smooth opacity lerp — keeps the text in
 // vocabulary with the rest of the system (no continuous tweens anywhere).
-const HOVER_KILL_DIST = 32;
-const HOVER_RADIUS = 220;
+const HOVER_KILL_DIST = 14;  // scaled down with the wordmark — nav-bar size
+const HOVER_RADIUS = 110;
 const REVIVE_MS = 250;
 function updateHover(t) {
   const rects = spans.map(s => s.getBoundingClientRect());
@@ -1221,32 +1228,6 @@ function setMode(name) {
   }
 }
 
-// ---- telemetry HUD: borrow the visualizer-page widget set as a top-left
-// surveillance overlay. seeded with 2-3 random widgets per page-load using
-// installTelemetry's `enabled` opt so the homepage gets a fresh selection
-// every visit without clobbering the user's persisted picks elsewhere.
-const TELEMETRY_POOL = [
-  "radar", "scope", "bands", "events", "waveform",
-  "profile", "vector", "tunnel", "coords", "xfer", "hex",
-];
-function pickTelemetryOnLoad() {
-  const pool = TELEMETRY_POOL.slice();
-  const count = 2 + ((Math.random() * 2) | 0); // 2 or 3
-  const picked = [];
-  for (let i = 0; i < count && pool.length; i++) {
-    const idx = (Math.random() * pool.length) | 0;
-    picked.push(pool.splice(idx, 1)[0]);
-  }
-  return picked;
-}
-Newspeech.installTelemetry({
-  params: {},
-  enabled: pickTelemetryOnLoad(),
-  // keep the widget stack clear of the nav + subscribe bars (height varies
-  // with wrapping, so measure live rather than hard-coding)
-  padTop: () => document.getElementById("top").offsetHeight + 24,
-});
-
 let lastT = performance.now();
 function frame(t) {
   const dt = (t - lastT) / 1000;
@@ -1264,10 +1245,8 @@ function frame(t) {
     if (v.visible) v.draw(v, t, dt);
   }
 
-  // tickInputs clears the HUD overlay each frame and drives the grain layer;
-  // tickTelemetry then renders the picked widgets onto the cleared HUD.
+  // tickInputs clears the HUD overlay each frame and drives the grain layer
   Newspeech.tickInputs(dt);
-  Newspeech.tickTelemetry(dt);
 
   requestAnimationFrame(frame);
 }
@@ -1292,7 +1271,7 @@ window.addEventListener("mousemove", (e) => {
 // click = punch event: chroma + tear at click Y + texture rebuild + chevron reroll
 window.addEventListener("click", (e) => {
   if (e.target.closest("#debug")) return; // debug panel handles its own clicks
-  if (e.target.closest("#top")) return;   // nav + subscribe bar are functional surface
+  if (e.target.closest("#top, #subscribe")) return; // nav + subscribe are functional surface
   if (!heroVisible) return; // hero punch effects only while the hero is on-screen
   // chroma flash (slightly longer than ambient flashes)
   stage.classList.add("chroma");

@@ -1584,7 +1584,6 @@
   const TELEMETRY_PAD_TOP = 28;
   const TELEMETRY_PAD_LEFT = 32;
   const TELEMETRY_GAP = 18;
-  let _telemetryPadTop = null; // page override (number or () => number), null = default
   const TELEMETRY_TYPES = [
     "radar", "scope", "bands", "events", "waveform",
     "profile", "vector", "tunnel", "coords", "xfer", "hex",
@@ -2412,9 +2411,6 @@
       for (const t of TELEMETRY_TYPES) if (_telemetryOrder.indexOf(t) < 0) _telemetryOrder.push(t);
       _telemetrySlots.length = 0;
     }
-    // optional padTop (number or function → number, CSS px) pushes the widget
-    // stack down — the homepage uses it to clear its top nav + subscribe bars.
-    if (opts && opts.padTop != null) _telemetryPadTop = opts.padTop;
     // pick/shuffle row lives in panel-globals; this call just registers the
     // page as opted-in so tickTelemetry actually renders.
     _refreshTelemetryCount();
@@ -2438,10 +2434,7 @@
     ctx.textAlign = "left";
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
-    const padTop = _telemetryPadTop == null
-      ? TELEMETRY_PAD_TOP
-      : (typeof _telemetryPadTop === "function" ? _telemetryPadTop() : _telemetryPadTop);
-    let y = padTop * dpr;
+    let y = TELEMETRY_PAD_TOP * dpr;
     const x = TELEMETRY_PAD_LEFT * dpr;
     for (const slot of _telemetrySlots) {
       slot.tick(dt);
