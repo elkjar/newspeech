@@ -34,7 +34,8 @@
   body {
     min-height: 100vh;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    padding: 72px 72px 96px;
+    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
+    padding: calc(48px + var(--ns-nav-h, 0px)) 72px 96px;
   }
 
   header {
@@ -104,15 +105,16 @@
   li a span { display: inline-block; }
 
   @media (max-width: 720px) {
-    body { padding: 36px 24px 64px; }
+    body { padding: calc(28px + var(--ns-nav-h, 0px)) 24px 64px; }
     header { gap: 14px 20px; margin-bottom: 40px; }
     li { gap: 20px; padding: 16px 0; }
   }
 </style>
 </head>
 <body>
+  <script src="nav.js"></script>
   <header>
-    <span class="label"><a href="index.html">newspeech</a> / visualizers</span>
+    <span class="label">visualizers</span>
     <span class="aux"><a href="visualizers-readme.html">readme.txt</a></span>
   </header>
   <div class="section-label">self-contained <span class="count">[12]</span></div>

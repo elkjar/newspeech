@@ -34,7 +34,8 @@
   body {
     min-height: 100vh;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    padding: 72px 72px 96px;
+    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
+    padding: calc(48px + var(--ns-nav-h, 0px)) 72px 96px;
     font-size: 13px;
     line-height: 1.6;
   }
@@ -198,7 +199,7 @@
   }
 
   @media (max-width: 720px) {
-    body { padding: 36px 24px 64px; font-size: 12px; }
+    body { padding: calc(28px + var(--ns-nav-h, 0px)) 24px 64px; font-size: 12px; }
     #tree { font-size: 12px; line-height: 22px; }
     .row .meta { display: none; }
     .preview .controls { flex-wrap: wrap; gap: 14px; }
@@ -207,8 +208,9 @@
 </style>
 </head>
 <body>
+  <script src="nav.js"></script>
   <header>
-    <span class="label"><a href="index.html">newspeech</a> / samples</span>
+    <span class="label">samples</span>
     <span class="aux">
       <span id="count">loading…</span>
       <span class="sep">·</span>

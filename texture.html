@@ -27,7 +27,8 @@
   html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
   body {
     font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
-    padding: 24px 20px 60px;
+    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
     max-width: 1060px;
     margin: 0 auto;
   }
@@ -177,14 +178,13 @@
   #export { margin-top: 20px; border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   #export .seg { margin: 0; }
   #renderinfo { color: #666; }
-  a.back { color: #666; text-decoration: none; }
-  a.back:hover { color: #ddd; }
 </style>
 </head>
 <body>
+<script src="nav.js"></script>
 
 <h1>NEWSPEECH // TEXTURE</h1>
-<p class="sub">loop + noise — upload a loop, mangle it, print a longer texture &nbsp;·&nbsp; <a class="back" href="index.html">← newspeech</a></p>
+<p class="sub">loop + noise — upload a loop, mangle it, print a longer texture</p>
 
 <div id="dropwave">
   <canvas id="wave"></canvas>

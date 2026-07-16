@@ -78,7 +78,8 @@
   #status {
     position: fixed;
     left: 24px;
-    top: 24px;
+    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
+    top: calc(16px + var(--ns-nav-h, 0px));
     z-index: 3;
     font-size: 10px;
     letter-spacing: 0.18em;
@@ -90,16 +91,6 @@
   #status .k { color: rgba(255, 255, 255, 0.85); }
   #status .head { color: rgba(255, 255, 255, 0.85); margin-bottom: 6px; }
   #status .head .sep { opacity: 0.4; margin: 0 6px; }
-  /* re-enable pointer events on the home link only — #status itself is
-     pointer-events:none so it doesn't block canvas drag/click. */
-  #status .home {
-    color: inherit;
-    text-decoration: none;
-    pointer-events: auto;
-    cursor: pointer;
-    transition: opacity 0.12s linear;
-  }
-  #status .home:hover { opacity: 0.6; }
   /* meter bars use block glyphs — kill letter-spacing locally so they butt against each other */
   #status .meter { display: flex; gap: 16px; margin-bottom: 2px; letter-spacing: 0; }
   #status .meter .seg { color: rgba(255, 255, 255, 0.85); }
@@ -154,13 +145,12 @@
 </style>
 </head>
 <body>
+<script src="nav.js"></script>
 
 <canvas id="bg"></canvas>
 
 <div id="status">
   <div class="head">
-    <a href="/" class="home">NEWSPEECH</a>
-    <span class="sep">·</span>
     <span id="trans-track">—</span>
     <span class="sep">·</span>
     <span id="trans-cpm">— cpm</span>

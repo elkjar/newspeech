@@ -66,55 +66,7 @@
     pointer-events: none;
   }
 
-  /* wordmark lives in the middle of the nav bar — same glitch treatment,
-     nav scale */
-  #stage {
-    font-family: "zxx-sans", monospace;
-    font-size: clamp(18px, 2vw, 26px);
-    letter-spacing: 0.04em;
-    line-height: 1;
-    user-select: none;
-    padding: 0 16px;
-  }
-  #stage span { display: inline-block; will-change: transform; }
-  #stage.chroma {
-    text-shadow:
-      -2px 0 0 #00ffff,
-       2px 0 0 #ff00ff;
-  }
-
-  /* ---- top bar: fixed, solid background, wordmark centered between the
-     links. hides on scroll-down, reveals on scroll-up (see nav watcher) ---- */
-  #top {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 10;
-    background: var(--bg);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    transition: transform 0.28s ease;
-  }
-  #top.nav-hidden { transform: translateY(-100%); }
-
-  #links {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 32px;
-    padding: 20px 40px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-    font-size: 13px;
-    line-height: 18px; /* fixed in px so swapping fonts can't shift line-box height */
-    letter-spacing: 0.04em;
-  }
-  #links a {
-    color: var(--fg);
-    text-decoration: none;
-    display: inline-flex;
-    cursor: pointer;
-  }
-  #links a span { display: inline-block; }
+  /* nav bar (markup + styles + treatment) comes from nav.js */
 
   /* ---- subscribe: bordered dialog centered over the hero visualizer ---- */
   #subscribe {
@@ -280,20 +232,8 @@
   }
   .copy .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
 
-  /* mobile: wordmark takes the top row of the bar, links wrap beneath it */
+  /* mobile */
   @media (max-width: 640px) {
-    #links {
-      flex-wrap: wrap;
-      gap: 12px 18px;
-      padding: 14px 20px;
-    }
-    #stage {
-      order: -1;
-      flex-basis: 100%;
-      text-align: center;
-      font-size: 26px;
-      padding: 4px 0 10px;
-    }
     #subscribe {
       margin: auto 24px;
       padding: 26px 24px;
@@ -329,27 +269,10 @@
 </head>
 <body>
 
+<script src="nav.js"></script>
+
 <section class="vignette" id="hero">
   <canvas id="bg"></canvas>
-
-  <header id="top">
-    <nav id="links">
-      <a href="#v-sequence" data-link>sequence</a>
-      <a href="#v-texture" data-link>texture</a>
-      <a href="#v-samples" data-link>samples</a>
-      <div id="stage" aria-label="newspeech">NEWSPEECH</div>
-      <a href="#v-visuals" data-link>visuals</a>
-      <a href="#v-code" data-link>code</a>
-      <a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" data-link>instagram</a>
-      <!--
-      <a href="#" data-link>downloads</a>
-      <a href="#" data-link>words</a>
-      <a href="#" data-link>shows</a>
-      <a href="#" data-link>apple music</a>
-      <a href="#" data-link>s****fy</a>
-      -->
-    </nav>
-  </header>
 
   <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field">
     <input type="hidden" name="form-name" value="subscribe">
@@ -443,69 +366,7 @@ function poisson(rateFn, fire) {
   step();
 }
 
-// ---- foreground ----
-const FONTS = [
-  ["zxx-sans",  1],
-  ["zxx-bold",  0],
-  ["zxx-noise", 7],
-  ["zxx-camo",  3],
-  ["zxx-xed",   5],
-];
-
-const stage = document.getElementById("stage");
-const text = stage.textContent;
-stage.textContent = "";
-const spans = [...text].map(ch => {
-  const s = document.createElement("span");
-  s.textContent = ch === " " ? " " : ch;
-  s.style.fontFamily = `"zxx-sans", monospace`;
-  stage.appendChild(s);
-  return s;
-});
-
-const TOTAL_W = FONTS.reduce((a, [, w]) => a + w, 0);
-function pickFont() {
-  if (TOTAL_W <= 0) return "zxx-sans";
-  let r = Math.random() * TOTAL_W;
-  for (const [f, w] of FONTS) {
-    r -= w;
-    if (r <= 0) return f;
-  }
-  return FONTS[FONTS.length - 1][0];
-}
-
-// per-span cursor-proximity hover state — populated each frame in updateHover().
-// _hoverI ∈ [0,1] scales glitch rates and jitter range; _reviveAt is the
-// timestamp at which a killed (opacity=0) span returns to opacity 1.
-for (const s of spans) { s._hoverI = 0; s._reviveAt = 0; }
-
-for (const s of spans) {
-  poisson(
-    () => 0.7 + 7.7 * intensity() + 21 * s._hoverI,
-    () => { s.style.fontFamily = `"${pickFont()}", monospace`; }
-  );
-}
-
-const JITTER_X = 4; // nav-scale wordmark: keep jitter inside the bar
-for (const s of spans) {
-  poisson(
-    () => 0.030 + 0.270 * intensity() + 0.8 * s._hoverI,
-    () => {
-      const boost = 1 + 3 * s._hoverI;
-      const jx = (Math.random() * 2 - 1) * JITTER_X * boost;
-      s.style.transform = `translateX(${jx.toFixed(1)}px)`;
-      setTimeout(() => { s.style.transform = ""; }, 80 + Math.random() * 140);
-    }
-  );
-}
-
-poisson(
-  () => 0.05 + 0.95 * intensity(),
-  () => {
-    stage.classList.add("chroma");
-    setTimeout(() => stage.classList.remove("chroma"), 80 + Math.random() * 80);
-  }
-);
+// (the NEWSPEECH wordmark + nav links and their glitch treatment live in nav.js)
 
 // ---- background: VHS-streak signal field ----
 const canvas = document.getElementById("bg");
@@ -653,41 +514,6 @@ poisson(
   () => 0.2 + 0.44 * intensity(), // every ~1.5–5s
   triggerThrash
 );
-
-// per-span hover proximity — kill within HOVER_KILL_DIST, glitch-boost out to HOVER_RADIUS.
-// revival is a probabilistic binary flicker (alive/dead) whose alive-bias ramps
-// 0→1 across REVIVE_MS, instead of a smooth opacity lerp — keeps the text in
-// vocabulary with the rest of the system (no continuous tweens anywhere).
-const HOVER_KILL_DIST = 14;  // scaled down with the wordmark — nav-bar size
-const HOVER_RADIUS = 110;
-const REVIVE_MS = 250;
-function updateHover(t) {
-  const rects = spans.map(s => s.getBoundingClientRect());
-  for (let i = 0; i < spans.length; i++) {
-    const s = spans[i];
-    const r = rects[i];
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    const dist = Math.hypot(cx - lastMouseX, cy - lastMouseY);
-
-    if (dist < HOVER_KILL_DIST) {
-      s.style.opacity = "0";
-      s._reviveAt = t + REVIVE_MS;
-      s._hoverI = 1;
-    } else {
-      s._hoverI = dist < HOVER_RADIUS
-        ? 1 - (dist - HOVER_KILL_DIST) / (HOVER_RADIUS - HOVER_KILL_DIST)
-        : 0;
-      if (s._reviveAt && t < s._reviveAt) {
-        const p = 1 - (s._reviveAt - t) / REVIVE_MS; // 0 just-died → 1 fully back
-        s.style.opacity = Math.random() < p ? "1" : "0";
-      } else if (s._reviveAt) {
-        s.style.opacity = "1";
-        s._reviveAt = 0;
-      }
-    }
-  }
-}
 
 // streaks visualizer — the original VHS-streak field with chevrons + tears
 function drawStreaks(t, dt) {
@@ -1245,7 +1071,6 @@ function frame(t) {
   // hero only renders while its section is on-screen; the vignette canvases
   // below likewise gate on their own IntersectionObservers.
   if (heroVisible) {
-    updateHover(t);
     MODES[currentMode](t, dt);
   }
   for (const v of vizSections) {
@@ -1278,11 +1103,10 @@ window.addEventListener("mousemove", (e) => {
 // click = punch event: chroma + tear at click Y + texture rebuild + chevron reroll
 window.addEventListener("click", (e) => {
   if (e.target.closest("#debug")) return; // debug panel handles its own clicks
-  if (e.target.closest("#top, #subscribe")) return; // nav + subscribe are functional surface
+  if (e.target.closest("#ns-top, #subscribe")) return; // nav + subscribe are functional surface
   if (!heroVisible) return; // hero punch effects only while the hero is on-screen
-  // chroma flash (slightly longer than ambient flashes)
-  stage.classList.add("chroma");
-  setTimeout(() => stage.classList.remove("chroma"), 140);
+  // chroma flash on the nav wordmark (slightly longer than ambient flashes)
+  if (window.NSNav) NSNav.chroma(140);
 
   // tear band at click Y
   const th = 6 + Math.random() * 18;
@@ -1982,20 +1806,6 @@ async function setupLinks() {
 }
 
 setupLinks();
-
-// ---- sticky check-up nav: hide on scroll-down, reveal on scroll-up ----
-// small dead-zone (6px) so snap-scroll jitter doesn't flicker the bar; always
-// visible near the very top.
-const topBar = document.getElementById("top");
-let lastScrollTop = window.scrollY;
-window.addEventListener("scroll", () => {
-  const y = window.scrollY;
-  const delta = y - lastScrollTop;
-  if (Math.abs(delta) < 6) return;
-  if (y < 80) topBar.classList.remove("nav-hidden");
-  else topBar.classList.toggle("nav-hidden", delta > 0);
-  lastScrollTop = y;
-}, { passive: true });
 
 // ---- subscribe: AJAX post to Netlify Forms so the page never navigates ----
 // the form markup carries data-netlify + the form-name hidden field, so
