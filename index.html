@@ -47,8 +47,8 @@
     scroll-snap-align: start;
   }
 
-  /* solid nav bar in flow at the top, subscribe dialog centered (margin:auto)
-     in the visualizer space beneath it */
+  /* nav bar is fixed above; subscribe dialog centers (margin:auto) over the
+     full-height visualizer */
   #hero {
     display: flex;
     flex-direction: column;
@@ -83,13 +83,19 @@
        2px 0 0 #ff00ff;
   }
 
-  /* ---- top bar: solid background, wordmark centered between the links ---- */
+  /* ---- top bar: fixed, solid background, wordmark centered between the
+     links. hides on scroll-down, reveals on scroll-up (see nav watcher) ---- */
   #top {
-    position: relative; /* in-flow, but painted above the absolute canvas */
-    z-index: 2;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
     background: var(--bg);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    transition: transform 0.28s ease;
   }
+  #top.nav-hidden { transform: translateY(-100%); }
 
   #links {
     display: flex;
@@ -1975,6 +1981,20 @@ async function setupLinks() {
 }
 
 setupLinks();
+
+// ---- sticky check-up nav: hide on scroll-down, reveal on scroll-up ----
+// small dead-zone (6px) so snap-scroll jitter doesn't flicker the bar; always
+// visible near the very top.
+const topBar = document.getElementById("top");
+let lastScrollTop = window.scrollY;
+window.addEventListener("scroll", () => {
+  const y = window.scrollY;
+  const delta = y - lastScrollTop;
+  if (Math.abs(delta) < 6) return;
+  if (y < 80) topBar.classList.remove("nav-hidden");
+  else topBar.classList.toggle("nav-hidden", delta > 0);
+  lastScrollTop = y;
+}, { passive: true });
 
 // ---- subscribe: AJAX post to Netlify Forms so the page never navigates ----
 // the form markup carries data-netlify + the form-name hidden field, so
