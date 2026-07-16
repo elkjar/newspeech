@@ -170,6 +170,7 @@
   #subscribe button span { display: inline-block; }
   #subscribe .sub-msg { opacity: 0.85; letter-spacing: 0.06em; }
   #subscribe .sub-msg.err { opacity: 0.55; }
+  #subscribe.fade-out { opacity: 0; transition: opacity 0.7s ease; }
 
   #scroll-hint {
     position: absolute;
@@ -2016,6 +2017,11 @@ subForm.addEventListener("submit", async (e) => {
     });
     if (!res.ok) throw new Error(String(res.status));
     subForm.innerHTML = '<span class="sub-msg">signal received — you\'re on the list</span>';
+    // hold the confirmation 4s, fade the dialog out, then drop it from the page
+    setTimeout(() => {
+      subForm.classList.add("fade-out");
+      setTimeout(() => { subForm.style.display = "none"; }, 800);
+    }, 4000);
   } catch (err) {
     btn.disabled = false;
     const msg = document.createElement("span");
