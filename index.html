@@ -53,29 +53,15 @@
     justify-content: center;
   }
 
-  /* canvas sized to the visible region (left 80vw) so visualizer content
-     sits entirely outside the bg-mask on the right — no rendered pixels
-     are hidden behind the mask. body bg #050505 matches the mask color so
-     the right 20vw still reads as a single solid panel. absolute (not
-     fixed) so the hero scrolls away with its section. */
+  /* full-bleed hero canvas. absolute (not fixed) so the hero scrolls away
+     with its section. */
   #bg {
     position: absolute;
     top: 0;
     left: 0;
-    width: 80vw;
+    width: 100%;
     height: 100%;
     z-index: 0;
-    pointer-events: none;
-  }
-
-  #bg-mask {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 20vw;
-    background: var(--bg);
-    z-index: 1;
     pointer-events: none;
   }
 
@@ -279,13 +265,14 @@
 
 <section class="vignette" id="hero">
   <canvas id="bg"></canvas>
-  <div id="bg-mask"></div>
   <div id="stage" aria-label="newspeech">NEWSPEECH</div>
 
   <nav id="links">
-    <a href="live.html" data-link>code</a>
+    <a href="#v-sequence" data-link>sequence</a>
+    <a href="texture.html" data-link>texture</a>
     <a href="samples.html" data-link>samples</a>
     <a href="visualizers.html" data-link>visuals</a>
+    <a href="live.html" data-link>code</a>
     <a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" data-link>instagram</a>
     <!--
     <a href="#" data-link>downloads</a>
@@ -299,22 +286,10 @@
   <div id="scroll-hint" aria-hidden="true">scroll ↓</div>
 </section>
 
-<section class="vignette viz-right" id="v-code">
+<section class="vignette viz-right" id="v-sequence">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">01 / code</div>
-    <h2 data-link>code</h2>
-    <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
-    <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
-    <a class="cta" href="live.html" data-link>open the repl</a>
-    <div class="aux">built on <a href="https://strudel.cc" target="_blank" rel="noopener noreferrer">strudel</a> / <a href="https://tidalcycles.org" target="_blank" rel="noopener noreferrer">tidalcycles</a></div>
-  </div>
-</section>
-
-<section class="vignette viz-left" id="v-sequence">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <div class="kicker">02 / sequence</div>
+    <div class="kicker">01 / sequence</div>
     <h2 data-link>sequence</h2>
     <span class="badge">coming soon</span>
     <p>a step sequencer with a chord-relative harmonic engine. set a root and a scale, author chords by degree — the rest of the band harmonizes against whatever played last.</p>
@@ -322,10 +297,32 @@
   </div>
 </section>
 
-<section class="vignette viz-right" id="v-visuals">
+<section class="vignette viz-left" id="v-texture">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">03 / visual</div>
+    <div class="kicker">02 / texture</div>
+    <h2 data-link>texture</h2>
+    <p>a loop mangler in the browser — drop any audio file, select the slice you want, pull it apart: vari-speed tape, a granular cloud, a self-oscillating noise filter.</p>
+    <p>print the result as a longer texture wav — one full pass at whatever speed you've bent it to.</p>
+    <a class="cta" href="texture.html" data-link>open the tool</a>
+  </div>
+</section>
+
+<section class="vignette viz-right" id="v-samples">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">03 / sample</div>
+    <h2 data-link>sample</h2>
+    <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
+    <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
+    <a class="cta" href="samples.html" data-link>open the library</a>
+  </div>
+</section>
+
+<section class="vignette viz-left" id="v-visuals">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">04 / visual</div>
     <h2 data-link>visual</h2>
     <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
     <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
@@ -333,14 +330,15 @@
   </div>
 </section>
 
-<section class="vignette viz-left" id="v-samples">
+<section class="vignette viz-right" id="v-code">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">04 / sample</div>
-    <h2 data-link>sample</h2>
-    <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
-    <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
-    <a class="cta" href="samples.html" data-link>open the library</a>
+    <div class="kicker">05 / code</div>
+    <h2 data-link>code</h2>
+    <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
+    <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
+    <a class="cta" href="live.html" data-link>open the repl</a>
+    <div class="aux">built on <a href="https://strudel.cc" target="_blank" rel="noopener noreferrer">strudel</a> / <a href="https://tidalcycles.org" target="_blank" rel="noopener noreferrer">tidalcycles</a></div>
   </div>
 </section>
 
@@ -475,10 +473,7 @@ function buildTexture() {
 
 function resize() {
   dpr = Math.max(1, window.devicePixelRatio || 1);
-  // canvas occupies the visible region only (left 80vw); the right 20vw is
-  // body bg behind the bg-mask. drawing helpers that read viewW automatically
-  // confine themselves to the visible region.
-  viewW = window.innerWidth * 0.8;
+  viewW = window.innerWidth;
   viewH = window.innerHeight;
   canvas.width = Math.floor(viewW * dpr);
   canvas.height = Math.floor(viewH * dpr);
@@ -1721,10 +1716,119 @@ function drawSamplesViz(v, t, dt) {
   c.fillRect(hx, midY - amp - 34, 1, amp * 2 + 60);
 }
 
-registerViz("v-code", drawCodeViz);
+// ---- 02 texture: loop waveform with a live selection window, wrapping
+// playhead (occasionally reversing — the vari-speed tape), grain-cloud
+// flashes around the head, and the ms-precision selection readout ----
+function drawTextureViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  const x0 = w * 0.07, x1 = w * 0.93;
+  if (!state.wave) {
+    const N = Math.max(300, Math.floor(x1 - x0));
+    const wave = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const p = i / N;
+      const envA = 0.3 + 0.7 * Math.abs(Math.sin(p * Math.PI * 3.3 + 0.4));
+      wave[i] = (Math.sin(i * 0.11) * 0.45 + Math.sin(i * 0.021) * 0.3
+        + (Math.random() * 2 - 1) * 0.3) * envA;
+    }
+    state.wave = wave;
+    state.selA = 0.30;
+    state.selB = 0.62;
+    state.pos = 0; // 0..1 within the selection
+    state.dir = 1;
+    state.rate = 0.16; // selection-fractions per second
+    state.grains = []; // {f (file frac), age, life}
+    state.dur = 3.2 + Math.random() * 2.4; // fake file length, seconds
+  }
+  const env = intensity();
+
+  // re-drag the selection now and then — snap, no tween (page vocabulary)
+  if (Math.random() < dt * (0.08 + 0.16 * env)) {
+    const width = 0.14 + Math.random() * 0.38;
+    const start = Math.random() * (1 - width);
+    state.selA = start;
+    state.selB = start + width;
+  }
+  // rare thru-zero flip — the tape reverses
+  if (Math.random() < dt * 0.10) state.dir = -state.dir;
+
+  state.pos += state.dir * state.rate * (0.5 + 0.9 * env) * dt / (state.selB - state.selA);
+  state.pos -= Math.floor(state.pos); // wrap 0..1
+
+  // grain spawns cluster near the head, scattering wider with intensity
+  if (Math.random() < dt * (5 + 14 * env)) {
+    let f = state.selA + state.pos * (state.selB - state.selA)
+      + (Math.random() - 0.5) * 0.35 * (state.selB - state.selA);
+    if (f < state.selA) f += state.selB - state.selA;
+    if (f > state.selB) f -= state.selB - state.selA;
+    state.grains.push({ f, age: 0, life: 0.25 + Math.random() * 0.45 });
+  }
+
+  c.clearRect(0, 0, w, h);
+  const mobile = w < 720;
+  const midY = mobile ? h * 0.27 : h / 2;
+  const amp = h * (mobile ? 0.15 : 0.24);
+  const N = state.wave.length;
+  const px = (f) => x0 + f * (x1 - x0);
+
+  // waveform — bright inside the selection, dim outside
+  for (let i = 0; i < N; i++) {
+    const val = Math.abs(state.wave[i]);
+    if (val < 0.004) continue;
+    const f = i / N;
+    const inside = f >= state.selA && f <= state.selB;
+    c.fillStyle = inside ? "rgba(255, 255, 255, 0.55)" : "rgba(255, 255, 255, 0.14)";
+    c.fillRect(px(f), midY - val * amp, (x1 - x0) / N + 0.5, val * amp * 2);
+  }
+
+  // selection edges + grip tabs
+  c.fillStyle = "rgba(255, 255, 255, 0.8)";
+  for (const f of [state.selA, state.selB]) {
+    const x = px(f);
+    c.fillRect(x, midY - amp - 22, 1, amp * 2 + 44);
+    c.fillRect(x - 4, midY - 1, 8, 2);
+  }
+
+  // grain cloud — parabolic-window flashes
+  for (let i = state.grains.length - 1; i >= 0; i--) {
+    const g = state.grains[i];
+    g.age += dt;
+    if (g.age >= g.life) { state.grains.splice(i, 1); continue; }
+    const tt = g.age / g.life;
+    const a = 4 * tt * (1 - tt) * 0.30;
+    c.fillStyle = `rgba(255, 255, 255, ${a.toFixed(3)})`;
+    c.fillRect(px(g.f) - 3, midY - amp - 10, 6, amp * 2 + 20);
+  }
+
+  // playhead + direction caret
+  const hf = state.selA + state.pos * (state.selB - state.selA);
+  const hx = px(hf);
+  c.fillStyle = "rgba(255, 255, 255, 0.95)";
+  c.fillRect(hx, midY - amp - 30, 1, amp * 2 + 52);
+  c.beginPath();
+  c.moveTo(hx + state.dir * 6, midY - amp - 24);
+  c.lineTo(hx, midY - amp - 30);
+  c.lineTo(hx, midY - amp - 18);
+  c.closePath();
+  c.fill();
+
+  // selection readout, the tool's ms-precision line
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+  c.fillStyle = "rgba(255, 255, 255, 0.4)";
+  const secs = (f) => (f * state.dur).toFixed(3);
+  c.fillText(
+    `${secs(state.selA)}s – ${secs(state.selB)}s · ${secs(state.selB - state.selA)}s · ${state.dir < 0 ? "−" : "+"}1x`,
+    px(state.selA), midY + amp + 34,
+  );
+}
+
 registerViz("v-sequence", drawSeqViz);
-registerViz("v-visuals", drawVisualsViz);
+registerViz("v-texture", drawTextureViz);
 registerViz("v-samples", drawSamplesViz);
+registerViz("v-visuals", drawVisualsViz);
+registerViz("v-code", drawCodeViz);
 
 // ---- link hover: cycle each char through the zxx variants ----
 // bold is intentionally excluded — its glyph metrics differ enough from the

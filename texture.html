@@ -1,0 +1,1123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // texture</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — loop + noise texture processor. Upload a loop, mangle it, print a longer texture.">
+<meta property="og:title" content="NEWSPEECH // texture">
+<meta property="og:description" content="newspeech — loop + noise texture processor.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/texture.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // texture">
+<meta name="twitter:description" content="newspeech — loop + noise texture processor.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    padding: 24px 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    color: #eee;
+    margin: 0 0 4px;
+  }
+  .sub { color: #666; margin: 0 0 20px; }
+
+  /* drop zone + waveform: one block */
+  #dropwave {
+    position: relative;
+    height: 280px;
+    background: #0a0a0a;
+    border: 1px dashed #333;
+    margin-bottom: 14px;
+    transition: border-color 0.15s;
+  }
+  #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
+  #dropwave.drag { border-color: #777; }
+  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #dropprompt {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    cursor: pointer;
+    text-align: center;
+  }
+  #dropwave.drag #dropprompt { color: #ddd; }
+  #dropwave.loaded #dropprompt { display: none; }
+  #fileinfo {
+    position: absolute;
+    top: 8px;
+    left: 10px;
+    color: #888;
+    cursor: pointer;
+    display: none;
+    background: rgba(5,5,5,0.6);
+    padding: 1px 6px;
+  }
+  #fileinfo:hover { color: #ddd; }
+  #dropwave.loaded #fileinfo { display: block; }
+  #fileinfo .fname { color: #ddd; }
+  #selinfo {
+    position: absolute;
+    bottom: 8px;
+    left: 10px;
+    color: #888;
+    display: none;
+    background: rgba(5,5,5,0.6);
+    padding: 1px 6px;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+  #fileinput { display: none; }
+
+  /* transport */
+  #transport { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+  button {
+    font: inherit;
+    background: none;
+    color: #ccc;
+    border: 1px solid #444;
+    padding: 8px 22px;
+    cursor: pointer;
+    letter-spacing: 0.15em;
+  }
+  button:hover { border-color: #999; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .hint { color: #555; }
+
+  /* unit groups — stacked full-width sections */
+  #units { display: flex; flex-direction: column; gap: 14px; }
+  .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; }
+  .group h2 {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.25em;
+    color: #999;
+    margin: 0 0 12px;
+  }
+
+  /* knob rows (mirrors the app's ParamKnob column: knob · label · value · ±dev) */
+  .krow { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .kdivider { align-self: stretch; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px; }
+  .kcol {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    width: 58px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .kcol svg { cursor: ns-resize; touch-action: none; display: block; }
+  .kcol svg:hover .kring { stroke-opacity: 0.22; }
+  .kcol .klabel {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: rgba(255,255,255,0.7);
+    text-align: center;
+  }
+  .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+  .kcol .kdev { font-size: 9px; font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.25); }
+  .kcol .kdev.set { color: rgba(255,255,255,0.6); }
+  .kcol.dim { opacity: 0.3; pointer-events: none; }
+
+  /* modifier toggles: labeled-circle text-only (no border) */
+  .toggle {
+    background: none; border: none; padding: 2px 6px; color: #777;
+    cursor: pointer; letter-spacing: 0.1em;
+  }
+  .toggle:hover { color: #fff; border: none; }
+  /* modifier toggles never take the primary-button filled state — the
+     ○/● glyph is the indicator */
+  .toggle.on { color: #fff; background: none; }
+  .krow .toggle { align-self: center; margin-top: -14px; }
+
+  /* segmented selects (mode, clock, passes) */
+  .seg { display: flex; gap: 4px; margin: 10px 0 0; flex-wrap: wrap; align-items: center; }
+  .seg button { padding: 4px 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.1em; }
+  .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .seg .seglabel { color: #666; padding: 0 4px 0 0; }
+
+  /* playback + granular: one row, sub-groups with their own micro-labels,
+     centered within the container */
+  .row2 { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  .subgroup h2 { margin-bottom: 12px; }
+
+  /* noise: [[visualizer][controls]] */
+  #noiserow { display: flex; gap: 18px; align-items: stretch; flex-wrap: wrap; }
+  #scopecol { flex: 1 1 300px; min-width: 240px; display: flex; gap: 10px; align-items: stretch; }
+  #scope { flex: 1; min-height: 150px; height: 100%; background: #0a0a0a; border: 1px solid #1c1c1c; display: block; min-width: 0; }
+  #noisecontrols { flex: 2 1 460px; min-width: 0; }
+  .leds { display: flex; flex-direction: column; gap: 6px; padding-top: 14px; }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: #222; }
+
+  /* export */
+  #export { margin-top: 20px; border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #export .seg { margin: 0; }
+  #renderinfo { color: #666; }
+  a.back { color: #666; text-decoration: none; }
+  a.back:hover { color: #ddd; }
+</style>
+</head>
+<body>
+
+<h1>NEWSPEECH // TEXTURE</h1>
+<p class="sub">loop + noise — upload a loop, mangle it, print a longer texture &nbsp;·&nbsp; <a class="back" href="index.html">← newspeech</a></p>
+
+<div id="dropwave">
+  <canvas id="wave"></canvas>
+  <div id="dropprompt">drop an audio file here, or click to browse</div>
+  <div id="fileinfo"></div>
+  <div id="selinfo"></div>
+</div>
+<input type="file" id="fileinput" accept="audio/*">
+
+<div id="transport">
+  <button id="play" disabled>PLAY</button>
+  <span class="hint">[space] play/stop &nbsp;·&nbsp; drag on the waveform to select, wheel to zoom, double-click to clear &nbsp;·&nbsp; shift-drag pitch/size/rate for per-grain deviation</span>
+</div>
+
+<div id="units">
+
+  <div class="group" id="g-loopgrain">
+    <div class="row2">
+      <div class="subgroup">
+        <h2>PLAYBACK</h2>
+        <div class="krow" id="loop-knobs">
+          <button class="toggle" id="lock" title="pitch-locked stretch — SPEED becomes pure time for the loop">○ lock</button>
+        </div>
+      </div>
+      <div class="kdivider"></div>
+      <div class="subgroup">
+        <h2>GRANULAR</h2>
+        <div class="krow" id="grain-knobs"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="g-noise">
+    <h2>NOISE</h2>
+    <div id="noiserow">
+      <div id="scopecol">
+        <canvas id="scope"></canvas>
+        <div class="leds"><div class="led" id="ledl"></div><div class="led" id="ledr"></div></div>
+      </div>
+      <div id="noisecontrols">
+        <div class="krow" id="noise-knobs"></div>
+        <div class="seg" id="nsmode">
+          <span class="seglabel">filter</span>
+          <button data-mode="0" class="on">LP</button>
+          <button data-mode="1">BP</button>
+        </div>
+        <div class="seg" id="nsclock">
+          <span class="seglabel">clock</span>
+          <button data-clk="free" class="on">FREE</button>
+          <button data-clk="signal" title="Spektrum-style: ticks from the loop's zero crossings through the divider — silence stops the clock">SIGNAL</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="export">
+  <div class="seg" id="passes">
+    <span class="seglabel">passes</span>
+    <button data-p="1" class="on">×1</button>
+    <button data-p="2">×2</button>
+    <button data-p="4">×4</button>
+    <button data-p="8">×8</button>
+  </div>
+  <button id="render" disabled>RENDER WAV</button>
+  <span id="renderinfo">load a file first</span>
+</div>
+
+<script>
+// texture.html — standalone port of the Sequence app's loop + NOISE units.
+// DSP lives in texture-worklet.js; this file is file I/O, param mapping
+// (the same ladders/curves as sequencer/src/audio/loops.ts + noise.ts,
+// minus everything sync-related), knob UI, viz, and the offline render.
+// The NOISE unit is pinned to PARALLEL routing — the loop feeds the chain
+// and keeps its direct out; with the loop as the only input, the signal
+// clock's self/loop sources collapse into one SIGNAL mode.
+
+// --- ladders + curves (match loops.ts / noise.ts) -----------------------
+const SPEED_LADDER = [-2, -1, -1/2, -1/4, -1/8, -1/16, 0, 1/16, 1/8, 1/4, 1/2, 1, 2];
+const PITCH_LADDER = [-4, -2, -1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2, 4];
+const XING_DIVS = [1, 2, 4, 8, 16, 64];
+const XING_DIV_LABELS = ['/1', '/2', '/4', '/8', '/16', '/64'];
+const rateHzFromKnob = (k) => 0.5 * Math.pow(120, Math.min(1, Math.max(0, k)));
+const clockHzFromKnob = (k) => 0.5 * Math.pow(16000, Math.min(1, Math.max(0, k)));
+const grainSecsFromSize = (s) => 0.02 * Math.pow(90, Math.min(1, Math.max(0, s)));
+const ladder = (arr, k) => arr[Math.round(Math.min(1, Math.max(0, k)) * (arr.length - 1))];
+
+function ratioLabel(v, zero) {
+  if (v === 0) return zero;
+  const a = Math.abs(v);
+  const s = v < 0 ? '−' : '+';
+  return a >= 1 ? `${s}${a}x` : `${s}1/${Math.round(1 / a)}x`;
+}
+
+// --- UI state — everything a knob edits lives in 0..1 knob space, mapped
+// at push time (the app's convention; ladders quantize at read).
+const ui = {
+  speedKnob: 11 / 12, // +1x
+  lock: false,
+  tapeKnob: 1 / 1.5, // level 100
+  pitchKnob: 0.5, // FOLLOW
+  sizeKnob: 0.35,
+  grainsKnob: 3 / 7, // 4 voices
+  rateKnob: Math.log(8 / 0.5) / Math.log(120), // 8 Hz
+  randomKnob: 0,
+  grainLevelKnob: 0,
+  sizeDev: 0,
+  pitchDev: 0,
+  rateDev: 0,
+  driveKnob: 0.25,
+  cutoffKnob: 0.6,
+  resKnob: 0.4,
+  widthKnob: 0,
+  mode: 0,
+  noiseKnob: 0.3,
+  cvKnob: 0.2,
+  clockKnob: Math.log(240 / 0.5) / Math.log(16000), // 240 Hz
+  clockMode: 0, // 0 free timer · 1 signal (loop zero crossings)
+  xDivKnob: 3 / 5, // /8
+  sensKnob: 0.2,
+  nsLevelKnob: 0,
+  passes: 1,
+};
+
+function ctxRate() {
+  return actx ? actx.sampleRate : 48000;
+}
+
+function workletParams() {
+  return {
+    speed: ladder(SPEED_LADDER, ui.speedKnob),
+    pitch: ladder(PITCH_LADDER, ui.pitchKnob),
+    lock: ui.lock,
+    tapeLevel: ui.tapeKnob * 1.5,
+    grainLevel: ui.grainLevelKnob * 1.5,
+    size: ui.sizeKnob,
+    random: ui.randomKnob,
+    grains: 1 + Math.round(ui.grainsKnob * 7),
+    spawnFrames: ctxRate() / rateHzFromKnob(ui.rateKnob),
+    sizeDev: ui.sizeDev,
+    pitchDev: ui.pitchDev,
+    rateDev: ui.rateDev,
+    nsSource: 1, // PARALLEL, pinned
+    nsSpeed: 1,
+    drive: ui.driveKnob,
+    cutoff: ui.cutoffKnob,
+    res: ui.resKnob,
+    width: ui.widthKnob,
+    mode: ui.mode,
+    noiseAmt: ui.noiseKnob,
+    cv: ui.cvKnob,
+    clockFrames: ctxRate() / clockHzFromKnob(ui.clockKnob),
+    clockMode: ui.clockMode,
+    clockSrc: 0, // self-input = the loop feed under PAR
+    clockDiv: ladder(XING_DIVS, ui.xDivKnob),
+    sens: ui.sensKnob,
+    nsLevel: ui.nsLevelKnob * 1.5,
+  };
+}
+
+// --- knobs — same anatomy as the app's Knob.tsx: ring at 12% white, 270°
+// value arc (bipolar fills from center), tick, vertical drag (100px/unit),
+// wheel steps, shift-drag = per-control deviation with a ±nn readout.
+const SVGNS = 'http://www.w3.org/2000/svg';
+const KNOB_SIZE = 40;
+const DEV_DRAG_PX = 150;
+const knobs = {}; // k → {update}
+
+function fmtLevel(k) { return Math.round(ui[k] * 150) + ''; }
+function fmtPct(k) { return Math.round(ui[k] * 100) + ''; }
+
+const KNOB_SPECS = [
+  { group: 'loop-knobs', k: 'speedKnob', label: 'speed', bipolar: true, steps: 13,
+    fmt: () => ratioLabel(ladder(SPEED_LADDER, ui.speedKnob), 'stop'),
+    title: 'thru-zero vari-speed, octave ladder — negative = reverse, center = stop' },
+  { group: 'loop-knobs', k: 'tapeKnob', label: 'level', fmt: () => fmtLevel('tapeKnob') },
+  { group: 'grain-knobs', k: 'pitchKnob', label: 'pitch', bipolar: true, steps: 11, dev: 'pitchDev',
+    fmt: () => { const v = ladder(PITCH_LADDER, ui.pitchKnob); return v === 0 ? 'follow' : ratioLabel(v, ''); },
+    title: 'grain pitch — center FOLLOWS speed; fixed pitch under a slow playhead = timestretch · shift-drag: per-grain deviation in octaves' },
+  { group: 'grain-knobs', k: 'sizeKnob', label: 'size', dev: 'sizeDev',
+    fmt: () => { const s = grainSecsFromSize(ui.sizeKnob); return s >= 1 ? s.toFixed(2) + 's' : Math.round(s * 1000) + 'ms'; },
+    title: 'grain length 20ms–1.8s · shift-drag: per-grain deviation in length octaves' },
+  { group: 'grain-knobs', k: 'grainsKnob', label: 'grains', steps: 8,
+    fmt: () => (1 + Math.round(ui.grainsKnob * 7)) + '',
+    title: 'concurrent grain voices 1–8' },
+  { group: 'grain-knobs', k: 'rateKnob', label: 'rate', dev: 'rateDev',
+    fmt: () => rateHzFromKnob(ui.rateKnob).toFixed(1) + 'Hz',
+    title: 'grain spawn rate 0.5–60Hz · shift-drag: spawn-timing jitter' },
+  { group: 'grain-knobs', k: 'randomKnob', label: 'random', fmt: () => fmtPct('randomKnob'),
+    title: 'start-point randomness — 0 = grains at the playhead, full = anywhere in the loop' },
+  { group: 'grain-knobs', k: 'grainLevelKnob', label: 'level', fmt: () => fmtLevel('grainLevelKnob') },
+  { group: 'noise-knobs', k: 'driveKnob', label: 'drive',
+    fmt: () => (1 + ui.driveKnob * 23).toFixed(1) + 'x',
+    title: 'input gain into the filter — pushing it is the sound' },
+  { group: 'noise-knobs', k: 'cutoffKnob', label: 'cutoff',
+    fmt: () => { const hz = 40 * Math.pow(300, ui.cutoffKnob); return hz >= 1000 ? (hz / 1000).toFixed(1) + 'k' : Math.round(hz) + 'Hz'; } },
+  { group: 'noise-knobs', k: 'resKnob', label: 'res', fmt: () => fmtPct('resKnob') },
+  { group: 'noise-knobs', k: 'widthKnob', label: 'width', fmt: () => fmtPct('widthKnob'),
+    title: 'L/R resonance offset — stereo instability' },
+  { group: 'noise-knobs', divider: true },
+  { group: 'noise-knobs', k: 'noiseKnob', label: 'noise', fmt: () => fmtPct('noiseKnob'),
+    title: 'clocked digital noise into the audio path' },
+  { group: 'noise-knobs', k: 'cvKnob', label: 'cv', fmt: () => fmtPct('cvKnob'),
+    title: 'clocked noise into cutoff — ±2 octaves at full' },
+  { group: 'noise-knobs', divider: true },
+  { group: 'noise-knobs', k: 'clockKnob', label: 'clock',
+    fmt: () => { const hz = clockHzFromKnob(ui.clockKnob); return hz >= 1000 ? (hz / 1000).toFixed(1) + 'kHz' : hz.toFixed(1) + 'Hz'; },
+    title: 'free clock 0.5Hz–8kHz — slow = stepped blips, audio-rate = pitched digital hash' },
+  { group: 'noise-knobs', k: 'xDivKnob', label: 'div',
+    fmt: () => XING_DIV_LABELS[Math.round(ui.xDivKnob * 5)],
+    title: 'signal clock: loop zero crossings per tick' },
+  { group: 'noise-knobs', k: 'sensKnob', label: 'sens', fmt: () => fmtPct('sensKnob'),
+    title: 'crossing hysteresis — gates the clock to loud material' },
+  { group: 'noise-knobs', divider: true },
+  { group: 'noise-knobs', k: 'nsLevelKnob', label: 'level', fmt: () => fmtLevel('nsLevelKnob') },
+];
+
+function buildKnob(spec) {
+  const col = document.createElement('div');
+  col.className = 'kcol';
+  col.dataset.kn = spec.k;
+
+  const s = KNOB_SIZE;
+  const cx = s / 2, cy = s / 2;
+  const ringR = s * 0.36;
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('width', s);
+  svg.setAttribute('height', s);
+  svg.setAttribute('viewBox', `0 0 ${s} ${s}`);
+  if (spec.title) {
+    const t = document.createElementNS(SVGNS, 'title');
+    t.textContent = spec.title;
+    svg.appendChild(t);
+  }
+  const ring = document.createElementNS(SVGNS, 'circle');
+  ring.setAttribute('cx', cx);
+  ring.setAttribute('cy', cy);
+  ring.setAttribute('r', ringR);
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', 'white');
+  ring.setAttribute('stroke-opacity', '0.12');
+  ring.setAttribute('stroke-width', '1');
+  ring.setAttribute('class', 'kring');
+  const arc = document.createElementNS(SVGNS, 'path');
+  arc.setAttribute('fill', 'none');
+  arc.setAttribute('stroke', 'white');
+  arc.setAttribute('stroke-opacity', '0.7');
+  arc.setAttribute('stroke-width', '1.75');
+  arc.setAttribute('stroke-linecap', 'round');
+  const tick = document.createElementNS(SVGNS, 'line');
+  tick.setAttribute('stroke', 'white');
+  tick.setAttribute('stroke-opacity', '0.9');
+  tick.setAttribute('stroke-width', '1.75');
+  tick.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(ring);
+  svg.appendChild(arc);
+  svg.appendChild(tick);
+
+  const label = document.createElement('span');
+  label.className = 'klabel';
+  label.textContent = spec.label;
+  const val = document.createElement('span');
+  val.className = 'kval';
+  col.appendChild(svg);
+  col.appendChild(label);
+  col.appendChild(val);
+  let devEl = null;
+  if (spec.dev) {
+    devEl = document.createElement('span');
+    devEl.className = 'kdev';
+    devEl.title = 'deviation — shift-drag the knob; each grain rolls its own value in ±this range';
+    col.appendChild(devEl);
+  }
+
+  function draw() {
+    const v = Math.min(1, Math.max(0, ui[spec.k]));
+    const angleDeg = -135 + 270 * v;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const tickInner = s * 0.17;
+    tick.setAttribute('x1', cx + tickInner * Math.sin(angleRad));
+    tick.setAttribute('y1', cy - tickInner * Math.cos(angleRad));
+    tick.setAttribute('x2', cx + ringR * Math.sin(angleRad));
+    tick.setAttribute('y2', cy - ringR * Math.cos(angleRad));
+    const startDeg = spec.bipolar ? 0 : -135;
+    const drawArc = spec.bipolar ? Math.abs(v - 0.5) > 0.001 : v > 0;
+    if (drawArc) {
+      const startRad = (startDeg * Math.PI) / 180;
+      const sweep = angleDeg >= startDeg ? 1 : 0;
+      const largeArc = Math.abs(angleDeg - startDeg) > 180 ? 1 : 0;
+      arc.setAttribute('d',
+        `M ${cx + ringR * Math.sin(startRad)} ${cy - ringR * Math.cos(startRad)} ` +
+        `A ${ringR} ${ringR} 0 ${largeArc} ${sweep} ` +
+        `${cx + ringR * Math.sin(angleRad)} ${cy - ringR * Math.cos(angleRad)}`);
+      arc.setAttribute('visibility', 'visible');
+    } else {
+      arc.setAttribute('visibility', 'hidden');
+    }
+    val.textContent = spec.fmt();
+    if (devEl) {
+      devEl.textContent = '±' + Math.round(ui[spec.dev] * 100);
+      devEl.classList.toggle('set', ui[spec.dev] > 0);
+    }
+  }
+
+  function setValue(next) {
+    const v = Math.min(1, Math.max(0, next));
+    if (v === ui[spec.k]) return;
+    ui[spec.k] = v;
+    draw();
+    onKnobChange(spec.k);
+  }
+
+  svg.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    if (e.shiftKey && spec.dev) {
+      const startDev = ui[spec.dev];
+      const onMove = (ev) => {
+        ui[spec.dev] = Math.min(1, Math.max(0, startDev + (startY - ev.clientY) / DEV_DRAG_PX));
+        draw();
+        onKnobChange(spec.dev);
+      };
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      return;
+    }
+    const startVal = ui[spec.k];
+    const onMove = (ev) => setValue(startVal + (startY - ev.clientY) / 100);
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    // Stepped knobs wheel one ladder position; continuous wheel 5%.
+    const step = spec.steps ? 1 / (spec.steps - 1) : 0.05;
+    setValue(ui[spec.k] + (e.deltaY > 0 ? -step : step));
+  }, { passive: false });
+
+  knobs[spec.k] = { draw, setValue };
+  draw();
+  return col;
+}
+
+for (const spec of KNOB_SPECS) {
+  const parent = document.getElementById(spec.group);
+  if (spec.divider) {
+    const d = document.createElement('div');
+    d.className = 'kdivider';
+    parent.appendChild(d);
+  } else {
+    parent.appendChild(buildKnob(spec));
+  }
+}
+// LOCK sits between SPEED and LEVEL in the playback row.
+document.getElementById('loop-knobs').insertBefore(
+  document.querySelector('[data-kn="speedKnob"]'),
+  document.getElementById('lock'),
+);
+
+function onKnobChange(k) {
+  if (k === 'speedKnob' || k === 'grainLevelKnob') updateRenderInfo();
+  pushParams();
+}
+
+// Dim whichever clock knobs the mode isn't using.
+function refreshClockDim() {
+  document.querySelector('[data-kn="clockKnob"]').classList.toggle('dim', ui.clockMode !== 0);
+  document.querySelector('[data-kn="xDivKnob"]').classList.toggle('dim', ui.clockMode !== 1);
+  document.querySelector('[data-kn="sensKnob"]').classList.toggle('dim', ui.clockMode !== 1);
+}
+refreshClockDim();
+
+// --- audio plumbing -------------------------------------------------------
+let actx = null;
+let node = null;
+let fileL = null, fileR = null; // Float32Arrays at actx rate
+let fileName = '';
+let fileDur = 0;
+let playing = false;
+// Selection window as fractions of the file — the unit works within this
+// span (playback, grains, noise head, export all wrap inside it).
+let selA = 0, selB = 1;
+// Zoom view as fractions of the file — display only, never affects audio.
+let viewA = 0, viewB = 1;
+
+function viewSpan() {
+  return viewB - viewA;
+}
+
+// file fraction ↔ view pixel-fraction
+const toView = (f) => (f - viewA) / viewSpan();
+
+function selSecs() {
+  return fileDur * (selB - selA);
+}
+
+function pushWindow() {
+  if (!node || !fileL) return;
+  node.port.postMessage({
+    type: 'window',
+    start: Math.round(selA * fileL.length),
+    len: Math.max(2, Math.round((selB - selA) * fileL.length)),
+  });
+}
+
+async function ensureAudio() {
+  if (actx) return;
+  actx = new AudioContext();
+  await actx.audioWorklet.addModule('texture-worklet.js');
+  node = new AudioWorkletNode(actx, 'texture', {
+    numberOfInputs: 0,
+    outputChannelCount: [2],
+  });
+  node.connect(actx.destination);
+  node.port.onmessage = (e) => {
+    if (e.data.type === 'viz') {
+      lastViz = e.data;
+      if (e.data.scope) latestScope = e.data.scope;
+    }
+  };
+  node.port.postMessage({ type: 'params', p: workletParams() });
+}
+
+function pushParams() {
+  if (node) node.port.postMessage({ type: 'params', p: workletParams() });
+}
+
+async function loadFile(file) {
+  await ensureAudio();
+  const bytes = await file.arrayBuffer();
+  let buf;
+  try {
+    buf = await actx.decodeAudioData(bytes);
+  } catch (err) {
+    document.getElementById('dropprompt').textContent =
+      `couldn't decode "${file.name}" — try a wav/mp3/m4a`;
+    return;
+  }
+  fileL = buf.getChannelData(0);
+  fileR = buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0);
+  fileName = file.name.replace(/\.[^.]+$/, '');
+  fileDur = buf.duration;
+  selA = 0;
+  selB = 1;
+  viewA = 0;
+  viewB = 1;
+  updateSelInfo();
+  node.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
+  pushParams(); // spawnFrames/clockFrames depend on the real ctx rate
+  document.getElementById('dropwave').classList.add('loaded');
+  document.getElementById('fileinfo').innerHTML =
+    `<span class="fname">${file.name}</span> · ${fileDur.toFixed(2)}s · ${buf.numberOfChannels}ch · replace`;
+  document.getElementById('play').disabled = false;
+  document.getElementById('render').disabled = false;
+  drawPeaks();
+  updateRenderInfo();
+}
+
+async function togglePlay() {
+  if (!actx || !fileL) return;
+  await actx.resume();
+  playing = !playing;
+  node.port.postMessage({ type: 'play', on: playing });
+  const b = document.getElementById('play');
+  b.textContent = playing ? 'STOP' : 'PLAY';
+  b.classList.toggle('on', playing);
+}
+
+// --- offline render → WAV -------------------------------------------------
+// Export = one full musical pass at current speed (the app's SAVE rule):
+// a 1/16x stretch of a 4s file prints 64s — the whole unfolding. At the
+// stop detent there's no pass period; fall back to the source length.
+// PASSES multiplies for longer prints.
+function passSeconds() {
+  const mag = Math.abs(ladder(SPEED_LADDER, ui.speedKnob));
+  return mag > 0.001 ? selSecs() / mag : selSecs();
+}
+
+function updateRenderInfo() {
+  const info = document.getElementById('renderinfo');
+  if (!fileL) { info.textContent = 'load a file first'; return; }
+  const secs = passSeconds() * ui.passes;
+  const selNote = selB - selA < 0.9999 ? ` of the ${selSecs().toFixed(2)}s selection` : '';
+  info.textContent = `prints ${secs.toFixed(1)}s — one pass${selNote} at current speed × ${ui.passes}`;
+}
+
+let rendering = false;
+async function renderWav() {
+  if (!fileL || rendering) return;
+  rendering = true;
+  const btn = document.getElementById('render');
+  btn.textContent = 'RENDERING···';
+  btn.disabled = true;
+  try {
+    const sr = ctxRate();
+    const total = Math.max(1, Math.round(passSeconds() * ui.passes * sr));
+    const oc = new OfflineAudioContext(2, total, sr);
+    await oc.audioWorklet.addModule('texture-worklet.js');
+    const n = new AudioWorkletNode(oc, 'texture', {
+      numberOfInputs: 0,
+      outputChannelCount: [2],
+    });
+    n.connect(oc.destination);
+    const ready = new Promise((res) => {
+      n.port.onmessage = (e) => { if (e.data.type === 'ready') res(); };
+    });
+    n.port.postMessage({ type: 'vizOn', on: false });
+    n.port.postMessage({ type: 'params', p: workletParams() });
+    n.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
+    n.port.postMessage({
+      type: 'window',
+      start: Math.round(selA * fileL.length),
+      len: Math.max(2, Math.round((selB - selA) * fileL.length)),
+    });
+    await ready;
+    n.port.postMessage({ type: 'play', on: true });
+    const rendered = await oc.startRendering();
+    const blob = encodeWav32f(rendered);
+    const secs = Math.round(rendered.duration);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `texture-${fileName}-${secs}s.wav`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } finally {
+    rendering = false;
+    btn.textContent = 'RENDER WAV';
+    btn.disabled = false;
+  }
+}
+
+// 32-bit float stereo WAV (format 3) — same shape the app's bounce writes.
+function encodeWav32f(buf) {
+  const nCh = 2;
+  const n = buf.length;
+  const sr = buf.sampleRate;
+  const dataBytes = n * nCh * 4;
+  const ab = new ArrayBuffer(44 + dataBytes);
+  const dv = new DataView(ab);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF');
+  dv.setUint32(4, 36 + dataBytes, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 3, true); // IEEE float
+  dv.setUint16(22, nCh, true);
+  dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * nCh * 4, true);
+  dv.setUint16(32, nCh * 4, true);
+  dv.setUint16(34, 32, true);
+  str(36, 'data');
+  dv.setUint32(40, dataBytes, true);
+  const l = buf.getChannelData(0);
+  const r = buf.numberOfChannels > 1 ? buf.getChannelData(1) : l;
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    dv.setFloat32(off, l[i], true);
+    dv.setFloat32(off + 4, r[i], true);
+    off += 8;
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+// --- waveform + scope viz --------------------------------------------------
+const wave = document.getElementById('wave');
+const scope = document.getElementById('scope');
+let peaks = null; // Float32Array of [min,max] pairs
+let lastViz = null;
+let latestScope = null;
+let ledL = 0, ledR = 0;
+
+function sizeCanvas(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const r = c.getBoundingClientRect();
+  c.width = Math.max(1, Math.round(r.width * dpr));
+  c.height = Math.max(1, Math.round(r.height * dpr));
+}
+
+// Peaks over the current VIEW — recomputed on zoom/pan (≤64 subsampled
+// reads per column, cheap enough to run on every wheel event).
+function drawPeaks() {
+  if (!fileL) return;
+  const cols = 768;
+  peaks = new Float32Array(cols * 2);
+  const start = viewA * fileL.length;
+  const per = (viewSpan() * fileL.length) / cols;
+  for (let c = 0; c < cols; c++) {
+    const i0 = Math.floor(start + c * per);
+    const i1 = Math.max(i0 + 1, Math.min(fileL.length, Math.floor(start + (c + 1) * per)));
+    const step = Math.max(1, Math.floor((i1 - i0) / 64));
+    let mn = Infinity, mx = -Infinity;
+    for (let i = i0; i < i1; i += step) {
+      const s = 0.5 * (fileL[i] + fileR[i]);
+      if (s < mn) mn = s;
+      if (s > mx) mx = s;
+    }
+    if (mn > mx) { mn = 0; mx = 0; }
+    peaks[c * 2] = mn;
+    peaks[c * 2 + 1] = mx;
+  }
+}
+
+function drawWave() {
+  const ctx = wave.getContext('2d');
+  const W = wave.width, H = wave.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!peaks) return;
+  const cols = peaks.length / 2;
+  const mid = H / 2;
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  for (let c = 0; c < cols; c++) {
+    const x = (c / cols) * W;
+    const w = W / cols + 0.5;
+    const y0 = mid - peaks[c * 2 + 1] * mid * 0.92;
+    const y1 = mid - peaks[c * 2] * mid * 0.92;
+    ctx.fillRect(x, y0, w, Math.max(1, y1 - y0));
+  }
+  // selection window: dim outside, edge handles (all in view space)
+  const hasSel = selA > 0.0001 || selB < 0.9999;
+  const dpr = window.devicePixelRatio || 1;
+  if (hasSel) {
+    const xa = Math.max(0, Math.min(1, toView(selA))) * W;
+    const xb = Math.max(0, Math.min(1, toView(selB))) * W;
+    ctx.fillStyle = 'rgba(5,5,5,0.75)';
+    ctx.fillRect(0, 0, xa, H);
+    ctx.fillRect(xb, 0, W - xb, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    for (const f of [selA, selB]) {
+      const v = toView(f);
+      if (v < 0 || v > 1) continue;
+      const x = v * W;
+      ctx.fillRect(x - dpr / 2, 0, dpr, H);
+      ctx.fillRect(x - 4 * dpr, H / 2 - dpr, 8 * dpr, 2 * dpr); // grip tab
+    }
+  }
+  if (lastViz && lastViz.pos >= 0) {
+    // grain cloud: width from SIZE, brightness from live window level
+    const gw = Math.max(2, (grainSecsFromSize(ui.sizeKnob) / fileDur / viewSpan()) * W);
+    for (let i = 0; i < 8; i++) {
+      const gp = lastViz.grains[i * 2];
+      const ge = lastViz.grains[i * 2 + 1];
+      if (gp < 0 || ge <= 0) continue;
+      const v = toView(selA + gp * (selB - selA));
+      if (v < -0.05 || v > 1.05) continue;
+      ctx.fillStyle = `rgba(255,255,255,${(0.10 + 0.4 * ge) * Math.min(1, ui.grainLevelKnob * 1.5)})`;
+      ctx.fillRect(v * W - gw / 2, 0, gw, H);
+    }
+    // playhead + direction caret (window-relative pos mapped into the file)
+    const pv = toView(selA + lastViz.pos * (selB - selA));
+    if (pv >= 0 && pv <= 1) {
+      const x = pv * W;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(x, 0, Math.max(1, dpr), H);
+      const dir = Math.sign(ladder(SPEED_LADDER, ui.speedKnob));
+      if (dir !== 0) {
+        const s = 5 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(x + dir * s, 6 + s);
+        ctx.lineTo(x, 6);
+        ctx.lineTo(x, 6 + 2 * s);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+  // minimap strip when zoomed: full-file extent, view brighter, selection tick
+  if (viewSpan() < 0.9999) {
+    const mh = 5 * dpr;
+    const y = H - mh;
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(0, y, W, mh);
+    if (hasSel) {
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.fillRect(selA * W, y, Math.max(1, (selB - selA) * W), mh);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(viewA * W, y, Math.max(2, viewSpan() * W), mh);
+  }
+}
+
+// Oscilloscope: full redraw of the last ~43ms trace each frame. Min/max
+// bins keep single-sample pings visible; a pinned saturator reads as a
+// square wave instead of a solid block.
+function drawScope() {
+  const ctx = scope.getContext('2d');
+  const W = scope.width, H = scope.height;
+  ctx.clearRect(0, 0, W, H);
+  const mid = H / 2;
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  if (!latestScope) {
+    ctx.fillRect(0, mid, W, 1);
+    return;
+  }
+  const bins = latestScope.length / 2;
+  const bw = W / bins;
+  let prevMid = mid;
+  for (let b = 0; b < bins; b++) {
+    const x = b * bw;
+    const y0 = mid - latestScope[b * 2 + 1] * mid * 0.9;
+    const y1 = mid - latestScope[b * 2] * mid * 0.9;
+    // connect to the previous bin so sparse traces read as a line
+    const top = Math.min(y0, prevMid);
+    const bot = Math.max(y1, prevMid);
+    ctx.fillRect(x, top, Math.max(1, bw), Math.max(1, bot - top));
+    prevMid = (y0 + y1) / 2;
+  }
+}
+
+function frame() {
+  drawWave();
+  drawScope();
+  if (lastViz) {
+    ledL = Math.max(ledL * 0.92, lastViz.pingL || 0);
+    ledR = Math.max(ledR * 0.92, lastViz.pingR || 0);
+    lastViz.pingL = 0;
+    lastViz.pingR = 0;
+  }
+  document.getElementById('ledl').style.background = `rgba(255,255,255,${0.08 + ledL * 0.9})`;
+  document.getElementById('ledr').style.background = `rgba(255,255,255,${0.08 + ledR * 0.9})`;
+  requestAnimationFrame(frame);
+}
+
+// --- wiring -----------------------------------------------------------------
+const dropwave = document.getElementById('dropwave');
+const fileinput = document.getElementById('fileinput');
+document.getElementById('dropprompt').addEventListener('click', () => fileinput.click());
+document.getElementById('fileinfo').addEventListener('click', () => fileinput.click());
+fileinput.addEventListener('change', () => {
+  if (fileinput.files[0]) void loadFile(fileinput.files[0]);
+});
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropwave.classList.add('drag');
+});
+document.addEventListener('dragleave', () => dropwave.classList.remove('drag'));
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropwave.classList.remove('drag');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) void loadFile(f);
+});
+
+// --- selection window: drag on the waveform to select, drag the edge
+// handles to adjust, double-click to clear. A click that never becomes a
+// real drag RESTORES the previous selection — zoomed-in fine-tuning
+// shouldn't be lost to a stray click. Wheel zooms around the cursor;
+// horizontal wheel (trackpad) pans.
+let dragMode = null; // 'start' | 'end' | 'new'
+let dragAnchor = 0;
+let dragPrev = null; // [selA, selB] to restore on an aborted 'new' drag
+const HANDLE_PX = 8;
+
+function minSelFrac() {
+  // ≥50ms so the loop engine always has a real window to chew on
+  return Math.min(0.5, 0.05 / Math.max(0.05, fileDur));
+}
+
+function fracFromEvent(e) {
+  const r = wave.getBoundingClientRect();
+  const vx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  return Math.min(1, Math.max(0, viewA + vx * viewSpan()));
+}
+
+function updateSelInfo() {
+  const el = document.getElementById('selinfo');
+  const hasSel = fileL && (selA > 0.0001 || selB < 0.9999);
+  el.style.display = hasSel ? 'block' : 'none';
+  if (hasSel) {
+    el.textContent =
+      `${(selA * fileDur).toFixed(3)}s – ${(selB * fileDur).toFixed(3)}s · ${selSecs().toFixed(3)}s`;
+  }
+}
+
+function selChanged() {
+  // degenerate mid-drag spans stay visual-only; the engine gets real windows
+  if (selB - selA >= minSelFrac() || (selA === 0 && selB === 1)) pushWindow();
+  updateRenderInfo();
+  updateSelInfo();
+}
+
+function onSelDrag(e) {
+  const f = fracFromEvent(e);
+  if (dragMode === 'start') selA = Math.min(f, selB - minSelFrac());
+  else if (dragMode === 'end') selB = Math.max(f, selA + minSelFrac());
+  else {
+    selA = Math.min(dragAnchor, f);
+    selB = Math.max(dragAnchor, f);
+  }
+  selA = Math.max(0, selA);
+  selB = Math.min(1, selB);
+  selChanged();
+}
+
+function handleHit(e) {
+  const r = wave.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  const hasSel = selA > 0.0001 || selB < 0.9999;
+  if (!hasSel) return null;
+  const xa = toView(selA) * r.width;
+  const xb = toView(selB) * r.width;
+  if (Math.abs(x - xa) <= HANDLE_PX) return 'start';
+  if (Math.abs(x - xb) <= HANDLE_PX) return 'end';
+  return null;
+}
+
+wave.addEventListener('pointerdown', (e) => {
+  if (!fileL) return;
+  e.preventDefault();
+  const hit = handleHit(e);
+  if (hit) dragMode = hit;
+  else {
+    dragMode = 'new';
+    dragPrev = [selA, selB];
+    dragAnchor = fracFromEvent(e);
+    selA = dragAnchor;
+    selB = dragAnchor;
+  }
+  wave.setPointerCapture(e.pointerId);
+  onSelDrag(e);
+});
+wave.addEventListener('pointermove', (e) => {
+  if (dragMode) { onSelDrag(e); return; }
+  if (!fileL) return;
+  wave.style.cursor = handleHit(e) ? 'ew-resize' : 'crosshair';
+});
+wave.addEventListener('pointerup', () => {
+  if (!dragMode) return;
+  const wasNew = dragMode === 'new';
+  dragMode = null;
+  if (selB - selA < minSelFrac()) {
+    // never became a real selection — put the old one back
+    if (wasNew && dragPrev) { [selA, selB] = dragPrev; }
+    else { selA = 0; selB = 1; }
+    selChanged();
+  }
+  dragPrev = null;
+});
+wave.addEventListener('dblclick', () => {
+  if (!fileL) return;
+  selA = 0;
+  selB = 1;
+  selChanged();
+});
+
+wave.addEventListener('wheel', (e) => {
+  if (!fileL) return;
+  e.preventDefault();
+  const r = wave.getBoundingClientRect();
+  const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  const minSpan = Math.max(200 / fileL.length, 1e-6);
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    const shift = (e.deltaX / r.width) * viewSpan();
+    viewA = Math.max(0, Math.min(1 - viewSpan(), viewA + shift));
+    viewB = viewA + Math.min(1, viewSpan());
+  } else {
+    // zoom around the cursor: the file position under the pointer stays put
+    const center = viewA + fx * viewSpan();
+    let span = viewSpan() * Math.exp(e.deltaY * 0.002);
+    span = Math.min(1, Math.max(minSpan, span));
+    viewA = center - fx * span;
+    viewB = viewA + span;
+    if (viewA < 0) { viewB -= viewA; viewA = 0; }
+    if (viewB > 1) { viewA -= viewB - 1; viewB = 1; }
+  }
+  drawPeaks();
+}, { passive: false });
+
+document.getElementById('lock').addEventListener('click', (e) => {
+  ui.lock = !ui.lock;
+  e.currentTarget.classList.toggle('on', ui.lock);
+  e.currentTarget.textContent = `${ui.lock ? '●' : '○'} lock`;
+  pushParams();
+});
+
+function segWire(id, attr, cb) {
+  const seg = document.getElementById(id);
+  seg.querySelectorAll('button').forEach((b) => {
+    b.addEventListener('click', () => {
+      seg.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      cb(b.dataset[attr]);
+      pushParams();
+    });
+  });
+}
+segWire('nsmode', 'mode', (v) => { ui.mode = parseInt(v, 10); });
+segWire('nsclock', 'clk', (v) => {
+  ui.clockMode = v === 'free' ? 0 : 1;
+  refreshClockDim();
+});
+segWire('passes', 'p', (v) => { ui.passes = parseInt(v, 10); updateRenderInfo(); });
+
+document.getElementById('play').addEventListener('click', () => void togglePlay());
+document.getElementById('render').addEventListener('click', () => void renderWav());
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && e.target === document.body) {
+    e.preventDefault();
+    void togglePlay();
+  }
+});
+
+window.addEventListener('resize', () => { sizeCanvas(wave); sizeCanvas(scope); });
+sizeCanvas(wave);
+sizeCanvas(scope);
+updateRenderInfo();
+requestAnimationFrame(frame);
+
+// Debug/test hook — set a knob (0..1 knob space) as if dragged, or the
+// selection window as fractions of the file.
+window.texture = {
+  ui,
+  setKnob(k, v) {
+    if (knobs[k]) knobs[k].setValue(v);
+    else { ui[k] = v; pushParams(); }
+  },
+  setSelection(a, b) {
+    selA = Math.max(0, Math.min(1, a));
+    selB = Math.max(selA, Math.min(1, b));
+    selChanged();
+  },
+  getSelection() { return [selA, selB]; },
+  getView() { return [viewA, viewB]; },
+};
+</script>
+</body>
+</html>
