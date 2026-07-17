@@ -309,7 +309,7 @@ ${headBlock({ title: meta.title, description: meta.dek || meta.title, url, ogIma
 <body>
   <script src="../nav.js"></script>
   <header class="post-head">
-    <a class="kicker" href="../news.html">NEWSPEECH // NEWS</a>
+    <a class="kicker" href="../news.html">// NEWS</a>
     <h1 class="title">${esc(meta.title)}</h1>
     <p class="sub">${meta.date}${meta.dek ? ` &nbsp;·&nbsp; ${esc(meta.dek)}` : ""}</p>
   </header>${featured}
@@ -430,7 +430,7 @@ ${headBlock({ title: "news", description: "newspeech — news, releases, and pro
 </head>
 <body>
   <script src="nav.js"></script>
-  <h1>NEWSPEECH // NEWS</h1>
+  <h1>// NEWS</h1>
   <p class="sub">news, releases, and process notes &nbsp;·&nbsp; ${posts.length} ${posts.length === 1 ? "post" : "posts"} &nbsp;·&nbsp; <a href="feed.xml">rss</a></p>
   <div id="posts">
 ${rows}
