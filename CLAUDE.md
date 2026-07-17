@@ -9,6 +9,7 @@ Static site for audio/video experimentation. Plain HTML/CSS/JS — no build step
 - `visualizers.html` — index linking to numbered visualizer pages.
 - `N-name.html` — individual visualizers (`1-streaks.html`, `2-static.html`, …), each a fullscreen `<canvas id="bg">`.
 - `core.js` — shared visualizer infrastructure (mouse/audio/timing inputs, params panel, visual helpers). Loaded by every `N-*.html` before its inline script.
+- `posts/*.md` — news posts (frontmatter: `title`, `date`, `dek`, optional `image`/`image_alt`/`image_caption`; assets in `posts/assets/`). `tools/build-news.mjs` (run by `build.sh`, outputs gitignored) emits `news/<slug>.html` per post, a `news.html` index, and `feed.xml`. Post layout: title block 960px / featured image 1280px / body copy 720px. The markdown body is a small subset plus raw-HTML passthrough (a block starting with `<` passes through until a blank line) — that's how audio/video/iframes embed; wrap iframes in `<div class="video">` for 16:9, use `<figure class="wide">` to break body media out to 1280px. Chris writes post copy himself.
 
 ## Visualizer page anatomy
 

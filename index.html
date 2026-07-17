@@ -48,10 +48,83 @@
   }
 
   /* nav bar is fixed above; subscribe dialog centers (margin:auto) over the
-     full-height visualizer */
+     visualizer. 80svh (not the vignette's 100) so the news block below
+     peeks into the first viewport. */
   #hero {
     display: flex;
     flex-direction: column;
+    height: 80vh;
+    height: 80svh;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  /* ---- home news block: latest 3 posts, injected from news-latest.html ---- */
+  #home-news {
+    scroll-snap-align: start;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    display: none; /* shown once the snippet fetch lands */
+  }
+  #home-news .hn-inner {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 56px 20px 64px;
+  }
+  #home-news .news-kicker {
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    color: #eee;
+    margin: 0 0 28px;
+  }
+  #home-news .post-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    color: inherit;
+    text-decoration: none;
+    padding: 12px 10px;
+    margin: 0 -10px;
+    transition: background 80ms ease;
+  }
+  #home-news .post-row:hover { background: rgba(255, 255, 255, 0.05); }
+  #home-news .thumb {
+    width: 112px;
+    aspect-ratio: 16 / 10;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  #home-news .thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: grayscale(1);
+    opacity: 0.75;
+    transition: opacity 80ms ease;
+  }
+  #home-news .post-row:hover .thumb img { opacity: 1; }
+  #home-news .txt { min-width: 0; }
+  #home-news .line { display: flex; align-items: baseline; gap: 24px; }
+  #home-news .date { color: #666; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  #home-news .ttl { color: rgba(255, 255, 255, 0.9); letter-spacing: 0.04em; }
+  #home-news .post-row:hover .ttl { color: #fff; }
+  #home-news .dek { display: block; color: #666; font-size: 12px; margin-top: 3px; }
+  #home-news .all-posts {
+    display: inline-block;
+    margin-top: 22px;
+    font-size: 12px;
+    color: #666;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  #home-news .all-posts:hover { color: #ddd; border-bottom-color: rgba(255, 255, 255, 0.7); }
+  @media (max-width: 640px) {
+    #home-news .post-row { gap: 14px; }
+    #home-news .thumb { width: 84px; }
+    #home-news .line { flex-direction: column; gap: 2px; }
   }
 
   /* full-bleed hero canvas. absolute (not fixed) so the hero scrolls away
@@ -140,6 +213,15 @@
   /* ---- feature vignettes ---- */
   /* same construction as the hero: viz canvas confined to one side, a solid
      panel (the copy) hard-masks the other — alternating sides per section. */
+  /* 1px separator after every feature vignette + alternating background:
+     viz-left sections (02/04) lift to --panel; the copy mask follows it. */
+  .vignette.viz-right, .vignette.viz-left {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  }
+  .vignette.viz-left {
+    --panel: #0a0a0a;
+    background: var(--panel);
+  }
   .vignette .viz {
     position: absolute;
     top: 0;
@@ -157,7 +239,7 @@
     bottom: 0;
     width: 38vw;
     z-index: 1;
-    background: var(--bg);
+    background: var(--panel, var(--bg));
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -250,9 +332,10 @@
     }
   }
 
-  /* mobile vignettes: viz full-bleed behind, copy bottom-anchored over a
-     gradient so the hard side-mask construction relaxes into a fade */
-  @media (max-width: 720px) {
+  /* stacked vignettes: viz full-bleed behind, copy bottom-anchored over a
+     gradient so the hard side-mask construction relaxes into a fade.
+     the side-by-side layout gets cramped below ~1164 — stack from there. */
+  @media (max-width: 1164px) {
     .vignette .viz { width: 100%; left: 0; right: 0; }
     .vignette .copy {
       left: 0;
@@ -260,7 +343,7 @@
       top: auto;
       bottom: 0;
       width: 100%;
-      background: linear-gradient(rgba(5, 5, 5, 0) 0%, rgba(5, 5, 5, 0.9) 30%, var(--bg) 65%);
+      background: linear-gradient(rgba(5, 5, 5, 0) 0%, rgba(5, 5, 5, 0.9) 30%, var(--panel, var(--bg)) 65%);
       justify-content: flex-end;
       padding: 120px 28px 52px;
     }
@@ -286,6 +369,26 @@
 
   <div id="scroll-hint" aria-hidden="true">scroll ↓</div>
 </section>
+
+<!-- latest 3 posts — rows come from news-latest.html (build-news.mjs emits
+     it per deploy). hidden until the fetch lands; hidden for good if it 404s
+     (e.g. no posts yet). -->
+<section id="home-news" aria-label="news">
+  <div class="hn-inner">
+    <h2 class="news-kicker">NEWSPEECH // NEWS</h2>
+    <div id="home-news-list"></div>
+    <a class="all-posts" href="news.html">all posts →</a>
+  </div>
+</section>
+<script>
+fetch("news-latest.html")
+  .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+  .then((html) => {
+    document.getElementById("home-news-list").innerHTML = html;
+    document.getElementById("home-news").style.display = "block";
+  })
+  .catch(() => {}); // no snippet → section stays hidden
+</script>
 
 <section class="vignette viz-right" id="v-sequence">
   <canvas class="viz"></canvas>
