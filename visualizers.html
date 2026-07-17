@@ -35,28 +35,26 @@
     min-height: 100vh;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
-    padding: calc(48px + var(--ns-nav-h, 0px)) 72px 96px;
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
   }
 
-  header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 14px 24px;
-    margin-bottom: 64px;
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    opacity: 0.55;
+  /* page title + description — same treatment as texture.html */
+  h1 {
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    color: #eee;
+    margin: 0 0 4px;
   }
-  header .label { opacity: 1; }
-  header .aux { flex-basis: 100%; }
-  header a {
+  .sub { font-size: 12px; color: #666; margin: 0 0 20px; }
+  .sub a {
     color: inherit;
     text-decoration: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.25);
   }
-  header a:hover { border-bottom-color: rgba(255, 255, 255, 0.7); }
+  .sub a:hover { color: #ddd; border-bottom-color: rgba(255, 255, 255, 0.7); }
 
   ol {
     list-style: none;
@@ -105,18 +103,14 @@
   li a span { display: inline-block; }
 
   @media (max-width: 720px) {
-    body { padding: calc(28px + var(--ns-nav-h, 0px)) 24px 64px; }
-    header { gap: 14px 20px; margin-bottom: 40px; }
     li { gap: 20px; padding: 16px 0; }
   }
 </style>
 </head>
 <body>
   <script src="nav.js"></script>
-  <header>
-    <span class="label">visualizers</span>
-    <span class="aux"><a href="visualizers-readme.html">readme.txt</a></span>
-  </header>
+  <h1>NEWSPEECH // VISUALIZERS</h1>
+  <p class="sub">audio-reactive visual instruments, all plain 2d canvas — mic-driven intensity, tap tempo, midi-mappable params &nbsp;·&nbsp; <a href="visualizers-readme.html">readme.txt</a></p>
   <div class="section-label">self-contained <span class="count">[12]</span></div>
   <ol>
     <li><span class="num">01</span><a href="1-streaks.html" target="_blank" rel="noopener" data-link>streaks</a></li>
