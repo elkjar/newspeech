@@ -178,6 +178,21 @@
   #export { margin-top: 20px; border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   #export .seg { margin: 0; }
   #renderinfo { color: #666; }
+
+  /* mobile: groups stack, so the vertical cluster dividers rotate into
+     horizontal rules. inside knob rows the divider also takes the full row
+     (flex-basis 100%), breaking the grid into its functional clusters. */
+  @media (max-width: 720px) {
+    .row2 { flex-direction: column; align-items: stretch; }
+    .row2 > .kdivider { width: auto; height: 1px; margin: 12px 0; align-self: auto; }
+    .krow .kdivider {
+      flex-basis: 100%;
+      width: auto;
+      height: 1px;
+      margin: 8px 0;
+      align-self: auto;
+    }
+  }
 </style>
 </head>
 <body>
