@@ -8,7 +8,12 @@ shopt -s nullglob
 # that path.
 rm -rf _site
 mkdir -p _site
+
+# pre-bake the samples.html tree (one fetch instead of one per pack)
+node tools/build-samples-manifest.mjs
+
 cp *.html *.js *.svg *.png *.txt _site/
+cp samples-manifest.json _site/
 cp -r fonts _site/fonts
 mkdir -p _site/sequencer
 cp -r sequencer/public/samples _site/sequencer/samples

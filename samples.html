@@ -208,34 +208,12 @@
 <script>
 // =========================================================================
 // SAMPLE SOURCE
-// hardcoded category → pack map. each pack's kit.seqkit (already on disk
-// under sequencer/public/samples/<cat>/<pack>/) provides the file list. fetched
-// at page load, decoded lazily on expand.
+// one pre-baked manifest, generated at build time by
+// tools/build-samples-manifest.mjs (build.sh runs it on every deploy).
+// it walks sequencer/public/samples/<cat>/<pack>/kit.seqkit and emits the
+// render-ready tree — the page makes a single fetch instead of one
+// round-trip per pack.
 // =========================================================================
-const PACK_CATEGORIES = {
-  drums: [
-    "Alesis_HR16A", "blck_noir", "Casio_MA-101", "linndrum", "ns-kit-1",
-    "Roland CR-78", "Roland TR-808", "Roland TR-909", "Roland_CR-80", "sludge",
-  ],
-  bass: [
-    "heat-death", "mini-moog", "peavish", "pro-bass", "saw", "shitsaw", "triangle",
-  ],
-  instruments: [
-    "broken", "dark-omen", "dreams", "dx7-bells", "dx7-forest-house",
-    "ethereal-piano", "grand-piano-ss", "grind", "haunted", "hydrasynth_plaits",
-    "invasion", "plaits-soft-rev", "plucks", "poly6",
-    "rhodes_mk1", "root_grain", "soft_piano", "tape_piano", "under_piano",
-    "wave-grid", "wave-sub",
-  ],
-  pads: [
-    "distant-pad-databent", "dx7-glaswerks", "encounter", "monolith",
-    "monolith-databent", "nasa-databent", "pad-high-databent", "pulsed",
-    "sinewaves-at-the-scope",
-  ],
-};
-// production path (under _site/) — same string works locally if a static
-// server is run from the project root after `bash build.sh`.
-const SAMPLE_BASE = "sequencer/samples";
 
 // flat lookup by path: "drums/blck_noir/kick/KICK-1.wav" → leaf node
 const NODE_BY_PATH = new Map();
@@ -252,60 +230,10 @@ function countFiles(node) {
   return node.children.reduce((s, c) => s + countFiles(c), 0);
 }
 
-// =========================================================================
-// manifest → tree adapter
-// drum packs have voices: { id: { files: [...] } } (flat file lists per voice)
-// pitched packs have voices: { id: { roots: [{ midi, files: [...] }, ...] } }
-// =========================================================================
-function packToNode(packName, manifest, baseUrl) {
-  const voices = manifest.voices ?? {};
-  const isDrumPack = Object.values(voices).some((v) => Array.isArray(v.files));
-  if (isDrumPack) {
-    // voice subfolders: voiceId/<file>
-    const children = Object.entries(voices).map(([voiceId, voice]) => {
-      const files = (voice.files ?? []).map((rel) => fileLeaf(rel, baseUrl));
-      return { name: voiceId, children: files };
-    });
-    return { name: packName, children };
-  }
-  // pitched: flatten all roots, sort by MIDI ascending
-  const leaves = [];
-  for (const voice of Object.values(voices)) {
-    for (const root of voice.roots ?? []) {
-      for (const rel of root.files ?? []) {
-        leaves.push({ ...fileLeaf(rel, baseUrl), midi: root.midi });
-      }
-    }
-  }
-  leaves.sort((a, b) => (a.midi ?? 0) - (b.midi ?? 0));
-  return { name: packName, children: leaves };
-}
-
-function fileLeaf(relativePath, baseUrl) {
-  // file name = last segment of the relative path; URL is base + rel
-  const name = relativePath.split("/").pop();
-  return { name, url: `${baseUrl}/${relativePath}` };
-}
-
 async function buildManifest() {
-  const tree = [];
-  for (const [cat, packs] of Object.entries(PACK_CATEGORIES)) {
-    const catNode = { name: cat, children: [] };
-    for (const pack of packs) {
-      const baseUrl = `${SAMPLE_BASE}/${cat}/${pack}`;
-      try {
-        const m = await fetch(`${baseUrl}/kit.seqkit`).then((r) => {
-          if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-          return r.json();
-        });
-        catNode.children.push(packToNode(pack, m, baseUrl));
-      } catch (err) {
-        console.warn(`samples: failed to load ${cat}/${pack}/kit.seqkit`, err);
-      }
-    }
-    tree.push(catNode);
-  }
-  return tree;
+  const r = await fetch("samples-manifest.json");
+  if (!r.ok) throw new Error(`samples-manifest.json: ${r.status} ${r.statusText}`);
+  return r.json();
 }
 
 // =========================================================================
@@ -422,7 +350,13 @@ function renderNode(node, parentLast, isLast, parentPath) {
 
 let MANIFEST = [];
 async function init() {
-  MANIFEST = await buildManifest();
+  try {
+    MANIFEST = await buildManifest();
+  } catch (err) {
+    console.warn("samples:", err);
+    document.getElementById("count").textContent = "library unavailable";
+    return;
+  }
   indexNodes(MANIFEST, "");
   MANIFEST.forEach((node, i) => {
     renderNode(node, [], i === MANIFEST.length - 1, "");
