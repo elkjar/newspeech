@@ -38,6 +38,11 @@
   html { scroll-snap-type: y mandatory; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow-x: hidden; }
 
+  /* halve the core.js grain here — over the news block and vignette copy the
+     full coefficient reads heavy (matches grain.js on the content pages).
+     `html` prefix out-specifies core.js's injected canvas#bg-grain rule. */
+  html canvas#bg-grain { opacity: calc(var(--ns-grain-opacity, 0) * 0.5); }
+
   /* full-screen vignette blocks — hero first, then one per feature */
   .vignette {
     position: relative;
