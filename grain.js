@@ -19,8 +19,9 @@
   if (amount <= 0) return;
 
   const canvas = document.createElement("canvas");
-  // same coefficient as core.js: slider 0..1 → screen-blend opacity 0..0.22
-  canvas.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2;mix-blend-mode:screen;opacity:" + (amount * 0.22).toFixed(3);
+  // half the core.js coefficient (0.22): over static text pages the same
+  // opacity reads much heavier than over a moving visualizer.
+  canvas.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2;mix-blend-mode:screen;opacity:" + (amount * 0.11).toFixed(3);
   document.body.appendChild(canvas);
   const ctx = canvas.getContext("2d");
 
