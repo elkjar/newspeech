@@ -31,7 +31,5 @@ At this point this was feeling more like the cornerstone of a project than an li
 Me. I built this for me, that's the end of the story. There's no dreams of monetization, mass distribution or anything. I think it's cool and will release it at some point to other like-minded folks, but I don't want to kill the joy from this. There's a certain romantic idea of just creating something specifically for myself without outside opinion and then releasing it without the intent to cater to anyone else's needs or ideas. 
 
 
-[check it out for yourself here](../texture.html)
-
 ---
 
