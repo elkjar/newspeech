@@ -323,6 +323,7 @@ function figureLayout(model, W) {
 function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
   const rot = (opts && opts.rot) || 0;
   const alphaScale = (opts && opts.alpha) || 1;
+  const weight = (opts && opts.weight) || 1;
   const bandR0 = (opts && opts.r0 != null) ? opts.r0 : r * 0.30;
   const bandR1 = (opts && opts.r1 != null) ? opts.r1 : r * 0.96;
   const ink = inker(ctx, theme);
@@ -377,7 +378,7 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
       coincident.get(key).push({ p, ghost: g.ghost, gi });
     }
   });
-  ctx.lineWidth = 1;
+  ctx.lineWidth = weight;
   for (const group of coincident.values()) {
     if (group.length < 2 || !group.some(e => e.gi !== group[0].gi)) continue;
     group.sort((a, b) => a.p.rr - b.p.rr);
@@ -402,17 +403,17 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
         if (p.gate < 1.5) continue;
         const sweep = (Math.min(p.gate, N * 0.98) / N) * Math.PI * 2;
         ink(0.28 * p.prob * ghost * alphaScale);
-        ctx.lineWidth = 0.8 + 1.2 * p.vel;
+        ctx.lineWidth = (0.8 + 1.2 * p.vel) * weight;
         ctx.beginPath();
         ctx.arc(cx, cy, p.rr, p.ang, p.ang + sweep);
         ctx.stroke();
       }
-      ctx.lineWidth = 1;
+      ctx.lineWidth = weight;
     }
 
     // the polygon: hits joined in time order, closed (the pattern loops)
     ink(0.34 * ghost * alphaScale);
-    ctx.lineWidth = 1;
+    ctx.lineWidth = weight;
     const dashed = pts.some(p => p.prob < 1);
     if (dashed) ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -426,10 +427,10 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
     for (const p of pts) {
       ink((0.35 + 0.6 * p.vel) * (0.4 + 0.6 * p.prob) * ghost * alphaScale);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, (1.2 + 2.6 * p.vel) * dotScale, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, (1.2 + 2.6 * p.vel) * dotScale * Math.sqrt(weight), 0, Math.PI * 2);
       ctx.fill();
       if (p.ratchet > 1) {
-        ctx.lineWidth = 1;
+        ctx.lineWidth = weight;
         for (let q = 0; q < p.ratchet; q++) {
           const a2 = p.ang + (q - (p.ratchet - 1) / 2) * 0.05;
           ctx.beginPath();
@@ -867,21 +868,21 @@ window.__score = {
   },
   // one section alone: square, transparent, clean — texture plates for the
   // fusion 3d stack (tools/score-render/fusion-stack.py)
-  plate(i, scale) {
+  plate(i, scale, weight) {
     if (!model || !model.rows[i]) return null;
-    const S = 1200, k = scale || 1;
+    const S = 1200, k = scale || 1, w = weight || 3;
     canvas.width = S * k;
     canvas.height = S * k;
     const ctx = canvas.getContext("2d");
     ctx.setTransform(k, 0, 0, k, 0, 0);
     const theme = inverted ? PAPER : INK;
     const ink = inker(ctx, theme);
-    ink(0.10);
-    ctx.lineWidth = 1;
+    ink(0.14);
+    ctx.lineWidth = w;
     ctx.beginPath();
     ctx.arc(S / 2, S / 2, S * 0.46, 0, Math.PI * 2);
     ctx.stroke();
-    drawSectionFigure(ctx, theme, model, model.rows[i], S / 2, S / 2, S * 0.46, { alpha: 1.1 });
+    drawSectionFigure(ctx, theme, model, model.rows[i], S / 2, S / 2, S * 0.46, { alpha: 1.1, weight: w });
     const url = canvas.toDataURL("image/png");
     draw();   // restore the on-screen render
     return url;
