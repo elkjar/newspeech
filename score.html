@@ -450,8 +450,10 @@ function renderFigures(canvas, model, theme, scale, filename, W, H, pad) {
   canvas.height = H * scale;
   const ctx = canvas.getContext("2d");
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, W, H);
+  if (!transparent) {
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, H);
+  }
   const ink = inker(ctx, theme);
 
   // fit the block of rows into the frame, centered
@@ -460,6 +462,10 @@ function renderFigures(canvas, model, theme, scale, filename, W, H, pad) {
   ctx.save();
   ctx.translate(W * (1 - s) / 2, padT + FIG_HEAD + Math.max(0, (availH - bodyH * s) / 2));
   ctx.scale(s, s);
+
+  const starts = [];
+  let accBars = 0;
+  model.rows.forEach(r => { starts.push(accBars); accBars += r.bars; });
 
   for (const band of bands) {
     // faint axis through each row of figures — the timeline reduced to a rule
@@ -470,19 +476,22 @@ function renderFigures(canvas, model, theme, scale, filename, W, H, pad) {
     ctx.lineTo(W - FIG_ML, band.cy);
     ctx.stroke();
 
-    for (const { cx, r, row } of band.clusters) {
+    for (const { cx, r, row, rowIndex } of band.clusters) {
+      const rv = reveal(starts[rowIndex]);
+      if (rv <= 0) continue;
+
       // outer guide circle
-      ink(0.09);
+      ink(0.09 * rv);
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.arc(cx, band.cy, r, 0, Math.PI * 2);
       ctx.stroke();
 
-      drawSectionFigure(ctx, theme, model, row, cx, band.cy, r);
+      drawSectionFigure(ctx, theme, model, row, cx, band.cy, r, { alpha: rv });
 
       // bank letter + bars beneath the figure
       if (!clean) {
-        ink(0.45);
+        ink(0.45 * rv);
         ctx.font = "12px zxx-sans, monospace";
         const label = String.fromCharCode(65 + row.bank) + " · " + row.bars;
         const lw = ctx.measureText(label).width;
@@ -513,8 +522,10 @@ function renderComposition(canvas, model, theme, scale, filename, W, H, pad) {
   canvas.height = H * scale;
   const ctx = canvas.getContext("2d");
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, W, H);
+  if (!transparent) {
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, H);
+  }
   const ink = inker(ctx, theme);
 
   // one guide circle
@@ -527,13 +538,16 @@ function renderComposition(canvas, model, theme, scale, filename, W, H, pad) {
   let barsBefore = 0;
   ctx.font = "12px zxx-sans, monospace";
   model.rows.forEach((row) => {
+    const rv = reveal(barsBefore);
     const rot = (barsBefore / model.totalBars) * Math.PI * 2;
-    drawSectionFigure(ctx, theme, model, row, cx, cy, r, { rot, alpha: 0.8 });
+    barsBefore += row.bars;
+    if (rv <= 0) return;
+    drawSectionFigure(ctx, theme, model, row, cx, cy, r, { rot, alpha: 0.8 * rv });
 
     // entry mark: bank letter just outside the rim where this section begins
     if (!clean) {
       const a = -Math.PI / 2 + rot;
-      ink(0.4);
+      ink(0.4 * rv);
       ctx.beginPath();
       ctx.moveTo(cx + Math.cos(a) * (r + 4), cy + Math.sin(a) * (r + 4));
       ctx.lineTo(cx + Math.cos(a) * (r + 14), cy + Math.sin(a) * (r + 14));
@@ -542,7 +556,6 @@ function renderComposition(canvas, model, theme, scale, filename, W, H, pad) {
       const lw = ctx.measureText(label).width;
       ctx.fillText(label, cx + Math.cos(a) * (r + 26) - lw / 2, cy + Math.sin(a) * (r + 26) + 4);
     }
-    barsBefore += row.bars;
   });
 
   drawChrome(ctx, model, theme, filename, W, H, FIG_ML, pad);
@@ -566,8 +579,10 @@ function renderStack(canvas, model, theme, scale, filename, W, H, pad) {
   canvas.height = H * scale;
   const ctx = canvas.getContext("2d");
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, W, H);
+  if (!transparent) {
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, W, H);
+  }
   const ink = inker(ctx, theme);
 
   const n = model.rows.length;
@@ -585,6 +600,7 @@ function renderStack(canvas, model, theme, scale, filename, W, H, pad) {
     const t = n === 1 ? 0 : starts[i] / lastStart;          // 0 bottom .. 1 top
     return {
       row,
+      start: starts[i],
       cy: bottom - (bottom - top) * t,
       s: 1 - 0.16 * t,                                      // perspective shrink
       fade: 1 - 0.25 * t,                                    // depth fade
@@ -611,8 +627,11 @@ function renderStack(canvas, model, theme, scale, filename, W, H, pad) {
   // discs, earliest (bottom) first
   ctx.font = "11px zxx-sans, monospace";
   discs.forEach((d) => {
+    const rv = reveal(d.start);
+    if (rv <= 0) return;
+
     // rim ellipse
-    ink(0.10 * d.fade);
+    ink(0.10 * d.fade * rv);
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.ellipse(cx, d.cy, R * d.s, R * d.s * STACK_SQUASH, 0, 0, Math.PI * 2);
@@ -623,12 +642,12 @@ function renderStack(canvas, model, theme, scale, filename, W, H, pad) {
     ctx.save();
     ctx.translate(cx, d.cy);
     ctx.scale(d.s, d.s * STACK_SQUASH);
-    drawSectionFigure(ctx, theme, model, d.row, 0, 0, R, { alpha: 1.25 * d.fade });
+    drawSectionFigure(ctx, theme, model, d.row, 0, 0, R, { alpha: 1.25 * d.fade * rv });
     ctx.restore();
 
     // bank letter off the left rim
     if (!clean) {
-      ink(0.4 * d.fade);
+      ink(0.4 * d.fade * rv);
       ctx.fillText(String.fromCharCode(65 + d.row.bank), cx - R * d.s - 22, d.cy + 4);
     }
   });
@@ -721,6 +740,14 @@ const viewBtn = document.getElementById("view");
 
 const VIEWS = { composition: renderComposition, stack: renderStack, figures: renderFigures };
 let model = null, fname = "", inverted = false, view = "composition", format = "1:1", clean = false;
+// offline-render hooks (tools/score-render): skip the bg fill so frames keep
+// alpha, and reveal sections progressively as the piece plays
+let transparent = false, revealBars = Infinity;
+
+// how visible a section starting at startBar is right now (1-bar fade-in)
+function reveal(startBar) {
+  return Math.max(0, Math.min(1, revealBars - startBar));
+}
 
 function draw(target, scale) {
   if (!model) return;
@@ -815,6 +842,30 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "s") savePng();
   if (e.key === "e") saveSvg();
 });
+
+// offline-render control surface (tools/score-render drives this headless)
+window.__score = {
+  load(d, name) {
+    const m = buildModel(d, name || "untitled.seq");
+    if (!m) return null;
+    model = m;
+    fname = name || "untitled.seq";
+    drop.classList.add("loaded");
+    return { bpm: m.bpm, totalBars: m.totalBars };
+  },
+  set(o) {
+    if (o.view && VIEWS[o.view]) view = o.view;
+    if (o.format && FORMATS[o.format]) format = o.format;
+    if ("clean" in o) clean = !!o.clean;
+    if ("invert" in o) inverted = !!o.invert;
+    if ("transparent" in o) transparent = !!o.transparent;
+    if ("revealBars" in o) revealBars = o.revealBars;
+  },
+  frame(scale) {
+    draw(canvas, scale || 1);
+    return canvas.toDataURL("image/png");
+  },
+};
 
 })();
 </script>
