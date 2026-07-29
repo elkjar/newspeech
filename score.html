@@ -96,6 +96,7 @@
 </div>
 <div id="controls">
   <button id="load">load .seq</button>
+  <button id="view">view: figures <span class="key">[v]</span></button>
   <button id="invert">invert <span class="key">[i]</span></button>
   <button id="save">save png <span class="key">[s]</span></button>
   <span id="status"></span>
@@ -106,7 +107,7 @@
 (function () {
 "use strict";
 
-// ---------- model: .seq json -> a flat timeline of marks ----------
+// ---------- model: .seq json -> rows (sections) + lanes (voices) ----------
 
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
@@ -142,6 +143,10 @@ function shortName(t) {
 function stepPitches(s) {
   if (Array.isArray(s.notes) && s.notes.length) return s.notes;
   return [s.pitch || 0];
+}
+
+function rowMuted(row, laneId, laneIndex) {
+  return row.mutes.some(m => m === laneId || m === laneIndex);
 }
 
 // build the row timeline: arrangement rows -> banks in order -> live tracks
@@ -201,39 +206,23 @@ function buildModel(d, filename) {
   };
 }
 
-function rowMuted(row, laneId, laneIndex) {
-  return row.mutes.some(m => m === laneId || m === laneIndex);
-}
+// ---------- shared chrome (title block + footer) ----------
 
-// ---------- render ----------
-
-const INK  = { bg: "#050505", ink: "#e2e2e2", panel: "#0a0a0a" };
-const PAPER = { bg: "#f2efe9", ink: "#181818", panel: "#f2efe9" };
+const INK  = { bg: "#050505", ink: "#e2e2e2" };
+const PAPER = { bg: "#f2efe9", ink: "#181818" };
 
 const LOGICAL_W = 1680;
-const M_LEFT = 170, M_RIGHT = 54, HEAD_H = 168, FOOT_H = 72;
-const LANE_H = { drum: 30, melodic: 66 }, LANE_GAP = 16;
 
-function render(canvas, model, theme, scale, filename) {
-  const scoreW = LOGICAL_W - M_LEFT - M_RIGHT;
-  const lanesH = model.lanes.reduce((n, l) => n + LANE_H[l.section === "drum" ? "drum" : "melodic"] + LANE_GAP, 0);
-  const H = HEAD_H + lanesH + FOOT_H;
+function inker(ctx, theme) {
+  return (a) => { ctx.globalAlpha = a; ctx.strokeStyle = theme.ink; ctx.fillStyle = theme.ink; };
+}
 
-  canvas.width = LOGICAL_W * scale;
-  canvas.height = H * scale;
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, LOGICAL_W, H);
-
-  const ink = (a) => { ctx.globalAlpha = a; ctx.strokeStyle = theme.ink; ctx.fillStyle = theme.ink; };
-
-  // --- title block ---
+function drawChrome(ctx, model, theme, filename, H, marginL) {
+  const ink = inker(ctx, theme);
   try { ctx.letterSpacing = "8px"; } catch (_) {}
   ink(0.95);
   ctx.font = "42px zxx-bold, monospace";
-  ctx.fillText(model.name, M_LEFT, 74);
+  ctx.fillText(model.name, marginL, 74);
   try { ctx.letterSpacing = "3px"; } catch (_) {}
   ctx.font = "13px zxx-sans, monospace";
   ink(0.5);
@@ -245,8 +234,171 @@ function render(canvas, model, theme, scale, filename) {
     model.lanes.length + " VOICES",
     (seq.length > 14 ? seq.slice(0, 14).join(" ") + " …" : seq.join(" ")),
   ].filter(Boolean).join("   ·   ");
-  ctx.fillText(meta, M_LEFT, 104);
+  ctx.fillText(meta, marginL, 104);
   try { ctx.letterSpacing = "0px"; } catch (_) {}
+
+  ink(0.3);
+  ctx.font = "12px zxx-sans, monospace";
+  ctx.fillText(filename + "   ·   " + new Date().toISOString().slice(0, 10), marginL, H - 30);
+  try { ctx.letterSpacing = "4px"; } catch (_) {}
+  ink(0.5);
+  ctx.font = "14px zxx-noise, monospace";
+  const w = ctx.measureText("newspeech").width;
+  ctx.fillText("newspeech", LOGICAL_W - 54 - w, H - 30);
+  try { ctx.letterSpacing = "0px"; } catch (_) {}
+  ctx.globalAlpha = 1;
+}
+
+// ---------- view 1: figures — each section becomes a geometric figure ----------
+//
+// every voice's pattern is placed around a circle (one ring per voice) and its
+// hits are joined in time order: a four-on-the-floor kick is literally a square,
+// offbeat hats a rotated square, syncopation an irregular polygon. melodic
+// voices bend their ring with pitch, so a melody is a closed angular loop.
+// nothing is random — the same .seq always draws the same figures.
+
+const FIG_HEAD = 150, FIG_FOOT = 72, FIG_ML = 54;
+
+function figureLayout(model) {
+  const scoreW = LOGICAL_W - FIG_ML * 2;
+  const base = model.rows.map(r => 52 + 30 * Math.sqrt(r.bars));
+  const gap = 34;
+  const total = base.reduce((n, R) => n + 2 * R, 0) + gap * (model.rows.length - 1);
+  const fit = Math.min(1, scoreW / total);
+  let x = FIG_ML + (scoreW - total * fit) / 2;
+  const clusters = base.map((R) => {
+    const r = R * fit;
+    const c = { cx: x + r, r };
+    x += 2 * r + gap * fit;
+    return c;
+  });
+  const maxR = Math.max(...clusters.map(c => c.r));
+  return { clusters, maxR };
+}
+
+function renderFigures(canvas, model, theme, scale, filename) {
+  const { clusters, maxR } = figureLayout(model);
+  const cy = FIG_HEAD + maxR * 1.16;
+  const H = FIG_HEAD + maxR * 2.32 + FIG_FOOT;
+
+  canvas.width = LOGICAL_W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, LOGICAL_W, H);
+  const ink = inker(ctx, theme);
+
+  // faint axis through the figures — the timeline reduced to a single rule
+  ink(0.07);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(FIG_ML, cy);
+  ctx.lineTo(LOGICAL_W - FIG_ML, cy);
+  ctx.stroke();
+
+  model.rows.forEach((row, ri) => {
+    const { cx, r } = clusters[ri];
+    const voices = model.lanes
+      .map(l => ({ lane: l, t: row.tracks[l.index] }))
+      .filter(v => v.t && v.t.id === v.lane.id && hasHits(v.t));
+    const K = voices.length;
+
+    // outer guide circle
+    ink(0.09);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    voices.forEach((v, k) => {
+      const t = v.t;
+      const ghost = (t.mute || rowMuted(row, v.lane.id, v.lane.index)) ? 0.15 : 1;
+      const ringR = r * (0.30 + 0.66 * (k + 1) / K);
+      const band = (r * 0.66 / Math.max(K, 2)) * 0.9;
+      const N = t.length || t.steps.length;
+      const isDrum = (t.section || "drum") === "drum";
+
+      // gather hit points around the ring, in time order
+      const pts = [];
+      const span = Math.max(1, v.lane.pmax - v.lane.pmin);
+      for (let i = 0; i < N; i++) {
+        const s = t.steps[i];
+        if (!s || !s.on) continue;
+        const ang = -Math.PI / 2 + ((i + (s.microTiming || 0)) / N) * Math.PI * 2;
+        const p = stepPitches(s)[0];
+        const rr = isDrum ? ringR : ringR + (((p - v.lane.pmin) / span) - 0.5) * band;
+        pts.push({
+          x: cx + Math.cos(ang) * rr,
+          y: cy + Math.sin(ang) * rr,
+          ang, rr,
+          vel: Math.max(0, Math.min(1, s.velocity == null ? 1 : s.velocity)),
+          prob: (s.probability == null ? 100 : s.probability) / 100,
+          ratchet: Math.max(1, s.ratchet | 0),
+        });
+      }
+      if (!pts.length) return;
+
+      // the polygon: hits joined in time order, closed (the pattern loops)
+      ink(0.34 * ghost);
+      ctx.lineWidth = 1;
+      const dashed = pts.some(p => p.prob < 1);
+      if (dashed) ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      if (pts.length > 2) ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // vertices: weight = velocity; ratchets tick outward
+      for (const p of pts) {
+        ink((0.35 + 0.6 * p.vel) * (0.4 + 0.6 * p.prob) * ghost);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.2 + 2.6 * p.vel, 0, Math.PI * 2);
+        ctx.fill();
+        if (p.ratchet > 1) {
+          ctx.lineWidth = 1;
+          for (let q = 0; q < p.ratchet; q++) {
+            const a2 = p.ang + (q - (p.ratchet - 1) / 2) * 0.05;
+            ctx.beginPath();
+            ctx.moveTo(cx + Math.cos(a2) * (p.rr + 4), cy + Math.sin(a2) * (p.rr + 4));
+            ctx.lineTo(cx + Math.cos(a2) * (p.rr + 9), cy + Math.sin(a2) * (p.rr + 9));
+            ctx.stroke();
+          }
+        }
+      }
+    });
+
+    // bank letter + bars beneath the figure
+    ink(0.45);
+    ctx.font = "12px zxx-sans, monospace";
+    const label = String.fromCharCode(65 + row.bank) + " · " + row.bars;
+    const lw = ctx.measureText(label).width;
+    ctx.fillText(label, cx - lw / 2, cy + maxR * 1.16 - 8);
+  });
+
+  drawChrome(ctx, model, theme, filename, H, FIG_ML);
+}
+
+// ---------- view 2: timeline — the literal score ----------
+
+const M_LEFT = 170, M_RIGHT = 54, HEAD_H = 168, FOOT_H = 72;
+const LANE_H = { drum: 30, melodic: 66 }, LANE_GAP = 16;
+
+function renderTimeline(canvas, model, theme, scale, filename) {
+  const scoreW = LOGICAL_W - M_LEFT - M_RIGHT;
+  const lanesH = model.lanes.reduce((n, l) => n + LANE_H[l.section === "drum" ? "drum" : "melodic"] + LANE_GAP, 0);
+  const H = HEAD_H + lanesH + FOOT_H;
+
+  canvas.width = LOGICAL_W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, LOGICAL_W, H);
+  const ink = inker(ctx, theme);
 
   // --- bar grid + row (bank) boundaries ---
   const barW = scoreW / model.totalBars;
@@ -349,17 +501,7 @@ function render(canvas, model, theme, scale, filename) {
     y += h + LANE_GAP;
   }
 
-  // --- footer ---
-  ink(0.3);
-  ctx.font = "12px zxx-sans, monospace";
-  ctx.fillText(filename + "   ·   " + new Date().toISOString().slice(0, 10), M_LEFT, H - 30);
-  try { ctx.letterSpacing = "4px"; } catch (_) {}
-  ink(0.5);
-  ctx.font = "14px zxx-noise, monospace";
-  const w = ctx.measureText("newspeech").width;
-  ctx.fillText("newspeech", LOGICAL_W - M_RIGHT - w, H - 30);
-  try { ctx.letterSpacing = "0px"; } catch (_) {}
-  ctx.globalAlpha = 1;
+  drawChrome(ctx, model, theme, filename, H, M_LEFT);
 }
 
 // ---------- page wiring ----------
@@ -368,12 +510,14 @@ const drop = document.getElementById("drop");
 const canvas = document.getElementById("score");
 const fileInput = document.getElementById("file");
 const status = document.getElementById("status");
+const viewBtn = document.getElementById("view");
 
-let model = null, fname = "", inverted = false;
+let model = null, fname = "", inverted = false, view = "figures";
 
-function draw() {
+function draw(target, scale) {
   if (!model) return;
-  render(canvas, model, inverted ? PAPER : INK, 2, fname);
+  const render = view === "figures" ? renderFigures : renderTimeline;
+  render(target || canvas, model, inverted ? PAPER : INK, scale || 2, fname);
 }
 
 async function loadFile(file) {
@@ -411,11 +555,16 @@ drop.addEventListener("drop", (e) => {
   loadFile(e.dataTransfer.files[0]);
 });
 
+function toggleView() {
+  view = view === "figures" ? "timeline" : "figures";
+  viewBtn.innerHTML = "view: " + view + ' <span class="key">[v]</span>';
+  draw();
+}
 function toggleInvert() { if (model) { inverted = !inverted; draw(); } }
 function savePng() {
   if (!model) return;
   const off = document.createElement("canvas");
-  render(off, model, inverted ? PAPER : INK, 3, fname);
+  draw(off, 3);
   off.toBlob((blob) => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -424,10 +573,12 @@ function savePng() {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }, "image/png");
 }
+document.getElementById("view").addEventListener("click", toggleView);
 document.getElementById("invert").addEventListener("click", toggleInvert);
 document.getElementById("save").addEventListener("click", savePng);
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "v") toggleView();
   if (e.key === "i") toggleInvert();
   if (e.key === "s") savePng();
 });
