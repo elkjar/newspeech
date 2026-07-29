@@ -257,23 +257,49 @@ function drawChrome(ctx, model, theme, filename, H, marginL) {
 // voices bend their ring with pitch, so a melody is a closed angular loop.
 // nothing is random — the same .seq always draws the same figures.
 
-const FIG_HEAD = 150, FIG_FOOT = 72, FIG_ML = 54;
+const FIG_HEAD = 150, FIG_FOOT = 72, FIG_ML = 54, FIG_ROWGAP = 46;
 
+// sections wrap into up to 4 rows (reading order = piece order). one global
+// fit factor across all rows so a bank draws the same size wherever it
+// appears — radius still tracks sqrt(bars).
 function figureLayout(model) {
   const scoreW = LOGICAL_W - FIG_ML * 2;
-  const base = model.rows.map(r => 52 + 30 * Math.sqrt(r.bars));
   const gap = 34;
-  const total = base.reduce((n, R) => n + 2 * R, 0) + gap * (model.rows.length - 1);
-  const fit = Math.min(1, scoreW / total);
-  let x = FIG_ML + (scoreW - total * fit) / 2;
-  const clusters = base.map((R) => {
-    const r = R * fit;
-    const c = { cx: x + r, r };
-    x += 2 * r + gap * fit;
-    return c;
+  const n = model.rows.length;
+  const nRows = Math.min(4, n);
+  const perRow = Math.floor(n / nRows), extra = n % nRows;
+
+  // slice sections into rows, most-loaded rows first
+  const groups = [];
+  let idx = 0;
+  for (let i = 0; i < nRows; i++) {
+    const count = perRow + (i < extra ? 1 : 0);
+    groups.push(model.rows.slice(idx, idx + count).map((row, j) => ({
+      row, rowIndex: idx + j, R: 52 + 30 * Math.sqrt(row.bars),
+    })));
+    idx += count;
+  }
+
+  const width = (g) => g.reduce((s, c) => s + 2 * c.R, 0) + gap * (g.length - 1);
+  const fit = Math.min(1, ...groups.map(g => scoreW / width(g)));
+
+  let y = FIG_HEAD;
+  const bands = groups.map(g => {
+    const total = width(g) * fit;
+    let x = FIG_ML + (scoreW - total) / 2;
+    const clusters = g.map(c => {
+      const r = c.R * fit;
+      const cl = { cx: x + r, r, row: c.row, rowIndex: c.rowIndex };
+      x += 2 * r + gap * fit;
+      return cl;
+    });
+    const maxR = Math.max(...clusters.map(c => c.r));
+    const cy = y + maxR;
+    y += maxR * 2 + 30 + FIG_ROWGAP;   // 30 = label clearance under the figures
+    return { clusters, cy, maxR };
   });
-  const maxR = Math.max(...clusters.map(c => c.r));
-  return { clusters, maxR };
+
+  return { bands, H: y - FIG_ROWGAP + FIG_FOOT };
 }
 
 // draw one section's figure at (cx, cy) radius r, optionally rotated/faded
@@ -395,9 +421,7 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
 }
 
 function renderFigures(canvas, model, theme, scale, filename) {
-  const { clusters, maxR } = figureLayout(model);
-  const cy = FIG_HEAD + maxR * 1.16;
-  const H = FIG_HEAD + maxR * 2.32 + FIG_FOOT;
+  const { bands, H } = figureLayout(model);
 
   canvas.width = LOGICAL_W * scale;
   canvas.height = H * scale;
@@ -407,33 +431,33 @@ function renderFigures(canvas, model, theme, scale, filename) {
   ctx.fillRect(0, 0, LOGICAL_W, H);
   const ink = inker(ctx, theme);
 
-  // faint axis through the figures — the timeline reduced to a single rule
-  ink(0.07);
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(FIG_ML, cy);
-  ctx.lineTo(LOGICAL_W - FIG_ML, cy);
-  ctx.stroke();
-
-  model.rows.forEach((row, ri) => {
-    const { cx, r } = clusters[ri];
-
-    // outer guide circle
-    ink(0.09);
+  for (const band of bands) {
+    // faint axis through each row of figures — the timeline reduced to a rule
+    ink(0.07);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.moveTo(FIG_ML, band.cy);
+    ctx.lineTo(LOGICAL_W - FIG_ML, band.cy);
     ctx.stroke();
 
-    drawSectionFigure(ctx, theme, model, row, cx, cy, r);
+    for (const { cx, r, row } of band.clusters) {
+      // outer guide circle
+      ink(0.09);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, band.cy, r, 0, Math.PI * 2);
+      ctx.stroke();
 
-    // bank letter + bars beneath the figure
-    ink(0.45);
-    ctx.font = "12px zxx-sans, monospace";
-    const label = String.fromCharCode(65 + row.bank) + " · " + row.bars;
-    const lw = ctx.measureText(label).width;
-    ctx.fillText(label, cx - lw / 2, cy + maxR * 1.16 - 8);
-  });
+      drawSectionFigure(ctx, theme, model, row, cx, band.cy, r);
+
+      // bank letter + bars beneath the figure
+      ink(0.45);
+      ctx.font = "12px zxx-sans, monospace";
+      const label = String.fromCharCode(65 + row.bank) + " · " + row.bars;
+      const lw = ctx.measureText(label).width;
+      ctx.fillText(label, cx - lw / 2, band.cy + band.maxR + 20);
+    }
+  }
 
   drawChrome(ctx, model, theme, filename, H, FIG_ML);
 }
