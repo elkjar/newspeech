@@ -572,7 +572,7 @@ const fileInput = document.getElementById("file");
 const status = document.getElementById("status");
 const viewBtn = document.getElementById("view");
 
-const VIEWS = { composition: renderComposition, figures: renderFigures, timeline: renderTimeline };
+const VIEWS = { composition: renderComposition, timeline: renderTimeline, figures: renderFigures };
 let model = null, fname = "", inverted = false, view = "composition";
 
 function draw(target, scale) {
