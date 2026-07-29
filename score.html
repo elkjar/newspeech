@@ -96,7 +96,7 @@
 </div>
 <div id="controls">
   <button id="load">load .seq</button>
-  <button id="view">view: figures <span class="key">[v]</span></button>
+  <button id="view">view: composition <span class="key">[v]</span></button>
   <button id="invert">invert <span class="key">[i]</span></button>
   <button id="save">save png <span class="key">[s]</span></button>
   <span id="status"></span>
@@ -572,8 +572,8 @@ const fileInput = document.getElementById("file");
 const status = document.getElementById("status");
 const viewBtn = document.getElementById("view");
 
-const VIEWS = { figures: renderFigures, composition: renderComposition, timeline: renderTimeline };
-let model = null, fname = "", inverted = false, view = "figures";
+const VIEWS = { composition: renderComposition, figures: renderFigures, timeline: renderTimeline };
+let model = null, fname = "", inverted = false, view = "composition";
 
 function draw(target, scale) {
   if (!model) return;
