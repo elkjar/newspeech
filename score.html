@@ -287,7 +287,8 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
     .filter(v => v.t && v.t.id === v.lane.id && hasHits(v.t));
   const K = voices.length;
 
-  voices.forEach((v, k) => {
+  // pass 1: geometry for every voice
+  const geo = voices.map((v, k) => {
     const t = v.t;
     const ghost = (t.mute || rowMuted(row, v.lane.id, v.lane.index)) ? 0.15 : 1;
     const ringR = r * (0.30 + 0.66 * (k + 1) / K);
@@ -295,7 +296,6 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
     const N = t.length || t.steps.length;
     const isDrum = (t.section || "drum") === "drum";
 
-    // gather hit points around the ring, in time order
     const pts = [];
     const span = Math.max(1, v.lane.pmax - v.lane.pmin);
     for (let i = 0; i < N; i++) {
@@ -308,12 +308,59 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
         x: cx + Math.cos(ang) * rr,
         y: cy + Math.sin(ang) * rr,
         ang, rr,
+        tfrac: i / N,   // musical position in the loop (micro-timing excluded so coincidence matching stays exact)
         vel: Math.max(0, Math.min(1, s.velocity == null ? 1 : s.velocity)),
         prob: (s.probability == null ? 100 : s.probability) / 100,
         ratchet: Math.max(1, s.ratchet | 0),
+        gate: s.gate || 1,
       });
     }
-    if (!pts.length) return;
+    return { pts, ghost, N, isDrum };
+  }).filter(g => g.pts.length);
+
+  // cross-voice chords (drawn first, under everything): hits landing at the
+  // same position of their loops brace the rings together — where the groove
+  // locks, the figure gets structure
+  const coincident = new Map();
+  geo.forEach((g, gi) => {
+    for (const p of g.pts) {
+      const key = Math.round(p.tfrac * 1920);
+      if (!coincident.has(key)) coincident.set(key, []);
+      coincident.get(key).push({ p, ghost: g.ghost, gi });
+    }
+  });
+  ctx.lineWidth = 1;
+  for (const group of coincident.values()) {
+    if (group.length < 2 || !group.some(e => e.gi !== group[0].gi)) continue;
+    group.sort((a, b) => a.p.rr - b.p.rr);
+    for (let i = 1; i < group.length; i++) {
+      const a = group[i - 1], b = group[i];
+      ink(0.11 * (0.4 + 0.6 * Math.min(a.p.vel, b.p.vel)) * Math.min(a.ghost, b.ghost) * alphaScale);
+      ctx.beginPath();
+      ctx.moveTo(a.p.x, a.p.y);
+      ctx.lineTo(b.p.x, b.p.y);
+      ctx.stroke();
+    }
+  }
+
+  // pass 2: per-voice sustain arcs, polygon, vertices
+  for (const g of geo) {
+    const { pts, ghost, N, isDrum } = g;
+
+    // sustains: a melodic note held longer than a step sweeps its gate as an
+    // arc at its pitch radius — long pads wrap the ring as horizon lines
+    if (!isDrum) {
+      for (const p of pts) {
+        if (p.gate < 1.5) continue;
+        const sweep = (Math.min(p.gate, N * 0.98) / N) * Math.PI * 2;
+        ink(0.28 * p.prob * ghost * alphaScale);
+        ctx.lineWidth = 0.8 + 1.2 * p.vel;
+        ctx.beginPath();
+        ctx.arc(cx, cy, p.rr, p.ang, p.ang + sweep);
+        ctx.stroke();
+      }
+      ctx.lineWidth = 1;
+    }
 
     // the polygon: hits joined in time order, closed (the pattern loops)
     ink(0.34 * ghost * alphaScale);
@@ -344,7 +391,7 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
         }
       }
     }
-  });
+  }
 }
 
 function renderFigures(canvas, model, theme, scale, filename) {
