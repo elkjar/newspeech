@@ -865,6 +865,27 @@ window.__score = {
     draw(canvas, scale || 1);
     return canvas.toDataURL("image/png");
   },
+  // one section alone: square, transparent, clean — texture plates for the
+  // fusion 3d stack (tools/score-render/fusion-stack.py)
+  plate(i, scale) {
+    if (!model || !model.rows[i]) return null;
+    const S = 1200, k = scale || 1;
+    canvas.width = S * k;
+    canvas.height = S * k;
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    const theme = inverted ? PAPER : INK;
+    const ink = inker(ctx, theme);
+    ink(0.10);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(S / 2, S / 2, S * 0.46, 0, Math.PI * 2);
+    ctx.stroke();
+    drawSectionFigure(ctx, theme, model, model.rows[i], S / 2, S / 2, S * 0.46, { alpha: 1.1 });
+    const url = canvas.toDataURL("image/png");
+    draw();   // restore the on-screen render
+    return url;
+  },
 };
 
 })();
