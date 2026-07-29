@@ -276,6 +276,77 @@ function figureLayout(model) {
   return { clusters, maxR };
 }
 
+// draw one section's figure at (cx, cy) radius r, optionally rotated/faded
+function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
+  const rot = (opts && opts.rot) || 0;
+  const alphaScale = (opts && opts.alpha) || 1;
+  const ink = inker(ctx, theme);
+
+  const voices = model.lanes
+    .map(l => ({ lane: l, t: row.tracks[l.index] }))
+    .filter(v => v.t && v.t.id === v.lane.id && hasHits(v.t));
+  const K = voices.length;
+
+  voices.forEach((v, k) => {
+    const t = v.t;
+    const ghost = (t.mute || rowMuted(row, v.lane.id, v.lane.index)) ? 0.15 : 1;
+    const ringR = r * (0.30 + 0.66 * (k + 1) / K);
+    const band = (r * 0.66 / Math.max(K, 2)) * 0.9;
+    const N = t.length || t.steps.length;
+    const isDrum = (t.section || "drum") === "drum";
+
+    // gather hit points around the ring, in time order
+    const pts = [];
+    const span = Math.max(1, v.lane.pmax - v.lane.pmin);
+    for (let i = 0; i < N; i++) {
+      const s = t.steps[i];
+      if (!s || !s.on) continue;
+      const ang = -Math.PI / 2 + rot + ((i + (s.microTiming || 0)) / N) * Math.PI * 2;
+      const p = stepPitches(s)[0];
+      const rr = isDrum ? ringR : ringR + (((p - v.lane.pmin) / span) - 0.5) * band;
+      pts.push({
+        x: cx + Math.cos(ang) * rr,
+        y: cy + Math.sin(ang) * rr,
+        ang, rr,
+        vel: Math.max(0, Math.min(1, s.velocity == null ? 1 : s.velocity)),
+        prob: (s.probability == null ? 100 : s.probability) / 100,
+        ratchet: Math.max(1, s.ratchet | 0),
+      });
+    }
+    if (!pts.length) return;
+
+    // the polygon: hits joined in time order, closed (the pattern loops)
+    ink(0.34 * ghost * alphaScale);
+    ctx.lineWidth = 1;
+    const dashed = pts.some(p => p.prob < 1);
+    if (dashed) ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    if (pts.length > 2) ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // vertices: weight = velocity; ratchets tick outward
+    for (const p of pts) {
+      ink((0.35 + 0.6 * p.vel) * (0.4 + 0.6 * p.prob) * ghost * alphaScale);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.2 + 2.6 * p.vel, 0, Math.PI * 2);
+      ctx.fill();
+      if (p.ratchet > 1) {
+        ctx.lineWidth = 1;
+        for (let q = 0; q < p.ratchet; q++) {
+          const a2 = p.ang + (q - (p.ratchet - 1) / 2) * 0.05;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a2) * (p.rr + 4), cy + Math.sin(a2) * (p.rr + 4));
+          ctx.lineTo(cx + Math.cos(a2) * (p.rr + 9), cy + Math.sin(a2) * (p.rr + 9));
+          ctx.stroke();
+        }
+      }
+    }
+  });
+}
+
 function renderFigures(canvas, model, theme, scale, filename) {
   const { clusters, maxR } = figureLayout(model);
   const cy = FIG_HEAD + maxR * 1.16;
@@ -299,10 +370,6 @@ function renderFigures(canvas, model, theme, scale, filename) {
 
   model.rows.forEach((row, ri) => {
     const { cx, r } = clusters[ri];
-    const voices = model.lanes
-      .map(l => ({ lane: l, t: row.tracks[l.index] }))
-      .filter(v => v.t && v.t.id === v.lane.id && hasHits(v.t));
-    const K = voices.length;
 
     // outer guide circle
     ink(0.09);
@@ -311,64 +378,7 @@ function renderFigures(canvas, model, theme, scale, filename) {
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
 
-    voices.forEach((v, k) => {
-      const t = v.t;
-      const ghost = (t.mute || rowMuted(row, v.lane.id, v.lane.index)) ? 0.15 : 1;
-      const ringR = r * (0.30 + 0.66 * (k + 1) / K);
-      const band = (r * 0.66 / Math.max(K, 2)) * 0.9;
-      const N = t.length || t.steps.length;
-      const isDrum = (t.section || "drum") === "drum";
-
-      // gather hit points around the ring, in time order
-      const pts = [];
-      const span = Math.max(1, v.lane.pmax - v.lane.pmin);
-      for (let i = 0; i < N; i++) {
-        const s = t.steps[i];
-        if (!s || !s.on) continue;
-        const ang = -Math.PI / 2 + ((i + (s.microTiming || 0)) / N) * Math.PI * 2;
-        const p = stepPitches(s)[0];
-        const rr = isDrum ? ringR : ringR + (((p - v.lane.pmin) / span) - 0.5) * band;
-        pts.push({
-          x: cx + Math.cos(ang) * rr,
-          y: cy + Math.sin(ang) * rr,
-          ang, rr,
-          vel: Math.max(0, Math.min(1, s.velocity == null ? 1 : s.velocity)),
-          prob: (s.probability == null ? 100 : s.probability) / 100,
-          ratchet: Math.max(1, s.ratchet | 0),
-        });
-      }
-      if (!pts.length) return;
-
-      // the polygon: hits joined in time order, closed (the pattern loops)
-      ink(0.34 * ghost);
-      ctx.lineWidth = 1;
-      const dashed = pts.some(p => p.prob < 1);
-      if (dashed) ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      if (pts.length > 2) ctx.closePath();
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // vertices: weight = velocity; ratchets tick outward
-      for (const p of pts) {
-        ink((0.35 + 0.6 * p.vel) * (0.4 + 0.6 * p.prob) * ghost);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.2 + 2.6 * p.vel, 0, Math.PI * 2);
-        ctx.fill();
-        if (p.ratchet > 1) {
-          ctx.lineWidth = 1;
-          for (let q = 0; q < p.ratchet; q++) {
-            const a2 = p.ang + (q - (p.ratchet - 1) / 2) * 0.05;
-            ctx.beginPath();
-            ctx.moveTo(cx + Math.cos(a2) * (p.rr + 4), cy + Math.sin(a2) * (p.rr + 4));
-            ctx.lineTo(cx + Math.cos(a2) * (p.rr + 9), cy + Math.sin(a2) * (p.rr + 9));
-            ctx.stroke();
-          }
-        }
-      }
-    });
+    drawSectionFigure(ctx, theme, model, row, cx, cy, r);
 
     // bank letter + bars beneath the figure
     ink(0.45);
@@ -376,6 +386,56 @@ function renderFigures(canvas, model, theme, scale, filename) {
     const label = String.fromCharCode(65 + row.bank) + " · " + row.bars;
     const lw = ctx.measureText(label).width;
     ctx.fillText(label, cx - lw / 2, cy + maxR * 1.16 - 8);
+  });
+
+  drawChrome(ctx, model, theme, filename, H, FIG_ML);
+}
+
+// ---------- view 2: composition — the whole piece as one figure ----------
+//
+// every section overlaid at a single center, each rotated to where it occurs
+// in the piece (cumulative bars -> angle). the song wraps once around the
+// circle: repeats of a bank re-enter as rotated echoes of the same shape,
+// contrast sections cut across them. density is the arrangement.
+
+function renderComposition(canvas, model, theme, scale, filename) {
+  const H = 1240;
+  const cx = LOGICAL_W / 2;
+  const cy = FIG_HEAD + (H - FIG_HEAD - FIG_FOOT) / 2;
+  const r = (H - FIG_HEAD - FIG_FOOT) / 2 - 36;
+
+  canvas.width = LOGICAL_W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, LOGICAL_W, H);
+  const ink = inker(ctx, theme);
+
+  // one guide circle
+  ink(0.09);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  let barsBefore = 0;
+  ctx.font = "12px zxx-sans, monospace";
+  model.rows.forEach((row) => {
+    const rot = (barsBefore / model.totalBars) * Math.PI * 2;
+    drawSectionFigure(ctx, theme, model, row, cx, cy, r, { rot, alpha: 0.8 });
+
+    // entry mark: bank letter just outside the rim where this section begins
+    const a = -Math.PI / 2 + rot;
+    ink(0.4);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * (r + 4), cy + Math.sin(a) * (r + 4));
+    ctx.lineTo(cx + Math.cos(a) * (r + 14), cy + Math.sin(a) * (r + 14));
+    ctx.stroke();
+    const label = String.fromCharCode(65 + row.bank);
+    const lw = ctx.measureText(label).width;
+    ctx.fillText(label, cx + Math.cos(a) * (r + 26) - lw / 2, cy + Math.sin(a) * (r + 26) + 4);
+    barsBefore += row.bars;
   });
 
   drawChrome(ctx, model, theme, filename, H, FIG_ML);
@@ -512,12 +572,12 @@ const fileInput = document.getElementById("file");
 const status = document.getElementById("status");
 const viewBtn = document.getElementById("view");
 
+const VIEWS = { figures: renderFigures, composition: renderComposition, timeline: renderTimeline };
 let model = null, fname = "", inverted = false, view = "figures";
 
 function draw(target, scale) {
   if (!model) return;
-  const render = view === "figures" ? renderFigures : renderTimeline;
-  render(target || canvas, model, inverted ? PAPER : INK, scale || 2, fname);
+  VIEWS[view](target || canvas, model, inverted ? PAPER : INK, scale || 2, fname);
 }
 
 async function loadFile(file) {
@@ -556,7 +616,8 @@ drop.addEventListener("drop", (e) => {
 });
 
 function toggleView() {
-  view = view === "figures" ? "timeline" : "figures";
+  const names = Object.keys(VIEWS);
+  view = names[(names.indexOf(view) + 1) % names.length];
   viewBtn.innerHTML = "view: " + view + ' <span class="key">[v]</span>';
   draw();
 }

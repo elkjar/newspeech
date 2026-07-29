@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // clock</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio/video experimentation.">
+<meta property="og:title" content="NEWSPEECH // clock">
+<meta property="og:description" content="newspeech — audio/video experimentation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/27-clock.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // clock">
+<meta name="twitter:description" content="newspeech — audio/video experimentation.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">clock · params · [0] toggle</div>
+  <label>
+    <span class="name">trail</span><span class="val"></span>
+    <input type="range" min="0.05" max="0.9" step="0.01" data-k="trail">
+  </label>
+  <label>
+    <span class="name">flash</span><span class="val"></span>
+    <input type="range" min="0" max="3" step="0.05" data-k="flash">
+  </label>
+  <label>
+    <span class="name">hands</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.02" data-k="hands">
+  </label>
+  <label>
+    <span class="name">spread</span><span class="val"></span>
+    <input type="range" min="0.2" max="1" step="0.02" data-k="spread">
+  </label>
+  <label>
+    <span class="name">drift</span><span class="val"></span>
+    <input type="range" min="0" max="2" step="0.05" data-k="drift">
+  </label>
+</div>
+<input type="file" id="file" accept=".seq,application/json" style="display:none">
+
+<script src="core.js"></script>
+<script>
+const { intensity, installInputs, tickInputs, bumpActivity, installPanel,
+        installTelemetry, tickTelemetry, installMarkers, tickMarkers,
+        drawSoftDot, bpm, setBpm } = Newspeech;
+installInputs();
+
+const params = {
+  trail: 0.35,
+  flash: 1.2,
+  hands: 0.5,
+  spread: 1,
+  drift: 0.15,
+};
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+let viewW, viewH, dpr;
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width  = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  canvas.style.width  = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---- the score clock ----
+// a .seq (drop one anywhere, or press [o]) drawn as the score.html figure —
+// each voice's hits joined around its ring — but running: every voice gets
+// its own hand sweeping at its own loop length, vertices flash as they're
+// struck, and the arrangement walks bank to bank. polymeter is visible as
+// hands drifting apart. without a file it runs a built-in two-bank demo.
+
+// -- .seq -> model (same reduction score.html uses, trimmed) --
+function stepsPerBar(rate) {
+  const m = /^1\/(\d+)$/.exec(String(rate || ""));
+  const n = m ? parseInt(m[1], 10) : 16;
+  return (n >= 1 && n <= 64) ? n : 16;
+}
+function hasHits(t) {
+  return t && Array.isArray(t.steps) &&
+    t.steps.slice(0, t.length || t.steps.length).some(s => s && s.on);
+}
+function trackBars(t) {
+  const len = t.length || (t.steps || []).length || 16;
+  return Math.max(1, Math.ceil(len / stepsPerBar(t.rate)));
+}
+function stepPitch(s) {
+  if (Array.isArray(s.notes) && s.notes.length) return s.notes[0];
+  return s.pitch || 0;
+}
+function buildModel(d, name) {
+  const banks = (d.banks || []).map(b => b && b.tracks ? b.tracks : null);
+  let rows = [];
+  const arrRows = ((d.arrangement && d.arrangement.rows) || []).filter(r => r && r.bank != null && banks[r.bank]);
+  if (arrRows.length) {
+    rows = arrRows.map(r => ({ bank: r.bank, tracks: banks[r.bank], bars: Math.max(1, r.bars | 0), mutes: r.mutes || [] }));
+  } else {
+    banks.forEach((tracks, i) => {
+      if (!tracks || !tracks.some(hasHits)) return;
+      rows.push({ bank: i, tracks, bars: Math.max(...tracks.filter(hasHits).map(trackBars)), mutes: [] });
+    });
+  }
+  if (!rows.length && Array.isArray(d.tracks) && d.tracks.some(hasHits)) {
+    rows = [{ bank: 0, tracks: d.tracks, bars: Math.max(...d.tracks.filter(hasHits).map(trackBars)), mutes: [] }];
+  }
+  if (!rows.length) return null;
+
+  const laneMap = new Map();
+  for (const row of rows) {
+    row.tracks.forEach((t, i) => {
+      if (!hasHits(t)) return;
+      if (!laneMap.has(t.id)) laneMap.set(t.id, { id: t.id, index: i, section: t.section || "drum", pmin: Infinity, pmax: -Infinity });
+      const lane = laneMap.get(t.id);
+      if ((t.section || "drum") !== "drum") {
+        for (const s of t.steps.slice(0, t.length)) {
+          if (!s || !s.on) continue;
+          const p = stepPitch(s);
+          if (p < lane.pmin) lane.pmin = p;
+          if (p > lane.pmax) lane.pmax = p;
+        }
+      }
+    });
+  }
+  const lanes = [...laneMap.values()].sort((a, b) => a.index - b.index);
+  if (!lanes.length) return null;
+  return {
+    name: (d.name || name || "").replace(/\.seq$/i, "").toLowerCase(),
+    bpm: d.bpm || 120,
+    rows, lanes,
+    totalBars: rows.reduce((n, r) => n + r.bars, 0),
+  };
+}
+
+// -- built-in demo: two banks so the arrangement walk is visible by default --
+function demoModel() {
+  const step = (on, pitch, vel) => ({ on, pitch: pitch || 0, velocity: vel == null ? 0.9 : vel, probability: 100, ratchet: 1, microTiming: 0, gate: 1, tieToNext: false });
+  const patt = (n, hits, section, id) => {
+    const steps = Array.from({ length: n }, () => step(false));
+    for (const [i, pitch, vel] of hits) steps[i] = step(true, pitch, vel);
+    return { id, section, length: n, rate: "1/16", steps, source: { kind: "voice", id }, mute: false };
+  };
+  const kick   = (v) => patt(16, [[0,0,1],[4,0,.8],[8,0,1],[12,0,.8]], "drum", "t1");
+  const hat    = (v) => patt(16, [[2,0,.5],[6,0,.5],[10,0,.5],[14,0,.6]], "drum", "t2");
+  const snare  = (v) => patt(16, v ? [[4,0,.9],[11,0,.5],[12,0,.9]] : [[4,0,.9],[12,0,.9]], "drum", "t3");
+  const melody = (v) => patt(64, v
+    ? [[0,0,.9],[6,3,.6],[12,7,.8],[20,5,.7],[28,10,.9],[34,7,.5],[40,12,.8],[52,3,.7],[58,-2,.6]]
+    : [[0,0,.9],[8,7,.7],[16,3,.8],[28,10,.6],[40,5,.8],[48,-2,.7]], "melodic", "t4");
+  const bankA = [kick(0), hat(0), snare(0), melody(0)];
+  const bankB = [kick(1), hat(1), snare(1), melody(1)];
+  return buildModel({ bpm: 120, banks: [{ tracks: bankA }, { tracks: bankB }], arrangement: { rows: [{ bank: 0, bars: 8 }, { bank: 1, bars: 8 }] } }, "clock");
+}
+
+let model = demoModel();
+let barPos = 0;          // absolute bars elapsed
+let lastRowIndex = -1;
+let sectionPulse = 0;    // rim pulse on section change
+const flashes = [];
+
+function rowMuted(row, laneId, laneIndex) {
+  return row.mutes && row.mutes.some(m => m === laneId || m === laneIndex);
+}
+
+// current row + voices with ring geometry for radius R
+function currentRow() {
+  const local = ((barPos % model.totalBars) + model.totalBars) % model.totalBars;
+  let acc = 0;
+  for (let i = 0; i < model.rows.length; i++) {
+    acc += model.rows[i].bars;
+    if (local < acc) return i;
+  }
+  return model.rows.length - 1;
+}
+
+function voiceGeometry(row, R) {
+  const voices = model.lanes
+    .map(l => ({ lane: l, t: row.tracks[l.index] }))
+    .filter(v => v.t && v.t.id === v.lane.id && hasHits(v.t));
+  const K = voices.length;
+  return voices.map((v, k) => {
+    const t = v.t;
+    const inner = 1 - params.spread * 0.7;
+    const ringR = R * (inner + params.spread * 0.7 * (k + 1) / K);
+    const band = (R * params.spread * 0.7 / Math.max(K, 2)) * 0.9;
+    const N = t.length || t.steps.length;
+    const spb = stepsPerBar(t.rate);
+    const span = Math.max(1, v.lane.pmax - v.lane.pmin);
+    const isDrum = (t.section || "drum") === "drum";
+    const pts = [];
+    for (let i = 0; i < N; i++) {
+      const s = t.steps[i];
+      if (!s || !s.on) continue;
+      const frac = (i + (s.microTiming || 0)) / N;
+      const rr = isDrum ? ringR : ringR + (((stepPitch(s) - v.lane.pmin) / span) - 0.5) * band;
+      pts.push({
+        step: i, frac, rr,
+        vel: Math.max(0, Math.min(1, s.velocity == null ? 1 : s.velocity)),
+        prob: (s.probability == null ? 100 : s.probability) / 100,
+        gate: s.gate || 1,
+      });
+    }
+    return {
+      t, pts, N, spb, ringR,
+      loopBars: N / spb,
+      ghost: (t.mute || rowMuted(row, v.lane.id, v.lane.index)) ? 0.15 : 1,
+    };
+  });
+}
+
+function frame(t, dt) {
+  const env = intensity();
+  const bpmEff = bpm() || model.bpm;
+  const prevBarPos = barPos;
+  barPos += dt * bpmEff / 240;   // bpm/60 beats per sec, /4 -> bars
+
+  // trail fade to transparent
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = "rgba(0,0,0," + params.trail + ")";
+  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.globalCompositeOperation = "source-over";
+
+  const cx = viewW / 2, cy = viewH / 2;
+  const R = Math.min(viewW, viewH) * 0.38;
+  const rot = t / 1000 * params.drift * 0.03;
+
+  const ri = currentRow();
+  if (ri !== lastRowIndex) {
+    if (lastRowIndex !== -1) sectionPulse = 1;
+    lastRowIndex = ri;
+  }
+  sectionPulse = Math.max(0, sectionPulse - dt * 1.6);
+  const row = model.rows[ri];
+  const voices = voiceGeometry(row, R);
+
+  // structure alphas are scaled by the trail factor so redrawing every frame
+  // converges to the target brightness instead of stacking past it
+  const eq = params.trail;
+  const bright = 0.75 + 0.5 * env;
+
+  // guide circle, beat-pulsed
+  const beatInBar = (barPos * 4) % 1;
+  const beatPulse = Math.exp(-beatInBar * 5) * 0.10;
+  ctx.strokeStyle = "#fff";
+  ctx.globalAlpha = (0.07 + beatPulse + sectionPulse * 0.25) * eq;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.stroke();
+
+  for (const v of voices) {
+    const a = (frac) => -Math.PI / 2 + rot + frac * Math.PI * 2;
+
+    // polygon structure
+    ctx.globalAlpha = 0.30 * v.ghost * eq * bright;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    v.pts.forEach((p, i) => {
+      const x = cx + Math.cos(a(p.frac)) * p.rr;
+      const y = cy + Math.sin(a(p.frac)) * p.rr;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    if (v.pts.length > 2) ctx.closePath();
+    ctx.stroke();
+
+    // vertices
+    for (const p of v.pts) {
+      ctx.globalAlpha = (0.30 + 0.5 * p.vel) * p.prob * v.ghost * eq * bright;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a(p.frac)) * p.rr, cy + Math.sin(a(p.frac)) * p.rr, 1 + 2.2 * p.vel, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // this voice's hand: one revolution per loop of its own pattern
+    const phase = ((barPos / v.loopBars) % 1 + 1) % 1;
+    const ha = a(phase);
+    ctx.globalAlpha = params.hands * v.ghost * (0.5 + 0.5 * env);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(ha) * R * 0.04, cy + Math.sin(ha) * R * 0.04);
+    ctx.lineTo(cx + Math.cos(ha) * (v.ringR + 6), cy + Math.sin(ha) * (v.ringR + 6));
+    ctx.stroke();
+
+    // hits crossed since last frame -> flashes
+    const prevStep = prevBarPos * v.spb;
+    const curStep = barPos * v.spb;
+    for (let k = Math.floor(prevStep) + 1; k <= Math.floor(curStep); k++) {
+      const idx = ((k % v.N) + v.N) % v.N;
+      const p = v.pts.find(q => q.step === idx);
+      if (!p) continue;
+      flashes.push({
+        x: cx + Math.cos(a(p.frac)) * p.rr,
+        y: cy + Math.sin(a(p.frac)) * p.rr,
+        vel: p.vel, born: t,
+        dur: 250 + Math.min(p.gate, 8) * 90,
+        alpha: p.prob * v.ghost,
+      });
+    }
+  }
+
+  // flashes: soft dots blooming and decaying
+  for (let i = flashes.length - 1; i >= 0; i--) {
+    const f = flashes[i];
+    const age = (t - f.born) / f.dur;
+    if (age > 1) { flashes.splice(i, 1); continue; }
+    const size = (6 + 26 * f.vel * params.flash) * (0.6 + 0.8 * age) * (0.7 + 0.6 * env);
+    drawSoftDot(ctx, f.x, f.y, size, (1 - age) * 0.9 * f.alpha * params.flash);
+  }
+
+  // tiny identity line: song name + current bank letter
+  ctx.globalAlpha = 0.35 * eq;
+  ctx.fillStyle = "#fff";
+  ctx.font = "12px 'SF Mono', Menlo, monospace";
+  ctx.fillText((model.name ? model.name + "  ·  " : "") + String.fromCharCode(65 + row.bank), 24, viewH - 24);
+  ctx.globalAlpha = 1;
+}
+
+// ---- .seq loading: drop anywhere, or [o] to browse ----
+const fileInput = document.getElementById("file");
+async function loadSeqFile(file) {
+  if (!file) return;
+  try {
+    const d = JSON.parse(await file.text());
+    const m = buildModel(d, file.name);
+    if (!m) return;
+    model = m;
+    barPos = 0;
+    lastRowIndex = -1;
+    flashes.length = 0;
+    if (d.bpm) setBpm(d.bpm);
+  } catch (_) { /* not a .seq — ignore */ }
+}
+window.clockLoadSeq = (d, name) => { const m = buildModel(d, name); if (m) { model = m; barPos = 0; lastRowIndex = -1; flashes.length = 0; } };
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => { e.preventDefault(); loadSeqFile(e.dataTransfer.files[0]); });
+window.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "o") fileInput.click();
+});
+fileInput.addEventListener("change", () => loadSeqFile(fileInput.files[0]));
+
+let lastT = performance.now();
+function loop(t) {
+  const dt = Math.min((t - lastT) / 1000, 0.1);
+  lastT = t;
+  tickInputs(dt);
+  frame(t, dt);
+  tickMarkers(dt);
+  tickTelemetry(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  bumpActivity();
+});
+
+installMarkers({ params });
+installTelemetry({ params });
+installPanel(params);
+</script>
+</body>
+</html>
