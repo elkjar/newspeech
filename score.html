@@ -70,7 +70,7 @@
   #score { display: none; width: 100%; height: auto; }
   #drop.loaded #score { display: block; }
 
-  #controls { display: none; margin-top: 14px; gap: 8px; }
+  #controls { display: none; margin-top: 14px; gap: 8px; flex-wrap: wrap; }
   #drop.loaded + #controls { display: flex; }
   button {
     font: inherit;
@@ -79,10 +79,11 @@
     color: #aaa;
     padding: 5px 14px;
     cursor: pointer;
+    flex: 1;
+    white-space: nowrap;
   }
   button:hover { border-color: #777; color: #eee; }
   button .key { color: #555; }
-  #status { color: #555; margin-left: auto; align-self: center; }
 </style>
 </head>
 <body>
@@ -102,7 +103,6 @@
   <button id="clean">text: on <span class="key">[c]</span></button>
   <button id="save">save png <span class="key">[s]</span></button>
   <button id="savesvg">save svg <span class="key">[e]</span></button>
-  <span id="status"></span>
 </div>
 <input type="file" id="file" accept=".seq,application/json" style="display:none">
 
@@ -711,7 +711,7 @@ function SvgRecorder(W, H) {
 const drop = document.getElementById("drop");
 const canvas = document.getElementById("score");
 const fileInput = document.getElementById("file");
-const status = document.getElementById("status");
+const prompt = document.getElementById("prompt");
 const viewBtn = document.getElementById("view");
 
 const VIEWS = { composition: renderComposition, stack: renderStack, figures: renderFigures };
@@ -729,12 +729,12 @@ async function loadFile(file) {
   try {
     d = JSON.parse(await file.text());
   } catch (_) {
-    status.textContent = "not a .seq file (couldn't parse json)";
+    prompt.textContent = "not a .seq file (couldn't parse json) — try another";
     return;
   }
   const m = buildModel(d, file.name);
   if (!m) {
-    status.textContent = "no active steps found in this file";
+    prompt.textContent = "no active steps found in this file — try another";
     return;
   }
   model = m;
@@ -742,8 +742,6 @@ async function loadFile(file) {
   await Promise.all(["42px zxx-bold", "13px zxx-sans", "14px zxx-noise"].map(f => document.fonts.load(f))).catch(() => {});
   drop.classList.add("loaded");
   draw();
-  const n = (c, w) => c + " " + w + (c === 1 ? "" : "s");
-  status.textContent = n(m.totalBars, "bar") + " · " + n(m.lanes.length, "voice") + " · " + n(m.rows.length, "section");
 }
 
 document.getElementById("prompt").addEventListener("click", () => fileInput.click());
