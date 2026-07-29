@@ -199,19 +199,21 @@ function buildModel(d, filename) {
 const INK  = { bg: "#050505", ink: "#e2e2e2" };
 const PAPER = { bg: "#f2efe9", ink: "#181818" };
 
-// output formats: logical canvas dimensions per aspect
+// output formats: logical canvas dimensions per aspect. pad = safe-area
+// insets (9:16 keeps the text clear of instagram's top/bottom chrome).
 const FORMATS = {
-  "1:1":  [1680, 1680],
-  "4:5":  [1344, 1680],
-  "9:16": [945, 1680],
-  "16:9": [1680, 945],
+  "1:1":  { w: 1680, h: 1680, pad: [0, 0] },
+  "4:5":  { w: 1344, h: 1680, pad: [0, 0] },
+  "9:16": { w: 945,  h: 1680, pad: [210, 295] },
+  "16:9": { w: 1680, h: 945,  pad: [0, 0] },
 };
 
 function inker(ctx, theme) {
   return (a) => { ctx.globalAlpha = a; ctx.strokeStyle = theme.ink; ctx.fillStyle = theme.ink; };
 }
 
-function drawChrome(ctx, model, theme, filename, W, H, marginL) {
+function drawChrome(ctx, model, theme, filename, W, H, marginL, pad) {
+  const [padT, padB] = pad || [0, 0];
   const ink = inker(ctx, theme);
   const avail = W - marginL - 54;
   try { ctx.letterSpacing = "8px"; } catch (_) {}
@@ -223,7 +225,7 @@ function drawChrome(ctx, model, theme, filename, W, H, marginL) {
     size = Math.max(18, Math.floor(size * avail / tw));
     ctx.font = size + "px zxx-bold, monospace";
   }
-  ctx.fillText(model.name, marginL, 74);
+  ctx.fillText(model.name, marginL, padT + 74);
   try { ctx.letterSpacing = "3px"; } catch (_) {}
   ink(0.5);
   const seq = model.rows.map(r => String.fromCharCode(65 + r.bank) + r.bars);
@@ -244,17 +246,17 @@ function drawChrome(ctx, model, theme, filename, W, H, marginL) {
       if (n === 0) break;
     }
   }
-  ctx.fillText(meta, marginL, 104);
+  ctx.fillText(meta, marginL, padT + 104);
   try { ctx.letterSpacing = "0px"; } catch (_) {}
 
   ink(0.3);
   ctx.font = "12px zxx-sans, monospace";
-  ctx.fillText(filename + "   ·   " + new Date().toISOString().slice(0, 10), marginL, H - 30);
+  ctx.fillText(filename + "   ·   " + new Date().toISOString().slice(0, 10), marginL, H - padB - 30);
   try { ctx.letterSpacing = "4px"; } catch (_) {}
   ink(0.5);
   ctx.font = "14px zxx-noise, monospace";
   const w = ctx.measureText("newspeech").width;
-  ctx.fillText("newspeech", W - 54 - w, H - 30);
+  ctx.fillText("newspeech", W - 54 - w, H - padB - 30);
   try { ctx.letterSpacing = "0px"; } catch (_) {}
   ctx.globalAlpha = 1;
 }
@@ -437,7 +439,8 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
   }
 }
 
-function renderFigures(canvas, model, theme, scale, filename, W, H) {
+function renderFigures(canvas, model, theme, scale, filename, W, H, pad) {
+  const [padT, padB] = pad;
   const { bands, bodyH } = figureLayout(model, W);
 
   canvas.width = W * scale;
@@ -449,10 +452,10 @@ function renderFigures(canvas, model, theme, scale, filename, W, H) {
   const ink = inker(ctx, theme);
 
   // fit the block of rows into the frame, centered
-  const availH = H - FIG_HEAD - FIG_FOOT;
+  const availH = H - padT - FIG_HEAD - FIG_FOOT - padB;
   const s = Math.min(1, availH / bodyH);
   ctx.save();
-  ctx.translate(W * (1 - s) / 2, FIG_HEAD + Math.max(0, (availH - bodyH * s) / 2));
+  ctx.translate(W * (1 - s) / 2, padT + FIG_HEAD + Math.max(0, (availH - bodyH * s) / 2));
   ctx.scale(s, s);
 
   for (const band of bands) {
@@ -484,7 +487,7 @@ function renderFigures(canvas, model, theme, scale, filename, W, H) {
   }
 
   ctx.restore();
-  drawChrome(ctx, model, theme, filename, W, H, FIG_ML);
+  drawChrome(ctx, model, theme, filename, W, H, FIG_ML, pad);
 }
 
 // ---------- view 2: composition — the whole piece as one figure ----------
@@ -494,10 +497,11 @@ function renderFigures(canvas, model, theme, scale, filename, W, H) {
 // circle: repeats of a bank re-enter as rotated echoes of the same shape,
 // contrast sections cut across them. density is the arrangement.
 
-function renderComposition(canvas, model, theme, scale, filename, W, H) {
-  const availH = H - FIG_HEAD - FIG_FOOT;
+function renderComposition(canvas, model, theme, scale, filename, W, H, pad) {
+  const [padT, padB] = pad;
+  const availH = H - padT - FIG_HEAD - FIG_FOOT - padB;
   const cx = W / 2;
-  const cy = FIG_HEAD + availH / 2;
+  const cy = padT + FIG_HEAD + availH / 2;
   const r = Math.min(availH / 2, W / 2 - FIG_ML) - 44;
 
   canvas.width = W * scale;
@@ -534,7 +538,7 @@ function renderComposition(canvas, model, theme, scale, filename, W, H) {
     barsBefore += row.bars;
   });
 
-  drawChrome(ctx, model, theme, filename, W, H, FIG_ML);
+  drawChrome(ctx, model, theme, filename, W, H, FIG_ML, pad);
 }
 
 // ---------- view: rings — the piece as growth rings ----------
@@ -544,10 +548,11 @@ function renderComposition(canvas, model, theme, scale, filename, W, H) {
 // in-loop, so a repeated bank re-enters as a concentric echo of the same
 // pattern — the arrangement reads like dendrochronology.
 
-function renderRings(canvas, model, theme, scale, filename, W, H) {
-  const availH = H - FIG_HEAD - FIG_FOOT;
+function renderRings(canvas, model, theme, scale, filename, W, H, pad) {
+  const [padT, padB] = pad;
+  const availH = H - padT - FIG_HEAD - FIG_FOOT - padB;
   const cx = W / 2;
-  const cy = FIG_HEAD + availH / 2;
+  const cy = padT + FIG_HEAD + availH / 2;
   const R = Math.min(availH / 2, W / 2 - FIG_ML) - 24;
   const inner = R * 0.10;
 
@@ -588,7 +593,7 @@ function renderRings(canvas, model, theme, scale, filename, W, H) {
     edge += thick;
   });
 
-  drawChrome(ctx, model, theme, filename, W, H, FIG_ML);
+  drawChrome(ctx, model, theme, filename, W, H, FIG_ML, pad);
 }
 
 // ---------- page wiring ----------
@@ -604,8 +609,8 @@ let model = null, fname = "", inverted = false, view = "composition", format = "
 
 function draw(target, scale) {
   if (!model) return;
-  const [W, H] = FORMATS[format];
-  VIEWS[view](target || canvas, model, inverted ? PAPER : INK, scale || 2, fname, W, H);
+  const f = FORMATS[format];
+  VIEWS[view](target || canvas, model, inverted ? PAPER : INK, scale || 2, fname, f.w, f.h, f.pad);
 }
 
 async function loadFile(file) {
