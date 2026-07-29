@@ -97,6 +97,7 @@
 <div id="controls">
   <button id="load">load .seq</button>
   <button id="view">view: composition <span class="key">[v]</span></button>
+  <button id="format">format: 1:1 <span class="key">[f]</span></button>
   <button id="invert">invert <span class="key">[i]</span></button>
   <button id="save">save png <span class="key">[s]</span></button>
   <span id="status"></span>
@@ -198,29 +199,51 @@ function buildModel(d, filename) {
 const INK  = { bg: "#050505", ink: "#e2e2e2" };
 const PAPER = { bg: "#f2efe9", ink: "#181818" };
 
-const LOGICAL_W = 1680;
+// output formats: logical canvas dimensions per aspect
+const FORMATS = {
+  "1:1":  [1680, 1680],
+  "4:5":  [1344, 1680],
+  "9:16": [945, 1680],
+  "16:9": [1680, 945],
+};
 
 function inker(ctx, theme) {
   return (a) => { ctx.globalAlpha = a; ctx.strokeStyle = theme.ink; ctx.fillStyle = theme.ink; };
 }
 
-function drawChrome(ctx, model, theme, filename, H, marginL) {
+function drawChrome(ctx, model, theme, filename, W, H, marginL) {
   const ink = inker(ctx, theme);
+  const avail = W - marginL - 54;
   try { ctx.letterSpacing = "8px"; } catch (_) {}
   ink(0.95);
-  ctx.font = "42px zxx-bold, monospace";
+  let size = 42;
+  ctx.font = size + "px zxx-bold, monospace";
+  const tw = ctx.measureText(model.name).width;
+  if (tw > avail) {
+    size = Math.max(18, Math.floor(size * avail / tw));
+    ctx.font = size + "px zxx-bold, monospace";
+  }
   ctx.fillText(model.name, marginL, 74);
   try { ctx.letterSpacing = "3px"; } catch (_) {}
-  ctx.font = "13px zxx-sans, monospace";
   ink(0.5);
   const seq = model.rows.map(r => String.fromCharCode(65 + r.bank) + r.bars);
-  const meta = [
+  const facts = [
     model.bpm && model.bpm + " BPM",
     model.key,
     model.totalBars + " BARS",
     model.lanes.length + " VOICES",
-    (seq.length > 14 ? seq.slice(0, 14).join(" ") + " …" : seq.join(" ")),
-  ].filter(Boolean).join("   ·   ");
+  ].filter(Boolean);
+  // fit the meta line: shrink first, then trim the section sequence, then drop it
+  let meta = "";
+  fit: for (let fs = 13; fs >= 10; fs--) {
+    ctx.font = fs + "px zxx-sans, monospace";
+    for (let n = Math.min(seq.length, 14); n >= 0; n -= (n > 4 ? 2 : n)) {
+      const tail = n === 0 ? [] : [seq.slice(0, n).join(" ") + (n < seq.length ? " …" : "")];
+      meta = facts.concat(tail).join("   ·   ");
+      if (ctx.measureText(meta).width <= avail) break fit;
+      if (n === 0) break;
+    }
+  }
   ctx.fillText(meta, marginL, 104);
   try { ctx.letterSpacing = "0px"; } catch (_) {}
 
@@ -231,7 +254,7 @@ function drawChrome(ctx, model, theme, filename, H, marginL) {
   ink(0.5);
   ctx.font = "14px zxx-noise, monospace";
   const w = ctx.measureText("newspeech").width;
-  ctx.fillText("newspeech", LOGICAL_W - 54 - w, H - 30);
+  ctx.fillText("newspeech", W - 54 - w, H - 30);
   try { ctx.letterSpacing = "0px"; } catch (_) {}
   ctx.globalAlpha = 1;
 }
@@ -248,9 +271,10 @@ const FIG_HEAD = 150, FIG_FOOT = 72, FIG_ML = 54, FIG_ROWGAP = 46;
 
 // sections wrap into up to 4 rows (reading order = piece order). one global
 // fit factor across all rows so a bank draws the same size wherever it
-// appears — radius still tracks sqrt(bars).
-function figureLayout(model) {
-  const scoreW = LOGICAL_W - FIG_ML * 2;
+// appears — radius still tracks sqrt(bars). y coordinates are body-local
+// (0 at the first row) so renderFigures can scale the block into any format.
+function figureLayout(model, W) {
+  const scoreW = W - FIG_ML * 2;
   const gap = 34;
   const n = model.rows.length;
   const nRows = Math.min(4, n);
@@ -270,7 +294,7 @@ function figureLayout(model) {
   const width = (g) => g.reduce((s, c) => s + 2 * c.R, 0) + gap * (g.length - 1);
   const fit = Math.min(1, ...groups.map(g => scoreW / width(g)));
 
-  let y = FIG_HEAD;
+  let y = 0;
   const bands = groups.map(g => {
     const total = width(g) * fit;
     let x = FIG_ML + (scoreW - total) / 2;
@@ -286,26 +310,32 @@ function figureLayout(model) {
     return { clusters, cy, maxR };
   });
 
-  return { bands, H: y - FIG_ROWGAP + FIG_FOOT };
+  return { bands, bodyH: y - FIG_ROWGAP };
 }
 
-// draw one section's figure at (cx, cy) radius r, optionally rotated/faded
+// draw one section's figure at (cx, cy) radius r, optionally rotated/faded.
+// opts.r0/r1 confine the voice rings to a radial band (default 0.30r..0.96r).
 function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
   const rot = (opts && opts.rot) || 0;
   const alphaScale = (opts && opts.alpha) || 1;
+  const bandR0 = (opts && opts.r0 != null) ? opts.r0 : r * 0.30;
+  const bandR1 = (opts && opts.r1 != null) ? opts.r1 : r * 0.96;
   const ink = inker(ctx, theme);
 
   const voices = model.lanes
     .map(l => ({ lane: l, t: row.tracks[l.index] }))
     .filter(v => v.t && v.t.id === v.lane.id && hasHits(v.t));
   const K = voices.length;
+  const radialSpan = bandR1 - bandR0;
+  // squeeze the marks when the band gets thin (rings view slivers)
+  const dotScale = Math.max(0.25, Math.min(1, (radialSpan / Math.max(K, 2)) / 9));
 
   // pass 1: geometry for every voice
   const geo = voices.map((v, k) => {
     const t = v.t;
     const ghost = (t.mute || rowMuted(row, v.lane.id, v.lane.index)) ? 0.15 : 1;
-    const ringR = r * (0.30 + 0.66 * (k + 1) / K);
-    const band = (r * 0.66 / Math.max(K, 2)) * 0.9;
+    const ringR = bandR0 + radialSpan * (k + 1) / K;
+    const band = (radialSpan / Math.max(K, 2)) * 0.9;
     const N = t.length || t.steps.length;
     const isDrum = (t.section || "drum") === "drum";
 
@@ -391,15 +421,15 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
     for (const p of pts) {
       ink((0.35 + 0.6 * p.vel) * (0.4 + 0.6 * p.prob) * ghost * alphaScale);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.2 + 2.6 * p.vel, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, (1.2 + 2.6 * p.vel) * dotScale, 0, Math.PI * 2);
       ctx.fill();
       if (p.ratchet > 1) {
         ctx.lineWidth = 1;
         for (let q = 0; q < p.ratchet; q++) {
           const a2 = p.ang + (q - (p.ratchet - 1) / 2) * 0.05;
           ctx.beginPath();
-          ctx.moveTo(cx + Math.cos(a2) * (p.rr + 4), cy + Math.sin(a2) * (p.rr + 4));
-          ctx.lineTo(cx + Math.cos(a2) * (p.rr + 9), cy + Math.sin(a2) * (p.rr + 9));
+          ctx.moveTo(cx + Math.cos(a2) * (p.rr + 4 * dotScale), cy + Math.sin(a2) * (p.rr + 4 * dotScale));
+          ctx.lineTo(cx + Math.cos(a2) * (p.rr + 9 * dotScale), cy + Math.sin(a2) * (p.rr + 9 * dotScale));
           ctx.stroke();
         }
       }
@@ -407,16 +437,23 @@ function drawSectionFigure(ctx, theme, model, row, cx, cy, r, opts) {
   }
 }
 
-function renderFigures(canvas, model, theme, scale, filename) {
-  const { bands, H } = figureLayout(model);
+function renderFigures(canvas, model, theme, scale, filename, W, H) {
+  const { bands, bodyH } = figureLayout(model, W);
 
-  canvas.width = LOGICAL_W * scale;
+  canvas.width = W * scale;
   canvas.height = H * scale;
   const ctx = canvas.getContext("2d");
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, LOGICAL_W, H);
+  ctx.fillRect(0, 0, W, H);
   const ink = inker(ctx, theme);
+
+  // fit the block of rows into the frame, centered
+  const availH = H - FIG_HEAD - FIG_FOOT;
+  const s = Math.min(1, availH / bodyH);
+  ctx.save();
+  ctx.translate(W * (1 - s) / 2, FIG_HEAD + Math.max(0, (availH - bodyH * s) / 2));
+  ctx.scale(s, s);
 
   for (const band of bands) {
     // faint axis through each row of figures — the timeline reduced to a rule
@@ -424,7 +461,7 @@ function renderFigures(canvas, model, theme, scale, filename) {
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(FIG_ML, band.cy);
-    ctx.lineTo(LOGICAL_W - FIG_ML, band.cy);
+    ctx.lineTo(W - FIG_ML, band.cy);
     ctx.stroke();
 
     for (const { cx, r, row } of band.clusters) {
@@ -446,7 +483,8 @@ function renderFigures(canvas, model, theme, scale, filename) {
     }
   }
 
-  drawChrome(ctx, model, theme, filename, H, FIG_ML);
+  ctx.restore();
+  drawChrome(ctx, model, theme, filename, W, H, FIG_ML);
 }
 
 // ---------- view 2: composition — the whole piece as one figure ----------
@@ -456,18 +494,18 @@ function renderFigures(canvas, model, theme, scale, filename) {
 // circle: repeats of a bank re-enter as rotated echoes of the same shape,
 // contrast sections cut across them. density is the arrangement.
 
-function renderComposition(canvas, model, theme, scale, filename) {
-  const H = 1240;
-  const cx = LOGICAL_W / 2;
-  const cy = FIG_HEAD + (H - FIG_HEAD - FIG_FOOT) / 2;
-  const r = (H - FIG_HEAD - FIG_FOOT) / 2 - 36;
+function renderComposition(canvas, model, theme, scale, filename, W, H) {
+  const availH = H - FIG_HEAD - FIG_FOOT;
+  const cx = W / 2;
+  const cy = FIG_HEAD + availH / 2;
+  const r = Math.min(availH / 2, W / 2 - FIG_ML) - 44;
 
-  canvas.width = LOGICAL_W * scale;
+  canvas.width = W * scale;
   canvas.height = H * scale;
   const ctx = canvas.getContext("2d");
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, LOGICAL_W, H);
+  ctx.fillRect(0, 0, W, H);
   const ink = inker(ctx, theme);
 
   // one guide circle
@@ -496,7 +534,61 @@ function renderComposition(canvas, model, theme, scale, filename) {
     barsBefore += row.bars;
   });
 
-  drawChrome(ctx, model, theme, filename, H, FIG_ML);
+  drawChrome(ctx, model, theme, filename, W, H, FIG_ML);
+}
+
+// ---------- view: rings — the piece as growth rings ----------
+//
+// time flows radially: the first section is the innermost annulus, the last
+// is the rim. ring thickness tracks the section's bars; angle stays position-
+// in-loop, so a repeated bank re-enters as a concentric echo of the same
+// pattern — the arrangement reads like dendrochronology.
+
+function renderRings(canvas, model, theme, scale, filename, W, H) {
+  const availH = H - FIG_HEAD - FIG_FOOT;
+  const cx = W / 2;
+  const cy = FIG_HEAD + availH / 2;
+  const R = Math.min(availH / 2, W / 2 - FIG_ML) - 24;
+  const inner = R * 0.10;
+
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+  const ink = inker(ctx, theme);
+
+  // outer guide circle
+  ink(0.09);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.stroke();
+
+  let edge = inner;
+  ctx.font = "11px zxx-sans, monospace";
+  model.rows.forEach((row) => {
+    const thick = (R - inner) * (row.bars / model.totalBars);
+    const gap = Math.min(3, thick * 0.15);
+
+    // boundary circle where this section begins
+    ink(0.045);
+    ctx.beginPath();
+    ctx.arc(cx, cy, edge, 0, Math.PI * 2);
+    ctx.stroke();
+
+    drawSectionFigure(ctx, theme, model, row, cx, cy, R, { r0: edge, r1: edge + thick - gap, alpha: 0.9 });
+
+    // bank letter beside the top axis, mid-annulus (skipped on slivers)
+    if (thick >= 14) {
+      ink(0.4);
+      ctx.fillText(String.fromCharCode(65 + row.bank), cx + 6, cy - (edge + thick / 2) + 4);
+    }
+    edge += thick;
+  });
+
+  drawChrome(ctx, model, theme, filename, W, H, FIG_ML);
 }
 
 // ---------- page wiring ----------
@@ -507,12 +599,13 @@ const fileInput = document.getElementById("file");
 const status = document.getElementById("status");
 const viewBtn = document.getElementById("view");
 
-const VIEWS = { composition: renderComposition, figures: renderFigures };
-let model = null, fname = "", inverted = false, view = "composition";
+const VIEWS = { composition: renderComposition, rings: renderRings, figures: renderFigures };
+let model = null, fname = "", inverted = false, view = "composition", format = "1:1";
 
 function draw(target, scale) {
   if (!model) return;
-  VIEWS[view](target || canvas, model, inverted ? PAPER : INK, scale || 2, fname);
+  const [W, H] = FORMATS[format];
+  VIEWS[view](target || canvas, model, inverted ? PAPER : INK, scale || 2, fname, W, H);
 }
 
 async function loadFile(file) {
@@ -556,6 +649,12 @@ function toggleView() {
   viewBtn.innerHTML = "view: " + view + ' <span class="key">[v]</span>';
   draw();
 }
+function toggleFormat() {
+  const names = Object.keys(FORMATS);
+  format = names[(names.indexOf(format) + 1) % names.length];
+  document.getElementById("format").innerHTML = "format: " + format + ' <span class="key">[f]</span>';
+  draw();
+}
 function toggleInvert() { if (model) { inverted = !inverted; draw(); } }
 function savePng() {
   if (!model) return;
@@ -570,11 +669,13 @@ function savePng() {
   }, "image/png");
 }
 document.getElementById("view").addEventListener("click", toggleView);
+document.getElementById("format").addEventListener("click", toggleFormat);
 document.getElementById("invert").addEventListener("click", toggleInvert);
 document.getElementById("save").addEventListener("click", savePng);
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "v") toggleView();
+  if (e.key === "f") toggleFormat();
   if (e.key === "i") toggleInvert();
   if (e.key === "s") savePng();
 });
