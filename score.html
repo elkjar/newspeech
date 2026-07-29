@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // score</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — graphic scores. Drop a .seq file, get a graphic representation of the piece.">
+<meta property="og:title" content="NEWSPEECH // score">
+<meta property="og:description" content="newspeech — graphic scores from .seq files.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/score.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // score">
+<meta name="twitter:description" content="newspeech — graphic scores from .seq files.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); font-display: swap; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    color: #eee;
+    margin: 0 0 4px;
+  }
+  .sub { color: #666; margin: 0 0 20px; }
+
+  #drop {
+    position: relative;
+    min-height: 320px;
+    background: #0a0a0a;
+    border: 1px dashed #333;
+    transition: border-color 0.15s;
+  }
+  #drop.loaded { border-style: solid; border-color: #1c1c1c; min-height: 0; }
+  #drop.drag { border-color: #777; }
+  #prompt {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    cursor: pointer;
+    text-align: center;
+    padding: 20px;
+  }
+  #drop.drag #prompt { color: #ddd; }
+  #drop.loaded #prompt { display: none; }
+  #score { display: none; width: 100%; height: auto; }
+  #drop.loaded #score { display: block; }
+
+  #controls { display: none; margin-top: 14px; gap: 8px; }
+  #drop.loaded + #controls { display: flex; }
+  button {
+    font: inherit;
+    background: none;
+    border: 1px solid #333;
+    color: #aaa;
+    padding: 5px 14px;
+    cursor: pointer;
+  }
+  button:hover { border-color: #777; color: #eee; }
+  button .key { color: #555; }
+  #status { color: #555; margin-left: auto; align-self: center; }
+</style>
+</head>
+<body>
+
+<h1>NEWSPEECH // SCORE</h1>
+<p class="sub">graphic scores — drop a .seq file, get a graphic representation of the piece. nothing is uploaded; it renders here.</p>
+
+<div id="drop">
+  <div id="prompt">drop a .seq file<br>(or click to browse)</div>
+  <canvas id="score"></canvas>
+</div>
+<div id="controls">
+  <button id="load">load .seq</button>
+  <button id="invert">invert <span class="key">[i]</span></button>
+  <button id="save">save png <span class="key">[s]</span></button>
+  <span id="status"></span>
+</div>
+<input type="file" id="file" accept=".seq,application/json" style="display:none">
+
+<script>
+(function () {
+"use strict";
+
+// ---------- model: .seq json -> a flat timeline of marks ----------
+
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function stepsPerBar(rate) {
+  // rate is a string like "1/16"; denominator = steps per bar
+  const m = /^1\/(\d+)$/.exec(String(rate || ""));
+  const n = m ? parseInt(m[1], 10) : 16;
+  return (n >= 1 && n <= 64) ? n : 16;
+}
+
+function trackBars(t) {
+  const len = t.length || (t.steps || []).length || 16;
+  return Math.max(1, Math.ceil(len / stepsPerBar(t.rate)));
+}
+
+// muted tracks still count — they render as ghosts (authored material, reduced weight)
+function hasHits(t) {
+  return t && Array.isArray(t.steps) &&
+    t.steps.slice(0, t.length || t.steps.length).some(s => s && s.on);
+}
+
+function shortName(t) {
+  const src = t.source || {};
+  if (src.kind === "voice" && src.id) {
+    const parts = String(src.id).replace(/^user-(drums|instruments)-/, "").split("-");
+    return parts.slice(-2).join("-");
+  }
+  if (src.kind === "instrument" && src.id) return String(src.id);
+  if (src.kind === "midi") return "midi" + (src.channel != null ? " ch" + src.channel : "");
+  return t.id;
+}
+
+function stepPitches(s) {
+  if (Array.isArray(s.notes) && s.notes.length) return s.notes;
+  return [s.pitch || 0];
+}
+
+// build the row timeline: arrangement rows -> banks in order -> live tracks
+function buildModel(d, filename) {
+  const banks = (d.banks || []).map(b => b && b.tracks ? b.tracks : null);
+  let rows = [];
+
+  const arrRows = ((d.arrangement && d.arrangement.rows) || []).filter(r => r && r.bank != null && banks[r.bank]);
+  if (arrRows.length) {
+    rows = arrRows.map(r => ({ bank: r.bank, tracks: banks[r.bank], bars: Math.max(1, r.bars | 0), mutes: r.mutes || [] }));
+  } else {
+    banks.forEach((tracks, i) => {
+      if (!tracks || !tracks.some(hasHits)) return;
+      const bars = Math.max(...tracks.filter(hasHits).map(trackBars));
+      rows.push({ bank: i, tracks, bars, mutes: [] });
+    });
+  }
+  if (!rows.length && Array.isArray(d.tracks) && d.tracks.some(hasHits)) {
+    const bars = Math.max(...d.tracks.filter(hasHits).map(trackBars));
+    rows = [{ bank: 0, tracks: d.tracks, bars, mutes: [] }];
+  }
+  if (!rows.length) return null;
+
+  // lanes = every track active in any used row, in t1..t16 order
+  const laneMap = new Map();
+  for (const row of rows) {
+    for (let i = 0; i < row.tracks.length; i++) {
+      const t = row.tracks[i];
+      if (!hasHits(t)) continue;
+      if (!laneMap.has(t.id)) {
+        laneMap.set(t.id, { id: t.id, index: i, section: t.section || "drum", label: shortName(t), pmin: Infinity, pmax: -Infinity, everAudible: false });
+      }
+      const lane = laneMap.get(t.id);
+      if (lane.label === t.id) lane.label = shortName(t); // prefer a named source from any bank
+      if (!t.mute && !rowMuted(row, t.id, i)) lane.everAudible = true;
+      if ((t.section || "drum") !== "drum") {
+        for (const s of t.steps.slice(0, t.length)) {
+          if (!s || !s.on) continue;
+          for (const p of stepPitches(s)) {
+            if (p < lane.pmin) lane.pmin = p;
+            if (p > lane.pmax) lane.pmax = p;
+          }
+        }
+      }
+    }
+  }
+  const lanes = [...laneMap.values()].sort((a, b) => a.index - b.index);
+  if (!lanes.length) return null;
+
+  const totalBars = rows.reduce((n, r) => n + r.bars, 0);
+  const root = d.rootNote != null ? NOTE_NAMES[((d.rootNote % 12) + 12) % 12] : null;
+  return {
+    name: (d.name || filename.replace(/\.seq$/i, "")).toUpperCase(),
+    bpm: d.bpm || null,
+    key: root ? root + " " + String(d.scale || "").toUpperCase() : null,
+    rows, lanes, totalBars,
+  };
+}
+
+function rowMuted(row, laneId, laneIndex) {
+  return row.mutes.some(m => m === laneId || m === laneIndex);
+}
+
+// ---------- render ----------
+
+const INK  = { bg: "#050505", ink: "#e2e2e2", panel: "#0a0a0a" };
+const PAPER = { bg: "#f2efe9", ink: "#181818", panel: "#f2efe9" };
+
+const LOGICAL_W = 1680;
+const M_LEFT = 170, M_RIGHT = 54, HEAD_H = 168, FOOT_H = 72;
+const LANE_H = { drum: 30, melodic: 66 }, LANE_GAP = 16;
+
+function render(canvas, model, theme, scale, filename) {
+  const scoreW = LOGICAL_W - M_LEFT - M_RIGHT;
+  const lanesH = model.lanes.reduce((n, l) => n + LANE_H[l.section === "drum" ? "drum" : "melodic"] + LANE_GAP, 0);
+  const H = HEAD_H + lanesH + FOOT_H;
+
+  canvas.width = LOGICAL_W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, LOGICAL_W, H);
+
+  const ink = (a) => { ctx.globalAlpha = a; ctx.strokeStyle = theme.ink; ctx.fillStyle = theme.ink; };
+
+  // --- title block ---
+  try { ctx.letterSpacing = "8px"; } catch (_) {}
+  ink(0.95);
+  ctx.font = "42px zxx-bold, monospace";
+  ctx.fillText(model.name, M_LEFT, 74);
+  try { ctx.letterSpacing = "3px"; } catch (_) {}
+  ctx.font = "13px zxx-sans, monospace";
+  ink(0.5);
+  const seq = model.rows.map(r => String.fromCharCode(65 + r.bank) + r.bars);
+  const meta = [
+    model.bpm && model.bpm + " BPM",
+    model.key,
+    model.totalBars + " BARS",
+    model.lanes.length + " VOICES",
+    (seq.length > 14 ? seq.slice(0, 14).join(" ") + " …" : seq.join(" ")),
+  ].filter(Boolean).join("   ·   ");
+  ctx.fillText(meta, M_LEFT, 104);
+  try { ctx.letterSpacing = "0px"; } catch (_) {}
+
+  // --- bar grid + row (bank) boundaries ---
+  const barW = scoreW / model.totalBars;
+  const scoreTop = HEAD_H, scoreBot = HEAD_H + lanesH - LANE_GAP;
+  for (let b = 0; b <= model.totalBars; b++) {
+    ink(b % 4 === 0 ? 0.10 : 0.045);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(M_LEFT + b * barW, scoreTop - 10);
+    ctx.lineTo(M_LEFT + b * barW, scoreBot + 6);
+    ctx.stroke();
+  }
+  let rx = M_LEFT;
+  ctx.font = "12px zxx-sans, monospace";
+  for (const row of model.rows) {
+    ink(0.2);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(rx, scoreTop - 26);
+    ctx.lineTo(rx, scoreBot + 6);
+    ctx.stroke();
+    ink(0.45);
+    ctx.fillText(String.fromCharCode(65 + row.bank), rx + 6, scoreTop - 16);
+    rx += row.bars * barW;
+  }
+
+  // --- lanes ---
+  let y = HEAD_H;
+  ctx.textBaseline = "alphabetic";
+  for (const lane of model.lanes) {
+    const isDrum = lane.section === "drum";
+    const h = LANE_H[isDrum ? "drum" : "melodic"];
+    const baseline = y + h;
+
+    // label + baseline hairline
+    ink(lane.everAudible ? 0.38 : 0.16);
+    ctx.font = "12px zxx-sans, monospace";
+    ctx.fillText(lane.label.toLowerCase(), 24, baseline - 2);
+    ink(0.08);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(M_LEFT, baseline);
+    ctx.lineTo(M_LEFT + scoreW, baseline);
+    ctx.stroke();
+
+    // pitch -> y inside the lane (melodic)
+    const span = Math.max(1, lane.pmax - lane.pmin);
+    const pitchY = (p) => baseline - 8 - ((p - lane.pmin) / span) * (h - 20);
+
+    // marks, row by row
+    let rowX = M_LEFT;
+    for (const row of model.rows) {
+      const t = row.tracks[lane.index];
+      const active = t && t.id === lane.id && hasHits(t);
+      if (active) {
+        const ghost = (t.mute || rowMuted(row, lane.id, lane.index)) ? 0.15 : 1;
+        const spb = stepsPerBar(t.rate);
+        const stepW = barW / spb;
+        const total = row.bars * spb;
+        for (let g = 0; g < total; g++) {
+          const s = t.steps[g % t.length];
+          if (!s || !s.on) continue;
+          const vel = Math.max(0, Math.min(1, s.velocity == null ? 1 : s.velocity));
+          const prob = (s.probability == null ? 100 : s.probability) / 100;
+          const alpha = (0.3 + 0.65 * vel) * (0.35 + 0.65 * prob) * ghost;
+          const x = rowX + (g + (s.microTiming || 0)) * stepW;
+          const ratchet = Math.max(1, s.ratchet | 0);
+          if (isDrum) {
+            const th = 6 + 16 * vel;
+            ink(alpha);
+            ctx.lineWidth = 1.4;
+            for (let r = 0; r < ratchet; r++) {
+              const xx = x + (r * stepW) / ratchet;
+              ctx.beginPath();
+              ctx.moveTo(xx, baseline);
+              ctx.lineTo(xx, baseline - th);
+              ctx.stroke();
+            }
+          } else {
+            const gateW = Math.max(stepW * 0.35, Math.min((s.gate || 1) * stepW, (total - g) * stepW));
+            ink(alpha);
+            ctx.lineWidth = 1 + 1.4 * vel;
+            if (prob < 1) ctx.setLineDash([3, 3]);
+            for (const p of stepPitches(s)) {
+              const py = pitchY(p);
+              for (let r = 0; r < ratchet; r++) {
+                const xx = x + (r * stepW) / ratchet;
+                ctx.beginPath();
+                ctx.moveTo(xx, py);
+                ctx.lineTo(xx + gateW / ratchet - (ratchet > 1 ? 1.5 : 0), py);
+                ctx.stroke();
+              }
+            }
+            ctx.setLineDash([]);
+          }
+        }
+      }
+      rowX += row.bars * barW;
+    }
+    y += h + LANE_GAP;
+  }
+
+  // --- footer ---
+  ink(0.3);
+  ctx.font = "12px zxx-sans, monospace";
+  ctx.fillText(filename + "   ·   " + new Date().toISOString().slice(0, 10), M_LEFT, H - 30);
+  try { ctx.letterSpacing = "4px"; } catch (_) {}
+  ink(0.5);
+  ctx.font = "14px zxx-noise, monospace";
+  const w = ctx.measureText("newspeech").width;
+  ctx.fillText("newspeech", LOGICAL_W - M_RIGHT - w, H - 30);
+  try { ctx.letterSpacing = "0px"; } catch (_) {}
+  ctx.globalAlpha = 1;
+}
+
+// ---------- page wiring ----------
+
+const drop = document.getElementById("drop");
+const canvas = document.getElementById("score");
+const fileInput = document.getElementById("file");
+const status = document.getElementById("status");
+
+let model = null, fname = "", inverted = false;
+
+function draw() {
+  if (!model) return;
+  render(canvas, model, inverted ? PAPER : INK, 2, fname);
+}
+
+async function loadFile(file) {
+  if (!file) return;
+  let d;
+  try {
+    d = JSON.parse(await file.text());
+  } catch (_) {
+    status.textContent = "not a .seq file (couldn't parse json)";
+    return;
+  }
+  const m = buildModel(d, file.name);
+  if (!m) {
+    status.textContent = "no active steps found in this file";
+    return;
+  }
+  model = m;
+  fname = file.name;
+  await Promise.all(["42px zxx-bold", "13px zxx-sans", "14px zxx-noise"].map(f => document.fonts.load(f))).catch(() => {});
+  drop.classList.add("loaded");
+  draw();
+  const n = (c, w) => c + " " + w + (c === 1 ? "" : "s");
+  status.textContent = n(m.totalBars, "bar") + " · " + n(m.lanes.length, "voice") + " · " + n(m.rows.length, "section");
+}
+
+document.getElementById("prompt").addEventListener("click", () => fileInput.click());
+document.getElementById("load").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => loadFile(fileInput.files[0]));
+
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("drag"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault();
+  drop.classList.remove("drag");
+  loadFile(e.dataTransfer.files[0]);
+});
+
+function toggleInvert() { if (model) { inverted = !inverted; draw(); } }
+function savePng() {
+  if (!model) return;
+  const off = document.createElement("canvas");
+  render(off, model, inverted ? PAPER : INK, 3, fname);
+  off.toBlob((blob) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname.replace(/\.seq$/i, "") + "-score.png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, "image/png");
+}
+document.getElementById("invert").addEventListener("click", toggleInvert);
+document.getElementById("save").addEventListener("click", savePng);
+window.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "i") toggleInvert();
+  if (e.key === "s") savePng();
+});
+
+})();
+</script>
+<script src="nav.js"></script>
+<script src="grain.js"></script>
+</body>
+</html>
