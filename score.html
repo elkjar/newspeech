@@ -640,45 +640,50 @@ function renderStack(canvas, model, theme, scale, filename, W, H, pad) {
 //
 // a minimal Canvas2D-shaped recorder: the renderers draw into it unchanged
 // and it emits SVG elements. covers exactly the API score.html uses.
-// single-stroke vector output — plotter-friendly.
+// transforms are baked into absolute coordinates (no transform attributes) —
+// basic importers (fusion, plotters, laser software) often ignore matrices.
+// valid because this page only ever translates and scales, never rotates.
 
 function SvgRecorder(W, H) {
   const elems = [];
-  let m = [1, 0, 0, 1, 0, 0];          // current transform
+  let m = [1, 0, 0, 1, 0, 0];          // current transform (b = c = 0 always)
   const stack = [];
   let d = "", empty = true;
   const st = { alpha: 1, lineWidth: 1, dash: [] };
+  const px = (x, y) => `${fx(m[0] * x + m[4])} ${fx(m[3] * y + m[5])}`;
+  const lw = () => fx(st.lineWidth * Math.sqrt(Math.abs(m[0] * m[3])));
   const self = {
     strokeStyle: "#000", fillStyle: "#000", font: "12px monospace", letterSpacing: "0px",
     set globalAlpha(v) { st.alpha = v; }, get globalAlpha() { return st.alpha; },
     set lineWidth(v) { st.lineWidth = v; }, get lineWidth() { return st.lineWidth; },
     setTransform(a, b, c, dd, e, f) { m = [a, b, c, dd, e, f]; },
-    translate(x, y) { m = [m[0], m[1], m[2], m[3], m[4] + m[0] * x + m[2] * y, m[5] + m[1] * x + m[3] * y]; },
-    scale(x, y) { m = [m[0] * x, m[1] * x, m[2] * y, m[3] * y, m[4], m[5]]; },
+    translate(x, y) { m = [m[0], m[1], m[2], m[3], m[4] + m[0] * x, m[5] + m[3] * y]; },
+    scale(x, y) { m = [m[0] * x, m[1], m[2], m[3] * y, m[4], m[5]]; },
     save() { stack.push(m.slice()); },
     restore() { m = stack.pop() || m; },
     setLineDash(a) { st.dash = a || []; },
     beginPath() { d = ""; empty = true; },
-    moveTo(x, y) { d += `M${fx(x)} ${fx(y)}`; empty = false; },
-    lineTo(x, y) { d += (empty ? "M" : "L") + `${fx(x)} ${fx(y)}`; empty = false; },
+    moveTo(x, y) { d += `M${px(x, y)}`; empty = false; },
+    lineTo(x, y) { d += (empty ? "M" : "L") + px(x, y); empty = false; },
     closePath() { d += "Z"; },
     arc(x, y, r, a0, a1) { arcPath(x, y, r, r, a0, a1); },
     ellipse(x, y, rx, ry, rot, a0, a1) { arcPath(x, y, rx, ry, a0, a1); },
     fillRect(x, y, w, h) {
-      elems.push(`<rect x="${fx(x)}" y="${fx(y)}" width="${fx(w)}" height="${fx(h)}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}"${tf()}/>`);
+      const [x0, y0] = px(x, y).split(" "), [x1, y1] = px(x + w, y + h).split(" ");
+      elems.push(`<rect x="${x0}" y="${y0}" width="${fx(x1 - x0)}" height="${fx(y1 - y0)}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}"/>`);
     },
     stroke() {
       if (!d) return;
-      elems.push(`<path d="${d}" fill="none" stroke="${self.strokeStyle}" stroke-width="${fx(st.lineWidth)}" stroke-opacity="${fx(st.alpha)}"${st.dash.length ? ` stroke-dasharray="${st.dash.join(" ")}"` : ""}${tf()}/>`);
+      elems.push(`<path d="${d}" fill="none" stroke="${self.strokeStyle}" stroke-width="${lw()}" stroke-opacity="${fx(st.alpha)}"${st.dash.length ? ` stroke-dasharray="${st.dash.join(" ")}"` : ""}/>`);
     },
     fill() {
       if (!d) return;
-      elems.push(`<path d="${d}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}" stroke="none"${tf()}/>`);
+      elems.push(`<path d="${d}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}" stroke="none"/>`);
     },
     fillText(text, x, y) {
       const fm = /^(\d+(?:\.\d+)?)px (.+)$/.exec(self.font) || [0, 12, "monospace"];
       const esc = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      elems.push(`<text x="${fx(x)}" y="${fx(y)}" font-size="${fm[1]}" font-family="${fm[2]}" letter-spacing="${parseFloat(self.letterSpacing) || 0}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}"${tf()}>${esc}</text>`);
+      elems.push(`<text x="${px(x, y).replace(" ", `" y="`)}" font-size="${fx(fm[1] * Math.abs(m[3]))}" font-family="${fm[2]}" letter-spacing="${fx((parseFloat(self.letterSpacing) || 0) * Math.abs(m[0]))}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}">${esc}</text>`);
     },
     measureText(text) {
       const size = parseFloat(self.font) || 12;
@@ -690,16 +695,16 @@ function SvgRecorder(W, H) {
     },
   };
   function fx(n) { return Math.round(n * 100) / 100; }
-  function tf() { return ` transform="matrix(${m.map(fx).join(" ")})"`; }
   function arcPath(x, y, rx, ry, a0, a1) {
-    const pt = (a) => `${fx(x + Math.cos(a) * rx)} ${fx(y + Math.sin(a) * ry)}`;
+    const RX = fx(rx * Math.abs(m[0])), RY = fx(ry * Math.abs(m[3]));
+    const pt = (a) => px(x + Math.cos(a) * rx, y + Math.sin(a) * ry);
     const full = Math.abs(a1 - a0) >= Math.PI * 2 - 1e-6;
     if (full) {
-      d += `M${pt(0)}A${fx(rx)} ${fx(ry)} 0 1 1 ${pt(Math.PI)}A${fx(rx)} ${fx(ry)} 0 1 1 ${pt(0)}`;
+      d += `M${pt(0)}A${RX} ${RY} 0 1 1 ${pt(Math.PI)}A${RX} ${RY} 0 1 1 ${pt(0)}`;
     } else {
       const large = Math.abs(a1 - a0) > Math.PI ? 1 : 0;
       const sweep = a1 > a0 ? 1 : 0;
-      d += (empty ? "M" : "L") + pt(a0) + `A${fx(rx)} ${fx(ry)} 0 ${large} ${sweep} ${pt(a1)}`;
+      d += (empty ? "M" : "L") + pt(a0) + `A${RX} ${RY} 0 ${large} ${sweep} ${pt(a1)}`;
     }
     empty = false;
   }
