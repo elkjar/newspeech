@@ -129,17 +129,6 @@ function hasHits(t) {
     t.steps.slice(0, t.length || t.steps.length).some(s => s && s.on);
 }
 
-function shortName(t) {
-  const src = t.source || {};
-  if (src.kind === "voice" && src.id) {
-    const parts = String(src.id).replace(/^user-(drums|instruments)-/, "").split("-");
-    return parts.slice(-2).join("-");
-  }
-  if (src.kind === "instrument" && src.id) return String(src.id);
-  if (src.kind === "midi") return "midi" + (src.channel != null ? " ch" + src.channel : "");
-  return t.id;
-}
-
 function stepPitches(s) {
   if (Array.isArray(s.notes) && s.notes.length) return s.notes;
   return [s.pitch || 0];
@@ -177,11 +166,9 @@ function buildModel(d, filename) {
       const t = row.tracks[i];
       if (!hasHits(t)) continue;
       if (!laneMap.has(t.id)) {
-        laneMap.set(t.id, { id: t.id, index: i, section: t.section || "drum", label: shortName(t), pmin: Infinity, pmax: -Infinity, everAudible: false });
+        laneMap.set(t.id, { id: t.id, index: i, section: t.section || "drum", pmin: Infinity, pmax: -Infinity });
       }
       const lane = laneMap.get(t.id);
-      if (lane.label === t.id) lane.label = shortName(t); // prefer a named source from any bank
-      if (!t.mute && !rowMuted(row, t.id, i)) lane.everAudible = true;
       if ((t.section || "drum") !== "drum") {
         for (const s of t.steps.slice(0, t.length)) {
           if (!s || !s.on) continue;
@@ -512,129 +499,6 @@ function renderComposition(canvas, model, theme, scale, filename) {
   drawChrome(ctx, model, theme, filename, H, FIG_ML);
 }
 
-// ---------- view 2: timeline — the literal score ----------
-
-const M_LEFT = 170, M_RIGHT = 54, HEAD_H = 168, FOOT_H = 72;
-const LANE_H = { drum: 30, melodic: 66 }, LANE_GAP = 16;
-
-function renderTimeline(canvas, model, theme, scale, filename) {
-  const scoreW = LOGICAL_W - M_LEFT - M_RIGHT;
-  const lanesH = model.lanes.reduce((n, l) => n + LANE_H[l.section === "drum" ? "drum" : "melodic"] + LANE_GAP, 0);
-  const H = HEAD_H + lanesH + FOOT_H;
-
-  canvas.width = LOGICAL_W * scale;
-  canvas.height = H * scale;
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-
-  ctx.fillStyle = theme.bg;
-  ctx.fillRect(0, 0, LOGICAL_W, H);
-  const ink = inker(ctx, theme);
-
-  // --- bar grid + row (bank) boundaries ---
-  const barW = scoreW / model.totalBars;
-  const scoreTop = HEAD_H, scoreBot = HEAD_H + lanesH - LANE_GAP;
-  for (let b = 0; b <= model.totalBars; b++) {
-    ink(b % 4 === 0 ? 0.10 : 0.045);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(M_LEFT + b * barW, scoreTop - 10);
-    ctx.lineTo(M_LEFT + b * barW, scoreBot + 6);
-    ctx.stroke();
-  }
-  let rx = M_LEFT;
-  ctx.font = "12px zxx-sans, monospace";
-  for (const row of model.rows) {
-    ink(0.2);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(rx, scoreTop - 26);
-    ctx.lineTo(rx, scoreBot + 6);
-    ctx.stroke();
-    ink(0.45);
-    ctx.fillText(String.fromCharCode(65 + row.bank), rx + 6, scoreTop - 16);
-    rx += row.bars * barW;
-  }
-
-  // --- lanes ---
-  let y = HEAD_H;
-  ctx.textBaseline = "alphabetic";
-  for (const lane of model.lanes) {
-    const isDrum = lane.section === "drum";
-    const h = LANE_H[isDrum ? "drum" : "melodic"];
-    const baseline = y + h;
-
-    // label + baseline hairline
-    ink(lane.everAudible ? 0.38 : 0.16);
-    ctx.font = "12px zxx-sans, monospace";
-    ctx.fillText(lane.label.toLowerCase(), 24, baseline - 2);
-    ink(0.08);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(M_LEFT, baseline);
-    ctx.lineTo(M_LEFT + scoreW, baseline);
-    ctx.stroke();
-
-    // pitch -> y inside the lane (melodic)
-    const span = Math.max(1, lane.pmax - lane.pmin);
-    const pitchY = (p) => baseline - 8 - ((p - lane.pmin) / span) * (h - 20);
-
-    // marks, row by row
-    let rowX = M_LEFT;
-    for (const row of model.rows) {
-      const t = row.tracks[lane.index];
-      const active = t && t.id === lane.id && hasHits(t);
-      if (active) {
-        const ghost = (t.mute || rowMuted(row, lane.id, lane.index)) ? 0.15 : 1;
-        const spb = stepsPerBar(t.rate);
-        const stepW = barW / spb;
-        const total = row.bars * spb;
-        for (let g = 0; g < total; g++) {
-          const s = t.steps[g % t.length];
-          if (!s || !s.on) continue;
-          const vel = Math.max(0, Math.min(1, s.velocity == null ? 1 : s.velocity));
-          const prob = (s.probability == null ? 100 : s.probability) / 100;
-          const alpha = (0.3 + 0.65 * vel) * (0.35 + 0.65 * prob) * ghost;
-          const x = rowX + (g + (s.microTiming || 0)) * stepW;
-          const ratchet = Math.max(1, s.ratchet | 0);
-          if (isDrum) {
-            const th = 6 + 16 * vel;
-            ink(alpha);
-            ctx.lineWidth = 1.4;
-            for (let r = 0; r < ratchet; r++) {
-              const xx = x + (r * stepW) / ratchet;
-              ctx.beginPath();
-              ctx.moveTo(xx, baseline);
-              ctx.lineTo(xx, baseline - th);
-              ctx.stroke();
-            }
-          } else {
-            const gateW = Math.max(stepW * 0.35, Math.min((s.gate || 1) * stepW, (total - g) * stepW));
-            ink(alpha);
-            ctx.lineWidth = 1 + 1.4 * vel;
-            if (prob < 1) ctx.setLineDash([3, 3]);
-            for (const p of stepPitches(s)) {
-              const py = pitchY(p);
-              for (let r = 0; r < ratchet; r++) {
-                const xx = x + (r * stepW) / ratchet;
-                ctx.beginPath();
-                ctx.moveTo(xx, py);
-                ctx.lineTo(xx + gateW / ratchet - (ratchet > 1 ? 1.5 : 0), py);
-                ctx.stroke();
-              }
-            }
-            ctx.setLineDash([]);
-          }
-        }
-      }
-      rowX += row.bars * barW;
-    }
-    y += h + LANE_GAP;
-  }
-
-  drawChrome(ctx, model, theme, filename, H, M_LEFT);
-}
-
 // ---------- page wiring ----------
 
 const drop = document.getElementById("drop");
@@ -643,7 +507,7 @@ const fileInput = document.getElementById("file");
 const status = document.getElementById("status");
 const viewBtn = document.getElementById("view");
 
-const VIEWS = { composition: renderComposition, timeline: renderTimeline, figures: renderFigures };
+const VIEWS = { composition: renderComposition, figures: renderFigures };
 let model = null, fname = "", inverted = false, view = "composition";
 
 function draw(target, scale) {
