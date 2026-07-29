@@ -99,7 +99,9 @@
   <button id="view">view: composition <span class="key">[v]</span></button>
   <button id="format">format: 1:1 <span class="key">[f]</span></button>
   <button id="invert">invert <span class="key">[i]</span></button>
+  <button id="clean">text: on <span class="key">[c]</span></button>
   <button id="save">save png <span class="key">[s]</span></button>
+  <button id="savesvg">save svg <span class="key">[e]</span></button>
   <span id="status"></span>
 </div>
 <input type="file" id="file" accept=".seq,application/json" style="display:none">
@@ -213,6 +215,7 @@ function inker(ctx, theme) {
 }
 
 function drawChrome(ctx, model, theme, filename, W, H, marginL, pad) {
+  if (clean) return;   // clean mode: figure only, no text anywhere
   const [padT, padB] = pad || [0, 0];
   const ink = inker(ctx, theme);
   const avail = W - marginL - 54;
@@ -478,11 +481,13 @@ function renderFigures(canvas, model, theme, scale, filename, W, H, pad) {
       drawSectionFigure(ctx, theme, model, row, cx, band.cy, r);
 
       // bank letter + bars beneath the figure
-      ink(0.45);
-      ctx.font = "12px zxx-sans, monospace";
-      const label = String.fromCharCode(65 + row.bank) + " · " + row.bars;
-      const lw = ctx.measureText(label).width;
-      ctx.fillText(label, cx - lw / 2, band.cy + band.maxR + 20);
+      if (!clean) {
+        ink(0.45);
+        ctx.font = "12px zxx-sans, monospace";
+        const label = String.fromCharCode(65 + row.bank) + " · " + row.bars;
+        const lw = ctx.measureText(label).width;
+        ctx.fillText(label, cx - lw / 2, band.cy + band.maxR + 20);
+      }
     }
   }
 
@@ -526,35 +531,36 @@ function renderComposition(canvas, model, theme, scale, filename, W, H, pad) {
     drawSectionFigure(ctx, theme, model, row, cx, cy, r, { rot, alpha: 0.8 });
 
     // entry mark: bank letter just outside the rim where this section begins
-    const a = -Math.PI / 2 + rot;
-    ink(0.4);
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * (r + 4), cy + Math.sin(a) * (r + 4));
-    ctx.lineTo(cx + Math.cos(a) * (r + 14), cy + Math.sin(a) * (r + 14));
-    ctx.stroke();
-    const label = String.fromCharCode(65 + row.bank);
-    const lw = ctx.measureText(label).width;
-    ctx.fillText(label, cx + Math.cos(a) * (r + 26) - lw / 2, cy + Math.sin(a) * (r + 26) + 4);
+    if (!clean) {
+      const a = -Math.PI / 2 + rot;
+      ink(0.4);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * (r + 4), cy + Math.sin(a) * (r + 4));
+      ctx.lineTo(cx + Math.cos(a) * (r + 14), cy + Math.sin(a) * (r + 14));
+      ctx.stroke();
+      const label = String.fromCharCode(65 + row.bank);
+      const lw = ctx.measureText(label).width;
+      ctx.fillText(label, cx + Math.cos(a) * (r + 26) - lw / 2, cy + Math.sin(a) * (r + 26) + 4);
+    }
     barsBefore += row.bars;
   });
 
   drawChrome(ctx, model, theme, filename, W, H, FIG_ML, pad);
 }
 
-// ---------- view: rings — the piece as growth rings ----------
+// ---------- view: stack — the piece as a wireframe tower ----------
 //
-// time flows radially: the first section is the innermost annulus, the last
-// is the rim. ring thickness tracks the section's bars; angle stays position-
-// in-loop, so a repeated bank re-enters as a concentric echo of the same
-// pattern — the arrangement reads like dendrochronology.
+// implied 3d: every section figure is a flat disc, so an axonometric
+// projection of it is just an affine squash. sections stack bottom (start)
+// to top (end), spacing tracks bars; higher discs shrink and fade slightly
+// for depth, silhouette rails run up the sides.
 
-function renderRings(canvas, model, theme, scale, filename, W, H, pad) {
+const STACK_SQUASH = 0.28;
+
+function renderStack(canvas, model, theme, scale, filename, W, H, pad) {
   const [padT, padB] = pad;
   const availH = H - padT - FIG_HEAD - FIG_FOOT - padB;
   const cx = W / 2;
-  const cy = padT + FIG_HEAD + availH / 2;
-  const R = Math.min(availH / 2, W / 2 - FIG_ML) - 24;
-  const inner = R * 0.10;
 
   canvas.width = W * scale;
   canvas.height = H * scale;
@@ -564,36 +570,140 @@ function renderRings(canvas, model, theme, scale, filename, W, H, pad) {
   ctx.fillRect(0, 0, W, H);
   const ink = inker(ctx, theme);
 
-  // outer guide circle
-  ink(0.09);
+  const n = model.rows.length;
+  const R = Math.min((W - FIG_ML * 2) * 0.34, availH * 0.30);
+  const discH = R * STACK_SQUASH;
+  const top = padT + FIG_HEAD + discH + 14;
+  const bottom = padT + FIG_HEAD + availH - discH - 26;
+
+  // vertical position: cumulative bars, bottom = start of the piece
+  const starts = [];
+  let acc = 0;
+  for (const row of model.rows) { starts.push(acc); acc += row.bars; }
+  const lastStart = starts[n - 1] || 1;
+  const discs = model.rows.map((row, i) => {
+    const t = n === 1 ? 0 : starts[i] / lastStart;          // 0 bottom .. 1 top
+    return {
+      row,
+      cy: bottom - (bottom - top) * t,
+      s: 1 - 0.16 * t,                                      // perspective shrink
+      fade: 1 - 0.25 * t,                                    // depth fade
+    };
+  });
+
+  // central axis + silhouette rails
+  ink(0.05);
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.moveTo(cx, bottom + discH);
+  ctx.lineTo(cx, top - discH);
   ctx.stroke();
-
-  let edge = inner;
-  ctx.font = "11px zxx-sans, monospace";
-  model.rows.forEach((row) => {
-    const thick = (R - inner) * (row.bars / model.totalBars);
-    const gap = Math.min(3, thick * 0.15);
-
-    // boundary circle where this section begins
-    ink(0.045);
+  for (const side of [-1, 1]) {
+    ink(0.10);
     ctx.beginPath();
-    ctx.arc(cx, cy, edge, 0, Math.PI * 2);
+    discs.forEach((d, i) => {
+      const x = cx + side * R * d.s, y = d.cy;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // discs, earliest (bottom) first
+  ctx.font = "11px zxx-sans, monospace";
+  discs.forEach((d) => {
+    // rim ellipse
+    ink(0.10 * d.fade);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx, d.cy, R * d.s, R * d.s * STACK_SQUASH, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    drawSectionFigure(ctx, theme, model, row, cx, cy, R, { r0: edge, r1: edge + thick - gap, alpha: 0.9 });
+    // the section figure, squashed onto the disc plane. the squash optically
+    // thins every stroke, so the alpha runs a little hot to compensate
+    ctx.save();
+    ctx.translate(cx, d.cy);
+    ctx.scale(d.s, d.s * STACK_SQUASH);
+    drawSectionFigure(ctx, theme, model, d.row, 0, 0, R, { alpha: 1.25 * d.fade });
+    ctx.restore();
 
-    // bank letter beside the top axis, mid-annulus (skipped on slivers)
-    if (thick >= 14) {
-      ink(0.4);
-      ctx.fillText(String.fromCharCode(65 + row.bank), cx + 6, cy - (edge + thick / 2) + 4);
+    // bank letter off the left rim
+    if (!clean) {
+      ink(0.4 * d.fade);
+      ctx.fillText(String.fromCharCode(65 + d.row.bank), cx - R * d.s - 22, d.cy + 4);
     }
-    edge += thick;
   });
 
   drawChrome(ctx, model, theme, filename, W, H, FIG_ML, pad);
+}
+
+// ---------- svg recorder ----------
+//
+// a minimal Canvas2D-shaped recorder: the renderers draw into it unchanged
+// and it emits SVG elements. covers exactly the API score.html uses.
+// single-stroke vector output — plotter-friendly.
+
+function SvgRecorder(W, H) {
+  const elems = [];
+  let m = [1, 0, 0, 1, 0, 0];          // current transform
+  const stack = [];
+  let d = "", empty = true;
+  const st = { alpha: 1, lineWidth: 1, dash: [] };
+  const self = {
+    strokeStyle: "#000", fillStyle: "#000", font: "12px monospace", letterSpacing: "0px",
+    set globalAlpha(v) { st.alpha = v; }, get globalAlpha() { return st.alpha; },
+    set lineWidth(v) { st.lineWidth = v; }, get lineWidth() { return st.lineWidth; },
+    setTransform(a, b, c, dd, e, f) { m = [a, b, c, dd, e, f]; },
+    translate(x, y) { m = [m[0], m[1], m[2], m[3], m[4] + m[0] * x + m[2] * y, m[5] + m[1] * x + m[3] * y]; },
+    scale(x, y) { m = [m[0] * x, m[1] * x, m[2] * y, m[3] * y, m[4], m[5]]; },
+    save() { stack.push(m.slice()); },
+    restore() { m = stack.pop() || m; },
+    setLineDash(a) { st.dash = a || []; },
+    beginPath() { d = ""; empty = true; },
+    moveTo(x, y) { d += `M${fx(x)} ${fx(y)}`; empty = false; },
+    lineTo(x, y) { d += (empty ? "M" : "L") + `${fx(x)} ${fx(y)}`; empty = false; },
+    closePath() { d += "Z"; },
+    arc(x, y, r, a0, a1) { arcPath(x, y, r, r, a0, a1); },
+    ellipse(x, y, rx, ry, rot, a0, a1) { arcPath(x, y, rx, ry, a0, a1); },
+    fillRect(x, y, w, h) {
+      elems.push(`<rect x="${fx(x)}" y="${fx(y)}" width="${fx(w)}" height="${fx(h)}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}"${tf()}/>`);
+    },
+    stroke() {
+      if (!d) return;
+      elems.push(`<path d="${d}" fill="none" stroke="${self.strokeStyle}" stroke-width="${fx(st.lineWidth)}" stroke-opacity="${fx(st.alpha)}"${st.dash.length ? ` stroke-dasharray="${st.dash.join(" ")}"` : ""}${tf()}/>`);
+    },
+    fill() {
+      if (!d) return;
+      elems.push(`<path d="${d}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}" stroke="none"${tf()}/>`);
+    },
+    fillText(text, x, y) {
+      const fm = /^(\d+(?:\.\d+)?)px (.+)$/.exec(self.font) || [0, 12, "monospace"];
+      const esc = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      elems.push(`<text x="${fx(x)}" y="${fx(y)}" font-size="${fm[1]}" font-family="${fm[2]}" letter-spacing="${parseFloat(self.letterSpacing) || 0}" fill="${self.fillStyle}" fill-opacity="${fx(st.alpha)}"${tf()}>${esc}</text>`);
+    },
+    measureText(text) {
+      const size = parseFloat(self.font) || 12;
+      const ls = parseFloat(self.letterSpacing) || 0;
+      return { width: String(text).length * (size * 0.62 + ls) };
+    },
+    svg() {
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">` + elems.join("\n") + `</svg>`;
+    },
+  };
+  function fx(n) { return Math.round(n * 100) / 100; }
+  function tf() { return ` transform="matrix(${m.map(fx).join(" ")})"`; }
+  function arcPath(x, y, rx, ry, a0, a1) {
+    const pt = (a) => `${fx(x + Math.cos(a) * rx)} ${fx(y + Math.sin(a) * ry)}`;
+    const full = Math.abs(a1 - a0) >= Math.PI * 2 - 1e-6;
+    if (full) {
+      d += `M${pt(0)}A${fx(rx)} ${fx(ry)} 0 1 1 ${pt(Math.PI)}A${fx(rx)} ${fx(ry)} 0 1 1 ${pt(0)}`;
+    } else {
+      const large = Math.abs(a1 - a0) > Math.PI ? 1 : 0;
+      const sweep = a1 > a0 ? 1 : 0;
+      d += (empty ? "M" : "L") + pt(a0) + `A${fx(rx)} ${fx(ry)} 0 ${large} ${sweep} ${pt(a1)}`;
+    }
+    empty = false;
+  }
+  return self;
 }
 
 // ---------- page wiring ----------
@@ -604,8 +714,8 @@ const fileInput = document.getElementById("file");
 const status = document.getElementById("status");
 const viewBtn = document.getElementById("view");
 
-const VIEWS = { composition: renderComposition, rings: renderRings, figures: renderFigures };
-let model = null, fname = "", inverted = false, view = "composition", format = "1:1";
+const VIEWS = { composition: renderComposition, stack: renderStack, figures: renderFigures };
+let model = null, fname = "", inverted = false, view = "composition", format = "1:1", clean = false;
 
 function draw(target, scale) {
   if (!model) return;
@@ -661,28 +771,46 @@ function toggleFormat() {
   draw();
 }
 function toggleInvert() { if (model) { inverted = !inverted; draw(); } }
+function toggleClean() {
+  clean = !clean;
+  document.getElementById("clean").innerHTML = "text: " + (clean ? "off" : "on") + ' <span class="key">[c]</span>';
+  draw();
+}
+function download(href, ext) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = fname.replace(/\.seq$/i, "") + "-score" + ext;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
 function savePng() {
   if (!model) return;
   const off = document.createElement("canvas");
   draw(off, 3);
-  off.toBlob((blob) => {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = fname.replace(/\.seq$/i, "") + "-score.png";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  }, "image/png");
+  off.toBlob((blob) => download(URL.createObjectURL(blob), ".png"), "image/png");
+}
+function saveSvg() {
+  if (!model) return;
+  const f = FORMATS[format];
+  const rec = SvgRecorder(f.w, f.h);
+  const fake = { width: 0, height: 0, getContext: () => rec };
+  VIEWS[view](fake, model, inverted ? PAPER : INK, 1, fname, f.w, f.h, f.pad);
+  download(URL.createObjectURL(new Blob([rec.svg()], { type: "image/svg+xml" })), ".svg");
 }
 document.getElementById("view").addEventListener("click", toggleView);
 document.getElementById("format").addEventListener("click", toggleFormat);
 document.getElementById("invert").addEventListener("click", toggleInvert);
+document.getElementById("clean").addEventListener("click", toggleClean);
 document.getElementById("save").addEventListener("click", savePng);
+document.getElementById("savesvg").addEventListener("click", saveSvg);
 window.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "v") toggleView();
   if (e.key === "f") toggleFormat();
   if (e.key === "i") toggleInvert();
+  if (e.key === "c") toggleClean();
   if (e.key === "s") savePng();
+  if (e.key === "e") saveSvg();
 });
 
 })();
