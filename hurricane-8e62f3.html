@@ -50,7 +50,10 @@
   .wide  { max-width: 960px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
 
   /* ---- header ---- */
-  header { padding: 96px 0 0; }
+  /* header/footer selectors carry their class so their vertical padding
+     out-specifies the .col/.wide gutter shorthand (same trap as the
+     section margins) */
+  header.wide { padding-top: 96px; }
   .kicker {
     font-size: 11px;
     letter-spacing: 0.14em;
@@ -308,10 +311,11 @@
     #toc, #toc .lbl, #toc .dot, #toc-scrim { transition: none; }
   }
 
-  footer {
+  footer.col {
     border-top: 1px solid var(--hair);
     margin-top: var(--beat);
-    padding: 28px 0 64px;
+    padding-top: 28px;
+    padding-bottom: 64px;
     font-size: 11px;
     letter-spacing: 0.06em;
     color: var(--faint);
@@ -321,7 +325,7 @@
   /* mobile rhythm: same system, three-quarter time */
   @media (max-width: 700px) {
     :root { --gutter: 20px; --beat: 64px; --fig: 32px; }
-    header { padding-top: 56px; }
+    header.wide { padding-top: 56px; }
     figure.full-bleed { margin-top: 44px; }
     .anchor { padding: 36px 0; }
   }
@@ -501,8 +505,9 @@
 <section class="col rule" id="newspeech">
   <div class="sec-kicker">08 — the studio</div>
   <h2>who is newspeech</h2>
-  <p>newspeech is the solo audio/visual practice of chris elkjar — musician, designer, and toolmaker. the studio builds its own instruments and releases them: the sequencer above, browser-based audio tools, open-source audio plugins, a free sample library recorded from its modular system, and the audio-reactive visualizer system whose language this page borrows. the output is recorded music, live performance — guitar and hardware played over generative beds — and the working archive at <a href="https://www.newspeechsound.com/">newspeechsound.com</a>.</p>
-  <p>the relevant fact for this proposal: everything the work depends on already exists and runs daily in this studio. the sequencer, the score engine, the visualizer system and the render pipeline are not speculative infrastructure — what remains is the composition, the human pass, and the staging.</p>
+  <p>newspeech is an audio/visual studio led by chris elkjar — musician, designer, and toolmaker. it builds its own instruments and releases them: the sequencer above, browser-based audio tools, open-source audio plugins, a free sample library recorded from its modular system, and the audio-reactive visualizer system whose language this page borrows. the output is recorded music, live performance, and the working archive at <a href="https://www.newspeechsound.com/">newspeechsound.com</a>.</p>
+  <p>a hurricane in 4 decades is built as a collaborative work, not a solo record. the staging asks for more hands than one: players responding live to the generative beds, an operator on the score and visual systems, and — deliberately — research partners. the datasets deserve collaborators who work with them professionally: climate scientists and data stewards invited to review the mappings, challenge the interpretations, and be credited in the finished work. institutional partners are welcomed into the making, not just the booking — a residency, a seminar alongside the performance, students inside the pipeline.</p>
+  <p>what already exists is the infrastructure: the sequencer, the score engine, the visualizer system and the render pipeline all run daily at the studio. what the collaboration builds is the work itself — the composition, the human pass, and the room it happens in.</p>
 </section>
 
 <section class="wide rule" id="datasets">
@@ -593,7 +598,7 @@ function drawStripes() {
   ctx.restore();
   ctx.fillStyle = "rgba(255,255,255,0.35)";
   ctx.font = FONT;
-  ctx.fillText("no instrumental record", 24, 20);
+  ctx.fillText("no instrumental record", 64, 20); // inset past the fixed dot rail
 
   // stripes
   for (const [yr, v] of DATA.temps) {
