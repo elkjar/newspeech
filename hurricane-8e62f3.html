@@ -22,6 +22,9 @@
 <style>
   @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-bold"; src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo"; src: url("fonts/zxx-camo.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed"; src: url("fonts/zxx-xed.woff2") format("woff2"); font-display: swap; }
 
   :root {
     --bg: #050505;
@@ -74,6 +77,16 @@
     letter-spacing: 0.01em;
     color: var(--ink);
     margin: 0 0 20px;
+    user-select: none;
+  }
+  /* glitch treatment (ported from the site wordmark): words stay unbreakable,
+     chars are inline-block so the poisson jitter can transform them */
+  h1 .w { display: inline-block; white-space: nowrap; }
+  h1 .c { display: inline-block; will-change: transform; }
+  h1.chroma {
+    text-shadow:
+      -2px 0 0 #00ffff,
+       2px 0 0 #ff00ff;
   }
   .dek {
     font-size: 14px;
@@ -852,6 +865,82 @@ tocBtn.addEventListener("click", () => setToc(!document.body.classList.contains(
 document.getElementById("toc-scrim").addEventListener("click", () => setToc(false));
 tocLinks.forEach((a) => a.addEventListener("click", () => setToc(false)));
 window.addEventListener("keydown", (e) => { if (e.key === "Escape") setToc(false); });
+
+// ---------- hero glitch (site wordmark treatment: font swaps, jitter, chroma) ----------
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  const FONTS = [["zxx-sans", 1], ["zxx-bold", 0], ["zxx-noise", 7], ["zxx-camo", 3], ["zxx-xed", 5]];
+  const TOTAL_W = FONTS.reduce((a, [, w]) => a + w, 0);
+  function pickFont() {
+    let r = Math.random() * TOTAL_W;
+    for (const [f, w] of FONTS) { r -= w; if (r <= 0) return f; }
+    return FONTS[FONTS.length - 1][0];
+  }
+
+  let heroActivity = 0;
+  window.addEventListener("mousemove", (e) => {
+    heroActivity = Math.min(1, heroActivity + (Math.abs(e.movementX) + Math.abs(e.movementY)) * 0.004);
+  });
+  setInterval(() => { heroActivity = Math.max(0, heroActivity - 0.12); }, 100);
+  function heroIntensity() {
+    const t = performance.now();
+    const sum = 0.5
+      + 0.25 * Math.sin(t / 17000)
+      + 0.18 * Math.sin(t / 31000)
+      + 0.12 * Math.sin(t / 47000);
+    return Math.max(0, Math.min(1, sum + heroActivity * 0.4));
+  }
+
+  function heroPoisson(rateFn, fire) {
+    (function step() {
+      const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+      const wait = -Math.log(1 - Math.random()) / ratePerMs;
+      setTimeout(() => { fire(); step(); }, wait);
+    })();
+  }
+
+  const hero = document.querySelector("h1");
+  const words = hero.textContent.split(" ");
+  hero.textContent = "";
+  const chars = [];
+  words.forEach((word, wi) => {
+    const w = document.createElement("span");
+    w.className = "w";
+    for (const ch of word) {
+      const c = document.createElement("span");
+      c.className = "c";
+      c.textContent = ch;
+      c.style.fontFamily = '"zxx-sans", monospace';
+      w.appendChild(c);
+      chars.push(c);
+    }
+    hero.appendChild(w);
+    if (wi < words.length - 1) hero.appendChild(document.createTextNode(" "));
+  });
+
+  const JITTER_X = 6; // hero-scale glyphs get a little more travel than the nav
+  for (const c of chars) {
+    heroPoisson(
+      () => 0.7 + 7.7 * heroIntensity(),
+      () => { c.style.fontFamily = `"${pickFont()}", monospace`; }
+    );
+    heroPoisson(
+      () => 0.030 + 0.270 * heroIntensity(),
+      () => {
+        const jx = (Math.random() * 2 - 1) * JITTER_X;
+        c.style.transform = `translateX(${jx.toFixed(1)}px)`;
+        setTimeout(() => { c.style.transform = ""; }, 80 + Math.random() * 140);
+      }
+    );
+  }
+
+  heroPoisson(
+    () => 0.05 + 0.95 * heroIntensity(),
+    () => {
+      hero.classList.add("chroma");
+      setTimeout(() => hero.classList.remove("chroma"), 80 + Math.random() * 80);
+    }
+  );
+}
 </script>
 </body>
 </html>
