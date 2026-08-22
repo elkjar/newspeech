@@ -199,7 +199,9 @@ table rows (dataset / covers / resolution / role / access):
 
 **lecture-performance** — the pipeline runs on stage: data pulled, mapped and sounded in front of the audience, with the graphic scores projected. built for university halls, science venues and festivals with a discourse program — the format explains itself to a science-literate audience because every number in it is from the primary record.
 
-**installation** — the year-scrub instrument left running, or handed to visitors: 276 years under one hand.
+**installation** — the finished EP as one continuous surface: 276 years under one hand. a single physical control — a rail the length of the timeline — sets the year. at the four anchors the music plays whole, exactly as composed; between them it thins toward composed edges, because between the anchors is interpolation, and it should sound like interpolation. left alone, the year creeps forward toward 2026 on its own; a hand can drag time back and hold it — and the moment the hand leaves, it resumes. the sound stays fully generative: the sequencer performing sessions built from the band's own recorded parts, so the room never hears the same hour twice and nothing is playback.
+
+as an interactive music work it travels light and explains itself in one gesture, which suits venues far beyond the concert hall — museum and science-center floors, university buildings, festival grounds, civic lobbies. the footprint is the instrument on a plinth, speakers, and a projection surface for the same figures this page draws live; it runs unattended for weeks. the sequencer it runs on already exists and is in daily use at the studio — the installation build is a defined engineering step, not a research project.
 
 the project is designed to hold up in front of scientists. all sources are public, the pipeline is reproducible end-to-end, and the boundary between what the data determined and what the artist chose is documented rather than blurred — which is precisely the question the human/AI moment keeps asking, answered in practice.
 
