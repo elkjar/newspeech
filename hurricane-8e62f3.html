@@ -79,15 +79,10 @@
     margin: 0 0 20px;
     user-select: none;
   }
-  /* glitch treatment (ported from the site wordmark): words stay unbreakable,
-     chars are inline-block so the poisson jitter can transform them */
+  /* glitch treatment (the homepage vignette-title one): words stay
+     unbreakable while per-char spans swap faces / scramble */
   h1 .w { display: inline-block; white-space: nowrap; }
-  h1 .c { display: inline-block; will-change: transform; }
-  h1.chroma {
-    text-shadow:
-      -2px 0 0 #00ffff,
-       2px 0 0 #ff00ff;
-  }
+  h1 .c { display: inline-block; text-align: center; }
   .dek {
     font-size: 14px;
     color: var(--dim);
@@ -866,15 +861,13 @@ document.getElementById("toc-scrim").addEventListener("click", () => setToc(fals
 tocLinks.forEach((a) => a.addEventListener("click", () => setToc(false)));
 window.addEventListener("keydown", (e) => { if (e.key === "Escape") setToc(false); });
 
-// ---------- hero glitch (site wordmark treatment: font swaps, jitter, chroma) ----------
+// ---------- hero glitch (the homepage vignette-title treatment):
+// hover cycles each char through the zxx faces; an ambient poisson
+// scramble briefly swaps a subset of chars for corruption glyphs ----------
 if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-  const FONTS = [["zxx-sans", 1], ["zxx-bold", 0], ["zxx-noise", 7], ["zxx-camo", 3], ["zxx-xed", 5]];
-  const TOTAL_W = FONTS.reduce((a, [, w]) => a + w, 0);
-  function pickFont() {
-    let r = Math.random() * TOTAL_W;
-    for (const [f, w] of FONTS) { r -= w; if (r <= 0) return f; }
-    return FONTS[FONTS.length - 1][0];
-  }
+  const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+  const LINK_CYCLE_MS = 80;
+  const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
 
   let heroActivity = 0;
   window.addEventListener("mousemove", (e) => {
@@ -898,48 +891,72 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     })();
   }
 
-  const hero = document.querySelector("h1");
-  const words = hero.textContent.split(" ");
-  hero.textContent = "";
-  const chars = [];
-  words.forEach((word, wi) => {
-    const w = document.createElement("span");
-    w.className = "w";
-    for (const ch of word) {
-      const c = document.createElement("span");
-      c.className = "c";
-      c.textContent = ch;
-      c.style.fontFamily = '"zxx-sans", monospace';
-      w.appendChild(c);
-      chars.push(c);
+  (async function setupHero() {
+    if (document.fonts && document.fonts.load) {
+      await Promise.all(LINK_FONT_CYCLE.map((fam) => document.fonts.load(`16px "${fam}"`)));
     }
-    hero.appendChild(w);
-    if (wi < words.length - 1) hero.appendChild(document.createTextNode(" "));
-  });
+    const hero = document.querySelector("h1");
+    const words = hero.textContent.split(" ");
+    hero.textContent = "";
+    const charSpans = [];
+    words.forEach((word, wi) => {
+      const w = document.createElement("span");
+      w.className = "w";
+      for (const ch of word) {
+        const c = document.createElement("span");
+        c.className = "c";
+        c.textContent = ch;
+        c.dataset.original = ch; // truth source — scrambles always restore from here
+        w.appendChild(c);
+        charSpans.push(c);
+      }
+      hero.appendChild(w);
+      if (wi < words.length - 1) hero.appendChild(document.createTextNode(" "));
+    });
 
-  const JITTER_X = 6; // hero-scale glyphs get a little more travel than the nav
-  for (const c of chars) {
+    // hover: cycle every char through the variants, desynced start points
+    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
+    let timer = null;
+    hero.addEventListener("mouseenter", () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        for (let i = 0; i < charSpans.length; i++) {
+          idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
+          charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
+        }
+      }, LINK_CYCLE_MS);
+    });
+    hero.addEventListener("mouseleave", () => {
+      clearInterval(timer);
+      timer = null;
+      for (const s of charSpans) s.style.fontFamily = "";
+    });
+
+    // ambient scramble: ~55% of chars flip to corruption glyphs for a few
+    // 50-110ms cycles, then restore — one burst every handful of seconds
+    let scrambling = false;
     heroPoisson(
-      () => 0.7 + 7.7 * heroIntensity(),
-      () => { c.style.fontFamily = `"${pickFont()}", monospace`; }
-    );
-    heroPoisson(
-      () => 0.030 + 0.270 * heroIntensity(),
+      () => 0.1 + 0.15 * heroIntensity(),
       () => {
-        const jx = (Math.random() * 2 - 1) * JITTER_X;
-        c.style.transform = `translateX(${jx.toFixed(1)}px)`;
-        setTimeout(() => { c.style.transform = ""; }, 80 + Math.random() * 140);
+        if (scrambling) return;
+        const targets = charSpans.filter((s) => Math.random() < 0.55);
+        if (!targets.length) return;
+        scrambling = true;
+        let cycles = 2 + ((Math.random() * 3) | 0);
+        (function tick() {
+          if (cycles-- <= 0) {
+            for (const s of targets) s.textContent = s.dataset.original;
+            scrambling = false;
+            return;
+          }
+          for (const s of targets) {
+            s.textContent = SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+          }
+          setTimeout(tick, 50 + Math.random() * 60);
+        })();
       }
     );
-  }
-
-  heroPoisson(
-    () => 0.05 + 0.95 * heroIntensity(),
-    () => {
-      hero.classList.add("chroma");
-      setTimeout(() => hero.classList.remove("chroma"), 80 + Math.random() * 80);
-    }
-  );
+  })();
 }
 </script>
 </body>
