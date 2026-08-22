@@ -26,6 +26,9 @@
     --faint: rgba(255, 255, 255, 0.35);
     --hair: rgba(255, 255, 255, 0.16);
     --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --gutter: 24px;
+    --beat: 88px;  /* one vertical beat: every section joint is exactly this, rules sit centered in two beats */
+    --fig: 44px;   /* half-beat: figure <-> text */
   }
 
   * { box-sizing: border-box; }
@@ -41,11 +44,13 @@
     overflow-x: hidden;
   }
 
-  .col   { max-width: 720px; margin: 0 auto; padding: 0 20px; }
-  .wide  { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+  /* longhand centering only — the shorthand `margin: 0 auto` would
+     out-specify and erase the section rhythm's margin-top */
+  .col   { max-width: 720px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
+  .wide  { max-width: 960px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
 
   /* ---- header ---- */
-  header { padding: 72px 0 0; }
+  header { padding: 96px 0 0; }
   .kicker {
     font-size: 11px;
     letter-spacing: 0.14em;
@@ -66,12 +71,16 @@
     font-size: 14px;
     color: var(--dim);
     max-width: 56ch;
-    margin: 0 0 56px;
+    margin: 0;
   }
 
-  /* ---- sections ---- */
-  section { padding: 64px 0 8px; }
-  section.rule { border-top: 1px solid var(--hair); margin-top: 64px; }
+  /* ---- vertical rhythm ----
+     every section joint is exactly one beat; a rule sits centered
+     between two beats. sections end flush (last child loses its
+     margin) so the joint never inherits a stray figure/paragraph gap. */
+  section { margin-top: var(--beat); padding: 0; }
+  section.rule { border-top: 1px solid var(--hair); padding-top: var(--beat); }
+  section > :last-child { margin-bottom: 0; }
   h2 {
     font-family: "zxx-sans", var(--mono);
     font-size: 26px;
@@ -93,7 +102,7 @@
   a:hover { color: var(--ink); }
 
   /* ---- figures ---- */
-  figure { margin: 36px 0; }
+  figure { margin: var(--fig) 0; }
   figure canvas { display: block; width: 100%; }
   figcaption {
     font-size: 11px;
@@ -102,8 +111,8 @@
     margin-top: 10px;
     max-width: 80ch;
   }
-  .full-bleed { width: 100vw; margin-left: calc(50% - 50vw); }
-  .full-bleed figcaption { padding: 0 20px; max-width: 960px; margin-left: auto; margin-right: auto; }
+  figure.full-bleed { width: 100vw; margin: 64px 0 0 calc(50% - 50vw); }
+  .full-bleed figcaption { padding: 0 var(--gutter); max-width: 960px; margin-left: auto; margin-right: auto; }
 
   #tooltip {
     position: fixed;
@@ -123,11 +132,13 @@
   /* ---- anchor (track) blocks ---- */
   .anchor {
     border-top: 1px solid var(--hair);
-    padding: 44px 0 36px;
+    padding: 48px 0;
     display: grid;
     grid-template-columns: 220px 1fr;
     gap: 36px;
   }
+  .anchor:last-of-type { padding-bottom: 0; }
+  .anchor figure { margin-bottom: 0; }
   .anchor .yr {
     font-family: "zxx-bold", "zxx-sans", var(--mono);
     font-size: clamp(52px, 6vw, 76px);
@@ -178,16 +189,128 @@
   .tbl-scroll table { min-width: 640px; }
 
   /* ---- storm panels ---- */
-  .storm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 36px 0 8px; }
+  .figcap {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+    margin: 12px 0 0;
+    max-width: 80ch;
+  }
+  .storm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: var(--fig) 0 0; }
   .storm-grid .panel { border: 1px solid var(--hair); padding: 14px; }
   .storm-grid canvas { width: 100%; display: block; }
   .storm-grid .lbl { font-size: 11px; letter-spacing: 0.06em; color: var(--dim); margin-top: 10px; font-variant-numeric: tabular-nums; }
   .storm-grid .lbl b { color: var(--ink); font-weight: 400; }
   @media (max-width: 700px) { .storm-grid { grid-template-columns: 1fr; } }
 
+  /* ---- floating index ----
+     desktop: a rail of dots on the left, label revealed on hover.
+     narrow: a slide-in panel behind a fixed "index" button. */
+  #toc {
+    position: fixed;
+    z-index: 5;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  #toc a {
+    position: relative;
+    display: flex;
+    align-items: center;
+    color: var(--faint);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  #toc .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.28);
+    flex-shrink: 0;
+    transition: background 120ms ease, transform 120ms ease;
+  }
+  #toc .n { font-variant-numeric: tabular-nums; opacity: 0.55; }
+  #toc-btn, #toc-scrim { display: none; }
+
+  @media (min-width: 1101px) {
+    #toc {
+      left: 24px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    #toc a { padding: 6px 0; }
+    #toc a:hover .dot { background: rgba(255, 255, 255, 0.7); }
+    #toc a.on .dot { background: var(--ink); transform: scale(1.5); }
+    #toc .n { display: none; }
+    #toc .lbl {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translate(-4px, -50%);
+      background: var(--bg);
+      border: 1px solid var(--hair);
+      padding: 3px 9px;
+      color: var(--body);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    #toc a:hover .lbl { opacity: 1; transform: translate(0, -50%); }
+  }
+
+  @media (max-width: 1100px) {
+    #toc {
+      inset: 0 0 0 auto;
+      width: min(280px, 82vw);
+      background: #0a0a0a;
+      border-left: 1px solid var(--hair);
+      padding: 76px 28px;
+      font-size: 12px;
+      transform: translateX(100%);
+      transition: transform 220ms ease;
+      overflow-y: auto;
+    }
+    body.toc-open #toc { transform: translateX(0); }
+    #toc a { gap: 14px; padding: 8px 0; }
+    #toc a.on { color: var(--ink); }
+    #toc .dot { display: none; }
+    #toc-btn {
+      display: block;
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 6;
+      background: rgba(5, 5, 5, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      color: var(--dim);
+      font: inherit;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 9px 14px;
+      cursor: pointer;
+    }
+    #toc-btn:hover { color: var(--ink); border-color: rgba(255, 255, 255, 0.7); }
+    #toc-scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      background: rgba(5, 5, 5, 0.65);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+    }
+    body.toc-open #toc-scrim { opacity: 1; pointer-events: auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #toc, #toc .lbl, #toc .dot, #toc-scrim { transition: none; }
+  }
+
   footer {
     border-top: 1px solid var(--hair);
-    margin-top: 88px;
+    margin-top: var(--beat);
     padding: 28px 0 64px;
     font-size: 11px;
     letter-spacing: 0.06em;
@@ -195,7 +318,16 @@
   }
   footer a { color: var(--dim); }
 
+  /* mobile rhythm: same system, three-quarter time */
+  @media (max-width: 700px) {
+    :root { --gutter: 20px; --beat: 64px; --fig: 32px; }
+    header { padding-top: 56px; }
+    figure.full-bleed { margin-top: 44px; }
+    .anchor { padding: 36px 0; }
+  }
+
   @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
     #stripes-wrap { clip-path: inset(0 100% 0 0); animation: reveal 1.4s ease-out 0.2s forwards; }
     @keyframes reveal { to { clip-path: inset(0 0 0 0); } }
   }
@@ -205,7 +337,24 @@
 
 <div id="tooltip"></div>
 
-<header class="wide">
+<div id="toc-scrim"></div>
+<button id="toc-btn" aria-controls="toc" aria-expanded="false">index</button>
+<nav id="toc" aria-label="sections">
+  <a href="#top"><span class="dot"></span><span class="n">—</span><span class="lbl">top</span></a>
+  <a href="#premise"><span class="dot"></span><span class="n">01</span><span class="lbl">premise</span></a>
+  <a href="#constant"><span class="dot"></span><span class="n">02</span><span class="lbl">the constant</span></a>
+  <a href="#movements"><span class="dot"></span><span class="n">03</span><span class="lbl">movements</span></a>
+  <a href="#sonification"><span class="dot"></span><span class="n">04</span><span class="lbl">sonification</span></a>
+  <a href="#method"><span class="dot"></span><span class="n">05</span><span class="lbl">method</span></a>
+  <a href="#sequence"><span class="dot"></span><span class="n">06</span><span class="lbl">the instrument</span></a>
+  <a href="#visuals"><span class="dot"></span><span class="n">07</span><span class="lbl">visuals</span></a>
+  <a href="#newspeech"><span class="dot"></span><span class="n">08</span><span class="lbl">the studio</span></a>
+  <a href="#datasets"><span class="dot"></span><span class="n">09</span><span class="lbl">datasets</span></a>
+  <a href="#formats"><span class="dot"></span><span class="n">10</span><span class="lbl">formats</span></a>
+  <a href="#status"><span class="dot"></span><span class="n">11</span><span class="lbl">status</span></a>
+</nav>
+
+<header class="wide" id="top">
   <div class="kicker">newspeech — proposal · private draft</div>
   <h1>a hurricane in 4 decades</h1>
   <p class="dek">an EP in four movements, composed from the climate record. each track is generated from what the data says about one year — 1750, 1880, 1950, 2026 — and from how much of a record exists at all. every figure on this page is drawn live from the primary datasets.</p>
@@ -216,7 +365,7 @@
   <figcaption>global mean surface temperature, 1850–2025, one stripe per year — brightness is the annual anomaly against the 1901–2000 mean (−0.42 °C … +1.26 °C). the hatched zone is the century before the instrumental record begins: for 1750 we have ice, not thermometers. source: NOAA NCEI global land+ocean time series, retrieved august 2026. hover for values.</figcaption>
 </figure>
 
-<section class="col">
+<section class="col" id="premise">
   <div class="sec-kicker">01 — premise</div>
   <h2>the record is the score</h2>
   <p>four tracks, four years. each anchor year contributes its own numbers — the carbon in its air, the heat in its oceans, its storms, its losses — and those numbers set the starting conditions of the music: tempo, disorder, density, melody. nothing on the record is invented; the sleeve notes can cite every value.</p>
@@ -224,7 +373,7 @@
   <p>so the EP grows progressively more unhinged, but none of it is metaphor. track one is sparse because 1750 is sparse — we barely know it. track four is overwhelming because 2026 is overwhelming — we know it six-hourly, in full resolution, and it is coming apart anyway.</p>
 </section>
 
-<section class="col">
+<section class="col" id="constant">
   <div class="sec-kicker">02 — the constant</div>
   <h2>one measurement under everything</h2>
   <p>a single line runs beneath all four movements: atmospheric CO₂, spliced from antarctic ice (law dome, to 1958) into direct measurement (mauna loa, 1959–). it maps to the one parameter that never resets between tracks — tempo. 277 ppm to 427 ppm; the EP literally accelerates.</p>
@@ -234,7 +383,7 @@
   </figure>
 </section>
 
-<section class="wide rule">
+<section class="wide rule" id="movements">
   <div class="sec-kicker">03 — four anchors</div>
   <h2>the movements</h2>
 
@@ -295,7 +444,7 @@
   </div>
 </section>
 
-<section class="wide rule">
+<section class="wide rule" id="sonification">
   <div class="sec-kicker">04 — sonification</div>
   <h2>a storm is already a sequence</h2>
   <p style="max-width:72ch">the hurricane database records every storm as six-hourly rows — position, maximum wind, central pressure. that is a monophonic sequence: latitude is pitch, wind is velocity, pressure is timbre, six hours is one step. no interpretive layer is needed to make a storm playable; it arrives pre-notated. below, the anchor storms as recorded, and one of them transcribed.</p>
@@ -305,7 +454,7 @@
     <div class="panel"><canvas id="fig-s1950" height="230"></canvas><div class="lbl" id="lbl-s1950"></div></div>
     <div class="panel"><canvas id="fig-s2025" height="230"></canvas><div class="lbl" id="lbl-s2025"></div></div>
   </div>
-  <figcaption style="font-size:11px;color:var(--faint);letter-spacing:0.04em;margin-top:2px">best tracks from NOAA HURDAT2 (1851–2025). dot size is maximum sustained wind at each six-hour fix. the 1880 track was reconstructed from ship logs; melissa was measured continuously from satellite and aircraft.</figcaption>
+  <p class="figcap">best tracks from NOAA HURDAT2 (1851–2025). dot size is maximum sustained wind at each six-hour fix. the 1880 track was reconstructed from ship logs; melissa was measured continuously from satellite and aircraft.</p>
 
   <figure>
     <canvas id="fig-score" height="240"></canvas>
@@ -313,13 +462,13 @@
   </figure>
 </section>
 
-<section class="col rule">
+<section class="col rule" id="method">
   <div class="sec-kicker">05 — method</div>
   <h2>the machine transcribes, the human responds</h2>
   <p>the work is made in two deliberate stages, and the seam between them is the point.</p>
   <p><strong>stage one is mechanical.</strong> an AI-assisted pipeline pulls each dataset from source, normalizes it into a profile of the anchor year, and writes the initial sequencer session files programmatically — tempo from CO₂, disorder from temperature, pattern density from the resolution of the record, melody from a storm's best track. no taste is applied at this stage. the output is the record, stated as pattern: what the data sounds like before anyone has feelings about it.</p>
   <p><strong>stage two is human.</strong> those sessions are then edited, shuffled, rearranged and orchestrated by hand — the emotional reaction to what the data actually says, made audible. the machine states the facts; the person decides how they land. every departure from the generated material is a documented, intentional act of interpretation, which means the finished tracks carry both layers at once: the measurement, and the response of one person who sat with its ramifications.</p>
-  <p>the instrument is <a href="https://www.newspeechsound.com/">sequence</a>, a generative step sequencer built for this studio, whose core performance parameters — entropy, density, mutation — happen to be the exact vocabulary the climate record needs. sessions are plain data files, which is what makes stage one possible at all.</p>
+  <p>the instrument is <a href="#sequence">sequence</a>, described below. its sessions are plain data files — which is what makes stage one possible at all.</p>
 
   <div class="tbl-scroll"><table>
     <tr><th>musical parameter</th><th>driven by</th><th>source</th></tr>
@@ -333,8 +482,15 @@
   <p>every mapping that survives into the finished music is documented — source, transform, destination — and the mapping document ships with the EP. the data is structural, never decoration.</p>
 </section>
 
-<section class="col rule">
-  <div class="sec-kicker">06 — the visual program</div>
+<section class="col rule" id="sequence">
+  <div class="sec-kicker">06 — the instrument</div>
+  <h2>what is sequence</h2>
+  <p>sequence is a generative step sequencer built at this studio, shipped as a native macos app and in daily use here. it has a chord-relative harmonic engine — set a root and a scale, author chords by degree, and every voice harmonizes against whatever played last — and it is built to play itself, mostly: mutation dials on every row, five global macros, sixteen pattern banks, and an orchestration layer whose principal controls are named <strong>entropy</strong> and <strong>density</strong>. it drives its own sample engine and external hardware over midi, so the same sessions run the studio rig on stage.</p>
+  <p>two properties make it the right instrument for this work. first, its performance vocabulary — entropy, density, mutation — is already the vocabulary the climate record needs; nothing is bolted on to make the mapping fit. second, its session format is a plain data file: a pipeline can write a session the way a scientist writes a table, and the human edit that follows happens inside the same file. the boundary between the two stages of the method stays inspectable forever.</p>
+</section>
+
+<section class="col rule" id="visuals">
+  <div class="sec-kicker">07 — the visual program</div>
   <h2>the same data, drawn</h2>
   <p>every figure on this page is rendered live in the browser from the embedded record — nothing here is an illustration. the same discipline extends to the performance visuals:</p>
   <p><strong>graphic scores.</strong> the studio's existing score engine renders sequencer sessions as monochrome graphic-score plates (composition, stack and figure views, with alpha-channel video renders for projection). for this work, the underlying data curve for each movement is drawn into the score as its own layer — the notation and its cause on one page.</p>
@@ -342,8 +498,15 @@
   <p><strong>the year as an instrument.</strong> in performance, one physical control scrubs the timeline 1750 → 2026, driving sound and image together — entropy, density, the visible epoch, all from a single gesture. an audience watches the operator move through 276 years by hand.</p>
 </section>
 
-<section class="wide rule">
-  <div class="sec-kicker">07 — sources</div>
+<section class="col rule" id="newspeech">
+  <div class="sec-kicker">08 — the studio</div>
+  <h2>who is newspeech</h2>
+  <p>newspeech is the solo audio/visual practice of chris elkjar — musician, designer, and toolmaker. the studio builds its own instruments and releases them: the sequencer above, browser-based audio tools, open-source audio plugins, a free sample library recorded from its modular system, and the audio-reactive visualizer system whose language this page borrows. the output is recorded music, live performance — guitar and hardware played over generative beds — and the working archive at <a href="https://www.newspeechsound.com/">newspeechsound.com</a>.</p>
+  <p>the relevant fact for this proposal: everything the work depends on already exists and runs daily in this studio. the sequencer, the score engine, the visualizer system and the render pipeline are not speculative infrastructure — what remains is the composition, the human pass, and the staging.</p>
+</section>
+
+<section class="wide rule" id="datasets">
+  <div class="sec-kicker">09 — sources</div>
   <h2>datasets</h2>
   <div class="tbl-scroll"><table>
     <tr><th>dataset</th><th>covers</th><th>resolution</th><th>role</th><th>access</th></tr>
@@ -356,8 +519,8 @@
   </table></div>
 </section>
 
-<section class="col rule">
-  <div class="sec-kicker">08 — formats</div>
+<section class="col rule" id="formats">
+  <div class="sec-kicker">10 — formats</div>
   <h2>where it lives</h2>
   <p><strong>the recorded EP</strong> — four movements, released with the mapping document as sleeve notes.</p>
   <p><strong>lecture-performance</strong> — the pipeline runs on stage: data pulled, mapped and sounded in front of the audience, with the graphic scores projected. built for university halls, science venues and festivals with a discourse program — the format explains itself to a science-literate audience because every number in it is from the primary record.</p>
@@ -365,8 +528,8 @@
   <p>the project is designed to hold up in front of scientists. all sources are public, the pipeline is reproducible end-to-end, and the boundary between what the data determined and what the artist chose is documented rather than blurred — which is precisely the question the human/AI moment keeps asking, answered in practice.</p>
 </section>
 
-<section class="col rule">
-  <div class="sec-kicker">09 — status</div>
+<section class="col rule" id="status">
+  <div class="sec-kicker">11 — status</div>
   <h2>where it stands</h2>
   <p>concept stage, august 2026. all datasets sourced and verified — the figures on this page are drawn from them. next: the data pipeline and the first generated sessions for movements i and iv, then the human pass. the score engine, the sequencer and the visualizer system already exist and are in daily use at this studio.</p>
 </section>
@@ -430,7 +593,7 @@ function drawStripes() {
   ctx.restore();
   ctx.fillStyle = "rgba(255,255,255,0.35)";
   ctx.font = FONT;
-  ctx.fillText("no instrumental record", 12, 18);
+  ctx.fillText("no instrumental record", 24, 20);
 
   // stripes
   for (const [yr, v] of DATA.temps) {
@@ -449,7 +612,8 @@ function drawStripes() {
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     const label = String(yr);
     const tw = ctx.measureText(label).width;
-    ctx.fillText(label, Math.max(2, Math.min(w - tw - 2, x - tw / 2)), plotH + 18);
+    // keep edge labels inside the page gutter, not flush to the viewport
+    ctx.fillText(label, Math.max(24, Math.min(w - tw - 24, x - tw / 2)), plotH + 18);
   }
 }
 stripes.addEventListener("mousemove", (e) => {
@@ -609,7 +773,7 @@ scoreC.addEventListener("mouseleave", hideTip);
 const iceC = document.getElementById("fig-ice");
 function drawIce() {
   const { ctx, w, h } = fit(iceC);
-  const padB = 22, padT = 14;
+  const padB = 22, padT = 24;
   const v1 = 8; // M km2 headroom
   const n = DATA.ice.length;
   const bw = w / n;
@@ -628,7 +792,7 @@ function drawIce() {
     const label = marks[yr];
     const tw = ctx.measureText(label).width;
     const x = Math.max(2, Math.min(w - tw - 2, i * bw + bw / 2 - tw / 2));
-    ctx.fillText(label, x, h - padB - bh - 6);
+    ctx.fillText(label, x, Math.max(10, h - padB - bh - 6));
   });
 }
 iceC.addEventListener("mousemove", (e) => {
@@ -650,6 +814,31 @@ function drawAll() {
 drawAll();
 let rzT;
 window.addEventListener("resize", () => { clearTimeout(rzT); rzT = setTimeout(drawAll, 120); });
+
+// ---------- floating index: track the section in view ----------
+const tocLinks = [...document.querySelectorAll("#toc a")];
+const secObs = new IntersectionObserver((entries) => {
+  for (const en of entries) {
+    if (!en.isIntersecting) continue;
+    const id = "#" + en.target.id;
+    tocLinks.forEach((a) => a.classList.toggle("on", a.getAttribute("href") === id));
+  }
+}, { rootMargin: "-15% 0px -65% 0px" });
+tocLinks.forEach((a) => {
+  const t = document.querySelector(a.getAttribute("href"));
+  if (t) secObs.observe(t);
+});
+
+// narrow viewports: the index is a slide-in panel behind a fixed button
+const tocBtn = document.getElementById("toc-btn");
+function setToc(open) {
+  document.body.classList.toggle("toc-open", open);
+  tocBtn.setAttribute("aria-expanded", String(open));
+}
+tocBtn.addEventListener("click", () => setToc(!document.body.classList.contains("toc-open")));
+document.getElementById("toc-scrim").addEventListener("click", () => setToc(false));
+tocLinks.forEach((a) => a.addEventListener("click", () => setToc(false)));
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") setToc(false); });
 </script>
 </body>
 </html>
