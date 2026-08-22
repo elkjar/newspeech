@@ -346,13 +346,13 @@
 <nav id="toc" aria-label="sections">
   <a href="#top"><span class="dot"></span><span class="n">—</span><span class="lbl">top</span></a>
   <a href="#premise"><span class="dot"></span><span class="n">01</span><span class="lbl">premise</span></a>
-  <a href="#constant"><span class="dot"></span><span class="n">02</span><span class="lbl">the constant</span></a>
-  <a href="#movements"><span class="dot"></span><span class="n">03</span><span class="lbl">movements</span></a>
-  <a href="#sonification"><span class="dot"></span><span class="n">04</span><span class="lbl">sonification</span></a>
-  <a href="#method"><span class="dot"></span><span class="n">05</span><span class="lbl">method</span></a>
-  <a href="#sequence"><span class="dot"></span><span class="n">06</span><span class="lbl">the instrument</span></a>
-  <a href="#visuals"><span class="dot"></span><span class="n">07</span><span class="lbl">visuals</span></a>
-  <a href="#newspeech"><span class="dot"></span><span class="n">08</span><span class="lbl">the studio</span></a>
+  <a href="#newspeech"><span class="dot"></span><span class="n">02</span><span class="lbl">the studio</span></a>
+  <a href="#sequence"><span class="dot"></span><span class="n">03</span><span class="lbl">the instrument</span></a>
+  <a href="#constant"><span class="dot"></span><span class="n">04</span><span class="lbl">the constant</span></a>
+  <a href="#movements"><span class="dot"></span><span class="n">05</span><span class="lbl">movements</span></a>
+  <a href="#sonification"><span class="dot"></span><span class="n">06</span><span class="lbl">sonification</span></a>
+  <a href="#method"><span class="dot"></span><span class="n">07</span><span class="lbl">method</span></a>
+  <a href="#visuals"><span class="dot"></span><span class="n">08</span><span class="lbl">visuals</span></a>
   <a href="#datasets"><span class="dot"></span><span class="n">09</span><span class="lbl">datasets</span></a>
   <a href="#formats"><span class="dot"></span><span class="n">10</span><span class="lbl">formats</span></a>
   <a href="#status"><span class="dot"></span><span class="n">11</span><span class="lbl">status</span></a>
@@ -360,7 +360,7 @@
 
 <header class="wide" id="top">
   <div class="kicker">newspeech — proposal · private draft</div>
-  <h1>a hurricane in 4 decades</h1>
+  <h1>a hurricane in 4 centuries</h1>
   <p class="dek">an EP in four movements, composed from the climate record. each track is generated from what the data says about one year — 1750, 1880, 1950, 2026 — and from how much of a record exists at all. every figure on this page is drawn live from the primary datasets.</p>
 </header>
 
@@ -371,14 +371,29 @@
 
 <section class="col" id="premise">
   <div class="sec-kicker">01 — premise</div>
-  <h2>the record is the score</h2>
+  <h2>the historical record is the score</h2>
   <p>four tracks, four years. each anchor year contributes its own numbers — the carbon in its air, the heat in its oceans, its storms, its losses — and those numbers set the starting conditions of the music: tempo, disorder, density, melody. nothing on the record is invented; the sleeve notes can cite every value.</p>
-  <p>two things escalate across the four movements, and the form tracks both. the first is the climate signal itself: from a stable pre-industrial baseline to the first calendar year more than 1.5 °C above it. the second is the record — humanity's measurement of the problem — which sharpens from air bubbles trapped in antarctic ice (one smeared value per decade) to satellites logging the whole planet every six hours. <strong>disorder in the music follows the climate; density in the music follows the measurement.</strong></p>
-  <p>so the EP grows progressively more unhinged, but none of it is metaphor. track one is sparse because 1750 is sparse — we barely know it. track four is overwhelming because 2026 is overwhelming — we know it six-hourly, in full resolution, and it is coming apart anyway.</p>
+  <p>two things escalate across the four movements: the first is the climate signal itself: from a stable pre-industrial baseline to the first calendar year more than 1.5 °C above it. the second is the record — humanity's measurement of the problem — which sharpens from air bubbles trapped in antarctic ice (one smeared value per decade) to satellites logging the whole planet every six hours. <strong>disorder in the music follows the climate; density in the music follows the measurement.</strong></p>
+  <p>so the EP grows progressively more unhinged, but none of it is metaphor. track one is sparse because 1750 is sparse — we barely know it. track four is overwhelming because 2026 is overwhelming — we know it from hundreds of data sources, in full resolution, and it is all fucking coming apart anyway.</p>
 </section>
 
-<section class="col" id="constant">
-  <div class="sec-kicker">02 — the constant</div>
+<section class="col rule" id="newspeech">
+  <div class="sec-kicker">02 — the studio</div>
+  <h2>who is newspeech</h2>
+  <p>newspeech is an audio/visual studio led by chris elkjar — musician, designer, and toolmaker. it builds its own instruments and releases them: the sequencer below, browser-based audio tools, open-source audio plugins, a free sample library recorded from its modular system, and the audio-reactive visualizer system whose language this page borrows. the output is recorded music, live performance, and the working archive at <a href="https://www.newspeechsound.com/">newspeechsound.com</a>.</p>
+  <p>a hurricane in 4 decades is built as a collaborative work, not a solo record. the staging asks for more hands than one: players responding live to the generative beds, an operator on the score and visual systems, and — deliberately — research partners. the datasets deserve collaborators who work with them professionally: climate scientists and data stewards invited to review the mappings, challenge the interpretations, and be credited in the finished work. institutional partners are welcomed into the making, not just the booking — a residency, a seminar alongside the performance, students inside the pipeline.</p>
+  <p>what already exists is the infrastructure: the sequencer, the score engine, the visualizer system and the render pipeline all run daily at the studio. what the collaboration builds is the work itself — the composition, the human pass, and the room it happens in.</p>
+</section>
+
+<section class="col rule" id="sequence">
+  <div class="sec-kicker">03 — the instrument</div>
+  <h2>what is sequence</h2>
+  <p>sequence is a generative step sequencer built at this studio, shipped as a native macos app and in daily use here. it has a chord-relative harmonic engine — set a root and a scale, author chords by degree, and every voice harmonizes against whatever played last — and it is built to play itself, mostly: mutation dials on every row, five global macros, sixteen pattern banks, and an orchestration layer whose principal controls are named <strong>entropy</strong> and <strong>density</strong>. it drives its own sample engine and external hardware over midi, so the same sessions run the studio rig on stage.</p>
+  <p>two properties make it the right instrument for this work. first, its performance vocabulary — entropy, density, mutation — is already the vocabulary the climate record needs; nothing is bolted on to make the mapping fit. second, its session format is a plain data file: a pipeline can write a session the way a scientist writes a table, and the human edit that follows happens inside the same file. the boundary between the two stages of the method — described below — stays inspectable forever.</p>
+</section>
+
+<section class="col rule" id="constant">
+  <div class="sec-kicker">04 — the constant</div>
   <h2>one measurement under everything</h2>
   <p>a single line runs beneath all four movements: atmospheric CO₂, spliced from antarctic ice (law dome, to 1958) into direct measurement (mauna loa, 1959–). it maps to the one parameter that never resets between tracks — tempo. 277 ppm to 427 ppm; the EP literally accelerates.</p>
   <figure>
@@ -388,7 +403,7 @@
 </section>
 
 <section class="wide rule" id="movements">
-  <div class="sec-kicker">03 — four anchors</div>
+  <div class="sec-kicker">05 — four anchors</div>
   <h2>the movements</h2>
 
   <div class="anchor">
@@ -400,7 +415,7 @@
         <div><dt>the record</dt><dd>air bubbles in antarctic ice; a handful of thermometers in europe. effectively one value per decade.</dd></div>
         <div><dt>the storm</dt><dd>none. no storm record exists for 1750.</dd></div>
       </dl>
-      <p class="music">near-static. long tones, a pattern that barely mutates, disorder held at zero. the only movement is the uncertainty itself — the width of what we don't know about the year, played as slow detune. no storm appears, because none was written down: silence as data.</p>
+      <p class="music">near-static. long tones, a pattern that barely mutates, disorder held at zero. the only movement is the uncertainty itself — the width of what we don't know about the year, played as slow detune. no storm appears, because none was written down. the lack of movement is the lack of understanding we have for this period.</p>
     </div>
   </div>
 
@@ -413,7 +428,7 @@
         <div><dt>the record</dt><dd>the global instrumental temperature record opens in exactly this year. ships log storms by hand; positions are estimates.</dd></div>
         <div><dt>the storm</dt><dd>unnamed hurricane no. 2 of 1880 — 130 kt, 931 mb, reconstructed entirely from ship logs.</dd></div>
       </dl>
-      <p class="music">a clock appears. periodic structure, a grid, monthly resolution — the world starts keeping time. the first storm contour enters as melody, transcribed from a track that is itself a 19th-century reconstruction: confident line, uncertain hand.</p>
+      <p class="music">a clock appears. periodic structure, a grid, monthly resolution — the world starts keeping time. the first storm contour enters as melody, transcribed from a track that is itself a 19th-century data reconstruction.</p>
     </div>
   </div>
 
@@ -426,7 +441,7 @@
         <div><dt>the record</dt><dd>daily readings; aircraft now fly into hurricanes to measure them; direct CO₂ measurement begins eight years later.</dd></div>
         <div><dt>the storm</dt><dd>hurricane dog — 125 kt. the 1950 season held the atlantic activity record for half a century.</dd></div>
       </dl>
-      <p class="music">density rises. mutation opens up, fills arrive mid-pattern, and a second rhythmic system starts to slip against the first — the mismatch is the music. everything still resolves, but it costs more each time.</p>
+      <p class="music">density rises. mutation opens up, fills arrive mid-pattern, and a second rhythmic system starts to slip against the first — the mismatch is the music. everything still resolves.</p>
     </div>
   </div>
 
@@ -439,7 +454,7 @@
         <div><dt>the record</dt><dd>satellites, six-hourly everything; sea ice measured daily; a running ledger of billion-dollar disasters.</dd></div>
         <div><dt>the storm</dt><dd>hurricane melissa, 2025 — 165 kt / 892 mb, among the strongest atlantic hurricanes ever measured.</dd></div>
       </dl>
-      <p class="music">maximum disorder at maximum resolution. the disaster ledger fires events at its true density; voices drop out of the arrangement at the rate the september ice does; the mutation system runs fully open. unhinged, but exact — every extremity on the track is a measured value.</p>
+      <p class="music">maximum disorder at maximum resolution. the disaster ledger fires events at its true density; voices drop out of the arrangement at the rate the september ice does; the mutation system runs fully open. unhinged, but exact — every extremity on the track is a measured and mappable value.</p>
       <figure>
         <canvas id="fig-ice" height="200"></canvas>
         <figcaption>arctic sea ice, september mean extent, 1979–2025, million km². one bar per year; in the fourth movement, this curve is the arrangement — instruments leave as the ice does. source: NSIDC sea ice index v4. hover for values.</figcaption>
@@ -449,7 +464,7 @@
 </section>
 
 <section class="wide rule" id="sonification">
-  <div class="sec-kicker">04 — sonification</div>
+  <div class="sec-kicker">06 — sonification</div>
   <h2>a storm is already a sequence</h2>
   <p style="max-width:72ch">the hurricane database records every storm as six-hourly rows — position, maximum wind, central pressure. that is a monophonic sequence: latitude is pitch, wind is velocity, pressure is timbre, six hours is one step. no interpretive layer is needed to make a storm playable; it arrives pre-notated. below, the anchor storms as recorded, and one of them transcribed.</p>
 
@@ -467,12 +482,12 @@
 </section>
 
 <section class="col rule" id="method">
-  <div class="sec-kicker">05 — method</div>
+  <div class="sec-kicker">07 — method</div>
   <h2>the machine transcribes, the human responds</h2>
   <p>the work is made in two deliberate stages, and the seam between them is the point.</p>
   <p><strong>stage one is mechanical.</strong> an AI-assisted pipeline pulls each dataset from source, normalizes it into a profile of the anchor year, and writes the initial sequencer session files programmatically — tempo from CO₂, disorder from temperature, pattern density from the resolution of the record, melody from a storm's best track. no taste is applied at this stage. the output is the record, stated as pattern: what the data sounds like before anyone has feelings about it.</p>
   <p><strong>stage two is human.</strong> those sessions are then edited, shuffled, rearranged and orchestrated by hand — the emotional reaction to what the data actually says, made audible. the machine states the facts; the person decides how they land. every departure from the generated material is a documented, intentional act of interpretation, which means the finished tracks carry both layers at once: the measurement, and the response of one person who sat with its ramifications.</p>
-  <p>the instrument is <a href="#sequence">sequence</a>, described below. its sessions are plain data files — which is what makes stage one possible at all.</p>
+  <p>the instrument is <a href="#sequence">sequence</a>, described above. its sessions are plain data files — which is what makes stage one possible at all.</p>
 
   <div class="tbl-scroll"><table>
     <tr><th>musical parameter</th><th>driven by</th><th>source</th></tr>
@@ -486,28 +501,13 @@
   <p>every mapping that survives into the finished music is documented — source, transform, destination — and the mapping document ships with the EP. the data is structural, never decoration.</p>
 </section>
 
-<section class="col rule" id="sequence">
-  <div class="sec-kicker">06 — the instrument</div>
-  <h2>what is sequence</h2>
-  <p>sequence is a generative step sequencer built at this studio, shipped as a native macos app and in daily use here. it has a chord-relative harmonic engine — set a root and a scale, author chords by degree, and every voice harmonizes against whatever played last — and it is built to play itself, mostly: mutation dials on every row, five global macros, sixteen pattern banks, and an orchestration layer whose principal controls are named <strong>entropy</strong> and <strong>density</strong>. it drives its own sample engine and external hardware over midi, so the same sessions run the studio rig on stage.</p>
-  <p>two properties make it the right instrument for this work. first, its performance vocabulary — entropy, density, mutation — is already the vocabulary the climate record needs; nothing is bolted on to make the mapping fit. second, its session format is a plain data file: a pipeline can write a session the way a scientist writes a table, and the human edit that follows happens inside the same file. the boundary between the two stages of the method stays inspectable forever.</p>
-</section>
-
 <section class="col rule" id="visuals">
-  <div class="sec-kicker">07 — the visual program</div>
+  <div class="sec-kicker">08 — the visual program</div>
   <h2>the same data, drawn</h2>
   <p>every figure on this page is rendered live in the browser from the embedded record — nothing here is an illustration. the same discipline extends to the performance visuals:</p>
   <p><strong>graphic scores.</strong> the studio's existing score engine renders sequencer sessions as monochrome graphic-score plates (composition, stack and figure views, with alpha-channel video renders for projection). for this work, the underlying data curve for each movement is drawn into the score as its own layer — the notation and its cause on one page.</p>
   <p><strong>storm fields.</strong> the site's audio-reactive visualizer system gains a hurricane-track piece: best tracks drawn as slow monochrome polylines at each era's true storm frequency, intensity driven by the live audio.</p>
   <p><strong>the year as an instrument.</strong> in performance, one physical control scrubs the timeline 1750 → 2026, driving sound and image together — entropy, density, the visible epoch, all from a single gesture. an audience watches the operator move through 276 years by hand.</p>
-</section>
-
-<section class="col rule" id="newspeech">
-  <div class="sec-kicker">08 — the studio</div>
-  <h2>who is newspeech</h2>
-  <p>newspeech is an audio/visual studio led by chris elkjar — musician, designer, and toolmaker. it builds its own instruments and releases them: the sequencer above, browser-based audio tools, open-source audio plugins, a free sample library recorded from its modular system, and the audio-reactive visualizer system whose language this page borrows. the output is recorded music, live performance, and the working archive at <a href="https://www.newspeechsound.com/">newspeechsound.com</a>.</p>
-  <p>a hurricane in 4 decades is built as a collaborative work, not a solo record. the staging asks for more hands than one: players responding live to the generative beds, an operator on the score and visual systems, and — deliberately — research partners. the datasets deserve collaborators who work with them professionally: climate scientists and data stewards invited to review the mappings, challenge the interpretations, and be credited in the finished work. institutional partners are welcomed into the making, not just the booking — a residency, a seminar alongside the performance, students inside the pipeline.</p>
-  <p>what already exists is the infrastructure: the sequencer, the score engine, the visualizer system and the render pipeline all run daily at the studio. what the collaboration builds is the work itself — the composition, the human pass, and the room it happens in.</p>
 </section>
 
 <section class="wide rule" id="datasets">
@@ -561,7 +561,10 @@ function hideTip() { tip.style.display = "none"; }
 function fit(canvas) {
   const dpr = Math.max(1, devicePixelRatio || 1);
   const cssW = canvas.clientWidth;
-  const cssH = +canvas.getAttribute("height");
+  // stash the design height once — setting canvas.height below overwrites the
+  // attribute with the dpr-scaled buffer size, which compounded on every resize
+  if (!canvas.dataset.h) canvas.dataset.h = canvas.getAttribute("height");
+  const cssH = +canvas.dataset.h;
   canvas.width = Math.floor(cssW * dpr);
   canvas.height = Math.floor(cssH * dpr);
   canvas.style.height = cssH + "px";

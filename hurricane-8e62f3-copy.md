@@ -1,4 +1,4 @@
-# copydoc — a hurricane in 4 decades
+# copydoc — a hurricane in 4 centuries
 
 source of truth for the words on `hurricane-8e62f3.html`. rewrite anything below in
 your own voice, then hand the file back and claude reloads it into the page.
@@ -17,7 +17,7 @@ ground rules for the reload to stay mechanical:
 
 - **page title:** a hurricane in 4 decades — proposal
 - **kicker:** newspeech — proposal · private draft
-- **h1:** a hurricane in 4 decades
+- **h1:** a hurricane in 4 centuries
 - **dek:** an EP in four movements, composed from the climate record. each track is generated from what the data says about one year — 1750, 1880, 1950, 2026 — and from how much of a record exists at all. every figure on this page is drawn live from the primary datasets.
 - **og description:** an EP in four movements, composed from the climate record. private proposal draft.
 
@@ -28,17 +28,37 @@ global mean surface temperature, 1850–2025, one stripe per year — brightness
 ## 01 premise
 
 - **kicker:** 01 — premise
-- **h2:** the record is the score
+- **h2:** the historical record is the score
 
 four tracks, four years. each anchor year contributes its own numbers — the carbon in its air, the heat in its oceans, its storms, its losses — and those numbers set the starting conditions of the music: tempo, disorder, density, melody. nothing on the record is invented; the sleeve notes can cite every value.
 
-two things escalate across the four movements, and the form tracks both. the first is the climate signal itself: from a stable pre-industrial baseline to the first calendar year more than 1.5 °C above it. the second is the record — humanity's measurement of the problem — which sharpens from air bubbles trapped in antarctic ice (one smeared value per decade) to satellites logging the whole planet every six hours. **disorder in the music follows the climate; density in the music follows the measurement.**
+two things escalate across the four movements: the first is the climate signal itself: from a stable pre-industrial baseline to the first calendar year more than 1.5 °C above it. the second is the record — humanity's measurement of the problem — which sharpens from air bubbles trapped in antarctic ice (one smeared value per decade) to satellites logging the whole planet every six hours. **disorder in the music follows the climate; density in the music follows the measurement.**
 
-so the EP grows progressively more unhinged, but none of it is metaphor. track one is sparse because 1750 is sparse — we barely know it. track four is overwhelming because 2026 is overwhelming — we know it six-hourly, in full resolution, and it is coming apart anyway.
+so the EP grows progressively more unhinged, but none of it is metaphor. track one is sparse because 1750 is sparse — we barely know it. track four is overwhelming because 2026 is overwhelming — we know it from hundreds of data sources, in full resolution, and it is all fucking coming apart anyway.
 
-## 02 the constant
+## 02 the studio
 
-- **kicker:** 02 — the constant
+- **kicker:** 02 — the studio
+- **h2:** who is newspeech
+
+newspeech is an audio/visual studio led by chris elkjar — musician, designer, and toolmaker. it builds its own instruments and releases them: the sequencer below, browser-based audio tools, open-source audio plugins, a free sample library recorded from its modular system, and the audio-reactive visualizer system whose language this page borrows. the output is recorded music, live performance, and the working archive at [newspeechsound.com](https://www.newspeechsound.com/).
+
+a hurricane in 4 decades is built as a collaborative work, not a solo record. the staging asks for more hands than one: players responding live to the generative beds, an operator on the score and visual systems, and — deliberately — research partners. the datasets deserve collaborators who work with them professionally: climate scientists and data stewards invited to review the mappings, challenge the interpretations, and be credited in the finished work. institutional partners are welcomed into the making, not just the booking — a residency, a seminar alongside the performance, students inside the pipeline.
+
+what already exists is the infrastructure: the sequencer, the score engine, the visualizer system and the render pipeline all run daily at the studio. what the collaboration builds is the work itself — the composition, the human pass, and the room it happens in.
+
+## 03 the instrument
+
+- **kicker:** 03 — the instrument
+- **h2:** what is sequence
+
+sequence is a generative step sequencer built at this studio, shipped as a native macos app and in daily use here. it has a chord-relative harmonic engine — set a root and a scale, author chords by degree, and every voice harmonizes against whatever played last — and it is built to play itself, mostly: mutation dials on every row, five global macros, sixteen pattern banks, and an orchestration layer whose principal controls are named **entropy** and **density**. it drives its own sample engine and external hardware over midi, so the same sessions run the studio rig on stage.
+
+two properties make it the right instrument for this work. first, its performance vocabulary — entropy, density, mutation — is already the vocabulary the climate record needs; nothing is bolted on to make the mapping fit. second, its session format is a plain data file: a pipeline can write a session the way a scientist writes a table, and the human edit that follows happens inside the same file. the boundary between the two stages of the method — described below — stays inspectable forever.
+
+## 04 the constant
+
+- **kicker:** 04 — the constant
 - **h2:** one measurement under everything
 
 a single line runs beneath all four movements: atmospheric CO₂, spliced from antarctic ice (law dome, to 1958) into direct measurement (mauna loa, 1959–). it maps to the one parameter that never resets between tracks — tempo. 277 ppm to 427 ppm; the EP literally accelerates.
@@ -47,9 +67,9 @@ a single line runs beneath all four movements: atmospheric CO₂, spliced from a
 
 atmospheric CO₂, 1743–2025, parts per million. each dot is one measurement — the spacing of the dots is itself the story of the record: sparse ice-core samples, then annual instrumental readings from 1959. sources: law dome ice core (CSIRO / NOAA paleoclimatology), mauna loa annual means (NOAA GML). hover for values.
 
-## 03 four anchors
+## 05 four anchors
 
-- **kicker:** 03 — four anchors
+- **kicker:** 05 — four anchors
 - **h2:** the movements
 
 ### movement i — 1750
@@ -59,7 +79,7 @@ atmospheric CO₂, 1743–2025, parts per million. each dot is one measurement �
 - **temperature:** the pre-industrial baseline. the uncertainty is wider than the signal.
 - **the record:** air bubbles in antarctic ice; a handful of thermometers in europe. effectively one value per decade.
 - **the storm:** none. no storm record exists for 1750.
-- **the music:** near-static. long tones, a pattern that barely mutates, disorder held at zero. the only movement is the uncertainty itself — the width of what we don't know about the year, played as slow detune. no storm appears, because none was written down: silence as data.
+- **the music:** near-static. long tones, a pattern that barely mutates, disorder held at zero. the only movement is the uncertainty itself — the width of what we don't know about the year, played as slow detune. no storm appears, because none was written down. the lack of movement is the lack of understanding we have for this period.
 
 ### movement ii — 1880
 
@@ -68,7 +88,7 @@ atmospheric CO₂, 1743–2025, parts per million. each dot is one measurement �
 - **temperature:** −0.19 °C vs the 20th-century mean
 - **the record:** the global instrumental temperature record opens in exactly this year. ships log storms by hand; positions are estimates.
 - **the storm:** unnamed hurricane no. 2 of 1880 — 130 kt, 931 mb, reconstructed entirely from ship logs.
-- **the music:** a clock appears. periodic structure, a grid, monthly resolution — the world starts keeping time. the first storm contour enters as melody, transcribed from a track that is itself a 19th-century reconstruction: confident line, uncertain hand.
+- **the music:** a clock appears. periodic structure, a grid, monthly resolution — the world starts keeping time. the first storm contour enters as melody, transcribed from a track that is itself a 19th-century data reconstruction.
 
 ### movement iii — 1950
 
@@ -77,7 +97,7 @@ atmospheric CO₂, 1743–2025, parts per million. each dot is one measurement �
 - **temperature:** −0.13 °C vs the 20th-century mean — flat on the surface, loaded underneath
 - **the record:** daily readings; aircraft now fly into hurricanes to measure them; direct CO₂ measurement begins eight years later.
 - **the storm:** hurricane dog — 125 kt. the 1950 season held the atlantic activity record for half a century.
-- **the music:** density rises. mutation opens up, fills arrive mid-pattern, and a second rhythmic system starts to slip against the first — the mismatch is the music. everything still resolves, but it costs more each time.
+- **the music:** density rises. mutation opens up, fills arrive mid-pattern, and a second rhythmic system starts to slip against the first — the mismatch is the music. everything still resolves.
 
 ### movement iv — 2026
 
@@ -86,15 +106,15 @@ atmospheric CO₂, 1743–2025, parts per million. each dot is one measurement �
 - **temperature:** +1.26 °C in 2024, the warmest year in the record and the first more than 1.5 °C above pre-industrial
 - **the record:** satellites, six-hourly everything; sea ice measured daily; a running ledger of billion-dollar disasters.
 - **the storm:** hurricane melissa, 2025 — 165 kt / 892 mb, among the strongest atlantic hurricanes ever measured.
-- **the music:** maximum disorder at maximum resolution. the disaster ledger fires events at its true density; voices drop out of the arrangement at the rate the september ice does; the mutation system runs fully open. unhinged, but exact — every extremity on the track is a measured value.
+- **the music:** maximum disorder at maximum resolution. the disaster ledger fires events at its true density; voices drop out of the arrangement at the rate the september ice does; the mutation system runs fully open. unhinged, but exact — every extremity on the track is a measured and mappable value.
 
 ### figure caption — september sea ice (inside movement iv)
 
 arctic sea ice, september mean extent, 1979–2025, million km². one bar per year; in the fourth movement, this curve is the arrangement — instruments leave as the ice does. source: NSIDC sea ice index v4. hover for values.
 
-## 04 sonification
+## 06 sonification
 
-- **kicker:** 04 — sonification
+- **kicker:** 06 — sonification
 - **h2:** a storm is already a sequence
 
 the hurricane database records every storm as six-hourly rows — position, maximum wind, central pressure. that is a monophonic sequence: latitude is pitch, wind is velocity, pressure is timbre, six hours is one step. no interpretive layer is needed to make a storm playable; it arrives pre-notated. below, the anchor storms as recorded, and one of them transcribed.
@@ -113,9 +133,9 @@ best tracks from NOAA HURDAT2 (1851–2025). dot size is maximum sustained wind 
 
 hurricane melissa (2025), transcribed: each column is one six-hour fix, pitch row follows latitude (14.0°N → 46.6°N across two octaves), mark weight follows wind speed (40 → 165 kt). this is the raw material of the fourth movement's lead voice, before any human arrangement. hover for the underlying fix.
 
-## 05 method
+## 07 method
 
-- **kicker:** 05 — method
+- **kicker:** 07 — method
 - **h2:** the machine transcribes, the human responds
 
 the work is made in two deliberate stages, and the seam between them is the point.
@@ -124,7 +144,7 @@ the work is made in two deliberate stages, and the seam between them is the poin
 
 **stage two is human.** those sessions are then edited, shuffled, rearranged and orchestrated by hand — the emotional reaction to what the data actually says, made audible. the machine states the facts; the person decides how they land. every departure from the generated material is a documented, intentional act of interpretation, which means the finished tracks carry both layers at once: the measurement, and the response of one person who sat with its ramifications.
 
-the instrument is [sequence](#sequence), described below. its sessions are plain data files — which is what makes stage one possible at all.
+the instrument is [sequence](#sequence), described above. its sessions are plain data files — which is what makes stage one possible at all.
 
 ### mapping table (parameter / driven by / source)
 
@@ -139,18 +159,9 @@ the instrument is [sequence](#sequence), described below. its sessions are plain
 
 every mapping that survives into the finished music is documented — source, transform, destination — and the mapping document ships with the EP. the data is structural, never decoration.
 
-## 06 the instrument
+## 08 visuals
 
-- **kicker:** 06 — the instrument
-- **h2:** what is sequence
-
-sequence is a generative step sequencer built at this studio, shipped as a native macos app and in daily use here. it has a chord-relative harmonic engine — set a root and a scale, author chords by degree, and every voice harmonizes against whatever played last — and it is built to play itself, mostly: mutation dials on every row, five global macros, sixteen pattern banks, and an orchestration layer whose principal controls are named **entropy** and **density**. it drives its own sample engine and external hardware over midi, so the same sessions run the studio rig on stage.
-
-two properties make it the right instrument for this work. first, its performance vocabulary — entropy, density, mutation — is already the vocabulary the climate record needs; nothing is bolted on to make the mapping fit. second, its session format is a plain data file: a pipeline can write a session the way a scientist writes a table, and the human edit that follows happens inside the same file. the boundary between the two stages of the method stays inspectable forever.
-
-## 07 visuals
-
-- **kicker:** 07 — the visual program
+- **kicker:** 08 — the visual program
 - **h2:** the same data, drawn
 
 every figure on this page is rendered live in the browser from the embedded record — nothing here is an illustration. the same discipline extends to the performance visuals:
@@ -160,17 +171,6 @@ every figure on this page is rendered live in the browser from the embedded reco
 **storm fields.** the site's audio-reactive visualizer system gains a hurricane-track piece: best tracks drawn as slow monochrome polylines at each era's true storm frequency, intensity driven by the live audio.
 
 **the year as an instrument.** in performance, one physical control scrubs the timeline 1750 → 2026, driving sound and image together — entropy, density, the visible epoch, all from a single gesture. an audience watches the operator move through 276 years by hand.
-
-## 08 the studio
-
-- **kicker:** 08 — the studio
-- **h2:** who is newspeech
-
-newspeech is an audio/visual studio led by chris elkjar — musician, designer, and toolmaker. it builds its own instruments and releases them: the sequencer above, browser-based audio tools, open-source audio plugins, a free sample library recorded from its modular system, and the audio-reactive visualizer system whose language this page borrows. the output is recorded music, live performance, and the working archive at [newspeechsound.com](https://www.newspeechsound.com/).
-
-a hurricane in 4 decades is built as a collaborative work, not a solo record. the staging asks for more hands than one: players responding live to the generative beds, an operator on the score and visual systems, and — deliberately — research partners. the datasets deserve collaborators who work with them professionally: climate scientists and data stewards invited to review the mappings, challenge the interpretations, and be credited in the finished work. institutional partners are welcomed into the making, not just the booking — a residency, a seminar alongside the performance, students inside the pipeline.
-
-what already exists is the infrastructure: the sequencer, the score engine, the visualizer system and the render pipeline all run daily at the studio. what the collaboration builds is the work itself — the composition, the human pass, and the room it happens in.
 
 ## 09 datasets
 
@@ -214,7 +214,7 @@ newspeech · [newspeechsound.com](https://www.newspeechsound.com/) · private dr
 
 ## index labels (floating nav)
 
-top · premise · the constant · movements · sonification · method · the instrument · visuals · the studio · datasets · formats · status
+top · premise · the studio · the instrument · the constant · movements · sonification · method · visuals · datasets · formats · status
 
 ## labels drawn inside the figures
 
