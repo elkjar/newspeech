@@ -15,7 +15,7 @@ ground rules for the reload to stay mechanical:
 
 ## meta
 
-- **page title:** a hurricane in 4 decades — proposal
+- **page title:** a hurricane in 4 centuries — proposal
 - **kicker:** newspeech — proposal · private draft
 - **h1:** a hurricane in 4 centuries
 - **dek:** an EP in four movements, composed from the climate record. each track is generated from what the data says about one year — 1750, 1880, 1950, 2026 — and from how much of a record exists at all. every figure on this page is drawn live from the primary datasets.
@@ -43,7 +43,7 @@ so the EP grows progressively more unhinged, but none of it is metaphor. track o
 
 newspeech is an audio/visual studio led by chris elkjar — musician, designer, and toolmaker. it builds its own instruments and releases them: the sequencer below, browser-based audio tools, open-source audio plugins, a free sample library recorded from its modular system, and the audio-reactive visualizer system whose language this page borrows. the output is recorded music, live performance, and the working archive at [newspeechsound.com](https://www.newspeechsound.com/).
 
-a hurricane in 4 decades is built as a collaborative work, not a solo record. the staging asks for more hands than one: players responding live to the generative beds, an operator on the score and visual systems, and — deliberately — research partners. the datasets deserve collaborators who work with them professionally: climate scientists and data stewards invited to review the mappings, challenge the interpretations, and be credited in the finished work. institutional partners are welcomed into the making, not just the booking — a residency, a seminar alongside the performance, students inside the pipeline.
+a hurricane in 4 centuries is built as a collaborative work, not a solo record. the staging asks for more hands than one: players responding live to the generative beds, an operator on the score and visual systems, and — deliberately — research partners. the datasets deserve collaborators who work with them professionally: climate scientists and data stewards invited to review the mappings, challenge the interpretations, and be credited in the finished work. institutional partners are welcomed into the making, not just the booking — a residency, a seminar alongside the performance, students inside the pipeline.
 
 what already exists is the infrastructure: the sequencer, the score engine, the visualizer system and the render pipeline all run daily at the studio. what the collaboration builds is the work itself — the composition, the human pass, and the room it happens in.
 
