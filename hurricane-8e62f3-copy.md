@@ -30,7 +30,7 @@ global mean surface temperature, 1850–2025, one stripe per year — brightness
 - **kicker:** 01 — premise
 - **h2:** the historical record is the score
 
-four tracks, four years. each anchor year contributes its own numbers — the carbon in its air, the heat in its oceans, its storms, its losses — and those numbers set the starting conditions of the music: tempo, disorder, density, melody. nothing on the record is invented; the sleeve notes can cite every value.
+four tracks, four years sampled. each year contributes its own datasets — the carbon in its air, the heat in its oceans, its storms, its losses — and those numbers set the starting conditions of the music: tempo, disorder, density, melody.
 
 two things escalate across the four movements: the first is the climate signal itself: from a stable pre-industrial baseline to the first calendar year more than 1.5 °C above it. the second is the record — humanity's measurement of the problem — which sharpens from air bubbles trapped in antarctic ice (one smeared value per decade) to satellites logging the whole planet every six hours. **disorder in the music follows the climate; density in the music follows the measurement.**
 
@@ -61,7 +61,7 @@ two properties make it the right instrument for this work. first, its performanc
 - **kicker:** 04 — the constant
 - **h2:** one measurement under everything
 
-a single line runs beneath all four movements: atmospheric CO₂, spliced from antarctic ice (law dome, to 1958) into direct measurement (mauna loa, 1959–). it maps to the one parameter that never resets between tracks — tempo. 277 ppm to 427 ppm; the EP literally accelerates.
+a single line runs beneath all four movements: atmospheric CO₂, spliced from antarctic ice (law dome, to 1958) into direct measurement (mauna loa, 1959–). it maps to the one parameter that never resets between tracks — tempo. 277 ppm to 427 ppm; the EP  accelerates.
 
 ### figure caption — CO₂ splice
 
@@ -115,11 +115,9 @@ arctic sea ice, september mean extent, 1979–2025, million km². one bar per ye
 ## 06 sonification
 
 - **kicker:** 06 — sonification
-- **h2:** a storm is already a sequence
+- **h2:** a storm as a sequence
 
 the hurricane database records every storm as six-hourly rows — position, maximum wind, central pressure. that is a monophonic sequence: wind is pitch and loudness at once, pressure is the harmony underneath, six hours is one step. no interpretive layer is needed to make a storm playable; it arrives pre-notated. below, the anchor storms as recorded, and one of them transcribed.
-
-two rules were learned by ear and kept in the mapping record. the first mapping tried — latitude as pitch — was rejected: hurricanes travel south to north, so every storm rendered as an ascending scale; intensity has an arc, position doesn't. and the record's own uncertainty turned out to be playable: notes transcribed from the 1880 ship-log storm trigger at 70% probability, so the 19th-century record never plays the same way twice, while the satellite era repeats exactly. harmony works the same way — the 1880 storm gets one chord, because ships measured pressure three times in its whole life; melissa gets a full progression that lands on the dominant at 892 mb.
 
 ### storm panel labels
 
@@ -144,9 +142,9 @@ the work is made in two deliberate stages, and the seam between them is the poin
 
 **stage one is mechanical.** an AI-assisted pipeline pulls each dataset from source, normalizes it into a profile of the anchor year, and writes the initial sequencer session files programmatically — tempo from CO₂, disorder from temperature, pattern density from the resolution of the record, melody from a storm's best track. no taste is applied at this stage. the output is the record, stated as pattern: what the data sounds like before anyone has feelings about it.
 
-**stage two is human.** those sessions are edited, shuffled, rearranged and orchestrated by hand, then taken to players — guitar, bass and drums written and demoed over the generative beds — the emotional reaction to what the data actually says, made audible. the machine states the facts; people decide how they land. every departure from the generated material stays traceable: a provenance tool matches any evolved session back to its originating seed and itemizes what changed, so the finished tracks carry both layers at once — the measurement, and the people responding to its ramifications.
+**stage two is human.** those sessions are edited, shuffled, rearranged and orchestrated by hand, this collection of digital debris is then augmented — guitar, bass and drums written and demoed over the generative beds — the emotional reaction to what the data actually says, made audible. the machine states the facts; people decide how they land.
 
-the instrument is [sequence](#sequence), described above. its sessions are plain data files — which is what makes stage one possible at all.
+the primary instrument is [sequence](#sequence), described above. its sessions are plain data files — which is what makes stage one possible at all. stage two is just a good old fashioned band. 
 
 ### mapping table (parameter / driven by / source)
 
