@@ -117,7 +117,9 @@ arctic sea ice, september mean extent, 1979–2025, million km². one bar per ye
 - **kicker:** 06 — sonification
 - **h2:** a storm is already a sequence
 
-the hurricane database records every storm as six-hourly rows — position, maximum wind, central pressure. that is a monophonic sequence: latitude is pitch, wind is velocity, pressure is timbre, six hours is one step. no interpretive layer is needed to make a storm playable; it arrives pre-notated. below, the anchor storms as recorded, and one of them transcribed.
+the hurricane database records every storm as six-hourly rows — position, maximum wind, central pressure. that is a monophonic sequence: wind is pitch and loudness at once, pressure is the harmony underneath, six hours is one step. no interpretive layer is needed to make a storm playable; it arrives pre-notated. below, the anchor storms as recorded, and one of them transcribed.
+
+two rules were learned by ear and kept in the mapping record. the first mapping tried — latitude as pitch — was rejected: hurricanes travel south to north, so every storm rendered as an ascending scale; intensity has an arc, position doesn't. and the record's own uncertainty turned out to be playable: notes transcribed from the 1880 ship-log storm trigger at 70% probability, so the 19th-century record never plays the same way twice, while the satellite era repeats exactly. harmony works the same way — the 1880 storm gets one chord, because ships measured pressure three times in its whole life; melissa gets a full progression that lands on the dominant at 892 mb.
 
 ### storm panel labels
 
@@ -131,18 +133,18 @@ best tracks from NOAA HURDAT2 (1851–2025). dot size is maximum sustained wind 
 
 ### figure caption — melissa transcription
 
-hurricane melissa (2025), transcribed: each column is one six-hour fix, pitch row follows latitude (14.0°N → 46.6°N across two octaves), mark weight follows wind speed (40 → 165 kt). this is the raw material of the fourth movement's lead voice, before any human arrangement. hover for the underlying fix.
+hurricane melissa (2025), transcribed: each column is one six-hour fix, pitch row and mark weight both follow maximum sustained wind (40 → 165 kt across two octaves) — the storm's intensity arc: the long build, the 892 mb peak, the collapse after jamaica, the partial recovery, the decay. this is the raw material of the fourth movement's lead voice, before any human arrangement. hover for the underlying fix.
 
 ## 07 method
 
 - **kicker:** 07 — method
 - **h2:** the machine transcribes, the human responds
 
-the work is made in two deliberate stages, and the seam between them is the point.
+the work is made in two deliberate stages, and the seam between them is the point: the data builds the core of the songs, and everything then runs through a filter of actual humans playing and writing real music.
 
 **stage one is mechanical.** an AI-assisted pipeline pulls each dataset from source, normalizes it into a profile of the anchor year, and writes the initial sequencer session files programmatically — tempo from CO₂, disorder from temperature, pattern density from the resolution of the record, melody from a storm's best track. no taste is applied at this stage. the output is the record, stated as pattern: what the data sounds like before anyone has feelings about it.
 
-**stage two is human.** those sessions are then edited, shuffled, rearranged and orchestrated by hand — the emotional reaction to what the data actually says, made audible. the machine states the facts; the person decides how they land. every departure from the generated material is a documented, intentional act of interpretation, which means the finished tracks carry both layers at once: the measurement, and the response of one person who sat with its ramifications.
+**stage two is human.** those sessions are edited, shuffled, rearranged and orchestrated by hand, then taken to players — guitar, bass and drums written and demoed over the generative beds — the emotional reaction to what the data actually says, made audible. the machine states the facts; people decide how they land. one rule is absolute: **the kick drum is never generated** — the pulse of every movement is human-played. and every departure from the generated material stays traceable: a provenance tool matches any evolved session back to its originating seed and itemizes what changed, so the finished tracks carry both layers at once — the measurement, and the people responding to its ramifications.
 
 the instrument is [sequence](#sequence), described above. its sessions are plain data files — which is what makes stage one possible at all.
 
@@ -153,8 +155,10 @@ the instrument is [sequence](#sequence), described above. its sessions are plain
 | tempo | atmospheric CO₂ (ppm) | law dome + mauna loa |
 | entropy / disorder | temperature anomaly and its variance | NOAA globaltemp · berkeley earth |
 | pattern density, mutation | resolution of the record itself, per era | all sources |
-| lead melody | one storm's best track — latitude → pitch, wind → velocity, pressure → timbre | HURDAT2 |
-| event triggers, fills | billion-dollar disaster ledger, at true event density | NCEI / climate central |
+| lead melody | one storm's intensity arc — max sustained wind → pitch and velocity (latitude → pitch was tried first and rejected by ear) | HURDAT2 |
+| harmony | central pressure walking a tension ladder — the deeper the low, the stronger the pull; harmonic rhythm = how often the era measured (1880: one chord. 2025: eight.) | HURDAT2 |
+| step probability | the record's confidence per era — satellite 100%, aircraft 85%, ship-log 70%, ice-core 60% | era of the source |
+| texture | billion-dollar disaster ledger as accelerating hat patterns, one era per pattern bank — by the 2020s the events no longer fit the grid | NCEI / climate central |
 | subtraction — voices leaving | september arctic sea-ice minimum | NSIDC sea ice index |
 
 every mapping that survives into the finished music is documented — source, transform, destination — and the mapping document ships with the EP. the data is structural, never decoration.
@@ -206,7 +210,7 @@ the project is designed to hold up in front of scientists. all sources are publi
 - **kicker:** 11 — status
 - **h2:** where it stands
 
-concept stage, august 2026. all datasets sourced and verified — the figures on this page are drawn from them. next: the data pipeline and the first generated sessions for movements i and iv, then the human pass. the score engine, the sequencer and the visualizer system already exist and are in daily use at this studio.
+in motion, august 2026. all datasets sourced and verified — the figures on this page are drawn from them. the generation pipeline is built and the first mapping canon is locked by ear: tempo, the storm melodies, the uncertainty rule, the harmonic ladder. twenty-one auditionable seeds exist across all four movements, and a provenance tool maps any evolved session back to its source data. next: arrangement, then the band. the score engine, the sequencer and the visualizer system already exist and are in daily use at this studio.
 
 ## footer
 
@@ -222,5 +226,5 @@ these live in the canvas-drawing code, not the markup — edit here and claude u
 
 - stripes hatch zone: "no instrumental record"
 - transcription header: "peak: 165 kt / 892 mb"
-- transcription corners: "oct 21 2025 · 14.0°N · 40 kt" / "nov 1 · 46.6°N · 65 kt"
+- transcription corners: "oct 21 2025 · 40 kt" / "nov 1 · 65 kt"
 - sea ice marks: "1979 · 7.05" / "2012 · 3.57" / "2025 · 4.75"
