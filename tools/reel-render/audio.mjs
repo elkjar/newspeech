@@ -125,48 +125,61 @@ export async function computeFeatures(wavPath, { fps, seconds, sampleRate = 4800
   const totalTicks = Math.max(totalFrames, Math.round(seconds * TICK_HZ));
   const dtMs = 1000 / TICK_HZ;
 
-  const lowEnd = Math.max(1, Math.floor(BINS * 0.08));
+  // "sub" = kick-only band (~0–190Hz at 48k: first 4 bins). core's "low"
+  // (8% of bins ≈ 0–1.9kHz) catches snare/hat bleed — too wide to gate
+  // kick-locked visuals. Pages opt in via bandLevel("sub")/onset("sub").
+  const subEnd = Math.max(1, Math.floor(BINS * 0.008));
+  const lowEnd = Math.max(subEnd + 1, Math.floor(BINS * 0.08));
   const midEnd = Math.max(lowEnd + 1, Math.floor(BINS * 0.25));
   const highEnd = Math.max(midEnd + 1, Math.floor(BINS * 0.6));
 
   // Smoothing + onset state (mirrors core.js module state).
   let aLevel = 0;
-  const bLevel = { low: 0, mid: 0, high: 0 };
-  const bPeak = { low: 1e-3, mid: 1e-3, high: 1e-3 };
-  const bCool = { low: 0, mid: 0, high: 0 };
+  const bLevel = { sub: 0, low: 0, mid: 0, high: 0 };
+  const bPeak = { sub: 1e-3, low: 1e-3, mid: 1e-3, high: 1e-3 };
+  const bCool = { sub: 0, low: 0, mid: 0, high: 0 };
 
   const frames = new Array(totalFrames);
   for (let k = 0; k < totalTicks; k++) {
     const tSec = k / TICK_HZ;
     const center = Math.round(tSec * sampleRate);
     const spec = spectrumAt(samples, center);
-    let sumAll = 0, sumLow = 0, sumMid = 0, sumHigh = 0;
+    let sumAll = 0, sumSub = 0, sumLow = 0, sumMid = 0, sumHigh = 0;
     for (let i = 0; i < highEnd; i++) {
       const v = spec[i];
       sumAll += v;
+      if (i < subEnd) sumSub += v;
       if (i < lowEnd) sumLow += v;
       else if (i < midEnd) sumMid += v;
       else sumHigh += v;
     }
     const overall = sumAll / highEnd;
+    const sub = sumSub / subEnd;
     const low = sumLow / lowEnd;
     const mid = sumMid / (midEnd - lowEnd);
     const high = sumHigh / (highEnd - midEnd);
 
     aLevel += (overall - aLevel) * 0.25;
+    bLevel.sub += (sub - bLevel.sub) * 0.5;
     bLevel.low += (low - bLevel.low) * 0.35;
     bLevel.mid += (mid - bLevel.mid) * 0.35;
     bLevel.high += (high - bLevel.high) * 0.4;
 
+    bCool.sub = Math.max(0, bCool.sub - dtMs);
     bCool.low = Math.max(0, bCool.low - dtMs);
     bCool.mid = Math.max(0, bCool.mid - dtMs);
     bCool.high = Math.max(0, bCool.high - dtMs);
+    const onSub = bCool.sub === 0 && sub > bPeak.sub + ONSET_RISE;
     const onLow = bCool.low === 0 && low > bPeak.low + ONSET_RISE;
     const onMid = bCool.mid === 0 && mid > bPeak.mid + ONSET_RISE;
     const onHigh = bCool.high === 0 && high > bPeak.high + ONSET_RISE;
+    if (onSub) bCool.sub = ONSET_COOL_MS;
     if (onLow) bCool.low = ONSET_COOL_MS;
     if (onMid) bCool.mid = ONSET_COOL_MS;
     if (onHigh) bCool.high = ONSET_COOL_MS;
+    // faster decay on sub so the detector re-arms between kicks at song
+    // tempo (0.995 needs ~0.45s to release; kicks at 149bpm come every 0.4s)
+    bPeak.sub = Math.max(sub, bPeak.sub * 0.985);
     bPeak.low = Math.max(low, bPeak.low * PEAK_DECAY);
     bPeak.mid = Math.max(mid, bPeak.mid * PEAK_DECAY);
     bPeak.high = Math.max(high, bPeak.high * PEAK_DECAY);
@@ -177,18 +190,21 @@ export async function computeFeatures(wavPath, { fps, seconds, sampleRate = 4800
     if (!cur) {
       frames[f] = {
         level: aLevel,
+        sub: bLevel.sub,
         low: bLevel.low,
         mid: bLevel.mid,
         high: bLevel.high,
-        onsets: { low: onLow, mid: onMid, high: onHigh },
+        onsets: { sub: onSub, low: onLow, mid: onMid, high: onHigh },
       };
     } else {
       // later tick in the same frame: levels take the freshest state,
       // onsets accumulate (a hit anywhere in the frame window shows)
       cur.level = aLevel;
+      cur.sub = bLevel.sub;
       cur.low = bLevel.low;
       cur.mid = bLevel.mid;
       cur.high = bLevel.high;
+      cur.onsets.sub = cur.onsets.sub || onSub;
       cur.onsets.low = cur.onsets.low || onLow;
       cur.onsets.mid = cur.onsets.mid || onMid;
       cur.onsets.high = cur.onsets.high || onHigh;
@@ -196,8 +212,8 @@ export async function computeFeatures(wavPath, { fps, seconds, sampleRate = 4800
   }
   // fps > TICK_HZ can leave frames with no tick — carry the previous one
   for (let f = 1; f < totalFrames; f++) {
-    if (!frames[f]) frames[f] = { ...frames[f - 1], onsets: { low: false, mid: false, high: false } };
+    if (!frames[f]) frames[f] = { ...frames[f - 1], onsets: { sub: false, low: false, mid: false, high: false } };
   }
-  if (!frames[0]) frames[0] = { level: 0, low: 0, mid: 0, high: 0, onsets: { low: false, mid: false, high: false } };
+  if (!frames[0]) frames[0] = { level: 0, sub: 0, low: 0, mid: 0, high: 0, onsets: { sub: false, low: false, mid: false, high: false } };
   return frames;
 }

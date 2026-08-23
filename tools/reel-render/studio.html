@@ -193,9 +193,9 @@ function ensureSourceOption(path, doSelect) {
   refreshSourceOptions();
   if (doSelect) { $('source').value = path; onSourceChange(); }
 }
-const sm = { level: 0, low: 0, mid: 0, high: 0 };
-const peak = { low: 1e-3, mid: 1e-3, high: 1e-3 };
-const cool = { low: 0, mid: 0, high: 0 };
+const sm = { level: 0, sub: 0, low: 0, mid: 0, high: 0 };
+const peak = { sub: 1e-3, low: 1e-3, mid: 1e-3, high: 1e-3 };
+const cool = { sub: 0, low: 0, mid: 0, high: 0 };
 let lastT = 0;
 const PEAK_DECAY = 0.995, ONSET_RISE = 0.06, ONSET_COOL_MS = 80;
 
@@ -206,27 +206,32 @@ function feedFrame(t) {
   const dtMs = lastT ? t - lastT : 16; lastT = t;
   analyser.getByteFrequencyData(fftBuf);
   const N = fftBuf.length;
-  const lowEnd = Math.max(1, Math.floor(N * 0.08));
+  // "sub" = kick-only band (first ~0.8% of bins ≈ 0–190Hz) — matches audio.mjs
+  const subEnd = Math.max(1, Math.floor(N * 0.008));
+  const lowEnd = Math.max(subEnd + 1, Math.floor(N * 0.08));
   const midEnd = Math.max(lowEnd + 1, Math.floor(N * 0.25));
   const highEnd = Math.max(midEnd + 1, Math.floor(N * 0.6));
-  let sa = 0, sl = 0, smi = 0, sh = 0;
+  let sa = 0, ss = 0, sl = 0, smi = 0, sh = 0;
   for (let i = 0; i < highEnd; i++) {
     const v = fftBuf[i] / 255; sa += v;
+    if (i < subEnd) ss += v;
     if (i < lowEnd) sl += v; else if (i < midEnd) smi += v; else sh += v;
   }
-  const overall = sa / highEnd, low = sl / lowEnd, mid = smi / (midEnd - lowEnd), high = sh / (highEnd - midEnd);
+  const overall = sa / highEnd, sub = ss / subEnd, low = sl / lowEnd, mid = smi / (midEnd - lowEnd), high = sh / (highEnd - midEnd);
   sm.level += (overall - sm.level) * 0.25;
+  sm.sub += (sub - sm.sub) * 0.5;
   sm.low += (low - sm.low) * 0.35; sm.mid += (mid - sm.mid) * 0.35; sm.high += (high - sm.high) * 0.4;
-  cool.low = Math.max(0, cool.low - dtMs); cool.mid = Math.max(0, cool.mid - dtMs); cool.high = Math.max(0, cool.high - dtMs);
+  cool.sub = Math.max(0, cool.sub - dtMs); cool.low = Math.max(0, cool.low - dtMs); cool.mid = Math.max(0, cool.mid - dtMs); cool.high = Math.max(0, cool.high - dtMs);
+  const onSub = cool.sub === 0 && sub > peak.sub + ONSET_RISE;
   const onLow = cool.low === 0 && low > peak.low + ONSET_RISE;
   const onMid = cool.mid === 0 && mid > peak.mid + ONSET_RISE;
   const onHigh = cool.high === 0 && high > peak.high + ONSET_RISE;
-  if (onLow) cool.low = ONSET_COOL_MS; if (onMid) cool.mid = ONSET_COOL_MS; if (onHigh) cool.high = ONSET_COOL_MS;
-  peak.low = Math.max(low, peak.low * PEAK_DECAY); peak.mid = Math.max(mid, peak.mid * PEAK_DECAY); peak.high = Math.max(high, peak.high * PEAK_DECAY);
+  if (onSub) cool.sub = ONSET_COOL_MS; if (onLow) cool.low = ONSET_COOL_MS; if (onMid) cool.mid = ONSET_COOL_MS; if (onHigh) cool.high = ONSET_COOL_MS;
+  peak.sub = Math.max(sub, peak.sub * 0.985); peak.low = Math.max(low, peak.low * PEAK_DECAY); peak.mid = Math.max(mid, peak.mid * PEAK_DECAY); peak.high = Math.max(high, peak.high * PEAK_DECAY);
   const g = parseFloat($('gain').value) || 1;
   const c = (x) => Math.max(0, Math.min(1, x * g));
   const ns = vizWin() && vizWin().Newspeech;
-  if (ns && ns.setExternalAudio) ns.setExternalAudio({ level: c(sm.level), low: c(sm.low), mid: c(sm.mid), high: c(sm.high), onsets: { low: onLow, mid: onMid, high: onHigh } });
+  if (ns && ns.setExternalAudio) ns.setExternalAudio({ level: c(sm.level), sub: c(sm.sub), low: c(sm.low), mid: c(sm.mid), high: c(sm.high), onsets: { sub: onSub, low: onLow, mid: onMid, high: onHigh } });
   raf = requestAnimationFrame(feedFrame);
 }
 
