@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<meta name="robots" content="noindex, nofollow">
+<title>NEWSPEECH // hurricane teaser — tracks</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; }
+  #bg { position: fixed; inset: 0; display: block; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="panel">
+  <div class="panel-title">hurricane tracks · params · [0] toggle</div>
+  <label>
+    <span class="name">duration (s)</span><span class="val"></span>
+    <input type="range" min="10" max="90" step="0.1" data-k="dur">
+  </label>
+  <label>
+    <span class="name">mark weight</span><span class="val"></span>
+    <input type="range" min="0.4" max="2.5" step="0.05" data-k="weight">
+  </label>
+  <label>
+    <span class="name">trail persistence</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.02" data-k="persist">
+  </label>
+  <label>
+    <span class="name">ship-log flicker</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.02" data-k="flicker">
+  </label>
+  <label>
+    <span class="name">track haze</span><span class="val"></span>
+    <input type="range" min="0" max="3" step="0.05" data-k="trackHaze">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script>
+const { installInputs, tickInputs, bumpActivity, intensity, bandLevel, onset,
+        drawSoftDot, hazeAlongLine, installPanel } = window.Newspeech;
+
+// HURDAT2 best tracks: [lat, lon, wind kt, pressure mb]
+const MELISSA = [[14,-70,40,1003],[14,-71.4,45,1003],[14,-72.4,45,1003],[14.1,-73.3,45,1003],[14.2,-73.5,45,1002],[14.3,-73.7,45,1002],[14.3,-74.1,45,1002],[14.3,-74.5,45,1002],[14.7,-74.8,40,1003],[15.2,-75,40,1003],[15.5,-75.3,40,1002],[15.7,-75.5,40,1002],[15.8,-75.3,40,1002],[15.9,-75.1,45,1000],[15.9,-74.8,50,997],[16.1,-74.7,55,993],[16.3,-74.7,60,986],[16.4,-74.9,60,984],[16.4,-75.3,75,976],[16.4,-75.7,90,971],[16.3,-76,105,958],[16.3,-76.4,115,952],[16.3,-76.9,120,944],[16.3,-77.3,125,934],[16.3,-77.7,135,923],[16.3,-78,145,912],[16.4,-78.3,155,906],[16.5,-78.6,155,909],[16.9,-78.4,155,900],[17.5,-78.1,165,892],[18.1,-78,160,897],[18.2,-78,145,910],[18.8,-77.1,105,953],[19.7,-76.4,105,952],[20,-76.2,100,954],[20.9,-75.8,85,968],[22.1,-75.4,80,972],[23.1,-75,80,972],[23.5,-74.8,80,970],[24,-74.5,80,970],[25,-73.8,85,968],[26.7,-72.7,90,965],[28.9,-70.9,85,967],[31.3,-68.7,80,970],[34.5,-65.5,75,972],[37.7,-62.1,75,972],[40.6,-58.9,70,972],[43.7,-56,70,971],[46.6,-51.3,65,968]];
+const S1880 = [[16,-59.8,40,null],[15.9,-61.8,40,null],[16,-64,40,null],[16.1,-65.5,40,null],[16.2,-67,50,null],[16.2,-68.4,50,null],[16.5,-69.8,50,null],[16.6,-71.1,50,null],[16.7,-72.5,60,null],[16.7,-73.8,60,null],[17,-75.1,70,null],[17.1,-76.3,70,null],[17.2,-77.5,80,null],[17.5,-78.6,80,null],[17.7,-80,90,null],[18.1,-81.1,90,null],[18.5,-82.1,90,null],[18.9,-83.1,90,null],[19.2,-84,90,null],[19.6,-84.6,90,null],[20,-85.3,90,null],[20.4,-86,90,null],[20.7,-86.7,90,null],[21,-87.4,70,null],[21.3,-88.1,60,null],[21.6,-88.9,50,null],[22,-89.6,60,null],[22.3,-90.4,60,null],[22.6,-91.1,70,null],[23,-91.9,70,null],[23.4,-92.6,80,null],[23.7,-93.3,80,null],[24,-93.8,90,null],[24.3,-94.4,100,null],[24.7,-95,110,null],[25.2,-96,120,null],[25.7,-96.9,130,931],[25.8,-97,130,931],[26.1,-97.6,110,943],[26.5,-98.5,70,null],[27.1,-99.5,60,null],[27.8,-100.2,50,null],[28.6,-101,40,null],[29.7,-101.5,30,null],[31,-101,30,null]];
+const W_MIN = 30, W_MAX = 165;
+
+const params = { dur: 50.6, weight: 1.2, persist: 0.75, flicker: 0.7, trackHaze: 1.2 };
+
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+let W = 0, H = 0, dpr = 1;
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// geographic projection: both tracks' bounding box fitted to a middle band,
+// geographic aspect preserved (equirectangular; artistic, not cartographic)
+const ALL = MELISSA.concat(S1880);
+const LAT0 = Math.min(...ALL.map(p => p[0])), LAT1 = Math.max(...ALL.map(p => p[0]));
+const LON0 = Math.min(...ALL.map(p => p[1])), LON1 = Math.max(...ALL.map(p => p[1]));
+function project(lat, lon) {
+  const availW = W * 0.84, availH = H * 0.56;
+  const s = Math.min(availW / (LON1 - LON0), availH / (LAT1 - LAT0));
+  const cx = W / 2, cy = H * 0.5;
+  return [
+    cx + ((lon - (LON0 + LON1) / 2)) * s,
+    cy - ((lat - (LAT0 + LAT1) / 2)) * s,
+  ];
+}
+
+// per-fix stable flicker phase for the ship-log line
+const PHASE = S1880.map(() => Math.random() * Math.PI * 2);
+
+let elapsed = 0;
+let rings = [];
+let ringCool = 0;
+
+function drawTrack(pts, progress, opts, t, level) {
+  const head = progress * (pts.length - 1);
+  const headI = Math.floor(head);
+  for (let i = 0; i <= headI; i++) {
+    const [lat, lon, wind] = pts[i];
+    const [x, y] = project(lat, lon);
+    const wNorm = (wind - W_MIN) / (W_MAX - W_MIN);
+    const isHead = i === headI;
+    // ship-log line: probability-70 feel — fixes waver in and out
+    let conf = 1;
+    if (opts.shipLog) {
+      conf = 1 - params.flicker * 0.55 * (0.5 + 0.5 * Math.sin(t * 0.0035 + PHASE[i]));
+    }
+    const size = (10 + wNorm * 30) * params.weight * (isHead ? 1.35 + level : 1);
+    const alpha = opts.base * (0.35 + wNorm * 0.65) * conf * (isHead ? 1 + level * 0.5 : 1);
+    drawSoftDot(ctx, x, y, size, Math.min(1, alpha));
+    if (i > 0 && params.trackHaze > 0) {
+      const [px, py] = project(pts[i - 1][0], pts[i - 1][1]);
+      hazeAlongLine(ctx, px, py, x, y,
+        { samples: 4, jitter: 7, alpha: 0.05 * params.trackHaze * opts.base * conf * (0.6 + level), dpr });
+    }
+  }
+  return headI;
+}
+
+function frame(t, dt) {
+  // trail fade to transparent — persistence slider sets how long tracks linger
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  const fadeA = 0.02 + (1 - params.persist) * 0.25;
+  ctx.fillStyle = `rgba(0,0,0,${fadeA.toFixed(3)})`;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+
+  elapsed += dt;
+  const progress = Math.min(1, elapsed / params.dur);
+  // raw low band blended in — unsmoothed, so the kick lands ON the frame
+  const level = Math.max(intensity(), bandLevel("low"));
+
+  // both full tracks as faint ghosts from frame one (equilibrium vs the
+  // trail fade keeps them just visible — the record already exists)
+  for (const pts of [MELISSA, S1880]) {
+    for (let i = 0; i < pts.length; i++) {
+      const wNorm = (pts[i][2] - W_MIN) / (W_MAX - W_MIN);
+      const [x, y] = project(pts[i][0], pts[i][1]);
+      drawSoftDot(ctx, x, y, (10 + wNorm * 30) * params.weight, 0.015);
+    }
+  }
+
+  // 2025: continuous satellite record — solid, bright
+  const mHead = drawTrack(MELISSA, progress, { base: 0.85, shipLog: false }, t, level);
+  // 1880: ship-log reconstruction — dim, wavering
+  drawTrack(S1880, progress, { base: 0.4, shipLog: true }, t, level * 0.7);
+
+  // low-band onsets ring out from melissa's head (cooldown keeps them
+  // reading as pulses, not a moiré field — they persist via the trails)
+  ringCool -= dt;
+  if (onset("low") && ringCool <= 0) {
+    const p = MELISSA[mHead];
+    const [x, y] = project(p[0], p[1]);
+    rings.push({ x, y, r: 12, a: 0.3 });
+    ringCool = 0.35;
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const ring of rings) {
+    ring.r += dt * 300; ring.a *= Math.pow(0.06, dt);
+    ctx.strokeStyle = `rgba(255,255,255,${Math.max(0, ring.a).toFixed(3)})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+  rings = rings.filter(r => r.a > 0.01);
+}
+
+let lastT = performance.now();
+function loop(t) {
+  const dt = Math.min(0.1, (t - lastT) / 1000);
+  lastT = t;
+  tickInputs(dt);
+  frame(t, dt);
+  requestAnimationFrame(loop);
+}
+installInputs();
+installPanel(params);
+requestAnimationFrame(loop);
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel")) return;
+  bumpActivity();
+});
+</script>
+</body>
+</html>

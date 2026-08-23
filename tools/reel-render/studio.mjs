@@ -125,9 +125,10 @@ async function main() {
       if (p === '/' || p === '/studio') return serveFile(req, res, join(HERE, 'studio.html'));
 
       if (p === '/api/pages') {
+        // numbered visualizers, plus one-off render pages (hurricane teasers)
         const files = (await readdir(ROOT))
-          .filter((f) => /^\d+-.*\.html$/.test(f))
-          .sort((x, y) => parseInt(x) - parseInt(y));
+          .filter((f) => /^\d+-.*\.html$/.test(f) || /^hurricane-teaser-.*\.html$/.test(f))
+          .sort((x, y) => (parseInt(x) || 999) - (parseInt(y) || 999));
         const pages = [];
         for (const f of files) {
           // Source-reliant pages composite a picked image/video — not yet

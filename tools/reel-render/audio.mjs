@@ -108,11 +108,22 @@ function spectrumAt(samples, center) {
   return out;
 }
 
+// The live page ticks its analyser at display rate (~60Hz), and the per-tick
+// constants above (PEAK_DECAY, smoothing lerps) were tuned by feel at that
+// rate. Running the same state machine once per OUTPUT frame made its time
+// behavior depend on --fps: at 30fps the peak envelope decayed half as fast
+// in real time, so onsets fired up to ~150ms late vs the live page. Fix: the
+// state machine always ticks at a fixed internal 60Hz, then samples down to
+// output frames (levels = state at frame time; onset = fired in any internal
+// tick belonging to that frame).
+const TICK_HZ = 60;
+
 // Build the per-frame feature track. Returns an array length totalFrames.
 export async function computeFeatures(wavPath, { fps, seconds, sampleRate = 48000 }) {
   const samples = await decodeMonoF32(wavPath, seconds, sampleRate);
   const totalFrames = Math.round(seconds * fps);
-  const dtMs = 1000 / fps;
+  const totalTicks = Math.max(totalFrames, Math.round(seconds * TICK_HZ));
+  const dtMs = 1000 / TICK_HZ;
 
   const lowEnd = Math.max(1, Math.floor(BINS * 0.08));
   const midEnd = Math.max(lowEnd + 1, Math.floor(BINS * 0.25));
@@ -124,9 +135,10 @@ export async function computeFeatures(wavPath, { fps, seconds, sampleRate = 4800
   const bPeak = { low: 1e-3, mid: 1e-3, high: 1e-3 };
   const bCool = { low: 0, mid: 0, high: 0 };
 
-  const frames = [];
-  for (let f = 0; f < totalFrames; f++) {
-    const center = Math.round((f / fps) * sampleRate);
+  const frames = new Array(totalFrames);
+  for (let k = 0; k < totalTicks; k++) {
+    const tSec = k / TICK_HZ;
+    const center = Math.round(tSec * sampleRate);
     const spec = spectrumAt(samples, center);
     let sumAll = 0, sumLow = 0, sumMid = 0, sumHigh = 0;
     for (let i = 0; i < highEnd; i++) {
@@ -159,13 +171,33 @@ export async function computeFeatures(wavPath, { fps, seconds, sampleRate = 4800
     bPeak.mid = Math.max(mid, bPeak.mid * PEAK_DECAY);
     bPeak.high = Math.max(high, bPeak.high * PEAK_DECAY);
 
-    frames.push({
-      level: aLevel,
-      low: bLevel.low,
-      mid: bLevel.mid,
-      high: bLevel.high,
-      onsets: { low: onLow, mid: onMid, high: onHigh },
-    });
+    // this tick belongs to the output frame containing its timestamp
+    const f = Math.min(totalFrames - 1, Math.floor(tSec * fps));
+    const cur = frames[f];
+    if (!cur) {
+      frames[f] = {
+        level: aLevel,
+        low: bLevel.low,
+        mid: bLevel.mid,
+        high: bLevel.high,
+        onsets: { low: onLow, mid: onMid, high: onHigh },
+      };
+    } else {
+      // later tick in the same frame: levels take the freshest state,
+      // onsets accumulate (a hit anywhere in the frame window shows)
+      cur.level = aLevel;
+      cur.low = bLevel.low;
+      cur.mid = bLevel.mid;
+      cur.high = bLevel.high;
+      cur.onsets.low = cur.onsets.low || onLow;
+      cur.onsets.mid = cur.onsets.mid || onMid;
+      cur.onsets.high = cur.onsets.high || onHigh;
+    }
   }
+  // fps > TICK_HZ can leave frames with no tick — carry the previous one
+  for (let f = 1; f < totalFrames; f++) {
+    if (!frames[f]) frames[f] = { ...frames[f - 1], onsets: { low: false, mid: false, high: false } };
+  }
+  if (!frames[0]) frames[0] = { level: 0, low: 0, mid: 0, high: 0, onsets: { low: false, mid: false, high: false } };
   return frames;
 }
