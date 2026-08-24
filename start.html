@@ -79,7 +79,7 @@
     line-height: 1;
     user-select: none;
   }
-  #stage span { display: inline-block; will-change: transform; }
+  #stage span { display: inline-block; vertical-align: top; will-change: transform; }
   #stage.chroma {
     text-shadow:
       -2px 0 0 #00ffff,
@@ -115,19 +115,16 @@
     background: rgba(255, 255, 255, 0.07);
     border-color: rgba(255, 255, 255, 0.7);
   }
-  .row .k {
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    opacity: 0.5;
-    margin-bottom: 6px;
-  }
   .row .t {
     font-size: 15px;
     letter-spacing: 0.04em;
     line-height: 18px; /* fixed so font swaps can't shift the box */
   }
-  .row .t span { display: inline-block; text-align: center; }
+  /* vertical-align:top — baseline-aligning the char spans lets fonts with
+     deeper metrics grow the line box past the 18px line-height (1px layout
+     shift on every swap); top-aligning pins the box to line-height */
+  .row .t span { display: inline-block; text-align: center; vertical-align: top; }
+  .row .t span.badge { text-align: left; vertical-align: 2px; }
   .row .d {
     font-size: 11px;
     line-height: 1.5;
@@ -135,6 +132,40 @@
     color: rgba(255, 255, 255, 0.55);
     margin-top: 4px;
   }
+  /* featured latest-post card — hydrated from news-latest.html */
+  #latest { border-color: rgba(255, 255, 255, 0.7); }
+  #latest .lk {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin-bottom: 10px;
+  }
+  #latest .latest-body { display: flex; gap: 14px; align-items: flex-start; }
+  #latest .lthumb {
+    width: 96px;
+    aspect-ratio: 16 / 10;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  #latest .lthumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: grayscale(1);
+    opacity: 0.8;
+    transition: opacity 80ms ease;
+  }
+  #latest:hover .lthumb img { opacity: 1; }
+  #latest .ldate {
+    font-size: 10px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 4px;
+  }
+  #latest .ltxt { min-width: 0; }
+
   .row .arr {
     position: absolute;
     right: 16px;
@@ -225,44 +256,51 @@
   <div id="tag">audio/video experimentation</div>
 
   <nav id="links" aria-label="newspeech links">
+    <!-- latest post — filled from news-latest.html; stays hidden if the
+         snippet 404s (e.g. no posts yet / local preview without a build) -->
+    <a class="row" id="latest" href="news.html" style="display:none">
+      <div class="lk">// latest</div>
+      <div class="latest-body">
+        <span class="lthumb"><img alt=""></span>
+        <div class="ltxt">
+          <div class="ldate"></div>
+          <div class="t"></div>
+          <div class="d"></div>
+        </div>
+      </div>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
     <a class="row" href="news.html">
-      <div class="k">01 / news</div>
       <div class="t" data-ns-link>news</div>
       <div class="d">posts + releases</div>
       <span class="arr" aria-hidden="true">→</span>
     </a>
     <a class="row" href="index.html#v-sequence">
-      <div class="k">02 / sequence</div>
       <div class="t" data-ns-link>sequence<span class="badge">coming soon</span></div>
       <div class="d">a step sequencer with a chord-relative harmonic engine</div>
       <span class="arr" aria-hidden="true">→</span>
     </a>
     <a class="row" href="texture.html">
-      <div class="k">03 / texture</div>
       <div class="t" data-ns-link>texture</div>
       <div class="d">a loop mangler in the browser</div>
       <span class="arr" aria-hidden="true">→</span>
     </a>
     <a class="row" href="samples.html">
-      <div class="k">04 / sample</div>
       <div class="t" data-ns-link>sample</div>
       <div class="d">the newspeech sample library — free under cc by-sa</div>
       <span class="arr" aria-hidden="true">→</span>
     </a>
     <a class="row" href="visualizers.html">
-      <div class="k">05 / visual</div>
       <div class="t" data-ns-link>visual</div>
       <div class="d">audio-reactive visualizers, all plain 2d canvas</div>
       <span class="arr" aria-hidden="true">→</span>
     </a>
     <a class="row" href="live.html">
-      <div class="k">06 / code</div>
       <div class="t" data-ns-link>code</div>
       <div class="d">live-coded music — a strudel repl</div>
       <span class="arr" aria-hidden="true">→</span>
     </a>
     <a class="row" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer">
-      <div class="k">07 / youtube</div>
       <div class="t" data-ns-link>youtube</div>
       <div class="d">@newspeechsound</div>
       <span class="arr" aria-hidden="true">↗</span>
@@ -429,23 +467,36 @@ const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
 const LINK_CYCLE_MS = 80;
 const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
 
-async function setupLinks() {
-  if (document.fonts && document.fonts.load) {
-    await Promise.all(LINK_FONT_CYCLE.map((fam) => document.fonts.load(`15px "${fam}"`)));
-  }
-  document.querySelectorAll("[data-ns-link]").forEach((link) => {
-    // split only direct text nodes into char spans — leaves the badge intact
+const fontsReady = (document.fonts && document.fonts.load)
+  ? Promise.all(LINK_FONT_CYCLE.map((fam) => document.fonts.load(`15px "${fam}"`))).catch(() => {})
+  : Promise.resolve();
+
+async function setupLink(link) {
+  await fontsReady;
+    // split only direct text nodes into char spans — leaves the badge intact.
+    // chars group into inline-block word wrappers (atomic → wraps happen at
+    // word boundaries, not between arbitrary char spans) with real spaces as
+    // plain text nodes between them (a space inside an inline-block span
+    // collapses to zero width).
     const charSpans = [];
     for (const node of [...link.childNodes]) {
       if (node.nodeType !== Node.TEXT_NODE) continue;
       const frag = document.createDocumentFragment();
-      for (const ch of node.textContent) {
-        const s = document.createElement("span");
-        const display = ch === " " ? " " : ch;
-        s.textContent = display;
-        s.dataset.original = display;
-        frag.appendChild(s);
-        charSpans.push(s);
+      for (const token of node.textContent.split(/(\s+)/)) {
+        if (!token) continue;
+        if (/^\s+$/.test(token)) {
+          frag.appendChild(document.createTextNode(" "));
+          continue;
+        }
+        const word = document.createElement("span");
+        for (const ch of token) {
+          const s = document.createElement("span");
+          s.textContent = ch;
+          s.dataset.original = ch;
+          word.appendChild(s);
+          charSpans.push(s);
+        }
+        frag.appendChild(word);
       }
       link.replaceChild(frag, node);
     }
@@ -509,9 +560,32 @@ async function setupLinks() {
         })();
       }
     );
-  });
 }
-setupLinks();
+document.querySelectorAll("[data-ns-link]").forEach((l) => setupLink(l));
+
+// ---- latest post: hydrate the featured card from news-latest.html ----
+// (build-news.mjs emits the snippet per deploy; 404 → card stays hidden)
+fetch("news-latest.html")
+  .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+  .then((html) => {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html;
+    const post = tpl.content.querySelector(".post-row");
+    if (!post) return;
+    const card = document.getElementById("latest");
+    card.href = post.getAttribute("href");
+    const img = post.querySelector(".thumb img");
+    if (img) card.querySelector(".lthumb img").src = img.getAttribute("src");
+    else card.querySelector(".lthumb").style.display = "none";
+    const pick = (sel) => { const el = post.querySelector(sel); return el ? el.textContent : ""; };
+    card.querySelector(".ldate").textContent = pick(".date");
+    const ttl = card.querySelector(".t");
+    ttl.textContent = pick(".ttl");
+    card.querySelector(".d").textContent = pick(".dek");
+    card.style.display = "";
+    setupLink(ttl); // same font-cycle + scramble treatment as the static rows
+  })
+  .catch(() => {});
 
 // ---- subscribe: AJAX post to Netlify Forms so the page never navigates ----
 // same flow as the homepage dialog; only works on the deployed site — local
