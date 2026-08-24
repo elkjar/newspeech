@@ -4,3 +4,9 @@
 
 [build.environment]
   NODE_VERSION = "20"
+
+# /start — the link-in-bio hub (instagram bio points here)
+[[redirects]]
+  from = "/start"
+  to = "/start.html"
+  status = 200

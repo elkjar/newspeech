@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0a0a">
+<title>NEWSPEECH // start</title>
+<meta name="description" content="newspeech — start here. tools, samples, visualizers, live code.">
+<!-- link hub for social bios — keep it out of search results -->
+<meta name="robots" content="noindex">
+<meta property="og:title" content="NEWSPEECH // start">
+<meta property="og:description" content="newspeech — start here. tools, samples, visualizers, live code.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/start">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // start">
+<meta name="twitter:description" content="newspeech — start here. tools, samples, visualizers, live code.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); font-display: swap; }
+
+  :root {
+    --bg: #050505;
+    --fg: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    overflow-x: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* streak field pinned behind everything */
+  #bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.55;
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 430px;
+    margin: 0 auto;
+    min-height: 100vh;
+    min-height: 100svh;
+    padding: 56px 20px 64px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- wordmark ---- */
+  #stage {
+    display: block;
+    text-align: center;
+    color: var(--fg);
+    text-decoration: none;
+    font-family: "zxx-sans", monospace;
+    font-size: clamp(38px, 11vw, 52px);
+    letter-spacing: 0.04em;
+    line-height: 1;
+    user-select: none;
+  }
+  #stage span { display: inline-block; will-change: transform; }
+  #stage.chroma {
+    text-shadow:
+      -2px 0 0 #00ffff,
+       2px 0 0 #ff00ff;
+  }
+  #tag {
+    margin-top: 14px;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.55;
+  }
+
+  /* ---- link rows ---- */
+  #links {
+    margin-top: 44px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row {
+    position: relative;
+    display: block;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(5, 5, 5, 0.78);
+    color: var(--fg);
+    text-decoration: none;
+    padding: 15px 44px 15px 18px;
+    transition: background 80ms ease, border-color 120ms ease;
+  }
+  .row:hover, .row:active {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.7);
+  }
+  .row .k {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin-bottom: 6px;
+  }
+  .row .t {
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    line-height: 18px; /* fixed so font swaps can't shift the box */
+  }
+  .row .t span { display: inline-block; text-align: center; }
+  .row .d {
+    font-size: 11px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.55);
+    margin-top: 4px;
+  }
+  .row .arr {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    opacity: 0.45;
+  }
+  .row .badge {
+    display: inline-block;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    padding: 3px 6px;
+    margin-left: 8px;
+    vertical-align: 2px;
+    opacity: 0.85;
+  }
+
+  /* ---- subscribe ---- */
+  #subscribe {
+    margin-top: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 22px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(5, 5, 5, 0.85);
+    font-size: 12px;
+    line-height: 18px;
+    letter-spacing: 0.04em;
+  }
+  #subscribe .hp { display: none; }
+  #subscribe .sub-label { opacity: 0.55; }
+  #subscribe .sub-row { display: flex; gap: 10px; }
+  #subscribe input[type="email"] {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    color: var(--fg);
+    font: inherit;
+    font-size: 16px; /* <16px makes iOS Safari zoom the page on focus */
+    letter-spacing: 0.04em;
+    padding: 9px 12px;
+    border-radius: 0;
+    outline: none;
+  }
+  #subscribe input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
+  #subscribe input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
+  #subscribe button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: var(--fg);
+    font: inherit;
+    letter-spacing: 0.04em;
+    padding: 9px 16px;
+    cursor: pointer;
+  }
+  #subscribe button:hover { background: rgba(255, 255, 255, 0.08); }
+  #subscribe button:disabled { opacity: 0.4; cursor: default; }
+  #subscribe .sub-msg { opacity: 0.85; letter-spacing: 0.06em; }
+  #subscribe .sub-msg.err { opacity: 0.55; }
+  #subscribe.fade-out { opacity: 0; transition: opacity 0.7s ease; }
+
+  footer {
+    margin-top: auto;
+    padding-top: 44px;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+  footer a {
+    color: rgba(255, 255, 255, 0.55);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  footer a:hover { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.7); }
+</style>
+</head>
+<body>
+
+<canvas id="bg" aria-hidden="true"></canvas>
+
+<main>
+  <a id="stage" href="index.html" aria-label="newspeech">NEWSPEECH</a>
+  <div id="tag">audio/video experimentation</div>
+
+  <nav id="links" aria-label="newspeech links">
+    <a class="row" href="news.html">
+      <div class="k">01 / news</div>
+      <div class="t" data-ns-link>news</div>
+      <div class="d">posts + releases</div>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
+    <a class="row" href="index.html#v-sequence">
+      <div class="k">02 / sequence</div>
+      <div class="t" data-ns-link>sequence<span class="badge">coming soon</span></div>
+      <div class="d">a step sequencer with a chord-relative harmonic engine</div>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
+    <a class="row" href="texture.html">
+      <div class="k">03 / texture</div>
+      <div class="t" data-ns-link>texture</div>
+      <div class="d">a loop mangler in the browser</div>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
+    <a class="row" href="samples.html">
+      <div class="k">04 / sample</div>
+      <div class="t" data-ns-link>sample</div>
+      <div class="d">the newspeech sample library — free under cc by-sa</div>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
+    <a class="row" href="visualizers.html">
+      <div class="k">05 / visual</div>
+      <div class="t" data-ns-link>visual</div>
+      <div class="d">audio-reactive visualizers, all plain 2d canvas</div>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
+    <a class="row" href="live.html">
+      <div class="k">06 / code</div>
+      <div class="t" data-ns-link>code</div>
+      <div class="d">live-coded music — a strudel repl</div>
+      <span class="arr" aria-hidden="true">→</span>
+    </a>
+    <a class="row" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer">
+      <div class="k">07 / youtube</div>
+      <div class="t" data-ns-link>youtube</div>
+      <div class="d">@newspeechsound</div>
+      <span class="arr" aria-hidden="true">↗</span>
+    </a>
+  </nav>
+
+  <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field">
+    <input type="hidden" name="form-name" value="subscribe">
+    <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+    <label class="sub-label" for="sub-email">mailing list — releases + new tools</label>
+    <div class="sub-row">
+      <input id="sub-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+      <button type="submit">subscribe</button>
+    </div>
+  </form>
+
+  <footer>
+    <a href="index.html">www.newspeechsound.com</a>
+  </footer>
+</main>
+
+<script>
+// self-contained copy of the site text treatment (nav.js vocabulary) plus a
+// lightweight streak field — this page deliberately skips nav.js: it IS the
+// navigation, and the fixed bar would double the chrome.
+"use strict";
+
+// ---- intensity envelope + poisson scheduler ----
+let mouseActivity = 0;
+let lastMX = -10000, lastMY = -10000;
+window.addEventListener("mousemove", (e) => {
+  const dist = Math.hypot(e.clientX - lastMX, e.clientY - lastMY);
+  lastMX = e.clientX;
+  lastMY = e.clientY;
+  mouseActivity = Math.min(1, mouseActivity + dist * 0.004);
+});
+function intensity() {
+  const t = performance.now();
+  const sum = 0.5
+    + 0.25 * Math.sin(t / 17000)
+    + 0.18 * Math.sin(t / 31000)
+    + 0.12 * Math.sin(t / 47000);
+  return Math.max(0, Math.min(1, sum + mouseActivity * 0.4));
+}
+function poisson(rateFn, fire) {
+  (function step() {
+    const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+    const wait = -Math.log(1 - Math.random()) / ratePerMs;
+    setTimeout(() => { fire(); step(); }, wait);
+  })();
+}
+
+// ---- background: VHS-streak field (compact port of the homepage layer) ----
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+const tex = document.createElement("canvas");
+const tctx = tex.getContext("2d");
+let viewW, viewH, dpr, scrollY = 0;
+
+function buildTexture() {
+  const w = viewW;
+  const h = viewH * 2; // 2x tall so we can scroll-wrap
+  tex.width = w;
+  tex.height = h;
+  tctx.fillStyle = "#050505";
+  tctx.fillRect(0, 0, w, h);
+  const numStreaks = Math.floor(h * 1.6);
+  for (let i = 0; i < numStreaks; i++) {
+    const y = (Math.random() * h) | 0;
+    const xStart = Math.random() * w;
+    const xLen = 30 + Math.random() * (w * 0.7);
+    const a = Math.pow(Math.random(), 4) * 0.4 + 0.006;
+    tctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tctx.fillRect(xStart, y, xLen, 1);
+  }
+  for (let i = 0; i < 3; i++) {
+    const y = (Math.random() * h) | 0;
+    const a = 0.18 + Math.random() * 0.3;
+    tctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+    tctx.fillRect(0, y, w, 1 + ((Math.random() * 2) | 0));
+  }
+}
+
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  canvas.width = Math.floor(viewW * dpr);
+  canvas.height = Math.floor(viewH * dpr);
+  canvas.style.width = viewW + "px";
+  canvas.style.height = viewH + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildTexture();
+}
+window.addEventListener("resize", resize);
+resize();
+
+poisson(() => 0.18 + 0.35 * intensity(), buildTexture);
+
+let lastT = performance.now();
+requestAnimationFrame(function frame(t) {
+  const dt = (t - lastT) / 1000;
+  lastT = t;
+  mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
+  scrollY = (scrollY + 0.5 * (0.5 + 0.8 * intensity()) * dt) % viewH;
+  ctx.clearRect(0, 0, viewW, viewH);
+  ctx.drawImage(tex, 0, scrollY, viewW, viewH, 0, 0, viewW, viewH);
+  requestAnimationFrame(frame);
+});
+
+// ---- wordmark: per-char font swaps, jitter, chroma flashes ----
+const FONTS = [
+  ["zxx-sans",  1],
+  ["zxx-bold",  0],
+  ["zxx-noise", 7],
+  ["zxx-camo",  3],
+  ["zxx-xed",   5],
+];
+const TOTAL_W = FONTS.reduce((a, [, w]) => a + w, 0);
+function pickFont() {
+  let r = Math.random() * TOTAL_W;
+  for (const [f, w] of FONTS) {
+    r -= w;
+    if (r <= 0) return f;
+  }
+  return FONTS[FONTS.length - 1][0];
+}
+
+const stage = document.getElementById("stage");
+const stageSpans = [...stage.textContent].map((ch) => {
+  const s = document.createElement("span");
+  s.textContent = ch;
+  s.style.fontFamily = '"zxx-sans", monospace';
+  return s;
+});
+stage.textContent = "";
+for (const s of stageSpans) stage.appendChild(s);
+
+for (const s of stageSpans) {
+  poisson(
+    () => 0.7 + 7.7 * intensity(),
+    () => { s.style.fontFamily = `"${pickFont()}", monospace`; }
+  );
+  poisson(
+    () => 0.030 + 0.270 * intensity(),
+    () => {
+      const jx = (Math.random() * 2 - 1) * 4;
+      s.style.transform = `translateX(${jx.toFixed(1)}px)`;
+      setTimeout(() => { s.style.transform = ""; }, 80 + Math.random() * 140);
+    }
+  );
+}
+
+poisson(
+  () => 0.05 + 0.95 * intensity(),
+  () => {
+    stage.classList.add("chroma");
+    setTimeout(() => stage.classList.remove("chroma"), 80 + Math.random() * 80);
+  }
+);
+
+// ---- link rows: font cycle on hover/tap + ambient char scrambles ----
+const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+const LINK_CYCLE_MS = 80;
+const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
+
+async function setupLinks() {
+  if (document.fonts && document.fonts.load) {
+    await Promise.all(LINK_FONT_CYCLE.map((fam) => document.fonts.load(`15px "${fam}"`)));
+  }
+  document.querySelectorAll("[data-ns-link]").forEach((link) => {
+    // split only direct text nodes into char spans — leaves the badge intact
+    const charSpans = [];
+    for (const node of [...link.childNodes]) {
+      if (node.nodeType !== Node.TEXT_NODE) continue;
+      const frag = document.createDocumentFragment();
+      for (const ch of node.textContent) {
+        const s = document.createElement("span");
+        const display = ch === " " ? " " : ch;
+        s.textContent = display;
+        s.dataset.original = display;
+        frag.appendChild(s);
+        charSpans.push(s);
+      }
+      link.replaceChild(frag, node);
+    }
+
+    // lock each char slot to its max width across the cycled variants so
+    // the row can't flex while fonts swap
+    for (const s of charSpans) {
+      let maxW = s.getBoundingClientRect().width;
+      for (const fam of LINK_FONT_CYCLE) {
+        s.style.fontFamily = `"${fam}", monospace`;
+        const w = s.getBoundingClientRect().width;
+        if (w > maxW) maxW = w;
+      }
+      s.style.fontFamily = "";
+      s.style.width = `${(Math.ceil(maxW * 10) / 10).toFixed(1)}px`;
+    }
+
+    const row = link.closest(".row") || link;
+    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
+    let timer = null;
+    function startCycle() {
+      if (timer) return;
+      timer = setInterval(() => {
+        for (let i = 0; i < charSpans.length; i++) {
+          idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
+          charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
+        }
+      }, LINK_CYCLE_MS);
+    }
+    function stopCycle() {
+      clearInterval(timer);
+      timer = null;
+      for (const s of charSpans) s.style.fontFamily = "";
+    }
+    row.addEventListener("mouseenter", startCycle);
+    row.addEventListener("mouseleave", stopCycle);
+    // touch: a short burst on tap-down (no hover on mobile)
+    row.addEventListener("touchstart", () => {
+      startCycle();
+      setTimeout(stopCycle, 480);
+    }, { passive: true });
+
+    poisson(
+      () => 0.1 + 0.15 * intensity(),
+      () => {
+        if (link._scrambling) return;
+        const targets = charSpans.filter((s) => s.dataset.original.trim() !== "" && Math.random() < 0.55);
+        if (!targets.length) return;
+        link._scrambling = true;
+        let cycles = 2 + ((Math.random() * 3) | 0);
+        (function tick() {
+          if (cycles-- <= 0) {
+            for (const s of targets) s.textContent = s.dataset.original;
+            link._scrambling = false;
+            return;
+          }
+          for (const s of targets) {
+            s.textContent = SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+          }
+          setTimeout(tick, 50 + Math.random() * 60);
+        })();
+      }
+    );
+  });
+}
+setupLinks();
+
+// ---- subscribe: AJAX post to Netlify Forms so the page never navigates ----
+// same flow as the homepage dialog; only works on the deployed site — local
+// POSTs 404 and fall into the error branch.
+const subForm = document.getElementById("subscribe");
+subForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = subForm.querySelector("button");
+  btn.disabled = true;
+  const oldMsg = subForm.querySelector(".sub-msg");
+  if (oldMsg) oldMsg.remove();
+  try {
+    const res = await fetch("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(new FormData(subForm)).toString(),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    subForm.innerHTML = '<span class="sub-msg">signal received — you\'re on the list</span>';
+    setTimeout(() => {
+      subForm.classList.add("fade-out");
+      setTimeout(() => { subForm.style.display = "none"; }, 800);
+    }, 4000);
+  } catch (err) {
+    btn.disabled = false;
+    const msg = document.createElement("span");
+    msg.className = "sub-msg err";
+    msg.textContent = "transmission failed — try again";
+    subForm.appendChild(msg);
+  }
+});
+</script>
+</body>
+</html>
