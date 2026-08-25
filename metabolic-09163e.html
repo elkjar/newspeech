@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Unlisted proposal page — not linked from anywhere on the site.
+     Keep out of search indexes; the URL itself is the invite. -->
+<meta name="robots" content="noindex, nofollow">
+<title>the band never arrives — shoot proposal</title>
+<meta property="og:title" content="NEWSPEECH // the band never arrives">
+<meta property="og:description" content="a music video shot at metabolic studio, los angeles. private proposal draft.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/metabolic-09163e.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<style>
+  @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-bold"; src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo"; src: url("fonts/zxx-camo.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed"; src: url("fonts/zxx-xed.woff2") format("woff2"); font-display: swap; }
+
+  :root {
+    --bg: #050505;
+    --ink: rgba(255, 255, 255, 0.92);
+    --body: rgba(255, 255, 255, 0.78);
+    --dim: rgba(255, 255, 255, 0.55);
+    --faint: rgba(255, 255, 255, 0.35);
+    --hair: rgba(255, 255, 255, 0.16);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --gutter: 24px;
+    --beat: 88px;  /* one vertical beat: every section joint is exactly this, rules sit centered in two beats */
+    --fig: 44px;   /* half-beat: figure <-> text */
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--body);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+    overflow-x: hidden;
+  }
+
+  /* longhand centering only — the shorthand `margin: 0 auto` would
+     out-specify and erase the section rhythm's margin-top */
+  .col   { max-width: 720px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
+  .wide  { max-width: 960px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
+
+  /* ---- header ---- */
+  header.wide { padding-top: 96px; }
+  .kicker {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-family: "zxx-sans", var(--mono);
+    font-size: clamp(42px, 7.5vw, 88px);
+    font-weight: 400;
+    line-height: 1.02;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+    margin: 0 0 20px;
+    user-select: none;
+  }
+  h1 .w { display: inline-block; white-space: nowrap; }
+  h1 .c { display: inline-block; text-align: center; }
+  .dek {
+    font-size: 14px;
+    color: var(--dim);
+    max-width: 56ch;
+    margin: 0;
+  }
+
+  /* ---- vertical rhythm ---- */
+  section { margin-top: var(--beat); padding: 0; }
+  section.rule { border-top: 1px solid var(--hair); padding-top: var(--beat); }
+  section > :last-child { margin-bottom: 0; }
+  h2 {
+    font-family: "zxx-sans", var(--mono);
+    font-size: 26px;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    margin: 0 0 24px;
+  }
+  .sec-kicker {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 12px;
+  }
+  p { margin: 0 0 14px; max-width: 72ch; }
+  p strong { color: var(--ink); font-weight: 400; }
+  a { color: var(--body); text-decoration: underline; text-underline-offset: 3px; }
+  a:hover { color: var(--ink); }
+
+  /* ---- figures ---- */
+  figure { margin: var(--fig) 0; }
+  figure canvas { display: block; width: 100%; }
+  figcaption {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+    margin-top: 10px;
+    max-width: 80ch;
+  }
+  figure.full-bleed { width: 100vw; margin: 64px 0 0 calc(50% - 50vw); }
+  .full-bleed figcaption { padding: 0 var(--gutter); max-width: 960px; margin-left: auto; margin-right: auto; }
+
+  #tooltip {
+    position: fixed;
+    z-index: 10;
+    pointer-events: none;
+    background: rgba(5, 5, 5, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    padding: 6px 10px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    white-space: pre;
+    display: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- super cards ----
+     each card is set the way the super lands on screen: white mono
+     caps on black. timecode gutter mirrors the anchor-block grid. */
+  .super {
+    border-top: 1px dotted rgba(255,255,255,0.10);
+    padding: 18px 0;
+    display: grid;
+    grid-template-columns: 88px 1fr;
+    gap: 24px;
+    align-items: baseline;
+  }
+  .super:last-of-type { border-bottom: 1px dotted rgba(255,255,255,0.10); }
+  .super .tc { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .super .txt {
+    color: var(--ink);
+    letter-spacing: 0.12em;
+    line-height: 1.9;
+    text-transform: uppercase;
+  }
+  .super-marker {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 36px 0 10px;
+  }
+  .super-marker:first-of-type { margin-top: 28px; }
+  @media (max-width: 700px) {
+    .super { grid-template-columns: 1fr; gap: 4px; }
+  }
+
+  /* ---- register blocks (image system) ---- */
+  .register { border-top: 1px solid var(--hair); padding: 40px 0; }
+  .register:last-of-type { padding-bottom: 0; }
+  .register .reg-kicker {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 10px;
+  }
+  .register h3 {
+    font-family: "zxx-sans", var(--mono);
+    font-size: 19px;
+    font-weight: 400;
+    color: var(--ink);
+    margin: 0 0 14px;
+  }
+  .register > :last-child { margin-bottom: 0; }
+
+  /* ---- gear list ---- */
+  .gear {
+    columns: 2;
+    column-gap: 40px;
+    margin: 24px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+    line-height: 2.2;
+    color: var(--dim);
+  }
+  .gear li { break-inside: avoid; border-bottom: 1px dotted rgba(255,255,255,0.10); }
+  .gear li b { color: var(--ink); font-weight: 400; }
+  @media (max-width: 700px) { .gear { columns: 1; } }
+
+  /* ---- tables ---- */
+  table { width: 100%; border-collapse: collapse; margin: 28px 0; font-size: 12px; }
+  th {
+    text-align: left;
+    font-weight: 400;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    border-bottom: 1px solid var(--hair);
+    padding: 8px 18px 8px 0;
+  }
+  td {
+    vertical-align: top;
+    border-bottom: 1px dotted rgba(255,255,255,0.10);
+    padding: 9px 18px 9px 0;
+    color: var(--body);
+  }
+  td:first-child { color: var(--ink); white-space: nowrap; }
+  .tbl-scroll { overflow-x: auto; }
+  .tbl-scroll table { min-width: 640px; }
+
+  /* ---- floating index ---- */
+  #toc {
+    position: fixed;
+    z-index: 5;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  #toc a {
+    position: relative;
+    display: flex;
+    align-items: center;
+    color: var(--faint);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  #toc .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.28);
+    flex-shrink: 0;
+    transition: background 120ms ease, transform 120ms ease;
+  }
+  #toc .n { font-variant-numeric: tabular-nums; opacity: 0.55; }
+  #toc-btn, #toc-scrim { display: none; }
+
+  @media (min-width: 1101px) {
+    #toc { left: 24px; top: 50%; transform: translateY(-50%); }
+    #toc a { padding: 6px 0; }
+    #toc a:hover .dot { background: rgba(255, 255, 255, 0.7); }
+    #toc a.on .dot { background: var(--ink); transform: scale(1.5); }
+    #toc .n { display: none; }
+    #toc .lbl {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translate(-4px, -50%);
+      background: var(--bg);
+      border: 1px solid var(--hair);
+      padding: 3px 9px;
+      color: var(--body);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    #toc a:hover .lbl { opacity: 1; transform: translate(0, -50%); }
+  }
+
+  @media (max-width: 1100px) {
+    #toc {
+      inset: 0 0 0 auto;
+      width: min(280px, 82vw);
+      background: #0a0a0a;
+      border-left: 1px solid var(--hair);
+      padding: 76px 28px;
+      font-size: 12px;
+      transform: translateX(100%);
+      transition: transform 220ms ease;
+      overflow-y: auto;
+    }
+    body.toc-open #toc { transform: translateX(0); }
+    #toc a { gap: 14px; padding: 8px 0; }
+    #toc a.on { color: var(--ink); }
+    #toc .dot { display: none; }
+    #toc-btn {
+      display: block;
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 6;
+      background: rgba(5, 5, 5, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      color: var(--dim);
+      font: inherit;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 9px 14px;
+      cursor: pointer;
+    }
+    #toc-btn:hover { color: var(--ink); border-color: rgba(255, 255, 255, 0.7); }
+    #toc-scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      background: rgba(5, 5, 5, 0.65);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+    }
+    body.toc-open #toc-scrim { opacity: 1; pointer-events: auto; }
+  }
+
+  /* ---- footer ---- */
+  footer.col {
+    margin-top: var(--beat);
+    border-top: 1px solid var(--hair);
+    padding-top: 28px;
+    padding-bottom: 64px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+  }
+  footer a { color: var(--dim); }
+
+  /* mobile rhythm: same system, three-quarter time */
+  @media (max-width: 700px) {
+    :root { --gutter: 20px; --beat: 64px; --fig: 32px; }
+    header.wide { padding-top: 56px; }
+    figure.full-bleed { margin-top: 44px; }
+    .register { padding: 28px 0; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+    #timeline-wrap { clip-path: inset(0 100% 0 0); animation: reveal 1.4s ease-out 0.2s forwards; }
+    @keyframes reveal { to { clip-path: inset(0 0 0 0); } }
+  }
+</style>
+</head>
+<body>
+
+<div id="tooltip"></div>
+
+<div id="toc-scrim"></div>
+<button id="toc-btn" aria-controls="toc" aria-expanded="false">index</button>
+<nav id="toc" aria-label="sections">
+  <a href="#top"><span class="dot"></span><span class="n">—</span><span class="lbl">top</span></a>
+  <a href="#premise"><span class="dot"></span><span class="n">01</span><span class="lbl">premise</span></a>
+  <a href="#site"><span class="dot"></span><span class="n">02</span><span class="lbl">the site</span></a>
+  <a href="#supers"><span class="dot"></span><span class="n">03</span><span class="lbl">the supers</span></a>
+  <a href="#image"><span class="dot"></span><span class="n">04</span><span class="lbl">image system</span></a>
+  <a href="#rig"><span class="dot"></span><span class="n">05</span><span class="lbl">the rig</span></a>
+  <a href="#shots"><span class="dot"></span><span class="n">06</span><span class="lbl">shot list</span></a>
+  <a href="#archive"><span class="dot"></span><span class="n">07</span><span class="lbl">the archive</span></a>
+  <a href="#ask"><span class="dot"></span><span class="n">08</span><span class="lbl">the ask</span></a>
+  <a href="#practicals"><span class="dot"></span><span class="n">09</span><span class="lbl">practicals</span></a>
+  <a href="#status"><span class="dot"></span><span class="n">10</span><span class="lbl">status</span></a>
+</nav>
+
+<header class="wide" id="top">
+  <div class="kicker">newspeech — shoot proposal · private draft</div>
+  <h1>the band never arrives</h1>
+  <p class="dek">a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech rig, set up and running. no people, ever. the story of the place told in supers.</p>
+</header>
+
+<figure class="full-bleed">
+  <div id="timeline-wrap"><canvas id="fig-timeline" height="150"></canvas></div>
+  <figcaption>the song as a timeline — piper maru, 5:32 at 112 bpm. each tick is one super; the tall marks are the track's structural markers (push 2:04 · eruption 3:30 · peak 3:47), already mapped in the edit grid. hover a tick to read the card. timings provisional.</figcaption>
+</figure>
+
+<section class="col" id="premise">
+  <div class="sec-kicker">01 — premise</div>
+  <h2>two systems, and nobody between them</h2>
+  <p>the video puts two systems in the same frame and withholds the third. the <strong>engineered system</strong>: the complete newspeech rig — sequencer, modular, tape, amps, guitars — patched, powered, and playing itself among the pipes and concrete. the <strong>living system</strong>: water, native plants, seeds, wind, shot macro across the site. the missing element is us. everything is set up and ready. the band never arrives.</p>
+  <p>the absence is honest twice over. metabolic studio's work imagines the river after us — land repaired in advance of our leaving. and the newspeech sequencer genuinely runs without hands: the machines on screen are actually performing the song. music that continues in our absence, on land being repaired for it.</p>
+  <p>the two systems never share an effect, a rhythm, or a frame — until the song's peak, where they phase-lock for one clean passage, then decay apart.</p>
+</section>
+
+<section class="col rule" id="site">
+  <div class="sec-kicker">02 — the site</div>
+  <h2>who is metabolic studio</h2>
+  <p>metabolic studio is lauren bon's art-and-ecology practice on the los angeles river — a former standard oil warehouse on the edge of chinatown turned into a machine for undoing harm. its motto: <strong>"artists need to create on the same scale that society has the capacity to destroy."</strong></p>
+  <p>the work is infrastructure as art. <em>not a cornfield</em> (2005) planted 32 acres of corn on a derelict railyard for one agricultural cycle. <em>one hundred mules walking the los angeles aqueduct</em> (2013) traced the city's water 240 miles back to owens valley. <em>bending the river</em> (ongoing) holds the city's only private water right — permit 21342 — and lifts 106 acre-feet a year through a hole in the river's concrete jacket, into a wetland, back to the parks. the site itself is the location: the warehouse, the yard, the stilling well, the solar pumps, the plantings, the fence line where the concrete channel runs past.</p>
+  <p>the premise of their work — infrastructure made visible, reparation as the last act — is the premise of the video.</p>
+</section>
+
+<section class="col rule" id="supers">
+  <div class="sec-kicker">03 — the supers</div>
+  <h2>the story of the org, told in title cards</h2>
+  <p>no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. fourteen cards across 5:32, paced to the song's sections. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.</p>
+
+  <div class="super-marker">open — gear, site, no history yet</div>
+  <div class="super"><span class="tc">0:26</span><span class="txt">in 1913, los angeles opened an aqueduct and drained a valley 233 miles away.</span></div>
+  <div class="super"><span class="tc">0:52</span><span class="txt">the river that built the city flooded it in 1938.</span></div>
+  <div class="super"><span class="tc">1:17</span><span class="txt">so the city sealed its river in concrete. 51 miles.</span></div>
+
+  <div class="super-marker">build to the push — 2:04</div>
+  <div class="super"><span class="tc">1:43</span><span class="txt">in 2005, an artist planted 32 acres of corn on a derelict railyard.</span></div>
+  <div class="super"><span class="tc">2:04</span><span class="txt">the corn pulled a century of industry out of the soil.</span></div>
+  <div class="super"><span class="tc">2:21</span><span class="txt">in 2013, one hundred mules walked the aqueduct. 240 miles, back to the water.</span></div>
+
+  <div class="super-marker">bridge — the living system takes the frame</div>
+  <div class="super"><span class="tc">2:47</span><span class="txt">she holds the city's only private right to its river. permit 21342.</span></div>
+  <div class="super"><span class="tc">3:04</span><span class="txt">106 acre-feet a year, lifted through a hole in the concrete.</span></div>
+  <div class="super"><span class="tc">3:17</span><span class="txt">solar pumps. a stilling well. a wetland beside the rail yard.</span></div>
+
+  <div class="super-marker">eruption — 3:30</div>
+  <div class="super"><span class="tc">3:30</span><span class="txt">the water comes back clean. the park drinks first.</span></div>
+  <div class="super"><span class="tc">3:47</span><span class="txt">dormant seeds wake after 75 years under asphalt.</span></div>
+
+  <div class="super-marker">peak &amp; decay — 3:47 → 5:32</div>
+  <div class="super"><span class="tc">4:26</span><span class="txt">the last act is reparation.</span></div>
+  <div class="super"><span class="tc">4:57</span><span class="txt">everything here will keep working without us.</span></div>
+  <div class="super"><span class="tc">5:19</span><span class="txt">the band never arrives.</span></div>
+</section>
+
+<section class="col rule" id="image">
+  <div class="sec-kicker">04 — image system</div>
+  <h2>three registers, one location</h2>
+
+  <div class="register">
+    <div class="reg-kicker">register 1 — the crt</div>
+    <h3>rephotographed television</h3>
+    <p>an ntsc crt sits inside the scene — on a road case, at the wetland edge, among clay pipe — playing a cut of period footage: the 1913 aqueduct opening, the 1938 floods, lorentz's <em>the river</em>, dust-bowl plows, forests being born. the screen is rephotographed at 1/60s through the eurorack video mangler, so history arrives already degraded. macro passes on the phosphor for inserts.</p>
+  </div>
+
+  <div class="register">
+    <div class="reg-kicker">register 2 — the site</div>
+    <h3>macro on the living system</h3>
+    <p>the other clock. water moving in the wetland cells, plants weaving in wind, seed heads, insects, wet concrete, sediment, the river through the fence. shot slow and close, cut against the crt's engineered rhythm.</p>
+  </div>
+
+  <div class="register">
+    <div class="reg-kicker">register 3 — the tableau</div>
+    <h3>the rig, set and waiting</h3>
+    <p>locked-off wides, long holds. the full newspeech setup staged and live against the warehouse brick and the post-industrial yard: amps humming, tape reels turning, sequencer stepping, patch cables in place. guitars on stands. nothing is touched on camera.</p>
+  </div>
+</section>
+
+<section class="col rule" id="rig">
+  <div class="sec-kicker">05 — the rig</div>
+  <h2>what's in frame</h2>
+  <p>everything newspeech performs with, staged and powered. the sequencer's generative layer means the performance in the audio is genuinely the machines in the picture. <strong>no people appear at any point</strong> — crew stays behind camera on every setup.</p>
+  <ul class="gear">
+    <li><b>sequence</b> — the studio's generative sequencer, running the song</li>
+    <li><b>eurorack system</b> + mutant brain midi-to-cv</li>
+    <li><b>launchpad x / launch control xl3</b> control surfaces</li>
+    <li><b>1010 bluebox</b> recording hub</li>
+    <li><b>magnecord reel-to-reel</b>, reels turning</li>
+    <li><b>guitars + bass</b>, on stands</li>
+    <li><b>amps</b>, powered and humming</li>
+    <li><b>ntsc crt</b> + eurorack video mangler</li>
+    <li><b>cabling</b> patched, ready to play</li>
+  </ul>
+</section>
+
+<section class="col rule" id="shots">
+  <div class="sec-kicker">06 — shot list</div>
+  <h2>setups by zone</h2>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>zone</th><th>where</th><th>coverage</th></tr></thead>
+      <tbody>
+        <tr><td>a</td><td>warehouse exterior / yard</td><td>tableau wides of the full rig against brick and salvage; slow push-ins; detail passes on powered gear — vu meters, tape motion, stepping leds.</td></tr>
+        <tr><td>b</td><td>wetland edge + stilling well</td><td>crt placed in landscape playing the archival cut; rephotography passes at escalating mangle; water-surface and pump-infrastructure macro.</td></tr>
+        <tr><td>c</td><td>plantings + materials</td><td>macro: native plants in wind, seed heads, clay pipe, charred wood, sediment against concrete, solar array details.</td></tr>
+        <tr><td>d</td><td>river fence line</td><td>the concrete channel through chain-link; trains passing behind; the one place engineered and living systems share a frame naturally.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>full 5:32 playback passes on the crt with audio audible for waveform re-sync — same method as the existing beat-grid workflow, so all material conforms to the marker edls already built for the track.</p>
+</section>
+
+<section class="col rule" id="archive">
+  <div class="sec-kicker">07 — the archive</div>
+  <h2>the footage on the screen</h2>
+  <p>the crt's material is already secured: fourteen public-domain films, three and a half hours, pulled from the prelinger archives and government collections. the 1913 aqueduct opening. the 1938 floods. pare lorentz's <em>the river</em> and <em>the plow that broke the plains</em>. soil-conservation and reforestation films. northern california home movies. bunker hill before demolition. the archival cut runs the same arc the supers narrate — harm, then repair — one system's history playing inside the other's future.</p>
+</section>
+
+<section class="col rule" id="ask">
+  <div class="sec-kicker">08 — the ask</div>
+  <h2>what we'd need from metabolic</h2>
+  <div class="tbl-scroll">
+    <table>
+      <tbody>
+        <tr><td>access</td><td>the yard, wetland edge, and warehouse exterior for one shoot day, plus a half-day scout ahead of it.</td></tr>
+        <tr><td>a walk-through</td><td>someone from the studio — partly logistics, partly fact-checking the super cards against the project's own language.</td></tr>
+        <tr><td>close photography</td><td>permission to shoot site materials and infrastructure macro. nothing is moved, planted areas are never entered, all power is battery/inverter unless offered.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>in return: the studio's story carried verbatim through a finished piece, a <strong>filmed at metabolic studio</strong> credit, review of the super copy before picture lock, and the video free for the studio's own use.</p>
+</section>
+
+<section class="col rule" id="practicals">
+  <div class="sec-kicker">09 — practicals</div>
+  <h2>shape of the shoot</h2>
+  <div class="tbl-scroll">
+    <table>
+      <tbody>
+        <tr><td>crew</td><td>two — camera + rig wrangling. nobody appears on screen.</td></tr>
+        <tr><td>day</td><td>one full day: rig staging in the morning, crt playback passes midday, macro and site work into golden hour, tableau wides last.</td></tr>
+        <tr><td>footprint</td><td>a van's worth of equipment, everything removed same day. leave-no-trace.</td></tr>
+        <tr><td>power</td><td>battery + inverter for crt, amps, and rig; no draw on site systems unless offered.</td></tr>
+        <tr><td>audio</td><td>track played back on set for crt sync passes; final audio is the studio master, machines on screen running the same sequence.</td></tr>
+        <tr><td>post</td><td>cut on the existing 112 bpm marker grid; mono lut + grain pipeline already built; supers keyed in post or shot on the crt.</td></tr>
+        <tr><td>cover</td><td>certificate of insurance to whatever metabolic requires; happy to sign site agreements.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="col rule" id="status">
+  <div class="sec-kicker">10 — status</div>
+  <h2>where this stands</h2>
+  <p>the track is mixed. the archival pool is pulled and conformed. the crt rephotography chain, the marker-grid edit workflow, and the look pipeline all exist from the current edit round. what this proposal adds is the location, the supers, and the day on site — the video is otherwise ready to be made.</p>
+</section>
+
+<footer class="col">
+  newspeech · <a href="https://www.newspeechsound.com/">newspeechsound.com</a> · private draft — please don't circulate the link beyond its recipient
+</footer>
+
+<script>
+// ---------- shared canvas + tooltip plumbing ----------
+const tip = document.getElementById("tooltip");
+function showTip(x, y, text) {
+  tip.textContent = text;
+  tip.style.display = "block";
+  const pad = 14;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(x + pad, innerWidth - w - 8) + "px";
+  tip.style.top = (y - h - pad > 8 ? y - h - pad : y + pad) + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+function fit(canvas) {
+  const dpr = Math.max(1, devicePixelRatio || 1);
+  const cssW = canvas.clientWidth;
+  // stash the design height once — setting canvas.height below overwrites the
+  // attribute with the dpr-scaled buffer size, which compounded on every resize
+  if (!canvas.dataset.h) canvas.dataset.h = canvas.getAttribute("height");
+  const cssH = +canvas.dataset.h;
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: cssW, h: cssH };
+}
+
+const FONT = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+
+// ---------- header figure: the song as a timeline of supers ----------
+// SUPERS: [seconds, card text]. structure markers from the edit grid.
+const SONG_LEN = 332; // 5:32
+const MARKERS = [[124.5, "push 2:04"], [210.2, "eruption 3:30"], [227.1, "peak 3:47"]];
+const SUPERS = [
+  [26,   "in 1913, los angeles opened an aqueduct and drained a valley 233 miles away."],
+  [52,   "the river that built the city flooded it in 1938."],
+  [77,   "so the city sealed its river in concrete. 51 miles."],
+  [103,  "in 2005, an artist planted 32 acres of corn on a derelict railyard."],
+  [124.5,"the corn pulled a century of industry out of the soil."],
+  [141,  "in 2013, one hundred mules walked the aqueduct. 240 miles, back to the water."],
+  [167,  "she holds the city's only private right to its river. permit 21342."],
+  [184,  "106 acre-feet a year, lifted through a hole in the concrete."],
+  [197,  "solar pumps. a stilling well. a wetland beside the rail yard."],
+  [210.2,"the water comes back clean. the park drinks first."],
+  [227.1,"dormant seeds wake after 75 years under asphalt."],
+  [266,  "the last act is reparation."],
+  [297,  "everything here will keep working without us."],
+  [319,  "the band never arrives."],
+];
+function tcOf(s) {
+  const m = Math.floor(s / 60), r = Math.floor(s % 60);
+  return m + ":" + String(r).padStart(2, "0");
+}
+const tl = document.getElementById("fig-timeline");
+const TL_PAD = 24;
+function drawTimeline() {
+  const { ctx, w, h } = fit(tl);
+  const base = h - 44;
+  const xOf = (s) => TL_PAD + (s / SONG_LEN) * (w - TL_PAD * 2);
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = FONT;
+
+  // baseline
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.beginPath(); ctx.moveTo(TL_PAD, base); ctx.lineTo(w - TL_PAD, base); ctx.stroke();
+
+  // structure markers: tall lines, labeled
+  for (const [s, lbl] of MARKERS) {
+    const x = xOf(s);
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, 22); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    const tw = ctx.measureText(lbl).width;
+    ctx.fillText(lbl, Math.max(TL_PAD, Math.min(w - TL_PAD - tw, x - tw / 2)), 14);
+  }
+
+  // super ticks: brightness ramps across the song, the way the history closes in
+  SUPERS.forEach(([s], i) => {
+    const x = xOf(s);
+    const a = 0.35 + (i / (SUPERS.length - 1)) * 0.55;
+    ctx.strokeStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, base - 34); ctx.stroke();
+    ctx.lineWidth = 1;
+  });
+
+  // end labels
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.fillText("0:00", TL_PAD, base + 18);
+  const endLbl = "5:32";
+  ctx.fillText(endLbl, w - TL_PAD - ctx.measureText(endLbl).width, base + 18);
+}
+tl.addEventListener("mousemove", (e) => {
+  const r = tl.getBoundingClientRect();
+  const s = ((e.clientX - r.left - TL_PAD) / (r.width - TL_PAD * 2)) * SONG_LEN;
+  let best = null, bd = Infinity;
+  for (const [t, txt] of SUPERS) {
+    const d = Math.abs(t - s);
+    if (d < bd) { bd = d; best = [t, txt]; }
+  }
+  if (best && bd < SONG_LEN * 0.03) showTip(e.clientX, e.clientY, `${tcOf(best[0])}  ${best[1].toUpperCase()}`);
+  else hideTip();
+});
+tl.addEventListener("mouseleave", hideTip);
+
+let resizeRaf = 0;
+window.addEventListener("resize", () => {
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(drawTimeline);
+});
+drawTimeline();
+
+// ---------- floating index: active-section tracking + narrow-screen panel ----------
+const tocLinks = [...document.querySelectorAll("#toc a")];
+const tocById = new Map(tocLinks.map((a) => [a.getAttribute("href").slice(1), a]));
+const observed = [...document.querySelectorAll("header[id], section[id]")];
+const io = new IntersectionObserver((entries) => {
+  for (const en of entries) {
+    if (!en.isIntersecting) continue;
+    tocLinks.forEach((a) => a.classList.remove("on"));
+    const link = tocById.get(en.target.id);
+    if (link) link.classList.add("on");
+  }
+}, { rootMargin: "-20% 0px -70% 0px" });
+observed.forEach((el) => io.observe(el));
+
+const tocBtn = document.getElementById("toc-btn");
+const scrim = document.getElementById("toc-scrim");
+function setToc(open) {
+  document.body.classList.toggle("toc-open", open);
+  tocBtn.setAttribute("aria-expanded", String(open));
+}
+tocBtn.addEventListener("click", () => setToc(!document.body.classList.contains("toc-open")));
+scrim.addEventListener("click", () => setToc(false));
+tocLinks.forEach((a) => a.addEventListener("click", () => setToc(false)));
+
+// ---------- hero glitch (the homepage vignette-title treatment):
+// hover cycles each char through the zxx faces; an ambient poisson
+// scramble briefly swaps a subset of chars for corruption glyphs ----------
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+  const LINK_CYCLE_MS = 80;
+  const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
+
+  let heroActivity = 0;
+  window.addEventListener("mousemove", (e) => {
+    heroActivity = Math.min(1, heroActivity + (Math.abs(e.movementX) + Math.abs(e.movementY)) * 0.004);
+  });
+  setInterval(() => { heroActivity = Math.max(0, heroActivity - 0.12); }, 100);
+  function heroIntensity() {
+    const t = performance.now();
+    const sum = 0.5
+      + 0.25 * Math.sin(t / 17000)
+      + 0.18 * Math.sin(t / 31000)
+      + 0.12 * Math.sin(t / 47000);
+    return Math.max(0, Math.min(1, sum + heroActivity * 0.4));
+  }
+
+  function heroPoisson(rateFn, fire) {
+    (function step() {
+      const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
+      const wait = -Math.log(1 - Math.random()) / ratePerMs;
+      setTimeout(() => { fire(); step(); }, wait);
+    })();
+  }
+
+  (async function setupHero() {
+    if (document.fonts && document.fonts.load) {
+      await Promise.all(LINK_FONT_CYCLE.map((fam) => document.fonts.load(`16px "${fam}"`)));
+    }
+    const hero = document.querySelector("h1");
+    const words = hero.textContent.split(" ");
+    hero.textContent = "";
+    const charSpans = [];
+    words.forEach((word, wi) => {
+      const w = document.createElement("span");
+      w.className = "w";
+      for (const ch of word) {
+        const c = document.createElement("span");
+        c.className = "c";
+        c.textContent = ch;
+        c.dataset.original = ch; // truth source — scrambles always restore from here
+        w.appendChild(c);
+        charSpans.push(c);
+      }
+      hero.appendChild(w);
+      if (wi < words.length - 1) hero.appendChild(document.createTextNode(" "));
+    });
+
+    // hover: cycle every char through the variants, desynced start points
+    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
+    let timer = null;
+    hero.addEventListener("mouseenter", () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        for (let i = 0; i < charSpans.length; i++) {
+          idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
+          charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
+        }
+      }, LINK_CYCLE_MS);
+    });
+    hero.addEventListener("mouseleave", () => {
+      clearInterval(timer);
+      timer = null;
+      for (const s of charSpans) s.style.fontFamily = "";
+    });
+
+    // ambient scramble: ~55% of chars flip to corruption glyphs for a few
+    // 50-110ms cycles, then restore — one burst every handful of seconds
+    let scrambling = false;
+    heroPoisson(
+      () => 0.1 + 0.15 * heroIntensity(),
+      () => {
+        if (scrambling) return;
+        const targets = charSpans.filter((s) => Math.random() < 0.55);
+        if (!targets.length) return;
+        scrambling = true;
+        let cycles = 2 + ((Math.random() * 3) | 0);
+        (function tick() {
+          if (cycles-- <= 0) {
+            for (const s of targets) s.textContent = s.dataset.original;
+            scrambling = false;
+            return;
+          }
+          for (const s of targets) {
+            s.textContent = SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+          }
+          setTimeout(tick, 50 + Math.random() * 60);
+        })();
+      }
+    );
+  })();
+}
+</script>
+</body>
+</html>
