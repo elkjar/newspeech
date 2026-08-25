@@ -39,11 +39,11 @@ title cards on the song's clock — each tick is one super, the tall marks are t
 - **kicker:** 01 — premise
 - **h2:** two systems, and nobody between them
 
-the video puts two systems in the same frame and withholds the third. the **engineered system**: the complete newspeech rig — sequencer, modular, amps, guitars — patched, powered, and available among the pipes and concrete. the **living system**: water, native plants, seeds, wind, shot macro across the site. the missing element is us. everything is set up and ready.
+the video puts two systems in the same frame and withholds the third. the **engineered system**: the complete newspeech rig - sequencer, modular, amps, guitars — patched, powered, and available among the pipes and concrete. the **living system**: water, native plants, seeds, wind, shot macro across the site. the missing element is us.
 
-the absence is honest twice over. metabolic studio's work imagines the river after us — land repaired in advance of our leaving. the machines on screen have performed the song, and could do so without us. music that continues in our absence, on land being repaired for it.
+metabolic studio's work imagines the river after us — land repaired in advance of our leaving. the machines on screen have performed the song, and could do so without us. music that continues in our absence, on land being repaired for it.
 
-instrumental music is inherently difficult to classify, its hard to have a point of view without lyrics. 
+instrumental music is inherently difficult to classify, its hard to have a point of view without lyrics. not appearing in the video says more than whatever performative act we could do. 
 
 ## 02 the supers
 
