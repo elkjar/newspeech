@@ -91,17 +91,9 @@ the other clock. water moving in the wetland cells, plants weaving in wind, seed
 
 locked-off wides, long holds. the full newspeech rig setup staged amidst the warehouse brick and the post-industrial yard: the full band setup ready for action. nothing is touched on camera.
 
-## 04 the rig
+## 04 shot list
 
-- **kicker:** 04 — the rig
-- **h2:** what's in frame
-
-everything newspeech performs with, staged and powered. the equipment used in the recording staged in full but the band never arrives. 
-
-
-## 05 shot list
-
-- **kicker:** 05 — shot list
+- **kicker:** 04 — shot list
 - **h2:** setups by zone
 
 ### zone table
@@ -113,16 +105,16 @@ everything newspeech performs with, staged and powered. the equipment used in th
 
 full playback passes on the crt with audio audible for waveform re-sync.
 
-## 06 the archive
+## 05 the archive
 
-- **kicker:** 06 — the archive
+- **kicker:** 05 — the archive
 - **h2:** the footage on the screen
 
 the crt's material is already secured: fourteen public-domain films. pulled from the prelinger archives and government collections. the 1913 aqueduct opening. the 1938 floods. pare lorentz's *the river* and *the plow that broke the plains*. soil-conservation and reforestation films. northern california home movies. bunker hill before demolition. the archival cut runs the same arc the supers narrate.
 
-## 07 the ask
+## 06 the ask
 
-- **kicker:** 07 — the ask
+- **kicker:** 06 — the ask
 - **h2:** what we'd need from metabolic
 
 ### ask table
@@ -133,9 +125,9 @@ the crt's material is already secured: fourteen public-domain films. pulled from
 
 in return: the studio's story carried verbatim through a finished piece, a **filmed at metabolic studio** credit, review of the super copy before picture lock, and the video free for the studio's own use.
 
-## 08 practicals
+## 07 practicals
 
-- **kicker:** 08 — practicals
+- **kicker:** 07 — practicals
 - **h2:** shape of the shoot
 
 ### practicals table
