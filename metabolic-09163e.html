@@ -50,32 +50,101 @@
   .col   { max-width: 720px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
   .wide  { max-width: 960px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
 
-  /* ---- header ---- */
-  header.wide { padding-top: 96px; }
-  .kicker {
+  /* ---- hero: the video's own device ----
+     a full-frame CRT super — black screen, scanlines, one card at a
+     time with its timecode. the page opens the way the video opens. */
+  header.crt {
+    position: relative;
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 26px var(--gutter) 22px;
+    background: #000;
+    border-bottom: 1px solid var(--hair);
+    overflow: hidden;
+  }
+  header.crt::after {
+    /* tube: scanlines + corner falloff. sits over the text — that's the
+       point, the type reads as being ON the screen, not laid over it */
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 85% 70% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
+      repeating-linear-gradient(0deg, transparent 0 2px, rgba(255, 255, 255, 0.03) 2px 3px);
+    pointer-events: none;
+  }
+  .osd {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--dim);
-    margin-bottom: 18px;
+  }
+  .hero-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 56px 0;
   }
   h1 {
-    font-family: "zxx-sans", var(--mono);
-    font-size: clamp(42px, 7.5vw, 88px);
+    font-family: var(--mono);
+    font-size: clamp(22px, 4.4vw, 50px);
     font-weight: 400;
-    line-height: 1.02;
-    letter-spacing: 0.01em;
+    line-height: 1.45;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
     color: var(--ink);
-    margin: 0 0 20px;
+    text-shadow: 0 0 22px rgba(255, 255, 255, 0.22);
+    max-width: 28ch;
+    margin: 0;
     user-select: none;
   }
   h1 .w { display: inline-block; white-space: nowrap; }
   h1 .c { display: inline-block; text-align: center; }
+  .hero-tc {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+    margin-top: 26px;
+  }
+  .hero-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
   .dek {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--dim);
-    max-width: 56ch;
+    max-width: 52ch;
     margin: 0;
+  }
+  .hero-track {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    h1 { animation: phosphor 9s ease-in-out infinite; }
+    @keyframes phosphor {
+      0%, 100% { opacity: 0.93; }
+      46% { opacity: 1; }
+      51% { opacity: 0.85; }
+      54% { opacity: 0.98; }
+    }
   }
 
   /* ---- vertical rhythm ---- */
@@ -112,9 +181,6 @@
     margin-top: 10px;
     max-width: 80ch;
   }
-  figure.full-bleed { width: 100vw; margin: 64px 0 0 calc(50% - 50vw); }
-  .full-bleed figcaption { padding: 0 var(--gutter); max-width: 960px; margin-left: auto; margin-right: auto; }
-
   #tooltip {
     position: fixed;
     z-index: 10;
@@ -327,8 +393,7 @@
   /* mobile rhythm: same system, three-quarter time */
   @media (max-width: 700px) {
     :root { --gutter: 20px; --beat: 64px; --fig: 32px; }
-    header.wide { padding-top: 56px; }
-    figure.full-bleed { margin-top: 44px; }
+    .hero-center { padding: 40px 0; }
     .register { padding: 28px 0; }
   }
 
@@ -359,16 +424,20 @@
   <a href="#status"><span class="dot"></span><span class="n">10</span><span class="lbl">status</span></a>
 </nav>
 
-<header class="wide" id="top">
-  <div class="kicker">newspeech — shoot proposal · private draft</div>
-  <h1>the band never arrives</h1>
-  <p class="dek">a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech rig, set up and running. no people, ever. the story of the place told in supers.</p>
+<header class="crt" id="top">
+  <div class="osd">
+    <span>newspeech — shoot proposal · private draft</span>
+    <span>metabolic studio, los angeles</span>
+  </div>
+  <div class="hero-center">
+    <h1 aria-label="the band never arrives">the band never arrives.</h1>
+    <div class="hero-tc" id="hero-tc">5:19</div>
+  </div>
+  <div class="hero-foot">
+    <p class="dek">a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech rig, set up and running. no people, ever. the story of the place told in supers — the cards above are the film.</p>
+    <span class="hero-track">piper maru · 5:32 · 112 bpm</span>
+  </div>
 </header>
-
-<figure class="full-bleed">
-  <div id="timeline-wrap"><canvas id="fig-timeline" height="150"></canvas></div>
-  <figcaption>the song as a timeline — piper maru, 5:32 at 112 bpm. each tick is one super; the tall marks are the track's structural markers (push 2:04 · eruption 3:30 · peak 3:47), already mapped in the edit grid. hover a tick to read the card. timings provisional.</figcaption>
-</figure>
 
 <section class="col" id="premise">
   <div class="sec-kicker">01 — premise</div>
@@ -390,6 +459,11 @@
   <div class="sec-kicker">03 — the supers</div>
   <h2>the story of the org, told in title cards</h2>
   <p>no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. fourteen cards across 5:32, paced to the song's sections. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.</p>
+
+  <figure>
+    <div id="timeline-wrap"><canvas id="fig-timeline" height="150"></canvas></div>
+    <figcaption>the cards on the song's clock — each tick is one super, the tall marks are the track's structural markers (push 2:04 · eruption 3:30 · peak 3:47), already mapped in the edit grid. hover a tick to read the card.</figcaption>
+  </figure>
 
   <div class="super-marker">open — gear, site, no history yet</div>
   <div class="super"><span class="tc">0:26</span><span class="txt">in 1913, los angeles opened an aqueduct and drained a valley 233 miles away.</span></div>
@@ -660,101 +734,117 @@ tocBtn.addEventListener("click", () => setToc(!document.body.classList.contains(
 scrim.addEventListener("click", () => setToc(false));
 tocLinks.forEach((a) => a.addEventListener("click", () => setToc(false)));
 
-// ---------- hero glitch (the homepage vignette-title treatment):
-// hover cycles each char through the zxx faces; an ambient poisson
-// scramble briefly swaps a subset of chars for corruption glyphs ----------
+// ---------- hero: the supers, played one card at a time ----------
+// the h1 IS a super. it opens on the title card and cycles through the
+// full 14-card sequence, timecode below tracking each card; the cut
+// between cards is a short glyph-scramble (the homepage corruption
+// treatment used as a transition, not decoration). reduced motion
+// gets the static title card.
 if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
   const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
   const LINK_CYCLE_MS = 80;
   const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
+  const CARD_HOLD_MS = 5200;
 
-  let heroActivity = 0;
-  window.addEventListener("mousemove", (e) => {
-    heroActivity = Math.min(1, heroActivity + (Math.abs(e.movementX) + Math.abs(e.movementY)) * 0.004);
-  });
-  setInterval(() => { heroActivity = Math.max(0, heroActivity - 0.12); }, 100);
-  function heroIntensity() {
-    const t = performance.now();
-    const sum = 0.5
-      + 0.25 * Math.sin(t / 17000)
-      + 0.18 * Math.sin(t / 31000)
-      + 0.12 * Math.sin(t / 47000);
-    return Math.max(0, Math.min(1, sum + heroActivity * 0.4));
-  }
-
-  function heroPoisson(rateFn, fire) {
-    (function step() {
-      const ratePerMs = Math.max(0.0001, rateFn()) / 1000;
-      const wait = -Math.log(1 - Math.random()) / ratePerMs;
-      setTimeout(() => { fire(); step(); }, wait);
-    })();
-  }
+  // deck: title card first (it's the last super, 5:19), then the story in order
+  const DECK = [SUPERS[SUPERS.length - 1], ...SUPERS.slice(0, -1)];
 
   (async function setupHero() {
     if (document.fonts && document.fonts.load) {
       await Promise.all(LINK_FONT_CYCLE.map((fam) => document.fonts.load(`16px "${fam}"`)));
     }
     const hero = document.querySelector("h1");
-    const words = hero.textContent.split(" ");
-    hero.textContent = "";
-    const charSpans = [];
-    words.forEach((word, wi) => {
-      const w = document.createElement("span");
-      w.className = "w";
-      for (const ch of word) {
-        const c = document.createElement("span");
-        c.className = "c";
-        c.textContent = ch;
-        c.dataset.original = ch; // truth source — scrambles always restore from here
-        w.appendChild(c);
-        charSpans.push(c);
-      }
-      hero.appendChild(w);
-      if (wi < words.length - 1) hero.appendChild(document.createTextNode(" "));
-    });
+    const heroTc = document.getElementById("hero-tc");
+    let charSpans = [];
+    let hovering = false;
+    let deckIdx = 0;
 
-    // hover: cycle every char through the variants, desynced start points
-    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
+    function setCard(text) {
+      hero.textContent = "";
+      charSpans = [];
+      const words = text.split(" ");
+      words.forEach((word, wi) => {
+        const w = document.createElement("span");
+        w.className = "w";
+        for (const ch of word) {
+          const c = document.createElement("span");
+          c.className = "c";
+          c.textContent = ch;
+          c.dataset.original = ch; // truth source — scrambles always restore from here
+          w.appendChild(c);
+          charSpans.push(c);
+        }
+        hero.appendChild(w);
+        if (wi < words.length - 1) hero.appendChild(document.createTextNode(" "));
+      });
+    }
+
+    function scrambleSpans(spans) {
+      for (const s of spans) {
+        s.textContent = SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
+      }
+    }
+
+    // the cut: current card corrupts for a few cycles, the next card
+    // arrives corrupted and resolves
+    let cutting = false;
+    function cutTo(idx) {
+      if (cutting) return;
+      cutting = true;
+      const [t, text] = DECK[idx];
+      let outCycles = 3;
+      (function out() {
+        if (outCycles-- > 0) {
+          scrambleSpans(charSpans);
+          setTimeout(out, 55 + Math.random() * 50);
+          return;
+        }
+        setCard(text);
+        heroTc.textContent = tcOf(t);
+        scrambleSpans(charSpans);
+        let inCycles = 2;
+        (function resolve() {
+          if (inCycles-- > 0) {
+            scrambleSpans(charSpans);
+            setTimeout(resolve, 55 + Math.random() * 50);
+            return;
+          }
+          for (const s of charSpans) s.textContent = s.dataset.original;
+          cutting = false;
+        })();
+      })();
+    }
+
+    setCard(DECK[0][1]);
+    heroTc.textContent = tcOf(DECK[0][0]);
+
+    setInterval(() => {
+      if (hovering || cutting || document.hidden) return;
+      deckIdx = (deckIdx + 1) % DECK.length;
+      cutTo(deckIdx);
+    }, CARD_HOLD_MS);
+
+    // hover: hold the card and cycle every char through the zxx faces
+    // (the homepage vignette-title treatment), desynced start points
     let timer = null;
     hero.addEventListener("mouseenter", () => {
+      hovering = true;
       if (timer) return;
+      const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
       timer = setInterval(() => {
         for (let i = 0; i < charSpans.length; i++) {
+          if (!idx[i] && idx[i] !== 0) idx[i] = 0;
           idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
           charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
         }
       }, LINK_CYCLE_MS);
     });
     hero.addEventListener("mouseleave", () => {
+      hovering = false;
       clearInterval(timer);
       timer = null;
       for (const s of charSpans) s.style.fontFamily = "";
     });
-
-    // ambient scramble: ~55% of chars flip to corruption glyphs for a few
-    // 50-110ms cycles, then restore — one burst every handful of seconds
-    let scrambling = false;
-    heroPoisson(
-      () => 0.1 + 0.15 * heroIntensity(),
-      () => {
-        if (scrambling) return;
-        const targets = charSpans.filter((s) => Math.random() < 0.55);
-        if (!targets.length) return;
-        scrambling = true;
-        let cycles = 2 + ((Math.random() * 3) | 0);
-        (function tick() {
-          if (cycles-- <= 0) {
-            for (const s of targets) s.textContent = s.dataset.original;
-            scrambling = false;
-            return;
-          }
-          for (const s of targets) {
-            s.textContent = SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
-          }
-          setTimeout(tick, 50 + Math.random() * 60);
-        })();
-      }
-    );
   })();
 }
 </script>

@@ -17,15 +17,22 @@ ground rules for the reload to stay mechanical:
 
 ## meta
 
+the hero is a full-frame CRT super: black screen, scanlines, one card at a time with
+its timecode — it opens on the title card and cycles through all fourteen supers with a
+glyph-scramble cut between cards. the card texts come from section 03 below; edit them
+there and the hero follows.
+
 - **page title:** the band never arrives — shoot proposal
-- **kicker:** newspeech — shoot proposal · private draft
-- **h1:** the band never arrives
-- **dek:** a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech rig, set up and running. no people, ever. the story of the place told in supers.
+- **osd left (top of screen):** newspeech — shoot proposal · private draft
+- **osd right:** metabolic studio, los angeles
+- **title card (h1):** the band never arrives.
+- **dek (bottom left):** a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech rig, set up and running. no people, ever. the story of the place told in supers — the cards above are the film.
+- **track line (bottom right):** piper maru · 5:32 · 112 bpm
 - **og description:** a music video shot at metabolic studio, los angeles. private proposal draft.
 
-## figure caption — song timeline (header)
+## figure caption — song timeline (section 03)
 
-the song as a timeline — piper maru, 5:32 at 112 bpm. each tick is one super; the tall marks are the track's structural markers (push 2:04 · eruption 3:30 · peak 3:47), already mapped in the edit grid. hover a tick to read the card. timings provisional.
+the cards on the song's clock — each tick is one super, the tall marks are the track's structural markers (push 2:04 · eruption 3:30 · peak 3:47), already mapped in the edit grid. hover a tick to read the card.
 
 ## 01 premise
 
