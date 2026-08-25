@@ -1,4 +1,4 @@
-# copydoc — the band never arrives
+# copydoc — piper maru at metabolic studio
 
 source of truth for the words on `metabolic-09163e.html`. rewrite anything below in
 your own voice, then hand the file back and claude reloads it into the page.
@@ -22,10 +22,10 @@ its timecode — it opens on the title card and cycles through all fourteen supe
 glyph-scramble cut between cards. the card texts come from section 03 below; edit them
 there and the hero follows.
 
-- **page title:** the band never arrives — shoot proposal
+- **page title:** piper maru at metabolic studio — shoot proposal
 - **osd left (top of screen):** newspeech — shoot proposal · private draft
 - **osd right:** metabolic studio, los angeles
-- **title card (h1):** the band never arrives.
+- **title card (h1):** piper maru — "the band never arrives" stays the shoot's concept name but is never stated in text; the empty rig carries it.
 - **dek (bottom left):** a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech rig, set up and running. no people, ever. the story of the place told in supers — the cards above are the film.
 - **track line (bottom right):** piper maru · 5:32 · 112 bpm
 - **og description:** a music video shot at metabolic studio, los angeles. private proposal draft.
@@ -39,7 +39,7 @@ the cards on the song's clock — each tick is one super, the tall marks are the
 - **kicker:** 01 — premise
 - **h2:** two systems, and nobody between them
 
-the video puts two systems in the same frame and withholds the third. the **engineered system**: the complete newspeech rig — sequencer, modular, tape, amps, guitars — patched, powered, and playing itself among the pipes and concrete. the **living system**: water, native plants, seeds, wind, shot macro across the site. the missing element is us. everything is set up and ready. the band never arrives.
+the video puts two systems in the same frame and withholds the third. the **engineered system**: the complete newspeech rig — sequencer, modular, tape, amps, guitars — patched, powered, and playing itself among the pipes and concrete. the **living system**: water, native plants, seeds, wind, shot macro across the site. the missing element is us. everything is set up and ready.
 
 the absence is honest twice over. metabolic studio's work imagines the river after us — land repaired in advance of our leaving. and the newspeech sequencer genuinely runs without hands: the machines on screen are actually performing the song. music that continues in our absence, on land being repaired for it.
 
@@ -61,7 +61,7 @@ the premise of their work — infrastructure made visible, reparation as the las
 - **kicker:** 03 — the supers
 - **h2:** the story of the org, told in title cards
 
-no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. fourteen cards across 5:32, paced to the song's sections. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.
+no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. thirteen cards across 5:32, paced to the song's sections. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.
 
 ### cards — open (gear, site, no history yet)
 
@@ -90,7 +90,6 @@ no narration, no interviews. the history of the site and the studio arrives as w
 
 - 4:26 — the last act is reparation.
 - 4:57 — everything here will keep working without us.
-- 5:19 — the band never arrives.
 
 ## 04 image system
 

@@ -6,8 +6,8 @@
 <!-- Unlisted proposal page — not linked from anywhere on the site.
      Keep out of search indexes; the URL itself is the invite. -->
 <meta name="robots" content="noindex, nofollow">
-<title>the band never arrives — shoot proposal</title>
-<meta property="og:title" content="NEWSPEECH // the band never arrives">
+<title>piper maru at metabolic studio — shoot proposal</title>
+<meta property="og:title" content="NEWSPEECH // piper maru at metabolic studio">
 <meta property="og:description" content="a music video shot at metabolic studio, los angeles. private proposal draft.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/metabolic-09163e.html">
@@ -61,19 +61,44 @@
     flex-direction: column;
     justify-content: space-between;
     padding: 26px var(--gutter) 22px;
-    background: #000;
+    /* the tube is charged, not off: a phosphor glow pools behind the
+       card so the raster has something to cut into. black-on-black
+       scanlines are invisible — the glow is what makes the CRT read. */
+    background:
+      radial-gradient(ellipse 75% 58% at 50% 46%,
+        rgba(255, 255, 255, 0.085),
+        rgba(255, 255, 255, 0.028) 55%,
+        transparent 78%)
+      #000;
     border-bottom: 1px solid var(--hair);
     overflow: hidden;
   }
+  header.crt::before {
+    /* refresh roll: a soft bright band crawling down the tube */
+    content: "";
+    position: absolute;
+    inset: -25% 0 auto 0;
+    height: 22%;
+    background: linear-gradient(180deg,
+      transparent,
+      rgba(255, 255, 255, 0.05) 35%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.05) 65%,
+      transparent);
+    pointer-events: none;
+  }
   header.crt::after {
-    /* tube: scanlines + corner falloff. sits over the text — that's the
-       point, the type reads as being ON the screen, not laid over it */
+    /* raster + corner falloff. sits over the text — that's the point,
+       the type reads as being ON the screen, not laid over it */
     content: "";
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(ellipse 85% 70% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
-      repeating-linear-gradient(0deg, transparent 0 2px, rgba(255, 255, 255, 0.03) 2px 3px);
+      radial-gradient(ellipse 82% 68% at 50% 50%, transparent 48%, rgba(0, 0, 0, 0.72) 100%),
+      repeating-linear-gradient(0deg,
+        rgba(0, 0, 0, 0.42) 0 1px,
+        transparent 1px 3px,
+        rgba(255, 255, 255, 0.02) 3px 4px);
     pointer-events: none;
   }
   .osd {
@@ -140,11 +165,19 @@
   @media (prefers-reduced-motion: no-preference) {
     h1 { animation: phosphor 9s ease-in-out infinite; }
     @keyframes phosphor {
-      0%, 100% { opacity: 0.93; }
+      0%, 100% { opacity: 0.92; }
       46% { opacity: 1; }
-      51% { opacity: 0.85; }
-      54% { opacity: 0.98; }
+      51% { opacity: 0.8; }
+      54% { opacity: 0.97; }
     }
+    header.crt::before { animation: roll 6.5s linear infinite; }
+    @keyframes roll {
+      from { transform: translateY(0); }
+      to   { transform: translateY(150vh); } /* band starts at -25vh; full exit past 100svh */
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    header.crt::before { display: none; }
   }
 
   /* ---- vertical rhythm ---- */
@@ -430,8 +463,8 @@
     <span>metabolic studio, los angeles</span>
   </div>
   <div class="hero-center">
-    <h1 aria-label="the band never arrives">the band never arrives.</h1>
-    <div class="hero-tc" id="hero-tc">5:19</div>
+    <h1 aria-label="piper maru">piper maru</h1>
+    <div class="hero-tc" id="hero-tc">0:00</div>
   </div>
   <div class="hero-foot">
     <p class="dek">a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech rig, set up and running. no people, ever. the story of the place told in supers — the cards above are the film.</p>
@@ -442,7 +475,7 @@
 <section class="col" id="premise">
   <div class="sec-kicker">01 — premise</div>
   <h2>two systems, and nobody between them</h2>
-  <p>the video puts two systems in the same frame and withholds the third. the <strong>engineered system</strong>: the complete newspeech rig — sequencer, modular, tape, amps, guitars — patched, powered, and playing itself among the pipes and concrete. the <strong>living system</strong>: water, native plants, seeds, wind, shot macro across the site. the missing element is us. everything is set up and ready. the band never arrives.</p>
+  <p>the video puts two systems in the same frame and withholds the third. the <strong>engineered system</strong>: the complete newspeech rig — sequencer, modular, tape, amps, guitars — patched, powered, and playing itself among the pipes and concrete. the <strong>living system</strong>: water, native plants, seeds, wind, shot macro across the site. the missing element is us. everything is set up and ready.</p>
   <p>the absence is honest twice over. metabolic studio's work imagines the river after us — land repaired in advance of our leaving. and the newspeech sequencer genuinely runs without hands: the machines on screen are actually performing the song. music that continues in our absence, on land being repaired for it.</p>
   <p>the two systems never share an effect, a rhythm, or a frame — until the song's peak, where they phase-lock for one clean passage, then decay apart.</p>
 </section>
@@ -458,7 +491,7 @@
 <section class="col rule" id="supers">
   <div class="sec-kicker">03 — the supers</div>
   <h2>the story of the org, told in title cards</h2>
-  <p>no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. fourteen cards across 5:32, paced to the song's sections. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.</p>
+  <p>no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. thirteen cards across 5:32, paced to the song's sections. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.</p>
 
   <figure>
     <div id="timeline-wrap"><canvas id="fig-timeline" height="150"></canvas></div>
@@ -487,7 +520,6 @@
   <div class="super-marker">peak &amp; decay — 3:47 → 5:32</div>
   <div class="super"><span class="tc">4:26</span><span class="txt">the last act is reparation.</span></div>
   <div class="super"><span class="tc">4:57</span><span class="txt">everything here will keep working without us.</span></div>
-  <div class="super"><span class="tc">5:19</span><span class="txt">the band never arrives.</span></div>
 </section>
 
 <section class="col rule" id="image">
@@ -644,7 +676,6 @@ const SUPERS = [
   [227.1,"dormant seeds wake after 75 years under asphalt."],
   [266,  "the last act is reparation."],
   [297,  "everything here will keep working without us."],
-  [319,  "the band never arrives."],
 ];
 function tcOf(s) {
   const m = Math.floor(s / 60), r = Math.floor(s % 60);
@@ -735,8 +766,8 @@ scrim.addEventListener("click", () => setToc(false));
 tocLinks.forEach((a) => a.addEventListener("click", () => setToc(false)));
 
 // ---------- hero: the supers, played one card at a time ----------
-// the h1 IS a super. it opens on the title card and cycles through the
-// full 14-card sequence, timecode below tracking each card; the cut
+// the h1 IS a super. it opens on the song-title card and cycles through
+// the full card sequence, timecode below tracking each card; the cut
 // between cards is a short glyph-scramble (the homepage corruption
 // treatment used as a transition, not decoration). reduced motion
 // gets the static title card.
@@ -746,8 +777,8 @@ if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
   const SCRAMBLE_CHARS = "#*/\\_+=~<>.,:;|?!@$%^&-";
   const CARD_HOLD_MS = 5200;
 
-  // deck: title card first (it's the last super, 5:19), then the story in order
-  const DECK = [SUPERS[SUPERS.length - 1], ...SUPERS.slice(0, -1)];
+  // deck: the song-title card first, then the story in order
+  const DECK = [[0, "piper maru"], ...SUPERS];
 
   (async function setupHero() {
     if (document.fonts && document.fonts.load) {
