@@ -19,7 +19,7 @@ ground rules for the reload to stay mechanical:
 
 the hero is a full-frame CRT super: black screen, scanlines, one card at a time with
 its timecode — it opens on the title card and cycles through all fourteen supers with a
-glyph-scramble cut between cards. the card texts come from section 03 below; edit them
+glyph-scramble cut between cards. the card texts come from section 02 below; edit them
 there and the hero follows.
 
 - **page title:** piper maru at metabolic studio — shoot proposal
@@ -30,7 +30,7 @@ there and the hero follows.
 - **track line (bottom right):** piper maru · 5:32 · 112 bpm
 - **og description:** a music video shot at metabolic studio, los angeles. private proposal draft.
 
-## figure caption — song timeline (section 03)
+## figure caption — song timeline (section 02)
 
 the cards on the song's clock — each tick is one super, the tall marks are the track's structural markers (push 2:04 · eruption 3:30 · peak 3:47), already mapped in the edit grid. hover a tick to read the card.
 
@@ -45,20 +45,11 @@ the absence is honest twice over. metabolic studio's work imagines the river aft
 
 the two systems never share an effect, a rhythm, or a frame — until the song's peak, where they phase-lock for one clean passage, then decay apart.
 
-## 02 the site
+**the premise of metabolic's work — infrastructure made visible, reparation as the last act — is the premise of the video.** the location isn't a backdrop; it's the argument.
 
-- **kicker:** 02 — the site
-- **h2:** who is metabolic studio
+## 02 the supers
 
-metabolic studio is lauren bon's art-and-ecology practice on the los angeles river — a former standard oil warehouse on the edge of chinatown turned into a machine for undoing harm. its motto: **"artists need to create on the same scale that society has the capacity to destroy."**
-
-the work is infrastructure as art. *not a cornfield* (2005) planted 32 acres of corn on a derelict railyard for one agricultural cycle. *one hundred mules walking the los angeles aqueduct* (2013) traced the city's water 240 miles back to owens valley. *bending the river* (ongoing) holds the city's only private water right — permit 21342 — and lifts 106 acre-feet a year through a hole in the river's concrete jacket, into a wetland, back to the parks. the site itself is the location: the warehouse, the yard, the stilling well, the solar pumps, the plantings, the fence line where the concrete channel runs past.
-
-the premise of their work — infrastructure made visible, reparation as the last act — is the premise of the video.
-
-## 03 the supers
-
-- **kicker:** 03 — the supers
+- **kicker:** 02 — the supers
 - **h2:** the story of the org, told in title cards
 
 no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. fourteen cards across 5:32, paced to the song's sections — the last card is metabolic's own motto, so the video ends in their words. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.
@@ -92,9 +83,9 @@ no narration, no interviews. the history of the site and the studio arrives as w
 - 4:57 — everything here will keep working without us.
 - 5:19 — artists need to create on the same scale that society has the capacity to destroy.
 
-## 04 image system
+## 03 image system
 
-- **kicker:** 04 — image system
+- **kicker:** 03 — image system
 - **h2:** three registers, one location
 
 ### register 1 — the crt
@@ -115,9 +106,9 @@ the other clock. water moving in the wetland cells, plants weaving in wind, seed
 
 locked-off wides, long holds. the full newspeech setup staged and live against the warehouse brick and the post-industrial yard: amps humming, tape reels turning, sequencer stepping, patch cables in place. guitars on stands. nothing is touched on camera.
 
-## 05 the rig
+## 04 the rig
 
-- **kicker:** 05 — the rig
+- **kicker:** 04 — the rig
 - **h2:** what's in frame
 
 everything newspeech performs with, staged and powered. the sequencer's generative layer means the performance in the audio is genuinely the machines in the picture. **no people appear at any point** — crew stays behind camera on every setup.
@@ -134,9 +125,9 @@ everything newspeech performs with, staged and powered. the sequencer's generati
 - **ntsc crt** + eurorack video mangler
 - **cabling** patched, ready to play
 
-## 06 shot list
+## 05 shot list
 
-- **kicker:** 06 — shot list
+- **kicker:** 05 — shot list
 - **h2:** setups by zone
 
 ### zone table
@@ -148,16 +139,16 @@ everything newspeech performs with, staged and powered. the sequencer's generati
 
 full 5:32 playback passes on the crt with audio audible for waveform re-sync — same method as the existing beat-grid workflow, so all material conforms to the marker edls already built for the track.
 
-## 07 the archive
+## 06 the archive
 
-- **kicker:** 07 — the archive
+- **kicker:** 06 — the archive
 - **h2:** the footage on the screen
 
 the crt's material is already secured: fourteen public-domain films, three and a half hours, pulled from the prelinger archives and government collections. the 1913 aqueduct opening. the 1938 floods. pare lorentz's *the river* and *the plow that broke the plains*. soil-conservation and reforestation films. northern california home movies. bunker hill before demolition. the archival cut runs the same arc the supers narrate — harm, then repair — one system's history playing inside the other's future.
 
-## 08 the ask
+## 07 the ask
 
-- **kicker:** 08 — the ask
+- **kicker:** 07 — the ask
 - **h2:** what we'd need from metabolic
 
 ### ask table
@@ -168,9 +159,9 @@ the crt's material is already secured: fourteen public-domain films, three and a
 
 in return: the studio's story carried verbatim through a finished piece, a **filmed at metabolic studio** credit, review of the super copy before picture lock, and the video free for the studio's own use.
 
-## 09 practicals
+## 08 practicals
 
-- **kicker:** 09 — practicals
+- **kicker:** 08 — practicals
 - **h2:** shape of the shoot
 
 ### practicals table
@@ -183,9 +174,9 @@ in return: the studio's story carried verbatim through a finished piece, a **fil
 - post — cut on the existing 112 bpm marker grid; mono lut + grain pipeline already built; supers keyed in post or shot on the crt.
 - cover — certificate of insurance to whatever metabolic requires; happy to sign site agreements.
 
-## 10 status
+## 09 status
 
-- **kicker:** 10 — status
+- **kicker:** 09 — status
 - **h2:** where this stands
 
 the track is mixed. the archival pool is pulled and conformed. the crt rephotography chain, the marker-grid edit workflow, and the look pipeline all exist from the current edit round. what this proposal adds is the location, the supers, and the day on site — the video is otherwise ready to be made.
@@ -197,10 +188,10 @@ source file (repo: `assets/metabolic/`). captions are editable below; keep the c
 usage note: these are their images in a private draft addressed to them — fine for the
 pitch, but confirm usage with metabolic before this page circulates any wider.
 
-- **section 02** — `btr-site-collage.jpg` · caption: bending the river — photo collage of the site and riverbed. image: metabolic studio / lauren bon.
-- **section 03** — `motto-neon.jpg` · caption: the motto in neon at the studio — the film's last card quotes the sign. image: metabolic studio.
-- **section 04, register 2** — `venus-copper.jpg` · caption: venus (2023) — copper etched by the la river's water flow. the site already makes its own images; the video borrows the method. photo: joshua white photography © lauren bon.
-- **section 06** — `btr-river-panorama.jpg` · caption: the river at the site — film panorama from bending the river. zone d runs along this fence line. image: metabolic studio / lauren bon.
+- **section 01 (premise)** — `btr-site-collage.jpg` · caption: bending the river — photo collage of the site and riverbed. image: metabolic studio / lauren bon.
+- **section 02** — `motto-neon.jpg` · caption: the motto in neon at the studio — the film's last card quotes the sign. image: metabolic studio.
+- **section 03, register 2** — `venus-copper.jpg` · caption: venus (2023) — copper etched by the la river's water flow. the site already makes its own images; the video borrows the method. photo: joshua white photography © lauren bon.
+- **section 05** — `btr-river-panorama.jpg` · caption: the river at the site — film panorama from bending the river. zone d runs along this fence line. image: metabolic studio / lauren bon.
 
 ## footer
 
