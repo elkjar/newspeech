@@ -22,12 +22,12 @@ its timecode — it opens on the title card and cycles through all fourteen supe
 glyph-scramble cut between cards. the card texts come from section 02 below; edit them
 there and the hero follows.
 
-- **page title:** piper maru at metabolic studio — shoot proposal
-- **osd left (top of screen):** newspeech — shoot proposal · private draft
+- **page title:** metabolic studio
+- **osd left (top of screen):** newspeech
 - **osd right:** metabolic studio, los angeles
 - **title card (h1):** piper maru — "the band never arrives" stays the shoot's concept name but is never stated in text; the empty rig carries it.
 - **dek (bottom left):** a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech setup, but no band. the story of the place told in supers — the cards above are the film.
-- **track line (bottom right):** piper maru · 5:32
+- **track line (bottom right):** piper maru
 - **og description:** a music video shot at metabolic studio, los angeles. private proposal draft.
 
 ## figure caption — song timeline (section 02)
