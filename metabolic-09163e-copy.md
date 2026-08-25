@@ -61,7 +61,7 @@ the premise of their work — infrastructure made visible, reparation as the las
 - **kicker:** 03 — the supers
 - **h2:** the story of the org, told in title cards
 
-no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. thirteen cards across 5:32, paced to the song's sections. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.
+no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. fourteen cards across 5:32, paced to the song's sections — the last card is metabolic's own motto, so the video ends in their words. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.
 
 ### cards — open (gear, site, no history yet)
 
@@ -90,6 +90,7 @@ no narration, no interviews. the history of the site and the studio arrives as w
 
 - 4:26 — the last act is reparation.
 - 4:57 — everything here will keep working without us.
+- 5:19 — artists need to create on the same scale that society has the capacity to destroy.
 
 ## 04 image system
 
