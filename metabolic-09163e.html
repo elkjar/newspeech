@@ -249,14 +249,6 @@
     line-height: 1.9;
     text-transform: uppercase;
   }
-  .super-marker {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--faint);
-    margin: 36px 0 10px;
-  }
-  .super-marker:first-of-type { margin-top: 28px; }
   @media (max-width: 700px) {
     .super { grid-template-columns: 1fr; gap: 4px; }
   }
@@ -279,21 +271,6 @@
     margin: 0 0 14px;
   }
   .register > :last-child { margin-bottom: 0; }
-
-  /* ---- gear list ---- */
-  .gear {
-    columns: 2;
-    column-gap: 40px;
-    margin: 24px 0 0;
-    padding: 0;
-    list-style: none;
-    font-size: 12px;
-    line-height: 2.2;
-    color: var(--dim);
-  }
-  .gear li { break-inside: avoid; border-bottom: 1px dotted rgba(255,255,255,0.10); }
-  .gear li b { color: var(--ink); font-weight: 400; }
-  @media (max-width: 700px) { .gear { columns: 1; } }
 
   /* ---- tables ---- */
   table { width: 100%; border-collapse: collapse; margin: 28px 0; font-size: 12px; }
@@ -466,18 +443,17 @@
     <div class="hero-tc" id="hero-tc">0:00</div>
   </div>
   <div class="hero-foot">
-    <p class="dek">a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech rig, set up and running. no people, ever. the story of the place told in supers — the cards above are the film.</p>
-    <span class="hero-track">piper maru · 5:32 · 112 bpm</span>
+    <p class="dek">a music video for piper maru, shot entirely at metabolic studio on the los angeles river. the full newspeech setup, but no band. the story of the place told in supers — the cards above are the film.</p>
+    <span class="hero-track">piper maru · 5:32</span>
   </div>
 </header>
 
 <section class="col" id="premise">
   <div class="sec-kicker">01 — premise</div>
   <h2>two systems, and nobody between them</h2>
-  <p>the video puts two systems in the same frame and withholds the third. the <strong>engineered system</strong>: the complete newspeech rig — sequencer, modular, tape, amps, guitars — patched, powered, and playing itself among the pipes and concrete. the <strong>living system</strong>: water, native plants, seeds, wind, shot macro across the site. the missing element is us. everything is set up and ready.</p>
-  <p>the absence is honest twice over. metabolic studio's work imagines the river after us — land repaired in advance of our leaving. and the newspeech sequencer genuinely runs without hands: the machines on screen are actually performing the song. music that continues in our absence, on land being repaired for it.</p>
-  <p>the two systems never share an effect, a rhythm, or a frame — until the song's peak, where they phase-lock for one clean passage, then decay apart.</p>
-  <p><strong>the premise of metabolic's work — infrastructure made visible, reparation as the last act — is the premise of the video.</strong> the location isn't a backdrop; it's the argument.</p>
+  <p>the video puts two systems in the same frame and withholds the third. the <strong>engineered system</strong>: the complete newspeech rig — sequencer, modular, amps, guitars — patched, powered, and available among the pipes and concrete. the <strong>living system</strong>: water, native plants, seeds, wind, shot macro across the site. the missing element is us. everything is set up and ready.</p>
+  <p>the absence is honest twice over. metabolic studio's work imagines the river after us — land repaired in advance of our leaving. the machines on screen have performed the song, and could do so without us. music that continues in our absence, on land being repaired for it.</p>
+  <p>instrumental music is inherently difficult to classify, it's hard to have a point of view without lyrics.</p>
   <figure>
     <img src="assets/metabolic/btr-site-collage.jpg" alt="black-and-white photo collage of the bending the river site and riverbed" loading="lazy">
     <figcaption>bending the river — photo collage of the site and riverbed. image: metabolic studio / lauren bon.</figcaption>
@@ -487,33 +463,28 @@
 <section class="col rule" id="supers">
   <div class="sec-kicker">02 — the supers</div>
   <h2>the story of the org, told in title cards</h2>
-  <p>no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. fourteen cards across 5:32, paced to the song's sections — the last card is metabolic's own motto, so the video ends in their words. timings provisional; every factual card is verified against the record, and the copy gets reviewed with metabolic before lock.</p>
+  <p>no narration, no interviews. the history of the site and the studio arrives as white monospaced supers — some keyed in post, some displayed on the crt itself and rephotographed, so the television becomes the narrator. the last card is metabolic's own motto.</p>
 
   <figure>
     <div id="timeline-wrap"><canvas id="fig-timeline" height="150"></canvas></div>
-    <figcaption>the cards on the song's clock — each tick is one super, the tall marks are the track's structural markers (push 2:04 · eruption 3:30 · peak 3:47), already mapped in the edit grid. hover a tick to read the card.</figcaption>
+    <figcaption>title cards on the song's clock — each tick is one super, the tall marks are the track's structural markers (push 2:04 · eruption 3:30 · peak 3:47)</figcaption>
   </figure>
 
-  <div class="super-marker">open — gear, site, no history yet</div>
   <div class="super"><span class="tc">0:26</span><span class="txt">in 1913, los angeles opened an aqueduct and drained a valley 233 miles away.</span></div>
   <div class="super"><span class="tc">0:52</span><span class="txt">the river that built the city flooded it in 1938.</span></div>
   <div class="super"><span class="tc">1:17</span><span class="txt">so the city sealed its river in concrete. 51 miles.</span></div>
 
-  <div class="super-marker">build to the push — 2:04</div>
   <div class="super"><span class="tc">1:43</span><span class="txt">in 2005, an artist planted 32 acres of corn on a derelict railyard.</span></div>
   <div class="super"><span class="tc">2:04</span><span class="txt">the corn pulled a century of industry out of the soil.</span></div>
   <div class="super"><span class="tc">2:21</span><span class="txt">in 2013, one hundred mules walked the aqueduct. 240 miles, back to the water.</span></div>
 
-  <div class="super-marker">bridge — the living system takes the frame</div>
   <div class="super"><span class="tc">2:47</span><span class="txt">she holds the city's only private right to its river. permit 21342.</span></div>
   <div class="super"><span class="tc">3:04</span><span class="txt">106 acre-feet a year, lifted through a hole in the concrete.</span></div>
   <div class="super"><span class="tc">3:17</span><span class="txt">solar pumps. a stilling well. a wetland beside the rail yard.</span></div>
 
-  <div class="super-marker">eruption — 3:30</div>
   <div class="super"><span class="tc">3:30</span><span class="txt">the water comes back clean. the park drinks first.</span></div>
   <div class="super"><span class="tc">3:47</span><span class="txt">dormant seeds wake after 75 years under asphalt.</span></div>
 
-  <div class="super-marker">peak &amp; decay — 3:47 → 5:32</div>
   <div class="super"><span class="tc">4:26</span><span class="txt">the last act is reparation.</span></div>
   <div class="super"><span class="tc">4:57</span><span class="txt">everything here will keep working without us.</span></div>
   <div class="super"><span class="tc">5:19</span><span class="txt">artists need to create on the same scale that society has the capacity to destroy.</span></div>
@@ -547,25 +518,14 @@
   <div class="register">
     <div class="reg-kicker">register 3 — the tableau</div>
     <h3>the rig, set and waiting</h3>
-    <p>locked-off wides, long holds. the full newspeech setup staged and live against the warehouse brick and the post-industrial yard: amps humming, tape reels turning, sequencer stepping, patch cables in place. guitars on stands. nothing is touched on camera.</p>
+    <p>locked-off wides, long holds. the full newspeech rig setup staged amidst the warehouse brick and the post-industrial yard: the full band setup ready for action. nothing is touched on camera.</p>
   </div>
 </section>
 
 <section class="col rule" id="rig">
   <div class="sec-kicker">04 — the rig</div>
   <h2>what's in frame</h2>
-  <p>everything newspeech performs with, staged and powered. the sequencer's generative layer means the performance in the audio is genuinely the machines in the picture. <strong>no people appear at any point</strong> — crew stays behind camera on every setup.</p>
-  <ul class="gear">
-    <li><b>sequence</b> — the studio's generative sequencer, running the song</li>
-    <li><b>eurorack system</b> + mutant brain midi-to-cv</li>
-    <li><b>launchpad x / launch control xl3</b> control surfaces</li>
-    <li><b>1010 bluebox</b> recording hub</li>
-    <li><b>magnecord reel-to-reel</b>, reels turning</li>
-    <li><b>guitars + bass</b>, on stands</li>
-    <li><b>amps</b>, powered and humming</li>
-    <li><b>ntsc crt</b> + eurorack video mangler</li>
-    <li><b>cabling</b> patched, ready to play</li>
-  </ul>
+  <p>everything newspeech performs with, staged and powered. the equipment used in the recording staged in full but the band never arrives.</p>
 </section>
 
 <section class="col rule" id="shots">
@@ -582,7 +542,7 @@
       </tbody>
     </table>
   </div>
-  <p>full 5:32 playback passes on the crt with audio audible for waveform re-sync — same method as the existing beat-grid workflow, so all material conforms to the marker edls already built for the track.</p>
+  <p>full playback passes on the crt with audio audible for waveform re-sync.</p>
   <figure>
     <img src="assets/metabolic/btr-river-panorama.jpg" alt="black-and-white film panorama of the los angeles river at the bending the river site" loading="lazy">
     <figcaption>the river at the site — film panorama from bending the river. zone d runs along this fence line. image: metabolic studio / lauren bon.</figcaption>
@@ -592,7 +552,7 @@
 <section class="col rule" id="archive">
   <div class="sec-kicker">06 — the archive</div>
   <h2>the footage on the screen</h2>
-  <p>the crt's material is already secured: fourteen public-domain films, three and a half hours, pulled from the prelinger archives and government collections. the 1913 aqueduct opening. the 1938 floods. pare lorentz's <em>the river</em> and <em>the plow that broke the plains</em>. soil-conservation and reforestation films. northern california home movies. bunker hill before demolition. the archival cut runs the same arc the supers narrate — harm, then repair — one system's history playing inside the other's future.</p>
+  <p>the crt's material is already secured: fourteen public-domain films. pulled from the prelinger archives and government collections. the 1913 aqueduct opening. the 1938 floods. pare lorentz's <em>the river</em> and <em>the plow that broke the plains</em>. soil-conservation and reforestation films. northern california home movies. bunker hill before demolition. the archival cut runs the same arc the supers narrate.</p>
 </section>
 
 <section class="col rule" id="ask">
@@ -701,14 +661,20 @@ function drawTimeline() {
   ctx.strokeStyle = "rgba(255,255,255,0.25)";
   ctx.beginPath(); ctx.moveTo(TL_PAD, base); ctx.lineTo(w - TL_PAD, base); ctx.stroke();
 
-  // structure markers: tall lines, labeled
+  // structure markers: tall lines, labeled. eruption and peak sit 17s
+  // apart — at column width their labels collide, so any label that
+  // would touch the previous one drops to a second row
+  let lastEnd = -Infinity;
   for (const [s, lbl] of MARKERS) {
     const x = xOf(s);
     ctx.strokeStyle = "rgba(255,255,255,0.45)";
-    ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, 34); ctx.stroke();
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     const tw = ctx.measureText(lbl).width;
-    ctx.fillText(lbl, Math.max(TL_PAD, Math.min(w - TL_PAD - tw, x - tw / 2)), 14);
+    const lx = Math.max(TL_PAD, Math.min(w - TL_PAD - tw, x - tw / 2));
+    const y = lx < lastEnd + 8 ? 26 : 14;
+    ctx.fillText(lbl, lx, y);
+    if (y === 14) lastEnd = lx + tw;
   }
 
   // super ticks: brightness ramps across the song, the way the history closes in
