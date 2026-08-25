@@ -190,6 +190,18 @@ in return: the studio's story carried verbatim through a finished piece, a **fil
 
 the track is mixed. the archival pool is pulled and conformed. the crt rephotography chain, the marker-grid edit workflow, and the look pipeline all exist from the current edit round. what this proposal adds is the location, the supers, and the day on site — the video is otherwise ready to be made.
 
+## images
+
+four images from metabolic studio / lauren bon's own sites, converted to mono at the
+source file (repo: `assets/metabolic/`). captions are editable below; keep the credits.
+usage note: these are their images in a private draft addressed to them — fine for the
+pitch, but confirm usage with metabolic before this page circulates any wider.
+
+- **section 02** — `btr-site-collage.jpg` · caption: bending the river — photo collage of the site and riverbed. image: metabolic studio / lauren bon.
+- **section 03** — `motto-neon.jpg` · caption: the motto in neon at the studio — the film's last card quotes the sign. image: metabolic studio.
+- **section 04, register 2** — `venus-copper.jpg` · caption: venus (2023) — copper etched by the la river's water flow. the site already makes its own images; the video borrows the method. photo: joshua white photography © lauren bon.
+- **section 06** — `btr-river-panorama.jpg` · caption: the river at the site — film panorama from bending the river. zone d runs along this fence line. image: metabolic studio / lauren bon.
+
 ## footer
 
 newspeech · [newspeechsound.com](https://www.newspeechsound.com/) · private draft — please don't circulate the link beyond its recipient
