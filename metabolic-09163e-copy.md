@@ -83,7 +83,7 @@ an ntsc crt sits inside the scene — on a road case, at the wetland edge, among
 
 - **h3:** macro on the living system
 
-the other clock. water moving in the wetland cells, plants weaving in wind, seed heads, insects, wet concrete, sediment, the river through the fence. shot slow and close, cut against the crt's engineered rhythm.
+water moving in the wetland cells, plants weaving in wind, seed heads, insects, wet concrete, sediment, the river through the fence. shot slow and close, a counterweight to the crt's churn.
 
 ### register 3 — the tableau
 
@@ -101,7 +101,7 @@ locked-off wides, long holds. the full newspeech rig setup staged amidst the war
 - a — warehouse exterior / yard — tableau wides of the full rig against brick and salvage; slow push-ins; detail passes on powered gear — vu meters, tape motion, stepping leds.
 - b — wetland edge + stilling well — crt placed in landscape playing the archival cut; rephotography passes at escalating mangle; water-surface and pump-infrastructure macro.
 - c — plantings + materials — macro: native plants in wind, seed heads, clay pipe, charred wood, sediment against concrete, solar array details.
-- d — river fence line — the concrete channel through chain-link; trains passing behind; the one place engineered and living systems share a frame naturally.
+- d — river fence line — the concrete channel through chain-link; trains passing behind; concrete and river in the same frame.
 
 full playback passes on the crt with audio audible for waveform re-sync.
 
