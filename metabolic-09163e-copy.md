@@ -58,7 +58,7 @@ no narration, no interviews. the history of the site and the studio arrives as w
 - 1:17 — so the city sealed its river in concrete. 51 miles.
 - 1:43 — in 2005, an artist planted 32 acres of corn on a derelict railyard.
 - 2:04 — the corn pulled a century of industry out of the soil.
-- 2:21 — in 2013, one hundred mules walked the aqueduct. 240 miles, back to the water.
+- 2:21 — the next crop is water — cleaned by native plants, returned to the land.
 - 2:47 — she holds the city's only private right to its river. permit 21342.
 - 3:04 — 106 acre-feet a year, lifted through a hole in the concrete.
 - 3:17 — solar pumps. a stilling well. a wetland beside the rail yard.
