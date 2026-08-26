@@ -22,5 +22,8 @@ if [ -d news ]; then
   cp feed.xml _site/
 fi
 cp -r fonts _site/fonts
+if [ -d assets ]; then
+  cp -r assets _site/assets
+fi
 mkdir -p _site/sequencer
 cp -r sequencer/public/samples _site/sequencer/samples
