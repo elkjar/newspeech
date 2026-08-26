@@ -37,13 +37,13 @@ title cards on the song's clock — each tick is one super, the tall marks are t
 ## 01 premise
 
 - **kicker:** 01 — premise
-- **h2:** two systems, and nobody between them
+- **h2:** it's not about us
 
-the video puts two systems in the same frame and withholds the third. the **engineered system**: the complete newspeech rig - sequencer, modular, amps, guitars — patched, powered, and available among the pipes and concrete. the **living system**: water, native plants, seeds, wind, shot macro across the site. the missing element is us.
+metabolic studio's work imagines the river after us, the land repaired in advance of our leaving. we will film a music video without a band, the equipment remains but no people ever arrive. the machines on screen have performed the song, and could do so without us. music that continues in our absence, on the site of land being repaired for a time after us.
 
-metabolic studio's work imagines the river after us — land repaired in advance of our leaving. the machines on screen have performed the song, and could do so without us. music that continues in our absence, on land being repaired for it.
+instrumental music is inherently difficult to classify, it's hard to have a point of view without lyrics. not appearing in the video says more than whatever performative acting we could do. there's a lot of discussion about the human role in, well basically everything moving forward and it's easy to get caught up in that discourse. one of the things that most compelled me about the metabolic studio's story is the scale and timeline — this isn't about today or tomorrow, it's the proving ground for work to be completed 100 years from now.
 
-instrumental music is inherently difficult to classify, its hard to have a point of view without lyrics. not appearing in the video says more than whatever performative act we could do. 
+we would be honored to lend our music to this cause today to do our part to secure as many tomorrows as possible.
 
 ## 02 the supers
 
