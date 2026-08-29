@@ -9,8 +9,11 @@
 //   2 CAP  — its own retroactive bar-quantized capture (second bed),
 //   3 OFF  — no input: the noise source alone through the filter (the
 //            Mörser self-sounding trick).
-// Session singleton like audio/perform.ts and audio/loops.ts; never
-// persisted. Level defaults to 0 — the unit is silent until raised.
+// Session singleton like audio/perform.ts and audio/loops.ts; the capture
+// is never persisted, but the knob settings save with the `.seq` (2026-08-29,
+// NoiseSettings below — same rule as the loop unit: the patch belongs to
+// the bed, the material doesn't). Level defaults to 0 — the unit is silent
+// until raised.
 
 import { engineSampleRate, framesNow } from './engineClock';
 import {
@@ -45,9 +48,10 @@ export { SPEED_LADDER as NOISE_SPEED_LADDER };
 
 export type NoiseSource = 0 | 1 | 2 | 3; // insert · parallel · own capture · none
 
-interface NoiseState {
+// The persistable unit settings — everything except the capture (`bars`).
+// This is what lands in the `.seq` `noise` block.
+export interface NoiseSettings {
   source: NoiseSource;
-  bars: number | null; // own-capture length; null = empty
   speedKnob: number; // SPEED_LADDER position (capture playback)
   drive: number; // 0..1 → 1..24x input gain into the filter
   cutoff: number; // 0..1
@@ -71,9 +75,12 @@ interface NoiseState {
   delSend: number;
 }
 
-const state: NoiseState = {
+interface NoiseState extends NoiseSettings {
+  bars: number | null; // own-capture length; null = empty
+}
+
+export const DEFAULT_NOISE_SETTINGS: NoiseSettings = {
   source: 0,
-  bars: null,
   speedKnob: 11 / 12, // +1x
   drive: 0.25,
   cutoff: 0.6,
@@ -95,6 +102,11 @@ const state: NoiseState = {
   delSend: 0,
 };
 
+const state: NoiseState = {
+  bars: null,
+  ...DEFAULT_NOISE_SETTINGS,
+};
+
 const listeners = new Set<() => void>();
 let version = 0;
 function notify() {
@@ -113,6 +125,50 @@ export function noiseVersion(): number {
 
 export function noiseValues(): NoiseState {
   return { ...state };
+}
+
+export function noiseSettingsValues(): NoiseSettings {
+  const { bars: _bars, ...settings } = state;
+  return settings;
+}
+
+// Restore persisted unit settings (.seq load). Same contract as the loop
+// unit's applyLoopSettings: missing/invalid fields fall back to defaults so
+// an older file resets the unit; the capture never restores. Note LEVEL
+// restores too — a bed saved with the unit open (e.g. OFF-routing
+// self-noise) comes back sounding, which is the point.
+export function applyNoiseSettings(raw: unknown): void {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Partial<NoiseSettings>;
+  const D = DEFAULT_NOISE_SETTINGS;
+  const num = (v: unknown, lo: number, hi: number, fb: number) =>
+    typeof v === 'number' && Number.isFinite(v)
+      ? Math.max(lo, Math.min(hi, v))
+      : fb;
+  const bool = (v: unknown, fb: boolean) => (typeof v === 'boolean' ? v : fb);
+  state.source = Math.round(num(o.source, 0, 3, D.source)) as NoiseSource;
+  state.speedKnob = num(o.speedKnob, 0, 1, D.speedKnob);
+  state.drive = num(o.drive, 0, 1, D.drive);
+  state.cutoff = num(o.cutoff, 0, 1, D.cutoff);
+  state.res = num(o.res, 0, 1, D.res);
+  state.width = num(o.width, 0, 1, D.width);
+  state.mode = Math.round(num(o.mode, 0, 1, D.mode)) as 0 | 1;
+  state.noise = num(o.noise, 0, 1, D.noise);
+  state.cv = num(o.cv, 0, 1, D.cv);
+  state.clockSynced = bool(o.clockSynced, D.clockSynced);
+  state.clockDivIdx = Math.round(
+    num(o.clockDivIdx, 0, RATE_DIVISIONS.length - 1, D.clockDivIdx),
+  );
+  state.clockHz = num(o.clockHz, 0.5, 8000, D.clockHz);
+  state.clockMode = Math.round(num(o.clockMode, 0, 1, D.clockMode)) as 0 | 1;
+  state.clockSrc = Math.round(num(o.clockSrc, 0, 2, D.clockSrc)) as 0 | 1 | 2;
+  state.xDivIdx = Math.round(num(o.xDivIdx, 0, XING_DIVS.length - 1, D.xDivIdx));
+  state.sens = num(o.sens, 0, 1, D.sens);
+  state.level = num(o.level, 0, 1.5, D.level);
+  state.fxSend = num(o.fxSend, 0, 1, D.fxSend);
+  state.revSend = num(o.revSend, 0, 1, D.revSend);
+  state.delSend = num(o.delSend, 0, 1, D.delSend);
+  notify();
+  push(true);
 }
 
 // CLOCK knob position (0..1) for the current mode — the space LFOs ride in

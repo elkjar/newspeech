@@ -35,6 +35,16 @@ import { DEFAULT_REVERB_PARAMS, type ReverbParams } from '../audio/reverb';
 import { DEFAULT_DELAY_PARAMS, DELAY_DIVISIONS, type DelayParams } from '../audio/delay';
 import { DEFAULT_SATURATION_PARAMS, type SaturationParams } from '../audio/saturation';
 import { DEFAULT_MASTER_PARAMS, type MasterParams } from '../audio/master';
+import {
+  applyLoopSettings,
+  loopParamValues,
+  type LoopSettings,
+} from '../audio/loops';
+import {
+  applyNoiseSettings,
+  noiseSettingsValues,
+  type NoiseSettings,
+} from '../audio/noise';
 import { resetChordContext } from '../audio/chordContext';
 import { resetPadDrift } from '../audio/padState';
 import { resetBranchWalk } from '../audio/treeState';
@@ -68,6 +78,12 @@ interface PersistedState {
   delay?: DelayParams;
   saturation?: SaturationParams;
   master?: MasterParams;
+  // Loop + NOISE unit knob settings (2026-08-29) — the mangle/patch only,
+  // never the captured audio (the units always load empty). Optional so
+  // older `.seq` files load with the units at defaults. Global like the
+  // master FX: not per-scene, not carried in Song/Scene snapshots.
+  loop?: LoopSettings;
+  noise?: NoiseSettings;
   banks?: (BankSlot | null)[];
   activeBank?: number | null;
   sceneGraph?: SceneGraphConfig;
@@ -130,6 +146,8 @@ export function exportProject(): string {
     delay: s.delay,
     saturation: s.saturation,
     master: s.master,
+    loop: loopParamValues(),
+    noise: noiseSettingsValues(),
     banks: topBanks,
     activeBank: 0,
     sceneGraph: s.sceneGraph,
@@ -1000,6 +1018,11 @@ export function importProject(json: string): boolean {
       tailOutBarsRemaining: 0,
     },
   });
+  // Loop + NOISE unit settings live in audio-module singletons, not the
+  // store — apply them directly (assign + notify + force-push to the
+  // engine). Absent blocks (older files) reset the units to defaults.
+  applyLoopSettings(data.loop);
+  applyNoiseSettings(data.noise);
   // Re-seed the chord context so followers (root-follow / chord-tone tracks)
   // have a sensible starting harmony before the chord master plays its first
   // step on the loaded project's scale.

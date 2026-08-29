@@ -3,7 +3,8 @@
 // this module owns the bar math (which absolute frame span to grab) and the
 // UI-facing unit state. Same session-singleton shape as audio/perform.ts:
 // captures are performance state, never persisted; saving a loop to the
-// library (P4) is the permanence story.
+// library (P4) is the permanence story. The knob SETTINGS, though, save
+// with the `.seq` (LoopSettings below) — the mangle belongs to the bed.
 //
 // Capture is RETROACTIVE and bar-quantized: "capture 4 bars" grabs the four
 // bars you just heard, ending at the most recent bar boundary that has
@@ -63,17 +64,19 @@ export function barAnchor(): { frame: number; barFrames: number } | null {
   return { frame: lastBarFrame, barFrames };
 }
 
-interface LoopState {
-  // Captured length in bars; null = unit empty/stopped.
-  bars: number | null;
-  gain: number;
+// The persistable unit settings — every knob/toggle, and nothing of the
+// capture itself (bars + grid are performance state; the audio never
+// saves). This is what lands in the `.seq` `loop` block: the mangle is
+// part of the document, the material is not.
+export interface LoopSettings {
   // P2 manipulation params (Morphagene/ADDAC flavor). speedKnob is the UI
   // 0..1 position of the thru-zero vari-speed knob, quantized to the
   // octave ladder (see SPEED_LADDER — musically coherent: pitch stays in
   // octaves AND the loop stays bar-phase-related to the grid); size 1 =
   // whole-loop tape mode; scan/spray 0..1; grains = concurrent voices
   // 1..8; rateHz = grain spawn rate. STICKY across captures (recapturing
-  // under a mangled setting keeps the mangle) but session-only.
+  // under a mangled setting keeps the mangle) and saved with the `.seq`
+  // (2026-08-29).
   speedKnob: number;
   // PITCH knob position (same octave ladder; center = FOLLOW speed —
   // tape-chained. A fixed pitch under a slow playhead = timestretch).
@@ -109,9 +112,13 @@ interface LoopState {
   delSend: number;
 }
 
-const state: LoopState = {
-  bars: null,
-  gain: 0.8,
+interface LoopState extends LoopSettings {
+  // Captured length in bars; null = unit empty/stopped.
+  bars: number | null;
+  gain: number;
+}
+
+export const DEFAULT_LOOP_SETTINGS: LoopSettings = {
   speedKnob: 11 / 12, // = +1x (SPEED_LADDER index 11)
   pitchKnob: 0.5, // = follow (ladder center)
   loopLock: false,
@@ -130,6 +137,12 @@ const state: LoopState = {
   fxSend: 0,
   revSend: 0,
   delSend: 0,
+};
+
+const state: LoopState = {
+  bars: null,
+  gain: 0.8,
+  ...DEFAULT_LOOP_SETTINGS,
 };
 
 // Thru-zero vari-speed ladder — octave ratios only (Chris's call): pitch
@@ -302,44 +315,44 @@ export function setLoopGain(gain: number) {
   void loopGainNative(g);
 }
 
-export function loopParamValues(): {
-  speedKnob: number;
-  pitchKnob: number;
-  loopLock: boolean;
-  loopLevel: number;
-  grainLevel: number;
-  size: number;
-  random: number;
-  grains: number;
-  rateSynced: boolean;
-  rateDivIdx: number;
-  rateHz: number;
-  sizeDev: number;
-  pitchDev: number;
-  rateDev: number;
-  fxSend: number;
-  revSend: number;
-  delSend: number;
-} {
-  return {
-    speedKnob: state.speedKnob,
-    pitchKnob: state.pitchKnob,
-    loopLock: state.loopLock,
-    loopLevel: state.loopLevel,
-    grainLevel: state.grainLevel,
-    size: state.size,
-    random: state.random,
-    grains: state.grains,
-    rateSynced: state.rateSynced,
-    rateDivIdx: state.rateDivIdx,
-    rateHz: state.rateHz,
-    sizeDev: state.sizeDev,
-    pitchDev: state.pitchDev,
-    rateDev: state.rateDev,
-    fxSend: state.fxSend,
-    revSend: state.revSend,
-    delSend: state.delSend,
-  };
+export function loopParamValues(): LoopSettings {
+  const { bars: _bars, gain: _gain, ...settings } = state;
+  return settings;
+}
+
+// Restore persisted unit settings (.seq load). Every field falls back to
+// its default when missing or invalid, so an older file (no `loop` block)
+// RESETS the unit instead of leaking the previous document's mangle. The
+// capture itself never restores — the unit loads empty.
+export function applyLoopSettings(raw: unknown): void {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Partial<LoopSettings>;
+  const D = DEFAULT_LOOP_SETTINGS;
+  const num = (v: unknown, lo: number, hi: number, fb: number) =>
+    typeof v === 'number' && Number.isFinite(v)
+      ? Math.max(lo, Math.min(hi, v))
+      : fb;
+  const bool = (v: unknown, fb: boolean) => (typeof v === 'boolean' ? v : fb);
+  state.speedKnob = num(o.speedKnob, 0, 1, D.speedKnob);
+  state.pitchKnob = num(o.pitchKnob, 0, 1, D.pitchKnob);
+  state.loopLock = bool(o.loopLock, D.loopLock);
+  state.loopLevel = num(o.loopLevel, 0, 1.5, D.loopLevel);
+  state.grainLevel = num(o.grainLevel, 0, 1.5, D.grainLevel);
+  state.size = num(o.size, 0, 1, D.size);
+  state.random = num(o.random, 0, 1, D.random);
+  state.grains = Math.round(num(o.grains, 1, 8, D.grains));
+  state.rateSynced = bool(o.rateSynced, D.rateSynced);
+  state.rateDivIdx = Math.round(
+    num(o.rateDivIdx, 0, RATE_DIVISIONS.length - 1, D.rateDivIdx),
+  );
+  state.rateHz = num(o.rateHz, 0.5, 60, D.rateHz);
+  state.sizeDev = num(o.sizeDev, 0, 1, D.sizeDev);
+  state.pitchDev = num(o.pitchDev, 0, 1, D.pitchDev);
+  state.rateDev = num(o.rateDev, 0, 1, D.rateDev);
+  state.fxSend = num(o.fxSend, 0, 1, D.fxSend);
+  state.revSend = num(o.revSend, 0, 1, D.revSend);
+  state.delSend = num(o.delSend, 0, 1, D.delSend);
+  notify();
+  pushParams(true);
 }
 
 const PARAM_LFO_KNOB: Partial<Record<string, LFODestKnobGlobal>> = {

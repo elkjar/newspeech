@@ -13,6 +13,8 @@
 
 import { useSequencerStore, type SequencerState } from './store';
 import { exportProject } from './persist';
+import { subscribeLoops } from '../audio/loops';
+import { subscribeNoise } from '../audio/noise';
 
 let savedCode: string | null = null;
 let savedNormalized: string | null = null;
@@ -120,21 +122,37 @@ const WATCHED: (keyof SequencerState)[] = [
 ];
 
 let unsubscribe: (() => void) | null = null;
+let unsubscribeUnits: (() => void)[] = [];
 let pending: ReturnType<typeof setTimeout> | null = null;
+
+// Debounced dirty compare — skipped when nothing is bound or the doc is
+// already dirty (only save/load clears it — there's no undo to walk back
+// to the saved state).
+function scheduleDirtyCompare(): void {
+  const s = useSequencerStore.getState();
+  if (s.docPath === null || s.docDirty || savedCode === null) return;
+  if (pending !== null) clearTimeout(pending);
+  pending = setTimeout(() => {
+    pending = null;
+    runDirtyCompare();
+  }, 400);
+}
 
 export function installDocumentTracking(): void {
   if (unsubscribe) return;
   unsubscribe = useSequencerStore.subscribe((state, prev) => {
-    // Nothing bound, or already dirty (only save/load clears it — there's
-    // no undo to walk back to the saved state) — skip the compare.
     if (state.docPath === null || state.docDirty || savedCode === null) return;
     if (!WATCHED.some((k) => state[k] !== prev[k])) return;
-    if (pending !== null) clearTimeout(pending);
-    pending = setTimeout(() => {
-      pending = null;
-      runDirtyCompare();
-    }, 400);
+    scheduleDirtyCompare();
   });
+  // Loop + NOISE unit settings live in audio-module singletons, not the
+  // store — their notify() is the only signal a knob moved. Captures/stops
+  // notify too, but those aren't exported so the compare stays clean (cost:
+  // one debounced stringify).
+  unsubscribeUnits = [
+    subscribeLoops(scheduleDirtyCompare),
+    subscribeNoise(scheduleDirtyCompare),
+  ];
 }
 
 function runDirtyCompare(): boolean {
@@ -169,6 +187,8 @@ if (import.meta.hot) {
     data.savedCode = savedCode;
     unsubscribe?.();
     unsubscribe = null;
+    for (const u of unsubscribeUnits) u();
+    unsubscribeUnits = [];
     if (pending !== null) clearTimeout(pending);
     pending = null;
   });
