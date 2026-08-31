@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEWSPEECH // drone lab</title>
+<meta name="robots" content="noindex">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    padding: 24px 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0 0 4px; }
+  .sub { color: #666; margin: 0 0 20px; }
+
+  /* the breath window: six partials swelling on their own clocks */
+  #vizbox {
+    position: relative;
+    height: 220px;
+    background: #0a0a0a;
+    border: 1px solid #1c1c1c;
+    margin-bottom: 14px;
+  }
+  #viz { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #vizinfo {
+    position: absolute; top: 8px; right: 10px;
+    color: #888; background: rgba(5,5,5,0.6); padding: 1px 6px;
+    font-variant-numeric: tabular-nums; pointer-events: none;
+  }
+  #vizinfo em { font-style: normal; color: #ddd; }
+
+  #transport { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+  button {
+    font: inherit; background: none; color: #ccc;
+    border: 1px solid #444; padding: 8px 22px;
+    cursor: pointer; letter-spacing: 0.15em;
+  }
+  button:hover { border-color: #999; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .hint { color: #555; }
+  #seed { color: #888; cursor: pointer; padding: 1px 6px; border: 1px dashed #2a2a2a; }
+  #seed:hover { color: #ddd; border-color: #555; }
+  #seed em { font-style: normal; color: #ddd; }
+
+  #units { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; max-width: 100%; min-width: 0; }
+  .group h2 { font-size: 11px; font-weight: 400; letter-spacing: 0.25em; color: #999; margin: 0 0 12px; }
+
+  .krow { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .kcol {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    width: 58px; user-select: none; -webkit-user-select: none;
+  }
+  .kcol svg { cursor: ns-resize; touch-action: none; display: block; }
+  .kcol svg:hover .kring { stroke-opacity: 0.22; }
+  .kcol .klabel {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+    color: rgba(255,255,255,0.7); text-align: center;
+  }
+  .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+
+  .seg { display: flex; gap: 4px; margin: 8px 0 0; flex-wrap: wrap; align-items: center; }
+  .seg button { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.12em; }
+  .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .seg .seglabel {
+    color: #666; padding: 0 6px 0 0;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+  }
+
+  #export { margin-top: 20px; border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #export .seg { margin: 0; }
+  #exportinfo { color: #666; }
+
+  @media (max-width: 720px) { .group { width: 100%; } }
+</style>
+</head>
+<body>
+
+<h1>// DRONE LAB <span style="color:#555">(internal)</span></h1>
+<p class="sub">the decay demo voice as an instrument — twist the breath, reroll the seed, audition the kit note by note, export when it's right. defaults + a seed reproduce <span style="color:#999">tools/drone-gen.mjs</span> byte for byte.</p>
+
+<div id="vizbox">
+  <canvas id="viz"></canvas>
+  <div id="vizinfo"></div>
+</div>
+
+<div id="transport">
+  <button id="play">PLAY</button>
+  <button id="reroll" title="redraw every LFO rate + phase from a fresh seed — a new performance of the same chord">REROLL SEED</button>
+  <span id="seed" title="click to type a seed (hex) — reproduces that kit exactly"></span>
+  <span class="hint">[space] play/stop</span>
+</div>
+
+<div id="units">
+
+  <div class="group" id="g-voice">
+    <h2>VOICE</h2>
+    <div class="krow" id="voice-knobs"></div>
+    <div class="seg" id="segnote"><span class="seglabel">audition</span></div>
+  </div>
+
+  <div class="group" id="g-breath">
+    <h2>BREATH</h2>
+    <div class="krow" id="breath-knobs"></div>
+  </div>
+
+  <div class="group" id="g-out">
+    <h2>OUT</h2>
+    <div class="krow" id="out-knobs"></div>
+  </div>
+
+</div>
+
+<div id="export">
+  <div class="seg" id="seglen">
+    <span class="seglabel">length</span>
+    <button data-s="4">4s</button>
+    <button data-s="8" class="on">8s</button>
+    <button data-s="16">16s</button>
+  </div>
+  <button id="exportkit">EXPORT KIT</button>
+  <span id="exportinfo">9 notes · C2–Gs4 · 48k/24-bit · seamless loops · peak −3dB</span>
+</div>
+
+<script>
+// drone-lab — the live front end for tools/drone-gen.mjs. The synthesis
+// math here is the script's renderNote verbatim (same seeded draw order,
+// same seam fold, same normalize, same 24-bit writer), so an export at
+// default knobs is byte-identical to the CLI for the same seed; the knobs
+// are deviations from that baseline. Live preview runs the same voice as
+// an oscillator graph so twisting is instant. No fetches, no worklets —
+// this file runs from file:// on purpose: it is internal tooling and never
+// ships on the site.
+'use strict';
+
+const SR = 48000; // export rate, fixed — preview uses the device rate
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// the am9 voicing, ratios + rolloff lifted from the demo loop
+const VOICING = [
+  { r: 1.0,    a: 0.40 },
+  { r: 1.4982, a: 0.26 },
+  { r: 2.0,    a: 0.22 },
+  { r: 2.3782, a: 0.18 },
+  { r: 2.9964, a: 0.12 },
+  { r: 4.4900, a: 0.05 },
+];
+
+const NOTE_ORDER = ['C', 'E', 'Gs'];
+const NOTE_SEMIS = { C: 0, E: 4, Gs: 8 };
+const NOTES = [];
+for (let oct = 2; oct <= 4; oct++) {
+  for (const nm of NOTE_ORDER) NOTES.push({ name: nm + oct, midi: 12 * (oct + 1) + NOTE_SEMIS[nm] });
+}
+const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+// one seeded stream feeds the whole kit — note k takes draws 12k..12k+11
+// (6 rates then 6 phases), exactly the script's order
+function kitDraws(seedNum) {
+  const rng = mulberry32(seedNum);
+  return NOTES.map(() => {
+    const am = VOICING.map(() => 0.04 + rng() * 0.08);
+    const ph = VOICING.map(() => rng() * Math.PI * 2);
+    return { am, ph };
+  });
+}
+
+// --- UI state -------------------------------------------------------------
+const ui = {
+  tiltKnob: 0.5,    // 0.5 = the script's spectrum; below darkens, above brightens
+  detuneKnob: 0.325, // ×0.004 → 0.0013 at default, the script's width
+  rateKnob: 0.5,    // breath speed ×0.25–×4 (log), 1× at center
+  depthKnob: 0.5,   // ×0.6 → ±0.30 swing at default, the script's breath
+  levelKnob: 2 / 3,
+  note: 3,          // C3
+  secs: 8,
+};
+let seed = Math.floor(Math.random() * 0xffff);
+let draws = kitDraws(seed);
+
+const DET_MAX = 0.004;
+// snap to the script's exact 1.0013 literal at the default position so the
+// byte-parity claim holds; anywhere else the knob computes freely
+const detFactor = () => Math.abs(ui.detuneKnob - 0.325) < 1e-9 ? 1.0013 : 1 + ui.detuneKnob * DET_MAX;
+const rateMul = () => Math.pow(4, ui.rateKnob * 2 - 1);
+const depth = () => ui.depthKnob * 0.6;
+// tilt: exponent on the partial ratio — 0 at center keeps the demo rolloff
+const tiltAmp = (p) => VOICING[p].a * Math.pow(VOICING[p].r, (ui.tiltKnob - 0.5) * 2.4);
+
+// --- knobs (the house Knob) -------------------------------------------------
+const SVGNS = 'http://www.w3.org/2000/svg';
+const KNOB_SIZE = 40;
+const knobs = {};
+const KNOB_SPECS = [
+  { group: 'voice-knobs', k: 'tiltKnob', label: 'tilt',
+    fmt: () => (ui.tiltKnob < 0.5 ? 'dark ' : ui.tiltKnob > 0.5 ? 'brt ' : '') + Math.round(Math.abs(ui.tiltKnob - 0.5) * 200),
+    title: 'spectral tilt — center is the demo voice; left sheds the top partials, right lifts them' },
+  { group: 'voice-knobs', k: 'detuneKnob', label: 'detune',
+    fmt: () => (1200 * Math.log2(detFactor())).toFixed(1) + '¢',
+    title: 'right-channel detune — slow inter-channel beating read as width' },
+  { group: 'breath-knobs', k: 'rateKnob', label: 'rate',
+    fmt: () => '×' + rateMul().toFixed(2),
+    title: 'breath speed — scales every partial\'s LFO together; ×1 is the demo' },
+  { group: 'breath-knobs', k: 'depthKnob', label: 'depth',
+    fmt: () => Math.round(depth() * 100) + '',
+    title: 'breath depth — how far each partial swells; 30 is the demo' },
+  { group: 'out-knobs', k: 'levelKnob', label: 'level', fmt: () => Math.round(ui.levelKnob * 150) + '' },
+];
+
+function buildKnob(spec) {
+  const col = document.createElement('div');
+  col.className = 'kcol';
+  const s = KNOB_SIZE, cx = s / 2, cy = s / 2, ringR = s * 0.36;
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('width', s); svg.setAttribute('height', s);
+  svg.setAttribute('viewBox', `0 0 ${s} ${s}`);
+  if (spec.title) {
+    const t = document.createElementNS(SVGNS, 'title');
+    t.textContent = spec.title;
+    svg.appendChild(t);
+  }
+  const ring = document.createElementNS(SVGNS, 'circle');
+  ring.setAttribute('cx', cx); ring.setAttribute('cy', cy); ring.setAttribute('r', ringR);
+  ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', 'white');
+  ring.setAttribute('stroke-opacity', '0.12'); ring.setAttribute('stroke-width', '1');
+  ring.setAttribute('class', 'kring');
+  const arc = document.createElementNS(SVGNS, 'path');
+  arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', 'white');
+  arc.setAttribute('stroke-opacity', '0.7'); arc.setAttribute('stroke-width', '1.75');
+  arc.setAttribute('stroke-linecap', 'round');
+  const tick = document.createElementNS(SVGNS, 'line');
+  tick.setAttribute('stroke', 'white'); tick.setAttribute('stroke-opacity', '0.9');
+  tick.setAttribute('stroke-width', '1.75'); tick.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(ring); svg.appendChild(arc); svg.appendChild(tick);
+  const label = document.createElement('span');
+  label.className = 'klabel';
+  label.textContent = spec.label;
+  const val = document.createElement('span');
+  val.className = 'kval';
+  col.appendChild(svg); col.appendChild(label); col.appendChild(val);
+
+  function draw() {
+    const v = Math.min(1, Math.max(0, ui[spec.k]));
+    const angleDeg = -135 + 270 * v;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const tickInner = s * 0.17;
+    tick.setAttribute('x1', cx + tickInner * Math.sin(angleRad));
+    tick.setAttribute('y1', cy - tickInner * Math.cos(angleRad));
+    tick.setAttribute('x2', cx + ringR * Math.sin(angleRad));
+    tick.setAttribute('y2', cy - ringR * Math.cos(angleRad));
+    if (v > 0) {
+      const startRad = (-135 * Math.PI) / 180;
+      const largeArc = Math.abs(angleDeg + 135) > 180 ? 1 : 0;
+      arc.setAttribute('d',
+        `M ${cx + ringR * Math.sin(startRad)} ${cy - ringR * Math.cos(startRad)} ` +
+        `A ${ringR} ${ringR} 0 ${largeArc} 1 ` +
+        `${cx + ringR * Math.sin(angleRad)} ${cy - ringR * Math.cos(angleRad)}`);
+      arc.setAttribute('visibility', 'visible');
+    } else {
+      arc.setAttribute('visibility', 'hidden');
+    }
+    val.textContent = spec.fmt();
+  }
+  function setValue(next) {
+    const v = Math.min(1, Math.max(0, next));
+    if (v === ui[spec.k]) return;
+    ui[spec.k] = v;
+    draw();
+    onKnobChange(spec.k);
+  }
+  svg.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startVal = ui[spec.k];
+    const onMove = (ev) => setValue(startVal + (startY - ev.clientY) / 100);
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    setValue(ui[spec.k] + (e.deltaY > 0 ? -0.05 : 0.05));
+  }, { passive: false });
+  knobs[spec.k] = { draw, setValue };
+  draw();
+  return col;
+}
+for (const spec of KNOB_SPECS) document.getElementById(spec.group).appendChild(buildKnob(spec));
+
+// --- live voice: oscillator graph, retuned in place ---------------------------
+let actx = null;
+let master = null;
+let voice = null; // { parts: [{oscL, oscR, lfo, envL, envR, lfoAmpL, lfoAmpR}], t0 }
+let playing = false;
+
+// a sine with a phase offset, since OscillatorNode has none of its own
+function phasedSine(ctx, phi) {
+  return ctx.createPeriodicWave(
+    new Float32Array([0, Math.sin(phi)]),
+    new Float32Array([0, Math.cos(phi)]),
+    { disableNormalization: true }
+  );
+}
+
+function buildVoice() {
+  teardownVoice();
+  const root = hz(NOTES[ui.note].midi);
+  const d = draws[ui.note];
+  const dep = depth(), det = detFactor(), rm = rateMul();
+  const t0 = actx.currentTime;
+  const parts = [];
+  for (let p = 0; p < VOICING.length; p++) {
+    const amp = tiltAmp(p);
+    const oscL = actx.createOscillator();
+    oscL.frequency.value = root * VOICING[p].r;
+    const oscR = actx.createOscillator();
+    oscR.frequency.value = root * VOICING[p].r * det;
+    oscR.setPeriodicWave(phasedSine(actx, 0.3));
+    const envL = actx.createGain();
+    const envR = actx.createGain();
+    envL.gain.value = amp * (1 - dep);
+    envR.gain.value = amp * (1 - dep);
+    const lfo = actx.createOscillator();
+    lfo.frequency.value = d.am[p] * rm;
+    lfo.setPeriodicWave(phasedSine(actx, d.ph[p]));
+    const lfoAmpL = actx.createGain();
+    const lfoAmpR = actx.createGain();
+    lfoAmpL.gain.value = amp * dep;
+    lfoAmpR.gain.value = amp * dep;
+    lfo.connect(lfoAmpL); lfoAmpL.connect(envL.gain);
+    lfo.connect(lfoAmpR); lfoAmpR.connect(envR.gain);
+    oscL.connect(envL); oscR.connect(envR);
+    envL.connect(merger, 0, 0);
+    envR.connect(merger, 0, 1);
+    oscL.start(); oscR.start(); lfo.start();
+    parts.push({ oscL, oscR, lfo, envL, envR, lfoAmpL, lfoAmpR });
+  }
+  voice = { parts, t0 };
+}
+
+function teardownVoice() {
+  if (!voice) return;
+  for (const pt of voice.parts) {
+    try { pt.oscL.stop(); pt.oscR.stop(); pt.lfo.stop(); } catch (e) {}
+    pt.envL.disconnect(); pt.envR.disconnect();
+  }
+  voice = null;
+}
+
+let merger = null;
+function ensureAudio() {
+  if (actx) return;
+  actx = new AudioContext();
+  merger = actx.createChannelMerger(2);
+  master = actx.createGain();
+  master.gain.value = ui.levelKnob * 1.5 * 0.28; // 0.28 = the demo's sum scale
+  merger.connect(master);
+  master.connect(actx.destination);
+}
+
+const RAMP = 0.04;
+function onKnobChange(k) {
+  if (!actx || !voice) return;
+  const t = actx.currentTime;
+  if (k === 'levelKnob') {
+    master.gain.setTargetAtTime(ui.levelKnob * 1.5 * 0.28, t, RAMP);
+    return;
+  }
+  const d = draws[ui.note];
+  const dep = depth(), det = detFactor(), rm = rateMul();
+  const root = hz(NOTES[ui.note].midi);
+  for (let p = 0; p < voice.parts.length; p++) {
+    const pt = voice.parts[p];
+    const amp = tiltAmp(p);
+    pt.envL.gain.setTargetAtTime(amp * (1 - dep), t, RAMP);
+    pt.envR.gain.setTargetAtTime(amp * (1 - dep), t, RAMP);
+    pt.lfoAmpL.gain.setTargetAtTime(amp * dep, t, RAMP);
+    pt.lfoAmpR.gain.setTargetAtTime(amp * dep, t, RAMP);
+    pt.lfo.frequency.setTargetAtTime(d.am[p] * rm, t, RAMP);
+    pt.oscR.frequency.setTargetAtTime(root * VOICING[p].r * det, t, RAMP);
+  }
+}
+
+function rebuildVoice() {
+  if (!actx || !playing) return;
+  // duck the master through the swap so the osc restart doesn't click
+  const t = actx.currentTime;
+  master.gain.cancelScheduledValues(t);
+  master.gain.setTargetAtTime(0, t, 0.012);
+  setTimeout(() => {
+    buildVoice();
+    const t2 = actx.currentTime;
+    master.gain.setTargetAtTime(ui.levelKnob * 1.5 * 0.28, t2, 0.02);
+  }, 70);
+}
+
+async function togglePlay() {
+  ensureAudio();
+  await actx.resume();
+  playing = !playing;
+  const b = document.getElementById('play');
+  b.textContent = playing ? 'STOP' : 'PLAY';
+  b.classList.toggle('on', playing);
+  if (playing) buildVoice();
+  else teardownVoice();
+}
+
+// --- seed ----------------------------------------------------------------------
+function seedHex() { return seed.toString(16).padStart(4, '0'); }
+function refreshSeed() {
+  document.getElementById('seed').innerHTML = `seed <em>${seedHex()}</em>`;
+}
+function setSeed(n) {
+  seed = n >>> 0;
+  draws = kitDraws(seed);
+  refreshSeed();
+  rebuildVoice();
+}
+document.getElementById('reroll').addEventListener('click', () => setSeed(Math.floor(Math.random() * 0xffff)));
+document.getElementById('seed').addEventListener('click', () => {
+  const s = prompt('seed (hex):', seedHex());
+  if (s == null) return;
+  const n = parseInt(s.trim(), 16);
+  if (isFinite(n)) setSeed(n);
+});
+refreshSeed();
+
+// --- audition seg ------------------------------------------------------------------
+const segnote = document.getElementById('segnote');
+NOTES.forEach((nt, i) => {
+  const b = document.createElement('button');
+  b.textContent = nt.name;
+  if (i === ui.note) b.classList.add('on');
+  b.addEventListener('click', () => {
+    segnote.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+    b.classList.add('on');
+    ui.note = i;
+    rebuildVoice();
+  });
+  segnote.appendChild(b);
+});
+
+document.getElementById('seglen').querySelectorAll('button[data-s]').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.getElementById('seglen').querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+    b.classList.add('on');
+    ui.secs = parseInt(b.dataset.s, 10);
+  });
+});
+
+document.getElementById('play').addEventListener('click', () => void togglePlay());
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && e.target === document.body) {
+    e.preventDefault();
+    void togglePlay();
+  }
+});
+
+// --- viz: six partials breathing — the envelope math mirrored in JS -----------------
+const viz = document.getElementById('viz');
+function sizeViz() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = viz.getBoundingClientRect();
+  viz.width = Math.max(1, Math.round(r.width * dpr));
+  viz.height = Math.max(1, Math.round(r.height * dpr));
+}
+window.addEventListener('resize', sizeViz);
+sizeViz();
+
+function drawViz() {
+  const c = viz.getContext('2d');
+  const W = viz.width, H = viz.height;
+  c.clearRect(0, 0, W, H);
+  const d = draws[ui.note];
+  const dep = depth(), rm = rateMul();
+  const t = playing && voice && actx ? actx.currentTime - voice.t0 : 0;
+  const n = VOICING.length;
+  const bw = W / (n * 2);
+  const maxAmp = Math.max(...VOICING.map((_, p) => tiltAmp(p)));
+  for (let p = 0; p < n; p++) {
+    const env = (1 - dep) + dep * Math.sin(2 * Math.PI * d.am[p] * rm * t + d.ph[p]);
+    const amp = tiltAmp(p) / maxAmp;
+    const h = amp * env * H * 0.78;
+    const x = (p * 2 + 0.5) * bw;
+    // ghost = the partial's full reach; live bar breathes inside it
+    c.fillStyle = 'rgba(255,255,255,0.07)';
+    c.fillRect(x, H - amp * H * 0.78 - 20, bw, amp * H * 0.78);
+    c.fillStyle = playing ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.22)';
+    c.fillRect(x, H - h - 20, bw, h);
+  }
+  document.getElementById('vizinfo').innerHTML =
+    `<em>${NOTES[ui.note].name}</em> · ${hz(NOTES[ui.note].midi).toFixed(1)}Hz`;
+  requestAnimationFrame(drawViz);
+}
+requestAnimationFrame(drawViz);
+
+// --- export: the script's renderNote verbatim, knobs applied ------------------------
+function renderNoteBuffer(rootHz, noteIdx) {
+  const secs = ui.secs;
+  const n = Math.round(SR * secs);
+  const xf = Math.round(SR * Math.min(0.25, secs * 0.05));
+  const total = n + xf;
+  const L = new Float32Array(total);
+  const R = new Float32Array(total);
+  const d = draws[noteIdx];
+  const dep = depth(), det = detFactor(), rm = rateMul();
+  const amps = VOICING.map((_, p) => tiltAmp(p));
+  for (let i = 0; i < total; i++) {
+    const t = i / SR;
+    let l = 0, r = 0;
+    for (let p = 0; p < VOICING.length; p++) {
+      const f = rootHz * VOICING[p].r;
+      const env = (1 - dep) + dep * Math.sin(2 * Math.PI * d.am[p] * rm * t + d.ph[p]);
+      l += Math.sin(2 * Math.PI * f * t) * amps[p] * env;
+      r += Math.sin(2 * Math.PI * f * det * t + 0.3) * amps[p] * env;
+    }
+    L[i] = l; R[i] = r;
+  }
+  const outL = L.subarray(0, n).slice();
+  const outR = R.subarray(0, n).slice();
+  for (let i = 0; i < xf; i++) {
+    const w = i / xf;
+    outL[i] = L[n + i] * (1 - w) + L[i] * w;
+    outR[i] = R[n + i] * (1 - w) + R[i] * w;
+  }
+  let pk = 0;
+  for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(outL[i]), Math.abs(outR[i]));
+  const g = pk > 0 ? Math.pow(10, -3 / 20) / pk : 1;
+  for (let i = 0; i < n; i++) { outL[i] *= g; outR[i] *= g; }
+  return { L: outL, R: outR };
+}
+
+function wav24Blob(L, R) {
+  const n = L.length;
+  const dataBytes = n * 2 * 3;
+  const ab = new ArrayBuffer(44 + dataBytes);
+  const dv = new DataView(ab);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + dataBytes, true); str(8, 'WAVE');
+  str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+  dv.setUint16(22, 2, true); dv.setUint32(24, SR, true);
+  dv.setUint32(28, SR * 2 * 3, true); dv.setUint16(32, 6, true); dv.setUint16(34, 24, true);
+  str(36, 'data'); dv.setUint32(40, dataBytes, true);
+  let off = 44;
+  const put = (v) => {
+    const s = Math.max(-1, Math.min(1, v));
+    const q = Math.round(s * 8388607);
+    dv.setUint8(off++, q & 0xff);
+    dv.setUint8(off++, (q >> 8) & 0xff);
+    dv.setUint8(off++, (q >> 16) & 0xff);
+  };
+  for (let i = 0; i < n; i++) { put(L[i]); put(R[i]); }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+let exporting = false;
+async function exportKit() {
+  if (exporting) return;
+  exporting = true;
+  const btn = document.getElementById('exportkit');
+  const info = document.getElementById('exportinfo');
+  btn.disabled = true;
+  const kit = `drone-am9-${seedHex()}`;
+  try {
+    for (let i = 0; i < NOTES.length; i++) {
+      info.textContent = `rendering ${NOTES[i].name} · ${i + 1}/9`;
+      await new Promise((r) => setTimeout(r, 30)); // let the label paint
+      const { L, R } = renderNoteBuffer(hz(NOTES[i].midi), i);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(wav24Blob(L, R));
+      a.download = `${kit}-${NOTES[i].name}.wav`;
+      a.click();
+      setTimeout(((h) => () => URL.revokeObjectURL(h))(a.href), 10000);
+      await new Promise((r) => setTimeout(r, 250)); // space the downloads out
+    }
+    info.textContent = `${kit} · 9 notes down — allow multiple downloads if the browser asks`;
+  } finally {
+    exporting = false;
+    btn.disabled = false;
+  }
+}
+document.getElementById('exportkit').addEventListener('click', () => void exportKit());
+
+// debug/test hook
+window.lab = {
+  ui,
+  setSeed,
+  seedHex,
+  renderNoteBuffer,
+  state: () => ({ playing, seed: seedHex(), note: NOTES[ui.note].name }),
+};
+</script>
+</body>
+</html>

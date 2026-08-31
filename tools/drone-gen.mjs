@@ -79,6 +79,9 @@ const VOICING = [
   { r: 2.9964, a: 0.12 }, // fifth (up)
   { r: 4.4900, a: 0.05 }, // ninth — the whisper on top
 ];
+// breath depth — written as (1-DEP)+DEP*sin (not 0.7+0.3*sin) so the byte
+// stream matches tools/drone-lab.html's export at default knobs exactly
+const DEP = 0.3;
 
 function renderNote(rootHz, rng) {
   const n = Math.round(SR * SECS);
@@ -95,7 +98,7 @@ function renderNote(rootHz, rng) {
     let l = 0, r = 0;
     for (let p = 0; p < VOICING.length; p++) {
       const f = rootHz * VOICING[p].r;
-      const env = 0.7 + 0.3 * Math.sin(2 * Math.PI * am[p] * t + ph[p]);
+      const env = (1 - DEP) + DEP * Math.sin(2 * Math.PI * am[p] * t + ph[p]);
       l += Math.sin(2 * Math.PI * f * t) * VOICING[p].a * env;
       r += Math.sin(2 * Math.PI * f * 1.0013 * t + 0.3) * VOICING[p].a * env;
     }
