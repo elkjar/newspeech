@@ -522,7 +522,17 @@ function buildGraph(ctx, workletNode) {
 async function ensureAudio() {
   if (actx) return;
   actx = new AudioContext();
-  await actx.audioWorklet.addModule('decay-worklet.js');
+  try {
+    await actx.audioWorklet.addModule('decay-worklet.js');
+  } catch (err) {
+    // most likely file:// — worklet modules only load over http(s). Fail
+    // loudly and leave actx null so a retry after fixing the serve works.
+    void actx.close();
+    actx = null;
+    document.querySelector('#transport .hint').textContent =
+      "audio engine failed to load — this page needs to be served over http(s), it can't run from file://";
+    throw err;
+  }
   node = new AudioWorkletNode(actx, 'decay', { numberOfInputs: 0, outputChannelCount: [2] });
   wet = buildGraph(actx, node);
   node.port.onmessage = (e) => {
