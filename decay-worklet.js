@@ -93,6 +93,12 @@ class DecayProcessor extends AudioWorkletProcessor {
     this.latchN = 0; this.latchStart = 0; this.latchLen = 0; this.latchP = 0;
     this.gN = 0; this.gStart = 0; this.gLen = 0; this.gP = 0;
     this.holdN = 0; this.holdL = 0; this.holdR = 0;
+    // declick: every read-head jump (latch cell wrap/release, glitch cell
+    // wrap, sample-hold exit) is a full-amplitude step — fade from the last
+    // pre-jump sample over ~1.5ms so the stutters splice without clicking
+    this.splice = false;
+    this.dk = 0; this.dkL = 0; this.dkR = 0;
+    this.prevL = 0; this.prevR = 0;
     this.vizCount = 0;
 
     this.port.onmessage = (e) => {
@@ -133,6 +139,7 @@ class DecayProcessor extends AudioWorkletProcessor {
     this.lastSeg = -1;
     this.g = 1; this.tGain = 1;
     this.latchN = 0; this.gN = 0; this.holdN = 0;
+    this.splice = false; this.dk = 0; this.prevL = 0; this.prevR = 0;
     this.rngWear = mulberry32((seed == null ? 1 : seed) >>> 0);
     this.postPass();
   }
@@ -188,6 +195,7 @@ class DecayProcessor extends AudioWorkletProcessor {
     const sr = sampleRate;
     const holeAt = 0.97 - 0.5 * p.drop;
     const xf = Math.min(1024, this.wlen * 0.05); // loop-seam crossfade
+    const dkDecay = Math.exp(-1 / (0.0015 * sr)); // ~1.5ms declick fade
 
     for (let i = 0; i < L.length; i++) {
       // wow (slow sine) + flutter (filtered noise), both scaled by wear age —
@@ -234,12 +242,12 @@ class DecayProcessor extends AudioWorkletProcessor {
       if (this.latchN > 0) {
         rp = this.latchStart + this.latchP;
         this.latchP += rate;
-        if (this.latchP >= this.latchLen) { this.latchP = 0; this.latchN--; }
+        if (this.latchP >= this.latchLen) { this.latchP = 0; this.latchN--; this.splice = true; }
       }
       if (this.gN > 0) {
         rp = this.gStart + this.gP;
         this.gP += rate;
-        if (this.gP >= this.gLen) { this.gP = 0; this.gN--; }
+        if (this.gP >= this.gLen) { this.gP = 0; this.gN--; this.splice = true; }
       }
       while (rp >= this.wlen) rp -= this.wlen;
 
@@ -255,11 +263,26 @@ class DecayProcessor extends AudioWorkletProcessor {
       // GLITCH: sample-hold bursts — digital shed
       if (this.holdN > 0) {
         sL = this.holdL; sR = this.holdR;
-        this.holdN--;
+        if (--this.holdN === 0) this.splice = true;
       } else if (Math.random() < w * p.glitch * 0.002) {
         this.holdN = 16 + ((Math.random() * 180) | 0);
         this.holdL = sL; this.holdR = sR;
       }
+
+      // declick the splices
+      if (this.splice) {
+        this.splice = false;
+        this.dk = 1;
+        this.dkL = this.prevL;
+        this.dkR = this.prevR;
+      }
+      if (this.dk > 0.001) {
+        sL += (this.dkL - sL) * this.dk;
+        sR += (this.dkR - sR) * this.dk;
+        this.dk *= dkDecay;
+      }
+      this.prevL = sL;
+      this.prevR = sR;
 
       sL *= this.g;
       sR *= this.g;
