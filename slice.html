@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // slice</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — pattern slicer. Type a message — or feed it bits or a dataset — and slice a tone or a loop into its rhythm.">
+<meta property="og:title" content="NEWSPEECH // slice">
+<meta property="og:description" content="newspeech — pattern slicer.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/slice.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // slice">
+<meta name="twitter:description" content="newspeech — pattern slicer.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    color: #eee;
+    margin: 0 0 4px;
+  }
+  .sub { color: #666; margin: 0 0 20px; }
+
+  /* pattern block: source seg + input + readout + pattern strip */
+  #pattern { border: 1px solid #1c1c1c; padding: 14px 16px; margin-bottom: 14px; }
+  #msginput {
+    width: 100%;
+    font: 16px/1.4 "SF Mono", "Menlo", "Consolas", monospace;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    background: #0a0a0a;
+    color: #eee;
+    border: 1px solid #333;
+    padding: 10px 12px;
+    outline: none;
+    margin-top: 10px;
+  }
+  #msginput:focus { border-color: #777; }
+  #msginput::placeholder { color: #555; letter-spacing: 0.05em; text-transform: none; }
+  #readout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    margin: 12px 0 0;
+    min-height: 34px;
+    align-items: flex-end;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .rchar { display: flex; flex-direction: column; align-items: center; min-width: 14px; }
+  .rchar b { font-weight: 400; font-size: 13px; color: #bbb; }
+  .rchar i { font-style: normal; font-size: 10px; letter-spacing: 0.08em; color: #555; }
+  .rchar.rspace { min-width: 20px; }
+  .rchar.bad b { color: #fff; text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.5); }
+  .rchar.now b { color: #fff; }
+  .rchar.now i { color: #ccc; }
+  .rinfo { color: #666; }
+  .rinfo em { font-style: normal; color: #aaa; }
+  #strip { display: block; width: 100%; height: 56px; background: #0a0a0a; border: 1px solid #1c1c1c; margin-top: 12px; }
+
+  /* transport */
+  #transport { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+  button {
+    font: inherit;
+    background: none;
+    color: #ccc;
+    border: 1px solid #444;
+    padding: 8px 22px;
+    cursor: pointer;
+    letter-spacing: 0.15em;
+  }
+  button:hover { border-color: #999; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .hint { color: #555; }
+
+  /* unit groups — stacked full-width sections (texture.html vocabulary) */
+  #units { display: flex; flex-direction: column; gap: 14px; }
+  .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; }
+  .group h2 {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.25em;
+    color: #999;
+    margin: 0 0 12px;
+  }
+
+  /* knob rows (same anatomy as texture.html: knob · label · value) */
+  .krow { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .kdivider { align-self: stretch; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px; }
+  .kcol {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    width: 58px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .kcol svg { cursor: ns-resize; touch-action: none; display: block; }
+  .kcol svg:hover .kring { stroke-opacity: 0.22; }
+  .kcol .klabel {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: rgba(255,255,255,0.7);
+    text-align: center;
+  }
+  .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+  .kcol.dim { opacity: 0.3; pointer-events: none; }
+  .dim { opacity: 0.3; pointer-events: none; }
+
+  /* modifier toggles: labeled-circle text-only (no border) */
+  .toggle {
+    background: none; border: none; padding: 2px 6px; color: #777;
+    cursor: pointer; letter-spacing: 0.1em;
+  }
+  .toggle:hover { color: #fff; border: none; }
+  .toggle.on { color: #fff; background: none; }
+  .krow .toggle { align-self: center; margin-top: -14px; }
+  .krow .minibtn, .seg .minibtn { padding: 4px 10px; border-color: #2a2a2a; color: #777; }
+  .krow .minibtn { align-self: center; margin-top: -14px; }
+  .krow .minibtn:hover, .seg .minibtn:hover { border-color: #999; color: #fff; }
+
+  /* segmented selects */
+  .seg { display: flex; gap: 4px; margin: 10px 0 0; flex-wrap: wrap; align-items: center; }
+  .seg button { padding: 4px 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.1em; }
+  .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .seg .seglabel { color: #666; padding: 0 4px 0 0; }
+
+  /* source + shape: sub-groups on one row where space allows */
+  .row2 { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .subgroup h2 { margin-bottom: 12px; }
+
+  /* file drop zone (compact — the pattern is the star, not the waveform) */
+  #dropwave {
+    position: relative;
+    height: 90px;
+    background: #0a0a0a;
+    border: 1px dashed #333;
+    margin-top: 10px;
+    transition: border-color 0.15s;
+  }
+  #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
+  #dropwave.drag { border-color: #777; }
+  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #dropprompt {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    cursor: pointer;
+    text-align: center;
+    padding: 0 12px;
+  }
+  #dropwave.drag #dropprompt { color: #ddd; }
+  #dropwave.loaded #dropprompt { display: none; }
+  #fileinfo {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    color: #888;
+    cursor: pointer;
+    display: none;
+    background: rgba(5,5,5,0.6);
+    padding: 1px 6px;
+  }
+  #fileinfo:hover { color: #ddd; }
+  #dropwave.loaded #fileinfo { display: block; }
+  #fileinfo .fname { color: #ddd; }
+  #fileinput { display: none; }
+
+  /* export */
+  #export { margin-top: 20px; border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #export .seg { margin: 0; }
+  #renderinfo { color: #666; }
+
+  @media (max-width: 720px) {
+    .row2 { flex-direction: column; align-items: stretch; }
+    .row2 > .kdivider { width: auto; height: 1px; margin: 12px 0; align-self: auto; }
+  }
+</style>
+</head>
+<body>
+<script src="nav.js"></script>
+<script src="grain.js"></script>
+
+<h1>// SLICE</h1>
+<p class="sub">pattern slicer — type a message, or feed it bits or a dataset, and slice a tone or a loop into its rhythm. tempo-locked, then mangled.</p>
+
+<div id="pattern">
+  <div class="seg" id="segpat" style="margin:0;">
+    <span class="seglabel">pattern</span>
+    <button data-t="morse" class="on" title="dits and dahs — letter and word spacing falls out for free">MORSE</button>
+    <button data-t="bits" title="each character as its 8 ASCII bits — runs of 1s merge into sustained hits">BITS</button>
+    <button data-t="data" title="paste a numeric series — the threshold decides hits, magnitude drives length and level">DATA</button>
+  </div>
+  <input id="msginput" type="text" value="NEWSPEECH" spellcheck="false" autocomplete="off" aria-label="pattern input">
+  <div id="readout"></div>
+  <canvas id="strip"></canvas>
+</div>
+
+<div id="transport">
+  <button id="play">PLAY</button>
+  <span class="hint">[space] play/stop &nbsp;·&nbsp; [t] tap tempo &nbsp;·&nbsp; drag knobs vertically, wheel to step</span>
+</div>
+
+<div id="units">
+
+  <div class="group" id="g-clock">
+    <h2>CLOCK</h2>
+    <div class="krow" id="clock-knobs"></div>
+    <div class="seg" id="segdiv">
+      <span class="seglabel">rate</span>
+      <button data-d="0">1/4</button>
+      <button data-d="1">1/8</button>
+      <button data-d="2" class="on">1/16</button>
+      <button data-d="3">1/32</button>
+      <button class="minibtn" id="tap" style="margin-left:10px;" title="tap a tempo — [t] does the same">TAP</button>
+    </div>
+    <div class="seg" id="segfeel">
+      <span class="seglabel">feel</span>
+      <button data-f="0" class="on">STRAIGHT</button>
+      <button data-f="1">TRIPLET</button>
+      <button data-f="2">DOTTED</button>
+    </div>
+  </div>
+
+  <div class="group" id="g-source">
+    <div class="row2">
+      <div class="subgroup" style="flex:1 1 300px; min-width:260px;">
+        <h2>SOURCE</h2>
+        <div class="seg" id="segsrc" style="margin:0 0 10px;">
+          <button data-s="tone" class="on">TONE</button>
+          <button data-s="file">FILE</button>
+        </div>
+        <div class="krow" id="source-knobs"></div>
+        <div class="seg" id="segwave">
+          <span class="seglabel">wave</span>
+          <button data-w="sine" class="on">SIN</button>
+          <button data-w="triangle">TRI</button>
+          <button data-w="square">SQR</button>
+          <button data-w="sawtooth">SAW</button>
+        </div>
+        <div class="seg" id="segmode">
+          <span class="seglabel">mode</span>
+          <button data-m="gate" class="on" title="the loop runs underneath — the pattern opens the gate">GATE</button>
+          <button data-m="chop" title="each hit re-punches into the loop where continuous playback would be">CHOP</button>
+          <button data-m="scan" title="each hit grabs from a random position in the loop">SCAN</button>
+        </div>
+        <div id="dropwave">
+          <canvas id="wave"></canvas>
+          <div id="dropprompt">drop an audio file here, or click to browse — a texture print works nicely</div>
+          <div id="fileinfo"></div>
+        </div>
+        <input type="file" id="fileinput" accept="audio/*">
+      </div>
+      <div class="kdivider"></div>
+      <div class="subgroup">
+        <h2>SHAPE</h2>
+        <div class="krow" id="shape-knobs"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="g-mangle">
+    <h2>MANGLE</h2>
+    <div class="krow" id="mangle-knobs">
+      <button class="toggle on" id="decay" title="corruption accumulates — each pass scrambles the already-scrambled pattern; off = fresh dice against the original every pass">● decay</button>
+      <button class="minibtn" id="restore" title="restore the original pattern">RESTORE</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="export">
+  <div class="seg" id="passes">
+    <span class="seglabel">passes</span>
+    <button data-p="1" class="on">×1</button>
+    <button data-p="2">×2</button>
+    <button data-p="4">×4</button>
+    <button data-p="8">×8</button>
+  </div>
+  <button id="render">RENDER WAV</button>
+  <span id="renderinfo"></span>
+</div>
+
+<script>
+// slice.html — pattern slicer. Started as a recreation of the "type a
+// phrase, gate audio in its morse rhythm" idea (dits short, dahs long,
+// letter/word spacing free) and generalized: the pattern source is morse,
+// an ASCII bitstream, or any pasted numeric series (thresholded — datasets
+// become tempo-locked rhythm). Two sound sources — an internal CW tone
+// (sound with zero setup) or a dropped loop gated/chopped by the pattern —
+// plus a MANGLE stage: flip, ratchet, drop dice per pass, and a scramble
+// that corrupts the pattern itself as it repeats.
+// No worklet: everything schedules with plain Web Audio envelopes, and the
+// offline render runs the identical scheduling code.
+
+// --- morse table ------------------------------------------------------------
+const MORSE = {
+  A: '.-', B: '-...', C: '-.-.', D: '-..', E: '.', F: '..-.', G: '--.',
+  H: '....', I: '..', J: '.---', K: '-.-', L: '.-..', M: '--', N: '-.',
+  O: '---', P: '.--.', Q: '--.-', R: '.-.', S: '...', T: '-', U: '..-',
+  V: '...-', W: '.--', X: '-..-', Y: '-.--', Z: '--..',
+  0: '-----', 1: '.----', 2: '..---', 3: '...--', 4: '....-', 5: '.....',
+  6: '-....', 7: '--...', 8: '---..', 9: '----.',
+  '.': '.-.-.-', ',': '--..--', '?': '..--..', "'": '.----.', '!': '-.-.--',
+  '/': '-..-.', '(': '-.--.', ')': '-.--.-', '&': '.-...', ':': '---...',
+  ';': '-.-.-.', '=': '-...-', '+': '.-.-.', '-': '-....-', '_': '..--.-',
+  '"': '.-..-.', '$': '...-..-', '@': '.--.-.',
+};
+const SCRAMBLE_POOL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+// --- UI state — knobs live in 0..1 knob space, mapped at read (the site
+// convention; segmented state lives alongside).
+const ui = {
+  bpmKnob: (120 - 20) / 280,
+  dahKnob: (3 - 0.5) / 5.5,   // dah length in dits
+  gapKnob: 1 / 4,             // symbol gap
+  ltrKnob: 3 / 8,             // letter gap
+  wordKnob: 7 / 16,           // word gap
+  threshKnob: 0.35,           // DATA hit threshold
+  div: 2,                     // 1/16
+  feel: 0,                    // straight
+  pattern: 'morse',
+  source: 'tone',
+  freqKnob: Math.log2(600 / 40) / 8,
+  wave: 'sine',
+  dahPitchKnob: 0.5,          // ±24 st, center = 0
+  speedKnob: 0.5,             // file playback 0.25x–4x
+  fileMode: 'gate',
+  attackKnob: Math.log10(2 / 0.5) / 3,   // 2ms
+  releaseKnob: Math.log10(30 / 1) / 3,   // 30ms
+  depthKnob: 1,
+  levelKnob: 1 / 1.5,         // 100
+  flipKnob: 0,
+  ratchetKnob: 0,
+  dropKnob: 0,
+  scrambleKnob: 0,
+  decay: true,
+  passes: 1,
+};
+
+// --- knob-space → real values ------------------------------------------------
+const DIVS = [1, 0.5, 0.25, 0.125];
+const FEELS = [1, 2 / 3, 1.5];
+const bpm = () => 20 + ui.bpmKnob * 280;
+const ditSecs = () => (60 / bpm()) * DIVS[ui.div] * FEELS[ui.feel];
+const dahUnits = () => 0.5 + ui.dahKnob * 5.5;
+const gapUnits = () => ui.gapKnob * 4;
+const ltrUnits = () => ui.ltrKnob * 8;
+const wordUnits = () => ui.wordKnob * 16;
+const toneHz = () => 40 * Math.pow(2, ui.freqKnob * 8);
+const dahSemis = () => Math.round((ui.dahPitchKnob - 0.5) * 48);
+const dahMult = () => Math.pow(2, dahSemis() / 12);
+const fileRate = () => 0.25 * Math.pow(2, ui.speedKnob * 4);
+const attackSecs = () => 0.0005 * Math.pow(10, ui.attackKnob * 3);   // 0.5ms–500ms
+const releaseSecs = () => 0.001 * Math.pow(10, ui.releaseKnob * 3);  // 1ms–1s
+const gateFloor = () => 1 - ui.depthKnob;
+
+function fmtMs(s) { return s >= 1 ? s.toFixed(2) + 's' : Math.round(s * 1000) + 'ms'; }
+function fmtHz(hz) { return hz >= 1000 ? (hz / 1000).toFixed(1) + 'k' : Math.round(hz) + 'Hz'; }
+function fmtPct(k) { return Math.round(ui[k] * 100) + ''; }
+
+// --- knobs — texture.html's Knob anatomy: 12%-white ring, 270° value arc
+// (bipolar fills from center), tick, vertical drag (100px/unit), wheel steps.
+const SVGNS = 'http://www.w3.org/2000/svg';
+const KNOB_SIZE = 40;
+const knobs = {};
+
+const KNOB_SPECS = [
+  { group: 'clock-knobs', k: 'bpmKnob', label: 'bpm', fmt: () => Math.round(bpm()) + '',
+    title: 'tempo 20–300 — one unit is one rate division at this tempo' },
+  { group: 'clock-knobs', divider: true },
+  { group: 'clock-knobs', k: 'dahKnob', label: 'dah', fmt: () => dahUnits().toFixed(1) + 'u',
+    title: 'MORSE — dah length in dits; 3 is regulation, below 1 the dash is shorter than the dot' },
+  { group: 'clock-knobs', k: 'gapKnob', label: 'gap', fmt: () => gapUnits().toFixed(2) + 'u',
+    title: 'MORSE — gap between symbols in a letter; 1 is regulation, 0 fuses letters into a single buzz' },
+  { group: 'clock-knobs', k: 'ltrKnob', label: 'letter', fmt: () => ltrUnits().toFixed(1) + 'u',
+    title: 'gap between letters — 3 is regulation morse' },
+  { group: 'clock-knobs', k: 'wordKnob', label: 'word', fmt: () => wordUnits().toFixed(1) + 'u',
+    title: 'gap between words (and the loop breath at the end of the pattern) — 7 is regulation morse' },
+  { group: 'clock-knobs', divider: true },
+  { group: 'clock-knobs', k: 'threshKnob', label: 'thresh', fmt: () => fmtPct('threshKnob'),
+    title: 'DATA — points below the line rest; above it, bigger values play longer and louder' },
+
+  { group: 'source-knobs', k: 'freqKnob', label: 'freq', fmt: () => fmtHz(toneHz()),
+    title: 'tone frequency 40Hz–10kHz — 600Hz is the classic CW sidetone' },
+  { group: 'source-knobs', k: 'dahPitchKnob', label: 'dah±', bipolar: true, steps: 49,
+    fmt: () => (dahSemis() > 0 ? '+' : '') + dahSemis() + 'st',
+    title: 'long hits at an offset pitch — two-tone morse melodies; in FILE mode this bends the loop speed instead' },
+  { group: 'source-knobs', k: 'speedKnob', label: 'speed', fmt: () => fileRate().toFixed(2) + 'x',
+    title: 'file playback rate 0.25x–4x' },
+
+  { group: 'shape-knobs', k: 'attackKnob', label: 'attack', fmt: () => fmtMs(attackSecs()),
+    title: 'gate open time 0.5ms–500ms — longer than the hit and it becomes a swell that never fully arrives' },
+  { group: 'shape-knobs', k: 'releaseKnob', label: 'release', fmt: () => fmtMs(releaseSecs()),
+    title: 'gate close time 1ms–1s — longer than the gap and the pattern smears together' },
+  { group: 'shape-knobs', k: 'depthKnob', label: 'depth', fmt: () => fmtPct('depthKnob'),
+    title: 'gate depth — below 100 the source bleeds through between hits (TONE and GATE mode)' },
+  { group: 'shape-knobs', divider: true },
+  { group: 'shape-knobs', k: 'levelKnob', label: 'level', fmt: () => Math.round(ui.levelKnob * 150) + '' },
+
+  { group: 'mangle-knobs', k: 'flipKnob', label: 'flip', fmt: () => fmtPct('flipKnob'),
+    title: 'chance per symbol per pass that short becomes long and long becomes short (DATA: the point inverts) — the rhythm lies, the message stays' },
+  { group: 'mangle-knobs', k: 'ratchetKnob', label: 'ratchet', fmt: () => fmtPct('ratchetKnob'),
+    title: 'chance a long hit subdivides into a burst of short ones' },
+  { group: 'mangle-knobs', k: 'dropKnob', label: 'drop', fmt: () => fmtPct('dropKnob'),
+    title: 'chance a hit falls silent — the slot stays, the sound goes' },
+  { group: 'mangle-knobs', divider: true },
+  { group: 'mangle-knobs', k: 'scrambleKnob', label: 'scramble', fmt: () => fmtPct('scrambleKnob'),
+    title: 'chance per letter (or data point) per pass of being replaced — with decay on, the pattern erodes toward noise' },
+];
+
+function buildKnob(spec) {
+  const col = document.createElement('div');
+  col.className = 'kcol';
+  col.dataset.kn = spec.k;
+
+  const s = KNOB_SIZE;
+  const cx = s / 2, cy = s / 2;
+  const ringR = s * 0.36;
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('width', s);
+  svg.setAttribute('height', s);
+  svg.setAttribute('viewBox', `0 0 ${s} ${s}`);
+  if (spec.title) {
+    const t = document.createElementNS(SVGNS, 'title');
+    t.textContent = spec.title;
+    svg.appendChild(t);
+  }
+  const ring = document.createElementNS(SVGNS, 'circle');
+  ring.setAttribute('cx', cx);
+  ring.setAttribute('cy', cy);
+  ring.setAttribute('r', ringR);
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', 'white');
+  ring.setAttribute('stroke-opacity', '0.12');
+  ring.setAttribute('stroke-width', '1');
+  ring.setAttribute('class', 'kring');
+  const arc = document.createElementNS(SVGNS, 'path');
+  arc.setAttribute('fill', 'none');
+  arc.setAttribute('stroke', 'white');
+  arc.setAttribute('stroke-opacity', '0.7');
+  arc.setAttribute('stroke-width', '1.75');
+  arc.setAttribute('stroke-linecap', 'round');
+  const tick = document.createElementNS(SVGNS, 'line');
+  tick.setAttribute('stroke', 'white');
+  tick.setAttribute('stroke-opacity', '0.9');
+  tick.setAttribute('stroke-width', '1.75');
+  tick.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(ring);
+  svg.appendChild(arc);
+  svg.appendChild(tick);
+
+  const label = document.createElement('span');
+  label.className = 'klabel';
+  label.textContent = spec.label;
+  const val = document.createElement('span');
+  val.className = 'kval';
+  col.appendChild(svg);
+  col.appendChild(label);
+  col.appendChild(val);
+
+  function draw() {
+    const v = Math.min(1, Math.max(0, ui[spec.k]));
+    const angleDeg = -135 + 270 * v;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const tickInner = s * 0.17;
+    tick.setAttribute('x1', cx + tickInner * Math.sin(angleRad));
+    tick.setAttribute('y1', cy - tickInner * Math.cos(angleRad));
+    tick.setAttribute('x2', cx + ringR * Math.sin(angleRad));
+    tick.setAttribute('y2', cy - ringR * Math.cos(angleRad));
+    const startDeg = spec.bipolar ? 0 : -135;
+    const drawArc = spec.bipolar ? Math.abs(v - 0.5) > 0.001 : v > 0;
+    if (drawArc) {
+      const startRad = (startDeg * Math.PI) / 180;
+      const sweep = angleDeg >= startDeg ? 1 : 0;
+      const largeArc = Math.abs(angleDeg - startDeg) > 180 ? 1 : 0;
+      arc.setAttribute('d',
+        `M ${cx + ringR * Math.sin(startRad)} ${cy - ringR * Math.cos(startRad)} ` +
+        `A ${ringR} ${ringR} 0 ${largeArc} ${sweep} ` +
+        `${cx + ringR * Math.sin(angleRad)} ${cy - ringR * Math.cos(angleRad)}`);
+      arc.setAttribute('visibility', 'visible');
+    } else {
+      arc.setAttribute('visibility', 'hidden');
+    }
+    val.textContent = spec.fmt();
+  }
+
+  function setValue(next) {
+    const v = Math.min(1, Math.max(0, next));
+    if (v === ui[spec.k]) return;
+    ui[spec.k] = v;
+    draw();
+    onKnobChange(spec.k);
+  }
+
+  svg.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startVal = ui[spec.k];
+    const onMove = (ev) => setValue(startVal + (startY - ev.clientY) / 100);
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const step = spec.steps ? 1 / (spec.steps - 1) : 0.05;
+    setValue(ui[spec.k] + (e.deltaY > 0 ? -step : step));
+  }, { passive: false });
+
+  knobs[spec.k] = { draw, setValue };
+  draw();
+  return col;
+}
+
+for (const spec of KNOB_SPECS) {
+  const parent = document.getElementById(spec.group);
+  if (spec.divider) {
+    const d = document.createElement('div');
+    d.className = 'kdivider';
+    parent.appendChild(d);
+  } else {
+    parent.appendChild(buildKnob(spec));
+  }
+}
+// decay toggle + RESTORE sit after the scramble knob in the mangle row
+const mangleRow = document.getElementById('mangle-knobs');
+mangleRow.appendChild(document.getElementById('decay'));
+mangleRow.appendChild(document.getElementById('restore'));
+
+function onKnobChange(k) {
+  if (k === 'levelKnob' && master) master.gain.setTargetAtTime(ui.levelKnob * 1.5, actx.currentTime, 0.02);
+  if (k === 'freqKnob' && bed && bed.osc) bed.osc.frequency.setTargetAtTime(toneHz(), actx.currentTime, 0.02);
+  if (k === 'speedKnob' && bed && bed.src) bed.src.playbackRate.setTargetAtTime(fileRate(), actx.currentTime, 0.02);
+  previewKey = '';
+  updateRenderInfo();
+}
+
+// --- pattern state -------------------------------------------------------------
+// orig is what's typed/pasted; cur is what plays (scramble erodes it).
+// Text modes live in .msg (char array), DATA in .data (float array).
+const orig = { msg: [], data: [] };
+const cur = { msg: [], data: [] };
+let dataMin = 0, dataMax = 1;
+
+function parseInput(text) {
+  if (ui.pattern === 'data') {
+    orig.data = text.split(/[\s,;]+/).map(parseFloat).filter(isFinite);
+    cur.data = [...orig.data];
+    dataMin = Math.min(...orig.data, Infinity);
+    dataMax = Math.max(...orig.data, -Infinity);
+  } else {
+    orig.msg = [...text.toUpperCase()].filter((c) => c === ' ' || MORSE[c]);
+    cur.msg = [...orig.msg];
+  }
+  previewKey = '';
+  buildReadout();
+  updateRenderInfo();
+}
+
+const normOf = (v) => dataMax > dataMin ? (v - dataMin) / (dataMax - dataMin) : 0.5;
+const hasPattern = () => ui.pattern === 'data' ? cur.data.length > 0 : cur.msg.length > 0;
+
+function scrambleMsg(msg) {
+  const p = ui.scrambleKnob;
+  if (p <= 0) return msg;
+  return msg.map((c) =>
+    c !== ' ' && Math.random() < p
+      ? SCRAMBLE_POOL[(Math.random() * SCRAMBLE_POOL.length) | 0]
+      : c);
+}
+
+function scrambleData(data) {
+  const p = ui.scrambleKnob;
+  if (p <= 0) return data;
+  return data.map((v) =>
+    Math.random() < p ? dataMin + Math.random() * (dataMax - dataMin) : v);
+}
+
+// The pattern the next pass plays: decay mutates cur in place (erosion);
+// off, each pass rolls fresh dice against the pristine original.
+function advancePassState() {
+  if (ui.pattern === 'data') {
+    cur.data = scrambleData(ui.decay ? cur.data : [...orig.data]);
+  } else {
+    cur.msg = scrambleMsg(ui.decay ? cur.msg : [...orig.msg]);
+  }
+  return snapshotState();
+}
+
+function snapshotState() {
+  return { msg: [...cur.msg], data: [...cur.data] };
+}
+
+// --- pattern build ------------------------------------------------------------
+// One pass of the pattern → events in seconds. Every event: { t, dur,
+// kind (0 short / 1 long — long takes the dah± pitch), ci (input index for
+// the readout), level, dropped }.
+function buildPass(state) {
+  if (ui.pattern === 'bits') return buildBits(state.msg);
+  if (ui.pattern === 'data') return buildData(state.data);
+  return buildMorse(state.msg);
+}
+
+function pushEvent(events, tU, durU, kind, ci, unit, level) {
+  const dropped = Math.random() < ui.dropKnob;
+  if (kind && !dropped && Math.random() < ui.ratchetKnob) {
+    const n = 2 + ((Math.random() * 3) | 0);
+    const step = durU / n;
+    for (let r = 0; r < n; r++) {
+      events.push({ t: (tU + r * step) * unit, dur: Math.max(0.012, step * 0.6 * unit), kind: 0, ci, level, ratchet: true });
+    }
+    return;
+  }
+  events.push({ t: tU * unit, dur: Math.max(0.012, durU * unit), kind, ci, level, dropped });
+}
+
+// Regulation morse timing when the knobs sit at 3/1/3/7; every ratio is a
+// knob and every knob can break.
+function buildMorse(msg) {
+  const unit = ditSecs();
+  const dah = dahUnits(), gap = gapUnits(), ltr = ltrUnits(), word = wordUnits();
+  const events = [];
+  let t = 0; // in units
+  for (let ci = 0; ci < msg.length; ci++) {
+    const ch = msg[ci];
+    if (ch === ' ') { t += word; continue; }
+    const code = MORSE[ch];
+    if (!code) { t += ltr; continue; }
+    for (let si = 0; si < code.length; si++) {
+      let kind = code[si] === '.' ? 0 : 1;
+      if (Math.random() < ui.flipKnob) kind = 1 - kind;
+      const durU = kind ? dah : 1;
+      pushEvent(events, t, durU, kind, ci, unit, 1);
+      t += durU;
+      if (si < code.length - 1) t += gap;
+    }
+    if (ci < msg.length - 1 && msg[ci + 1] !== ' ') t += ltr;
+  }
+  t += word; // loop breath
+  return { events, total: Math.max(0.25, t * unit) };
+}
+
+// Each character as its 8 ASCII bits, one unit per bit; runs of 1s merge
+// into sustained hits, so the alphabet arrives with its own dit/dah mix.
+function buildBits(msg) {
+  const unit = ditSecs();
+  const ltr = ltrUnits(), word = wordUnits();
+  const events = [];
+  let t = 0;
+  for (let ci = 0; ci < msg.length; ci++) {
+    const ch = msg[ci];
+    if (ch === ' ') { t += word; continue; }
+    const bits = [...ch.charCodeAt(0).toString(2).padStart(8, '0')]
+      .map((b) => (Math.random() < ui.flipKnob ? (b === '1' ? '0' : '1') : b));
+    let bi = 0;
+    while (bi < 8) {
+      if (bits[bi] === '0') { t += 1; bi++; continue; }
+      let n = 0;
+      while (bi < 8 && bits[bi] === '1') { n++; bi++; }
+      pushEvent(events, t, Math.max(0.3, n - 0.3), n > 1 ? 1 : 0, ci, unit, 1);
+      t += n;
+    }
+    if (ci < msg.length - 1 && msg[ci + 1] !== ' ') t += ltr;
+  }
+  t += word;
+  return { events, total: Math.max(0.25, t * unit) };
+}
+
+// A numeric series, one unit per point. Points below the threshold rest;
+// above it, magnitude drives duration, level, and (near the top) the dah±
+// pitch. A weather dataset becomes a groove.
+function buildData(data) {
+  const unit = ditSecs();
+  const th = ui.threshKnob;
+  const events = [];
+  let t = 0;
+  for (let i = 0; i < data.length; i++) {
+    let norm = normOf(data[i]);
+    if (Math.random() < ui.flipKnob) norm = 1 - norm;
+    if (norm >= th) {
+      const durU = 0.15 + 0.75 * norm;
+      pushEvent(events, t, durU, norm > 0.85 ? 1 : 0, i, unit, 0.3 + 0.7 * norm);
+    }
+    t += 1;
+  }
+  t += 2; // loop breath
+  return { events, total: Math.max(0.25, t * unit) };
+}
+
+// --- audio -------------------------------------------------------------------
+let actx = null;
+let master = null;
+let bed = null;        // { osc | src, gate } — TONE and FILE/GATE persistent chain
+let liveNodes = [];    // per-event sources (CHOP/SCAN) for hard stop
+let fileBuf = null;    // AudioBuffer at actx rate
+let fileName = '';
+
+function ensureAudio() {
+  if (actx) return;
+  actx = new AudioContext();
+  master = actx.createGain();
+  master.gain.value = ui.levelKnob * 1.5;
+  master.connect(actx.destination);
+}
+
+function makeBuffer(ctx) {
+  const b = ctx.createBuffer(2, fileBuf.length, fileBuf.sampleRate);
+  b.getChannelData(0).set(fileBuf.getChannelData(0));
+  b.getChannelData(1).set(fileBuf.getChannelData(fileBuf.numberOfChannels > 1 ? 1 : 0));
+  return b;
+}
+
+// Persistent bed for TONE / FILE-GATE: source → gate → dest. The gate rests
+// at the depth floor; events ramp it open. Returns null for CHOP/SCAN.
+function makeBed(ctx, dest, buffer, t0) {
+  const useFile = ui.source === 'file';
+  if (useFile && (ui.fileMode !== 'gate' || !buffer)) return null;
+  const gate = ctx.createGain();
+  gate.gain.setValueAtTime(gateFloor(), t0);
+  gate.connect(dest);
+  if (useFile) {
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    src.playbackRate.value = fileRate();
+    src.connect(gate);
+    src.start(t0);
+    return { src, gate };
+  }
+  const osc = ctx.createOscillator();
+  osc.type = ui.wave;
+  osc.frequency.value = toneHz();
+  osc.connect(gate);
+  osc.start(t0);
+  return { osc, gate };
+}
+
+// Schedule one event. env = { ctx, dest, bed, buffer, live }.
+function scheduleEvent(env, ev, t0) {
+  if (ev.dropped) return;
+  const t = t0 + ev.t;
+  const tEnd = t + ev.dur;
+  const atk = attackSecs(), rel = releaseSecs();
+  const mult = ev.kind ? dahMult() : 1;
+  const peak = ev.level;
+
+  if (env.bed) {
+    const g = env.bed.gate.gain;
+    const floor = gateFloor();
+    g.linearRampToValueAtTime(floor, t);
+    g.linearRampToValueAtTime(peak, t + atk);
+    g.linearRampToValueAtTime(peak, Math.max(t + atk, tEnd));
+    g.linearRampToValueAtTime(floor, tEnd + rel);
+    if (env.bed.osc) {
+      env.bed.osc.frequency.setValueAtTime(toneHz() * mult, t);
+      env.bed.osc.frequency.setValueAtTime(toneHz(), tEnd + rel);
+    } else if (mult !== 1) {
+      // GATE mode dah± bends the loop speed for the length of the hit —
+      // it also drags the playhead, which is the point
+      env.bed.src.playbackRate.setValueAtTime(fileRate() * mult, t);
+      env.bed.src.playbackRate.setValueAtTime(fileRate(), tEnd + rel);
+    }
+    return;
+  }
+
+  // CHOP / SCAN: per-event slice of the file
+  if (!env.buffer) return;
+  const rate = fileRate() * mult;
+  const src = env.ctx.createBufferSource();
+  src.buffer = env.buffer;
+  src.playbackRate.value = rate;
+  const g = env.ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + atk);
+  g.gain.linearRampToValueAtTime(peak, Math.max(t + atk, tEnd));
+  g.gain.linearRampToValueAtTime(0, tEnd + rel);
+  src.connect(g);
+  g.connect(env.dest);
+  const durF = env.buffer.duration;
+  const off = ui.fileMode === 'scan'
+    ? Math.random() * Math.max(0.01, durF - ev.dur * rate)
+    : ((t0 + ev.t) * fileRate()) % durF; // chop: punch in where continuous playback would be
+  src.start(t, off);
+  src.stop(tEnd + rel + 0.03);
+  if (env.live) env.live.push(src);
+}
+
+// --- live playback: lookahead scheduler --------------------------------------
+const LOOKAHEAD = 0.2;
+let playing = false;
+let schedTimer = null;
+let passStart = 0;
+let pass = null;
+let schedIdx = 0;
+let env = null;
+// display state trails the schedule — commits when the audio clock arrives
+let display = null;              // { pass, passStart, state }
+let pendingDisplay = [];
+
+function startPlayback() {
+  if (!hasPattern()) return;
+  ensureAudio();
+  void actx.resume();
+  const state = snapshotState();
+  pass = buildPass(state);
+  passStart = actx.currentTime + 0.1;
+  schedIdx = 0;
+  liveNodes = [];
+  bed = makeBed(actx, master, fileBuf, passStart);
+  env = { ctx: actx, dest: master, bed, buffer: fileBuf ? makeBuffer(actx) : null, live: liveNodes };
+  if (bed && bed.src) env.buffer = null; // gate mode: the bed owns the file
+  pendingDisplay = [{ time: passStart, pass, state }];
+  playing = true;
+  schedTimer = setInterval(tick, 50);
+  tick();
+}
+
+function tick() {
+  const horizon = actx.currentTime + LOOKAHEAD;
+  let guard = 0;
+  while (guard++ < 2000) {
+    if (schedIdx < pass.events.length) {
+      const ev = pass.events[schedIdx];
+      if (passStart + ev.t > horizon) break;
+      scheduleEvent(env, ev, passStart);
+      schedIdx++;
+    } else {
+      if (passStart + pass.total > horizon) break;
+      passStart += pass.total;
+      const state = advancePassState();
+      pass = buildPass(state);
+      schedIdx = 0;
+      pendingDisplay.push({ time: passStart, pass, state });
+    }
+  }
+}
+
+function stopPlayback() {
+  playing = false;
+  clearInterval(schedTimer);
+  schedTimer = null;
+  const now = actx.currentTime;
+  if (bed) {
+    bed.gate.gain.cancelScheduledValues(now);
+    bed.gate.gain.setTargetAtTime(0, now, 0.01);
+    const node = bed.osc || bed.src;
+    try { node.stop(now + 0.08); } catch (_) {}
+    bed = null;
+  }
+  for (const n of liveNodes) { try { n.stop(now); } catch (_) {} }
+  liveNodes = [];
+  pendingDisplay = [];
+  display = null;
+  buildReadout();
+}
+
+function togglePlay() {
+  if (document.activeElement === msginput) msginput.blur();
+  if (!playing && !hasPattern()) return;
+  ensureAudio();
+  if (playing) stopPlayback(); else startPlayback();
+  const b = document.getElementById('play');
+  b.textContent = playing ? 'STOP' : 'PLAY';
+  b.classList.toggle('on', playing);
+}
+
+function restartIfPlaying() {
+  if (!playing) return;
+  stopPlayback();
+  startPlayback();
+  const b = document.getElementById('play');
+  b.textContent = playing ? 'STOP' : 'PLAY';
+  b.classList.toggle('on', playing);
+}
+
+// --- tap tempo -----------------------------------------------------------------
+let taps = [];
+function tapTempo() {
+  const now = performance.now();
+  if (taps.length && now - taps[taps.length - 1] > 2000) taps = [];
+  taps.push(now);
+  if (taps.length > 8) taps.shift();
+  if (taps.length >= 2) {
+    const iv = (taps[taps.length - 1] - taps[0]) / (taps.length - 1);
+    const b = Math.min(300, Math.max(20, 60000 / iv));
+    knobs.bpmKnob.setValue((b - 20) / 280);
+  }
+}
+
+// --- offline render → WAV --------------------------------------------------------
+function updateRenderInfo() {
+  const info = document.getElementById('renderinfo');
+  if (!hasPattern()) {
+    info.textContent = ui.pattern === 'data' ? 'paste some numbers first' : 'type a message first';
+    return;
+  }
+  const est = buildPassPreview().total * ui.passes;
+  info.textContent = `prints ~${est.toFixed(1)}s — ${ui.passes} pass${ui.passes > 1 ? 'es' : ''} of the pattern`;
+}
+
+let rendering = false;
+async function renderWav() {
+  if (!hasPattern() || rendering) return;
+  rendering = true;
+  const btn = document.getElementById('render');
+  btn.textContent = 'RENDERING···';
+  btn.disabled = true;
+  try {
+    ensureAudio();
+    const sr = actx.sampleRate;
+    // roll the passes up front — same dice, same erosion path as live, but
+    // on a private copy so a render never advances the live decay
+    const liveCur = snapshotState();
+    const built = [];
+    let t0 = 0;
+    for (let p = 0; p < ui.passes; p++) {
+      const pp = buildPass(snapshotState());
+      built.push({ t0, pass: pp });
+      t0 += pp.total;
+      advancePassState();
+    }
+    cur.msg = liveCur.msg;
+    cur.data = liveCur.data;
+    const oc = new OfflineAudioContext(2, Math.ceil((t0 + releaseSecs() + 0.1) * sr), sr);
+    const m = oc.createGain();
+    m.gain.value = ui.levelKnob * 1.5;
+    m.connect(oc.destination);
+    const obuf = fileBuf ? makeBuffer(oc) : null;
+    const obed = makeBed(oc, m, obuf, 0);
+    if (obed) {
+      const node = obed.osc || obed.src;
+      node.stop(t0 + releaseSecs() + 0.1);
+    }
+    const oenv = { ctx: oc, dest: m, bed: obed, buffer: obed && obed.src ? null : obuf, live: null };
+    for (const { t0: pt, pass: pp } of built) {
+      for (const ev of pp.events) scheduleEvent(oenv, ev, pt);
+    }
+    const rendered = await oc.startRendering();
+    const blob = encodeWav32f(rendered);
+    const slug = ui.pattern === 'data'
+      ? `data-${cur.data.length}pt`
+      : (orig.msg.join('').replace(/[^A-Z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || 'pattern');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `slice-${slug}-${Math.round(rendered.duration)}s.wav`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } finally {
+    rendering = false;
+    btn.textContent = 'RENDER WAV';
+    btn.disabled = false;
+  }
+}
+
+// 32-bit float stereo WAV (format 3) — same writer as texture.html
+function encodeWav32f(buf) {
+  const nCh = 2;
+  const n = buf.length;
+  const sr = buf.sampleRate;
+  const dataBytes = n * nCh * 4;
+  const ab = new ArrayBuffer(44 + dataBytes);
+  const dv = new DataView(ab);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF');
+  dv.setUint32(4, 36 + dataBytes, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 3, true);
+  dv.setUint16(22, nCh, true);
+  dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * nCh * 4, true);
+  dv.setUint16(32, nCh * 4, true);
+  dv.setUint16(34, 32, true);
+  str(36, 'data');
+  dv.setUint32(40, dataBytes, true);
+  const l = buf.getChannelData(0);
+  const r = buf.numberOfChannels > 1 ? buf.getChannelData(1) : l;
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    dv.setFloat32(off, l[i], true);
+    dv.setFloat32(off + 4, r[i], true);
+    off += 8;
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+// --- file load -------------------------------------------------------------------
+async function loadFile(file) {
+  ensureAudio();
+  const bytes = await file.arrayBuffer();
+  let buf;
+  try {
+    buf = await actx.decodeAudioData(bytes);
+  } catch (err) {
+    document.getElementById('dropprompt').textContent =
+      `couldn't decode "${file.name}" — try a wav/mp3/m4a`;
+    return;
+  }
+  fileBuf = buf;
+  fileName = file.name;
+  document.getElementById('dropwave').classList.add('loaded');
+  document.getElementById('fileinfo').innerHTML =
+    `<span class="fname">${file.name}</span> · ${buf.duration.toFixed(2)}s · replace`;
+  drawFileWave();
+  // dropping a file is intent — switch the source over
+  setSource('file');
+  restartIfPlaying();
+}
+
+function drawFileWave() {
+  const c = document.getElementById('wave');
+  sizeCanvas(c);
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (!fileBuf) return;
+  const d = fileBuf.getChannelData(0);
+  const cols = 256;
+  const per = d.length / cols;
+  const mid = c.height / 2;
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  for (let i = 0; i < cols; i++) {
+    const i0 = Math.floor(i * per);
+    const i1 = Math.min(d.length, Math.floor((i + 1) * per));
+    const step = Math.max(1, ((i1 - i0) / 40) | 0);
+    let mn = 0, mx = 0;
+    for (let j = i0; j < i1; j += step) {
+      if (d[j] < mn) mn = d[j];
+      if (d[j] > mx) mx = d[j];
+    }
+    const y0 = mid - mx * mid * 0.9;
+    const y1 = mid - mn * mid * 0.9;
+    ctx.fillRect((i / cols) * c.width, y0, c.width / cols + 0.5, Math.max(1, y1 - y0));
+  }
+}
+
+// --- readout + strip ---------------------------------------------------------------
+const msginput = document.getElementById('msginput');
+const readout = document.getElementById('readout');
+const strip = document.getElementById('strip');
+
+function buildReadout() {
+  readout.textContent = '';
+  const state = display ? display.state : cur;
+  if (ui.pattern === 'data') {
+    const n = state.data.length;
+    const el = document.createElement('span');
+    el.className = 'rinfo';
+    if (!n) {
+      el.textContent = 'no points yet';
+    } else {
+      const corrupted = state.data.reduce((a, v, i) => a + (v !== orig.data[i] ? 1 : 0), 0);
+      el.innerHTML = `<em>${n}</em> points · ${dataMin.toPrecision(3)} – ${dataMax.toPrecision(3)}`
+        + (corrupted ? ` · <em>${corrupted}</em> corrupted` : '');
+    }
+    readout.appendChild(el);
+    return;
+  }
+  state.msg.forEach((ch, i) => {
+    const el = document.createElement('span');
+    el.className = 'rchar' + (ch === ' ' ? ' rspace' : '') + (ch !== orig.msg[i] ? ' bad' : '');
+    el.dataset.ci = i;
+    const b = document.createElement('b');
+    b.textContent = ch === ' ' ? ' ' : ch;
+    const m = document.createElement('i');
+    m.textContent = ch === ' ' ? ' ' :
+      ui.pattern === 'bits'
+        ? ch.charCodeAt(0).toString(2).padStart(8, '0')
+        : (MORSE[ch] || '').replace(/\./g, '·').replace(/-/g, '−');
+    el.appendChild(b);
+    el.appendChild(m);
+    readout.appendChild(el);
+  });
+}
+
+function sizeCanvas(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const r = c.getBoundingClientRect();
+  c.width = Math.max(1, Math.round(r.width * dpr));
+  c.height = Math.max(1, Math.round(r.height * dpr));
+}
+
+let litChar = -1;
+function drawStrip() {
+  const ctx = strip.getContext('2d');
+  const W = strip.width, H = strip.height;
+  ctx.clearRect(0, 0, W, H);
+  const dp = display || { pass: buildPassPreview(), passStart: -1 };
+  const { events, total } = dp.pass;
+  const now = playing && actx ? actx.currentTime : -1;
+  const ph = dp.passStart >= 0 && now >= 0 ? (now - dp.passStart) / total : -1;
+  let lit = -1;
+  for (const ev of events) {
+    const x = (ev.t / total) * W;
+    const w = Math.max(2, (ev.dur / total) * W);
+    const h = ui.pattern === 'data'
+      ? H * (0.2 + 0.6 * ev.level)
+      : (ev.kind ? H * 0.72 : H * 0.44);
+    const y = (H - h) / 2;
+    const active = ph >= 0 && now >= dp.passStart + ev.t && now < dp.passStart + ev.t + ev.dur;
+    if (active && !ev.dropped) lit = ev.ci;
+    if (ev.dropped) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    } else {
+      ctx.fillStyle = active ? 'rgba(255,255,255,0.95)' : `rgba(255,255,255,${0.25 + 0.25 * ev.level})`;
+      ctx.fillRect(x, y, w, h);
+    }
+  }
+  if (ph >= 0 && ph <= 1) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(ph * W, 0, Math.max(1, window.devicePixelRatio || 1), H);
+  }
+  if (lit !== litChar) {
+    litChar = lit;
+    readout.querySelectorAll('.rchar.now').forEach((el) => el.classList.remove('now'));
+    if (lit >= 0) {
+      const el = readout.querySelector(`[data-ci="${lit}"]`);
+      if (el) el.classList.add('now');
+    }
+  }
+}
+
+// clean deterministic pass for the idle strip + the render estimate (no
+// dice — shows the pattern as written; the mangle only exists in time)
+let previewCache = null;
+let previewKey = '';
+function buildPassPreview() {
+  const key = ui.pattern + '|' + cur.msg.join('') + '|' + cur.data.length + '|' +
+    [ui.bpmKnob, ui.div, ui.feel, ui.dahKnob, ui.gapKnob, ui.ltrKnob, ui.wordKnob, ui.threshKnob].join(',');
+  if (previewCache && previewKey === key) return previewCache;
+  const saved = [ui.flipKnob, ui.ratchetKnob, ui.dropKnob];
+  ui.flipKnob = 0; ui.ratchetKnob = 0; ui.dropKnob = 0;
+  previewCache = buildPass(cur);
+  [ui.flipKnob, ui.ratchetKnob, ui.dropKnob] = saved;
+  previewKey = key;
+  return previewCache;
+}
+
+function frame() {
+  // commit pass displays as the audio clock reaches them
+  if (playing && actx) {
+    while (pendingDisplay.length && actx.currentTime >= pendingDisplay[0].time - 0.02) {
+      const d = pendingDisplay.shift();
+      display = { pass: d.pass, passStart: d.time, state: d.state };
+      buildReadout();
+    }
+  }
+  drawStrip();
+  requestAnimationFrame(frame);
+}
+
+// --- wiring --------------------------------------------------------------------------
+function segWire(id, attr, cb) {
+  const seg = document.getElementById(id);
+  seg.querySelectorAll('button[data-' + attr.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase()) + ']').forEach((b) => {
+    b.addEventListener('click', () => {
+      seg.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      cb(b.dataset[attr]);
+    });
+  });
+}
+
+segWire('segpat', 't', (v) => {
+  ui.pattern = v;
+  msginput.placeholder =
+    v === 'data' ? 'paste numbers — comma or space separated' :
+    v === 'bits' ? 'type a message — each character plays as its bits' :
+    'type a message';
+  parseInput(msginput.value);
+  refreshPatternDim();
+  restartIfPlaying();
+});
+segWire('segdiv', 'd', (v) => { ui.div = parseInt(v, 10); previewKey = ''; updateRenderInfo(); });
+segWire('segfeel', 'f', (v) => { ui.feel = parseInt(v, 10); previewKey = ''; updateRenderInfo(); });
+segWire('segwave', 'w', (v) => {
+  ui.wave = v;
+  if (bed && bed.osc) bed.osc.type = v;
+});
+segWire('segmode', 'm', (v) => {
+  ui.fileMode = v;
+  refreshSourceDim();
+  if (ui.source === 'file') restartIfPlaying();
+});
+segWire('segsrc', 's', (v) => {
+  setSource(v);
+  restartIfPlaying();
+});
+segWire('passes', 'p', (v) => { ui.passes = parseInt(v, 10); updateRenderInfo(); });
+
+function setSource(v) {
+  ui.source = v;
+  document.querySelectorAll('#segsrc button').forEach((b) =>
+    b.classList.toggle('on', b.dataset.s === v));
+  refreshSourceDim();
+}
+
+function refreshSourceDim() {
+  const tone = ui.source === 'tone';
+  document.querySelector('[data-kn="freqKnob"]').classList.toggle('dim', !tone);
+  document.getElementById('segwave').classList.toggle('dim', !tone);
+  document.querySelector('[data-kn="speedKnob"]').classList.toggle('dim', tone);
+  document.getElementById('segmode').classList.toggle('dim', tone);
+  document.getElementById('dropwave').classList.toggle('dim', tone);
+  // depth = bed bleed; CHOP/SCAN has no bed to bleed
+  const hasBed = tone || ui.fileMode === 'gate';
+  document.querySelector('[data-kn="depthKnob"]').classList.toggle('dim', !hasBed);
+}
+
+function refreshPatternDim() {
+  const p = ui.pattern;
+  document.querySelector('[data-kn="dahKnob"]').classList.toggle('dim', p !== 'morse');
+  document.querySelector('[data-kn="gapKnob"]').classList.toggle('dim', p !== 'morse');
+  document.querySelector('[data-kn="ltrKnob"]').classList.toggle('dim', p === 'data');
+  document.querySelector('[data-kn="wordKnob"]').classList.toggle('dim', p === 'data');
+  document.querySelector('[data-kn="threshKnob"]').classList.toggle('dim', p !== 'data');
+}
+refreshSourceDim();
+refreshPatternDim();
+
+document.getElementById('decay').addEventListener('click', (e) => {
+  ui.decay = !ui.decay;
+  e.currentTarget.classList.toggle('on', ui.decay);
+  e.currentTarget.textContent = `${ui.decay ? '●' : '○'} decay`;
+});
+document.getElementById('restore').addEventListener('click', () => {
+  cur.msg = [...orig.msg];
+  cur.data = [...orig.data];
+  previewKey = '';
+  if (!display) buildReadout();
+});
+document.getElementById('tap').addEventListener('click', tapTempo);
+
+msginput.addEventListener('input', () => parseInput(msginput.value));
+
+const dropwave = document.getElementById('dropwave');
+const fileinput = document.getElementById('fileinput');
+document.getElementById('dropprompt').addEventListener('click', () => fileinput.click());
+document.getElementById('fileinfo').addEventListener('click', () => fileinput.click());
+fileinput.addEventListener('change', () => {
+  if (fileinput.files[0]) void loadFile(fileinput.files[0]);
+});
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropwave.classList.add('drag');
+});
+document.addEventListener('dragleave', () => dropwave.classList.remove('drag'));
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropwave.classList.remove('drag');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) void loadFile(f);
+});
+
+document.getElementById('play').addEventListener('click', () => togglePlay());
+document.getElementById('render').addEventListener('click', () => void renderWav());
+document.addEventListener('keydown', (e) => {
+  if (e.target !== document.body) {
+    if (e.code === 'Enter' && e.target === msginput) msginput.blur();
+    return;
+  }
+  if (e.code === 'Space') {
+    e.preventDefault();
+    togglePlay();
+  }
+  if (e.code === 'KeyT') tapTempo();
+});
+
+window.addEventListener('resize', () => { sizeCanvas(strip); drawFileWave(); });
+
+parseInput(msginput.value);
+sizeCanvas(strip);
+requestAnimationFrame(frame);
+
+// Debug/test hook
+window.slice = {
+  ui,
+  setKnob(k, v) { if (knobs[k]) knobs[k].setValue(v); else ui[k] = v; },
+  setInput(t) { msginput.value = t; parseInput(t); },
+  getPattern() { return ui.pattern === 'data' ? [...cur.data] : cur.msg.join(''); },
+  buildPass: () => buildPass(cur),
+};
+</script>
+</body>
+</html>
