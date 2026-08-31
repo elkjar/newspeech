@@ -439,10 +439,21 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-right" id="v-samples">
+<section class="vignette viz-right" id="v-drone">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">05 / sample</div>
+    <div class="kicker">05 / drone</div>
+    <h2 data-link>drone</h2>
+    <p>a breathing drone instrument — six partials in a minor-ninth voicing, each swelling on its own slow clock, never twice the same balance. twist the spectrum, the width, the breath; reroll the seed for a new performance of the same chord.</p>
+    <p>when it's right, export the kit: nine note-named wavs, seamless loops, ready for any sampler.</p>
+    <a class="cta" href="drone.html" data-link>open the tool</a>
+  </div>
+</section>
+
+<section class="vignette viz-left" id="v-samples">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">06 / sample</div>
     <h2 data-link>sample</h2>
     <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
     <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
@@ -450,10 +461,10 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-left" id="v-visuals">
+<section class="vignette viz-right" id="v-visuals">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">06 / visual</div>
+    <div class="kicker">07 / visual</div>
     <h2 data-link>visual</h2>
     <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
     <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
@@ -461,10 +472,10 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-right" id="v-code">
+<section class="vignette viz-left" id="v-code">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">07 / code</div>
+    <div class="kicker">08 / code</div>
     <h2 data-link>code</h2>
     <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
     <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
@@ -2046,10 +2057,59 @@ function drawDecayViz(v, t, dt) {
   c.fillRect(lx + state.pos * laneW, ly - amp, 1.5, amp * 2);
 }
 
+// ---- 05 drone: six partials breathing on their own slow clocks — each bar
+// swells inside a ghost of its full reach (the tool's viz verbatim); every
+// while the seed rerolls and the same chord breathes differently ----
+const DRONE_AMPS = [0.40, 0.26, 0.22, 0.18, 0.12, 0.05];
+function drawDroneViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  if (!state.lfo) {
+    state.reseed = () => {
+      state.lfo = DRONE_AMPS.map(() => ({
+        rate: 0.04 + Math.random() * 0.08,
+        ph: Math.random() * Math.PI * 2,
+      }));
+      state.seed = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
+      state.age = 0;
+    };
+    state.reseed();
+  }
+  state.age += dt;
+  if (state.age > 24) state.reseed(); // a new performance of the same chord
+  const env = intensity();
+  c.clearRect(0, 0, w, h);
+  const mobile = w < 720;
+  const laneW = w * (mobile ? 0.82 : 0.6);
+  const lx = (w - laneW) / 2;
+  const baseY = mobile ? h * 0.52 : h * 0.68;
+  const maxH = Math.min(260, h * (mobile ? 0.34 : 0.5));
+  const n = DRONE_AMPS.length;
+  const bw = laneW / (n * 2);
+
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+  c.fillStyle = "rgba(255, 255, 255, 0.35)";
+  c.fillText(`seed ${state.seed} · am9`, lx, baseY - maxH - 18);
+
+  for (let p = 0; p < n; p++) {
+    const breathe = 0.7 + 0.3 * Math.sin(2 * Math.PI * state.lfo[p].rate * (1 + env) * state.age + state.lfo[p].ph);
+    const full = (DRONE_AMPS[p] / DRONE_AMPS[0]) * maxH;
+    const live = full * breathe;
+    const x = lx + (p * 2 + 0.5) * bw;
+    // ghost = the partial's full reach; the live bar breathes inside it
+    c.fillStyle = "rgba(255, 255, 255, 0.07)";
+    c.fillRect(x, baseY - full, bw, full);
+    c.fillStyle = "rgba(255, 255, 255, 0.5)";
+    c.fillRect(x, baseY - live, bw, live);
+  }
+}
+
 registerViz("v-sequence", drawSeqViz);
 registerViz("v-texture", drawTextureViz);
 registerViz("v-slice", drawSliceViz);
 registerViz("v-decay", drawDecayViz);
+registerViz("v-drone", drawDroneViz);
 registerViz("v-samples", drawSamplesViz);
 registerViz("v-visuals", drawVisualsViz);
 registerViz("v-code", drawCodeViz);

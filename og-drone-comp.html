@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  #label {
+    position: absolute;
+    left: 127px;
+    top: 315px;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    white-space: nowrap;
+    font-size: 30px;
+    color: #fff;
+    letter-spacing: 0.04em;
+    font-family: "zxx-sans", monospace;
+  }
+  canvas { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div id="label">new×speech× | ×drone×</div>
+<script>
+// og-drone comp — same anatomy as the og-sequence family: vertical zxx label
+// left, the instrument graphic right. drone's graphic is its breath window
+// mid-swell: six partials each caught at a different point of its own slow
+// cycle, live bars inside ghosts of their full reach, seed readout above.
+const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
+const label = document.getElementById('label');
+label.innerHTML = [...label.textContent]
+  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
+  .join('');
+
+const c = document.getElementById('c').getContext('2d');
+const X0 = 260, X1 = 1120, BASE = 500, MAXH = 360;
+const AMPS = [0.40, 0.26, 0.22, 0.18, 0.12, 0.05];
+// each partial caught at a chosen phase of its breath — a real mid-swell
+// moment, staggered so the envelope reads immediately
+const BREATHE = [0.97, 0.62, 0.84, 0.45, 0.72, 0.55];
+const n = AMPS.length;
+const laneW = X1 - X0;
+const bw = laneW / (n * 2);
+
+for (let p = 0; p < n; p++) {
+  const full = (AMPS[p] / AMPS[0]) * MAXH;
+  const live = full * BREATHE[p];
+  const x = X0 + (p * 2 + 0.5) * bw;
+  c.fillStyle = 'rgba(255,255,255,0.09)';
+  c.fillRect(x, BASE - full, bw, full);
+  c.fillStyle = 'rgba(255,255,255,0.62)';
+  c.fillRect(x, BASE - live, bw, live);
+  // breath cycle marker: a faint tick at the crest each bar is headed for
+  c.fillStyle = 'rgba(255,255,255,0.25)';
+  c.fillRect(x, BASE - full - 2, bw, 2);
+}
+
+// readout caption, top of the lane — the tool's own register
+c.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace';
+c.textAlign = 'right';
+c.fillStyle = 'rgba(255,255,255,0.4)';
+c.fillText('seed 4f2a · am9 · C3 · 130.8Hz', X1 - bw, BASE - MAXH - 28);
+</script>
+</body>
+</html>

@@ -42,6 +42,7 @@
     `<a href="${ROOT}texture.html"${here("texture.html")} data-ns-link>texture</a>` +
     `<a href="${ROOT}slice.html"${here("slice.html")} data-ns-link>slice</a>` +
     `<a href="${ROOT}decay.html"${here("decay.html")} data-ns-link>decay</a>` +
+    `<a href="${ROOT}drone.html"${here("drone.html")} data-ns-link>drone</a>` +
     `<a href="${ROOT}samples.html"${here("samples.html")} data-ns-link>samples</a>` +
     `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
     `<a href="${ROOT}live.html"${here("live.html")} data-ns-link>code</a>` +
@@ -208,6 +209,7 @@
     `<a class="ov-link${cur("texture.html")}" href="${ROOT}texture.html">texture</a>` +
     `<a class="ov-link${cur("slice.html")}" href="${ROOT}slice.html">slice</a>` +
     `<a class="ov-link${cur("decay.html")}" href="${ROOT}decay.html">decay</a>` +
+    `<a class="ov-link${cur("drone.html")}" href="${ROOT}drone.html">drone</a>` +
     `<a class="ov-link${cur("samples.html")}" href="${ROOT}samples.html">samples</a>` +
     `<a class="ov-link${cur("visualizers.html")}" href="${ROOT}visualizers.html">visuals</a>` +
     `<a class="ov-link${cur("live.html")}" href="${ROOT}live.html">code</a>` +

@@ -3,14 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NEWSPEECH // drone lab</title>
-<meta name="robots" content="noindex">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // drone</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — a breathing drone instrument. six partials on their own slow clocks; twist the voice, reroll the seed, export the kit.">
+<meta property="og:title" content="NEWSPEECH // drone">
+<meta property="og:description" content="newspeech — a breathing drone instrument.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/drone.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-drone.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH // DRONE — six partials breathing on their own clocks">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // drone">
+<meta name="twitter:description" content="newspeech — a breathing drone instrument.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-drone.png">
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
   body {
     font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
-    padding: 24px 20px 60px;
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
     max-width: 1060px;
     margin: 0 auto;
   }
@@ -80,9 +97,11 @@
 </style>
 </head>
 <body>
+<script src="nav.js"></script>
+<script src="grain.js"></script>
 
-<h1>// DRONE LAB <span style="color:#555">(internal)</span></h1>
-<p class="sub">the decay demo voice as an instrument — twist the breath, reroll the seed, audition the kit note by note, export when it's right. defaults + a seed reproduce <span style="color:#999">tools/drone-gen.mjs</span> byte for byte.</p>
+<h1>// DRONE</h1>
+<p class="sub">a breathing drone instrument — six partials on their own slow clocks, never twice the same balance. twist the voice, reroll the seed, audition the kit note by note. export nine note-named wavs, seamless loops, ready for any sampler.</p>
 
 <div id="vizbox">
   <canvas id="viz"></canvas>
@@ -128,14 +147,14 @@
 </div>
 
 <script>
-// drone-lab — the live front end for tools/drone-gen.mjs. The synthesis
-// math here is the script's renderNote verbatim (same seeded draw order,
-// same seam fold, same normalize, same 24-bit writer), so an export at
-// default knobs is byte-identical to the CLI for the same seed; the knobs
-// are deviations from that baseline. Live preview runs the same voice as
-// an oscillator graph so twisting is instant. No fetches, no worklets —
-// this file runs from file:// on purpose: it is internal tooling and never
-// ships on the site.
+// drone.html — a breathing drone instrument, and the live front end for
+// tools/drone-gen.mjs. The synthesis math here is the script's renderNote
+// verbatim (same seeded draw order, same seam fold, same normalize, same
+// 24-bit writer), so an export at default knobs is byte-identical to the
+// CLI for the same seed; the knobs are deviations from that baseline.
+// Live preview runs the same voice as an oscillator graph so twisting is
+// instant. No fetches, no worklets — unlike the other tool pages this one
+// also runs from file://, which keeps it usable as bare local tooling.
 'use strict';
 
 const SR = 48000; // export rate, fixed — preview uses the device rate
