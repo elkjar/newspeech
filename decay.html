@@ -129,6 +129,8 @@
 
   @media (max-width: 720px) {
     .group { width: 100%; }
+    /* fileinfo + tapeinfo collide side-by-side at phone widths — stack them */
+    #tapeinfo { top: 28px; left: 10px; right: auto; }
   }
 </style>
 </head>
@@ -811,7 +813,7 @@ async function renderWav() {
     const n = new AudioWorkletNode(oc, 'decay', { numberOfInputs: 0, outputChannelCount: [2] });
     buildGraph(oc, n);
     const ready = new Promise((res) => {
-      n.port.onmessage = (e) => { if (e.data.type === 'ready') res(); };
+      n.port.onmessage = (e) => { if (e.data.type === 'pong') res(); };
     });
     n.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
     n.port.postMessage({ type: 'window', start: 0, len: fileL.length, seed });
@@ -819,8 +821,11 @@ async function renderWav() {
     // continue from the live tape's exact condition — the render picks up
     // the disintegration where the room left it
     n.port.postMessage({ type: 'state', wear: lastWear.slice(0), pass: lastPass, seed });
-    await ready;
     n.port.postMessage({ type: 'play', on: true });
+    // port messages deliver in order — the pong means play landed, so the
+    // offline context can't outrun it and print silence
+    n.port.postMessage({ type: 'ping' });
+    await ready;
     const rendered = await oc.startRendering();
     const blob = encodeWav16(rendered);
     const slug = (isDemo ? 'demo' : fileName).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || 'tape';

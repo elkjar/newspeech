@@ -118,6 +118,9 @@ class DecayProcessor extends AudioWorkletProcessor {
         this.pass = m.pass;
         this.rngWear = mulberry32(m.seed);
         this.refreshAvg();
+      } else if (m.type === 'ping') {
+        // in-order ack: everything posted before this has been processed
+        this.port.postMessage({ type: 'pong' });
       }
     };
   }
