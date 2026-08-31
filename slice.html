@@ -152,15 +152,16 @@
   .row2 { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
   .subgroup h2 { margin-bottom: 12px; }
 
-  /* file drop zone (compact — the pattern is the star, not the waveform) */
+  /* file drop zone + waveform: one block, first on the page (texture.html) */
   #dropwave {
     position: relative;
-    height: 90px;
+    height: 200px;
     background: #0a0a0a;
     border: 1px dashed #333;
-    margin-top: 10px;
+    margin-bottom: 14px;
     transition: border-color 0.15s;
   }
+  .droptip { color: #444; }
   #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
   #dropwave.drag { border-color: #777; }
   #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -179,8 +180,8 @@
   #dropwave.loaded #dropprompt { display: none; }
   #fileinfo {
     position: absolute;
-    top: 6px;
-    left: 8px;
+    top: 8px;
+    left: 10px;
     color: #888;
     cursor: pointer;
     display: none;
@@ -209,6 +210,13 @@
 
 <h1>// SLICE</h1>
 <p class="sub">pattern slicer — type a message, or feed it bits or a dataset, and slice a tone or a loop into its rhythm. tempo-locked, then mangled.</p>
+
+<div id="dropwave">
+  <canvas id="wave"></canvas>
+  <div id="dropprompt">drop an audio file here, or click to browse — a texture print works nicely<br><span class="droptip">(optional — the TONE source plays without one)</span></div>
+  <div id="fileinfo"></div>
+</div>
+<input type="file" id="fileinput" accept="audio/*">
 
 <div id="pattern">
   <div class="seg" id="segpat" style="margin:0;">
@@ -270,12 +278,6 @@
           <button data-m="chop" title="each hit re-punches into the loop where continuous playback would be">CHOP</button>
           <button data-m="scan" title="each hit grabs from a random position in the loop">SCAN</button>
         </div>
-        <div id="dropwave">
-          <canvas id="wave"></canvas>
-          <div id="dropprompt">drop an audio file here, or click to browse — a texture print works nicely</div>
-          <div id="fileinfo"></div>
-        </div>
-        <input type="file" id="fileinput" accept="audio/*">
       </div>
       <div class="kdivider"></div>
       <div class="subgroup">
@@ -557,10 +559,15 @@ const mangleRow = document.getElementById('mangle-knobs');
 mangleRow.appendChild(document.getElementById('decay'));
 mangleRow.appendChild(document.getElementById('restore'));
 
+// clock-shaped params restructure the pattern — while playing they hot-swap
+// the current pass (phase-preserved) instead of waiting for the loop point
+const CLOCK_KEYS = new Set(['bpmKnob', 'dahKnob', 'gapKnob', 'ltrKnob', 'wordKnob', 'threshKnob']);
+
 function onKnobChange(k) {
   if (k === 'levelKnob' && master) master.gain.setTargetAtTime(ui.levelKnob * 1.5, actx.currentTime, 0.02);
   if (k === 'freqKnob' && bed && bed.osc) bed.osc.frequency.setTargetAtTime(toneHz(), actx.currentTime, 0.02);
   if (k === 'speedKnob' && bed && bed.src) bed.src.playbackRate.setTargetAtTime(fileRate(), actx.currentTime, 0.02);
+  if (CLOCK_KEYS.has(k) && playing) clockDirty = true;
   previewKey = '';
   updateRenderInfo();
 }
@@ -626,9 +633,11 @@ function snapshotState() {
 // kind (0 short / 1 long — long takes the dah± pitch), ci (input index for
 // the readout), level, dropped }.
 function buildPass(state) {
-  if (ui.pattern === 'bits') return buildBits(state.msg);
-  if (ui.pattern === 'data') return buildData(state.data);
-  return buildMorse(state.msg);
+  const p = ui.pattern === 'bits' ? buildBits(state.msg)
+    : ui.pattern === 'data' ? buildData(state.data)
+    : buildMorse(state.msg);
+  p.beat = 60 / bpm(); // the strip's tempo grid reads the pass's own clock
+  return p;
 }
 
 function pushEvent(events, tU, durU, kind, ci, unit, level) {
@@ -826,6 +835,34 @@ let env = null;
 // display state trails the schedule — commits when the audio clock arrives
 let display = null;              // { pass, passStart, state }
 let pendingDisplay = [];
+let clockDirty = false;
+let lastSwap = 0;
+
+// Re-time the playing pass in place: same pattern position (as a phase
+// fraction), new clock. The bed gate re-anchors to the floor; anything the
+// old timing already scheduled inside the lookahead just plays out.
+function hotSwapPass() {
+  const now = actx.currentTime;
+  const frac = Math.min(1, Math.max(0, (now - passStart) / pass.total));
+  const state = display ? display.state : snapshotState();
+  pass = buildPass(state);
+  passStart = now - frac * pass.total;
+  schedIdx = pass.events.findIndex((ev) => passStart + ev.t >= now);
+  if (schedIdx < 0) schedIdx = pass.events.length;
+  if (bed) {
+    bed.gate.gain.cancelScheduledValues(now);
+    bed.gate.gain.setTargetAtTime(gateFloor(), now, 0.005);
+    if (bed.osc) {
+      bed.osc.frequency.cancelScheduledValues(now);
+      bed.osc.frequency.setValueAtTime(toneHz(), now);
+    } else {
+      bed.src.playbackRate.cancelScheduledValues(now);
+      bed.src.playbackRate.setValueAtTime(fileRate(), now);
+    }
+  }
+  pendingDisplay = [];
+  display = { pass, passStart, state };
+}
 
 function startPlayback() {
   if (!hasPattern()) return;
@@ -846,6 +883,12 @@ function startPlayback() {
 }
 
 function tick() {
+  // throttled so a knob drag re-times smoothly instead of stuttering the gate
+  if (clockDirty && actx.currentTime - lastSwap > 0.15) {
+    clockDirty = false;
+    lastSwap = actx.currentTime;
+    hotSwapPass();
+  }
   const horizon = actx.currentTime + LOOKAHEAD;
   let guard = 0;
   while (guard++ < 2000) {
@@ -1045,7 +1088,7 @@ function drawFileWave() {
   ctx.clearRect(0, 0, c.width, c.height);
   if (!fileBuf) return;
   const d = fileBuf.getChannelData(0);
-  const cols = 256;
+  const cols = 768;
   const per = d.length / cols;
   const mid = c.height / 2;
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
@@ -1119,6 +1162,17 @@ function drawStrip() {
   const { events, total } = dp.pass;
   const now = playing && actx ? actx.currentTime : -1;
   const ph = dp.passStart >= 0 && now >= 0 ? (now - dp.passStart) / total : -1;
+  const dpr = window.devicePixelRatio || 1;
+  // tempo grid: a hairline per beat, brighter every 4 — bpm/rate/feel
+  // changes re-grid the pattern even though the strip is span-normalized
+  const beat = dp.pass.beat || 60 / bpm();
+  const beats = total / beat;
+  if (beats <= W / (3 * dpr)) {
+    for (let b = 1; b < beats; b++) {
+      ctx.fillStyle = b % 4 === 0 ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)';
+      ctx.fillRect(((b * beat) / total) * W, 0, 1, H);
+    }
+  }
   let lit = -1;
   for (const ev of events) {
     const x = (ev.t / total) * W;
@@ -1139,8 +1193,15 @@ function drawStrip() {
   }
   if (ph >= 0 && ph <= 1) {
     ctx.fillStyle = '#fff';
-    ctx.fillRect(ph * W, 0, Math.max(1, window.devicePixelRatio || 1), H);
+    ctx.fillRect(ph * W, 0, Math.max(1, dpr), H);
   }
+  // pass length, bottom-right — the one clock change the normalized strip
+  // can't show as shape
+  ctx.font = `${10 * dpr}px "SF Mono", Menlo, Consolas, monospace`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillText(`${total.toFixed(1)}s`, W - 6 * dpr, H - 4 * dpr);
   if (lit !== litChar) {
     litChar = lit;
     readout.querySelectorAll('.rchar.now').forEach((el) => el.classList.remove('now'));
@@ -1202,8 +1263,8 @@ segWire('segpat', 't', (v) => {
   refreshPatternDim();
   restartIfPlaying();
 });
-segWire('segdiv', 'd', (v) => { ui.div = parseInt(v, 10); previewKey = ''; updateRenderInfo(); });
-segWire('segfeel', 'f', (v) => { ui.feel = parseInt(v, 10); previewKey = ''; updateRenderInfo(); });
+segWire('segdiv', 'd', (v) => { ui.div = parseInt(v, 10); previewKey = ''; if (playing) clockDirty = true; updateRenderInfo(); });
+segWire('segfeel', 'f', (v) => { ui.feel = parseInt(v, 10); previewKey = ''; if (playing) clockDirty = true; updateRenderInfo(); });
 segWire('segwave', 'w', (v) => {
   ui.wave = v;
   if (bed && bed.osc) bed.osc.type = v;
@@ -1232,7 +1293,6 @@ function refreshSourceDim() {
   document.getElementById('segwave').classList.toggle('dim', !tone);
   document.querySelector('[data-kn="speedKnob"]').classList.toggle('dim', tone);
   document.getElementById('segmode').classList.toggle('dim', tone);
-  document.getElementById('dropwave').classList.toggle('dim', tone);
   // depth = bed bleed; CHOP/SCAN has no bed to bleed
   const hasBed = tone || ui.fileMode === 'gate';
   document.querySelector('[data-kn="depthKnob"]').classList.toggle('dim', !hasBed);
@@ -1310,6 +1370,7 @@ window.slice = {
   setInput(t) { msginput.value = t; parseInput(t); },
   getPattern() { return ui.pattern === 'data' ? [...cur.data] : cur.msg.join(''); },
   buildPass: () => buildPass(cur),
+  getDisplay: () => display && { total: display.pass.total, passStart: display.passStart },
 };
 </script>
 </body>
