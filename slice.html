@@ -127,6 +127,16 @@
     text-align: center;
   }
   .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+  .kedit {
+    font: inherit;
+    width: 44px;
+    background: #0a0a0a;
+    color: #eee;
+    border: 1px solid #555;
+    text-align: center;
+    padding: 0 2px;
+    outline: none;
+  }
   .kcol.dim { opacity: 0.3; pointer-events: none; }
   .dim { opacity: 0.3; pointer-events: none; }
 
@@ -192,6 +202,17 @@
   #dropwave.loaded #fileinfo { display: block; }
   #fileinfo .fname { color: #ddd; }
   #fileinput { display: none; }
+  /* playback mode rides the file target — appears once a file is loaded */
+  #segmode {
+    position: absolute;
+    bottom: 8px;
+    left: 10px;
+    margin: 0;
+    display: none;
+    background: rgba(5,5,5,0.6);
+    padding: 2px 6px 2px 2px;
+  }
+  #dropwave.loaded #segmode { display: flex; }
 
   /* export */
   #export { margin-top: 20px; border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
@@ -215,6 +236,12 @@
   <canvas id="wave"></canvas>
   <div id="dropprompt">drop an audio file here, or click to browse — a texture print works nicely<br><span class="droptip">(optional — the TONE source plays without one)</span></div>
   <div id="fileinfo"></div>
+  <div class="seg" id="segmode">
+    <span class="seglabel">mode</span>
+    <button data-m="gate" class="on" title="the loop runs underneath — the pattern opens the gate">GATE</button>
+    <button data-m="chop" title="each hit re-punches into the loop where continuous playback would be">CHOP</button>
+    <button data-m="scan" title="each hit grabs from a random position in the loop">SCAN</button>
+  </div>
 </div>
 <input type="file" id="fileinput" accept="audio/*">
 
@@ -278,12 +305,6 @@
       <button data-w="triangle">TRI</button>
       <button data-w="square">SQR</button>
       <button data-w="sawtooth">SAW</button>
-    </div>
-    <div class="seg" id="segmode">
-      <span class="seglabel">mode</span>
-      <button data-m="gate" class="on" title="the loop runs underneath — the pattern opens the gate">GATE</button>
-      <button data-m="chop" title="each hit re-punches into the loop where continuous playback would be">CHOP</button>
-      <button data-m="scan" title="each hit grabs from a random position in the loop">SCAN</button>
     </div>
   </div>
 
@@ -395,7 +416,8 @@ const knobs = {};
 
 const KNOB_SPECS = [
   { group: 'clock-knobs', k: 'bpmKnob', label: 'bpm', fmt: () => Math.round(bpm()) + '',
-    title: 'tempo 20–300 — one unit is one rate division at this tempo' },
+    title: 'tempo 20–300 — one unit is one rate division at this tempo; click the number to type one',
+    edit: (s) => { const n = parseFloat(s); return isFinite(n) ? (Math.min(300, Math.max(20, n)) - 20) / 280 : null; } },
   { group: 'clock-knobs', divider: true },
   { group: 'clock-knobs', k: 'dahKnob', label: 'dah', fmt: () => dahUnits().toFixed(1) + 'u',
     title: 'MORSE — dah length in dits; 3 is regulation, below 1 the dash is shorter than the dot' },
@@ -510,7 +532,7 @@ function buildKnob(spec) {
     } else {
       arc.setAttribute('visibility', 'hidden');
     }
-    val.textContent = spec.fmt();
+    if (!val.firstElementChild) val.textContent = spec.fmt(); // don't wipe an open editor
   }
 
   function setValue(next) {
@@ -538,6 +560,32 @@ function buildKnob(spec) {
     const step = spec.steps ? 1 / (spec.steps - 1) : 0.05;
     setValue(ui[spec.k] + (e.deltaY > 0 ? -step : step));
   }, { passive: false });
+
+  if (spec.edit) {
+    val.style.cursor = 'text';
+    val.addEventListener('click', () => {
+      if (val.firstElementChild) return;
+      const inp = document.createElement('input');
+      inp.className = 'kedit';
+      inp.value = spec.fmt();
+      val.textContent = '';
+      val.appendChild(inp);
+      inp.focus();
+      inp.select();
+      const commit = () => {
+        const kv = spec.edit(inp.value);
+        inp.remove();
+        if (kv != null) setValue(kv);
+        draw();
+      };
+      inp.addEventListener('blur', commit);
+      inp.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') inp.blur();
+        if (e.key === 'Escape') { inp.value = spec.fmt(); inp.blur(); }
+      });
+    });
+  }
 
   knobs[spec.k] = { draw, setValue };
   draw();
@@ -819,6 +867,8 @@ function scheduleEvent(env, ev, t0) {
   const off = ui.fileMode === 'scan'
     ? Math.random() * Math.max(0.01, durF - ev.dur * rate)
     : ((t0 + ev.t) * fileRate()) % durF; // chop: punch in where continuous playback would be
+  ev.off = off; // the waveform overlay shows the slice being played
+  ev.rateUsed = rate;
   src.start(t, off);
   src.stop(tEnd + rel + 0.03);
   if (env.live) env.live.push(src);
@@ -877,6 +927,8 @@ function startPlayback() {
   env = { ctx: actx, dest: master, bed, buffer: fileBuf ? makeBuffer(actx) : null, live: liveNodes };
   if (bed && bed.src) env.buffer = null; // gate mode: the bed owns the file
   pendingDisplay = [{ time: passStart, pass, state }];
+  wavePos = 0; // GATE bed starts from the top of the file
+  lastPosT = passStart;
   playing = true;
   schedTimer = setInterval(tick, 50);
   tick();
@@ -1015,7 +1067,8 @@ async function renderWav() {
       : (orig.msg.join('').replace(/[^A-Z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || 'pattern');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `slice-${slug}-${Math.round(rendered.duration)}s.wav`;
+    // tempo rides the filename (texture convention) so a re-drop re-clocks
+    a.download = `slice-${Math.round(bpm())}bpm_${slug}-${Math.round(rendered.duration)}s.wav`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   } finally {
@@ -1072,38 +1125,87 @@ async function loadFile(file) {
   }
   fileBuf = buf;
   fileName = file.name;
+  // texture prints (and friends) carry their tempo in the name — adopt it
+  const bm = file.name.match(/(\d{2,3}(?:\.\d+)?)\s*bpm/i);
+  let clockNote = '';
+  if (bm) {
+    const b = Math.min(300, Math.max(20, parseFloat(bm[1])));
+    knobs.bpmKnob.setValue((b - 20) / 280);
+    clockNote = ` · clock → ${Math.round(b)}bpm`;
+  }
   document.getElementById('dropwave').classList.add('loaded');
   document.getElementById('fileinfo').innerHTML =
-    `<span class="fname">${file.name}</span> · ${buf.duration.toFixed(2)}s · replace`;
+    `<span class="fname">${file.name}</span> · ${buf.duration.toFixed(2)}s${clockNote} · replace`;
   drawFileWave();
   // dropping a file is intent — switch the source over
   setSource('file');
   restartIfPlaying();
 }
 
+// waveform peaks render once into an offscreen cache; the live overlay
+// (loop playhead / active slice) blits over it every frame
+let waveCache = null;
+let activeEv = null;   // the hit sounding right now (set by drawStrip)
+let activeT = 0;
+let wavePos = 0;       // GATE bed position in file seconds, integrated
+let lastPosT = 0;
+
 function drawFileWave() {
   const c = document.getElementById('wave');
   sizeCanvas(c);
-  const ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, c.width, c.height);
-  if (!fileBuf) return;
-  const d = fileBuf.getChannelData(0);
-  const cols = 768;
-  const per = d.length / cols;
-  const mid = c.height / 2;
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  for (let i = 0; i < cols; i++) {
-    const i0 = Math.floor(i * per);
-    const i1 = Math.min(d.length, Math.floor((i + 1) * per));
-    const step = Math.max(1, ((i1 - i0) / 40) | 0);
-    let mn = 0, mx = 0;
-    for (let j = i0; j < i1; j += step) {
-      if (d[j] < mn) mn = d[j];
-      if (d[j] > mx) mx = d[j];
+  waveCache = null;
+  if (fileBuf) {
+    waveCache = document.createElement('canvas');
+    waveCache.width = c.width;
+    waveCache.height = c.height;
+    const ctx = waveCache.getContext('2d');
+    const d = fileBuf.getChannelData(0);
+    const cols = 768;
+    const per = d.length / cols;
+    const mid = c.height / 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    for (let i = 0; i < cols; i++) {
+      const i0 = Math.floor(i * per);
+      const i1 = Math.min(d.length, Math.floor((i + 1) * per));
+      const step = Math.max(1, ((i1 - i0) / 40) | 0);
+      let mn = 0, mx = 0;
+      for (let j = i0; j < i1; j += step) {
+        if (d[j] < mn) mn = d[j];
+        if (d[j] > mx) mx = d[j];
+      }
+      const y0 = mid - mx * mid * 0.9;
+      const y1 = mid - mn * mid * 0.9;
+      ctx.fillRect((i / cols) * c.width, y0, c.width / cols + 0.5, Math.max(1, y1 - y0));
     }
-    const y0 = mid - mx * mid * 0.9;
-    const y1 = mid - mn * mid * 0.9;
-    ctx.fillRect((i / cols) * c.width, y0, c.width / cols + 0.5, Math.max(1, y1 - y0));
+  }
+  drawWave();
+}
+
+function drawWave() {
+  const c = document.getElementById('wave');
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0, 0, W, H);
+  if (waveCache) ctx.drawImage(waveCache, 0, 0);
+  if (!fileBuf || !playing || ui.source !== 'file') return;
+  const durF = fileBuf.duration;
+  const dpr = window.devicePixelRatio || 1;
+  if (ui.fileMode === 'gate') {
+    // the loop never stops — the playhead sweeps; bright while the gate is open
+    const x = ((wavePos % durF) / durF) * W;
+    const open = !!activeEv;
+    ctx.fillStyle = `rgba(255,255,255,${open ? 0.95 : 0.2 + 0.5 * gateFloor()})`;
+    ctx.fillRect(x, 0, Math.max(1, dpr), H);
+  } else if (activeEv && activeEv.off != null) {
+    // CHOP/SCAN: the slice actually sounding, playhead advancing through it
+    const rate = activeEv.rateUsed || 1;
+    const x0 = (activeEv.off / durF) * W;
+    const wSlice = Math.min(W - x0, Math.max(2, ((activeEv.dur * rate) / durF) * W));
+    ctx.fillStyle = 'rgba(255,255,255,0.16)';
+    ctx.fillRect(x0, 0, wSlice, H);
+    const frac = Math.min(1, Math.max(0, (actx.currentTime - activeT) / activeEv.dur));
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.fillRect(x0 + frac * wSlice, 0, Math.max(1, dpr), H);
   }
 }
 
@@ -1174,6 +1276,7 @@ function drawStrip() {
     }
   }
   let lit = -1;
+  activeEv = null;
   for (const ev of events) {
     const x = (ev.t / total) * W;
     const w = Math.max(2, (ev.dur / total) * W);
@@ -1182,7 +1285,11 @@ function drawStrip() {
       : (ev.kind ? H * 0.72 : H * 0.44);
     const y = (H - h) / 2;
     const active = ph >= 0 && now >= dp.passStart + ev.t && now < dp.passStart + ev.t + ev.dur;
-    if (active && !ev.dropped) lit = ev.ci;
+    if (active && !ev.dropped) {
+      lit = ev.ci;
+      activeEv = ev;
+      activeT = dp.passStart + ev.t;
+    }
     if (ev.dropped) {
       ctx.strokeStyle = 'rgba(255,255,255,0.15)';
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
@@ -1236,8 +1343,13 @@ function frame() {
       display = { pass: d.pass, passStart: d.time, state: d.state };
       buildReadout();
     }
+    // integrate the GATE bed's file position (speed knob picked up live)
+    const n = actx.currentTime;
+    if (bed && bed.src) wavePos += Math.max(0, n - lastPosT) * fileRate();
+    lastPosT = n;
   }
   drawStrip();
+  drawWave();
   requestAnimationFrame(frame);
 }
 
