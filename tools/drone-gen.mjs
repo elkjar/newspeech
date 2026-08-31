@@ -1,26 +1,27 @@
 #!/usr/bin/env node
 // drone-gen — batch-render additive drone kits for the sample library.
 //
-// v1 voice is decay.html's demo loop verbatim: six sine partials voicing an
-// add9 chord (1, 5, 8ve, m3, 5, 9), amplitudes rolling off with height,
-// each partial breathing on its own slow seeded LFO, right channel detuned
-// +0.13% for width. Here it's parameterized by root note and seed only —
-// transposition is exact (scale the partial frequencies), so one voicing
-// renders as a full note-named kit in the sequencer's auto-manifest
-// convention (<kit>-C2.wav, <kit>-E2.wav, <kit>-Gs2.wav, ...).
+// The voice descends from decay.html's demo loop: six sine partials with
+// its amplitude rolloff, each breathing on its own slow seeded LFO, right
+// channel detuned +0.13% for width — but at harmonic ratios of one
+// fundamental, so each file is a single TONE (Sequence voices the chords).
+// Parameterized by root note and seed only — transposition is exact (scale
+// the partial frequencies), so one voice renders as a full note-named kit
+// in the sequencer's auto-manifest convention (<kit>-C2.wav, <kit>-E2.wav,
+// <kit>-Gs2.wav, ...).
 //
 // Unlike the page (where the decay worklet crossfades the loop seam at
 // playback), these files must loop clean on their own: the render runs long
 // and folds the tail back over the head, so the wrap point is seamless in
 // any player.
 //
-//   node tools/drone-gen.mjs                        # am9 kit, random seed
+//   node tools/drone-gen.mjs                        # tone kit, random seed
 //   node tools/drone-gen.mjs --seed 4f2a            # reproducible
 //   node tools/drone-gen.mjs --start C1 --count 9   # note range
 //   node tools/drone-gen.mjs --secs 16 --out ~/Desktop/samples
 //
 // Output: <out>/<kit>/<kit>-<NOTE>.wav — 48k/24-bit stereo, peak -3dBFS,
-// kit named drone-am9-<seed>. Audition, then move the folder into the
+// kit named drone-<seed>. Audition, then move the folder into the
 // library yourself.
 
 import fs from 'node:fs';
@@ -69,15 +70,17 @@ function noteList(start, count) {
 }
 const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
-// ---- the voice: am9 add9 voicing, ratios lifted from the demo loop --------
-// (demo rooted at A2=110: 110, 164.8, 220, 261.6, 329.6, 493.9)
+// ---- the voice: six harmonics of one fundamental, the demo loop's rolloff ----
+// Each file is a single breathing TONE so Sequence's chord-relative engine
+// can voice chords from it. (The chord-interval version of this voice lives
+// on as decay.html's demo pad.)
 const VOICING = [
-  { r: 1.0,    a: 0.40 }, // root
-  { r: 1.4982, a: 0.26 }, // fifth
-  { r: 2.0,    a: 0.22 }, // octave
-  { r: 2.3782, a: 0.18 }, // minor third (up)
-  { r: 2.9964, a: 0.12 }, // fifth (up)
-  { r: 4.4900, a: 0.05 }, // ninth — the whisper on top
+  { r: 1.0, a: 0.40 },
+  { r: 2.0, a: 0.26 },
+  { r: 3.0, a: 0.22 },
+  { r: 4.0, a: 0.18 },
+  { r: 5.0, a: 0.12 },
+  { r: 6.0, a: 0.05 },
 ];
 // breath depth — written as (1-DEP)+DEP*sin (not 0.7+0.3*sin) so the byte
 // stream matches tools/drone-lab.html's export at default knobs exactly
@@ -146,7 +149,7 @@ function writeWav24(file, L, R) {
 const seedNum = parseInt(SEED, 16);
 if (!isFinite(seedNum)) throw new Error(`bad --seed "${SEED}" — hex expected`);
 const rng = mulberry32(seedNum);
-const kit = `drone-am9-${SEED}`;
+const kit = `drone-${SEED}`;
 const outDir = path.join(OUT.replace(/^~/, os.homedir()), kit);
 fs.mkdirSync(outDir, { recursive: true });
 

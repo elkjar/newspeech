@@ -444,8 +444,8 @@ fetch("news-latest.html")
   <div class="copy">
     <div class="kicker">05 / drone</div>
     <h2 data-link>drone</h2>
-    <p>a breathing drone instrument — six partials in a minor-ninth voicing, each swelling on its own slow clock, never twice the same balance. twist the spectrum, the width, the breath; reroll the seed for a new performance of the same chord.</p>
-    <p>when it's right, export the kit: nine note-named wavs, seamless loops, ready for any sampler.</p>
+    <p>a breathing drone instrument — one tone, six harmonics, each swelling on its own slow clock, never twice the same balance. twist the spectrum, the width, the breath; reroll the seed for a new performance of the same tone.</p>
+    <p>when it's right, export the kit: nine note-named single-tone wavs, seamless loops — built for sequence's pad instruments, ready for any sampler.</p>
     <a class="cta" href="drone.html" data-link>open the tool</a>
   </div>
 </section>
@@ -2057,9 +2057,9 @@ function drawDecayViz(v, t, dt) {
   c.fillRect(lx + state.pos * laneW, ly - amp, 1.5, amp * 2);
 }
 
-// ---- 05 drone: six partials breathing on their own slow clocks — each bar
+// ---- 05 drone: six harmonics breathing on their own slow clocks — each bar
 // swells inside a ghost of its full reach (the tool's viz verbatim); every
-// while the seed rerolls and the same chord breathes differently ----
+// while the seed rerolls and the same tone breathes differently ----
 const DRONE_AMPS = [0.40, 0.26, 0.22, 0.18, 0.12, 0.05];
 function drawDroneViz(v, t, dt) {
   const { ctx: c, w, h, state } = v;
@@ -2090,7 +2090,7 @@ function drawDroneViz(v, t, dt) {
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
   c.fillStyle = "rgba(255, 255, 255, 0.35)";
-  c.fillText(`seed ${state.seed} · am9`, lx, baseY - maxH - 18);
+  c.fillText(`seed ${state.seed} · 6 harmonics`, lx, baseY - maxH - 18);
 
   for (let p = 0; p < n; p++) {
     const breathe = 0.7 + 0.3 * Math.sin(2 * Math.PI * state.lfo[p].rate * (1 + env) * state.age + state.lfo[p].ph);

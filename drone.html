@@ -101,7 +101,7 @@
 <script src="grain.js"></script>
 
 <h1>// DRONE</h1>
-<p class="sub">a breathing drone instrument — six partials on their own slow clocks, never twice the same balance. twist the voice, reroll the seed, audition the kit note by note. export nine note-named wavs, seamless loops, ready for any sampler.</p>
+<p class="sub">a breathing drone instrument — one tone, six harmonics on their own slow clocks, never twice the same balance. twist the voice, reroll the seed, audition the kit note by note. export nine note-named single-tone wavs, seamless loops, ready for any sampler.</p>
 
 <div id="vizbox">
   <canvas id="viz"></canvas>
@@ -110,7 +110,7 @@
 
 <div id="transport">
   <button id="play">PLAY</button>
-  <button id="reroll" title="redraw every LFO rate + phase from a fresh seed — a new performance of the same chord">REROLL SEED</button>
+  <button id="reroll" title="redraw every LFO rate + phase from a fresh seed — a new performance of the same tone">REROLL SEED</button>
   <span id="seed" title="click to type a seed (hex) — reproduces that kit exactly"></span>
   <span class="hint">[space] play/stop</span>
 </div>
@@ -170,14 +170,17 @@ function mulberry32(seed) {
   };
 }
 
-// the am9 voicing, ratios + rolloff lifted from the demo loop
+// six harmonics of one fundamental with the demo loop's rolloff — each file
+// is a single breathing TONE, so Sequence's chord-relative engine can voice
+// chords from it (the chord-interval version of this voice lives on as
+// decay.html's demo pad)
 const VOICING = [
-  { r: 1.0,    a: 0.40 },
-  { r: 1.4982, a: 0.26 },
-  { r: 2.0,    a: 0.22 },
-  { r: 2.3782, a: 0.18 },
-  { r: 2.9964, a: 0.12 },
-  { r: 4.4900, a: 0.05 },
+  { r: 1.0, a: 0.40 },
+  { r: 2.0, a: 0.26 },
+  { r: 3.0, a: 0.22 },
+  { r: 4.0, a: 0.18 },
+  { r: 5.0, a: 0.12 },
+  { r: 6.0, a: 0.05 },
 ];
 
 const NOTE_ORDER = ['C', 'E', 'Gs'];
@@ -597,7 +600,7 @@ async function exportKit() {
   const btn = document.getElementById('exportkit');
   const info = document.getElementById('exportinfo');
   btn.disabled = true;
-  const kit = `drone-am9-${seedHex()}`;
+  const kit = `drone-${seedHex()}`;
   try {
     for (let i = 0; i < NOTES.length; i++) {
       info.textContent = `rendering ${NOTES[i].name} · ${i + 1}/9`;
