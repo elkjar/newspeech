@@ -104,12 +104,6 @@
     color: rgba(255,255,255,0.7); text-align: center;
   }
   .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
-  .kedit {
-    font: inherit; width: 44px; background: #0a0a0a; color: #eee;
-    border: 1px solid #555; text-align: center; padding: 0 2px; outline: none;
-  }
-  .kcol.dim { opacity: 0.3; pointer-events: none; }
-  .dim { opacity: 0.3; pointer-events: none; }
 
   .krow .minibtn, .seg .minibtn { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; }
   .krow .minibtn { align-self: center; margin-top: -14px; }
@@ -170,18 +164,6 @@
   <div class="group" id="g-character">
     <h2>CHARACTER</h2>
     <div class="krow" id="character-knobs"></div>
-  </div>
-
-  <div class="group" id="g-clock">
-    <h2>CLOCK</h2>
-    <div class="krow" id="clock-knobs"></div>
-    <div class="seg" id="segsync">
-      <span class="seglabel">repeat sync</span>
-      <button data-y="free" class="on">FREE</button>
-      <button data-y="0.25">1/16</button>
-      <button data-y="0.5">1/8</button>
-      <button data-y="1">1/4</button>
-    </div>
   </div>
 
 </div>
@@ -269,20 +251,17 @@ const ui = {
   airKnob: 0.3,
   roomKnob: 0.35,
   levelKnob: 1 / 1.5,
-  bpmKnob: (120 - 20) / 280,
-  sync: 'free',
   passes: 8, // 0 = TO SILENCE
 };
 
 const wearAmt = () => 0.04 + Math.pow(ui.wearKnob, 1.7) * 3.2;
 const accel = () => ui.accelKnob * 0.2;
-const bpm = () => 20 + ui.bpmKnob * 280;
 const fmtPct = (k) => Math.round(ui[k] * 100) + '';
 
+// REPEAT cell scale — no clock here; the source file carries its own tempo
 function cellFrames() {
   const sr = actx ? actx.sampleRate : 48000;
-  if (ui.sync === 'free') return Math.round(0.18 * sr);
-  return Math.max(256, Math.round((60 / bpm()) * parseFloat(ui.sync) * sr));
+  return Math.round(0.18 * sr);
 }
 
 function workletParams() {
@@ -331,10 +310,6 @@ const KNOB_SPECS = [
     title: 'the space the holes open into — reverb send' },
   { group: 'character-knobs', divider: true },
   { group: 'character-knobs', k: 'levelKnob', label: 'level', fmt: () => Math.round(ui.levelKnob * 150) + '' },
-
-  { group: 'clock-knobs', k: 'bpmKnob', label: 'bpm', fmt: () => Math.round(bpm()) + '',
-    title: 'tempo for REPEAT sync — click the number to type one; filenames carrying XXXbpm set it on drop',
-    edit: (s) => { const n = parseFloat(s); return isFinite(n) ? (Math.min(300, Math.max(20, n)) - 20) / 280 : null; } },
 ];
 
 function buildKnob(spec) {
@@ -421,32 +396,6 @@ function buildKnob(spec) {
     e.preventDefault();
     setValue(ui[spec.k] + (e.deltaY > 0 ? -0.05 : 0.05));
   }, { passive: false });
-
-  if (spec.edit) {
-    val.style.cursor = 'text';
-    val.addEventListener('click', () => {
-      if (val.firstElementChild) return;
-      const inp = document.createElement('input');
-      inp.className = 'kedit';
-      inp.value = spec.fmt();
-      val.textContent = '';
-      val.appendChild(inp);
-      inp.focus();
-      inp.select();
-      const commit = () => {
-        const kv = spec.edit(inp.value);
-        inp.remove();
-        if (kv != null) setValue(kv);
-        draw();
-      };
-      inp.addEventListener('blur', commit);
-      inp.addEventListener('keydown', (e) => {
-        e.stopPropagation();
-        if (e.key === 'Enter') inp.blur();
-        if (e.key === 'Escape') { inp.value = spec.fmt(); inp.blur(); }
-      });
-    });
-  }
 
   knobs[spec.k] = { draw, setValue };
   draw();
@@ -620,16 +569,13 @@ async function loadFile(file) {
   fileName = file.name.replace(/\.[^.]+$/, '');
   fileDur = buf.duration;
   isDemo = false;
+  // a XXXbpm filename rides through to the render's name — the loop keeps
+  // its own tempo, this tool never touches it
   const bm = file.name.match(/(\d{2,3}(?:\.\d+)?)\s*bpm/i);
-  let clockNote = '';
-  if (bm) {
-    fileBpm = Math.min(300, Math.max(20, parseFloat(bm[1])));
-    knobs.bpmKnob.setValue((fileBpm - 20) / 280);
-    clockNote = ` · clock → ${Math.round(fileBpm)}bpm`;
-  }
+  fileBpm = bm ? Math.min(300, Math.max(20, parseFloat(bm[1]))) : 0;
   document.getElementById('dropwave').classList.add('loaded');
   document.getElementById('fileinfo').innerHTML =
-    `<span class="fname">${file.name}</span> · ${fileDur.toFixed(2)}s${clockNote} · replace`;
+    `<span class="fname">${file.name}</span> · ${fileDur.toFixed(2)}s · replace`;
   buildPeaks();
   node.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
   pushWindow();
@@ -839,8 +785,7 @@ async function renderWav() {
     const rendered = await oc.startRendering();
     const blob = encodeWav16(rendered);
     const slug = (isDemo ? 'demo' : fileName).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || 'tape';
-    const b = Math.round(bpm());
-    const bpmTag = ui.sync !== 'free' || fileBpm ? `-${b}bpm` : '';
+    const bpmTag = fileBpm ? `-${Math.round(fileBpm)}bpm` : '';
     const secs = Math.round(rendered.duration);
     const lenTag = secs >= 60 ? `${Math.round(secs / 60)}m` : `${secs}s`;
     const a = document.createElement('a');
@@ -922,20 +867,10 @@ function segWire(id, attr, cb) {
     });
   });
 }
-segWire('segsync', 'y', (v) => {
-  ui.sync = v;
-  refreshClockDim();
-  pushParams();
-});
 segWire('passes', 'p', (v) => {
   ui.passes = parseInt(v, 10);
   updateRenderInfo();
 });
-
-function refreshClockDim() {
-  document.querySelector('[data-kn="bpmKnob"]').classList.toggle('dim', ui.sync === 'free');
-}
-refreshClockDim();
 
 document.getElementById('play').addEventListener('click', () => void togglePlay());
 document.getElementById('reset').addEventListener('click', resetTape);

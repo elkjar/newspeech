@@ -62,7 +62,7 @@ const DEFAULTS = {
   wobble: 0.2,
   air: 0.3,
   level: 1.0,
-  cellFrames: 8000, // REPEAT cell length (main thread syncs to bpm divisions)
+  cellFrames: 8000, // REPEAT cell length (main thread sends 180ms in frames)
 };
 
 class DecayProcessor extends AudioWorkletProcessor {
