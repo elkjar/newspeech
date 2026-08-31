@@ -1,0 +1,950 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // decay</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — disintegration loops. Drop a loop and let the tape rot: wear accumulates where it already hurts, pass after pass, until silence.">
+<meta property="og:title" content="NEWSPEECH // decay">
+<meta property="og:description" content="newspeech — disintegration loops.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/decay.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // decay">
+<meta name="twitter:description" content="newspeech — disintegration loops.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0 0 4px; }
+  .sub { color: #666; margin: 0 0 20px; }
+
+  /* the tape: drop zone + the decay visualizer, first and biggest on the
+     page — the source is the loop, and this window is where it dies */
+  #dropwave {
+    position: relative;
+    height: 340px;
+    background: #0a0a0a;
+    border: 1px dashed #333;
+    margin-bottom: 14px;
+    transition: border-color 0.15s;
+  }
+  #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
+  #dropwave.drag { border-color: #777; }
+  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #dropprompt {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #666; cursor: pointer; text-align: center; padding: 0 12px;
+  }
+  #dropwave.drag #dropprompt { color: #ddd; }
+  #dropwave.loaded #dropprompt { display: none; }
+  .droptip { color: #444; }
+  #fileinfo {
+    position: absolute; top: 8px; left: 10px;
+    color: #888; cursor: pointer; display: none;
+    background: rgba(5,5,5,0.6); padding: 1px 6px;
+  }
+  #fileinfo:hover { color: #ddd; }
+  #dropwave.loaded #fileinfo { display: block; }
+  #fileinfo .fname { color: #ddd; }
+  #tapeinfo {
+    position: absolute; top: 8px; right: 10px;
+    color: #888; display: none;
+    background: rgba(5,5,5,0.6); padding: 1px 6px;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  #dropwave.loaded #tapeinfo { display: block; }
+  #tapeinfo em { font-style: normal; color: #ddd; }
+  #fileinput { display: none; }
+
+  /* transport */
+  #transport { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+  button {
+    font: inherit; background: none; color: #ccc;
+    border: 1px solid #444; padding: 8px 22px;
+    cursor: pointer; letter-spacing: 0.15em;
+  }
+  button:hover { border-color: #999; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .hint { color: #555; }
+
+  /* unit groups — bordered boxes sized to their contents, flowing in rows */
+  #units { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; max-width: 100%; min-width: 0; }
+  .group h2 { font-size: 11px; font-weight: 400; letter-spacing: 0.25em; color: #999; margin: 0 0 12px; }
+
+  .krow { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .kdivider { align-self: stretch; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px; }
+  .kcol {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    width: 58px; user-select: none; -webkit-user-select: none;
+  }
+  .kcol svg { cursor: ns-resize; touch-action: none; display: block; }
+  .kcol svg:hover .kring { stroke-opacity: 0.22; }
+  .kcol .klabel {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+    color: rgba(255,255,255,0.7); text-align: center;
+  }
+  .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+  .kedit {
+    font: inherit; width: 44px; background: #0a0a0a; color: #eee;
+    border: 1px solid #555; text-align: center; padding: 0 2px; outline: none;
+  }
+  .kcol.dim { opacity: 0.3; pointer-events: none; }
+  .dim { opacity: 0.3; pointer-events: none; }
+
+  .krow .minibtn, .seg .minibtn { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; }
+  .krow .minibtn { align-self: center; margin-top: -14px; }
+  .krow .minibtn:hover, .seg .minibtn:hover { border-color: #999; color: #fff; }
+
+  .seg { display: flex; gap: 4px; margin: 8px 0 0; flex-wrap: wrap; align-items: center; }
+  .seg button { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.12em; }
+  .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .seg .seglabel {
+    color: #666; padding: 0 6px 0 0;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+  }
+
+  #export { margin-top: 20px; border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #export .seg { margin: 0; }
+  #renderinfo { color: #666; }
+
+  @media (max-width: 720px) {
+    .group { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<script src="nav.js"></script>
+<script src="grain.js"></script>
+
+<h1>// DECAY</h1>
+<p class="sub">disintegration loops — drop a loop and let the tape rot. wear lands where it already hurts, pass after pass, until silence. print the whole collapse.</p>
+
+<div id="dropwave">
+  <canvas id="wave"></canvas>
+  <div id="dropprompt">drop an audio file here, or click to browse — the whole file is the loop<br><span class="droptip">(or just press play — a demo loop is included)</span></div>
+  <div id="fileinfo"></div>
+  <div id="tapeinfo"></div>
+</div>
+<input type="file" id="fileinput" accept="audio/*">
+
+<div id="transport">
+  <button id="play">PLAY</button>
+  <button id="reset" title="fresh oxide — the wear map clears, the source is untouched">RESET TAPE</button>
+  <span class="hint">[space] play/stop &nbsp;·&nbsp; the tape keeps its damage until you reset it</span>
+</div>
+
+<div id="units">
+
+  <div class="group" id="g-wear">
+    <h2>WEAR</h2>
+    <div class="krow" id="wear-knobs"></div>
+  </div>
+
+  <div class="group" id="g-failure">
+    <h2>FAILURE</h2>
+    <div class="krow" id="failure-knobs"></div>
+  </div>
+
+  <div class="group" id="g-character">
+    <h2>CHARACTER</h2>
+    <div class="krow" id="character-knobs"></div>
+  </div>
+
+  <div class="group" id="g-clock">
+    <h2>CLOCK</h2>
+    <div class="krow" id="clock-knobs"></div>
+    <div class="seg" id="segsync">
+      <span class="seglabel">repeat sync</span>
+      <button data-y="free" class="on">FREE</button>
+      <button data-y="0.25">1/16</button>
+      <button data-y="0.5">1/8</button>
+      <button data-y="1">1/4</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="export">
+  <div class="seg" id="passes">
+    <span class="seglabel">passes</span>
+    <button data-p="4">×4</button>
+    <button data-p="8" class="on">×8</button>
+    <button data-p="16">×16</button>
+    <button data-p="32">×32</button>
+    <button data-p="0" title="render every pass from the tape's current condition until it dies">TO SILENCE</button>
+  </div>
+  <button id="render">RENDER WAV</button>
+  <span id="renderinfo"></span>
+</div>
+
+<script>
+// decay.html — disintegration loops. A loop plays; a positional wear map
+// (decay-worklet.js) deepens the same wounds every pass — rich-get-richer
+// plus spreading at the edges, like oxide shedding from real tape. The
+// FAILURE knobs choose how the damage expresses: drops, glitches, smears,
+// repeats. Nothing is immediate; everything accumulates, which is the
+// process-music point. The wear map persists across play/stop; RESET TAPE
+// is the only way back. Render prints N passes — or TO SILENCE, the whole
+// collapse from the tape's current condition — as one 16-bit WAV (these
+// prints run to tens of minutes; 32-bit float would double them for
+// nothing tape ever earned).
+
+const SEGS = 1024;
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// MUST match decay-worklet.js's evolveWear — the render's length and the
+// "passes to silence" estimate both depend on simulating it exactly.
+function evolveWear(wear, rng, amount, spread) {
+  const hits = Math.max(1, Math.round(amount * SEGS * 0.035));
+  for (let i = 0; i < hits; i++) {
+    let idx = (rng() * SEGS) | 0;
+    if (rng() < 0.65) {
+      for (let c = 0; c < 3; c++) {
+        const j = (rng() * SEGS) | 0;
+        if (wear[j] > wear[idx]) idx = j;
+      }
+    }
+    wear[idx] = Math.min(1, wear[idx] + 0.05 + 0.09 * rng());
+  }
+  if (spread > 0) {
+    const k = spread * 0.22;
+    for (let i = 0; i < SEGS; i++) {
+      const nb = Math.max(wear[(i + SEGS - 1) % SEGS], wear[(i + 1) % SEGS]);
+      if (nb > wear[i]) wear[i] = Math.min(1, wear[i] + (nb - wear[i]) * k);
+    }
+  }
+}
+
+function healthOf(wear, drop) {
+  const holeAt = 0.97 - 0.5 * drop;
+  let g = 0;
+  for (let i = 0; i < SEGS; i++) {
+    g += wear[i] >= holeAt ? 0 : Math.pow(1 - wear[i], 1 + 5 * drop);
+  }
+  return g / SEGS;
+}
+
+// --- UI state — knobs in 0..1 knob space, mapped at read -----------------------
+const ui = {
+  wearKnob: 0.4,
+  accelKnob: 0.15,
+  spreadKnob: 0.45,
+  dropKnob: 0.6,
+  glitchKnob: 0.25,
+  smearKnob: 0.5,
+  repeatKnob: 0.25,
+  wobbleKnob: 0.2,
+  airKnob: 0.3,
+  roomKnob: 0.35,
+  levelKnob: 1 / 1.5,
+  bpmKnob: (120 - 20) / 280,
+  sync: 'free',
+  passes: 8, // 0 = TO SILENCE
+};
+
+const wearAmt = () => 0.04 + Math.pow(ui.wearKnob, 1.7) * 3.2;
+const accel = () => ui.accelKnob * 0.2;
+const bpm = () => 20 + ui.bpmKnob * 280;
+const fmtPct = (k) => Math.round(ui[k] * 100) + '';
+
+function cellFrames() {
+  const sr = actx ? actx.sampleRate : 48000;
+  if (ui.sync === 'free') return Math.round(0.18 * sr);
+  return Math.max(256, Math.round((60 / bpm()) * parseFloat(ui.sync) * sr));
+}
+
+function workletParams() {
+  return {
+    wearAmt: wearAmt(),
+    accel: accel(),
+    spread: ui.spreadKnob,
+    drop: ui.dropKnob,
+    glitch: ui.glitchKnob,
+    smear: ui.smearKnob,
+    repeat: ui.repeatKnob,
+    wobble: ui.wobbleKnob,
+    air: ui.airKnob,
+    level: ui.levelKnob * 1.5,
+    cellFrames: cellFrames(),
+  };
+}
+
+// --- knobs (the house Knob: ring, 270° arc, tick, vertical drag) ---------------
+const SVGNS = 'http://www.w3.org/2000/svg';
+const KNOB_SIZE = 40;
+const knobs = {};
+
+const KNOB_SPECS = [
+  { group: 'wear-knobs', k: 'wearKnob', label: 'wear', fmt: () => fmtPct('wearKnob'),
+    title: 'oxide lost per pass — low is geological, the top kills a tape in a handful of passes' },
+  { group: 'wear-knobs', k: 'accelKnob', label: 'accel', fmt: () => fmtPct('accelKnob'),
+    title: 'wear grows this much faster every pass — the runaway collapse; 0 = steady rate' },
+  { group: 'wear-knobs', k: 'spreadKnob', label: 'spread', fmt: () => fmtPct('spreadKnob'),
+    title: 'wounds grow at their edges — high spread rots in patches, low spread in pinholes' },
+
+  { group: 'failure-knobs', k: 'dropKnob', label: 'drop', fmt: () => fmtPct('dropKnob'),
+    title: 'wear as amplitude — gouges deepen into full dropout holes' },
+  { group: 'failure-knobs', k: 'glitchKnob', label: 'glitch', fmt: () => fmtPct('glitchKnob'),
+    title: 'wear as corruption — sample-hold bursts, micro-repeats, crackle at the wound edges' },
+  { group: 'failure-knobs', k: 'smearKnob', label: 'smear', fmt: () => fmtPct('smearKnob'),
+    title: 'wear as muffle — worn spots lose their highs first, the way oxide sheds' },
+  { group: 'failure-knobs', k: 'repeatKnob', label: 'repeat', fmt: () => fmtPct('repeatKnob'),
+    title: 'wear as stutter — damaged spots catch and repeat in place; the loop period never drifts' },
+
+  { group: 'character-knobs', k: 'wobbleKnob', label: 'wobble', fmt: () => fmtPct('wobbleKnob'),
+    title: 'wow + flutter, scaled by age — a dying tape also loses its transport' },
+  { group: 'character-knobs', k: 'airKnob', label: 'air', fmt: () => fmtPct('airKnob'),
+    title: 'hiss floor, rising with age' },
+  { group: 'character-knobs', k: 'roomKnob', label: 'room', fmt: () => fmtPct('roomKnob'),
+    title: 'the space the holes open into — reverb send' },
+  { group: 'character-knobs', divider: true },
+  { group: 'character-knobs', k: 'levelKnob', label: 'level', fmt: () => Math.round(ui.levelKnob * 150) + '' },
+
+  { group: 'clock-knobs', k: 'bpmKnob', label: 'bpm', fmt: () => Math.round(bpm()) + '',
+    title: 'tempo for REPEAT sync — click the number to type one; filenames carrying XXXbpm set it on drop',
+    edit: (s) => { const n = parseFloat(s); return isFinite(n) ? (Math.min(300, Math.max(20, n)) - 20) / 280 : null; } },
+];
+
+function buildKnob(spec) {
+  const col = document.createElement('div');
+  col.className = 'kcol';
+  col.dataset.kn = spec.k;
+  const s = KNOB_SIZE;
+  const cx = s / 2, cy = s / 2;
+  const ringR = s * 0.36;
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('width', s);
+  svg.setAttribute('height', s);
+  svg.setAttribute('viewBox', `0 0 ${s} ${s}`);
+  if (spec.title) {
+    const t = document.createElementNS(SVGNS, 'title');
+    t.textContent = spec.title;
+    svg.appendChild(t);
+  }
+  const ring = document.createElementNS(SVGNS, 'circle');
+  ring.setAttribute('cx', cx); ring.setAttribute('cy', cy); ring.setAttribute('r', ringR);
+  ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', 'white');
+  ring.setAttribute('stroke-opacity', '0.12'); ring.setAttribute('stroke-width', '1');
+  ring.setAttribute('class', 'kring');
+  const arc = document.createElementNS(SVGNS, 'path');
+  arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', 'white');
+  arc.setAttribute('stroke-opacity', '0.7'); arc.setAttribute('stroke-width', '1.75');
+  arc.setAttribute('stroke-linecap', 'round');
+  const tick = document.createElementNS(SVGNS, 'line');
+  tick.setAttribute('stroke', 'white'); tick.setAttribute('stroke-opacity', '0.9');
+  tick.setAttribute('stroke-width', '1.75'); tick.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(ring); svg.appendChild(arc); svg.appendChild(tick);
+
+  const label = document.createElement('span');
+  label.className = 'klabel';
+  label.textContent = spec.label;
+  const val = document.createElement('span');
+  val.className = 'kval';
+  col.appendChild(svg); col.appendChild(label); col.appendChild(val);
+
+  function draw() {
+    const v = Math.min(1, Math.max(0, ui[spec.k]));
+    const angleDeg = -135 + 270 * v;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const tickInner = s * 0.17;
+    tick.setAttribute('x1', cx + tickInner * Math.sin(angleRad));
+    tick.setAttribute('y1', cy - tickInner * Math.cos(angleRad));
+    tick.setAttribute('x2', cx + ringR * Math.sin(angleRad));
+    tick.setAttribute('y2', cy - ringR * Math.cos(angleRad));
+    if (v > 0) {
+      const startRad = (-135 * Math.PI) / 180;
+      const largeArc = Math.abs(angleDeg + 135) > 180 ? 1 : 0;
+      arc.setAttribute('d',
+        `M ${cx + ringR * Math.sin(startRad)} ${cy - ringR * Math.cos(startRad)} ` +
+        `A ${ringR} ${ringR} 0 ${largeArc} 1 ` +
+        `${cx + ringR * Math.sin(angleRad)} ${cy - ringR * Math.cos(angleRad)}`);
+      arc.setAttribute('visibility', 'visible');
+    } else {
+      arc.setAttribute('visibility', 'hidden');
+    }
+    if (!val.firstElementChild) val.textContent = spec.fmt();
+  }
+
+  function setValue(next) {
+    const v = Math.min(1, Math.max(0, next));
+    if (v === ui[spec.k]) return;
+    ui[spec.k] = v;
+    draw();
+    onKnobChange(spec.k);
+  }
+
+  svg.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startVal = ui[spec.k];
+    const onMove = (ev) => setValue(startVal + (startY - ev.clientY) / 100);
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    setValue(ui[spec.k] + (e.deltaY > 0 ? -0.05 : 0.05));
+  }, { passive: false });
+
+  if (spec.edit) {
+    val.style.cursor = 'text';
+    val.addEventListener('click', () => {
+      if (val.firstElementChild) return;
+      const inp = document.createElement('input');
+      inp.className = 'kedit';
+      inp.value = spec.fmt();
+      val.textContent = '';
+      val.appendChild(inp);
+      inp.focus();
+      inp.select();
+      const commit = () => {
+        const kv = spec.edit(inp.value);
+        inp.remove();
+        if (kv != null) setValue(kv);
+        draw();
+      };
+      inp.addEventListener('blur', commit);
+      inp.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') inp.blur();
+        if (e.key === 'Escape') { inp.value = spec.fmt(); inp.blur(); }
+      });
+    });
+  }
+
+  knobs[spec.k] = { draw, setValue };
+  draw();
+  return col;
+}
+
+for (const spec of KNOB_SPECS) {
+  const parent = document.getElementById(spec.group);
+  if (spec.divider) {
+    const d = document.createElement('div');
+    d.className = 'kdivider';
+    parent.appendChild(d);
+  } else {
+    parent.appendChild(buildKnob(spec));
+  }
+}
+
+function onKnobChange(k) {
+  if (k === 'roomKnob' && wet) wet.gain.setTargetAtTime(ui.roomKnob * 0.9, actx.currentTime, 0.05);
+  pushParams();
+  updateEstimate();
+  updateRenderInfo();
+}
+
+// --- audio plumbing --------------------------------------------------------------
+let actx = null;
+let node = null;
+let wet = null;
+let fileL = null, fileR = null;
+let fileName = '';
+let fileDur = 0;
+let fileBpm = 0;
+let isDemo = false;
+let playing = false;
+// tape state as last reported by the worklet
+let lastWear = new Float32Array(SEGS);
+let lastPass = 0;
+let lastHealth = 1;
+let posF = -1;
+let latching = false;
+
+function makeIR(ctx) {
+  const sr = ctx.sampleRate;
+  const n = Math.round(sr * 4.5);
+  const b = ctx.createBuffer(2, n, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = b.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      // lowpassed noise under an exponential decay — a dark, patient room
+      lp += ((Math.random() * 2 - 1) - lp) * 0.18;
+      d[i] = lp * Math.exp(-i / (sr * 1.4));
+    }
+  }
+  return b;
+}
+
+function buildGraph(ctx, workletNode) {
+  const dry = ctx.createGain();
+  dry.gain.value = 1;
+  const conv = ctx.createConvolver();
+  conv.buffer = makeIR(ctx);
+  const w = ctx.createGain();
+  w.gain.value = ui.roomKnob * 0.9;
+  workletNode.connect(dry);
+  dry.connect(ctx.destination);
+  workletNode.connect(conv);
+  conv.connect(w);
+  w.connect(ctx.destination);
+  return w;
+}
+
+async function ensureAudio() {
+  if (actx) return;
+  actx = new AudioContext();
+  await actx.audioWorklet.addModule('decay-worklet.js');
+  node = new AudioWorkletNode(actx, 'decay', { numberOfInputs: 0, outputChannelCount: [2] });
+  wet = buildGraph(actx, node);
+  node.port.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'pass') {
+      lastWear = m.wear;
+      lastPass = m.pass;
+      lastHealth = m.health;
+      updateEstimate();
+    } else if (m.type === 'pos') {
+      posF = m.f;
+      latching = m.latch;
+    }
+  };
+  pushParams();
+}
+
+function pushParams() {
+  if (node) node.port.postMessage({ type: 'params', p: workletParams() });
+}
+
+// the source is the loop — the whole file is the tape
+function pushWindow() {
+  if (!node || !fileL) return;
+  node.port.postMessage({ type: 'window', start: 0, len: fileL.length, seed: (Math.random() * 2 ** 31) | 0 });
+  lastWear = new Float32Array(SEGS);
+  lastPass = 0;
+  lastHealth = 1;
+  updateEstimate();
+  updateRenderInfo();
+}
+
+function selSecs() {
+  return fileDur;
+}
+
+// --- demo loop: a somber pad, so PLAY works before any file --------------------
+function makeDemoLoop() {
+  const sr = actx.sampleRate;
+  const n = Math.round(sr * 8);
+  fileL = new Float32Array(n);
+  fileR = new Float32Array(n);
+  const partials = [
+    { f: 110.0, a: 0.40 }, { f: 164.8, a: 0.26 }, { f: 220.0, a: 0.22 },
+    { f: 261.6, a: 0.18 }, { f: 329.6, a: 0.12 }, { f: 493.9, a: 0.05 },
+  ];
+  const am = partials.map(() => 0.04 + Math.random() * 0.08);
+  const ph = partials.map(() => Math.random() * Math.PI * 2);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    let l = 0, r = 0;
+    for (let p = 0; p < partials.length; p++) {
+      const env = 0.7 + 0.3 * Math.sin(2 * Math.PI * am[p] * t + ph[p]);
+      l += Math.sin(2 * Math.PI * partials[p].f * t) * partials[p].a * env;
+      r += Math.sin(2 * Math.PI * partials[p].f * 1.0013 * t + 0.3) * partials[p].a * env;
+    }
+    fileL[i] = l * 0.28;
+    fileR[i] = r * 0.28;
+  }
+  fileName = 'demo loop';
+  fileDur = 8;
+  fileBpm = 0;
+  isDemo = true;
+  document.getElementById('dropwave').classList.add('loaded');
+  document.getElementById('fileinfo').innerHTML =
+    `<span class="fname">demo loop</span> · 8.00s · drop a file to replace`;
+  buildPeaks();
+  node.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
+  pushWindow();
+}
+
+async function loadFile(file) {
+  await ensureAudio();
+  const bytes = await file.arrayBuffer();
+  let buf;
+  try {
+    buf = await actx.decodeAudioData(bytes);
+  } catch (err) {
+    document.getElementById('dropprompt').textContent =
+      `couldn't decode "${file.name}" — try a wav/mp3/m4a`;
+    return;
+  }
+  fileL = buf.getChannelData(0);
+  fileR = buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0);
+  fileName = file.name.replace(/\.[^.]+$/, '');
+  fileDur = buf.duration;
+  isDemo = false;
+  const bm = file.name.match(/(\d{2,3}(?:\.\d+)?)\s*bpm/i);
+  let clockNote = '';
+  if (bm) {
+    fileBpm = Math.min(300, Math.max(20, parseFloat(bm[1])));
+    knobs.bpmKnob.setValue((fileBpm - 20) / 280);
+    clockNote = ` · clock → ${Math.round(fileBpm)}bpm`;
+  }
+  document.getElementById('dropwave').classList.add('loaded');
+  document.getElementById('fileinfo').innerHTML =
+    `<span class="fname">${file.name}</span> · ${fileDur.toFixed(2)}s${clockNote} · replace`;
+  buildPeaks();
+  node.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
+  pushWindow();
+}
+
+async function togglePlay() {
+  await ensureAudio();
+  await actx.resume();
+  if (!fileL) makeDemoLoop();
+  playing = !playing;
+  node.port.postMessage({ type: 'play', on: playing });
+  const b = document.getElementById('play');
+  b.textContent = playing ? 'STOP' : 'PLAY';
+  b.classList.toggle('on', playing);
+  if (!playing) posF = -1;
+}
+
+function resetTape() {
+  if (!node) return;
+  node.port.postMessage({ type: 'reset', seed: (Math.random() * 2 ** 31) | 0 });
+  lastWear = new Float32Array(SEGS);
+  lastPass = 0;
+  lastHealth = 1;
+  updateEstimate();
+}
+
+// --- death prediction --------------------------------------------------------------
+// Simulate the exact wear algorithm forward from a snapshot. With the render's
+// real seed this is exact; for the live readout the seed is arbitrary, so ~.
+function simPasses(fromWear, fromPass, seed, cap) {
+  const wear = fromWear.slice(0);
+  const rng = mulberry32(seed);
+  const base = wearAmt(), ac = accel(), sp = ui.spreadKnob, dr = ui.dropKnob;
+  for (let n = 1; n <= cap; n++) {
+    const amount = base * Math.pow(1 + ac, fromPass + n - 1);
+    evolveWear(wear, rng, amount, sp);
+    if (healthOf(wear, dr) < 0.02) return n;
+  }
+  return -1;
+}
+
+let estText = '';
+function updateEstimate() {
+  const n = simPasses(lastWear, lastPass, 12345, 400);
+  estText = n < 0 ? '>400 to silence' : `~${n} to silence`;
+  const el = document.getElementById('tapeinfo');
+  el.innerHTML = `pass <em>${lastPass}</em> · tape <em>${Math.round(lastHealth * 100)}%</em> · ${estText}`;
+}
+
+// --- waveform + wear viz --------------------------------------------------------------
+const wave = document.getElementById('wave');
+let peaks = null; // clean min/max pairs, eroded per-frame by the wear map
+const COLS = 768;
+
+function sizeCanvas(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const r = c.getBoundingClientRect();
+  c.width = Math.max(1, Math.round(r.width * dpr));
+  c.height = Math.max(1, Math.round(r.height * dpr));
+}
+
+function buildPeaks() {
+  sizeCanvas(wave);
+  if (!fileL) { peaks = null; return; }
+  peaks = new Float32Array(COLS * 2);
+  const per = fileL.length / COLS;
+  for (let c = 0; c < COLS; c++) {
+    const i0 = Math.floor(c * per);
+    const i1 = Math.max(i0 + 1, Math.floor((c + 1) * per));
+    const step = Math.max(1, ((i1 - i0) / 48) | 0);
+    let mn = 0, mx = 0;
+    for (let i = i0; i < i1; i += step) {
+      const s = 0.5 * (fileL[i] + fileR[i]);
+      if (s < mn) mn = s;
+      if (s > mx) mx = s;
+    }
+    peaks[c * 2] = mn;
+    peaks[c * 2 + 1] = mx;
+  }
+}
+
+// The window IS the piece: a faint ghost of the original signal stays put
+// while the living waveform erodes inside it. Worn columns shiver while
+// playing; dead ones collapse to residue. The oxide strip along the bottom
+// is the wear map itself.
+function drawWave() {
+  const ctx = wave.getContext('2d');
+  const W = wave.width, H = wave.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!peaks) return;
+  const dpr = window.devicePixelRatio || 1;
+  const mid = H / 2;
+  const holeAt = 0.97 - 0.5 * ui.dropKnob;
+  const wc = W / COLS + 0.5;
+  for (let c = 0; c < COLS; c++) {
+    const x = (c / COLS) * W;
+    const mn = peaks[c * 2], mx = peaks[c * 2 + 1];
+    const seg = Math.min(SEGS - 1, ((c / COLS) * SEGS) | 0);
+    const w = lastWear[seg];
+    const gv = w >= holeAt ? 0 : Math.pow(1 - w, 2);
+    // ghost of what the tape once held
+    const gy0 = mid - mx * mid * 0.88;
+    const gy1 = mid - mn * mid * 0.88;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(x, gy0, wc, Math.max(1, gy1 - gy0));
+    if (gv <= 0.003) {
+      // dead column: residue, flickering dust while the tape runs
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(x, mid, wc, 1);
+      if (playing && Math.random() < 0.12) {
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.fillRect(x, gy0 + Math.random() * Math.max(2, gy1 - gy0), wc, dpr);
+      }
+      continue;
+    }
+    const scale = 0.06 + 0.94 * gv;
+    const jit = playing && w > 0.2 ? (Math.random() * 2 - 1) * w * 5 * dpr : 0;
+    const a = 0.4 * (0.2 + 0.8 * gv) + 0.04;
+    const y0 = mid - mx * mid * 0.88 * scale + jit;
+    const y1 = mid - mn * mid * 0.88 * scale + jit;
+    ctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+    ctx.fillRect(x, y0, wc, Math.max(1, y1 - y0));
+  }
+  // oxide heat strip: the wear map, verbatim
+  const strip = 5 * dpr;
+  for (let c = 0; c < COLS; c++) {
+    const seg = Math.min(SEGS - 1, ((c / COLS) * SEGS) | 0);
+    const w = lastWear[seg];
+    if (w <= 0.01) continue;
+    ctx.fillStyle = `rgba(255,255,255,${(w * 0.6).toFixed(3)})`;
+    ctx.fillRect((c / COLS) * W, H - strip, wc, strip);
+  }
+  // playhead
+  if (playing && posF >= 0) {
+    const x = posF * W;
+    ctx.fillStyle = latching ? 'rgba(255,255,255,0.5)' : '#fff';
+    ctx.fillRect(x, 0, Math.max(1, dpr), H);
+    if (latching) { // a caught splice reads as a doubled head
+      ctx.fillRect(x - 4 * dpr, 0, Math.max(1, dpr), H);
+    }
+  }
+}
+
+function frame() {
+  drawWave();
+  requestAnimationFrame(frame);
+}
+
+// --- render → 16-bit WAV --------------------------------------------------------------
+const RENDER_CAP_SECS = 1500; // 25 minutes
+
+function plannedPasses(seed) {
+  if (ui.passes > 0) return ui.passes;
+  const n = simPasses(lastWear, lastPass, seed, 400);
+  return n < 0 ? 400 : n + 2; // +2 passes of near-silence to breathe out
+}
+
+function updateRenderInfo() {
+  const info = document.getElementById('renderinfo');
+  if (!fileL) { info.textContent = 'load a file (or press play) first'; return; }
+  let passes = plannedPasses(12345);
+  const loop = selSecs();
+  let secs = passes * loop + 5;
+  let capped = '';
+  if (secs > RENDER_CAP_SECS) {
+    passes = Math.max(1, Math.floor((RENDER_CAP_SECS - 5) / loop));
+    secs = passes * loop + 5;
+    capped = ' (capped)';
+  }
+  const mb = (secs * (actx ? actx.sampleRate : 48000) * 4) / 1e6;
+  const mins = secs >= 60 ? `${Math.floor(secs / 60)}m${String(Math.round(secs % 60)).padStart(2, '0')}s` : `${Math.round(secs)}s`;
+  info.textContent = `prints ${ui.passes === 0 ? '~' : ''}${passes} passes${capped} · ${mins} · ~${Math.round(mb)}MB 16-bit`;
+}
+
+let rendering = false;
+async function renderWav() {
+  if (!fileL || rendering) return;
+  rendering = true;
+  const btn = document.getElementById('render');
+  btn.textContent = 'RENDERING···';
+  btn.disabled = true;
+  try {
+    const sr = actx.sampleRate;
+    const seed = (Math.random() * 2 ** 31) | 0;
+    let passes = plannedPasses(seed);
+    const loop = selSecs();
+    if (passes * loop + 5 > RENDER_CAP_SECS) passes = Math.max(1, Math.floor((RENDER_CAP_SECS - 5) / loop));
+    const total = Math.ceil((passes * loop + 5) * sr);
+    const oc = new OfflineAudioContext(2, total, sr);
+    await oc.audioWorklet.addModule('decay-worklet.js');
+    const n = new AudioWorkletNode(oc, 'decay', { numberOfInputs: 0, outputChannelCount: [2] });
+    buildGraph(oc, n);
+    const ready = new Promise((res) => {
+      n.port.onmessage = (e) => { if (e.data.type === 'ready') res(); };
+    });
+    n.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
+    n.port.postMessage({ type: 'window', start: 0, len: fileL.length, seed });
+    n.port.postMessage({ type: 'params', p: workletParams() });
+    // continue from the live tape's exact condition — the render picks up
+    // the disintegration where the room left it
+    n.port.postMessage({ type: 'state', wear: lastWear.slice(0), pass: lastPass, seed });
+    await ready;
+    n.port.postMessage({ type: 'play', on: true });
+    const rendered = await oc.startRendering();
+    const blob = encodeWav16(rendered);
+    const slug = (isDemo ? 'demo' : fileName).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || 'tape';
+    const b = Math.round(bpm());
+    const bpmTag = ui.sync !== 'free' || fileBpm ? `-${b}bpm` : '';
+    const secs = Math.round(rendered.duration);
+    const lenTag = secs >= 60 ? `${Math.round(secs / 60)}m` : `${secs}s`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `decay${bpmTag}_${slug}-${passes}p-${lenTag}.wav`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } finally {
+    rendering = false;
+    btn.textContent = 'RENDER WAV';
+    btn.disabled = false;
+  }
+}
+
+// 16-bit PCM stereo with TPDF dither — these prints run to tens of minutes,
+// and tape never earned 32-bit float
+function encodeWav16(buf) {
+  const nCh = 2;
+  const n = buf.length;
+  const sr = buf.sampleRate;
+  const dataBytes = n * nCh * 2;
+  const ab = new ArrayBuffer(44 + dataBytes);
+  const dv = new DataView(ab);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF');
+  dv.setUint32(4, 36 + dataBytes, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); // PCM
+  dv.setUint16(22, nCh, true);
+  dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * nCh * 2, true);
+  dv.setUint16(32, nCh * 2, true);
+  dv.setUint16(34, 16, true);
+  str(36, 'data');
+  dv.setUint32(40, dataBytes, true);
+  const l = buf.getChannelData(0);
+  const r = buf.numberOfChannels > 1 ? buf.getChannelData(1) : l;
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    const dither = (Math.random() + Math.random() - 1) / 32768;
+    let a = Math.max(-1, Math.min(1, l[i] + dither));
+    let b = Math.max(-1, Math.min(1, r[i] + dither));
+    dv.setInt16(off, (a * 32767) | 0, true);
+    dv.setInt16(off + 2, (b * 32767) | 0, true);
+    off += 4;
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+// --- wiring --------------------------------------------------------------------------
+const dropwave = document.getElementById('dropwave');
+const fileinput = document.getElementById('fileinput');
+document.getElementById('dropprompt').addEventListener('click', () => fileinput.click());
+document.getElementById('fileinfo').addEventListener('click', () => fileinput.click());
+fileinput.addEventListener('change', () => {
+  if (fileinput.files[0]) void loadFile(fileinput.files[0]);
+});
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropwave.classList.add('drag');
+});
+document.addEventListener('dragleave', () => dropwave.classList.remove('drag'));
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropwave.classList.remove('drag');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) void loadFile(f);
+});
+
+function segWire(id, attr, cb) {
+  const seg = document.getElementById(id);
+  seg.querySelectorAll('button[data-' + attr + ']').forEach((b) => {
+    b.addEventListener('click', () => {
+      seg.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      cb(b.dataset[attr]);
+    });
+  });
+}
+segWire('segsync', 'y', (v) => {
+  ui.sync = v;
+  refreshClockDim();
+  pushParams();
+});
+segWire('passes', 'p', (v) => {
+  ui.passes = parseInt(v, 10);
+  updateRenderInfo();
+});
+
+function refreshClockDim() {
+  document.querySelector('[data-kn="bpmKnob"]').classList.toggle('dim', ui.sync === 'free');
+}
+refreshClockDim();
+
+document.getElementById('play').addEventListener('click', () => void togglePlay());
+document.getElementById('reset').addEventListener('click', resetTape);
+document.getElementById('render').addEventListener('click', () => void renderWav());
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && e.target === document.body) {
+    e.preventDefault();
+    void togglePlay();
+  }
+});
+
+window.addEventListener('resize', () => buildPeaks());
+sizeCanvas(wave);
+updateEstimate();
+updateRenderInfo();
+requestAnimationFrame(frame);
+
+// Debug/test hook
+window.decay = {
+  ui,
+  setKnob(k, v) { if (knobs[k]) knobs[k].setValue(v); else { ui[k] = v; pushParams(); } },
+  state: () => ({ pass: lastPass, health: lastHealth, avg: lastWear.reduce((a, b) => a + b, 0) / SEGS, playing }),
+  simPasses: (seed, cap) => simPasses(lastWear, lastPass, seed || 1, cap || 400),
+};
+</script>
+</body>
+</html>
