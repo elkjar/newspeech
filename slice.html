@@ -94,9 +94,14 @@
   button.on { background: #ddd; color: #050505; border-color: #ddd; }
   .hint { color: #555; }
 
-  /* unit groups — stacked full-width sections (texture.html vocabulary) */
-  #units { display: flex; flex-direction: column; gap: 14px; }
-  .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; }
+  /* unit groups — bordered boxes sized to their contents, flowing in rows */
+  #units { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .group {
+    border: 1px solid #1c1c1c;
+    padding: 14px 16px 12px;
+    max-width: 100%;
+    min-width: 0;
+  }
   .group h2 {
     font-size: 11px;
     font-weight: 400;
@@ -164,10 +169,6 @@
     letter-spacing: 0.14em;
   }
 
-  /* source + shape: sub-groups on one row where space allows */
-  .row2 { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
-  .subgroup h2 { margin-bottom: 12px; }
-
   /* file drop zone + waveform: one block, first on the page (texture.html) */
   #dropwave {
     position: relative;
@@ -225,9 +226,9 @@
   #export .seg { margin: 0; }
   #renderinfo { color: #666; }
 
+  /* narrow screens: the boxes go full-width so knob rows wrap inside them */
   @media (max-width: 720px) {
-    .row2 { flex-direction: column; align-items: stretch; }
-    .row2 > .kdivider { width: auto; height: 1px; margin: 12px 0; align-self: auto; }
+    .group { width: 100%; }
   }
 </style>
 </head>
@@ -271,59 +272,51 @@
 <div id="units">
 
   <div class="group" id="g-clock">
-    <div class="row2">
-      <div class="subgroup">
-        <h2>CLOCK</h2>
-        <div class="krow" id="clock-knobs"></div>
-        <div class="seg" id="segdiv">
-          <span class="seglabel">rate</span>
-          <button data-d="0">1/4</button>
-          <button data-d="1">1/8</button>
-          <button data-d="2" class="on">1/16</button>
-          <button data-d="3">1/32</button>
-          <button class="minibtn" id="tap" style="margin-left:10px;" title="tap a tempo — [t] does the same">TAP</button>
-        </div>
-        <div class="seg" id="segfeel">
-          <span class="seglabel">feel</span>
-          <button data-f="0" class="on">STRAIGHT</button>
-          <button data-f="1">TRIPLET</button>
-          <button data-f="2">DOTTED</button>
-        </div>
-      </div>
-      <div class="kdivider"></div>
-      <div class="subgroup">
-        <h2>SHAPE</h2>
-        <div class="krow" id="shape-knobs"></div>
-      </div>
+    <h2>CLOCK</h2>
+    <div class="krow" id="clock-knobs"></div>
+    <div class="seg" id="segdiv">
+      <span class="seglabel">rate</span>
+      <button data-d="0">1/4</button>
+      <button data-d="1">1/8</button>
+      <button data-d="2" class="on">1/16</button>
+      <button data-d="3">1/32</button>
+      <button class="minibtn" id="tap" style="margin-left:10px;" title="tap a tempo — [t] does the same">TAP</button>
+    </div>
+    <div class="seg" id="segfeel">
+      <span class="seglabel">feel</span>
+      <button data-f="0" class="on">STRAIGHT</button>
+      <button data-f="1">TRIPLET</button>
+      <button data-f="2">DOTTED</button>
     </div>
   </div>
 
+  <div class="group" id="g-shape">
+    <h2>SHAPE</h2>
+    <div class="krow" id="shape-knobs"></div>
+  </div>
+
   <div class="group" id="g-source">
-    <div class="row2">
-      <div class="subgroup">
-        <h2>SOURCE</h2>
-        <div class="krow" id="source-knobs"></div>
-        <div class="seg" id="segsrc">
-          <span class="seglabel">source</span>
-          <button data-s="tone" class="on">TONE</button>
-          <button data-s="file">FILE</button>
-        </div>
-        <div class="seg" id="segwave">
-          <span class="seglabel">wave</span>
-          <button data-w="sine" class="on">SIN</button>
-          <button data-w="triangle">TRI</button>
-          <button data-w="square">SQR</button>
-          <button data-w="sawtooth">SAW</button>
-        </div>
-      </div>
-      <div class="kdivider"></div>
-      <div class="subgroup">
-        <h2>MANGLE</h2>
-        <div class="krow" id="mangle-knobs">
-          <button class="toggle on" id="decay" title="corruption accumulates — each pass scrambles the already-scrambled pattern; off = fresh dice against the original every pass">● decay</button>
-          <button class="minibtn" id="restore" title="restore the original pattern">RESTORE</button>
-        </div>
-      </div>
+    <h2>SOURCE</h2>
+    <div class="krow" id="source-knobs"></div>
+    <div class="seg" id="segsrc">
+      <span class="seglabel">source</span>
+      <button data-s="tone" class="on">TONE</button>
+      <button data-s="file">FILE</button>
+    </div>
+    <div class="seg" id="segwave">
+      <span class="seglabel">wave</span>
+      <button data-w="sine" class="on">SIN</button>
+      <button data-w="triangle">TRI</button>
+      <button data-w="square">SQR</button>
+      <button data-w="sawtooth">SAW</button>
+    </div>
+  </div>
+
+  <div class="group" id="g-mangle">
+    <h2>MANGLE</h2>
+    <div class="krow" id="mangle-knobs">
+      <button class="toggle on" id="decay" title="corruption accumulates — each pass scrambles the already-scrambled pattern; off = fresh dice against the original every pass">● decay</button>
+      <button class="minibtn" id="restore" title="restore the original pattern">RESTORE</button>
     </div>
   </div>
 
