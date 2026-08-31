@@ -143,20 +143,26 @@
   /* modifier toggles: labeled-circle text-only (no border) */
   .toggle {
     background: none; border: none; padding: 2px 6px; color: #777;
-    cursor: pointer; letter-spacing: 0.1em;
+    cursor: pointer; letter-spacing: 0.12em; font-size: 10px;
   }
   .toggle:hover { color: #fff; border: none; }
   .toggle.on { color: #fff; background: none; }
   .krow .toggle { align-self: center; margin-top: -14px; }
-  .krow .minibtn, .seg .minibtn { padding: 4px 10px; border-color: #2a2a2a; color: #777; }
+  .krow .minibtn, .seg .minibtn { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; }
   .krow .minibtn { align-self: center; margin-top: -14px; }
   .krow .minibtn:hover, .seg .minibtn:hover { border-color: #999; color: #fff; }
 
-  /* segmented selects */
-  .seg { display: flex; gap: 4px; margin: 10px 0 0; flex-wrap: wrap; align-items: center; }
-  .seg button { padding: 4px 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.1em; }
+  /* segmented selects — sized to the knob-label scale, not the transport */
+  .seg { display: flex; gap: 4px; margin: 8px 0 0; flex-wrap: wrap; align-items: center; }
+  .seg button { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.12em; }
   .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
-  .seg .seglabel { color: #666; padding: 0 4px 0 0; }
+  .seg .seglabel {
+    color: #666;
+    padding: 0 6px 0 0;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
 
   /* source + shape: sub-groups on one row where space allows */
   .row2 { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
@@ -293,26 +299,31 @@
   </div>
 
   <div class="group" id="g-source">
-    <h2>SOURCE</h2>
-    <div class="seg" id="segsrc" style="margin:0 0 10px;">
-      <button data-s="tone" class="on">TONE</button>
-      <button data-s="file">FILE</button>
-    </div>
-    <div class="krow" id="source-knobs"></div>
-    <div class="seg" id="segwave">
-      <span class="seglabel">wave</span>
-      <button data-w="sine" class="on">SIN</button>
-      <button data-w="triangle">TRI</button>
-      <button data-w="square">SQR</button>
-      <button data-w="sawtooth">SAW</button>
-    </div>
-  </div>
-
-  <div class="group" id="g-mangle">
-    <h2>MANGLE</h2>
-    <div class="krow" id="mangle-knobs">
-      <button class="toggle on" id="decay" title="corruption accumulates — each pass scrambles the already-scrambled pattern; off = fresh dice against the original every pass">● decay</button>
-      <button class="minibtn" id="restore" title="restore the original pattern">RESTORE</button>
+    <div class="row2">
+      <div class="subgroup">
+        <h2>SOURCE</h2>
+        <div class="krow" id="source-knobs"></div>
+        <div class="seg" id="segsrc">
+          <span class="seglabel">source</span>
+          <button data-s="tone" class="on">TONE</button>
+          <button data-s="file">FILE</button>
+        </div>
+        <div class="seg" id="segwave">
+          <span class="seglabel">wave</span>
+          <button data-w="sine" class="on">SIN</button>
+          <button data-w="triangle">TRI</button>
+          <button data-w="square">SQR</button>
+          <button data-w="sawtooth">SAW</button>
+        </div>
+      </div>
+      <div class="kdivider"></div>
+      <div class="subgroup">
+        <h2>MANGLE</h2>
+        <div class="krow" id="mangle-knobs">
+          <button class="toggle on" id="decay" title="corruption accumulates — each pass scrambles the already-scrambled pattern; off = fresh dice against the original every pass">● decay</button>
+          <button class="minibtn" id="restore" title="restore the original pattern">RESTORE</button>
+        </div>
+      </div>
     </div>
   </div>
 
