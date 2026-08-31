@@ -238,45 +238,23 @@
 <div id="units">
 
   <div class="group" id="g-clock">
-    <h2>CLOCK</h2>
-    <div class="krow" id="clock-knobs"></div>
-    <div class="seg" id="segdiv">
-      <span class="seglabel">rate</span>
-      <button data-d="0">1/4</button>
-      <button data-d="1">1/8</button>
-      <button data-d="2" class="on">1/16</button>
-      <button data-d="3">1/32</button>
-      <button class="minibtn" id="tap" style="margin-left:10px;" title="tap a tempo — [t] does the same">TAP</button>
-    </div>
-    <div class="seg" id="segfeel">
-      <span class="seglabel">feel</span>
-      <button data-f="0" class="on">STRAIGHT</button>
-      <button data-f="1">TRIPLET</button>
-      <button data-f="2">DOTTED</button>
-    </div>
-  </div>
-
-  <div class="group" id="g-source">
     <div class="row2">
-      <div class="subgroup" style="flex:1 1 300px; min-width:260px;">
-        <h2>SOURCE</h2>
-        <div class="seg" id="segsrc" style="margin:0 0 10px;">
-          <button data-s="tone" class="on">TONE</button>
-          <button data-s="file">FILE</button>
+      <div class="subgroup">
+        <h2>CLOCK</h2>
+        <div class="krow" id="clock-knobs"></div>
+        <div class="seg" id="segdiv">
+          <span class="seglabel">rate</span>
+          <button data-d="0">1/4</button>
+          <button data-d="1">1/8</button>
+          <button data-d="2" class="on">1/16</button>
+          <button data-d="3">1/32</button>
+          <button class="minibtn" id="tap" style="margin-left:10px;" title="tap a tempo — [t] does the same">TAP</button>
         </div>
-        <div class="krow" id="source-knobs"></div>
-        <div class="seg" id="segwave">
-          <span class="seglabel">wave</span>
-          <button data-w="sine" class="on">SIN</button>
-          <button data-w="triangle">TRI</button>
-          <button data-w="square">SQR</button>
-          <button data-w="sawtooth">SAW</button>
-        </div>
-        <div class="seg" id="segmode">
-          <span class="seglabel">mode</span>
-          <button data-m="gate" class="on" title="the loop runs underneath — the pattern opens the gate">GATE</button>
-          <button data-m="chop" title="each hit re-punches into the loop where continuous playback would be">CHOP</button>
-          <button data-m="scan" title="each hit grabs from a random position in the loop">SCAN</button>
+        <div class="seg" id="segfeel">
+          <span class="seglabel">feel</span>
+          <button data-f="0" class="on">STRAIGHT</button>
+          <button data-f="1">TRIPLET</button>
+          <button data-f="2">DOTTED</button>
         </div>
       </div>
       <div class="kdivider"></div>
@@ -284,6 +262,28 @@
         <h2>SHAPE</h2>
         <div class="krow" id="shape-knobs"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="group" id="g-source">
+    <h2>SOURCE</h2>
+    <div class="seg" id="segsrc" style="margin:0 0 10px;">
+      <button data-s="tone" class="on">TONE</button>
+      <button data-s="file">FILE</button>
+    </div>
+    <div class="krow" id="source-knobs"></div>
+    <div class="seg" id="segwave">
+      <span class="seglabel">wave</span>
+      <button data-w="sine" class="on">SIN</button>
+      <button data-w="triangle">TRI</button>
+      <button data-w="square">SQR</button>
+      <button data-w="sawtooth">SAW</button>
+    </div>
+    <div class="seg" id="segmode">
+      <span class="seglabel">mode</span>
+      <button data-m="gate" class="on" title="the loop runs underneath — the pattern opens the gate">GATE</button>
+      <button data-m="chop" title="each hit re-punches into the loop where continuous playback would be">CHOP</button>
+      <button data-m="scan" title="each hit grabs from a random position in the loop">SCAN</button>
     </div>
   </div>
 
