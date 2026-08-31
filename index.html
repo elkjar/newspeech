@@ -428,10 +428,21 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-left" id="v-samples">
+<section class="vignette viz-left" id="v-decay">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">04 / sample</div>
+    <div class="kicker">04 / decay</div>
+    <h2 data-link>decay</h2>
+    <p>disintegration loops — drop a loop and let the tape rot. wear lands where it already hurts, pass after pass: dropouts, stutters, muffled patches, until the loop plays itself to silence.</p>
+    <p>nothing is immediate; everything accumulates. print the whole collapse as one wav — a handful of passes, or the full run to silence.</p>
+    <a class="cta" href="decay.html" data-link>open the tool</a>
+  </div>
+</section>
+
+<section class="vignette viz-right" id="v-samples">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">05 / sample</div>
     <h2 data-link>sample</h2>
     <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
     <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
@@ -439,10 +450,10 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-right" id="v-visuals">
+<section class="vignette viz-left" id="v-visuals">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">05 / visual</div>
+    <div class="kicker">06 / visual</div>
     <h2 data-link>visual</h2>
     <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
     <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
@@ -450,10 +461,10 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-left" id="v-code">
+<section class="vignette viz-right" id="v-code">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">06 / code</div>
+    <div class="kicker">07 / code</div>
     <h2 data-link>code</h2>
     <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
     <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
@@ -1931,9 +1942,114 @@ function drawSliceViz(v, t, dt) {
   c.fillRect(lx + state.pos * uW, ly - dahH * 0.85, 1.5, dahH * 1.7);
 }
 
+// ---- 04 decay: a loop's waveform eroding in place — a positional wear map
+// deepens the same wounds every pass (rich-get-richer + spread, the tool's
+// actual algorithm in miniature); a faint ghost of the original stays put;
+// when the tape dies it re-seeds with fresh oxide ----
+function drawDecayViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  const COLS = 140;
+  if (!state.peaks) {
+    // a fake loop: smoothed random amplitude envelope, symmetric bars
+    state.peaks = new Float32Array(COLS);
+    let a = 0.5;
+    for (let i = 0; i < COLS; i++) {
+      a += (Math.random() - 0.5) * 0.3;
+      a = Math.min(1, Math.max(0.12, a * 0.97 + 0.02));
+      state.peaks[i] = a * (0.55 + 0.45 * Math.sin((i / COLS) * Math.PI * 2 + 1));
+    }
+    state.wear = new Float32Array(COLS);
+    state.pass = 1;
+    state.pos = 0;
+  }
+  const env = intensity();
+  state.pos += dt / (5.5 - 2 * env); // seconds per pass — breathes with the room
+  if (state.pos >= 1) {
+    state.pos -= 1;
+    state.pass++;
+    // evolve wear: a few hits, most-damaged-of-4 wins, then neighbor spread
+    for (let k = 0; k < 5; k++) {
+      let idx = (Math.random() * COLS) | 0;
+      if (Math.random() < 0.65) {
+        for (let cnd = 0; cnd < 3; cnd++) {
+          const j = (Math.random() * COLS) | 0;
+          if (state.wear[j] > state.wear[idx]) idx = j;
+        }
+      }
+      state.wear[idx] = Math.min(1, state.wear[idx] + 0.08 + 0.1 * Math.random());
+    }
+    for (let i = 0; i < COLS; i++) {
+      const nb = Math.max(state.wear[(i + COLS - 1) % COLS], state.wear[(i + 1) % COLS]);
+      if (nb > state.wear[i]) state.wear[i] += (nb - state.wear[i]) * 0.1;
+    }
+    // dead tape → fresh oxide
+    let health = 0;
+    for (let i = 0; i < COLS; i++) health += Math.pow(1 - state.wear[i], 3);
+    if (health / COLS < 0.06) {
+      state.wear = new Float32Array(COLS);
+      state.pass = 1;
+    }
+  }
+
+  c.clearRect(0, 0, w, h);
+  const mobile = w < 720;
+  const laneW = w * (mobile ? 0.9 : 0.72);
+  const lx = (w - laneW) / 2;
+  const ly = mobile ? h * 0.32 : h / 2;
+  const amp = Math.min(120, h * (mobile ? 0.15 : 0.22));
+  const cw = laneW / COLS + 0.5;
+
+  let health = 0;
+  for (let i = 0; i < COLS; i++) health += Math.pow(1 - state.wear[i], 3);
+  health /= COLS;
+
+  // caption, same register as the tool's readout
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+  c.fillStyle = "rgba(255, 255, 255, 0.35)";
+  c.fillText(`pass ${String(state.pass).padStart(2, "0")} · tape ${Math.round(health * 100)}%`, lx, ly - amp - 26);
+
+  for (let i = 0; i < COLS; i++) {
+    const x = lx + (i / COLS) * laneW;
+    const pk = state.peaks[i] * amp;
+    const wr = state.wear[i];
+    const gv = Math.pow(1 - wr, 2);
+    // ghost of what the tape once held
+    c.fillStyle = "rgba(255, 255, 255, 0.08)";
+    c.fillRect(x, ly - pk, cw, Math.max(1, pk * 2));
+    if (gv <= 0.02) {
+      // dead column: residue + flickering dust
+      c.fillStyle = "rgba(255, 255, 255, 0.12)";
+      c.fillRect(x, ly, cw, 1);
+      if (Math.random() < 0.1) {
+        c.fillStyle = "rgba(255, 255, 255, 0.2)";
+        c.fillRect(x, ly - pk + Math.random() * pk * 2, cw, 1);
+      }
+      continue;
+    }
+    const jit = wr > 0.2 ? (Math.random() * 2 - 1) * wr * 4 : 0;
+    const bh = pk * (0.06 + 0.94 * gv);
+    c.fillStyle = `rgba(255, 255, 255, ${(0.14 + 0.4 * gv).toFixed(3)})`;
+    c.fillRect(x, ly - bh + jit, cw, Math.max(1, bh * 2));
+  }
+
+  // oxide strip: the wear map, verbatim
+  for (let i = 0; i < COLS; i++) {
+    if (state.wear[i] <= 0.02) continue;
+    c.fillStyle = `rgba(255, 255, 255, ${(state.wear[i] * 0.55).toFixed(3)})`;
+    c.fillRect(lx + (i / COLS) * laneW, ly + amp + 14, cw, 4);
+  }
+
+  // playhead
+  c.fillStyle = "#fff";
+  c.fillRect(lx + state.pos * laneW, ly - amp, 1.5, amp * 2);
+}
+
 registerViz("v-sequence", drawSeqViz);
 registerViz("v-texture", drawTextureViz);
 registerViz("v-slice", drawSliceViz);
+registerViz("v-decay", drawDecayViz);
 registerViz("v-samples", drawSamplesViz);
 registerViz("v-visuals", drawVisualsViz);
 registerViz("v-code", drawCodeViz);

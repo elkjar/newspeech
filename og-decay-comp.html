@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  #label {
+    position: absolute;
+    left: 127px;
+    top: 315px;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    white-space: nowrap;
+    font-size: 30px;
+    color: #fff;
+    letter-spacing: 0.04em;
+    font-family: "zxx-sans", monospace;
+  }
+  canvas { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div id="label">new×speech× | ×decay×</div>
+<script>
+// og-decay comp — same anatomy as og-sequence/og-slice: vertical zxx label
+// left, the instrument graphic right. decay's graphic is its tape window
+// mid-collapse: a faint ghost of the original waveform, the living waveform
+// eroded through a positional wear map (two big wounds, one dead patch),
+// the oxide strip along the bottom, playhead over a worn stretch.
+const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
+const label = document.getElementById('label');
+label.innerHTML = [...label.textContent]
+  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
+  .join('');
+
+const c = document.getElementById('c').getContext('2d');
+const X0 = 250, X1 = 1130, Y = 315;
+const COLS = 220;
+const laneW = X1 - X0;
+const cw = laneW / COLS + 0.5;
+const AMP = 150;
+
+// seeded rng so the comp regenerates the same image
+let s = 20260831;
+const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+
+// the loop: smoothed random amplitude envelope with a slow swell
+const peaks = [];
+let a = 0.5;
+for (let i = 0; i < COLS; i++) {
+  a += (rnd() - 0.5) * 0.3;
+  a = Math.min(1, Math.max(0.14, a * 0.97 + 0.02));
+  peaks.push(a * (0.55 + 0.45 * Math.sin((i / COLS) * Math.PI * 2 + 1)));
+}
+
+// the wear map, hand-shaped: two grown wounds and one dead patch, pinpricks elsewhere
+const wear = new Float32Array(COLS);
+const wound = (center, width, depth) => {
+  for (let i = 0; i < COLS; i++) {
+    const d = Math.abs(i - center) / width;
+    if (d < 1) wear[i] = Math.max(wear[i], depth * Math.pow(1 - d, 1.6) * (0.85 + 0.15 * rnd()));
+  }
+};
+wound(62, 16, 0.85);   // deep wound, still sounding
+wound(150, 20, 1.05);  // dead patch — clipped to 1, full hole in the middle
+wound(198, 8, 0.5);    // young wound near the seam
+for (let i = 0; i < 26; i++) {
+  const j = (rnd() * COLS) | 0;
+  wear[j] = Math.max(wear[j], 0.1 + 0.3 * rnd());
+}
+for (let i = 0; i < COLS; i++) wear[i] = Math.min(1, wear[i]);
+
+let health = 0;
+for (let i = 0; i < COLS; i++) health += Math.pow(1 - wear[i], 3);
+health /= COLS;
+
+for (let i = 0; i < COLS; i++) {
+  const x = X0 + (i / COLS) * laneW;
+  const pk = peaks[i] * AMP;
+  const gv = wear[i] >= 0.96 ? 0 : Math.pow(1 - wear[i], 2);
+  // ghost of what the tape once held
+  c.fillStyle = 'rgba(255,255,255,0.09)';
+  c.fillRect(x, Y - pk, cw, Math.max(1, pk * 2));
+  if (gv <= 0.02) {
+    // dead column: residue + a little dust
+    c.fillStyle = 'rgba(255,255,255,0.14)';
+    c.fillRect(x, Y, cw, 1.5);
+    if (rnd() < 0.3) {
+      c.fillStyle = 'rgba(255,255,255,0.22)';
+      c.fillRect(x, Y - pk + rnd() * pk * 2, cw, 1.5);
+    }
+    continue;
+  }
+  const jit = wear[i] > 0.2 ? (rnd() * 2 - 1) * wear[i] * 7 : 0;
+  const bh = pk * (0.06 + 0.94 * gv);
+  c.fillStyle = `rgba(255,255,255,${(0.2 + 0.55 * gv).toFixed(3)})`;
+  c.fillRect(x, Y - bh + jit, cw, Math.max(1.5, bh * 2));
+}
+
+// oxide strip: the wear map, verbatim
+for (let i = 0; i < COLS; i++) {
+  if (wear[i] <= 0.02) continue;
+  c.fillStyle = `rgba(255,255,255,${(wear[i] * 0.6).toFixed(3)})`;
+  c.fillRect(X0 + (i / COLS) * laneW, Y + AMP + 24, cw, 7);
+}
+
+// playhead riding into the first wound
+c.fillStyle = '#fff';
+c.fillRect(X0 + (55 / COLS) * laneW, Y - AMP - 12, 2, AMP * 2 + 24);
+
+// readout caption, top-right of the lane — the tool's own register
+c.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace';
+c.textAlign = 'right';
+c.fillStyle = 'rgba(255,255,255,0.4)';
+c.fillText(`pass 23 · tape ${Math.round(health * 100)}% · ~11 to silence`, X1, Y - AMP - 34);
+</script>
+</body>
+</html>
