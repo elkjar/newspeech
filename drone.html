@@ -120,7 +120,7 @@
   <div class="group" id="g-voice">
     <h2>VOICE</h2>
     <div class="krow" id="voice-knobs"></div>
-    <div class="seg" id="segnote"><span class="seglabel">audition</span></div>
+    <div class="seg" id="segnote" title="click notes to stack a chord — the export is always the nine single tones"><span class="seglabel">audition</span></div>
   </div>
 
   <div class="group" id="g-breath">
@@ -209,7 +209,7 @@ const ui = {
   rateKnob: 0.5,    // breath speed ×0.25–×4 (log), 1× at center
   depthKnob: 0.5,   // ×0.6 → ±0.30 swing at default, the script's breath
   levelKnob: 2 / 3,
-  note: 3,          // C3
+  notes: [3],       // active audition notes (indices) — more than one = a chord
   secs: 8,
 };
 let seed = Math.floor(Math.random() * 0xffff);
@@ -327,10 +327,12 @@ function buildKnob(spec) {
 }
 for (const spec of KNOB_SPECS) document.getElementById(spec.group).appendChild(buildKnob(spec));
 
-// --- live voice: oscillator graph, retuned in place ---------------------------
+// --- live voices: oscillator graphs, retuned in place --------------------------
+// one voice per audition note — the export is always single tones, but the
+// audition can stack them into the chord Sequence would eventually voice
 let actx = null;
 let master = null;
-let voice = null; // { parts: [{oscL, oscR, lfo, envL, envR, lfoAmpL, lfoAmpR}], t0 }
+let voices = []; // [{ noteIdx, parts: [{oscL, oscR, lfo, envL, envR, lfoAmpL, lfoAmpR}], gL, gR, t0 }]
 let playing = false;
 
 // a sine with a phase offset, since OscillatorNode has none of its own
@@ -342,49 +344,61 @@ function phasedSine(ctx, phi) {
   );
 }
 
-function buildVoice() {
-  teardownVoice();
-  const root = hz(NOTES[ui.note].midi);
-  const d = draws[ui.note];
+function buildVoices() {
+  teardownVoices();
   const dep = depth(), det = detFactor(), rm = rateMul();
   const t0 = actx.currentTime;
-  const parts = [];
-  for (let p = 0; p < VOICING.length; p++) {
-    const amp = tiltAmp(p);
-    const oscL = actx.createOscillator();
-    oscL.frequency.value = root * VOICING[p].r;
-    const oscR = actx.createOscillator();
-    oscR.frequency.value = root * VOICING[p].r * det;
-    oscR.setPeriodicWave(phasedSine(actx, 0.3));
-    const envL = actx.createGain();
-    const envR = actx.createGain();
-    envL.gain.value = amp * (1 - dep);
-    envR.gain.value = amp * (1 - dep);
-    const lfo = actx.createOscillator();
-    lfo.frequency.value = d.am[p] * rm;
-    lfo.setPeriodicWave(phasedSine(actx, d.ph[p]));
-    const lfoAmpL = actx.createGain();
-    const lfoAmpR = actx.createGain();
-    lfoAmpL.gain.value = amp * dep;
-    lfoAmpR.gain.value = amp * dep;
-    lfo.connect(lfoAmpL); lfoAmpL.connect(envL.gain);
-    lfo.connect(lfoAmpR); lfoAmpR.connect(envR.gain);
-    oscL.connect(envL); oscR.connect(envR);
-    envL.connect(merger, 0, 0);
-    envR.connect(merger, 0, 1);
-    oscL.start(); oscR.start(); lfo.start();
-    parts.push({ oscL, oscR, lfo, envL, envR, lfoAmpL, lfoAmpR });
+  // equal-power headroom as the stack grows
+  const vg = 1 / Math.sqrt(ui.notes.length);
+  for (const ni of ui.notes) {
+    const root = hz(NOTES[ni].midi);
+    const d = draws[ni];
+    const gL = actx.createGain();
+    const gR = actx.createGain();
+    gL.gain.value = vg;
+    gR.gain.value = vg;
+    gL.connect(merger, 0, 0);
+    gR.connect(merger, 0, 1);
+    const parts = [];
+    for (let p = 0; p < VOICING.length; p++) {
+      const amp = tiltAmp(p);
+      const oscL = actx.createOscillator();
+      oscL.frequency.value = root * VOICING[p].r;
+      const oscR = actx.createOscillator();
+      oscR.frequency.value = root * VOICING[p].r * det;
+      oscR.setPeriodicWave(phasedSine(actx, 0.3));
+      const envL = actx.createGain();
+      const envR = actx.createGain();
+      envL.gain.value = amp * (1 - dep);
+      envR.gain.value = amp * (1 - dep);
+      const lfo = actx.createOscillator();
+      lfo.frequency.value = d.am[p] * rm;
+      lfo.setPeriodicWave(phasedSine(actx, d.ph[p]));
+      const lfoAmpL = actx.createGain();
+      const lfoAmpR = actx.createGain();
+      lfoAmpL.gain.value = amp * dep;
+      lfoAmpR.gain.value = amp * dep;
+      lfo.connect(lfoAmpL); lfoAmpL.connect(envL.gain);
+      lfo.connect(lfoAmpR); lfoAmpR.connect(envR.gain);
+      oscL.connect(envL); oscR.connect(envR);
+      envL.connect(gL);
+      envR.connect(gR);
+      oscL.start(); oscR.start(); lfo.start();
+      parts.push({ oscL, oscR, lfo, envL, envR, lfoAmpL, lfoAmpR });
+    }
+    voices.push({ noteIdx: ni, parts, gL, gR, t0 });
   }
-  voice = { parts, t0 };
 }
 
-function teardownVoice() {
-  if (!voice) return;
-  for (const pt of voice.parts) {
-    try { pt.oscL.stop(); pt.oscR.stop(); pt.lfo.stop(); } catch (e) {}
-    pt.envL.disconnect(); pt.envR.disconnect();
+function teardownVoices() {
+  for (const v of voices) {
+    for (const pt of v.parts) {
+      try { pt.oscL.stop(); pt.oscR.stop(); pt.lfo.stop(); } catch (e) {}
+      pt.envL.disconnect(); pt.envR.disconnect();
+    }
+    v.gL.disconnect(); v.gR.disconnect();
   }
-  voice = null;
+  voices = [];
 }
 
 let merger = null;
@@ -400,24 +414,26 @@ function ensureAudio() {
 
 const RAMP = 0.04;
 function onKnobChange(k) {
-  if (!actx || !voice) return;
+  if (!actx || !voices.length) return;
   const t = actx.currentTime;
   if (k === 'levelKnob') {
     master.gain.setTargetAtTime(ui.levelKnob * 1.5 * 0.28, t, RAMP);
     return;
   }
-  const d = draws[ui.note];
   const dep = depth(), det = detFactor(), rm = rateMul();
-  const root = hz(NOTES[ui.note].midi);
-  for (let p = 0; p < voice.parts.length; p++) {
-    const pt = voice.parts[p];
-    const amp = tiltAmp(p);
-    pt.envL.gain.setTargetAtTime(amp * (1 - dep), t, RAMP);
-    pt.envR.gain.setTargetAtTime(amp * (1 - dep), t, RAMP);
-    pt.lfoAmpL.gain.setTargetAtTime(amp * dep, t, RAMP);
-    pt.lfoAmpR.gain.setTargetAtTime(amp * dep, t, RAMP);
-    pt.lfo.frequency.setTargetAtTime(d.am[p] * rm, t, RAMP);
-    pt.oscR.frequency.setTargetAtTime(root * VOICING[p].r * det, t, RAMP);
+  for (const v of voices) {
+    const d = draws[v.noteIdx];
+    const root = hz(NOTES[v.noteIdx].midi);
+    for (let p = 0; p < v.parts.length; p++) {
+      const pt = v.parts[p];
+      const amp = tiltAmp(p);
+      pt.envL.gain.setTargetAtTime(amp * (1 - dep), t, RAMP);
+      pt.envR.gain.setTargetAtTime(amp * (1 - dep), t, RAMP);
+      pt.lfoAmpL.gain.setTargetAtTime(amp * dep, t, RAMP);
+      pt.lfoAmpR.gain.setTargetAtTime(amp * dep, t, RAMP);
+      pt.lfo.frequency.setTargetAtTime(d.am[p] * rm, t, RAMP);
+      pt.oscR.frequency.setTargetAtTime(root * VOICING[p].r * det, t, RAMP);
+    }
   }
 }
 
@@ -428,7 +444,7 @@ function rebuildVoice() {
   master.gain.cancelScheduledValues(t);
   master.gain.setTargetAtTime(0, t, 0.012);
   setTimeout(() => {
-    buildVoice();
+    buildVoices();
     const t2 = actx.currentTime;
     master.gain.setTargetAtTime(ui.levelKnob * 1.5 * 0.28, t2, 0.02);
   }, 70);
@@ -441,8 +457,8 @@ async function togglePlay() {
   const b = document.getElementById('play');
   b.textContent = playing ? 'STOP' : 'PLAY';
   b.classList.toggle('on', playing);
-  if (playing) buildVoice();
-  else teardownVoice();
+  if (playing) buildVoices();
+  else teardownVoices();
 }
 
 // --- seed ----------------------------------------------------------------------
@@ -466,15 +482,18 @@ document.getElementById('seed').addEventListener('click', () => {
 refreshSeed();
 
 // --- audition seg ------------------------------------------------------------------
+// note buttons TOGGLE — stack several to hear the chord Sequence will voice
+// from these tones; export is always the 9 single-tone files
 const segnote = document.getElementById('segnote');
 NOTES.forEach((nt, i) => {
   const b = document.createElement('button');
   b.textContent = nt.name;
-  if (i === ui.note) b.classList.add('on');
+  if (ui.notes.includes(i)) b.classList.add('on');
   b.addEventListener('click', () => {
-    segnote.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
-    b.classList.add('on');
-    ui.note = i;
+    const on = ui.notes.includes(i);
+    if (on && ui.notes.length === 1) return; // keep one voice sounding
+    ui.notes = on ? ui.notes.filter((x) => x !== i) : [...ui.notes, i].sort((a, c) => a - c);
+    b.classList.toggle('on', !on);
     rebuildVoice();
   });
   segnote.appendChild(b);
@@ -510,26 +529,43 @@ sizeViz();
 function drawViz() {
   const c = viz.getContext('2d');
   const W = viz.width, H = viz.height;
+  const dpr = window.devicePixelRatio || 1;
   c.clearRect(0, 0, W, H);
-  const d = draws[ui.note];
   const dep = depth(), rm = rateMul();
-  const t = playing && voice && actx ? actx.currentTime - voice.t0 : 0;
+  const t = playing && voices.length && actx ? actx.currentTime - voices[0].t0 : 0;
   const n = VOICING.length;
-  const bw = W / (n * 2);
   const maxAmp = Math.max(...VOICING.map((_, p) => tiltAmp(p)));
-  for (let p = 0; p < n; p++) {
-    const env = (1 - dep) + dep * Math.sin(2 * Math.PI * d.am[p] * rm * t + d.ph[p]);
-    const amp = tiltAmp(p) / maxAmp;
-    const h = amp * env * H * 0.78;
-    const x = (p * 2 + 0.5) * bw;
-    // ghost = the partial's full reach; live bar breathes inside it
-    c.fillStyle = 'rgba(255,255,255,0.07)';
-    c.fillRect(x, H - amp * H * 0.78 - 20, bw, amp * H * 0.78);
-    c.fillStyle = playing ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.22)';
-    c.fillRect(x, H - h - 20, bw, h);
+  // one group of six harmonics per audition note — a stacked chord reads as
+  // several tones breathing out of phase with each other
+  const groups = ui.notes;
+  const gw = W / groups.length;
+  const bw = gw / (n * 2);
+  c.font = `${10 * dpr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  c.textAlign = 'center';
+  c.textBaseline = 'alphabetic';
+  for (let gi = 0; gi < groups.length; gi++) {
+    const ni = groups[gi];
+    const d = draws[ni];
+    const gx = gi * gw;
+    for (let p = 0; p < n; p++) {
+      const env = (1 - dep) + dep * Math.sin(2 * Math.PI * d.am[p] * rm * t + d.ph[p]);
+      const amp = tiltAmp(p) / maxAmp;
+      const full = amp * H * 0.7;
+      const h = full * env;
+      const x = gx + (p * 2 + 0.5) * bw;
+      // ghost = the harmonic's full reach; live bar breathes inside it
+      c.fillStyle = 'rgba(255,255,255,0.07)';
+      c.fillRect(x, H - full - 26 * dpr, bw, full);
+      c.fillStyle = playing ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.22)';
+      c.fillRect(x, H - h - 26 * dpr, bw, h);
+    }
+    c.fillStyle = 'rgba(255,255,255,0.4)';
+    c.fillText(NOTES[ni].name, gx + gw / 2, H - 9 * dpr);
   }
-  document.getElementById('vizinfo').innerHTML =
-    `<em>${NOTES[ui.note].name}</em> · ${hz(NOTES[ui.note].midi).toFixed(1)}Hz`;
+  const names = groups.map((ni) => NOTES[ni].name);
+  document.getElementById('vizinfo').innerHTML = groups.length === 1
+    ? `<em>${names[0]}</em> · ${hz(NOTES[groups[0]].midi).toFixed(1)}Hz`
+    : `<em>${names.join(' + ')}</em> · ${groups.length} tones`;
   requestAnimationFrame(drawViz);
 }
 requestAnimationFrame(drawViz);
@@ -627,7 +663,7 @@ window.lab = {
   setSeed,
   seedHex,
   renderNoteBuffer,
-  state: () => ({ playing, seed: seedHex(), note: NOTES[ui.note].name }),
+  state: () => ({ playing, seed: seedHex(), notes: ui.notes.map((i) => NOTES[i].name), voices: voices.length }),
 };
 </script>
 </body>
