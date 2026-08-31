@@ -33,3 +33,4 @@ samples-manifest.json
 /news.html
 /news-latest.html
 /feed.xml
+tools/drone-gen-out/
