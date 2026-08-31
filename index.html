@@ -219,7 +219,7 @@
   /* same construction as the hero: viz canvas confined to one side, a solid
      panel (the copy) hard-masks the other — alternating sides per section. */
   /* 1px separator after every feature vignette + alternating background:
-     viz-left sections (02/04) lift to --panel; the copy mask follows it. */
+     viz-left sections (02/04/06) lift to --panel; the copy mask follows it. */
   .vignette.viz-right, .vignette.viz-left {
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   }
@@ -417,10 +417,21 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-right" id="v-samples">
+<section class="vignette viz-right" id="v-slice">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">03 / sample</div>
+    <div class="kicker">03 / slice</div>
+    <h2 data-link>slice</h2>
+    <p>a pattern slicer — type a message and it plays as morse rhythm, locked to a clock you set. run the internal tone, or drop a loop and let the phrase gate, chop, or scan it.</p>
+    <p>a mangle stage flips, ratchets, and drops symbols — or scrambles the message itself pass by pass until it erodes into noise. feed it a dataset and the numbers play instead.</p>
+    <a class="cta" href="slice.html" data-link>open the tool</a>
+  </div>
+</section>
+
+<section class="vignette viz-left" id="v-samples">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">04 / sample</div>
     <h2 data-link>sample</h2>
     <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
     <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
@@ -428,10 +439,10 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-left" id="v-visuals">
+<section class="vignette viz-right" id="v-visuals">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">04 / visual</div>
+    <div class="kicker">05 / visual</div>
     <h2 data-link>visual</h2>
     <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
     <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
@@ -439,10 +450,10 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-right" id="v-code">
+<section class="vignette viz-left" id="v-code">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">05 / code</div>
+    <div class="kicker">06 / code</div>
     <h2 data-link>code</h2>
     <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
     <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
@@ -1813,8 +1824,116 @@ function drawTextureViz(v, t, dt) {
   );
 }
 
+// ---- 03 slice: NEWSPEECH as a morse lane over a beat grid — playhead
+// sweeps, hits light, and the message scrambles a letter at a time until a
+// restore snaps it back (the tool's decay/RESTORE loop) ----
+const SLICE_MORSE = {
+  A: ".-", B: "-...", C: "-.-.", D: "-..", E: ".", F: "..-.", G: "--.",
+  H: "....", I: "..", J: ".---", K: "-.-", L: ".-..", M: "--", N: "-.",
+  O: "---", P: ".--.", Q: "--.-", R: ".-.", S: "...", T: "-", U: "..-",
+  V: "...-", W: ".--", X: "-..-", Y: "-.--", Z: "--..",
+};
+const SLICE_MSG = "NEWSPEECH";
+function drawSliceViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  if (!state.pat) {
+    state.shown = [...SLICE_MSG];
+    state.pass = 1;
+    state.pos = 0;
+    state.compile = () => {
+      const evs = [], span = [];
+      let u = 0;
+      for (let ci = 0; ci < state.shown.length; ci++) {
+        const code = SLICE_MORSE[state.shown[ci]] || ".";
+        const s = u;
+        for (let i = 0; i < code.length; i++) {
+          const d = code[i] === "-" ? 3 : 1;
+          evs.push({ u, d, dah: d > 1, ci });
+          u += d;
+          if (i < code.length - 1) u += 1;
+        }
+        span.push([s, u]);
+        u += 3;
+      }
+      state.pat = { evs, span, total: u + 4 };
+    };
+    state.compile();
+  }
+  const env = intensity();
+  state.pos += dt * (6 + 5 * env); // units per second — the clock breathes
+  if (state.pos >= state.pat.total) {
+    state.pos -= state.pat.total;
+    state.pass++;
+    // the mangle: scramble one letter per pass; past four, RESTORE
+    const bad = state.shown.reduce((a, ch, i) => a + (ch !== SLICE_MSG[i] ? 1 : 0), 0);
+    if (bad >= 4) {
+      state.shown = [...SLICE_MSG];
+    } else if (Math.random() < 0.7) {
+      const i = (Math.random() * state.shown.length) | 0;
+      state.shown[i] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[(Math.random() * 26) | 0];
+    }
+    state.compile();
+    state.pos = Math.min(state.pos, state.pat.total - 0.001);
+  }
+  const { evs, span, total } = state.pat;
+
+  c.clearRect(0, 0, w, h);
+  const mobile = w < 720;
+  const laneW = w * (mobile ? 0.9 : 0.72);
+  const lx = (w - laneW) / 2;
+  const ly = mobile ? h * 0.30 : h / 2;
+  const dahH = Math.min(110, h * (mobile ? 0.14 : 0.20));
+  const ditH = dahH * 0.55;
+  const uW = laneW / total;
+
+  // clock caption
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+  c.fillStyle = "rgba(255, 255, 255, 0.35)";
+  c.fillText(`140bpm · 1/16 · pass ${String(state.pass).padStart(2, "0")}`, lx, ly - dahH * 0.5 - 58);
+
+  // beat grid: hairline per beat (4 units), brighter per bar
+  for (let b = 0; b <= total; b += 4) {
+    c.fillStyle = b % 16 === 0 ? "rgba(255, 255, 255, 0.14)" : "rgba(255, 255, 255, 0.05)";
+    c.fillRect(lx + b * uW, ly - dahH * 0.85, 1, dahH * 1.7);
+  }
+
+  // the message, letters over their own morse; corrupted letters struck
+  c.font = `${mobile ? 13 : 16}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  c.textAlign = "center";
+  let litCi = -1;
+  for (const ev of evs) {
+    if (state.pos >= ev.u && state.pos < ev.u + ev.d) { litCi = ev.ci; break; }
+  }
+  for (let ci = 0; ci < state.shown.length; ci++) {
+    const [a, b] = span[ci];
+    const x = lx + ((a + b) / 2) * uW;
+    const bad = state.shown[ci] !== SLICE_MSG[ci];
+    c.fillStyle = ci === litCi ? "rgba(255, 255, 255, 0.95)"
+      : bad ? "rgba(255, 255, 255, 0.85)" : "rgba(255, 255, 255, 0.4)";
+    c.fillText(state.shown[ci], x, ly - dahH * 0.5 - 22);
+    if (bad) c.fillRect(x - 7, ly - dahH * 0.5 - 27, 14, 1.5);
+  }
+
+  // the blocks
+  for (const ev of evs) {
+    const x = lx + ev.u * uW;
+    const bw = Math.max(2, ev.d * uW - 2);
+    const bh = ev.dah ? dahH : ditH;
+    const active = state.pos >= ev.u && state.pos < ev.u + ev.d;
+    c.fillStyle = `rgba(255, 255, 255, ${active ? 0.95 : 0.38})`;
+    c.fillRect(x, ly - bh / 2, bw, bh);
+  }
+
+  // playhead
+  c.fillStyle = "#fff";
+  c.fillRect(lx + state.pos * uW, ly - dahH * 0.85, 1.5, dahH * 1.7);
+}
+
 registerViz("v-sequence", drawSeqViz);
 registerViz("v-texture", drawTextureViz);
+registerViz("v-slice", drawSliceViz);
 registerViz("v-samples", drawSamplesViz);
 registerViz("v-visuals", drawVisualsViz);
 registerViz("v-code", drawCodeViz);

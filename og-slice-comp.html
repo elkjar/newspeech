@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  #label {
+    position: absolute;
+    left: 127px;
+    top: 315px;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    white-space: nowrap;
+    font-size: 30px;
+    color: #fff;
+    letter-spacing: 0.04em;
+    font-family: "zxx-sans", monospace;
+  }
+  canvas { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div id="label">new×speech× | ×slice×</div>
+<script>
+// og-slice comp — same anatomy as og-sequence: vertical zxx label left,
+// the instrument graphic right. slice's graphic is its pattern strip:
+// NEWSPEECH as morse blocks over a beat grid, playhead mid-message, the
+// message above with one letter already corrupted.
+const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
+const label = document.getElementById('label');
+label.innerHTML = [...label.textContent]
+  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
+  .join('');
+
+const M = { N: '-.', E: '.', W: '.--', S: '...', P: '.--.', C: '-.-.', H: '....', K: '-.-' };
+const msg = 'NEWSPEECH';
+const badIndex = 5; // the second E, struck through → K
+const shown = [...msg];
+shown[badIndex] = 'K';
+
+// compile: dit 1u, dah 3u, symbol gap 1u, letter gap 3u, breath 4u
+const evs = [];
+const letterSpan = []; // [startU, endU] per letter for text placement
+let u = 0;
+for (let ci = 0; ci < msg.length; ci++) {
+  const code = M[shown[ci]] || M[msg[ci]];
+  const start = u;
+  for (let i = 0; i < code.length; i++) {
+    const d = code[i] === '-' ? 3 : 1;
+    evs.push({ u, d, dah: d > 1, ci });
+    u += d;
+    if (i < code.length - 1) u += 1;
+  }
+  letterSpan.push([start, u]);
+  u += 3;
+}
+u += 4;
+
+const c = document.getElementById('c').getContext('2d');
+const X0 = 250, X1 = 1130, Y = 340;
+const uW = (X1 - X0) / u;
+const laneDah = 150, laneDit = 82;
+
+// beat grid: every 4 units, brighter each 16
+for (let b = 0; b <= u; b += 4) {
+  c.fillStyle = b % 16 === 0 ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)';
+  c.fillRect(X0 + b * uW, Y - 160, 1.5, 320);
+}
+
+const ph = u * 0.437; // playhead mid-message
+for (const ev of evs) {
+  const x = X0 + ev.u * uW;
+  const wd = Math.max(3, ev.d * uW - 3);
+  const hh = ev.dah ? laneDah : laneDit;
+  const active = ph >= ev.u && ph < ev.u + ev.d;
+  c.fillStyle = `rgba(255,255,255,${active ? 0.98 : 0.42})`;
+  c.fillRect(x, Y - hh / 2, wd, hh);
+}
+c.fillStyle = '#fff';
+c.fillRect(X0 + ph * uW, Y - 172, 2, 344);
+
+// the message above the lane, letters over their own morse; the corrupted
+// letter bright and struck through
+c.font = '26px ui-monospace, SFMono-Regular, Menlo, monospace';
+c.textAlign = 'center';
+c.textBaseline = 'alphabetic';
+for (let ci = 0; ci < shown.length; ci++) {
+  const [a, b] = letterSpan[ci];
+  const x = X0 + ((a + b) / 2) * uW;
+  const bad = ci === badIndex;
+  c.fillStyle = bad ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.5)';
+  c.fillText(shown[ci], x, Y - 200);
+  if (bad) {
+    c.fillRect(x - 12, Y - 209, 24, 2);
+  }
+}
+
+// clock caption, bottom-right of the lane
+c.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace';
+c.textAlign = 'right';
+c.fillStyle = 'rgba(255,255,255,0.4)';
+c.fillText('140bpm · 1/16 · pass 07 · scramble 12', X1, Y + 215);
+</script>
+</body>
+</html>

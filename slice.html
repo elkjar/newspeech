@@ -13,15 +13,15 @@
 <meta property="og:url" content="https://www.newspeechsound.com/slice.html">
 <meta property="og:site_name" content="NEWSPEECH">
 <meta property="og:locale" content="en_US">
-<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image" content="https://www.newspeechsound.com/og-slice.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="NEWSPEECH">
+<meta property="og:image:alt" content="NEWSPEECH // SLICE — a message as morse rhythm, one letter corrupted">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // slice">
 <meta name="twitter:description" content="newspeech — pattern slicer.">
-<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-slice.png">
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
@@ -620,6 +620,7 @@ function onKnobChange(k) {
   if (k === 'freqKnob' && bed && bed.osc) bed.osc.frequency.setTargetAtTime(toneHz(), actx.currentTime, 0.02);
   if (k === 'speedKnob' && bed && bed.src) bed.src.playbackRate.setTargetAtTime(fileRate(), actx.currentTime, 0.02);
   if (CLOCK_KEYS.has(k) && playing) clockDirty = true;
+  if (k === 'threshKnob' && ui.pattern === 'data') buildReadout(); // the sparkline's line moves
   previewKey = '';
   updateRenderInfo();
 }
@@ -916,6 +917,7 @@ function hotSwapPass() {
   }
   pendingDisplay = [];
   display = { pass, passStart, state };
+  buildReadout();
 }
 
 function startPlayback() {
@@ -1227,12 +1229,39 @@ function buildReadout() {
     el.className = 'rinfo';
     if (!n) {
       el.textContent = 'no points yet';
-    } else {
-      const corrupted = state.data.reduce((a, v, i) => a + (v !== orig.data[i] ? 1 : 0), 0);
-      el.innerHTML = `<em>${n}</em> points · ${dataMin.toPrecision(3)} – ${dataMax.toPrecision(3)}`
-        + (corrupted ? ` · <em>${corrupted}</em> corrupted` : '');
+      readout.appendChild(el);
+      return;
     }
+    const corrupted = state.data.reduce((a, v, i) => a + (v !== orig.data[i] ? 1 : 0), 0);
+    el.innerHTML = `<em>${n}</em> points · ${dataMin.toPrecision(3)} – ${dataMax.toPrecision(3)}`
+      + (corrupted ? ` · <em>${corrupted}</em> corrupted` : '')
+      + ' · points above the line play';
     readout.appendChild(el);
+    // sparkline: the raw series with the threshold drawn over it
+    const cv = document.createElement('canvas');
+    cv.style.cssText = 'display:block;width:100%;height:40px;margin-top:6px;flex-basis:100%;';
+    readout.appendChild(cv);
+    sizeCanvas(cv);
+    const c = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+    const bw = W / n;
+    const th = ui.threshKnob;
+    for (let i = 0; i < n; i++) {
+      const norm = normOf(state.data[i]);
+      const bh = Math.max(1, norm * (H - 2));
+      const bad = state.data[i] !== orig.data[i];
+      c.fillStyle = bad ? 'rgba(255,255,255,0.95)'
+        : `rgba(255,255,255,${norm >= th ? 0.55 : 0.18})`;
+      c.fillRect(i * bw, H - bh, Math.max(1, bw - Math.min(2, bw * 0.2)), bh);
+    }
+    c.strokeStyle = 'rgba(255,255,255,0.6)';
+    c.setLineDash([4, 4]);
+    c.beginPath();
+    const ty = H - th * (H - 2);
+    c.moveTo(0, ty);
+    c.lineTo(W, ty);
+    c.stroke();
+    c.setLineDash([]);
     return;
   }
   state.msg.forEach((ch, i) => {
@@ -1369,10 +1398,19 @@ function segWire(id, attr, cb) {
   });
 }
 
+// text modes share one input slot, DATA keeps its own — switching modes
+// swaps the field instead of showing a message where numbers belong. DATA
+// seeds with an example series so the mode plays before you paste your own.
+const inputMem = {
+  text: msginput.value,
+  data: '0.1 0.3 0.7 0.2 0.9 0.4 0.1 0.6 0.8 0.3 0.95 0.5 0.2 0.7 0.4 0.85 0.15 0.6 0.9 0.35 0.75 0.25 0.55 1.0',
+};
 segWire('segpat', 't', (v) => {
+  inputMem[ui.pattern === 'data' ? 'data' : 'text'] = msginput.value;
   ui.pattern = v;
+  msginput.value = inputMem[v === 'data' ? 'data' : 'text'];
   msginput.placeholder =
-    v === 'data' ? 'paste numbers — comma or space separated' :
+    v === 'data' ? 'paste numbers — comma or space separated (a weather series, a waveform, anything)' :
     v === 'bits' ? 'type a message — each character plays as its bits' :
     'type a message';
   parseInput(msginput.value);
