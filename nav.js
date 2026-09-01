@@ -35,13 +35,13 @@
   // opens the mega panel below the bar (desktop) — one bar slot instead of
   // four. socials are icons (no data-ns-link — the text treatment skips them).
   const TOOLS = [
-    { page: "texture.html", num: "02", name: "texture",
+    { page: "texture.html", name: "texture",
       dek: "a loop mangler — drop any audio file, pull it apart: vari-speed tape, a granular cloud, a self-oscillating noise filter." },
-    { page: "slice.html",   num: "03", name: "slice",
+    { page: "slice.html",   name: "slice",
       dek: "a pattern slicer — messages and data as tempo-locked rhythm. gate, chop, or scan a loop; scramble the phrase until it erodes." },
-    { page: "decay.html",   num: "04", name: "decay",
+    { page: "decay.html",   name: "decay",
       dek: "disintegration loops — let the tape rot, pass after pass, until the loop plays itself to silence. print the whole collapse." },
-    { page: "drone.html",   num: "05", name: "drone",
+    { page: "drone.html",   name: "drone",
       dek: "a breathing drone instrument — one tone, six harmonics on their own slow clocks. export the kit for any sampler." },
   ];
   const IN_TOOLS = TOOLS.some((t) => t.page === PAGE);
@@ -218,14 +218,7 @@
   #ns-mega .mega-in {
     max-width: 1280px;
     margin: 0 auto;
-    padding: 28px 20px 36px;
-  }
-  #ns-mega .mega-kicker {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    opacity: 0.45;
-    margin-bottom: 22px;
+    padding: 28px 20px 32px;
   }
   #ns-mega .mega-grid {
     display: grid;
@@ -243,13 +236,6 @@
   }
   #ns-mega .mega-card:first-child { border-left: 0; padding-left: 0; }
   #ns-mega .mega-card:hover, #ns-mega .mega-card:focus-visible, #ns-mega .mega-card.current { opacity: 1; outline: none; }
-  #ns-mega .mc-k {
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    opacity: 0.55;
-    margin-bottom: 14px;
-  }
   #ns-mega .mc-t {
     font-family: "zxx-sans", ui-monospace, monospace;
     font-size: 30px;
@@ -263,15 +249,7 @@
     line-height: 1.65;
     letter-spacing: 0.02em;
     color: rgba(255, 255, 255, 0.72);
-    min-height: calc(12px * 1.65 * 3);
   }
-  #ns-mega .mc-go {
-    margin-top: 16px;
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    opacity: 0.55;
-  }
-  #ns-mega .mega-card:hover .mc-go { opacity: 1; }
   #ns-stage {
     color: #fff;
     text-decoration: none;
@@ -308,14 +286,11 @@
     `<div id="ns-pages">${PAGES}</div>` +
     `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>` +
     `<div id="ns-mega" hidden><div class="mega-in">` +
-    `<div class="mega-kicker">// browser tools</div>` +
     `<div class="mega-grid">` +
     TOOLS.map((t) =>
       `<a class="mega-card${PAGE === t.page ? " current" : ""}" href="${ROOT}${t.page}">` +
-      `<div class="mc-k">${t.num} / ${t.name}</div>` +
       `<div class="mc-t" data-ns-link>${t.name}</div>` +
-      `<div class="mc-d">${t.dek}</div>` +
-      `<div class="mc-go">open the tool →</div></a>`
+      `<div class="mc-d">${t.dek}</div></a>`
     ).join("") +
     `</div></div></div>`;
   document.body.insertBefore(root, document.body.firstChild);
