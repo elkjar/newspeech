@@ -29,20 +29,31 @@
   const src = (document.currentScript && document.currentScript.getAttribute("src")) || "nav.js";
   const ROOT = src.slice(0, src.lastIndexOf("nav.js"));
 
-  // 3 links | wordmark | 3 links — on the homepage the site links anchor to
-  // their vignettes; on sub-pages they go straight to the tools.
-  // links drive straight into the tool pages; sequence is the one exception
-  // (no standalone page yet — it anchors to its homepage vignette).
-  // socials are icons (no data-ns-link — the text treatment skips them).
+  // wordmark | links — links drive straight into the pages; sequence is the
+  // one exception (no standalone page yet — it anchors to its homepage
+  // vignette). the four browser tools collapse under a "tools" trigger that
+  // opens the mega panel below the bar (desktop) — one bar slot instead of
+  // four. socials are icons (no data-ns-link — the text treatment skips them).
+  const TOOLS = [
+    { page: "texture.html", num: "02", name: "texture",
+      dek: "a loop mangler — drop any audio file, pull it apart: vari-speed tape, a granular cloud, a self-oscillating noise filter." },
+    { page: "slice.html",   num: "03", name: "slice",
+      dek: "a pattern slicer — messages and data as tempo-locked rhythm. gate, chop, or scan a loop; scramble the phrase until it erodes." },
+    { page: "decay.html",   num: "04", name: "decay",
+      dek: "disintegration loops — let the tape rot, pass after pass, until the loop plays itself to silence. print the whole collapse." },
+    { page: "drone.html",   num: "05", name: "drone",
+      dek: "a breathing drone instrument — one tone, six harmonics on their own slow clocks. export the kit for any sampler." },
+  ];
+  const IN_TOOLS = TOOLS.some((t) => t.page === PAGE);
+  const ICON_CARET = `<svg class="ns-caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;
   const ICON_IG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" stroke="none"/></svg>`;
   const ICON_YT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z" fill="currentColor" stroke="none"/></svg>`;
   const PAGES =
     `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
     `<a href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}" data-ns-link>sequence</a>` +
-    `<a href="${ROOT}texture.html"${here("texture.html")} data-ns-link>texture</a>` +
-    `<a href="${ROOT}slice.html"${here("slice.html")} data-ns-link>slice</a>` +
-    `<a href="${ROOT}decay.html"${here("decay.html")} data-ns-link>decay</a>` +
-    `<a href="${ROOT}drone.html"${here("drone.html")} data-ns-link>drone</a>` +
+    `<div id="ns-tools"${IN_TOOLS ? " class=\"current\"" : ""}>` +
+    `<button id="ns-tools-btn" aria-expanded="false" aria-controls="ns-mega" aria-haspopup="true">` +
+    `<span data-ns-link>tools</span>${ICON_CARET}</button></div>` +
     `<a href="${ROOT}samples.html"${here("samples.html")} data-ns-link>samples</a>` +
     `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
     `<a href="${ROOT}live.html"${here("live.html")} data-ns-link>code</a>` +
@@ -123,6 +134,16 @@
     opacity: 0.5;
   }
   #ns-overlay .ov-link.current { opacity: 1; }
+  #ns-overlay .ov-kicker {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #fff;
+    opacity: 0.35;
+    margin: 18px 0 4px;
+  }
+  #ns-overlay .ov-link.ov-tool { padding-top: 8px; padding-bottom: 8px; }
+  #ns-overlay .ov-link.ov-tool + .ov-link:not(.ov-tool) { margin-top: 18px; }
   #ns-overlay .ov-close {
     position: absolute;
     top: 10px;
@@ -159,6 +180,98 @@
   #ns-links a[data-ns-link]:hover { opacity: 1; }
   #ns-links a span { display: inline-block; }
   #ns-links a.current { opacity: 1; }
+
+  /* ---- tools trigger + mega panel (desktop) ---- */
+  #ns-tools { display: inline-flex; align-items: center; }
+  #ns-tools-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    color: #fff;
+    font: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 120ms ease;
+  }
+  #ns-tools-btn:hover, #ns-tools.open #ns-tools-btn, #ns-tools.current #ns-tools-btn { opacity: 1; }
+  #ns-tools-btn span { display: inline-block; }
+  .ns-caret { width: 10px; height: 10px; display: block; transition: transform 120ms ease; }
+  #ns-tools.open .ns-caret { transform: rotate(180deg); }
+  #ns-mega {
+    /* absolute: the bar's offsetHeight feeds --ns-nav-h, so the panel must
+       not grow it — it hangs below the 1px rule and covers page content */
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #050505;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  #ns-mega[hidden] { display: none; }
+  #ns-mega .mega-in {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 28px 20px 36px;
+  }
+  #ns-mega .mega-kicker {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.45;
+    margin-bottom: 22px;
+  }
+  #ns-mega .mega-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  #ns-mega .mega-card {
+    display: block;
+    color: #fff;
+    text-decoration: none;
+    padding: 4px 28px 8px 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.18);
+    padding-left: 22px;
+    opacity: 0.6;
+    transition: opacity 120ms ease;
+  }
+  #ns-mega .mega-card:first-child { border-left: 0; padding-left: 0; }
+  #ns-mega .mega-card:hover, #ns-mega .mega-card:focus-visible, #ns-mega .mega-card.current { opacity: 1; outline: none; }
+  #ns-mega .mc-k {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin-bottom: 14px;
+  }
+  #ns-mega .mc-t {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: 30px;
+    line-height: 32px; /* fixed so font swaps can't shift the box */
+    letter-spacing: 0.01em;
+    margin-bottom: 12px;
+  }
+  #ns-mega .mc-t span { display: inline-block; text-align: center; vertical-align: top; }
+  #ns-mega .mc-d {
+    font-size: 12px;
+    line-height: 1.65;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.72);
+    min-height: calc(12px * 1.65 * 3);
+  }
+  #ns-mega .mc-go {
+    margin-top: 16px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    opacity: 0.55;
+  }
+  #ns-mega .mega-card:hover .mc-go { opacity: 1; }
   #ns-stage {
     color: #fff;
     text-decoration: none;
@@ -193,8 +306,53 @@
     `<nav id="ns-links">` +
     `<a id="ns-stage" href="${ROOT}index.html" aria-label="newspeech">NEWSPEECH</a>` +
     `<div id="ns-pages">${PAGES}</div>` +
-    `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>`;
+    `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>` +
+    `<div id="ns-mega" hidden><div class="mega-in">` +
+    `<div class="mega-kicker">// browser tools</div>` +
+    `<div class="mega-grid">` +
+    TOOLS.map((t) =>
+      `<a class="mega-card${PAGE === t.page ? " current" : ""}" href="${ROOT}${t.page}">` +
+      `<div class="mc-k">${t.num} / ${t.name}</div>` +
+      `<div class="mc-t" data-ns-link>${t.name}</div>` +
+      `<div class="mc-d">${t.dek}</div>` +
+      `<div class="mc-go">open the tool →</div></a>`
+    ).join("") +
+    `</div></div></div>`;
   document.body.insertBefore(root, document.body.firstChild);
+
+  // ---- mega panel open/close: hover-intent on desktop, click/keys anywhere ----
+  const toolsWrap = document.getElementById("ns-tools");
+  const toolsBtn = document.getElementById("ns-tools-btn");
+  const mega = document.getElementById("ns-mega");
+  let megaOpen = false;
+  let closeTimer = null;
+  function setMegaOpen(open) {
+    if (open === megaOpen) return;
+    megaOpen = open;
+    clearTimeout(closeTimer);
+    closeTimer = null;
+    mega.hidden = !open;
+    toolsWrap.classList.toggle("open", open);
+    toolsBtn.setAttribute("aria-expanded", String(open));
+    if (open) lockLinkWidths(); // card titles measure 0 while hidden — lock on first reveal
+  }
+  function scheduleClose() {
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => setMegaOpen(false), 160);
+  }
+  const hoverMq = window.matchMedia("(hover: hover)");
+  for (const el of [toolsWrap, mega]) {
+    el.addEventListener("mouseenter", () => { if (hoverMq.matches) { clearTimeout(closeTimer); setMegaOpen(true); } });
+    el.addEventListener("mouseleave", () => { if (hoverMq.matches) scheduleClose(); });
+  }
+  toolsBtn.addEventListener("click", () => setMegaOpen(!megaOpen));
+  document.addEventListener("click", (e) => {
+    if (megaOpen && !root.contains(e.target)) setMegaOpen(false);
+  });
+  root.addEventListener("focusout", (e) => {
+    if (megaOpen && !root.contains(e.relatedTarget)) setMegaOpen(false);
+  });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") setMegaOpen(false); });
 
   // ---- mobile takeover: links centered, socials at the bottom ----
   // plain links (no data-ns-link): the scramble treatment locks char widths
@@ -206,10 +364,8 @@
     `<button class="ov-close" aria-label="close">×</button>` +
     `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link" href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}">sequence</a>` +
-    `<a class="ov-link${cur("texture.html")}" href="${ROOT}texture.html">texture</a>` +
-    `<a class="ov-link${cur("slice.html")}" href="${ROOT}slice.html">slice</a>` +
-    `<a class="ov-link${cur("decay.html")}" href="${ROOT}decay.html">decay</a>` +
-    `<a class="ov-link${cur("drone.html")}" href="${ROOT}drone.html">drone</a>` +
+    `<div class="ov-kicker">// browser tools</div>` +
+    TOOLS.map((t) => `<a class="ov-link ov-tool${cur(t.page)}" href="${ROOT}${t.page}">${t.name}</a>`).join("") +
     `<a class="ov-link${cur("samples.html")}" href="${ROOT}samples.html">samples</a>` +
     `<a class="ov-link${cur("visualizers.html")}" href="${ROOT}visualizers.html">visuals</a>` +
     `<a class="ov-link${cur("live.html")}" href="${ROOT}live.html">code</a>` +
@@ -250,6 +406,7 @@
     if (Math.abs(delta) < 6) return;
     if (y < 80) root.classList.remove("nav-hidden");
     else root.classList.toggle("nav-hidden", delta > 0);
+    if (delta > 0 && y >= 80) setMegaOpen(false);
     lastScrollTop = y;
   }, { passive: true });
 
@@ -390,14 +547,16 @@
   // link box can't flex while fonts swap. measuring requires layout: below
   // the burger breakpoint #ns-pages is display:none and every char measures
   // 0 — locking then would freeze the links at zero width. so lock lazily,
-  // the first time the desktop row is actually visible.
+  // per group, whenever a group is actually rendered (desktop row on first
+  // desktop layout; mega-card titles on first panel open).
   const deskMq = window.matchMedia("(min-width: 1025px)");
-  const lockables = [];
-  let widthsLocked = false;
+  const lockables = []; // { spans, locked }
   function lockLinkWidths() {
-    if (widthsLocked || !deskMq.matches) return;
-    widthsLocked = true;
-    for (const spans of lockables) {
+    for (const group of lockables) {
+      if (group.locked) continue;
+      const spans = group.spans;
+      if (!spans.length || spans[0].offsetParent === null) continue; // not rendered
+      group.locked = true;
       for (const s of spans) {
         let maxW = s.getBoundingClientRect().width;
         for (const fam of LINK_FONT_CYCLE) {
@@ -430,11 +589,12 @@
         return s;
       });
 
-      lockables.push(charSpans);
+      lockables.push({ spans: charSpans, locked: false });
 
       const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
       let timer = null;
-      link.addEventListener("mouseenter", () => {
+      const hoverEl = link.closest(".mega-card") || link.closest("#ns-tools-btn") || link;
+      hoverEl.addEventListener("mouseenter", () => {
         if (timer) return;
         timer = setInterval(() => {
           for (let i = 0; i < charSpans.length; i++) {
@@ -443,7 +603,7 @@
           }
         }, LINK_CYCLE_MS);
       });
-      link.addEventListener("mouseleave", () => {
+      hoverEl.addEventListener("mouseleave", () => {
         clearInterval(timer);
         timer = null;
         for (const s of charSpans) s.style.fontFamily = "";
@@ -471,7 +631,7 @@
         }
       );
     });
-    lockLinkWidths(); // no-op if the row is hidden; the mq listener retries
+    lockLinkWidths(); // hidden groups skip; the mq listener + panel open retry
   }
   setupLinks();
 
