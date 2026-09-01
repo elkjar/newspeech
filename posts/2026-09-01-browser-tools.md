@@ -2,8 +2,8 @@
 title: three new browser tools - slice, decay, drone
 date: 2026-09-01
 dek: a new suite of tools for beautiful pristine audio.
-image: assets/browser-tools.png
-image_alt: the newspeech nav with the tools panel open — texture, slice, decay, drone
+image: assets/browser-tools.jpg
+image_alt: slice running on a laptop, NEWSPEECH tapped out as a morse pattern, in front of a patched eurorack rack
 ---
 
 I spent a tumultuous few days in New Orleans for this year's Cutting Edge Conference - I was asked to speak on a panel about music technology and used it basically just to tell people to cancel their spotify accounts, crack a few dream theater jokes and talk about how *all* AI tools aren't terrible. If any of you have toured or done production work you realize that there's a lot of downtime to these types of events and schedules. This means a lot of headphone time while walking around the city, or time scrolling on your phone depending on how realistic and romantic of a picture you want to paint. 
