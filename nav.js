@@ -118,13 +118,37 @@
     z-index: 30;
     background: #050505;
     display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
+    overflow: hidden;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
-  #ns-overlay.open { display: flex; }
+  #ns-overlay.open { display: block; }
+  /* two panes: main menu + tools. the tools pane parks off-screen right and
+     slides in, pushing the main menu out to the left (same 0.28s ease as
+     the bar's check-up). each pane scrolls on its own. */
+  #ns-overlay .ov-pane {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.28s ease;
+  }
+  #ns-overlay .ov-pane-tools { transform: translateX(100%); }
+  #ns-overlay.tools .ov-pane-main { transform: translateX(-100%); }
+  #ns-overlay.tools .ov-pane-tools { transform: translateX(0); }
+  /* margin:auto centers the list when it fits, scrolls when it doesn't */
+  #ns-overlay .ov-list {
+    margin: auto 0;
+    width: 100%;
+    max-width: 420px;
+    padding: 72px 20px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
   #ns-overlay .ov-link {
     color: #fff;
     text-decoration: none;
@@ -134,18 +158,70 @@
     opacity: 0.5;
   }
   #ns-overlay .ov-link.current { opacity: 1; }
-  #ns-overlay .ov-kicker {
-    font-size: 10px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: #fff;
-    opacity: 0.35;
-    margin: 18px 0 4px;
+  /* tools row → slides the tools pane in (the mobile mega) */
+  #ns-overlay .ov-tools-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: 0;
+    font-family: inherit;
+    cursor: pointer;
   }
-  #ns-overlay .ov-link.ov-tool { padding-top: 8px; padding-bottom: 8px; }
-  #ns-overlay .ov-link.ov-tool + .ov-link:not(.ov-tool) { margin-top: 18px; }
+  /* carets point the way the panes travel: → into tools, ← back to menu */
+  #ns-overlay .ov-tools-btn .ns-caret { width: 12px; height: 12px; transform: rotate(-90deg); }
+  #ns-overlay .ov-back {
+    align-self: flex-start;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #050505;
+    border: 0;
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    padding: 22px 20px;
+    cursor: pointer;
+    opacity: 0.6;
+  }
+  #ns-overlay .ov-back .ns-caret { width: 12px; height: 12px; transform: rotate(90deg); }
+  #ns-overlay .ov-tiles {
+    margin: auto 0;
+    width: 100%;
+    max-width: 420px;
+    padding: 8px 20px 44px;
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+  }
+  #ns-overlay .ov-tile {
+    display: block;
+    padding: 18px 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+    text-decoration: none;
+    text-align: left;
+    opacity: 0.7;
+  }
+  #ns-overlay .ov-tile.current, #ns-overlay .ov-tile:active { opacity: 1; }
+  #ns-overlay .ovt-t {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: 26px;
+    line-height: 28px;
+    letter-spacing: 0.01em;
+  }
+  #ns-overlay .ovt-d {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.65);
+  }
   #ns-overlay .ov-close {
     position: absolute;
+    z-index: 2;
     top: 10px;
     right: 12px;
     background: none;
@@ -159,10 +235,11 @@
     opacity: 0.8;
   }
   #ns-overlay .ov-icons {
-    position: absolute;
-    bottom: 44px;
+    flex-shrink: 0;
     display: flex;
+    justify-content: center;
     gap: 36px;
+    padding-bottom: 44px;
   }
   #ns-overlay .ov-icons a { color: #fff; opacity: 0.6; }
   #ns-overlay .ov-icons svg { width: 22px; height: 22px; display: block; }
@@ -337,22 +414,45 @@
   overlay.id = "ns-overlay";
   overlay.innerHTML =
     `<button class="ov-close" aria-label="close">×</button>` +
+    `<div class="ov-pane ov-pane-main">` +
+    `<div class="ov-list">` +
     `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link" href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}">sequence</a>` +
-    `<div class="ov-kicker">// browser tools</div>` +
-    TOOLS.map((t) => `<a class="ov-link ov-tool${cur(t.page)}" href="${ROOT}${t.page}">${t.name}</a>`).join("") +
+    `<button class="ov-link ov-tools-btn${IN_TOOLS ? " current" : ""}" aria-expanded="false" aria-controls="ns-ov-tools">tools${ICON_CARET}</button>` +
     `<a class="ov-link${cur("samples.html")}" href="${ROOT}samples.html">samples</a>` +
     `<a class="ov-link${cur("visualizers.html")}" href="${ROOT}visualizers.html">visuals</a>` +
     `<a class="ov-link${cur("live.html")}" href="${ROOT}live.html">code</a>` +
+    `</div>` +
     `<div class="ov-icons">` +
     `<a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
-    `</div>`;
+    `</div>` +
+    `</div>` +
+    `<div class="ov-pane ov-pane-tools" id="ns-ov-tools" aria-hidden="true">` +
+    `<button class="ov-back">${ICON_CARET}menu</button>` +
+    `<div class="ov-tiles">` +
+    TOOLS.map((t) =>
+      `<a class="ov-tile${cur(t.page)}" href="${ROOT}${t.page}">` +
+      `<div class="ovt-t">${t.name}</div><div class="ovt-d">${t.dek}</div></a>`
+    ).join("") +
+    `</div></div>`;
   document.body.appendChild(overlay);
 
   const burger = document.getElementById("ns-burger");
+  const ovToolsBtn = overlay.querySelector(".ov-tools-btn");
+  const ovToolsPane = overlay.querySelector(".ov-pane-tools");
+  function setOvToolsOpen(open) {
+    overlay.classList.toggle("tools", open);
+    ovToolsBtn.setAttribute("aria-expanded", String(open));
+    ovToolsPane.setAttribute("aria-hidden", String(!open));
+    if (open) ovToolsPane.scrollTop = 0;
+  }
+  ovToolsBtn.addEventListener("click", () => setOvToolsOpen(true));
+  overlay.querySelector(".ov-back").addEventListener("click", () => setOvToolsOpen(false));
   function setMenuOpen(open) {
     overlay.classList.toggle("open", open);
+    // reset to the main pane while hidden — no slide plays on the next open
+    if (!open) setOvToolsOpen(false);
     burger.setAttribute("aria-expanded", String(open));
     // lock page scroll behind the takeover (scroll-snap lives on <html>)
     document.documentElement.style.overflow = open ? "hidden" : "";
