@@ -110,7 +110,10 @@ function mdToHtml(md) {
         const s = l.trim();
         return s !== "" && !/^(#{1,4} |```|> |[-*] |\d+\. |<|!\[)/.test(s);
       });
-      out.push(`<p>${para.map((l) => inline(l.trim())).join("<br>")}</p>`);
+      // a paragraph that is exactly one link → button-style call to action
+      // (the "try slice" links under each tool section); no new syntax.
+      const cta = para.length === 1 && /^\[[^\]]+\]\([^)\s]+\)$/.test(para[0].trim());
+      out.push(`<p${cta ? ' class="cta"' : ""}>${para.map((l) => inline(l.trim())).join("<br>")}</p>`);
     }
   }
   return out.join("\n");
@@ -197,6 +200,21 @@ ${SHARED_CSS}
   article h3, article h4 { font-size: 12px; color: #ccc; }
   article a { border-bottom: 1px solid rgba(255, 255, 255, 0.25); text-decoration: none; }
   article a:hover { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.7); }
+  /* single-link paragraphs render as buttons — mirrors the homepage .cta */
+  article p.cta { margin: 26px 0 40px; }
+  article p.cta a {
+    display: inline-flex;
+    padding: 14px 22px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: #fff;
+    font-size: 12px;
+    line-height: 18px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transition: background 80ms ease;
+  }
+  article p.cta a:hover { background: rgba(255, 255, 255, 0.08); border-color: #fff; }
+  article p.cta a::after { content: " →"; white-space: pre; }
   article ul, article ol { margin: 0 0 18px; padding-left: 22px; }
   article li { margin: 0 0 6px; }
   article blockquote {
