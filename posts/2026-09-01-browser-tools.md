@@ -40,6 +40,6 @@ you can test this in browser, manually tweak the mix and then export at a few le
 
 [try drone](../drone.html)
 
-## the nav
+## browser based tooling
 
 these tools living in the browser instead of just within a plugin or workflow on my machine is an interesting new concept for me and continues to be intriguing. If nothing else to practice what i preach and just build out the tooling that i want to use to make music. this website will never be high traffic, but i find myself using it more and more within my own work
