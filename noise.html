@@ -1,0 +1,1024 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // noise</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — audio destruction. Drop a wav, get a worse wav. Draw where each stage hits; every pass mutates.">
+<meta property="og:title" content="NEWSPEECH // noise">
+<meta property="og:description" content="newspeech — audio destruction. drop a wav, get a worse wav.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/noise.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // noise">
+<meta name="twitter:description" content="newspeech — audio destruction. drop a wav, get a worse wav.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0 0 4px; }
+  .sub { color: #666; margin: 0 0 20px; }
+
+  /* the file: drop zone + waveform. the timeline hangs directly under it so
+     the lanes read as annotations on the audio — same x axis, no gap. */
+  #dropwave {
+    position: relative;
+    height: 150px;
+    background: #0a0a0a;
+    border: 1px dashed #333;
+    border-bottom: none;
+    transition: border-color 0.15s;
+  }
+  #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
+  #dropwave.drag { border-color: #777; }
+  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #dropprompt {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #666; cursor: pointer; text-align: center; padding: 0 12px;
+  }
+  #dropwave.drag #dropprompt { color: #ddd; }
+  #dropwave.loaded #dropprompt { display: none; }
+  #fileinfo {
+    position: absolute; top: 8px; left: 10px;
+    color: #888; cursor: pointer; display: none;
+    background: rgba(5,5,5,0.6); padding: 1px 6px;
+  }
+  #fileinfo:hover { color: #ddd; }
+  #dropwave.loaded #fileinfo { display: block; }
+  #fileinfo .fname { color: #ddd; }
+  #fileinput { display: none; }
+
+  /* lane timeline: label column + one canvas for all lanes */
+  #timeline {
+    display: flex;
+    background: #0a0a0a;
+    border: 1px solid #1c1c1c;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  #dropwave:not(.loaded) + #timeline { border-style: dashed; border-color: #333; }
+  #lanelabels { width: 104px; flex: none; display: flex; flex-direction: column; border-right: 1px solid #1c1c1c; }
+  .lanelabel {
+    height: var(--lane-h);
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 6px 0 8px;
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #666; cursor: pointer; user-select: none; -webkit-user-select: none;
+    border-bottom: 1px solid #141414;
+  }
+  .lanelabel:last-child { border-bottom: none; }
+  .lanelabel:hover { color: #bbb; }
+  .lanelabel.sel { color: #eee; background: #0f0f0f; }
+  .lanelabel.off .lname { opacity: 0.35; }
+  .lanelabel .lname { flex: 1; }
+  .lanelabel .ltoggle { color: #777; font-size: 11px; }
+  .lanelabel .ltoggle:hover { color: #fff; }
+  .lanelabel.on .ltoggle { color: #ddd; }
+  #lanewrap { flex: 1; position: relative; min-width: 0; }
+  #lanecv { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  #lanehint {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #444; pointer-events: none; text-align: center; padding: 0 12px;
+  }
+  #timeline.haslanes #lanehint { display: none; }
+
+  /* transport */
+  #transport { display: flex; gap: 14px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+  button {
+    font: inherit; background: none; color: #ccc;
+    border: 1px solid #444; padding: 8px 22px;
+    cursor: pointer; letter-spacing: 0.15em;
+  }
+  button:hover { border-color: #999; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .hint { color: #555; }
+  #transport .seg { margin: 0; }
+
+  /* the stage panel: knobs for the selected lane (or the selected block's
+     own values). one panel, rebuilt on selection — Glitch²'s module strip. */
+  .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; margin-bottom: 14px; }
+  .group h2 {
+    font-size: 11px; font-weight: 400; letter-spacing: 0.25em; color: #999;
+    margin: 0 0 12px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .group h2 .blockinfo { color: #666; letter-spacing: 0.1em; }
+  .group h2 .toggle { margin: 0; }
+  #stagedesc { color: #555; margin: -6px 0 12px; }
+
+  .krow { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .kdivider { align-self: stretch; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px; }
+  .kcol {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    width: 58px; user-select: none; -webkit-user-select: none;
+  }
+  .kcol svg { cursor: ns-resize; touch-action: none; display: block; }
+  .kcol svg:hover .kring { stroke-opacity: 0.22; }
+  .kcol .klabel {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+    color: rgba(255,255,255,0.7); text-align: center;
+  }
+  .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+  .kcol.dim { opacity: 0.3; pointer-events: none; }
+  /* a knob that a block overrides carries a small mark under its value —
+     the displaced-indicator rule: lane value still visible at low weight */
+  .kcol .kinherit { font-size: 9px; color: rgba(255,255,255,0.25); font-variant-numeric: tabular-nums; min-height: 12px; }
+
+  .toggle {
+    background: none; border: none; padding: 2px 6px; color: #777;
+    cursor: pointer; letter-spacing: 0.1em; font-size: 11px;
+  }
+  .toggle:hover { color: #fff; border: none; }
+  .toggle.on { color: #fff; background: none; }
+
+  .seg { display: flex; gap: 4px; margin: 10px 0 0; flex-wrap: wrap; align-items: center; }
+  .seg button { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.12em; }
+  .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .seg .seglabel { color: #666; padding: 0 6px 0 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; }
+  .seg.dim { opacity: 0.3; pointer-events: none; }
+
+  /* block-only controls (accumulator) sit under a rule inside the panel */
+  #blockctl { border-top: 1px solid #141414; margin-top: 12px; padding-top: 10px; }
+  #blockctl[hidden] { display: none; }
+  #blockctl .sub2 { color: #555; margin: 0 0 6px; }
+
+  /* generations + print */
+  #export { border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  #export .seg { margin: 0; }
+  #seed {
+    font: inherit; background: none; color: #ccc; border: 1px solid #2a2a2a;
+    padding: 3px 8px; width: 90px; letter-spacing: 0.1em; font-variant-numeric: tabular-nums;
+  }
+  #seed:focus { outline: none; border-color: #777; }
+  #renderinfo { color: #666; }
+
+  @media (max-width: 720px) {
+    #lanelabels { width: 78px; }
+    .lanelabel { padding: 0 4px 0 6px; font-size: 9px; letter-spacing: 0.08em; }
+    .krow .kdivider { flex-basis: 100%; width: auto; height: 1px; margin: 8px 0; align-self: auto; }
+  }
+</style>
+</head>
+<body>
+<script src="nav.js"></script>
+<script src="grain.js"></script>
+
+<h1>// NOISE</h1>
+<p class="sub">audio destruction — drop a wav, get a worse wav. draw where each stage hits. every pass mutates what you drew.</p>
+
+<div id="dropwave">
+  <canvas id="wave"></canvas>
+  <div id="dropprompt">drop an audio file here, or click to browse — the file's length is the grid</div>
+  <div id="fileinfo"></div>
+</div>
+<input type="file" id="fileinput" accept="audio/*">
+
+<div id="timeline" style="--lane-h: 34px;">
+  <div id="lanelabels"></div>
+  <div id="lanewrap">
+    <canvas id="lanecv"></canvas>
+    <div id="lanehint">drag on a lane to draw a block · drag its edge to resize · double-click to split · right-click to erase</div>
+  </div>
+</div>
+
+<div id="transport">
+  <button id="play" disabled>PLAY</button>
+  <div class="seg" id="gridseg">
+    <span class="seglabel">grid</span>
+    <button data-g="4">÷4</button>
+    <button data-g="8">÷8</button>
+    <button data-g="16" class="on">÷16</button>
+    <button data-g="32">÷32</button>
+    <button data-g="64">÷64</button>
+  </div>
+  <span class="hint">[space] play/stop &nbsp;·&nbsp; [1–6] select lane &nbsp;·&nbsp; [⌫] erase selected block &nbsp;·&nbsp; an empty lane is off</span>
+</div>
+
+<div class="group" id="panel">
+  <h2><span id="stagename">CRUSH</span><span class="blockinfo" id="blockinfo"></span><button class="toggle" id="ownvals" hidden>○ own values</button></h2>
+  <p id="stagedesc"></p>
+  <div class="krow" id="panel-knobs"></div>
+  <div id="panel-segs"></div>
+  <div id="blockctl" hidden>
+    <p class="sub2">accumulator — each time this block fires it climbs one rung, then turns per shape</p>
+    <div class="seg" id="accshape">
+      <span class="seglabel">acc</span>
+      <button data-v="off" class="on">OFF</button>
+      <button data-v="wrap">WRAP</button>
+      <button data-v="bounce">BOUNCE</button>
+      <button data-v="hold">HOLD</button>
+    </div>
+    <div class="seg" id="acctarget"><span class="seglabel">on</span></div>
+    <div class="krow" id="acc-knobs" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<div id="export">
+  <div class="seg" id="passes">
+    <span class="seglabel">passes</span>
+    <button data-p="1" class="on">×1</button>
+    <button data-p="2">×2</button>
+    <button data-p="4">×4</button>
+    <button data-p="8">×8</button>
+    <button data-p="16">×16</button>
+  </div>
+  <div class="seg">
+    <span class="seglabel">seed</span>
+    <input id="seed" value="" spellcheck="false" autocomplete="off">
+    <button id="reseed" title="new seed">⟳</button>
+  </div>
+  <div class="seg" id="printmode">
+    <span class="seglabel">print</span>
+    <button data-m="end" class="on" title="the last pass only">END</button>
+    <button data-m="arc" title="every pass, concatenated — the whole slide">ARC</button>
+  </div>
+  <button id="render" disabled>PRINT WAV</button>
+  <span id="renderinfo">load a file first</span>
+</div>
+
+<script>
+// noise.html — audio destruction engine, UI pass.
+//
+// Model: the dropped file is the timebase. Six stages in a FIXED serial
+// order, each a lane on a shared grid that divides the file (no bpm). A
+// block = the stage is in the signal path for that span; an empty lane is
+// off. Every block inherits its lane's knobs unless it carries its own.
+// Generations: each pass through the file is one evolution step — lanes
+// mutate what was drawn, blocks accumulate. This file is the UI + data
+// model; the worklet (noise-worklet.js) lands next and reads `pattern()`.
+
+// --- ladders ---------------------------------------------------------------
+const ladder = (arr, k) => arr[Math.round(Math.min(1, Math.max(0, k)) * (arr.length - 1))];
+const pct = (v) => Math.round(v * 100) + '';
+const hz = (v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v) + 'Hz';
+
+const LO_LADDER = [0, 80, 160, 320, 640, 1200];
+const HI_LADDER = [20000, 10000, 5000, 2500, 1200, 600];
+const BITS_LADDER = [16, 12, 10, 8, 6, 4, 3, 2, 1];
+const RATE_DIV_LADDER = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64];
+const CHOP_PERIOD_LADDER = [4, 2, 1, 1 / 2, 1 / 4, 1 / 8, 1 / 16]; // in grid cells
+const GLITCH_LEN_LADDER = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2]; // in grid cells
+const PITCH_LADDER = [-2, -1, 0, 1, 2]; // octaves
+const FB_DELAY_LADDER = [1, 2, 5, 10, 20, 50, 100, 200, 500]; // ms
+
+const cellsLabel = (c) => c >= 1 ? `${c} cell${c > 1 ? 's' : ''}` : `1/${Math.round(1 / c)} cell`;
+
+// Shared scoping knobs: every stage only touches the band between lo and hi.
+const SCOPE_KNOBS = [
+  { k: 'lo', label: 'lo', steps: 6, def: 0,
+    fmt: (v) => { const f = ladder(LO_LADDER, v); return f ? hz(f) : 'flat'; },
+    title: 'high-pass into the stage — the stage only touches what\'s above' },
+  { k: 'hi', label: 'hi', steps: 6, def: 0,
+    fmt: (v) => hz(ladder(HI_LADDER, v)),
+    title: 'low-pass into the stage — the stage only touches what\'s below' },
+];
+const MIX_KNOB = { k: 'mix', label: 'mix', def: 1, fmt: pct, title: 'stage wet/dry' };
+
+// --- stages: fixed order top→bottom -----------------------------------------
+const STAGES = [
+  {
+    id: 'crush', name: 'CRUSH',
+    desc: 'bit depth, sample-rate division, bitrot — the converter fails',
+    knobs: [
+      { k: 'bits', label: 'bits', steps: 9, def: 3 / 8, fmt: (v) => ladder(BITS_LADDER, v) + 'bit', title: '16 → 1 bit. 1 bit is a comparator' },
+      { k: 'rate', label: 'rate', steps: 12, def: 0, fmt: (v) => '÷' + ladder(RATE_DIV_LADDER, v), title: 'sample-rate divider — ÷64 is ~750Hz at 48k' },
+      { k: 'rot', label: 'rot', def: 0, fmt: pct, title: 'bitrot — data loss: crackle, then dropouts' },
+    ],
+    segs: [],
+  },
+  {
+    id: 'noise', name: 'NOISE',
+    desc: 'the mörser — clocked digital noise into a squelching filter, edge-pinged by the signal',
+    knobs: [
+      { k: 'drive', label: 'drive', def: 0.25, fmt: (v) => (1 + v * 23).toFixed(1) + 'x', title: 'input gain into the filter — pushing it is the sound' },
+      { k: 'cutoff', label: 'cutoff', def: 0.6, fmt: (v) => hz(40 * Math.pow(300, v)) },
+      { k: 'res', label: 'res', def: 0.4, fmt: pct },
+      { k: 'noise', label: 'noise', def: 0.3, fmt: pct, title: 'clocked digital noise into the audio path' },
+      { k: 'cv', label: 'cv', def: 0.2, fmt: pct, title: 'clocked noise into cutoff — ±2 octaves at full' },
+      { k: 'clock', label: 'clock', def: Math.log(240 / 0.5) / Math.log(16000), fmt: (v) => { const f = 0.5 * Math.pow(16000, v); return f >= 1000 ? (f / 1000).toFixed(1) + 'kHz' : f.toFixed(1) + 'Hz'; }, title: 'free clock 0.5Hz–8kHz' },
+    ],
+    segs: [
+      { k: 'filter', label: 'filter', opts: [['lp', 'LP'], ['bp', 'BP']], def: 'lp' },
+      { k: 'clocksrc', label: 'clock', opts: [['free', 'FREE'], ['signal', 'SIGNAL']], def: 'free', title: 'SIGNAL: the file\'s zero crossings clock the noise' },
+    ],
+  },
+  {
+    id: 'drive', name: 'DRIVE',
+    desc: 'the boum — boost, tube, fuzz, square. square at zero drive is a 1-bit gate',
+    knobs: [
+      { k: 'drive', label: 'drive', def: 0.34, fmt: pct },
+      { k: 'bias', label: 'bias', def: 0.4, fmt: pct, title: 'asymmetry — only audible on tube and fuzz' },
+    ],
+    segs: [
+      { k: 'mode', label: 'mode', opts: [['boost', 'BOOST'], ['tube', 'TUBE'], ['fuzz', 'FUZZ'], ['square', 'SQUARE']], def: 'fuzz' },
+    ],
+  },
+  {
+    id: 'chop', name: 'CHOP',
+    desc: 'a gate that opens and closes on a clock or a threshold — rhythm cut out of the file',
+    knobs: [
+      { k: 'period', label: 'period', steps: 7, def: 3 / 6, fmt: (v) => cellsLabel(ladder(CHOP_PERIOD_LADDER, v)), title: 'chop period in grid cells' },
+      { k: 'duty', label: 'duty', def: 0.5, fmt: pct, title: 'how much of each period is open' },
+      { k: 'edge', label: 'edge', def: 0.1, fmt: (v) => v < 0.02 ? 'hard' : Math.round(v * 40) + 'ms', title: 'gate edge — hard clicks, or a ramp' },
+      { k: 'thresh', label: 'thresh', def: 0.5, fmt: (v) => '−' + Math.round((1 - v) * 60) + 'dB', title: 'threshold mode: opens above this level', dimUnless: ['src', 'thresh'] },
+    ],
+    segs: [
+      { k: 'src', label: 'src', opts: [['clock', 'CLOCK'], ['thresh', 'THRESH']], def: 'clock' },
+    ],
+  },
+  {
+    id: 'glitch', name: 'GLITCH',
+    desc: 'repeats cut from the file — stutter, reverse, octaves, silence, tape stop, shuffle. set, not hoped for',
+    knobs: [
+      { k: 'len', label: 'length', steps: 6, def: 3 / 5, fmt: (v) => cellsLabel(ladder(GLITCH_LEN_LADDER, v)), title: 'captured slice length in grid cells' },
+      { k: 'count', label: 'count', steps: 16, def: 3 / 15, fmt: (v) => (1 + Math.round(v * 15)) + '', title: 'repeats before a new capture' },
+      { k: 'pitch', label: 'pitch', steps: 5, bipolar: true, def: 0.5, fmt: (v) => { const o = ladder(PITCH_LADDER, v); return o === 0 ? '0' : (o > 0 ? '+' : '−') + Math.abs(o) + 'oct'; }, title: 'pitch of the repeats, octaves' },
+      { k: 'chance', label: 'chance', def: 1, fmt: pct, title: 'per-trigger dice — a miss stops the effect, it does not pass dry' },
+    ],
+    segs: [
+      { k: 'mode', label: 'mode', opts: [['stutter', 'STUTTER'], ['reverse', 'REVERSE'], ['octup', 'OCT+'], ['octdn', 'OCT−'], ['silence', 'SILENCE'], ['tapestop', 'TAPESTOP'], ['shuffle', 'SHUFFLE']], def: 'stutter' },
+    ],
+  },
+  {
+    id: 'feedback', name: 'FEEDBACK',
+    desc: 'the output back into the chain — comb at short delays, smear at long, self-oscillation past 100',
+    knobs: [
+      { k: 'amount', label: 'amount', def: 0.3, fmt: (v) => Math.round(v * 120) + '', title: '0–120 — past 100 it runs away' },
+      { k: 'delay', label: 'delay', steps: 9, def: 3 / 8, fmt: (v) => ladder(FB_DELAY_LADDER, v) + 'ms' },
+      { k: 'tone', label: 'tone', def: 0.7, fmt: (v) => hz(200 * Math.pow(60, v)), title: 'low-pass in the loop' },
+    ],
+    segs: [],
+  },
+];
+
+const LANE_KNOB = { k: 'mutate', label: 'mutate', def: 0, fmt: pct, title: 'per pass: blocks shift, split, grow, appear or vanish — rare add, easy remove' };
+
+function stageKnobSpecs(stage) {
+  return [LANE_KNOB, { divider: true }, ...SCOPE_KNOBS, { divider: true }, ...stage.knobs, { divider: true }, MIX_KNOB];
+}
+function stageDefaults(stage) {
+  const o = {};
+  for (const s of stageKnobSpecs(stage)) if (!s.divider) o[s.k] = s.def;
+  for (const s of stage.segs) o[s.k] = s.def;
+  return o;
+}
+
+// --- pattern model -----------------------------------------------------------
+// lanes[i] = { stage, on, vals, blocks: [{a, b, own|null, acc}] } — a, b are
+// grid-cell indices (b exclusive) so blocks re-snap for free when the grid
+// changes; `own` mirrors `vals` shape when the block carries its own values.
+let grid = 16;
+const lanes = STAGES.map((stage) => ({ stage, on: true, vals: stageDefaults(stage), blocks: [] }));
+let selLane = 0;
+let selBlock = null; // block object in lanes[selLane].blocks, or null
+
+function newAcc() { return { shape: 'off', target: null, step: 0.5 + 1 / 16, range: 3 / 7 }; }
+
+function laneNormalize(lane) {
+  // merge overlaps (dragging one block onto another JOINS them — Glitch²'s
+  // join, without a separate tool); touching blocks stay separate.
+  lane.blocks.sort((x, y) => x.a - y.a);
+  const out = [];
+  for (const b of lane.blocks) {
+    const last = out[out.length - 1];
+    if (last && b.a < last.b) {
+      last.b = Math.max(last.b, b.b);
+      if (b === selBlock) selBlock = last;
+    } else out.push(b);
+  }
+  lane.blocks = out;
+}
+
+function regrid(next) {
+  // blocks live in cells: rescale so the drawn spans keep their place
+  const f = next / grid;
+  for (const l of lanes) for (const b of l.blocks) {
+    b.a = Math.round(b.a * f);
+    b.b = Math.max(b.a + 1, Math.round(b.b * f));
+  }
+  grid = next;
+  for (const l of lanes) laneNormalize(l);
+  refreshLaneState();
+}
+
+// what the worklet will read: everything in file fractions
+function pattern() {
+  return {
+    grid,
+    lanes: lanes.map((l) => ({
+      stage: l.stage.id,
+      on: l.on && l.blocks.length > 0,
+      vals: { ...l.vals },
+      blocks: l.blocks.map((b) => ({ a: b.a / grid, b: b.b / grid, own: b.own ? { ...b.own } : null, acc: { ...b.acc } })),
+    })),
+    passes: ui.passes,
+    seed: ui.seed,
+    printMode: ui.printMode,
+  };
+}
+
+const ui = { passes: 1, seed: '', printMode: 'end' };
+
+// --- knobs (texture.html anatomy; values read/written through a target) -----
+const SVGNS = 'http://www.w3.org/2000/svg';
+const KNOB_SIZE = 40;
+
+function buildKnob(spec, get, set, inheritFrom) {
+  const col = document.createElement('div');
+  col.className = 'kcol';
+  col.dataset.kn = spec.k;
+  const s = KNOB_SIZE, cx = s / 2, cy = s / 2, ringR = s * 0.36;
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('width', s); svg.setAttribute('height', s); svg.setAttribute('viewBox', `0 0 ${s} ${s}`);
+  if (spec.title) { const t = document.createElementNS(SVGNS, 'title'); t.textContent = spec.title; svg.appendChild(t); }
+  const ring = document.createElementNS(SVGNS, 'circle');
+  ring.setAttribute('cx', cx); ring.setAttribute('cy', cy); ring.setAttribute('r', ringR);
+  ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', 'white'); ring.setAttribute('stroke-opacity', '0.12'); ring.setAttribute('stroke-width', '1'); ring.setAttribute('class', 'kring');
+  const arc = document.createElementNS(SVGNS, 'path');
+  arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', 'white'); arc.setAttribute('stroke-opacity', '0.7'); arc.setAttribute('stroke-width', '1.75'); arc.setAttribute('stroke-linecap', 'round');
+  const tick = document.createElementNS(SVGNS, 'line');
+  tick.setAttribute('stroke', 'white'); tick.setAttribute('stroke-opacity', '0.9'); tick.setAttribute('stroke-width', '1.75'); tick.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(ring); svg.appendChild(arc); svg.appendChild(tick);
+  const label = document.createElement('span'); label.className = 'klabel'; label.textContent = spec.label;
+  const val = document.createElement('span'); val.className = 'kval';
+  const inh = document.createElement('span'); inh.className = 'kinherit';
+  col.appendChild(svg); col.appendChild(label); col.appendChild(val); col.appendChild(inh);
+
+  function draw() {
+    const v = Math.min(1, Math.max(0, get()));
+    const angleDeg = -135 + 270 * v;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const tickInner = s * 0.17;
+    tick.setAttribute('x1', cx + tickInner * Math.sin(angleRad));
+    tick.setAttribute('y1', cy - tickInner * Math.cos(angleRad));
+    tick.setAttribute('x2', cx + ringR * Math.sin(angleRad));
+    tick.setAttribute('y2', cy - ringR * Math.cos(angleRad));
+    const startDeg = spec.bipolar ? 0 : -135;
+    const drawArc = spec.bipolar ? Math.abs(v - 0.5) > 0.001 : v > 0;
+    if (drawArc) {
+      const startRad = (startDeg * Math.PI) / 180;
+      const sweep = angleDeg >= startDeg ? 1 : 0;
+      const largeArc = Math.abs(angleDeg - startDeg) > 180 ? 1 : 0;
+      arc.setAttribute('d', `M ${cx + ringR * Math.sin(startRad)} ${cy - ringR * Math.cos(startRad)} A ${ringR} ${ringR} 0 ${largeArc} ${sweep} ${cx + ringR * Math.sin(angleRad)} ${cy - ringR * Math.cos(angleRad)}`);
+      arc.setAttribute('visibility', 'visible');
+    } else arc.setAttribute('visibility', 'hidden');
+    val.textContent = spec.fmt(v);
+    // block override: show the lane's value underneath at reduced weight
+    if (inheritFrom) {
+      const lv = inheritFrom();
+      inh.textContent = Math.abs(lv - v) > 0.001 ? 'lane ' + spec.fmt(lv) : '';
+    } else inh.textContent = '';
+  }
+  function setValue(next) {
+    let v = Math.min(1, Math.max(0, next));
+    if (v === get()) return;
+    set(v); draw(); onValueChange(spec.k);
+  }
+  svg.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const startY = e.clientY, startVal = get();
+    const onMove = (ev) => setValue(startVal + (startY - ev.clientY) / 100);
+    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
+  });
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const step = spec.steps ? 1 / (spec.steps - 1) : 0.05;
+    setValue(get() + (e.deltaY > 0 ? -step : step));
+  }, { passive: false });
+  draw();
+  return col;
+}
+
+// --- panel: rebuilt on selection --------------------------------------------
+function panelTarget() {
+  const lane = lanes[selLane];
+  if (selBlock && selBlock.own) return { vals: selBlock.own, laneVals: lane.vals, own: true };
+  return { vals: lane.vals, laneVals: null, own: false };
+}
+
+function onValueChange() { refreshLaneState(); }
+
+function renderPanel() {
+  const lane = lanes[selLane];
+  const stage = lane.stage;
+  const t = panelTarget();
+  document.getElementById('stagename').textContent = stage.name;
+  document.getElementById('stagedesc').textContent = stage.desc;
+  const info = document.getElementById('blockinfo');
+  const ownBtn = document.getElementById('ownvals');
+  if (selBlock) {
+    const idx = lane.blocks.indexOf(selBlock) + 1;
+    info.textContent = `block ${idx}/${lane.blocks.length} · cells ${selBlock.a + 1}–${selBlock.b}`;
+    ownBtn.hidden = false;
+    ownBtn.classList.toggle('on', t.own);
+    ownBtn.textContent = `${t.own ? '●' : '○'} own values`;
+  } else {
+    info.textContent = lane.blocks.length ? `${lane.blocks.length} block${lane.blocks.length > 1 ? 's' : ''}` : 'no blocks — lane is off';
+    ownBtn.hidden = true;
+  }
+
+  const row = document.getElementById('panel-knobs');
+  row.innerHTML = '';
+  for (const spec of stageKnobSpecs(stage)) {
+    if (spec.divider) { const d = document.createElement('div'); d.className = 'kdivider'; row.appendChild(d); continue; }
+    // mutate is lane-level always; the block can't carry it
+    const laneLevel = spec.k === 'mutate';
+    const vals = laneLevel ? lane.vals : t.vals;
+    const col = buildKnob(spec, () => vals[spec.k], (v) => { vals[spec.k] = v; },
+      t.own && !laneLevel ? () => lane.vals[spec.k] : null);
+    if (laneLevel && t.own) col.classList.add('dim');
+    if (spec.dimUnless) col.dataset.dimUnless = spec.dimUnless.join(':');
+    row.appendChild(col);
+  }
+
+  const segs = document.getElementById('panel-segs');
+  segs.innerHTML = '';
+  for (const sspec of stage.segs) {
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    seg.dataset.k = sspec.k;
+    const lab = document.createElement('span'); lab.className = 'seglabel'; lab.textContent = sspec.label; seg.appendChild(lab);
+    for (const [v, text] of sspec.opts) {
+      const b = document.createElement('button');
+      b.textContent = text; b.dataset.v = v;
+      if (sspec.title) b.title = sspec.title;
+      b.classList.toggle('on', t.vals[sspec.k] === v);
+      b.addEventListener('click', () => {
+        t.vals[sspec.k] = v;
+        seg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        refreshDims();
+        refreshLaneState();
+      });
+      seg.appendChild(b);
+    }
+    segs.appendChild(seg);
+  }
+  refreshDims();
+  renderBlockCtl();
+}
+
+function refreshDims() {
+  const t = panelTarget();
+  document.querySelectorAll('#panel-knobs .kcol[data-dim-unless]').forEach((col) => {
+    const [k, v] = col.dataset.dimUnless.split(':');
+    col.classList.toggle('dim', t.vals[k] !== v);
+  });
+}
+
+// per-block: accumulator (shape · target knob · step · range)
+function renderBlockCtl() {
+  const el = document.getElementById('blockctl');
+  if (!selBlock) { el.hidden = true; return; }
+  el.hidden = false;
+  const acc = selBlock.acc;
+  const stage = lanes[selLane].stage;
+  const shape = document.getElementById('accshape');
+  shape.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === acc.shape));
+  const tgt = document.getElementById('acctarget');
+  tgt.innerHTML = '<span class="seglabel">on</span>';
+  const candidates = [...SCOPE_KNOBS, ...stage.knobs, MIX_KNOB];
+  if (!acc.target) acc.target = stage.knobs[0].k;
+  for (const spec of candidates) {
+    const b = document.createElement('button');
+    b.textContent = spec.label.toUpperCase(); b.dataset.v = spec.k;
+    b.classList.toggle('on', acc.target === spec.k);
+    b.addEventListener('click', () => {
+      acc.target = spec.k;
+      tgt.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      refreshLaneState();
+    });
+    tgt.appendChild(b);
+  }
+  const off = acc.shape === 'off';
+  tgt.classList.toggle('dim', off);
+  const row = document.getElementById('acc-knobs');
+  row.innerHTML = '';
+  const stepSpec = { k: 'step', label: 'step', steps: 9, bipolar: true, fmt: (v) => { const r = Math.round((v - 0.5) * 8); return (r > 0 ? '+' : '') + r + ' rung'; }, title: 'knob steps added per fire, −4..+4' };
+  const rangeSpec = { k: 'range', label: 'range', steps: 8, fmt: (v) => (1 + Math.round(v * 7)) + '', title: 'rungs before it turns or resets' };
+  for (const spec of [stepSpec, rangeSpec]) {
+    const col = buildKnob(spec, () => acc[spec.k], (v) => { acc[spec.k] = v; }, null);
+    if (off) col.classList.add('dim');
+    row.appendChild(col);
+  }
+}
+
+document.getElementById('accshape').querySelectorAll('button').forEach((b) => {
+  b.addEventListener('click', () => {
+    if (!selBlock) return;
+    selBlock.acc.shape = b.dataset.v;
+    renderBlockCtl();
+    refreshLaneState();
+  });
+});
+
+document.getElementById('ownvals').addEventListener('click', () => {
+  if (!selBlock) return;
+  const lane = lanes[selLane];
+  if (selBlock.own) selBlock.own = null;
+  else { selBlock.own = { ...lane.vals }; delete selBlock.own.mutate; } // mutate stays lane-level
+  renderPanel();
+  refreshLaneState();
+});
+
+// --- lane labels -------------------------------------------------------------
+const labelsEl = document.getElementById('lanelabels');
+lanes.forEach((lane, i) => {
+  const el = document.createElement('div');
+  el.className = 'lanelabel';
+  el.dataset.i = i;
+  el.innerHTML = `<span class="lname">${lane.stage.name}</span><span class="ltoggle" title="lane on/off">●</span>`;
+  el.addEventListener('click', (e) => {
+    if (e.target.classList.contains('ltoggle')) {
+      lane.on = !lane.on;
+      refreshLaneState();
+      return;
+    }
+    selectLane(i, null);
+  });
+  labelsEl.appendChild(el);
+});
+
+function selectLane(i, block) {
+  selLane = i;
+  selBlock = block;
+  renderPanel();
+  refreshLaneState();
+}
+
+function refreshLaneState() {
+  labelsEl.querySelectorAll('.lanelabel').forEach((el, i) => {
+    const lane = lanes[i];
+    const live = lane.on && lane.blocks.length > 0;
+    el.classList.toggle('sel', i === selLane);
+    el.classList.toggle('on', live);
+    el.classList.toggle('off', !live);
+    el.querySelector('.ltoggle').textContent = lane.on ? '●' : '○';
+  });
+  document.getElementById('timeline').classList.toggle('haslanes', lanes.some((l) => l.blocks.length > 0));
+  if (selBlock) {
+    const lane = lanes[selLane];
+    const idx = lane.blocks.indexOf(selBlock);
+    document.getElementById('blockinfo').textContent = idx >= 0
+      ? `block ${idx + 1}/${lane.blocks.length} · cells ${selBlock.a + 1}–${selBlock.b}` : '';
+  }
+  updateRenderInfo();
+}
+
+// --- lane canvas: draw / move / resize / split / erase ----------------------
+const lanecv = document.getElementById('lanecv');
+const LANE_H = 34;
+const EDGE_PX = 6;
+let laneDrag = null; // { kind: 'draw'|'move'|'a'|'b', lane, block, anchorCell, startA, startB, grabOff }
+let hoverCursor = 'crosshair';
+
+function sizeCanvas(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const r = c.getBoundingClientRect();
+  c.width = Math.max(1, Math.round(r.width * dpr));
+  c.height = Math.max(1, Math.round(r.height * dpr));
+}
+function sizeLanes() {
+  document.getElementById('lanewrap').style.height = LANE_H * lanes.length + 'px';
+  sizeCanvas(lanecv);
+}
+
+function laneHit(e) {
+  const r = lanecv.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  const fx = Math.min(1, Math.max(0, x / r.width));
+  const li = Math.min(lanes.length - 1, Math.max(0, Math.floor((e.clientY - r.top) / LANE_H)));
+  const cellF = fx * grid;
+  const lane = lanes[li];
+  let block = null, edge = null;
+  for (const b of lane.blocks) {
+    const xa = (b.a / grid) * r.width, xb = (b.b / grid) * r.width;
+    if (Math.abs(x - xa) <= EDGE_PX) { block = b; edge = 'a'; break; }
+    if (Math.abs(x - xb) <= EDGE_PX) { block = b; edge = 'b'; break; }
+    if (x > xa && x < xb) { block = b; break; }
+  }
+  return { li, lane, fx, cellF, block, edge, w: r.width };
+}
+
+lanecv.addEventListener('contextmenu', (e) => e.preventDefault());
+
+lanecv.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const h = laneHit(e);
+  const erase = e.button === 2 || e.altKey;
+  if (erase) {
+    if (h.block) {
+      h.lane.blocks = h.lane.blocks.filter((b) => b !== h.block);
+      selectLane(h.li, null);
+    }
+    return;
+  }
+  if (e.button !== 0) return;
+  if (h.block && h.edge) {
+    laneDrag = { kind: h.edge, lane: h.lane, block: h.block };
+    selectLane(h.li, h.block);
+  } else if (h.block) {
+    laneDrag = { kind: 'move', lane: h.lane, block: h.block, grabOff: h.cellF - h.block.a, startA: h.block.a, startB: h.block.b, moved: false };
+    selectLane(h.li, h.block);
+  } else {
+    const cell = Math.min(grid - 1, Math.floor(h.cellF));
+    const block = { a: cell, b: cell + 1, own: null, acc: newAcc() };
+    h.lane.blocks.push(block);
+    laneDrag = { kind: 'draw', lane: h.lane, block, anchorCell: cell };
+    selectLane(h.li, block);
+  }
+  lanecv.setPointerCapture(e.pointerId);
+});
+
+lanecv.addEventListener('pointermove', (e) => {
+  if (!laneDrag) {
+    const h = laneHit(e);
+    lanecv.style.cursor = h.block ? (h.edge ? 'ew-resize' : 'move') : 'crosshair';
+    return;
+  }
+  const h = laneHit(e);
+  const d = laneDrag, b = d.block;
+  if (d.kind === 'draw') {
+    const cell = Math.min(grid - 1, Math.max(0, Math.floor(h.cellF)));
+    b.a = Math.min(d.anchorCell, cell);
+    b.b = Math.max(d.anchorCell, cell) + 1;
+  } else if (d.kind === 'a') {
+    b.a = Math.min(b.b - 1, Math.max(0, Math.round(h.cellF)));
+  } else if (d.kind === 'b') {
+    b.b = Math.max(b.a + 1, Math.min(grid, Math.round(h.cellF)));
+  } else if (d.kind === 'move') {
+    const len = d.startB - d.startA;
+    let a = Math.round(h.cellF - d.grabOff);
+    a = Math.max(0, Math.min(grid - len, a));
+    if (a !== b.a) d.moved = true;
+    b.a = a; b.b = a + len;
+  }
+  refreshLaneState();
+});
+
+lanecv.addEventListener('pointerup', () => {
+  if (!laneDrag) return;
+  laneNormalize(laneDrag.lane);
+  laneDrag = null;
+  renderPanel();
+  refreshLaneState();
+});
+
+lanecv.addEventListener('dblclick', (e) => {
+  const h = laneHit(e);
+  if (!h.block) return;
+  // split at the nearest interior grid line
+  const cut = Math.round(h.cellF);
+  if (cut <= h.block.a || cut >= h.block.b) return;
+  const right = { a: cut, b: h.block.b, own: h.block.own ? { ...h.block.own } : null, acc: { ...h.block.acc } };
+  h.block.b = cut;
+  h.lane.blocks.push(right);
+  laneNormalize(h.lane);
+  selectLane(h.li, right);
+});
+
+function drawLanes() {
+  const ctx = lanecv.getContext('2d');
+  const W = lanecv.width, H = lanecv.height;
+  const dpr = window.devicePixelRatio || 1;
+  const lh = LANE_H * dpr;
+  ctx.clearRect(0, 0, W, H);
+  // lane separators
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 1; i < lanes.length; i++) ctx.fillRect(0, Math.round(i * lh), W, 1);
+  // grid: every cell faint, every 4th cell brighter
+  for (let c = 1; c < grid; c++) {
+    ctx.fillStyle = c % 4 === 0 ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)';
+    ctx.fillRect(Math.round((c / grid) * W), 0, 1, H);
+  }
+  // blocks
+  lanes.forEach((lane, i) => {
+    const y = i * lh;
+    const live = lane.on;
+    for (const b of lane.blocks) {
+      const x0 = (b.a / grid) * W, x1 = (b.b / grid) * W;
+      const sel = b === selBlock && i === selLane;
+      ctx.fillStyle = !live ? 'rgba(255,255,255,0.08)' : sel ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.28)';
+      ctx.fillRect(x0 + 1, y + 4 * dpr, Math.max(2, x1 - x0 - 2), lh - 8 * dpr);
+      if (sel) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = dpr;
+        ctx.strokeRect(x0 + 1.5, y + 4 * dpr + 0.5, Math.max(2, x1 - x0 - 3), lh - 8 * dpr - 1);
+      }
+      // own-values mark: a notch top-left; accumulator: a notch bottom-left
+      if (b.own) { ctx.fillStyle = live ? '#050505' : 'rgba(5,5,5,0.6)'; ctx.fillRect(x0 + 3 * dpr, y + 6 * dpr, 3 * dpr, 3 * dpr); }
+      if (b.acc.shape !== 'off') { ctx.fillStyle = live ? '#050505' : 'rgba(5,5,5,0.6)'; ctx.fillRect(x0 + 3 * dpr, y + lh - 9 * dpr, 3 * dpr, 3 * dpr); }
+    }
+  });
+  // playhead
+  const p = playheadFrac();
+  if (p >= 0) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(Math.round(p * W), 0, Math.max(1, dpr), H);
+  }
+}
+
+// --- file + passthrough playback (the worklet replaces this) ----------------
+let actx = null;
+let buf = null;
+let src = null;
+let fileName = '';
+let fileDur = 0;
+let playing = false;
+let playStart = 0;
+
+const wave = document.getElementById('wave');
+let peaks = null;
+
+async function loadFile(file) {
+  if (!actx) actx = new AudioContext();
+  const bytes = await file.arrayBuffer();
+  try {
+    buf = await actx.decodeAudioData(bytes);
+  } catch (err) {
+    document.getElementById('dropprompt').textContent = `couldn't decode "${file.name}" — try a wav/mp3/m4a`;
+    return;
+  }
+  if (playing) stopPlay();
+  fileName = file.name.replace(/\.[^.]+$/, '');
+  fileDur = buf.duration;
+  document.getElementById('dropwave').classList.add('loaded');
+  document.getElementById('fileinfo').innerHTML =
+    `<span class="fname">${file.name}</span> · ${fileDur.toFixed(2)}s · ${buf.numberOfChannels}ch · replace`;
+  document.getElementById('play').disabled = false;
+  computePeaks();
+  refreshLaneState();
+}
+
+function computePeaks() {
+  const cols = 768;
+  peaks = new Float32Array(cols * 2);
+  const L = buf.getChannelData(0);
+  const R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
+  const per = L.length / cols;
+  for (let c = 0; c < cols; c++) {
+    const i0 = Math.floor(c * per), i1 = Math.max(i0 + 1, Math.floor((c + 1) * per));
+    const step = Math.max(1, Math.floor((i1 - i0) / 64));
+    let mn = Infinity, mx = -Infinity;
+    for (let i = i0; i < i1; i += step) { const s = 0.5 * (L[i] + R[i]); if (s < mn) mn = s; if (s > mx) mx = s; }
+    if (mn > mx) { mn = 0; mx = 0; }
+    peaks[c * 2] = mn; peaks[c * 2 + 1] = mx;
+  }
+}
+
+function playheadFrac() {
+  if (!playing || !buf) return -1;
+  const t = (actx.currentTime - playStart) % fileDur;
+  return t / fileDur;
+}
+
+function startPlay() {
+  src = actx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  src.connect(actx.destination);
+  playStart = actx.currentTime;
+  src.start();
+  playing = true;
+}
+function stopPlay() {
+  if (src) { try { src.stop(); } catch (_) {} src.disconnect(); src = null; }
+  playing = false;
+}
+async function togglePlay() {
+  if (!buf) return;
+  await actx.resume();
+  if (playing) stopPlay(); else startPlay();
+  const b = document.getElementById('play');
+  b.textContent = playing ? 'STOP' : 'PLAY';
+  b.classList.toggle('on', playing);
+}
+
+function drawWave() {
+  const ctx = wave.getContext('2d');
+  const W = wave.width, H = wave.height;
+  const dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, W, H);
+  if (!peaks) return;
+  const cols = peaks.length / 2, mid = H / 2;
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  for (let c = 0; c < cols; c++) {
+    const x = (c / cols) * W, w = W / cols + 0.5;
+    const y0 = mid - peaks[c * 2 + 1] * mid * 0.92, y1 = mid - peaks[c * 2] * mid * 0.92;
+    ctx.fillRect(x, y0, w, Math.max(1, y1 - y0));
+  }
+  // grid ghost on the waveform too, so the lanes read as its annotation
+  for (let c = 1; c < grid; c++) {
+    if (c % 4 !== 0) continue;
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(Math.round((c / grid) * W), 0, 1, H);
+  }
+  const p = playheadFrac();
+  if (p >= 0) { ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(p * W), 0, Math.max(1, dpr), H); }
+}
+
+function frame() {
+  drawWave();
+  drawLanes();
+  requestAnimationFrame(frame);
+}
+
+// --- generations / print strip ------------------------------------------------
+function randomSeed() {
+  return Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+}
+const seedEl = document.getElementById('seed');
+ui.seed = randomSeed();
+seedEl.value = ui.seed;
+seedEl.addEventListener('change', () => { ui.seed = seedEl.value.trim() || randomSeed(); seedEl.value = ui.seed; });
+document.getElementById('reseed').addEventListener('click', () => { ui.seed = randomSeed(); seedEl.value = ui.seed; });
+
+function updateRenderInfo() {
+  const info = document.getElementById('renderinfo');
+  if (!buf) { info.textContent = 'load a file first'; return; }
+  const live = lanes.filter((l) => l.on && l.blocks.length > 0).length;
+  const secs = ui.printMode === 'arc' ? fileDur * ui.passes : fileDur;
+  const stages = live ? `${live} stage${live > 1 ? 's' : ''} live` : 'no stages live — prints clean';
+  info.textContent = `prints ${secs.toFixed(1)}s — ${ui.printMode === 'arc' ? 'all' : 'the last of'} ${ui.passes} pass${ui.passes > 1 ? 'es' : ''} · ${stages} · dsp lands next`;
+}
+
+function segWire(id, attr, cb) {
+  const seg = document.getElementById(id);
+  seg.querySelectorAll('button').forEach((b) => {
+    b.addEventListener('click', () => {
+      seg.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      cb(b.dataset[attr]);
+    });
+  });
+}
+segWire('gridseg', 'g', (v) => regrid(parseInt(v, 10)));
+segWire('passes', 'p', (v) => { ui.passes = parseInt(v, 10); updateRenderInfo(); });
+segWire('printmode', 'm', (v) => { ui.printMode = v; updateRenderInfo(); });
+
+// --- wiring -------------------------------------------------------------------
+const dropwave = document.getElementById('dropwave');
+const fileinput = document.getElementById('fileinput');
+document.getElementById('dropprompt').addEventListener('click', () => fileinput.click());
+document.getElementById('fileinfo').addEventListener('click', () => fileinput.click());
+fileinput.addEventListener('change', () => { if (fileinput.files[0]) void loadFile(fileinput.files[0]); });
+document.addEventListener('dragover', (e) => { e.preventDefault(); dropwave.classList.add('drag'); });
+document.addEventListener('dragleave', () => dropwave.classList.remove('drag'));
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropwave.classList.remove('drag');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) void loadFile(f);
+});
+
+document.getElementById('play').addEventListener('click', () => void togglePlay());
+document.addEventListener('keydown', (e) => {
+  if (e.target !== document.body) return;
+  if (e.code === 'Space') { e.preventDefault(); void togglePlay(); return; }
+  if (e.key >= '1' && e.key <= '6') { selectLane(parseInt(e.key, 10) - 1, null); return; }
+  if ((e.key === 'Backspace' || e.key === 'Delete') && selBlock) {
+    const lane = lanes[selLane];
+    lane.blocks = lane.blocks.filter((b) => b !== selBlock);
+    selectLane(selLane, null);
+  }
+});
+
+window.addEventListener('resize', () => { sizeCanvas(wave); sizeLanes(); });
+sizeCanvas(wave);
+sizeLanes();
+renderPanel();
+refreshLaneState();
+requestAnimationFrame(frame);
+
+// Debug/test hook.
+window.noise = {
+  lanes, pattern, ui,
+  select: selectLane,
+  regrid,
+  addBlock(li, a, b) {
+    const block = { a, b, own: null, acc: newAcc() };
+    lanes[li].blocks.push(block);
+    laneNormalize(lanes[li]);
+    selectLane(li, block);
+    return block;
+  },
+};
+</script>
+</body>
+</html>
