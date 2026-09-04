@@ -254,6 +254,7 @@
     <span class="seglabel">seed</span>
     <input id="seed" value="" spellcheck="false" autocomplete="off">
     <button id="reseed" title="new seed">⟳</button>
+    <button class="toggle" id="autoseed" title="roll a fresh seed on every play and every print — the field shows the one used">○ auto</button>
   </div>
   <div class="seg" id="printmode">
     <span class="seglabel">print</span>
@@ -467,7 +468,7 @@ function pattern() {
   };
 }
 
-const ui = { passes: 1, seed: '', printMode: 'end' };
+const ui = { passes: 1, seed: '', printMode: 'end', autoSeed: false };
 
 // --- knobs (texture.html anatomy; values read/written through a target) -----
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -992,7 +993,7 @@ async function togglePlay() {
   if (!buf) return;
   await actx.resume();
   playing = !playing;
-  if (playing) { lastViz = null; live = null; livePass = 0; }
+  if (playing) { rollSeedIfAuto(); lastViz = null; live = null; livePass = 0; }
   node.port.postMessage({ type: 'play', on: playing });
   const b = document.getElementById('play');
   b.textContent = playing ? 'STOP' : 'PLAY';
@@ -1016,6 +1017,7 @@ async function renderWav() {
   const btn = document.getElementById('render');
   btn.textContent = 'PRINTING···';
   btn.disabled = true;
+  rollSeedIfAuto();
   try {
     const sr = actx.sampleRate;
     const passFrames = fileL.length;
@@ -1104,6 +1106,19 @@ ui.seed = randomSeed();
 seedEl.value = ui.seed;
 seedEl.addEventListener('change', () => { ui.seed = seedEl.value.trim() || randomSeed(); seedEl.value = ui.seed; pushPattern(); });
 document.getElementById('reseed').addEventListener('click', () => { ui.seed = randomSeed(); seedEl.value = ui.seed; pushPattern(); });
+document.getElementById('autoseed').addEventListener('click', (e) => {
+  ui.autoSeed = !ui.autoSeed;
+  e.currentTarget.classList.toggle('on', ui.autoSeed);
+  e.currentTarget.textContent = `${ui.autoSeed ? '●' : '○'} auto`;
+});
+// auto: a fresh seed for every run — play or print — shown in the field so a
+// good roll can be recalled
+function rollSeedIfAuto() {
+  if (!ui.autoSeed) return;
+  ui.seed = randomSeed();
+  seedEl.value = ui.seed;
+  pushPattern();
+}
 
 function updateRenderInfo() {
   const info = document.getElementById('renderinfo');
