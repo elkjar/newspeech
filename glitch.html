@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
-<title>NEWSPEECH // noise</title>
+<title>NEWSPEECH // glitch</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="description" content="newspeech — audio destruction. Drop a wav, get a worse wav. Draw where each stage hits; every pass mutates.">
-<meta property="og:title" content="NEWSPEECH // noise">
+<meta property="og:title" content="NEWSPEECH // glitch">
 <meta property="og:description" content="newspeech — audio destruction. drop a wav, get a worse wav.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://www.newspeechsound.com/noise.html">
+<meta property="og:url" content="https://www.newspeechsound.com/glitch.html">
 <meta property="og:site_name" content="NEWSPEECH">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
@@ -19,7 +19,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NEWSPEECH // noise">
+<meta name="twitter:title" content="NEWSPEECH // glitch">
 <meta name="twitter:description" content="newspeech — audio destruction. drop a wav, get a worse wav.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <style>
@@ -194,7 +194,7 @@
 <script src="nav.js"></script>
 <script src="grain.js"></script>
 
-<h1>// NOISE</h1>
+<h1>// GLITCH</h1>
 <p class="sub">audio destruction — drop a wav, get a worse wav. draw where each stage hits. every pass mutates what you drew.</p>
 
 <div id="dropwave">
@@ -271,7 +271,7 @@
 </div>
 
 <script>
-// noise.html — audio destruction engine, UI pass.
+// glitch.html — audio destruction engine.
 //
 // Model: the dropped file is the timebase. Six stages in a FIXED serial
 // order, each a lane on a shared grid that divides the file (no bpm). A
@@ -281,7 +281,7 @@
 // drawn block starts from. Mutate is the one lane-level knob.
 // Generations: each pass through the file is one evolution step — lanes
 // mutate what was drawn, blocks accumulate. This file is the UI + authored
-// pattern; noise-worklet.js runs the chain, owns the LIVE (mutated) pattern
+// pattern; glitch-worklet.js runs the chain, owns the LIVE (mutated) pattern
 // and posts it back so the lanes can show it over what was drawn.
 
 // --- ladders ---------------------------------------------------------------
@@ -936,8 +936,8 @@ let peaks = null;
 async function ensureAudio() {
   if (actx) return;
   actx = new AudioContext();
-  await actx.audioWorklet.addModule('noise-worklet.js');
-  node = new AudioWorkletNode(actx, 'noise', { numberOfInputs: 0, outputChannelCount: [2] });
+  await actx.audioWorklet.addModule('glitch-worklet.js');
+  node = new AudioWorkletNode(actx, 'glitch', { numberOfInputs: 0, outputChannelCount: [2] });
   node.connect(actx.destination);
   node.port.onmessage = (e) => {
     const m = e.data;
@@ -1029,8 +1029,8 @@ async function renderWav() {
     const passFrames = fileL.length;
     const total = passFrames * ui.passes;
     const oc = new OfflineAudioContext(2, total, sr);
-    await oc.audioWorklet.addModule('noise-worklet.js');
-    const n = new AudioWorkletNode(oc, 'noise', { numberOfInputs: 0, outputChannelCount: [2] });
+    await oc.audioWorklet.addModule('glitch-worklet.js');
+    const n = new AudioWorkletNode(oc, 'glitch', { numberOfInputs: 0, outputChannelCount: [2] });
     n.connect(oc.destination);
     const ready = new Promise((res) => { n.port.onmessage = (e) => { if (e.data.type === 'ready') res(); }; });
     n.port.postMessage({ type: 'vizOn', on: false });
@@ -1047,7 +1047,7 @@ async function renderWav() {
     const blob = encodeWav32f(out);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `noise-${fileName}-g${ui.passes}${ui.printMode === 'arc' ? '-arc' : ''}-${ui.seed}.wav`;
+    a.download = `glitch-${fileName}-g${ui.passes}${ui.printMode === 'arc' ? '-arc' : ''}-${ui.seed}.wav`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   } finally {
@@ -1242,7 +1242,7 @@ refreshLaneState();
 requestAnimationFrame(frame);
 
 // Debug/test hook.
-window.noise = {
+window.glitch = {
   lanes, pattern, ui,
   get live() { return live; },
   get viz() { return lastViz; },

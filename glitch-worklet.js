@@ -1,4 +1,4 @@
-// noise-worklet.js — the audio destruction chain behind noise.html.
+// glitch-worklet.js — the audio destruction chain behind glitch.html.
 //
 // The uploaded file is the timebase. Six stages in a FIXED serial order:
 //
@@ -473,7 +473,7 @@ class Feedback extends Stage {
 }
 
 // --- the processor -----------------------------------------------------------
-class NoiseProcessor extends AudioWorkletProcessor {
+class GlitchProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.bufL = null; this.bufR = null; this.len = 0;
@@ -711,4 +711,4 @@ class NoiseProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('noise', NoiseProcessor);
+registerProcessor('glitch', GlitchProcessor);
