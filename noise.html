@@ -26,6 +26,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
   body {
+    --label-w: 104px;
     font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
     padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
     max-width: 1060px;
@@ -46,7 +47,10 @@
   }
   #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
   #dropwave.drag { border-color: #777; }
-  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* the waveform shares the lanes' x axis: inset by the label column */
+  #wave { position: absolute; top: 0; bottom: 0; left: var(--label-w); width: calc(100% - var(--label-w)); height: 100%; display: block; }
+  #wavegutter { position: absolute; top: 0; bottom: 0; left: 0; width: var(--label-w); border-right: 1px solid #1c1c1c; }
+  #dropwave:not(.loaded) #wavegutter { display: none; }
   #dropprompt {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -55,13 +59,19 @@
   #dropwave.drag #dropprompt { color: #ddd; }
   #dropwave.loaded #dropprompt { display: none; }
   #fileinfo {
-    position: absolute; top: 8px; left: 10px;
+    position: absolute; top: 8px; left: calc(var(--label-w) + 10px);
     color: #888; cursor: pointer; display: none;
     background: rgba(5,5,5,0.6); padding: 1px 6px;
   }
   #fileinfo:hover { color: #ddd; }
   #dropwave.loaded #fileinfo { display: block; }
   #fileinfo .fname { color: #ddd; }
+  #passinfo {
+    position: absolute; top: 8px; right: 10px;
+    color: #888; background: rgba(5,5,5,0.6); padding: 1px 6px;
+    font-variant-numeric: tabular-nums; pointer-events: none;
+  }
+  #passinfo em { font-style: normal; color: #ddd; }
   #fileinput { display: none; }
 
   /* lane timeline: label column + one canvas for all lanes */
@@ -73,7 +83,7 @@
     position: relative;
   }
   #dropwave:not(.loaded) + #timeline { border-style: dashed; border-color: #333; }
-  #lanelabels { width: 104px; flex: none; display: flex; flex-direction: column; border-right: 1px solid #1c1c1c; }
+  #lanelabels { width: var(--label-w); flex: none; display: flex; flex-direction: column; border-right: 1px solid #1c1c1c; }
   .lanelabel {
     height: var(--lane-h);
     display: flex; align-items: center; gap: 6px;
@@ -169,7 +179,7 @@
   #renderinfo { color: #666; }
 
   @media (max-width: 720px) {
-    #lanelabels { width: 78px; }
+    body { --label-w: 78px; }
     .lanelabel { padding: 0 4px 0 6px; font-size: 9px; letter-spacing: 0.08em; }
     .krow .kdivider { flex-basis: 100%; width: auto; height: 1px; margin: 8px 0; align-self: auto; }
   }
@@ -183,9 +193,11 @@
 <p class="sub">audio destruction — drop a wav, get a worse wav. draw where each stage hits. every pass mutates what you drew.</p>
 
 <div id="dropwave">
+  <div id="wavegutter"></div>
   <canvas id="wave"></canvas>
   <div id="dropprompt">drop an audio file here, or click to browse — the file's length is the grid</div>
   <div id="fileinfo"></div>
+  <div id="passinfo"></div>
 </div>
 <input type="file" id="fileinput" accept="audio/*">
 
@@ -262,8 +274,9 @@
 // all of the params per block"); the lane's knobs are the defaults the next
 // drawn block starts from. Mutate is the one lane-level knob.
 // Generations: each pass through the file is one evolution step — lanes
-// mutate what was drawn, blocks accumulate. This file is the UI + data
-// model; the worklet (noise-worklet.js) lands next and reads `pattern()`.
+// mutate what was drawn, blocks accumulate. This file is the UI + authored
+// pattern; noise-worklet.js runs the chain, owns the LIVE (mutated) pattern
+// and posts it back so the lanes can show it over what was drawn.
 
 // --- ladders ---------------------------------------------------------------
 const ladder = (arr, k) => arr[Math.round(Math.min(1, Math.max(0, k)) * (arr.length - 1))];
@@ -351,7 +364,7 @@ const STAGES = [
       { k: 'len', label: 'length', steps: 6, def: 3 / 5, fmt: (v) => cellsLabel(ladder(GLITCH_LEN_LADDER, v)), title: 'captured slice length in grid cells' },
       { k: 'count', label: 'count', steps: 16, def: 3 / 15, fmt: (v) => (1 + Math.round(v * 15)) + '', title: 'repeats before a new capture' },
       { k: 'pitch', label: 'pitch', steps: 5, bipolar: true, def: 0.5, fmt: (v) => { const o = ladder(PITCH_LADDER, v); return o === 0 ? '0' : (o > 0 ? '+' : '−') + Math.abs(o) + 'oct'; }, title: 'pitch of the repeats, octaves' },
-      { k: 'chance', label: 'chance', def: 1, fmt: pct, title: 'per-trigger dice — a miss stops the effect, it does not pass dry' },
+      { k: 'chance', label: 'chance', def: 1, fmt: pct, title: 'per-capture dice — a miss ends the running repeat and dry passes until the next capture' },
     ],
     segs: [
       // labeled on the block — a lane reads STUTTER · REVERSE · TAPESTOP
@@ -399,8 +412,9 @@ function blockVals(lane) {
   delete v.mutate; // lane-level
   return v;
 }
+let nextBlockId = 1;
 function newBlock(lane, a, b) {
-  return { a, b, vals: blockVals(lane), acc: newAcc() };
+  return { id: nextBlockId++, a, b, vals: blockVals(lane), acc: newAcc() };
 }
 function blockSegLabel(lane, block) {
   for (const sspec of lane.stage.segs) if (sspec.onBlock) {
@@ -445,7 +459,7 @@ function pattern() {
       stage: l.stage.id,
       on: l.on && l.blocks.length > 0,
       vals: { ...l.vals },
-      blocks: l.blocks.map((b) => ({ a: b.a / grid, b: b.b / grid, vals: { ...b.vals }, acc: { ...b.acc } })),
+      blocks: l.blocks.map((b) => ({ id: b.id, a: b.a / grid, b: b.b / grid, vals: { ...b.vals }, acc: { ...b.acc } })),
     })),
     passes: ui.passes,
     seed: ui.seed,
@@ -534,6 +548,7 @@ function panelTarget() {
 }
 
 function onValueChange() { refreshLaneState(); }
+function pushPattern() { if (node) node.port.postMessage({ type: 'pattern', p: pattern() }); }
 
 function renderPanel() {
   const lane = lanes[selLane];
@@ -694,6 +709,7 @@ function refreshLaneState() {
     el.querySelector('.ltoggle').textContent = lane.on ? '●' : '○';
   });
   document.getElementById('timeline').classList.toggle('haslanes', lanes.some((l) => l.blocks.length > 0));
+  pushPattern();
   if (selBlock) {
     const lane = lanes[selLane];
     const idx = lane.blocks.indexOf(selBlock);
@@ -808,7 +824,7 @@ lanecv.addEventListener('dblclick', (e) => {
   // split at the nearest interior grid line
   const cut = Math.round(h.cellF);
   if (cut <= h.block.a || cut >= h.block.b) return;
-  const right = { a: cut, b: h.block.b, vals: { ...h.block.vals }, acc: { ...h.block.acc } };
+  const right = { id: nextBlockId++, a: cut, b: h.block.b, vals: { ...h.block.vals }, acc: { ...h.block.acc } };
   h.block.b = cut;
   h.lane.blocks.push(right);
   laneNormalize(h.lane);
@@ -829,15 +845,25 @@ function drawLanes() {
     ctx.fillStyle = c % 4 === 0 ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)';
     ctx.fillRect(Math.round((c / grid) * W), 0, 1, H);
   }
-  // blocks
+  // blocks — authored. While the live pattern has drifted from it (mutate),
+  // the authored blocks drop to reduced weight and the live ones draw on top.
+  const drifted = playing && live && live.some((ll, i) => JSON.stringify(ll.blocks.map((b) => [b.a, b.b])) !== JSON.stringify(lanes[i].blocks.map((b) => [b.a / grid, b.b / grid])));
   lanes.forEach((lane, i) => {
     const y = i * lh;
-    const live = lane.on;
+    const live_ = lane.on;
+    const engaged = playing && lastViz && lastViz.eng && lastViz.eng[lane.stage.id] > 0.5;
     for (const b of lane.blocks) {
       const x0 = (b.a / grid) * W, x1 = (b.b / grid) * W;
       const sel = b === selBlock && i === selLane;
-      ctx.fillStyle = !live ? 'rgba(255,255,255,0.08)' : sel ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.28)';
+      const base = !live_ ? 0.08 : sel ? 0.55 : 0.28;
+      ctx.fillStyle = `rgba(255,255,255,${drifted ? base * 0.4 : base})`;
       ctx.fillRect(x0 + 1, y + 4 * dpr, Math.max(2, x1 - x0 - 2), lh - 8 * dpr);
+      // the block under the playhead lights while its stage is engaged
+      const ph = playheadFrac();
+      if (engaged && !drifted && ph >= b.a / grid && ph < b.b / grid) {
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.fillRect(x0 + 1, y + 4 * dpr, Math.max(2, x1 - x0 - 2), lh - 8 * dpr);
+      }
       if (sel) {
         ctx.strokeStyle = 'rgba(255,255,255,0.9)';
         ctx.lineWidth = dpr;
@@ -850,16 +876,33 @@ function drawLanes() {
         ctx.beginPath();
         ctx.rect(x0 + 8 * dpr, y, Math.max(0, x1 - x0 - 12 * dpr), lh);
         ctx.clip();
-        ctx.fillStyle = live ? (sel ? '#050505' : 'rgba(5,5,5,0.9)') : 'rgba(255,255,255,0.25)';
+        ctx.fillStyle = live_ ? (sel ? '#050505' : 'rgba(5,5,5,0.9)') : 'rgba(255,255,255,0.25)';
         ctx.font = `${9 * dpr}px "SF Mono", Menlo, Consolas, monospace`;
         ctx.textBaseline = 'middle';
         ctx.fillText(segText, x0 + 8 * dpr, y + lh / 2 + 0.5 * dpr);
         ctx.restore();
       }
       // accumulator mark: a notch bottom-right
-      if (b.acc.shape !== 'off') { ctx.fillStyle = live ? '#050505' : 'rgba(5,5,5,0.6)'; ctx.fillRect(x1 - 6 * dpr, y + lh - 9 * dpr, 3 * dpr, 3 * dpr); }
+      if (b.acc.shape !== 'off') { ctx.fillStyle = live_ ? '#050505' : 'rgba(5,5,5,0.6)'; ctx.fillRect(x1 - 6 * dpr, y + lh - 9 * dpr, 3 * dpr, 3 * dpr); }
     }
   });
+  // live (mutated) blocks: outlined, over the dimmed authored ones
+  if (drifted) {
+    const ph = playheadFrac();
+    live.forEach((ll, i) => {
+      const y = i * lh;
+      const engaged = lastViz && lastViz.eng && lastViz.eng[lanes[i].stage.id] > 0.5;
+      for (const b of ll.blocks) {
+        const x0 = b.a * W, x1 = b.b * W;
+        const under = engaged && ph >= b.a && ph < b.b;
+        ctx.fillStyle = under ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.22)';
+        ctx.fillRect(x0 + 1, y + 4 * dpr, Math.max(2, x1 - x0 - 2), lh - 8 * dpr);
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = dpr;
+        ctx.strokeRect(x0 + 1.5, y + 4 * dpr + 0.5, Math.max(2, x1 - x0 - 3), lh - 8 * dpr - 1);
+      }
+    });
+  }
   // playhead
   const p = playheadFrac();
   if (p >= 0) {
@@ -868,20 +911,39 @@ function drawLanes() {
   }
 }
 
-// --- file + passthrough playback (the worklet replaces this) ----------------
+// --- file + worklet playback -------------------------------------------------
 let actx = null;
+let node = null;
 let buf = null;
-let src = null;
+let fileL = null, fileR = null;
 let fileName = '';
 let fileDur = 0;
 let playing = false;
-let playStart = 0;
+let lastViz = null; // { pos, pass, eng, peak } from the worklet, ~30Hz
+let vizAt = 0; // performance.now() of the last viz — playhead extrapolates between posts
+let live = null; // the worklet's LIVE (mutated) lanes — drawn over the authored blocks
+let livePass = 0;
 
 const wave = document.getElementById('wave');
 let peaks = null;
 
+async function ensureAudio() {
+  if (actx) return;
+  actx = new AudioContext();
+  await actx.audioWorklet.addModule('noise-worklet.js');
+  node = new AudioWorkletNode(actx, 'noise', { numberOfInputs: 0, outputChannelCount: [2] });
+  node.connect(actx.destination);
+  node.port.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'viz') { lastViz = m; vizAt = performance.now(); }
+    else if (m.type === 'live') { live = m.lanes; livePass = m.pass; }
+    else if (m.type === 'pass') { livePass = m.pass; updatePassInfo(); }
+  };
+  pushPattern();
+}
+
 async function loadFile(file) {
-  if (!actx) actx = new AudioContext();
+  await ensureAudio();
   const bytes = await file.arrayBuffer();
   try {
     buf = await actx.decodeAudioData(bytes);
@@ -889,22 +951,26 @@ async function loadFile(file) {
     document.getElementById('dropprompt').textContent = `couldn't decode "${file.name}" — try a wav/mp3/m4a`;
     return;
   }
-  if (playing) stopPlay();
+  if (playing) await togglePlay();
+  fileL = buf.getChannelData(0);
+  fileR = buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0);
   fileName = file.name.replace(/\.[^.]+$/, '');
   fileDur = buf.duration;
+  node.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
   document.getElementById('dropwave').classList.add('loaded');
   document.getElementById('fileinfo').innerHTML =
     `<span class="fname">${file.name}</span> · ${fileDur.toFixed(2)}s · ${buf.numberOfChannels}ch · replace`;
   document.getElementById('play').disabled = false;
+  document.getElementById('render').disabled = false;
   computePeaks();
   refreshLaneState();
+  updatePassInfo();
 }
 
 function computePeaks() {
   const cols = 768;
   peaks = new Float32Array(cols * 2);
-  const L = buf.getChannelData(0);
-  const R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
+  const L = fileL, R = fileR;
   const per = L.length / cols;
   for (let c = 0; c < cols; c++) {
     const i0 = Math.floor(c * per), i1 = Math.max(i0 + 1, Math.floor((c + 1) * per));
@@ -917,31 +983,87 @@ function computePeaks() {
 }
 
 function playheadFrac() {
-  if (!playing || !buf) return -1;
-  const t = (actx.currentTime - playStart) % fileDur;
-  return t / fileDur;
+  if (!playing || !lastViz || !fileDur) return -1;
+  const ahead = (performance.now() - vizAt) / 1000 / fileDur;
+  return (lastViz.pos + Math.min(ahead, 0.1)) % 1;
 }
 
-function startPlay() {
-  src = actx.createBufferSource();
-  src.buffer = buf;
-  src.loop = true;
-  src.connect(actx.destination);
-  playStart = actx.currentTime;
-  src.start();
-  playing = true;
-}
-function stopPlay() {
-  if (src) { try { src.stop(); } catch (_) {} src.disconnect(); src = null; }
-  playing = false;
-}
 async function togglePlay() {
   if (!buf) return;
   await actx.resume();
-  if (playing) stopPlay(); else startPlay();
+  playing = !playing;
+  if (playing) { lastViz = null; live = null; livePass = 0; }
+  node.port.postMessage({ type: 'play', on: playing });
   const b = document.getElementById('play');
   b.textContent = playing ? 'STOP' : 'PLAY';
   b.classList.toggle('on', playing);
+  updatePassInfo();
+}
+
+function updatePassInfo() {
+  const el = document.getElementById('passinfo');
+  if (!buf) { el.textContent = ''; return; }
+  el.innerHTML = playing ? `pass <em>${livePass + 1}</em>` : '';
+}
+
+// --- print: run the chain offline for `passes` passes ------------------------
+// END keeps the last pass; ARC keeps them all. Both render every pass so the
+// accumulators and mutation arrive at the same place they would live.
+let rendering = false;
+async function renderWav() {
+  if (!fileL || rendering) return;
+  rendering = true;
+  const btn = document.getElementById('render');
+  btn.textContent = 'PRINTING···';
+  btn.disabled = true;
+  try {
+    const sr = actx.sampleRate;
+    const passFrames = fileL.length;
+    const total = passFrames * ui.passes;
+    const oc = new OfflineAudioContext(2, total, sr);
+    await oc.audioWorklet.addModule('noise-worklet.js');
+    const n = new AudioWorkletNode(oc, 'noise', { numberOfInputs: 0, outputChannelCount: [2] });
+    n.connect(oc.destination);
+    const ready = new Promise((res) => { n.port.onmessage = (e) => { if (e.data.type === 'ready') res(); }; });
+    n.port.postMessage({ type: 'vizOn', on: false });
+    n.port.postMessage({ type: 'pattern', p: pattern() });
+    n.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
+    await ready;
+    n.port.postMessage({ type: 'play', on: true });
+    const rendered = await oc.startRendering();
+    let out = rendered;
+    if (ui.printMode === 'end' && ui.passes > 1) {
+      out = new AudioBuffer({ numberOfChannels: 2, length: passFrames, sampleRate: sr });
+      for (let ch = 0; ch < 2; ch++) out.copyToChannel(rendered.getChannelData(ch).subarray(total - passFrames), ch);
+    }
+    const blob = encodeWav32f(out);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `noise-${fileName}-g${ui.passes}${ui.printMode === 'arc' ? '-arc' : ''}-${ui.seed}.wav`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } finally {
+    rendering = false;
+    btn.textContent = 'PRINT WAV';
+    btn.disabled = false;
+  }
+}
+
+// 32-bit float stereo WAV (format 3) — the same shape texture/decay print.
+function encodeWav32f(b) {
+  const nCh = 2, n = b.length, sr = b.sampleRate;
+  const dataBytes = n * nCh * 4;
+  const ab = new ArrayBuffer(44 + dataBytes);
+  const dv = new DataView(ab);
+  const str = (off, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(off + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + dataBytes, true); str(8, 'WAVE'); str(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 3, true); dv.setUint16(22, nCh, true); dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * nCh * 4, true); dv.setUint16(32, nCh * 4, true); dv.setUint16(34, 32, true);
+  str(36, 'data'); dv.setUint32(40, dataBytes, true);
+  const l = b.getChannelData(0), r = b.numberOfChannels > 1 ? b.getChannelData(1) : l;
+  let off = 44;
+  for (let i = 0; i < n; i++) { dv.setFloat32(off, l[i], true); dv.setFloat32(off + 4, r[i], true); off += 8; }
+  return new Blob([ab], { type: 'audio/wav' });
 }
 
 function drawWave() {
@@ -980,16 +1102,16 @@ function randomSeed() {
 const seedEl = document.getElementById('seed');
 ui.seed = randomSeed();
 seedEl.value = ui.seed;
-seedEl.addEventListener('change', () => { ui.seed = seedEl.value.trim() || randomSeed(); seedEl.value = ui.seed; });
-document.getElementById('reseed').addEventListener('click', () => { ui.seed = randomSeed(); seedEl.value = ui.seed; });
+seedEl.addEventListener('change', () => { ui.seed = seedEl.value.trim() || randomSeed(); seedEl.value = ui.seed; pushPattern(); });
+document.getElementById('reseed').addEventListener('click', () => { ui.seed = randomSeed(); seedEl.value = ui.seed; pushPattern(); });
 
 function updateRenderInfo() {
   const info = document.getElementById('renderinfo');
   if (!buf) { info.textContent = 'load a file first'; return; }
-  const live = lanes.filter((l) => l.on && l.blocks.length > 0).length;
+  const liveN = lanes.filter((l) => l.on && l.blocks.length > 0).length;
   const secs = ui.printMode === 'arc' ? fileDur * ui.passes : fileDur;
-  const stages = live ? `${live} stage${live > 1 ? 's' : ''} live` : 'no stages live — prints clean';
-  info.textContent = `prints ${secs.toFixed(1)}s — ${ui.printMode === 'arc' ? 'all' : 'the last of'} ${ui.passes} pass${ui.passes > 1 ? 'es' : ''} · ${stages} · dsp lands next`;
+  const stages = liveN ? `${liveN} stage${liveN > 1 ? 's' : ''} live` : 'no stages live — prints clean';
+  info.textContent = `prints ${secs.toFixed(1)}s — ${ui.printMode === 'arc' ? 'all' : 'the last of'} ${ui.passes} pass${ui.passes > 1 ? 'es' : ''} · ${stages}`;
 }
 
 function segWire(id, attr, cb) {
@@ -1022,6 +1144,7 @@ document.addEventListener('drop', (e) => {
 });
 
 document.getElementById('play').addEventListener('click', () => void togglePlay());
+document.getElementById('render').addEventListener('click', () => void renderWav());
 document.addEventListener('keydown', (e) => {
   if (e.target !== document.body) return;
   if (e.code === 'Space') { e.preventDefault(); void togglePlay(); return; }
@@ -1043,6 +1166,8 @@ requestAnimationFrame(frame);
 // Debug/test hook.
 window.noise = {
   lanes, pattern, ui,
+  get live() { return live; },
+  get viz() { return lastViz; },
   select: selectLane,
   regrid,
   addBlock(li, a, b) {
