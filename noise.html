@@ -111,8 +111,8 @@
   .hint { color: #555; }
   #transport .seg { margin: 0; }
 
-  /* the stage panel: knobs for the selected lane (or the selected block's
-     own values). one panel, rebuilt on selection — Glitch²'s module strip. */
+  /* the stage panel: knobs for the selected block, or the lane defaults when
+     no block is selected. one panel, rebuilt on selection — Glitch²'s module strip. */
   .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; margin-bottom: 14px; }
   .group h2 {
     font-size: 11px; font-weight: 400; letter-spacing: 0.25em; color: #999;
@@ -136,8 +136,8 @@
   }
   .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
   .kcol.dim { opacity: 0.3; pointer-events: none; }
-  /* a knob that a block overrides carries a small mark under its value —
-     the displaced-indicator rule: lane value still visible at low weight */
+  /* a block knob that differs from the lane default shows the default under
+     its value — the displaced-indicator rule: default still visible at low weight */
   .kcol .kinherit { font-size: 9px; color: rgba(255,255,255,0.25); font-variant-numeric: tabular-nums; min-height: 12px; }
 
   .toggle {
@@ -207,11 +207,11 @@
     <button data-g="32">÷32</button>
     <button data-g="64">÷64</button>
   </div>
-  <span class="hint">[space] play/stop &nbsp;·&nbsp; [1–6] select lane &nbsp;·&nbsp; [⌫] erase selected block &nbsp;·&nbsp; an empty lane is off</span>
+  <span class="hint">[space] play/stop &nbsp;·&nbsp; [1–6] select lane &nbsp;·&nbsp; [⌫] erase selected block &nbsp;·&nbsp; every block has its own settings &nbsp;·&nbsp; an empty lane is off</span>
 </div>
 
 <div class="group" id="panel">
-  <h2><span id="stagename">CRUSH</span><span class="blockinfo" id="blockinfo"></span><button class="toggle" id="ownvals" hidden>○ own values</button></h2>
+  <h2><span id="stagename">CRUSH</span><span class="blockinfo" id="blockinfo"></span><button class="toggle" id="applyall" hidden title="copy this block's settings to every block in the lane, and to the lane defaults">→ all blocks</button></h2>
   <p id="stagedesc"></p>
   <div class="krow" id="panel-knobs"></div>
   <div id="panel-segs"></div>
@@ -258,7 +258,9 @@
 // Model: the dropped file is the timebase. Six stages in a FIXED serial
 // order, each a lane on a shared grid that divides the file (no bpm). A
 // block = the stage is in the signal path for that span; an empty lane is
-// off. Every block inherits its lane's knobs unless it carries its own.
+// off. Every block carries its OWN full set of stage values (Chris: "change
+// all of the params per block"); the lane's knobs are the defaults the next
+// drawn block starts from. Mutate is the one lane-level knob.
 // Generations: each pass through the file is one evolution step — lanes
 // mutate what was drawn, blocks accumulate. This file is the UI + data
 // model; the worklet (noise-worklet.js) lands next and reads `pattern()`.
@@ -326,7 +328,7 @@ const STAGES = [
       { k: 'bias', label: 'bias', def: 0.4, fmt: pct, title: 'asymmetry — only audible on tube and fuzz' },
     ],
     segs: [
-      { k: 'mode', label: 'mode', opts: [['boost', 'BOOST'], ['tube', 'TUBE'], ['fuzz', 'FUZZ'], ['square', 'SQUARE']], def: 'fuzz' },
+      { k: 'mode', label: 'mode', onBlock: true, opts: [['boost', 'BOOST'], ['tube', 'TUBE'], ['fuzz', 'FUZZ'], ['square', 'SQUARE']], def: 'fuzz' },
     ],
   },
   {
@@ -344,7 +346,7 @@ const STAGES = [
   },
   {
     id: 'glitch', name: 'GLITCH',
-    desc: 'repeats cut from the file — stutter, reverse, octaves, silence, tape stop, shuffle. set, not hoped for',
+    desc: 'repeats cut from the file — stutter, reverse, octaves, silence, tape stop, shuffle. every block is its own setting',
     knobs: [
       { k: 'len', label: 'length', steps: 6, def: 3 / 5, fmt: (v) => cellsLabel(ladder(GLITCH_LEN_LADDER, v)), title: 'captured slice length in grid cells' },
       { k: 'count', label: 'count', steps: 16, def: 3 / 15, fmt: (v) => (1 + Math.round(v * 15)) + '', title: 'repeats before a new capture' },
@@ -352,7 +354,8 @@ const STAGES = [
       { k: 'chance', label: 'chance', def: 1, fmt: pct, title: 'per-trigger dice — a miss stops the effect, it does not pass dry' },
     ],
     segs: [
-      { k: 'mode', label: 'mode', opts: [['stutter', 'STUTTER'], ['reverse', 'REVERSE'], ['octup', 'OCT+'], ['octdn', 'OCT−'], ['silence', 'SILENCE'], ['tapestop', 'TAPESTOP'], ['shuffle', 'SHUFFLE']], def: 'stutter' },
+      // labeled on the block — a lane reads STUTTER · REVERSE · TAPESTOP
+      { k: 'mode', label: 'mode', onBlock: true, opts: [['stutter', 'STUTTER'], ['reverse', 'REVERSE'], ['octup', 'OCT+'], ['octdn', 'OCT−'], ['silence', 'SILENCE'], ['tapestop', 'TAPESTOP'], ['shuffle', 'SHUFFLE']], def: 'stutter' },
     ],
   },
   {
@@ -380,15 +383,32 @@ function stageDefaults(stage) {
 }
 
 // --- pattern model -----------------------------------------------------------
-// lanes[i] = { stage, on, vals, blocks: [{a, b, own|null, acc}] } — a, b are
+// lanes[i] = { stage, on, vals, blocks: [{a, b, vals, acc}] } — a, b are
 // grid-cell indices (b exclusive) so blocks re-snap for free when the grid
-// changes; `own` mirrors `vals` shape when the block carries its own values.
+// changes; lane.vals = defaults for the next block (+ mutate); block.vals =
+// that block's full stage settings.
 let grid = 16;
 const lanes = STAGES.map((stage) => ({ stage, on: true, vals: stageDefaults(stage), blocks: [] }));
 let selLane = 0;
 let selBlock = null; // block object in lanes[selLane].blocks, or null
 
 function newAcc() { return { shape: 'off', target: null, step: 0.5 + 1 / 16, range: 3 / 7 }; }
+
+function blockVals(lane) {
+  const v = { ...lane.vals };
+  delete v.mutate; // lane-level
+  return v;
+}
+function newBlock(lane, a, b) {
+  return { a, b, vals: blockVals(lane), acc: newAcc() };
+}
+function blockSegLabel(lane, block) {
+  for (const sspec of lane.stage.segs) if (sspec.onBlock) {
+    const opt = sspec.opts.find((o) => o[0] === block.vals[sspec.k]);
+    return opt ? opt[1] : '';
+  }
+  return '';
+}
 
 function laneNormalize(lane) {
   // merge overlaps (dragging one block onto another JOINS them — Glitch²'s
@@ -425,7 +445,7 @@ function pattern() {
       stage: l.stage.id,
       on: l.on && l.blocks.length > 0,
       vals: { ...l.vals },
-      blocks: l.blocks.map((b) => ({ a: b.a / grid, b: b.b / grid, own: b.own ? { ...b.own } : null, acc: { ...b.acc } })),
+      blocks: l.blocks.map((b) => ({ a: b.a / grid, b: b.b / grid, vals: { ...b.vals }, acc: { ...b.acc } })),
     })),
     passes: ui.passes,
     seed: ui.seed,
@@ -482,7 +502,7 @@ function buildKnob(spec, get, set, inheritFrom) {
     // block override: show the lane's value underneath at reduced weight
     if (inheritFrom) {
       const lv = inheritFrom();
-      inh.textContent = Math.abs(lv - v) > 0.001 ? 'lane ' + spec.fmt(lv) : '';
+      inh.textContent = Math.abs(lv - v) > 0.001 ? 'def ' + spec.fmt(lv) : '';
     } else inh.textContent = '';
   }
   function setValue(next) {
@@ -509,8 +529,8 @@ function buildKnob(spec, get, set, inheritFrom) {
 // --- panel: rebuilt on selection --------------------------------------------
 function panelTarget() {
   const lane = lanes[selLane];
-  if (selBlock && selBlock.own) return { vals: selBlock.own, laneVals: lane.vals, own: true };
-  return { vals: lane.vals, laneVals: null, own: false };
+  if (selBlock) return { vals: selBlock.vals, block: true };
+  return { vals: lane.vals, block: false };
 }
 
 function onValueChange() { refreshLaneState(); }
@@ -522,28 +542,26 @@ function renderPanel() {
   document.getElementById('stagename').textContent = stage.name;
   document.getElementById('stagedesc').textContent = stage.desc;
   const info = document.getElementById('blockinfo');
-  const ownBtn = document.getElementById('ownvals');
+  const allBtn = document.getElementById('applyall');
   if (selBlock) {
     const idx = lane.blocks.indexOf(selBlock) + 1;
     info.textContent = `block ${idx}/${lane.blocks.length} · cells ${selBlock.a + 1}–${selBlock.b}`;
-    ownBtn.hidden = false;
-    ownBtn.classList.toggle('on', t.own);
-    ownBtn.textContent = `${t.own ? '●' : '○'} own values`;
+    allBtn.hidden = lane.blocks.length < 2;
   } else {
-    info.textContent = lane.blocks.length ? `${lane.blocks.length} block${lane.blocks.length > 1 ? 's' : ''}` : 'no blocks — lane is off';
-    ownBtn.hidden = true;
+    info.textContent = (lane.blocks.length ? `${lane.blocks.length} block${lane.blocks.length > 1 ? 's' : ''} · ` : 'no blocks — lane is off · ') + 'defaults for the next block';
+    allBtn.hidden = true;
   }
 
   const row = document.getElementById('panel-knobs');
   row.innerHTML = '';
   for (const spec of stageKnobSpecs(stage)) {
     if (spec.divider) { const d = document.createElement('div'); d.className = 'kdivider'; row.appendChild(d); continue; }
-    // mutate is lane-level always; the block can't carry it
+    // mutate is lane-level always; every other knob is the block's (or the
+    // lane default when no block is selected)
     const laneLevel = spec.k === 'mutate';
     const vals = laneLevel ? lane.vals : t.vals;
     const col = buildKnob(spec, () => vals[spec.k], (v) => { vals[spec.k] = v; },
-      t.own && !laneLevel ? () => lane.vals[spec.k] : null);
-    if (laneLevel && t.own) col.classList.add('dim');
+      t.block && !laneLevel ? () => lane.vals[spec.k] : null);
     if (spec.dimUnless) col.dataset.dimUnless = spec.dimUnless.join(':');
     row.appendChild(col);
   }
@@ -554,14 +572,16 @@ function renderPanel() {
     const seg = document.createElement('div');
     seg.className = 'seg';
     seg.dataset.k = sspec.k;
-    const lab = document.createElement('span'); lab.className = 'seglabel'; lab.textContent = sspec.label; seg.appendChild(lab);
+    const target = t.vals;
+    const lab = document.createElement('span'); lab.className = 'seglabel'; lab.textContent = sspec.label;
+    seg.appendChild(lab);
     for (const [v, text] of sspec.opts) {
       const b = document.createElement('button');
       b.textContent = text; b.dataset.v = v;
       if (sspec.title) b.title = sspec.title;
-      b.classList.toggle('on', t.vals[sspec.k] === v);
+      b.classList.toggle('on', target[sspec.k] === v);
       b.addEventListener('click', () => {
-        t.vals[sspec.k] = v;
+        target[sspec.k] = v;
         seg.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
         refreshDims();
         refreshLaneState();
@@ -628,11 +648,13 @@ document.getElementById('accshape').querySelectorAll('button').forEach((b) => {
   });
 });
 
-document.getElementById('ownvals').addEventListener('click', () => {
+// dial one block, spread it: copies this block's values to every block in
+// the lane and to the lane defaults
+document.getElementById('applyall').addEventListener('click', () => {
   if (!selBlock) return;
   const lane = lanes[selLane];
-  if (selBlock.own) selBlock.own = null;
-  else { selBlock.own = { ...lane.vals }; delete selBlock.own.mutate; } // mutate stays lane-level
+  for (const b of lane.blocks) if (b !== selBlock) b.vals = { ...selBlock.vals };
+  Object.assign(lane.vals, selBlock.vals);
   renderPanel();
   refreshLaneState();
 });
@@ -738,7 +760,7 @@ lanecv.addEventListener('pointerdown', (e) => {
     selectLane(h.li, h.block);
   } else {
     const cell = Math.min(grid - 1, Math.floor(h.cellF));
-    const block = { a: cell, b: cell + 1, own: null, acc: newAcc() };
+    const block = newBlock(h.lane, cell, cell + 1);
     h.lane.blocks.push(block);
     laneDrag = { kind: 'draw', lane: h.lane, block, anchorCell: cell };
     selectLane(h.li, block);
@@ -786,7 +808,7 @@ lanecv.addEventListener('dblclick', (e) => {
   // split at the nearest interior grid line
   const cut = Math.round(h.cellF);
   if (cut <= h.block.a || cut >= h.block.b) return;
-  const right = { a: cut, b: h.block.b, own: h.block.own ? { ...h.block.own } : null, acc: { ...h.block.acc } };
+  const right = { a: cut, b: h.block.b, vals: { ...h.block.vals }, acc: { ...h.block.acc } };
   h.block.b = cut;
   h.lane.blocks.push(right);
   laneNormalize(h.lane);
@@ -821,9 +843,21 @@ function drawLanes() {
         ctx.lineWidth = dpr;
         ctx.strokeRect(x0 + 1.5, y + 4 * dpr + 0.5, Math.max(2, x1 - x0 - 3), lh - 8 * dpr - 1);
       }
-      // own-values mark: a notch top-left; accumulator: a notch bottom-left
-      if (b.own) { ctx.fillStyle = live ? '#050505' : 'rgba(5,5,5,0.6)'; ctx.fillRect(x0 + 3 * dpr, y + 6 * dpr, 3 * dpr, 3 * dpr); }
-      if (b.acc.shape !== 'off') { ctx.fillStyle = live ? '#050505' : 'rgba(5,5,5,0.6)'; ctx.fillRect(x0 + 3 * dpr, y + lh - 9 * dpr, 3 * dpr, 3 * dpr); }
+      // per-block seg label (glitch mode) inside the block, clipped to its width
+      const segText = blockSegLabel(lane, b);
+      if (segText) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0 + 8 * dpr, y, Math.max(0, x1 - x0 - 12 * dpr), lh);
+        ctx.clip();
+        ctx.fillStyle = live ? (sel ? '#050505' : 'rgba(5,5,5,0.9)') : 'rgba(255,255,255,0.25)';
+        ctx.font = `${9 * dpr}px "SF Mono", Menlo, Consolas, monospace`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(segText, x0 + 8 * dpr, y + lh / 2 + 0.5 * dpr);
+        ctx.restore();
+      }
+      // accumulator mark: a notch bottom-right
+      if (b.acc.shape !== 'off') { ctx.fillStyle = live ? '#050505' : 'rgba(5,5,5,0.6)'; ctx.fillRect(x1 - 6 * dpr, y + lh - 9 * dpr, 3 * dpr, 3 * dpr); }
     }
   });
   // playhead
@@ -1012,7 +1046,7 @@ window.noise = {
   select: selectLane,
   regrid,
   addBlock(li, a, b) {
-    const block = { a, b, own: null, acc: newAcc() };
+    const block = newBlock(lanes[li], a, b);
     lanes[li].blocks.push(block);
     laneNormalize(lanes[li]);
     selectLane(li, block);
