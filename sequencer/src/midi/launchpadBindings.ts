@@ -114,6 +114,14 @@ const COL_BANK_PENDING_PALETTE = 3; // palette index 3 = bright white
 const COL_TRACK_FOCUSED = 127;
 const COL_TRACK_PRESENT = 25;
 const COL_TRACK_EMPTY = 0;
+// Silenced track (muted, or soloed-out) — song mode drives track.mute per
+// arrangement row, so these are what make the pads agree with what's actually
+// sounding. Authored steps stay readable but dropped to the displaced-indicator
+// weight; the playhead still walks the row so you can see it's running.
+const COL_TRACK_FOCUSED_SILENCED = 60;
+const COL_TRACK_PRESENT_SILENCED = 8;
+const COL_STEP_ON_SILENCED = 18; // on step at rest, silenced track
+const COL_PLAY_HIT_SILENCED = 40; // playhead over an on step, silenced track
 
 // Chord page (per-device mode). Columns 0..6 = scale degrees I..VII off the
 // scene key; column 7 reserved. Rows = an 8-rung voicing ladder, plainest at
@@ -264,6 +272,17 @@ function visibleTracks(section: TrackSection): Track[] {
     .slice(0, 8);
 }
 
+// Mirrors the engine's mute split (tick.ts): a track is silenced when muted,
+// or when any track is soloed and this one isn't. Solo scope is ALL tracks,
+// not just the visible section — same as the engine.
+function anySoloed(): boolean {
+  return useSequencerStore.getState().tracks.some((t) => t.solo);
+}
+function isSilenced(track: Track | undefined, anySolo: boolean): boolean {
+  if (!track) return false;
+  return track.mute || (anySolo && !track.solo);
+}
+
 // Absolute playhead column (0..15) for a track, or -1 if outside the visible
 // 16-step window (tracks longer than 16 lose steps beyond 15 — same limitation
 // as the prior quadrant model, just without paging to reach them).
@@ -302,11 +321,23 @@ function tieRole(track: Track, idx: number): 'none' | 'source' | 'held' {
   return 'none';
 }
 
-function colorForCell(track: Track | undefined, stepIdx: number, onPlayhead: boolean): number {
+function colorForCell(
+  track: Track | undefined,
+  stepIdx: number,
+  onPlayhead: boolean,
+  silenced: boolean,
+): number {
   if (!track || stepIdx >= track.length) return onPlayhead ? COL_PLAY_OFF : COL_OFF;
   const step = track.steps[stepIdx];
   const on = !!(step && step.on);
   const role = tieRole(track, stepIdx);
+  if (silenced) {
+    // Muted / soloed-out: nothing sounds, so no bright hits. Authored steps
+    // (on + tied sources) drop to a dim outline; held continuations fall to
+    // off so the row reads as one flat silhouette. Playhead keeps walking.
+    if (onPlayhead) return on ? COL_PLAY_HIT_SILENCED : COL_PLAY_OFF;
+    return on || role === 'source' ? COL_STEP_ON_SILENCED : COL_OFF;
+  }
   if (onPlayhead) {
     if (on) return COL_PLAY_HIT;
     if (role === 'held') return COL_TIE_HELD_PH;
@@ -319,10 +350,17 @@ function colorForCell(track: Track | undefined, stepIdx: number, onPlayhead: boo
 }
 
 // Resting color for a track-select top-row pad: the focused track brightest, a
-// present-but-unfocused track dim, an empty row slot off.
-function trackTopColor(track: Track | undefined, focusedId: string | null): number {
+// present-but-unfocused track dim, an empty row slot off. A silenced track sits
+// one rung lower on each ladder so the top row doubles as a mute readout.
+function trackTopColor(
+  track: Track | undefined,
+  focusedId: string | null,
+  silenced: boolean,
+): number {
   if (!track) return COL_TRACK_EMPTY;
-  return track.id === focusedId ? COL_TRACK_FOCUSED : COL_TRACK_PRESENT;
+  const focused = track.id === focusedId;
+  if (silenced) return focused ? COL_TRACK_FOCUSED_SILENCED : COL_TRACK_PRESENT_SILENCED;
+  return focused ? COL_TRACK_FOCUSED : COL_TRACK_PRESENT;
 }
 
 function bankLevel(
@@ -346,19 +384,27 @@ function buildSurfaceForHalf(half: 0 | 1): Uint8Array {
   const out = new Uint8Array(SURFACE_SIZE);
   const state = useSequencerStore.getState();
   const tracks = visibleTracks(state.viewSection);
+  const anySolo = anySoloed();
   const pageStart = half * 8;
   for (let row = 0; row < 8; row++) {
     const track = tracks[row];
     const phAbs = computePlayheadAbsForTrack(track);
+    const silenced = isSilenced(track, anySolo);
     for (let col = 0; col < 8; col++) {
       const absStep = pageStart + col;
-      out[row * 8 + col] = colorForCell(track, absStep, absStep === phAbs);
+      out[row * 8 + col] = colorForCell(track, absStep, absStep === phAbs, silenced);
     }
   }
   // Top row: left pad (half 0) = bank select (banks 0..7); right pad (half 1) =
   // track select (focus the col-i visible track).
   if (half === 1) {
-    for (let i = 0; i < 8; i++) out[64 + i] = trackTopColor(tracks[i], state.focusedTrackId);
+    for (let i = 0; i < 8; i++) {
+      out[64 + i] = trackTopColor(
+        tracks[i],
+        state.focusedTrackId,
+        isSilenced(tracks[i], anySolo),
+      );
+    }
   } else {
     for (let i = 0; i < 8; i++) {
       out[64 + i] = bankLevel(state.banks[i] ?? null, i, state.activeBank, state.pendingBank);
@@ -691,7 +737,11 @@ function repaintCellAbs(row: number, absStep: number, onPlayhead: boolean): void
   const device = deviceForHalf(half);
   if (deviceMode[device] !== 'step') return; // chord/session pages own this device
   const track = visibleTracks(currentSection())[row];
-  setPadColor(device, row * 8 + col, colorForCell(track, absStep, onPlayhead));
+  setPadColor(
+    device,
+    row * 8 + col,
+    colorForCell(track, absStep, onPlayhead, isSilenced(track, anySoloed())),
+  );
 }
 
 function updatePlayhead(): void {
@@ -716,9 +766,11 @@ function seedPlayhead(): void {
 // Signature of the visible section — collapses tracks×steps to a string so we
 // can cheaply detect "the grid changed" without diffing pad-by-pad. Hashes
 // the FULL track because tie-held coloring of any step depends on tieToNext
-// flags of preceding steps.
+// flags of preceding steps. Also folds in each row's silenced state (mute /
+// soloed-out) so song-mode row commits and manual mute toggles repaint the grid.
 function visibleSignature(): string {
   const tracks = visibleTracks(currentSection());
+  const anySolo = anySoloed();
   let s = '';
   for (let row = 0; row < 8; row++) {
     const t = tracks[row];
@@ -726,7 +778,7 @@ function visibleSignature(): string {
       s += '|--';
       continue;
     }
-    s += '|' + t.id + ':';
+    s += '|' + t.id + (isSilenced(t, anySolo) ? 'x' : '') + ':';
     for (let c = 0; c < t.length; c++) {
       const st = t.steps[c];
       s += (st?.on ? '1' : '0') + (st?.tieToNext ? 't' : '_');
@@ -1243,8 +1295,13 @@ function stepAttach(): () => void {
         const tDevice = deviceForHalf(1);
         if (deviceMode[tDevice] === 'step') {
           const tracks = visibleTracks(state.viewSection);
+          const anySolo = anySoloed();
           for (let i = 0; i < 8; i++) {
-            setTopColor(tDevice, i, trackTopColor(tracks[i], state.focusedTrackId));
+            setTopColor(
+              tDevice,
+              i,
+              trackTopColor(tracks[i], state.focusedTrackId, isSilenced(tracks[i], anySolo)),
+            );
           }
         }
       }
