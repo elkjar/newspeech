@@ -39,7 +39,7 @@
      the lanes read as annotations on the audio — same x axis, no gap. */
   #dropwave {
     position: relative;
-    height: 150px;
+    height: 174px;
     background: #0a0a0a;
     border: 1px dashed #333;
     border-bottom: none;
@@ -48,9 +48,12 @@
   #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
   #dropwave.drag { border-color: #777; }
   /* the waveform shares the lanes' x axis: inset by the label column */
-  #wave { position: absolute; top: 0; bottom: 0; left: var(--label-w); width: calc(100% - var(--label-w)); height: 100%; display: block; }
+  /* overview strip: the whole file, with the loop bracketed. the detail wave
+     under it zooms to the loop, so the lanes annotate exactly what plays. */
+  #overview { position: absolute; top: 0; left: var(--label-w); width: calc(100% - var(--label-w)); height: 24px; display: block; border-bottom: 1px solid #1c1c1c; cursor: crosshair; touch-action: none; }
+  #wave { position: absolute; top: 25px; bottom: 0; left: var(--label-w); width: calc(100% - var(--label-w)); height: calc(100% - 25px); display: block; touch-action: none; }
   #wavegutter { position: absolute; top: 0; bottom: 0; left: 0; width: var(--label-w); border-right: 1px solid #1c1c1c; }
-  #dropwave:not(.loaded) #wavegutter { display: none; }
+  #dropwave:not(.loaded) #wavegutter, #dropwave:not(.loaded) #overview { display: none; }
   #dropprompt {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -59,7 +62,7 @@
   #dropwave.drag #dropprompt { color: #ddd; }
   #dropwave.loaded #dropprompt { display: none; }
   #fileinfo {
-    position: absolute; top: 8px; left: calc(var(--label-w) + 10px);
+    position: absolute; top: 32px; left: calc(var(--label-w) + 10px);
     color: #888; cursor: pointer; display: none;
     background: rgba(5,5,5,0.6); padding: 1px 6px;
   }
@@ -67,7 +70,7 @@
   #dropwave.loaded #fileinfo { display: block; }
   #fileinfo .fname { color: #ddd; }
   #passinfo {
-    position: absolute; top: 8px; right: 10px;
+    position: absolute; top: 32px; right: 10px;
     color: #888; background: rgba(5,5,5,0.6); padding: 1px 6px;
     font-variant-numeric: tabular-nums; pointer-events: none;
   }
@@ -107,6 +110,19 @@
     color: #444; pointer-events: none; text-align: center; padding: 0 12px;
   }
   #timeline.haslanes #lanehint { display: none; }
+
+  /* loop row: sits under the timeline, reads as the file's own controls */
+  #loopctl { display: flex; gap: 14px; align-items: center; margin: -6px 0 16px; flex-wrap: wrap; }
+  #loopctl .seg { margin: 0; }
+  #loopctl .hint { flex-basis: 100%; }
+  #loopinfo { color: #888; font-variant-numeric: tabular-nums; }
+  #loopinfo em { font-style: normal; color: #ddd; }
+  #bpm {
+    font: inherit; background: none; color: #ccc; border: 1px solid #2a2a2a;
+    padding: 3px 8px; width: 66px; letter-spacing: 0.1em; font-variant-numeric: tabular-nums;
+  }
+  #bpm:focus { outline: none; border-color: #777; }
+  #bpm.guess { color: #888; }
 
   /* transport */
   #transport { display: flex; gap: 14px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
@@ -199,6 +215,7 @@
 
 <div id="dropwave">
   <div id="wavegutter"></div>
+  <canvas id="overview" title="the whole file — drag to set the loop, drag its edges to trim, drag inside to slide, double-click for all of it"></canvas>
   <canvas id="wave"></canvas>
   <div id="dropprompt">drop an audio file here, or click to browse — the file's length is the grid</div>
   <div id="fileinfo"></div>
@@ -212,6 +229,31 @@
     <canvas id="lanecv"></canvas>
     <div id="lanehint">drop a file and the seed fills the grid · drag on a lane to draw a block · drag its edge to resize · double-click to split · right-click to erase</div>
   </div>
+</div>
+
+<div id="loopctl">
+  <div class="seg" id="loopmode">
+    <span class="seglabel">loop</span>
+    <button data-v="free" class="on" title="loop points land anywhere (snapped to a zero crossing)">FREE</button>
+    <button data-v="sync" title="loop points snap to the beat grid — detected from the file, or type a bpm">SYNC</button>
+  </div>
+  <div class="seg" id="bpmseg">
+    <span class="seglabel">bpm</span>
+    <input id="bpm" value="" placeholder="—" spellcheck="false" autocomplete="off" inputmode="decimal" title="detected from the file — type to override; the beat grid re-aligns to the new tempo">
+    <button class="toggle" id="bpmreset" title="back to the detected tempo">↺</button>
+  </div>
+  <div class="seg" id="looplen">
+    <span class="seglabel">beats</span>
+    <button data-b="1">1</button>
+    <button data-b="2">2</button>
+    <button data-b="4">4</button>
+    <button data-b="8">8</button>
+    <button data-b="16">16</button>
+    <button data-b="32">32</button>
+  </div>
+  <button class="toggle" id="loopfull" title="the whole file">○ full</button>
+  <span id="loopinfo"></span>
+  <span class="hint">drag in the strip to set the loop · drag the wave's edges to trim, its middle to slide · [← →] slide by a beat (or a cell) · [shift ← →] resize · the loop is the grid</span>
 </div>
 
 <div id="transport">
@@ -931,7 +973,21 @@ let live = null; // the worklet's LIVE (mutated) lanes — drawn over the author
 let livePass = 0;
 
 const wave = document.getElementById('wave');
-let peaks = null;
+const overview = document.getElementById('overview');
+let peaks = null; // the loop, for the detail wave
+let fullPeaks = null; // the whole file, for the overview strip
+
+// --- the loop: a region of the file is what plays, prints and gridded -------
+// loopS/loopE are frames into the file. The worklet only ever sees the slice,
+// so the lanes (fractions of the buffer) annotate the loop for free.
+let loopS = 0, loopE = 0;
+let loopL = null, loopR = null;
+let loopDur = 0;
+// tempo: detected at load, overridable. beatOff/beatPeriod in frames.
+let bpmDetected = 0, bpmVal = 0, beatPeriod = 0, beatOff = 0;
+let onsetEnv = null; // per-hop onset strength, kept for re-aligning the phase to a typed bpm
+const ONSET_HOP = 512;
+ui.loopMode = 'free';
 
 async function ensureAudio() {
   if (actx) return;
@@ -962,36 +1018,212 @@ async function loadFile(file) {
   fileR = buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0);
   fileName = file.name.replace(/\.[^.]+$/, '');
   fileDur = buf.duration;
-  node.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
   document.getElementById('dropwave').classList.add('loaded');
+  sizeCanvas(overview); // display:none until loaded — it has no size before this
   document.getElementById('fileinfo').innerHTML =
     `<span class="fname">${file.name}</span> · ${fileDur.toFixed(2)}s · ${buf.numberOfChannels}ch · replace`;
   document.getElementById('play').disabled = false;
   document.getElementById('render').disabled = false;
-  computePeaks();
+  fullPeaks = makePeaks(fileL, fileR, 0, fileL.length, 1024);
+  detectTempo();
+  setLoop(0, fileL.length, false);
+  commitLoop();
   if (!lanes.some((l) => l.blocks.length > 0)) seedGrid(ui.seed);
   refreshLaneState();
   updatePassInfo();
 }
 
-function computePeaks() {
-  const cols = 768;
-  peaks = new Float32Array(cols * 2);
-  const L = fileL, R = fileR;
-  const per = L.length / cols;
+function makePeaks(L, R, s, e, cols) {
+  const out = new Float32Array(cols * 2);
+  const per = (e - s) / cols;
   for (let c = 0; c < cols; c++) {
-    const i0 = Math.floor(c * per), i1 = Math.max(i0 + 1, Math.floor((c + 1) * per));
+    const i0 = s + Math.floor(c * per), i1 = Math.min(e, Math.max(i0 + 1, s + Math.floor((c + 1) * per)));
     const step = Math.max(1, Math.floor((i1 - i0) / 64));
     let mn = Infinity, mx = -Infinity;
-    for (let i = i0; i < i1; i += step) { const s = 0.5 * (L[i] + R[i]); if (s < mn) mn = s; if (s > mx) mx = s; }
+    for (let i = i0; i < i1; i += step) { const v = 0.5 * (L[i] + R[i]); if (v < mn) mn = v; if (v > mx) mx = v; }
     if (mn > mx) { mn = 0; mx = 0; }
-    peaks[c * 2] = mn; peaks[c * 2 + 1] = mx;
+    out[c * 2] = mn; out[c * 2 + 1] = mx;
   }
+  return out;
+}
+
+// --- tempo detection --------------------------------------------------------
+// onset strength per hop (rectified log-energy rise), autocorrelated over the
+// 60–200 bpm lag range with a mild prior around 120 and a half-weight comb
+// term at the double lag so the octave lands where the pulse actually is.
+// Then a comb over the envelope picks the beat phase. Good enough to snap
+// loops to; when it's wrong, the field takes a typed bpm.
+function detectTempo() {
+  const sr = actx.sampleRate, hop = ONSET_HOP;
+  const L = fileL, R = fileR;
+  const nF = Math.floor(L.length / hop);
+  bpmDetected = 0; onsetEnv = null;
+  if (nF >= 64) {
+    const env = new Float32Array(nF);
+    for (let f = 0; f < nF; f++) {
+      let acc = 0;
+      const i0 = f * hop;
+      for (let i = i0; i < i0 + hop; i++) { const v = L[i] + R[i]; acc += v * v; }
+      env[f] = Math.sqrt(acc / hop);
+    }
+    const on = new Float32Array(nF);
+    let mean = 0;
+    for (let f = 1; f < nF; f++) { on[f] = Math.max(0, Math.log(env[f] + 1e-5) - Math.log(env[f - 1] + 1e-5)); mean += on[f]; }
+    mean /= nF;
+    for (let f = 0; f < nF; f++) on[f] -= mean;
+    onsetEnv = on;
+    const lagMin = Math.max(2, Math.round((sr * 60 / 200) / hop));
+    const lagMax = Math.min(nF >> 1, Math.round((sr * 60 / 60) / hop));
+    if (lagMax > lagMin + 2) {
+      const top = Math.min(nF - 1, lagMax * 2 + 1);
+      const r = new Float32Array(top + 1);
+      for (let lag = lagMin; lag <= top; lag++) {
+        let acc = 0;
+        for (let f = 0; f + lag < nF; f++) acc += on[f] * on[f + lag];
+        r[lag] = acc / (nF - lag);
+      }
+      let best = -1, bestLag = lagMin;
+      for (let lag = lagMin; lag <= lagMax; lag++) {
+        const bpm = 60 * sr / (lag * hop);
+        const prior = Math.exp(-0.5 * Math.pow(Math.log2(bpm / 120) / 0.6, 2));
+        const comb = r[lag] + (lag * 2 <= top ? 0.5 * r[lag * 2] : 0);
+        const score = comb * (0.4 + 0.6 * prior);
+        if (score > best) { best = score; bestLag = lag; }
+      }
+      // parabolic refinement around the winning lag
+      let lag = bestLag;
+      if (bestLag > lagMin && bestLag < lagMax) {
+        const a = r[bestLag - 1], b = r[bestLag], c = r[bestLag + 1];
+        const d = a - 2 * b + c;
+        if (Math.abs(d) > 1e-12) lag = bestLag + Math.max(-0.5, Math.min(0.5, 0.5 * (a - c) / d));
+      }
+      bpmDetected = Math.round((60 * sr / (lag * hop)) * 10) / 10;
+    }
+  }
+  setBpm(bpmDetected, true);
+}
+
+// the beat phase for a period: the comb offset that catches the most onset
+function alignPhase(period) {
+  if (!onsetEnv || period <= 0) return 0;
+  const hop = ONSET_HOP, nF = onsetEnv.length;
+  const steps = Math.max(1, Math.round(period / hop));
+  let best = -Infinity, bestO = 0;
+  for (let o = 0; o < steps; o++) {
+    let acc = 0, n = 0;
+    for (let t = o * hop; t < nF * hop; t += period) { acc += onsetEnv[Math.floor(t / hop)]; n++; }
+    const v = n ? acc / n : -Infinity;
+    if (v > best) { best = v; bestO = o; }
+  }
+  return bestO * hop;
+}
+
+function setBpm(v, detected) {
+  bpmVal = v > 0 ? v : 0;
+  beatPeriod = bpmVal ? (actx.sampleRate * 60) / bpmVal : 0;
+  beatOff = bpmVal ? alignPhase(beatPeriod) : 0;
+  const inp = document.getElementById('bpm');
+  inp.value = bpmVal ? String(bpmVal) : '';
+  inp.classList.toggle('guess', !!detected);
+  inp.title = bpmDetected ? `detected ${bpmDetected} — type to override; the beat grid re-aligns to the new tempo` : 'no tempo found — type one';
+  document.getElementById('looplen').classList.toggle('dim', !bpmVal);
+  document.querySelector('#loopmode [data-v="sync"]').disabled = !bpmVal;
+  if (!bpmVal && ui.loopMode === 'sync') setLoopMode('free');
+}
+
+// --- loop geometry ----------------------------------------------------------
+// FREE snaps to the nearest zero crossing (no click at the seam); SYNC snaps
+// to the beat grid, then to a zero crossing within a couple of ms of it.
+const MIN_LOOP = 2048;
+function snapZero(i, win) {
+  const L = fileL, R = fileR, n = L.length;
+  i = Math.max(0, Math.min(n, Math.round(i)));
+  if (i === 0 || i === n) return i;
+  const sgn = (k) => (L[k] + R[k]) >= 0;
+  for (let d = 0; d <= win; d++) {
+    if (i + d < n && i + d > 0 && sgn(i + d) !== sgn(i + d - 1)) return i + d;
+    if (i - d > 0 && sgn(i - d) !== sgn(i - d - 1)) return i - d;
+  }
+  return i;
+}
+function snapBeat(i) {
+  if (!beatPeriod) return i;
+  return beatOff + Math.round((i - beatOff) / beatPeriod) * beatPeriod;
+}
+function snapPoint(i) {
+  const sr = actx.sampleRate;
+  if (ui.loopMode === 'sync' && beatPeriod) return snapZero(snapBeat(i), Math.round(sr * 0.002));
+  return snapZero(i, Math.round(sr * 0.005));
+}
+
+// view-only update: the loop moves, peaks redraw, the readout follows. The
+// worklet hears it on commitLoop() — at pointer-up, so a drag doesn't restart
+// the loop on every pixel.
+function setLoop(s, e, snap = true) {
+  if (!fileL) return;
+  const n = fileL.length;
+  if (snap) { s = snapPoint(s); e = snapPoint(e); }
+  s = Math.max(0, Math.min(n, Math.round(s)));
+  e = Math.max(0, Math.min(n, Math.round(e)));
+  if (e < s) [s, e] = [e, s];
+  if (e - s < MIN_LOOP) { e = Math.min(n, s + MIN_LOOP); s = Math.max(0, e - MIN_LOOP); }
+  loopS = s; loopE = e;
+  loopDur = (e - s) / actx.sampleRate;
+  peaks = makePeaks(fileL, fileR, s, e, 768);
+  updateLoopInfo();
+  updateRenderInfo();
+}
+function commitLoop() {
+  if (!fileL || !node) return;
+  loopL = fileL.slice(loopS, loopE);
+  loopR = fileR.slice(loopS, loopE);
+  node.port.postMessage({ type: 'buffer', l: loopL, r: loopR });
+}
+function loopBeats() { return beatPeriod ? (loopE - loopS) / beatPeriod : 0; }
+function setLoopMode(m) {
+  ui.loopMode = m;
+  document.querySelectorAll('#loopmode button').forEach((b) => b.classList.toggle('on', b.dataset.v === m));
+  if (fileL) { setLoop(loopS, loopE); commitLoop(); }
+}
+// a loop of N beats from the current start; shifts back if it runs off the end
+function setLoopBeats(nb) {
+  if (!fileL || !beatPeriod) return;
+  const len = nb * beatPeriod;
+  let s = loopS, e = s + len;
+  if (e > fileL.length) { e = fileL.length; s = Math.max(0, e - len); }
+  setLoop(s, e);
+  commitLoop();
+}
+function nudgeLoop(dir, resize) {
+  if (!fileL) return;
+  const unit = ui.loopMode === 'sync' && beatPeriod ? beatPeriod : (loopE - loopS) / grid;
+  const d = dir * unit;
+  if (resize) setLoop(loopS, loopE + d);
+  else {
+    const len = loopE - loopS;
+    let s = loopS + d;
+    s = Math.max(0, Math.min(fileL.length - len, s));
+    setLoop(s, s + len);
+  }
+  commitLoop();
+}
+function updateLoopInfo() {
+  const el = document.getElementById('loopinfo');
+  if (!fileL) { el.textContent = ''; return; }
+  const sr = actx.sampleRate;
+  const full = loopS === 0 && loopE === fileL.length;
+  const nb = loopBeats();
+  const beats = nb ? ` · <em>${(Math.round(nb * 100) / 100).toFixed(nb % 1 ? 2 : 0)}</em> beats` : '';
+  el.innerHTML = `${(loopS / sr).toFixed(2)}s → ${(loopE / sr).toFixed(2)}s · <em>${loopDur.toFixed(2)}s</em>${beats}`;
+  const fb = document.getElementById('loopfull');
+  fb.textContent = full ? '● full' : '○ full';
+  fb.classList.toggle('on', full);
+  document.querySelectorAll('#looplen button').forEach((b) => b.classList.toggle('on', nb > 0 && Math.abs(nb - parseInt(b.dataset.b, 10)) < 0.02));
 }
 
 function playheadFrac() {
-  if (!playing || !lastViz || !fileDur) return -1;
-  const ahead = (performance.now() - vizAt) / 1000 / fileDur;
+  if (!playing || !lastViz || !loopDur) return -1;
+  const ahead = (performance.now() - vizAt) / 1000 / loopDur;
   return (lastViz.pos + Math.min(ahead, 0.1)) % 1;
 }
 
@@ -1018,7 +1250,7 @@ function updatePassInfo() {
 // accumulators and mutation arrive at the same place they would live.
 let rendering = false;
 async function renderWav() {
-  if (!fileL || rendering) return;
+  if (!loopL || rendering) return;
   rendering = true;
   const btn = document.getElementById('render');
   btn.textContent = 'PRINTING···';
@@ -1026,7 +1258,7 @@ async function renderWav() {
   rollSeedIfAuto();
   try {
     const sr = actx.sampleRate;
-    const passFrames = fileL.length;
+    const passFrames = loopL.length;
     const total = passFrames * ui.passes;
     const oc = new OfflineAudioContext(2, total, sr);
     await oc.audioWorklet.addModule('glitch-worklet.js');
@@ -1035,7 +1267,7 @@ async function renderWav() {
     const ready = new Promise((res) => { n.port.onmessage = (e) => { if (e.data.type === 'ready') res(); }; });
     n.port.postMessage({ type: 'vizOn', on: false });
     n.port.postMessage({ type: 'pattern', p: pattern() });
-    n.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
+    n.port.postMessage({ type: 'buffer', l: loopL, r: loopR });
     await ready;
     n.port.postMessage({ type: 'play', on: true });
     const rendered = await oc.startRendering();
@@ -1047,7 +1279,9 @@ async function renderWav() {
     const blob = encodeWav32f(out);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `glitch-${fileName}-g${ui.passes}${ui.printMode === 'arc' ? '-arc' : ''}-${ui.seed}.wav`;
+    const trimmed = loopS !== 0 || loopE !== fileL.length;
+    const loopTag = trimmed ? `-loop${(loopS / sr).toFixed(2)}+${loopDur.toFixed(2)}` : '';
+    a.download = `glitch-${fileName}${loopTag}-g${ui.passes}${ui.printMode === 'arc' ? '-arc' : ''}-${ui.seed}.wav`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   } finally {
@@ -1087,6 +1321,21 @@ function drawWave() {
     const y0 = mid - peaks[c * 2 + 1] * mid * 0.92, y1 = mid - peaks[c * 2] * mid * 0.92;
     ctx.fillRect(x, y0, w, Math.max(1, y1 - y0));
   }
+  // beat grid across the loop — faint when free, firmer when the loop snaps to it
+  if (beatPeriod) {
+    const len = loopE - loopS;
+    const pxPerBeat = (beatPeriod / len) * W;
+    if (pxPerBeat >= 4 * dpr) {
+      const sync = ui.loopMode === 'sync';
+      const k0 = Math.ceil((loopS - beatOff) / beatPeriod), k1 = Math.floor((loopE - beatOff) / beatPeriod);
+      for (let k = k0; k <= k1; k++) {
+        const x = Math.round(((beatOff + k * beatPeriod - loopS) / len) * W);
+        if (x <= 0 || x >= W) continue;
+        ctx.fillStyle = sync ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.07)';
+        ctx.fillRect(x, sync ? 0 : H * 0.7, Math.max(1, dpr), sync ? H : H * 0.3);
+      }
+    }
+  }
   // grid ghost on the waveform too, so the lanes read as its annotation
   for (let c = 1; c < grid; c++) {
     if (c % 4 !== 0) continue;
@@ -1095,13 +1344,142 @@ function drawWave() {
   }
   const p = playheadFrac();
   if (p >= 0) { ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(p * W), 0, Math.max(1, dpr), H); }
+  // the seam: when the loop is a slice, its edges are handles
+  if (fileL && (loopS !== 0 || loopE !== fileL.length)) {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(0, 0, Math.max(1, dpr), H);
+    ctx.fillRect(W - Math.max(1, dpr), 0, Math.max(1, dpr), H);
+  }
+}
+
+// the strip: the whole file dimmed, the loop lit and bracketed
+function drawOverview() {
+  const ctx = overview.getContext('2d');
+  const W = overview.width, H = overview.height;
+  const dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, W, H);
+  if (!fullPeaks || !fileL) return;
+  const n = fileL.length;
+  const x0 = (loopS / n) * W, x1 = (loopE / n) * W;
+  const cols = fullPeaks.length / 2, mid = H / 2;
+  for (let c = 0; c < cols; c++) {
+    const x = (c / cols) * W, w = W / cols + 0.5;
+    const inside = x + w * 0.5 >= x0 && x + w * 0.5 <= x1;
+    ctx.fillStyle = inside ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.14)';
+    const y0 = mid - fullPeaks[c * 2 + 1] * mid * 0.9, y1 = mid - fullPeaks[c * 2] * mid * 0.9;
+    ctx.fillRect(x, y0, w, Math.max(1, y1 - y0));
+  }
+  // bar lines when there's room for them
+  if (beatPeriod) {
+    const pxPerBar = (beatPeriod * 4 / n) * W;
+    if (pxPerBar >= 6 * dpr) {
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      const k0 = Math.ceil(-beatOff / beatPeriod);
+      for (let k = k0; beatOff + k * beatPeriod < n; k += 4) ctx.fillRect(Math.round(((beatOff + k * beatPeriod) / n) * W), 0, 1, H);
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
+  ctx.fillStyle = '#ddd';
+  ctx.fillRect(Math.round(x0), 0, Math.max(1, dpr), H);
+  ctx.fillRect(Math.round(x1) - Math.max(1, dpr), 0, Math.max(1, dpr), H);
+  const p = playheadFrac();
+  if (p >= 0) { ctx.fillStyle = '#fff'; ctx.fillRect(Math.round(x0 + p * (x1 - x0)), 0, Math.max(1, dpr), H); }
 }
 
 function frame() {
+  drawOverview();
   drawWave();
   drawLanes();
   requestAnimationFrame(frame);
 }
+
+// --- loop editing: pointer on the strip and on the detail wave ----------------
+// strip: empty → new selection; edge → trim; inside → slide; dblclick → full.
+// detail: edge → trim at the zoomed scale; middle → slide the loop through the
+// file. Scale freezes at pointer-down so the view re-zooming underneath the
+// drag doesn't fight the hand.
+(function wireLoopEdit() {
+  const GRAB = 7;
+  let drag = null;
+  function framesAtOverview(e) {
+    const r = overview.getBoundingClientRect();
+    return ((e.clientX - r.left) / r.width) * fileL.length;
+  }
+  overview.addEventListener('pointerdown', (e) => {
+    if (!fileL || e.button !== 0) return;
+    const r = overview.getBoundingClientRect();
+    const px = e.clientX - r.left;
+    const x0 = (loopS / fileL.length) * r.width, x1 = (loopE / fileL.length) * r.width;
+    const f = framesAtOverview(e);
+    let mode;
+    if (Math.abs(px - x0) <= GRAB && Math.abs(px - x1) <= GRAB) mode = px < (x0 + x1) / 2 ? 'start' : 'end';
+    else if (Math.abs(px - x0) <= GRAB) mode = 'start';
+    else if (Math.abs(px - x1) <= GRAB) mode = 'end';
+    else if (px > x0 && px < x1) mode = 'move';
+    else mode = 'new';
+    drag = { mode, anchor: f, s0: loopS, e0: loopE, perPx: fileL.length / r.width };
+    overview.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  overview.addEventListener('pointermove', (e) => {
+    if (!fileL) return;
+    if (!drag) {
+      const r = overview.getBoundingClientRect();
+      const px = e.clientX - r.left;
+      const x0 = (loopS / fileL.length) * r.width, x1 = (loopE / fileL.length) * r.width;
+      overview.style.cursor = Math.abs(px - x0) <= GRAB || Math.abs(px - x1) <= GRAB ? 'ew-resize' : px > x0 && px < x1 ? 'grab' : 'crosshair';
+      return;
+    }
+    applyDrag(drag, framesAtOverview(e) - drag.anchor, framesAtOverview(e));
+  });
+  const endOv = () => { if (drag) { drag = null; commitLoop(); } };
+  overview.addEventListener('pointerup', endOv);
+  overview.addEventListener('pointercancel', endOv);
+  overview.addEventListener('dblclick', () => { if (fileL) { setLoop(0, fileL.length, false); commitLoop(); } });
+
+  let wdrag = null;
+  wave.addEventListener('pointerdown', (e) => {
+    if (!fileL || e.button !== 0) return;
+    const r = wave.getBoundingClientRect();
+    const px = e.clientX - r.left;
+    const len = loopE - loopS;
+    const mode = px <= GRAB + 4 ? 'start' : px >= r.width - GRAB - 4 ? 'end' : 'move';
+    wdrag = { mode, x: e.clientX, s0: loopS, e0: loopE, perPx: len / r.width };
+    wave.setPointerCapture(e.pointerId);
+    wave.style.cursor = mode === 'move' ? 'grabbing' : 'ew-resize';
+    e.preventDefault();
+  });
+  wave.addEventListener('pointermove', (e) => {
+    if (!fileL) return;
+    if (!wdrag) {
+      const r = wave.getBoundingClientRect();
+      const px = e.clientX - r.left;
+      wave.style.cursor = px <= GRAB + 4 || px >= r.width - GRAB - 4 ? 'ew-resize' : 'grab';
+      return;
+    }
+    applyDrag(wdrag, (e.clientX - wdrag.x) * wdrag.perPx, null);
+  });
+  const endW = () => { if (wdrag) { wdrag = null; wave.style.cursor = 'grab'; commitLoop(); } };
+  wave.addEventListener('pointerup', endW);
+  wave.addEventListener('pointercancel', endW);
+
+  function applyDrag(d, delta, absFrames) {
+    const n = fileL.length;
+    if (d.mode === 'start') setLoop(d.s0 + delta, d.e0);
+    else if (d.mode === 'end') setLoop(d.s0, d.e0 + delta);
+    else if (d.mode === 'move') {
+      const len = d.e0 - d.s0;
+      let s = Math.max(0, Math.min(n - len, d.s0 + delta));
+      if (ui.loopMode === 'sync' && beatPeriod) s = snapBeat(s);
+      s = Math.max(0, Math.min(n - len, s));
+      // slide keeps the length exactly — don't re-snap the end away from it
+      setLoop(s, s + len, false);
+    } else if (d.mode === 'new') {
+      setLoop(d.anchor, absFrames);
+    }
+  }
+})();
 
 // --- seed: one string is the whole take -----------------------------------------
 // The seed POPULATES the grid — random blocks, modes and settings across the
@@ -1187,7 +1565,7 @@ function updateRenderInfo() {
   const info = document.getElementById('renderinfo');
   if (!buf) { info.textContent = 'load a file first'; return; }
   const liveN = lanes.filter((l) => l.on && l.blocks.length > 0).length;
-  const secs = ui.printMode === 'arc' ? fileDur * ui.passes : fileDur;
+  const secs = ui.printMode === 'arc' ? loopDur * ui.passes : loopDur;
   const stages = liveN ? `${liveN} stage${liveN > 1 ? 's' : ''} live` : 'no stages live — prints clean';
   info.textContent = `prints ${secs.toFixed(1)}s — ${ui.printMode === 'arc' ? 'all' : 'the last of'} ${ui.passes} pass${ui.passes > 1 ? 'es' : ''} · ${stages}`;
 }
@@ -1205,6 +1583,20 @@ function segWire(id, attr, cb) {
 segWire('gridseg', 'g', (v) => regrid(parseInt(v, 10)));
 segWire('passes', 'p', (v) => { ui.passes = parseInt(v, 10); updateRenderInfo(); });
 segWire('printmode', 'm', (v) => { ui.printMode = v; updateRenderInfo(); });
+segWire('loopmode', 'v', (v) => setLoopMode(v));
+document.querySelectorAll('#looplen button').forEach((b) => b.addEventListener('click', () => setLoopBeats(parseInt(b.dataset.b, 10))));
+document.getElementById('loopfull').addEventListener('click', () => { if (fileL) { setLoop(0, fileL.length, false); commitLoop(); } });
+const bpmInput = document.getElementById('bpm');
+function takeBpm() {
+  const v = parseFloat(bpmInput.value);
+  if (v >= 30 && v <= 300) setBpm(Math.round(v * 10) / 10, false);
+  else setBpm(bpmDetected, true);
+  if (fileL && ui.loopMode === 'sync') { setLoop(loopS, loopE); commitLoop(); }
+  else updateLoopInfo();
+}
+bpmInput.addEventListener('change', takeBpm);
+bpmInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { takeBpm(); bpmInput.blur(); } e.stopPropagation(); });
+document.getElementById('bpmreset').addEventListener('click', () => { setBpm(bpmDetected, true); if (fileL && ui.loopMode === 'sync') { setLoop(loopS, loopE); commitLoop(); } else updateLoopInfo(); });
 
 // --- wiring -------------------------------------------------------------------
 const dropwave = document.getElementById('dropwave');
@@ -1227,6 +1619,7 @@ document.addEventListener('keydown', (e) => {
   if (e.target !== document.body) return;
   if (e.code === 'Space') { e.preventDefault(); void togglePlay(); return; }
   if (e.key >= '1' && e.key <= '6') { selectLane(parseInt(e.key, 10) - 1, null); return; }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); nudgeLoop(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey); return; }
   if ((e.key === 'Backspace' || e.key === 'Delete') && selBlock) {
     const lane = lanes[selLane];
     lane.blocks = lane.blocks.filter((b) => b !== selBlock);
@@ -1234,8 +1627,9 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-window.addEventListener('resize', () => { sizeCanvas(wave); sizeLanes(); });
+window.addEventListener('resize', () => { sizeCanvas(wave); sizeCanvas(overview); sizeLanes(); });
 sizeCanvas(wave);
+sizeCanvas(overview);
 sizeLanes();
 renderPanel();
 refreshLaneState();
@@ -1249,6 +1643,10 @@ window.glitch = {
   select: selectLane,
   regrid,
   seedGrid, applySeed,
+  setLoop(s, e) { setLoop(s, e); commitLoop(); },
+  setBpm(v) { setBpm(v, false); },
+  setLoopMode,
+  get loop() { return { s: loopS, e: loopE, dur: loopDur, bpm: bpmVal, detected: bpmDetected, beatOff, beatPeriod }; },
   addBlock(li, a, b) {
     const block = newBlock(lanes[li], a, b);
     lanes[li].blocks.push(block);
