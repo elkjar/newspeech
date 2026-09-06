@@ -810,8 +810,36 @@ function laneHit(e) {
 
 lanecv.addEventListener('contextmenu', (e) => e.preventDefault());
 
+// while playing with mutate, the bright blocks are the worklet's LIVE copies
+// and the drawn ones sit dimmed underneath. Touching the grid then makes the
+// live picture the authored one — what you see is what you grab — and the
+// click lands on the block under the pointer. Settings follow each block's
+// source; blocks the mutation spawned take the lane defaults.
+function isDrifted() {
+  return !!(playing && live && live.some((ll, i) => JSON.stringify(ll.blocks.map((b) => [b.a, b.b])) !== JSON.stringify(lanes[i].blocks.map((b) => [b.a / grid, b.b / grid]))));
+}
+function adoptLive() {
+  if (!isDrifted()) return;
+  lanes.forEach((lane, i) => {
+    const ll = live[i];
+    if (!ll) return;
+    const bySrc = new Map(lane.blocks.map((b) => [b.id, b]));
+    lane.blocks = ll.blocks.map((b) => {
+      const src = bySrc.get(b.src);
+      const a = Math.max(0, Math.min(grid - 1, Math.round(b.a * grid)));
+      const bb = Math.max(a + 1, Math.min(grid, Math.round(b.b * grid)));
+      return { id: nextBlockId++, a, b: bb, vals: src ? { ...src.vals } : blockVals(lane), acc: src ? { ...src.acc } : newAcc() };
+    });
+    laneNormalize(lane);
+  });
+  selBlock = null;
+  live = null;
+  refreshLaneState();
+}
+
 lanecv.addEventListener('pointerdown', (e) => {
   e.preventDefault();
+  adoptLive();
   const h = laneHit(e);
   const erase = e.button === 2 || e.altKey;
   if (erase) {
@@ -873,6 +901,7 @@ lanecv.addEventListener('pointerup', () => {
 });
 
 lanecv.addEventListener('dblclick', (e) => {
+  adoptLive();
   const h = laneHit(e);
   if (!h.block) return;
   // split at the nearest interior grid line
@@ -901,7 +930,7 @@ function drawLanes() {
   }
   // blocks — authored. While the live pattern has drifted from it (mutate),
   // the authored blocks drop to reduced weight and the live ones draw on top.
-  const drifted = playing && live && live.some((ll, i) => JSON.stringify(ll.blocks.map((b) => [b.a, b.b])) !== JSON.stringify(lanes[i].blocks.map((b) => [b.a / grid, b.b / grid])));
+  const drifted = isDrifted();
   lanes.forEach((lane, i) => {
     const y = i * lh;
     const live_ = lane.on;
