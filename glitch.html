@@ -790,13 +790,21 @@ function laneHit(e) {
   const li = Math.min(lanes.length - 1, Math.max(0, Math.floor((e.clientY - r.top) / LANE_H)));
   const cellF = fx * grid;
   const lane = lanes[li];
-  let block = null, edge = null;
+  // edge zones shrink on narrow blocks so a 1-cell block at ÷64 (~14px) still
+  // has a middle to grab and move; a near miss beside a block grabs it rather
+  // than drawing a fresh one in the gap.
+  let block = null, edge = null, nearest = null, nearD = Infinity;
   for (const b of lane.blocks) {
     const xa = (b.a / grid) * r.width, xb = (b.b / grid) * r.width;
-    if (Math.abs(x - xa) <= EDGE_PX) { block = b; edge = 'a'; break; }
-    if (Math.abs(x - xb) <= EDGE_PX) { block = b; edge = 'b'; break; }
+    const wpx = xb - xa;
+    const ez = wpx >= 4 * EDGE_PX ? EDGE_PX : Math.max(2, wpx / 4);
+    if (x >= xa - ez && x <= xa + ez) { block = b; edge = 'a'; break; }
+    if (x >= xb - ez && x <= xb + ez) { block = b; edge = 'b'; break; }
     if (x > xa && x < xb) { block = b; break; }
+    const d = x < xa ? xa - x : x - xb;
+    if (d < nearD) { nearD = d; nearest = b; }
   }
+  if (!block && nearest && nearD <= 4) block = nearest;
   return { li, lane, fx, cellF, block, edge, w: r.width };
 }
 
@@ -1431,7 +1439,9 @@ function frame() {
     const x0 = (loopS / fileL.length) * r.width, x1 = (loopE / fileL.length) * r.width;
     const f = framesAtOverview(e);
     let mode;
-    if (Math.abs(px - x0) <= GRAB && Math.abs(px - x1) <= GRAB) mode = px < (x0 + x1) / 2 ? 'start' : 'end';
+    const full = loopS === 0 && loopE === fileL.length;
+    if (full) mode = 'new'; // the whole file is the loop: any drag selects a new one
+    else if (Math.abs(px - x0) <= GRAB && Math.abs(px - x1) <= GRAB) mode = px < (x0 + x1) / 2 ? 'start' : 'end';
     else if (Math.abs(px - x0) <= GRAB) mode = 'start';
     else if (Math.abs(px - x1) <= GRAB) mode = 'end';
     else if (px > x0 && px < x1) mode = 'move';
@@ -1446,7 +1456,8 @@ function frame() {
       const r = overview.getBoundingClientRect();
       const px = e.clientX - r.left;
       const x0 = (loopS / fileL.length) * r.width, x1 = (loopE / fileL.length) * r.width;
-      overview.style.cursor = Math.abs(px - x0) <= GRAB || Math.abs(px - x1) <= GRAB ? 'ew-resize' : px > x0 && px < x1 ? 'grab' : 'crosshair';
+      const full = loopS === 0 && loopE === fileL.length;
+      overview.style.cursor = full ? 'crosshair' : Math.abs(px - x0) <= GRAB || Math.abs(px - x1) <= GRAB ? 'ew-resize' : px > x0 && px < x1 ? 'grab' : 'crosshair';
       return;
     }
     applyDrag(drag, framesAtOverview(e) - drag.anchor, framesAtOverview(e));
