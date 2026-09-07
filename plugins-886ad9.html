@@ -201,6 +201,7 @@
     <a class="cta" href="#vibe">vibe ↓</a>
     <a class="cta" href="#saturate">saturate ↓</a>
     <a class="cta" href="#slice">slice ↓</a>
+    <a class="cta" href="#glitch">glitch ↓</a>
   </div>
   <div class="specs" aria-label="specs">
     <span>macos</span><span>apple silicon + intel</span><span>au + vst3</span><span>signed + notarized</span><span>open source</span>
@@ -282,6 +283,31 @@
   </div>
 </section>
 
+<section class="plugin lift" id="glitch">
+  <div class="inner">
+  <div class="copy">
+    <div class="mono-kicker">04 / glitch</div>
+    <h2>glitch</h2>
+    <span class="badge">v1.0.0 · free</span>
+    <p>an audio destruction engine on your session's bars. six stages in a fixed order — crush, noise, drive, chop, glitch, feedback — each one a lane; draw a block and that stage is in the path for those beats, with its own settings. every pass through the pattern is a generation: mutate reshapes the blocks, accumulators push knobs a rung further, and a seed is a take you can type back in.</p>
+    <p>it gets worse. that's the point.</p>
+    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" novalidate data-plugin="glitch">
+      <input type="hidden" name="form-name" value="plugin-download">
+      <input type="hidden" name="plugin" value="glitch">
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <div class="gate-row">
+        <input id="gate-glitch" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+        <button type="submit" class="cta">download glitch for macos</button>
+      </div>
+    </form>
+    <div class="aux">6.5 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/glitch" target="_blank" rel="noopener noreferrer">source</a></div>
+  </div>
+  <div class="shot">
+    <img src="assets/plugins/glitch.png" width="2068" height="1422" alt="glitch — clock, seed, pattern lanes, stage, lane, block and out sections in the newspeech plugin ui" loading="lazy">
+  </div>
+  </div>
+</section>
+
 
 <section id="notes">
   <div class="grid">
@@ -295,7 +321,7 @@
     </div>
     <div>
       <h4>license</h4>
-      <p>free for everything — commercial or not, no credit needed. the code is open source under gplv3: faust dsp (plain juce for slice) in a juce wrapper, one shared ui kit. <a href="https://github.com/elkjar/newspeech/tree/main/vst" target="_blank" rel="noopener noreferrer">source is here</a>.</p>
+      <p>free for everything — commercial or not, no credit needed. the code is open source under gplv3: faust dsp (plain juce for slice and glitch) in a juce wrapper, one shared ui kit. <a href="https://github.com/elkjar/newspeech/tree/main/vst" target="_blank" rel="noopener noreferrer">source is here</a>.</p>
     </div>
   </div>
 </section>
