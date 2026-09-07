@@ -11,8 +11,15 @@ wide tracking, the ring/arc/tick knob, the dot toggle.
 - `ui/NewspeechColors.h` — palette, opacity tiers, type scale, `monoFont()`.
 - `ui/NewspeechLookAndFeel` — knob, dot toggle, bordered text button.
 - `ui/NewspeechKnob` / `NewspeechToggle` — parameter-bound cell with label below.
-- `ui/NewspeechSectionPanel` — a control group with a centred heading.
+- `ui/NewspeechSectionPanel` — a control group: a bordered box with its heading
+  on the top line; `addControl (c, width)` for cells wider than a knob.
 - `ui/NewspeechButton` — bordered uppercase momentary/latching button.
+- `ui/NewspeechSegment` — segmented switch bound to a choice parameter
+  (abutting bordered buttons, selected one inverted), with the knob label
+  below so it sits in a panel row as a wide cell; `setCompact()` drops the
+  label for use on a text-field line.
+- `ui/NewspeechTextField` — single-line mono text input (surface bg, square
+  border, placeholder).
 - `ui/NewspeechEditor` — base editor: frame, crumb, datafield,
   `placeRow()` layout helper, `paramByName()`.
 
@@ -24,4 +31,5 @@ Xcode exporter, derive the editor from `NewspeechEditor`.
 site, sample rate / block / host bpm / transport, and a barcode of recent output
 peaks). It reads `newspeech::Telemetry` from the processor, which
 `patch-telemetry.sh` wires into a faust2juce-generated processor at build time —
-call it from the plugin's `build.sh` right after the host-tempo patch.
+call it from the plugin's `build.sh` right after the host-tempo patch. A
+hand-written processor (slice) just implements `TelemetrySource` itself.

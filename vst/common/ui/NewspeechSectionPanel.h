@@ -19,7 +19,10 @@ class NewspeechSectionPanel : public juce::Component
 public:
     explicit NewspeechSectionPanel (const juce::String& title);
 
-    void addControl (juce::Component* control);
+    // Controls are laid out left→right as cells. Knobs and toggles take the
+    // standard cellWidth; wider controls (a segmented switch, a button) pass
+    // their own width and get the same cell height.
+    void addControl (juce::Component* control, int width = cellWidth);
     int  preferredWidth() const noexcept;
 
     void paint (juce::Graphics&) override;
@@ -50,4 +53,5 @@ public:
 private:
     juce::String title;
     juce::Array<juce::Component*> controls;
+    juce::Array<int> widths;
 };

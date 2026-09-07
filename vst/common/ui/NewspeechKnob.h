@@ -13,6 +13,10 @@ public:
 
     void resized() override;
 
+    // Bipolar knobs (a ± offset) fill their arc from the top (centre value)
+    // rather than from the left end, as the site's dah± knob does.
+    void setBipolar (bool shouldBeBipolar);
+
     static constexpr int knobDiameter = 44;
     static constexpr int labelGap     = 4;
     static constexpr int labelHeight  = 14;

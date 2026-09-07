@@ -42,10 +42,14 @@ void NewspeechLookAndFeel::drawRotarySlider (juce::Graphics& g,
     g.setColour (white (over ? 0.22f : 0.12f));
     g.drawEllipse (cx - ringR, cy - ringR, ringR * 2.0f, ringR * 2.0f, 1.0f);
 
-    if (pos > 0.0001f)
+    // Bipolar knobs fill from the top (the centre value) toward either side.
+    const bool bipolar = (bool) s.getProperties().getWithDefault ("bipolar", false);
+    const float arcFromRad = bipolar ? 0.0f : startRad;
+    const bool drawArc = bipolar ? std::abs (pos - 0.5f) > 0.001f : pos > 0.0001f;
+    if (drawArc)
     {
         juce::Path arc;
-        arc.addCentredArc (cx, cy, ringR, ringR, 0.0f, startRad, angleRad, true);
+        arc.addCentredArc (cx, cy, ringR, ringR, 0.0f, arcFromRad, angleRad, true);
         g.setColour (white (alpha::label));
         g.strokePath (arc, juce::PathStrokeType (1.75f,
                                                  juce::PathStrokeType::curved,

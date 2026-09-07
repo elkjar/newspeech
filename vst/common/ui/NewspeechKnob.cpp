@@ -22,6 +22,12 @@ NewspeechKnob::NewspeechKnob (juce::RangedAudioParameter& param,
     addAndMakeVisible (label);
 }
 
+void NewspeechKnob::setBipolar (bool b)
+{
+    slider.getProperties().set ("bipolar", b);
+    slider.repaint();
+}
+
 void NewspeechKnob::resized()
 {
     auto r = getLocalBounds();

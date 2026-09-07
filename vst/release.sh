@@ -2,7 +2,7 @@
 #
 # Cut a distributable release of one suite plugin.
 #
-#   vst/release.sh <vibe|saturate> [--publish]        (SKIP_BUILD=1 to re-zip installed bundles)
+#   vst/release.sh <vibe|saturate|slice> [--publish]        (SKIP_BUILD=1 to re-zip installed bundles)
 #
 # 1. SIGN=1 build.sh — universal AU + VST3, Developer-ID signed, notarized,
 #    stapled, installed to ~/Library/Audio/Plug-Ins.
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 PLUGIN="${1:-}"; PUBLISH=0
-[ -n "$PLUGIN" ] || { echo "Usage: $0 <vibe|saturate> [--publish]"; exit 2; }
+[ -n "$PLUGIN" ] || { echo "Usage: $0 <vibe|saturate|slice> [--publish]"; exit 2; }
 [ "${2:-}" = "--publish" ] && PUBLISH=1
 
 VST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

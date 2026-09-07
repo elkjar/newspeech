@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="Sl1c3r" name="Slice" projectType="audioplug" version="1.0.0"
+              bundleIdentifier="com.newspeech.audiounit.Slice" includeBinaryInAppConfig="1"
+              buildVST="0" buildVST3="1" buildAU="1" buildAUv3="0" buildRTAS="0"
+              buildAAX="0" buildStandalone="1" pluginName="SLICE" pluginDesc="SLICE"
+              pluginManufacturer="NEWSPEECH" pluginManufacturerCode="Nwsp"
+              pluginCode="Slce" pluginChannelConfigs="" pluginIsSynth="0" pluginWantsMidiIn="0"
+              pluginProducesMidiOut="0" pluginIsMidiEffectPlugin="0" pluginEditorRequiresKeys="1"
+              pluginAUExportPrefix="SliceAU" pluginRTASCategory="" aaxIdentifier="com.newspeech.slice"
+              pluginAAXCategory="2" pluginFormats="buildAU,buildVST3,buildStandalone"
+              displaySplashScreen="1" jucerFormatVersion="1" enableIAA="0"
+              pluginCharacteristicsValue="pluginEditorRequiresKeys" cppLanguageStandard="17">
+  <MAINGROUP id="SlMgRp" name="Slice">
+    <GROUP id="{SLc00000-0000-0000-0000-000000000001}" name="Source">
+      <FILE id="SlPr01" name="SliceProcessor.h" compile="0" resource="0"
+            file="Source/SliceProcessor.h"/>
+      <FILE id="SlPr02" name="SliceProcessor.cpp" compile="1" resource="0"
+            file="Source/SliceProcessor.cpp"/>
+      <FILE id="SlEn01" name="SliceEngine.h" compile="0" resource="0" file="Source/SliceEngine.h"/>
+      <FILE id="SlEn02" name="SliceEngine.cpp" compile="1" resource="0" file="Source/SliceEngine.cpp"/>
+      <FILE id="SlPa01" name="SlicePattern.h" compile="0" resource="0" file="Source/SlicePattern.h"/>
+      <FILE id="SlPa02" name="SlicePattern.cpp" compile="1" resource="0"
+            file="Source/SlicePattern.cpp"/>
+      <FILE id="SlEd01" name="SliceEditor.h" compile="0" resource="0" file="Source/SliceEditor.h"/>
+      <FILE id="SlEd02" name="SliceEditor.cpp" compile="1" resource="0" file="Source/SliceEditor.cpp"/>
+      <FILE id="SlPp01" name="SlicePatternPanel.h" compile="0" resource="0"
+            file="Source/SlicePatternPanel.h"/>
+      <FILE id="SlPp02" name="SlicePatternPanel.cpp" compile="1" resource="0"
+            file="Source/SlicePatternPanel.cpp"/>
+      <FILE id="SlRo01" name="SliceReadout.h" compile="0" resource="0" file="Source/SliceReadout.h"/>
+      <FILE id="SlRo02" name="SliceReadout.cpp" compile="1" resource="0"
+            file="Source/SliceReadout.cpp"/>
+      <FILE id="SlSt01" name="SliceStrip.h" compile="0" resource="0" file="Source/SliceStrip.h"/>
+      <FILE id="SlSt02" name="SliceStrip.cpp" compile="1" resource="0" file="Source/SliceStrip.cpp"/>
+    </GROUP>
+    <GROUP id="{SLc00000-0000-0000-0000-000000000002}" name="Common">
+      <FILE id="SlCm00" name="NewspeechColors.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechColors.h"/>
+      <FILE id="SlCm01" name="NewspeechLookAndFeel.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechLookAndFeel.h"/>
+      <FILE id="SlCm02" name="NewspeechLookAndFeel.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechLookAndFeel.cpp"/>
+      <FILE id="SlCm03" name="NewspeechKnob.h" compile="0" resource="0" file="../../../common/ui/NewspeechKnob.h"/>
+      <FILE id="SlCm04" name="NewspeechKnob.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechKnob.cpp"/>
+      <FILE id="SlCm05" name="NewspeechToggle.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechToggle.h"/>
+      <FILE id="SlCm06" name="NewspeechToggle.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechToggle.cpp"/>
+      <FILE id="SlCm07" name="NewspeechSectionPanel.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechSectionPanel.h"/>
+      <FILE id="SlCm08" name="NewspeechSectionPanel.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechSectionPanel.cpp"/>
+      <FILE id="SlCm09" name="NewspeechButton.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechButton.h"/>
+      <FILE id="SlCm10" name="NewspeechButton.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechButton.cpp"/>
+      <FILE id="SlCm11" name="NewspeechEditor.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechEditor.h"/>
+      <FILE id="SlCm12" name="NewspeechEditor.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechEditor.cpp"/>
+      <FILE id="SlCm13" name="NewspeechTelemetry.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechTelemetry.h"/>
+      <FILE id="SlCm14" name="NewspeechDatafield.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechDatafield.h"/>
+      <FILE id="SlCm15" name="NewspeechDatafield.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechDatafield.cpp"/>
+      <FILE id="SlCm16" name="NewspeechSegment.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechSegment.h"/>
+      <FILE id="SlCm17" name="NewspeechSegment.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechSegment.cpp"/>
+      <FILE id="SlCm18" name="NewspeechTextField.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechTextField.h"/>
+      <FILE id="SlCm19" name="NewspeechTextField.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechTextField.cpp"/>
+    </GROUP>
+  </MAINGROUP>
+  <EXPORTFORMATS>
+    <XCODE_MAC targetFolder="Builds/MacOSX" extraCompilerFlags="-I $(SRCROOT)/../../../../../common/ui -I $(SRCROOT)/../../Source"
+               extraDefs="">
+      <CONFIGURATIONS>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="Slice"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="Slice"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_utils" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_basics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="../../../../../../../../JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_MAC>
+  </EXPORTFORMATS>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_VST3_CAN_REPLACE_VST2="0"/>
+  <LIVE_SETTINGS>
+    <WINDOWS/>
+  </LIVE_SETTINGS>
+</JUCERPROJECT>

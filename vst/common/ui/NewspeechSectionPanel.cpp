@@ -5,15 +5,19 @@ using namespace newspeech::colors;
 
 NewspeechSectionPanel::NewspeechSectionPanel (const juce::String& t) : title (t) {}
 
-void NewspeechSectionPanel::addControl (juce::Component* c)
+void NewspeechSectionPanel::addControl (juce::Component* c, int width)
 {
     controls.add (c);
+    widths.add (width);
     addAndMakeVisible (c);
 }
 
 int NewspeechSectionPanel::preferredWidth() const noexcept
 {
-    return widthFor (controls.size());
+    int w = 0;
+    for (int i = 0; i < widths.size(); ++i)
+        w += widths[i] + (i > 0 ? controlGap : 0);
+    return w;
 }
 
 juce::Rectangle<int> NewspeechSectionPanel::boxBounds() const noexcept
@@ -48,9 +52,9 @@ void NewspeechSectionPanel::resized()
 {
     int x = 0;
     const int y = lineY + pad;
-    for (auto* c : controls)
+    for (int i = 0; i < controls.size(); ++i)
     {
-        c->setBounds (x, y, cellWidth, NewspeechKnob::totalHeight);
-        x += cellWidth + controlGap;
+        controls[i]->setBounds (x, y, widths[i], NewspeechKnob::totalHeight);
+        x += widths[i] + controlGap;
     }
 }
