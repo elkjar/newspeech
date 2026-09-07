@@ -26,12 +26,14 @@ SliceEditor::SliceEditor (SliceProcessor& p)
         std::initializer_list<juce::Component*> { dah.get(), gap.get(), letter.get(), word.get(), thresh.get() });
 
     // CLOCK
+    sync    = mkT ("CLOCK/sync", "SYNC");
     bpm     = mk  ("CLOCK/bpm",  "BPM");
     rateSeg = mkS ("CLOCK/rate", "RATE", { "1/4", "1/8", "1/16", "1/32" });
     feelSeg = mkS ("CLOCK/feel", "FEEL", { "STRAIGHT", "TRIPLET", "DOTTED" });
+    clockPanel.addControl (sync.get());
     clockPanel.addControl (bpm.get());
-    clockPanel.addControl (rateSeg.get(), rateSeg->preferredWidth());
-    clockPanel.addControl (feelSeg.get(), feelSeg->preferredWidth());
+    clockPanel.addWideControl (rateSeg.get(), rateSeg->preferredWidth());
+    clockPanel.addWideControl (feelSeg.get(), feelSeg->preferredWidth());
 
     // SHAPE
     attack  = mk ("SHAPE/attack",  "ATTACK");
@@ -46,8 +48,8 @@ SliceEditor::SliceEditor (SliceProcessor& p)
     freq      = mk  ("SOURCE/freq",     "FREQ");
     dahPitch  = mk  ("SOURCE/dahpitch", juce::String (juce::CharPointer_UTF8 ("DAH\xc2\xb1")));
     dahPitch->setBipolar (true);
-    sourcePanel.addControl (sourceSeg.get(), sourceSeg->preferredWidth());
-    sourcePanel.addControl (waveSeg.get(), waveSeg->preferredWidth());
+    sourcePanel.addWideControl (sourceSeg.get(), sourceSeg->preferredWidth());
+    sourcePanel.addWideControl (waveSeg.get(), waveSeg->preferredWidth());
     sourcePanel.addControl (freq.get());
     sourcePanel.addControl (dahPitch.get());
 
@@ -55,7 +57,7 @@ SliceEditor::SliceEditor (SliceProcessor& p)
     modeSeg = mkS ("CAPTURE/mode",   "MODE", { "GATE", "CHOP", "SCAN" });
     freeze  = mkT ("CAPTURE/freeze", "FREEZE");
     speed   = mk  ("CAPTURE/speed",  "SPEED");
-    capturePanel.addControl (modeSeg.get(), modeSeg->preferredWidth());
+    capturePanel.addWideControl (modeSeg.get(), modeSeg->preferredWidth());
     capturePanel.addControl (freeze.get());
     capturePanel.addControl (speed.get());
 
@@ -163,6 +165,6 @@ void SliceEditor::timerCallback()
     dim (*waveSeg, ! tone);
     dim (capturePanel, tone);
     dim (*depth, ! tone && mode != 0);
-    // host tempo wins while a transport is attached; the knob is the standalone clock
+    // SYNC on with a host tempo: the knob has nothing to do; SYNC off: it is the clock
     dim (*bpm, proc.hostBpm() > 0.0);
 }

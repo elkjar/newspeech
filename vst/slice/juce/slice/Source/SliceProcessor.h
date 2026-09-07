@@ -68,7 +68,8 @@ private:
     // raw parameter pointers, read per block
     std::atomic<float>* pPattern = nullptr; std::atomic<float>* pDah = nullptr; std::atomic<float>* pGap = nullptr;
     std::atomic<float>* pLetter = nullptr;  std::atomic<float>* pWord = nullptr; std::atomic<float>* pThresh = nullptr;
-    std::atomic<float>* pBpm = nullptr;     std::atomic<float>* pRate = nullptr; std::atomic<float>* pFeel = nullptr;
+    std::atomic<float>* pSync = nullptr;    std::atomic<float>* pBpm = nullptr;
+    std::atomic<float>* pRate = nullptr;    std::atomic<float>* pFeel = nullptr;
     std::atomic<float>* pSource = nullptr;  std::atomic<float>* pWave = nullptr; std::atomic<float>* pFreq = nullptr;
     std::atomic<float>* pDahPitch = nullptr;
     std::atomic<float>* pMode = nullptr;    std::atomic<float>* pFreeze = nullptr; std::atomic<float>* pSpeed = nullptr;

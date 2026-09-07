@@ -44,6 +44,7 @@ private:
 
     // CLOCK
     NewspeechSectionPanel clockPanel { "CLOCK" };
+    std::unique_ptr<NewspeechToggle> sync;
     std::unique_ptr<NewspeechKnob> bpm;
     std::unique_ptr<NewspeechSegment> rateSeg, feelSeg;
 

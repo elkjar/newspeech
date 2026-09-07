@@ -29,13 +29,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SliceProcessor::createLayout
     L.add (std::make_unique<F> (ParameterID { "word",    1 }, "PATTERN/word",   NormalisableRange<float> (0.0f, 16.0f), 7.0f));
     L.add (std::make_unique<F> (ParameterID { "thresh",  1 }, "PATTERN/thresh", NormalisableRange<float> (0.0f, 1.0f), 0.35f));
 
-    // CLOCK
+    // CLOCK — SYNC on: host tempo + grid. Off: free-run at the BPM knob, ignoring the transport.
+    L.add (std::make_unique<B> (ParameterID { "sync", 1 }, "CLOCK/sync", true));
     L.add (std::make_unique<F> (ParameterID { "bpm",  1 }, "CLOCK/bpm",  NormalisableRange<float> (20.0f, 300.0f), 120.0f));
     L.add (std::make_unique<C> (ParameterID { "rate", 1 }, "CLOCK/rate", StringArray { "1/4", "1/8", "1/16", "1/32" }, 2));
     L.add (std::make_unique<C> (ParameterID { "feel", 1 }, "CLOCK/feel", StringArray { "STRAIGHT", "TRIPLET", "DOTTED" }, 0));
 
     // SOURCE
-    L.add (std::make_unique<C> (ParameterID { "source",   1 }, "SOURCE/source",   StringArray { "TONE", "INPUT" }, 0));
+    L.add (std::make_unique<C> (ParameterID { "source",   1 }, "SOURCE/source",   StringArray { "TONE", "INPUT" }, 1));
     L.add (std::make_unique<C> (ParameterID { "wave",     1 }, "SOURCE/wave",     StringArray { "SIN", "TRI", "SQR", "SAW" }, 0));
     L.add (std::make_unique<F> (ParameterID { "freq",     1 }, "SOURCE/freq",     logRange (40.0f, 10000.0f, 600.0f), 600.0f));
     L.add (std::make_unique<I> (ParameterID { "dahpitch", 1 }, "SOURCE/dahpitch", -24, 24, 0));
@@ -67,7 +68,7 @@ SliceProcessor::SliceProcessor()
 {
     auto raw = [this] (const char* id) { return apvts.getRawParameterValue (id); };
     pPattern = raw ("pattern"); pDah = raw ("dah"); pGap = raw ("gap"); pLetter = raw ("letter"); pWord = raw ("word"); pThresh = raw ("thresh");
-    pBpm = raw ("bpm"); pRate = raw ("rate"); pFeel = raw ("feel");
+    pSync = raw ("sync"); pBpm = raw ("bpm"); pRate = raw ("rate"); pFeel = raw ("feel");
     pSource = raw ("source"); pWave = raw ("wave"); pFreq = raw ("freq"); pDahPitch = raw ("dahpitch");
     pMode = raw ("mode"); pFreeze = raw ("freeze"); pSpeed = raw ("speed");
     pAttack = raw ("attack"); pRelease = raw ("release"); pDepth = raw ("depth"); pLevel = raw ("level");
@@ -169,7 +170,8 @@ void SliceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     c.bpmFallback = pBpm->load();
 
     slice::HostPos h;
-    if (auto* ph = getPlayHead())
+    const bool sync = pSync->load() >= 0.5f;
+    if (auto* ph = sync ? getPlayHead() : nullptr)
     {
         if (auto pos = ph->getPosition())
         {
@@ -190,7 +192,7 @@ void SliceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     nsTelemetry.hasTransport.store (h.hasTransport, std::memory_order_relaxed);
     nsTelemetry.playing.store (h.playing, std::memory_order_relaxed);
     nsTelemetry.bpm.store (sliceEngine.uiBpm(), std::memory_order_relaxed);   // effective: host, else the BPM knob
-    hostBpmA.store (h.bpm, std::memory_order_relaxed);
+    hostBpmA.store (h.bpm, std::memory_order_relaxed);   // 0 when SYNC is off → the knob is live
     float peak = 0.0f;
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         peak = juce::jmax (peak, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));

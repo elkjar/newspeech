@@ -12,6 +12,11 @@ void NewspeechSectionPanel::addControl (juce::Component* c, int width)
     addAndMakeVisible (c);
 }
 
+void NewspeechSectionPanel::addWideControl (juce::Component* c, int contentWidth)
+{
+    addControl (c, contentWidth + 2 * pad);
+}
+
 int NewspeechSectionPanel::preferredWidth() const noexcept
 {
     int w = 0;

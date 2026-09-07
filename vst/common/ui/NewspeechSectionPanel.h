@@ -23,6 +23,9 @@ public:
     // standard cellWidth; wider controls (a segmented switch, a button) pass
     // their own width and get the same cell height.
     void addControl (juce::Component* control, int width = cellWidth);
+    // A control that fills its own width (a segmented switch, a button): the
+    // cell gets `pad` either side so it sits inside the box like a knob ring.
+    void addWideControl (juce::Component* control, int contentWidth);
     int  preferredWidth() const noexcept;
 
     void paint (juce::Graphics&) override;
