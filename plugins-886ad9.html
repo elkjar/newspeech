@@ -62,10 +62,9 @@
   .cta:hover { background: rgba(255, 255, 255, 0.08); }
   .cta.ghost { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.7); }
   /* download gate: an email for a free plugin. the email input and the cta
-     share one row and one height; the label above says what the trade is. */
+     share one row and one height. */
   .gate { margin-top: 26px; }
   .gate .hp { display: none; }
-  .gate-label { display: block; font-size: 11px; letter-spacing: 0.06em; opacity: 0.5; margin-bottom: 10px; }
   .gate-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
   .gate-row input[type="email"] {
     flex: 1 1 200px;
@@ -182,6 +181,8 @@
     .plugin .inner .copy { order: 2; }
     #notes { padding: 48px 28px 80px; }
     #notes .grid { grid-template-columns: 1fr; gap: 28px; }
+    /* gate: input and button each take the full column */
+    .gate-row input[type="email"], .gate-row .cta { flex: 1 1 100%; max-width: none; width: 100%; justify-content: center; }
   }
 </style>
 </head>
@@ -217,7 +218,6 @@
       <input type="hidden" name="form-name" value="plugin-download">
       <input type="hidden" name="plugin" value="vibe">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-      <label class="gate-label" for="gate-vibe">leave an email for the download and a note when new versions land</label>
       <div class="gate-row">
         <input id="gate-vibe" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
         <button type="submit" class="cta">download vibe for macos</button>
@@ -243,7 +243,6 @@
       <input type="hidden" name="form-name" value="plugin-download">
       <input type="hidden" name="plugin" value="saturate">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-      <label class="gate-label" for="gate-saturate">leave an email for the download and a note when new versions land</label>
       <div class="gate-row">
         <input id="gate-saturate" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
         <button type="submit" class="cta">download saturate for macos</button>
