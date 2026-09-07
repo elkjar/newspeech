@@ -8,7 +8,7 @@
 //   [NS-AE] V1.0.0
 //   WWW.NEWSPEECHSOUND.COM
 //   48.0KHZ · 512 · 120.0BPM · RUN      ← sample rate, block, host bpm, transport
-//   ▌▌ ▌▌▌ ▌ ▌▌ …                        ← rolling output level, newest right
+//   ▌▌ ▌▌▌ ▌ ▌▌ …                        ← real Code 39 "NEWSPEECH", bars lit by output level
 class NewspeechDatafield : public juce::Component,
                            private juce::Timer
 {

@@ -53,13 +53,15 @@ int NewspeechEditor::placeRow (juce::Rectangle<int> row, std::initializer_list<N
 
 void NewspeechEditor::resized()
 {
-    // Datafield bottom-right inside the frame padding; rows may run under it
-    // only when a plugin's last row is short (vibe/saturate: OUT).
-    const auto inner = getLocalBounds().reduced (outerPad).reduced (innerPad);
-    datafield.setBounds (inner.getRight() - datafield.preferredWidth(),
-                         inner.getBottom() - NewspeechDatafield::totalHeight,
+    // Datafield bottom-right, its right edge on the section boxes' right edge
+    // (boxes sit boxInset inside their panels) and its bottom on the last
+    // row's box bottom. Rows only run under it when a plugin's last row is
+    // short (vibe/saturate: OUT).
+    const auto content = contentBounds();
+    datafield.setBounds (content.getRight() - NewspeechSectionPanel::boxInset - datafield.preferredWidth(),
+                         content.getBottom() - NewspeechDatafield::totalHeight,
                          datafield.preferredWidth(), NewspeechDatafield::totalHeight);
-    layoutContent (contentBounds());
+    layoutContent (content);
 }
 
 void NewspeechEditor::paint (juce::Graphics& g)
