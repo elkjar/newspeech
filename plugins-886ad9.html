@@ -102,7 +102,7 @@
     opacity: 0.5;
   }
 
-  /* ---- plugin sections: copy + editor image side by side, alternating ---- */
+  /* ---- plugin sections: copy left, editor image right ---- */
   .plugin { border-bottom: 1px solid var(--rule); }
   .plugin.lift { background: var(--panel); }
   .plugin .inner {
@@ -114,8 +114,6 @@
     gap: 72px;
     align-items: center;
   }
-  .plugin.flip .inner .copy { order: 2; }
-  .plugin.flip .inner .shot { order: 1; }
 
   .plugin .copy .mono-kicker { margin-bottom: 28px; }
   .plugin h2 {
@@ -153,8 +151,8 @@
     #hero { padding-left: 28px; padding-right: 28px; }
     #hero .specs { position: static; margin-top: 40px; flex-wrap: wrap; gap: 14px 24px; }
     .plugin .inner { grid-template-columns: 1fr; gap: 40px; padding: 64px 28px; }
-    .plugin .inner .shot, .plugin.flip .inner .shot { order: 1; }
-    .plugin .inner .copy, .plugin.flip .inner .copy { order: 2; }
+    .plugin .inner .shot { order: 1; }
+    .plugin .inner .copy { order: 2; }
     #notes { padding: 48px 28px 80px; }
     #notes .grid { grid-template-columns: 1fr; gap: 28px; }
   }
@@ -197,7 +195,7 @@
   </div>
 </section>
 
-<section class="plugin flip lift" id="saturate">
+<section class="plugin lift" id="saturate">
   <div class="inner">
   <div class="copy">
     <div class="mono-kicker">02 / saturate</div>
