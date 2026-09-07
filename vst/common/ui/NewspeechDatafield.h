@@ -30,6 +30,9 @@ private:
     juce::String liveLine() const;
 
     juce::AudioProcessor& proc;
+    // Member, never static: a static juce::Font outlives JUCE's CoreText
+    // typeface cache and aborts in __cxa_finalize at process exit.
+    juce::Font font;
     newspeech::Telemetry* telemetry = nullptr;   // null when the processor has no hook
     juce::String versionLine, siteLine;
 };

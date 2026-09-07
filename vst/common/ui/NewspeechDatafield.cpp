@@ -8,11 +8,6 @@ namespace {
     // The micrographic PNG sat around white/30 — keep that quieter register.
     constexpr float kTextAlpha = 0.30f;
     constexpr float kBarFloor  = 0.30f;   // idle bar brightness = text; peaks lift toward white
-    const juce::Font& dataFont()
-    {
-        static const juce::Font f = monoFont (type::label, type::labelTracking);
-        return f;
-    }
 
     // Code 39. Each symbol is 9 elements alternating bar/space starting with a
     // bar; '1' = wide (3 units), '0' = narrow (1 unit); a narrow space between
@@ -70,7 +65,7 @@ namespace {
 }
 
 NewspeechDatafield::NewspeechDatafield (juce::AudioProcessor& p)
-    : proc (p)
+    : proc (p), font (monoFont (type::label, type::labelTracking))
 {
     if (auto* src = dynamic_cast<newspeech::TelemetrySource*> (&proc))
         telemetry = &src->telemetry();
@@ -90,9 +85,8 @@ NewspeechDatafield::~NewspeechDatafield()
 int NewspeechDatafield::preferredWidth() const
 {
     // Widest plausible live line sets the width so nothing reflows.
-    const auto& f = dataFont();
-    const float w = juce::jmax (f.getStringWidthFloat (siteLine),
-                                f.getStringWidthFloat ("192.0KHZ · 4096 · 999.9BPM · STOP"));
+    const float w = juce::jmax (font.getStringWidthFloat (siteLine),
+                                font.getStringWidthFloat ("192.0KHZ · 4096 · 999.9BPM · STOP"));
     return juce::roundToInt (w) + 2;
 }
 
@@ -121,7 +115,7 @@ juce::String NewspeechDatafield::liveLine() const
 void NewspeechDatafield::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds();
-    g.setFont (dataFont());
+    g.setFont (font);
     g.setColour (white (kTextAlpha));
 
     g.drawText (versionLine, r.removeFromTop (lineHeight), juce::Justification::centredRight, false);

@@ -28,9 +28,14 @@ public:
     // Panels overlap the box gap by their inset (x) and half-heading (y).
     static constexpr int panelGapX  = boxGap - 2 * NewspeechSectionPanel::boxInset;
     static constexpr int rowGap     = boxGap - NewspeechSectionPanel::lineY;
+    // Content width is the widest row, so the frame margins are equal left and
+    // right. The floor only guards a tiny plugin: one knob cell + gap + the
+    // datafield must still fit on the last row.
+    static constexpr int minContentWidth = 420;
 
 protected:
-    // Content = the area below the crumb, inside the frame padding.
+    // Content = the area below the crumb, inside the frame padding. Width is
+    // clamped up to minContentWidth; the window is fixed, not resizable.
     void setContentSize (int contentW, int contentH);
     juce::Rectangle<int> contentBounds() const;
 
@@ -48,4 +53,5 @@ private:
     NewspeechLookAndFeel laf;
     juce::String title;
     NewspeechDatafield datafield;
+    int rowsRight = 0;   // right edge of the widest placed row (panel coords)
 };

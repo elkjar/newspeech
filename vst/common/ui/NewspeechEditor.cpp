@@ -8,6 +8,7 @@ NewspeechEditor::NewspeechEditor (juce::AudioProcessor& proc, const juce::String
 {
     setLookAndFeel (&laf);
     addAndMakeVisible (datafield);
+    setResizable (false, false);
 }
 
 NewspeechEditor::~NewspeechEditor()
@@ -18,7 +19,10 @@ NewspeechEditor::~NewspeechEditor()
 void NewspeechEditor::setContentSize (int contentW, int contentH)
 {
     const int chrome = 2 * (outerPad + innerPad);
-    setSize (contentW + chrome, headerH + postHeader + contentH + chrome);
+    const int w = juce::jmax (contentW, minContentWidth) + chrome;
+    const int h = headerH + postHeader + contentH + chrome;
+    setResizeLimits (w, h, w, h);
+    setSize (w, h);
 }
 
 juce::Rectangle<int> NewspeechEditor::contentBounds() const
@@ -48,20 +52,23 @@ int NewspeechEditor::placeRow (juce::Rectangle<int> row, std::initializer_list<N
         x += w;
         first = false;
     }
+    rowsRight = juce::jmax (rowsRight, x);
     return x - row.getX();
 }
 
 void NewspeechEditor::resized()
 {
-    // Datafield bottom-right, its right edge on the section boxes' right edge
-    // (boxes sit boxInset inside their panels) and its bottom on the last
+    const auto content = contentBounds();
+    rowsRight = content.getX();
+    layoutContent (content);
+
+    // Datafield bottom-right: its right edge on the widest row's box right
+    // edge (boxes sit boxInset inside their panels), its bottom on the last
     // row's box bottom. Rows only run under it when a plugin's last row is
     // short (vibe/saturate: OUT).
-    const auto content = contentBounds();
-    datafield.setBounds (content.getRight() - NewspeechSectionPanel::boxInset - datafield.preferredWidth(),
+    datafield.setBounds (rowsRight - NewspeechSectionPanel::boxInset - datafield.preferredWidth(),
                          content.getBottom() - NewspeechDatafield::totalHeight,
                          datafield.preferredWidth(), NewspeechDatafield::totalHeight);
-    layoutContent (content);
 }
 
 void NewspeechEditor::paint (juce::Graphics& g)
