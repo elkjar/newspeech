@@ -54,6 +54,12 @@ public:
     // Host tempo if the transport reports one (0 otherwise) — the BPM knob only
     // drives the clock when this is 0.
     double       hostBpm() const noexcept { return hostBpmA.load (std::memory_order_relaxed); }
+    // False when the host isn't calling processBlock (Logic with the transport
+    // stopped): the editor then previews the pattern itself.
+    bool         audioRunning() const noexcept
+    {
+        return juce::Time::getMillisecondCounter() - lastBlockMs.load (std::memory_order_relaxed) < 250;
+    }
 
     static constexpr int textCapacity = 1024;
     static constexpr int dataCapacity = 8192;
@@ -95,6 +101,7 @@ private:
 
     std::atomic<bool> restoreFlag { false };
     std::atomic<double> hostBpmA { 0.0 };
+    std::atomic<juce::uint32> lastBlockMs { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SliceProcessor)
 };

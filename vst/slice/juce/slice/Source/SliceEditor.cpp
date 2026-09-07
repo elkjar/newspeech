@@ -126,31 +126,86 @@ void SliceEditor::fieldChanged()
     proc.setInputText (field.getText(), shownPattern == 2);
 }
 
+// The pattern as typed, built on the message thread from the same code the
+// engine runs — shown whenever the host isn't calling processBlock.
+void SliceEditor::updatePreview (double bpm)
+{
+    auto raw = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+    static constexpr double DIVS[4]  = { 1.0, 0.5, 0.25, 0.125 };
+    static constexpr double FEELS[3] = { 1.0, 2.0 / 3.0, 1.5 };
+    slice::Params P;
+    P.pattern   = (slice::Pattern) juce::jlimit (0, 2, (int) std::lround (raw ("pattern")));
+    P.unitBeats = DIVS[juce::jlimit (0, 3, (int) std::lround (raw ("rate")))] * FEELS[juce::jlimit (0, 2, (int) std::lround (raw ("feel")))];
+    P.bpm = bpm;
+    P.dah = raw ("dah"); P.gap = raw ("gap"); P.letter = raw ("letter"); P.word = raw ("word"); P.thresh = raw ("thresh");
+
+    const bool data = P.pattern == slice::Pattern::data;
+    const juce::String text = proc.getInputText (data);
+    juce::String key;
+    key << (int) P.pattern << '|' << P.unitBeats << '|' << P.dah << ',' << P.gap << ',' << P.letter << ',' << P.word << ',' << P.thresh << '|' << text;
+    if (key == previewKey && showingPreview) return;
+    previewKey = key;
+
+    if (data) slice::parseSeries (text.toRawUTF8(), previewPass.origSeries);
+    else      slice::parseMessage (text.toRawUTF8(), previewPass.origMsg);
+    previewPass.curMsg = previewPass.origMsg;
+    previewPass.curSeries = previewPass.origSeries;
+    previewPass.pattern = P.pattern;
+    juce::Random rng (1);
+    slice::buildPass (P, previewPass.curMsg, previewPass.curSeries, rng, previewPass.pass);
+    readout.repaint();
+}
+
 void SliceEditor::timerCallback()
 {
     auto& eng = proc.engine();
     syncField (false);
 
-    const bool passChanged = eng.copyUiPass (uiPass, uiVersion);
-
-    const double total = eng.uiTotal();
-    const double pos = eng.uiBeat() - eng.uiPassStart();
-    const bool has = eng.uiHasPattern();
-    const double phase = total > 0.0 ? pos / total : -1.0;
-    strip.setPosition (phase, total, eng.uiBpm(), has);
-
-    // which character is sounding right now
-    int lit = -1;
-    if (has)
-        for (int i = 0; i < uiPass.pass.count; ++i)
+    // A host that restored state after the editor opened, or a change from
+    // elsewhere: follow it while the field isn't being typed into.
+    if (! field.hasKeyboardFocus (true))
+    {
+        const auto want = proc.getInputText (shownPattern == 2);
+        if (field.getText() != want)
         {
-            const auto& ev = uiPass.pass.events[(size_t) i];
-            if (! ev.dropped && pos >= ev.t && pos < ev.t + ev.dur) { lit = ev.ci; break; }
-            if (ev.t > pos) break;
+            suppressFieldCallback = true;
+            field.setText (want, false);
+            suppressFieldCallback = false;
         }
+    }
+
+    const bool running = proc.audioRunning();
+    const double clockBpm = proc.hostBpm() > 0.0 ? proc.hostBpm() : proc.apvts.getRawParameterValue ("bpm")->load();
+    int lit = -1;
+    if (! running)
+    {
+        updatePreview (clockBpm);
+        if (! showingPreview) { showingPreview = true; readout.setPass (&previewPass); strip.setPass (&previewPass); readout.repaint(); }
+        strip.setPosition (-1.0, previewPass.pass.total, clockBpm, false);
+    }
+    else
+    {
+        const bool passChanged = eng.copyUiPass (uiPass, uiVersion);
+        if (showingPreview) { showingPreview = false; readout.setPass (&uiPass); strip.setPass (&uiPass); readout.repaint(); }
+
+        const double total = eng.uiTotal();
+        const double pos = eng.uiBeat() - eng.uiPassStart();
+        const bool has = eng.uiHasPattern();
+        const double phase = total > 0.0 ? pos / total : -1.0;
+        strip.setPosition (phase, total, eng.uiBpm(), has);
+
+        // which character is sounding right now
+        if (has)
+            for (int i = 0; i < uiPass.pass.count; ++i)
+            {
+                const auto& ev = uiPass.pass.events[(size_t) i];
+                if (! ev.dropped && pos >= ev.t && pos < ev.t + ev.dur) { lit = ev.ci; break; }
+                if (ev.t > pos) break;
+            }
+        if (passChanged) readout.repaint();
+    }
     readout.setLit (lit);
     readout.setThreshold (proc.apvts.getRawParameterValue ("thresh")->load());
-    if (passChanged) readout.repaint();
 
     // dimming follows the page: what the current pattern / source can't use
     const int pat  = patternSeg->selectedIndex();

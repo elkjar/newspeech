@@ -129,6 +129,7 @@ void SliceProcessor::pushMailbox()
 void SliceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+    lastBlockMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
 
     // new text from the editor?
     const int v = mailVersion.load (std::memory_order_acquire);

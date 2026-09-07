@@ -29,6 +29,7 @@ private:
     void timerCallback() override;
     void syncField (bool force);
     void fieldChanged();
+    void updatePreview (double bpm);
     static void dim (juce::Component&, bool dimmed);
 
     SliceProcessor& proc;
@@ -68,9 +69,14 @@ private:
     std::unique_ptr<NewspeechKnob> flip, ratchet, drop, scramble;
     std::unique_ptr<NewspeechToggle> decay;
 
-    // live state from the engine
+    // live state from the engine …
     slice::UiPass uiPass;
     int uiVersion = -1;
+    // … or, while the host isn't running audio, a clean preview built here
+    // (dice at zero, no playhead — the page's idle strip).
+    slice::UiPass previewPass;
+    juce::String previewKey;
+    bool showingPreview = false;
     int shownPattern = -1;   // which field content is loaded (0/1 text, 2 data)
     bool suppressFieldCallback = false;
 };
