@@ -1,4 +1,4 @@
-# vst/saturate/dist/.signing-config — sourced by sign-and-notarize.sh
+# vst/common/dist/.signing-config — sourced by every plugin's dist/sign-and-notarize.sh
 #
 # Copy this file to `.signing-config` (gitignored) and fill in the
 # values from your Apple Developer account. Lines starting with `#`

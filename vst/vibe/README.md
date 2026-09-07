@@ -27,4 +27,4 @@ SIGN=1 bash build.sh   # + Developer-ID sign, notarize, staple (needs dist/.sign
 
 ## License
 
-GPLv3 — see [LICENSE](LICENSE). The build patches the Faust-generated architecture section, so the whole work is distributed under plain GPL terms (the Faust architecture exception doesn't apply), which also satisfies JUCE's open-source tier.
+GPLv3 — see [LICENSE](LICENSE). Free for everything you make with it; if it ends up on something cool, share it. The build patches the Faust-generated architecture section, so the whole work is distributed under plain GPL terms (the Faust architecture exception doesn't apply), which also satisfies JUCE's open-source tier.

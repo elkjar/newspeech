@@ -7,7 +7,7 @@
 #
 # Requires APPLE_TEAM_ID, APPLE_DEV_ID_NAME, APPLE_ID, APPLE_APP_PWD
 # to be set in the environment OR present in `dist/.signing-config`
-# (which this script sources if found). See `.signing-config.example`
+# (which this script sources if found). See `vst/common/dist/.signing-config.example`
 # for the format and where to grab each value.
 #
 # Flow:
@@ -31,7 +31,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENTITLEMENTS="$SCRIPT_DIR/Vibe.entitlements"
-SIGNING_CONFIG="$SCRIPT_DIR/.signing-config"
+# Credentials are shared across the suite: vst/common/dist/.signing-config
+# (gitignored; see .signing-config.example beside it).
+SIGNING_CONFIG="$SCRIPT_DIR/../../common/dist/.signing-config"
 
 # --- Args ---
 [ $# -eq 1 ] || { echo "Usage: $0 <path-to-component>"; exit 2; }
