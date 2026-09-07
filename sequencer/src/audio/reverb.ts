@@ -1,5 +1,5 @@
 // Reverb — Griesinger/Dattorro plate (Clouds-flavoured), shared
-// source-of-truth with the GlitchFX VST/AU at vst/glitch/dsp/reverb.dsp.
+// source-of-truth with the Vibe VST/AU at vst/vibe/dsp/reverb.dsp.
 // Param shape + defaults only; the DSP lives in Rust (audio.rs reverb
 // stage), pushed via nativeEngine.setReverbParams.
 
