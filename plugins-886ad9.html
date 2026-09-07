@@ -200,6 +200,7 @@
   <div class="jump">
     <a class="cta" href="#vibe">vibe ↓</a>
     <a class="cta" href="#saturate">saturate ↓</a>
+    <a class="cta" href="#slice">slice ↓</a>
   </div>
   <div class="specs" aria-label="specs">
     <span>macos</span><span>apple silicon + intel</span><span>au + vst3</span><span>signed + notarized</span><span>open source</span>
@@ -256,6 +257,31 @@
   </div>
 </section>
 
+<section class="plugin" id="slice">
+  <div class="inner">
+  <div class="copy">
+    <div class="mono-kicker">03 / slice</div>
+    <h2>slice</h2>
+    <span class="badge">v1.0.0 · free</span>
+    <p>type a message and it plays back as rhythm. morse by default, or every character as its bits, or paste in a series of numbers and let a threshold decide what hits. the pattern gates whatever you feed it, locked to your session tempo, then the mangle section starts corrupting the message itself, letter by letter, until it's noise.</p>
+    <p>put it on drums. or a pad. or a voice.</p>
+    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" data-plugin="slice">
+      <input type="hidden" name="form-name" value="plugin-download">
+      <input type="hidden" name="plugin" value="slice">
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <div class="gate-row">
+        <input id="gate-slice" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+        <button type="submit" class="cta">download slice for macos</button>
+      </div>
+    </form>
+    <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/slice" target="_blank" rel="noopener noreferrer">source</a></div>
+  </div>
+  <div class="shot">
+    <img src="assets/plugins/slice.png" width="1916" height="1226" alt="slice — pattern, clock, shape, source, capture and mangle sections in the newspeech plugin ui" loading="lazy">
+  </div>
+  </div>
+</section>
+
 
 <section id="notes">
   <div class="grid">
@@ -269,7 +295,7 @@
     </div>
     <div>
       <h4>license</h4>
-      <p>free for everything — commercial or not, no credit needed. the code is open source under gplv3: faust dsp + a juce wrapper, one shared ui kit. <a href="https://github.com/elkjar/newspeech/tree/main/vst" target="_blank" rel="noopener noreferrer">source is here</a>.</p>
+      <p>free for everything — commercial or not, no credit needed. the code is open source under gplv3: faust dsp (plain juce for slice) in a juce wrapper, one shared ui kit. <a href="https://github.com/elkjar/newspeech/tree/main/vst" target="_blank" rel="noopener noreferrer">source is here</a>.</p>
     </div>
   </div>
 </section>
