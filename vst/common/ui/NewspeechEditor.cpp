@@ -1,15 +1,13 @@
 #include "NewspeechEditor.h"
 #include "NewspeechColors.h"
-#include "BinaryData.h"
 
 using namespace newspeech::colors;
 
 NewspeechEditor::NewspeechEditor (juce::AudioProcessor& proc, const juce::String& t)
-    : juce::AudioProcessorEditor (proc), title (t)
+    : juce::AudioProcessorEditor (proc), title (t), datafield (proc)
 {
     setLookAndFeel (&laf);
-    micrographic = juce::ImageCache::getFromMemory (BinaryData::micrographic_png,
-                                                    BinaryData::micrographic_pngSize);
+    addAndMakeVisible (datafield);
 }
 
 NewspeechEditor::~NewspeechEditor()
@@ -55,6 +53,12 @@ int NewspeechEditor::placeRow (juce::Rectangle<int> row, std::initializer_list<N
 
 void NewspeechEditor::resized()
 {
+    // Datafield bottom-right inside the frame padding; rows may run under it
+    // only when a plugin's last row is short (vibe/saturate: OUT).
+    const auto inner = getLocalBounds().reduced (outerPad).reduced (innerPad);
+    datafield.setBounds (inner.getRight() - datafield.preferredWidth(),
+                         inner.getBottom() - NewspeechDatafield::totalHeight,
+                         datafield.preferredWidth(), NewspeechDatafield::totalHeight);
     layoutContent (contentBounds());
 }
 
@@ -84,17 +88,6 @@ void NewspeechEditor::paint (juce::Graphics& g)
     const auto sepWidth = g.getCurrentFont().getStringWidthFloat ("| ");
     g.setColour (white (alpha::crumb));
     g.drawText (title.toUpperCase(), sep.withTrimmedLeft (sepWidth), juce::Justification::centredLeft, false);
-
-    // Micrographic — bottom-right inside the frame padding, drawn at half
-    // its pixel size so it stays crisp on Retina.
-    if (micrographic.isValid())
-    {
-        const auto area = frame.reduced (innerPad).toFloat();
-        const juce::Rectangle<float> dest (area.getRight() - (float) microW,
-                                           area.getBottom() - (float) microH,
-                                           (float) microW, (float) microH);
-        g.drawImage (micrographic, dest);
-    }
 }
 
 juce::RangedAudioParameter& NewspeechEditor::paramByName (const juce::String& name)

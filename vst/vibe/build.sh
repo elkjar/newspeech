@@ -99,6 +99,11 @@ sed -i.bak \
 rm -f "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp.bak"
 grep -q "Host-tempo override" "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp" || { echo "ERROR: host-tempo patch did not apply"; exit 1; }
 
+# --- 2b'. Telemetry hook for the editor datafield (shared patch, see
+#          vst/common/patch-telemetry.sh): bpm / transport / output peak.
+echo "▸ Patching FaustPluginProcessor.cpp with telemetry hook…"
+bash "$SCRIPT_DIR/../common/patch-telemetry.sh" "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp"
+
 # --- 2c. Patch JuceParameterUI to respect [hidden:1] metadata on zones.
 #         Faust's stock JuceParameterUI registers every slider/button as an
 #         AU AudioParameter unconditionally. Its sibling JuceGUI inherits

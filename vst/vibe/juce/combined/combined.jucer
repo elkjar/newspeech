@@ -32,7 +32,9 @@
       <FILE id="VbCm10" name="NewspeechButton.cpp" compile="1" resource="0" file="../../../common/ui/NewspeechButton.cpp"/>
       <FILE id="VbCm11" name="NewspeechEditor.h" compile="0" resource="0" file="../../../common/ui/NewspeechEditor.h"/>
       <FILE id="VbCm12" name="NewspeechEditor.cpp" compile="1" resource="0" file="../../../common/ui/NewspeechEditor.cpp"/>
-      <FILE id="VbImg1" name="micrographic.png" compile="0" resource="1" file="../../../common/assets/micrographic.png"/>
+      <FILE id="VbCm13" name="NewspeechTelemetry.h" compile="0" resource="0" file="../../../common/ui/NewspeechTelemetry.h"/>
+      <FILE id="VbCm14" name="NewspeechDatafield.h" compile="0" resource="0" file="../../../common/ui/NewspeechDatafield.h"/>
+      <FILE id="VbCm15" name="NewspeechDatafield.cpp" compile="1" resource="0" file="../../../common/ui/NewspeechDatafield.cpp"/>
     </GROUP>
   </MAINGROUP>
   <EXPORTFORMATS>

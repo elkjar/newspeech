@@ -3,10 +3,11 @@
 #include <JuceHeader.h>
 #include "NewspeechLookAndFeel.h"
 #include "NewspeechSectionPanel.h"
+#include "NewspeechDatafield.h"
 
 // Base editor for every newspeech plugin: ink background, a square white/15
 // frame, the "NEW SPEECH | TITLE" crumb on the same left rail as the section
-// boxes, and the micrographic in the bottom-right corner. Subclasses build
+// boxes, and the live datafield in the bottom-right corner. Subclasses build
 // their controls, call setContentSize() once, and lay rows out in
 // layoutContent() using placeRow().
 class NewspeechEditor : public juce::AudioProcessorEditor
@@ -27,8 +28,6 @@ public:
     // Panels overlap the box gap by their inset (x) and half-heading (y).
     static constexpr int panelGapX  = boxGap - 2 * NewspeechSectionPanel::boxInset;
     static constexpr int rowGap     = boxGap - NewspeechSectionPanel::lineY;
-    static constexpr int microW     = 155;  // micrographic.png is 309×96 @2x
-    static constexpr int microH     = 48;
 
 protected:
     // Content = the area below the crumb, inside the frame padding.
@@ -48,5 +47,5 @@ protected:
 private:
     NewspeechLookAndFeel laf;
     juce::String title;
-    juce::Image micrographic;
+    NewspeechDatafield datafield;
 };
