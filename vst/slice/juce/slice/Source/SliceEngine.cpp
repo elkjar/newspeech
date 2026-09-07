@@ -13,8 +13,9 @@ void SliceEngine::prepare (double sampleRate, int maxBlockSize)
 {
     sr = sampleRate;
     maxBlock = maxBlockSize;
-    // 12 s of input: room for a pass and the one before it at most tempos.
-    ringLen = (int) std::ceil (sr * 12.0);
+    // 30 s of input: the loop (the previous pass) plus the pass being written
+    // must both fit, so the loop is capped at half of this (see refreshLoop).
+    ringLen = (int) std::ceil (sr * 30.0);
     ring.setSize (2, ringLen);
     ring.clear();
     freqSm.reset (sr, 0.02);
@@ -25,7 +26,7 @@ void SliceEngine::prepare (double sampleRate, int maxBlockSize)
 void SliceEngine::reset()
 {
     writePos = 0;
-    loopStart = 0.0; loopLen = 1.0;
+    loopStart = 0.0; loopLen = 1.0; loopValid = false;
     env = 0.0; phase = 0.0; pitchMult = 1.0; tail = 0;
     bend = {};
     for (auto& v : voices) v.active = false;
@@ -101,8 +102,9 @@ void SliceEngine::anchor (const Params& P, const Controls& c) noexcept
 void SliceEngine::refreshLoop (double prevTotalBeats, double bps) noexcept
 {
     const double totalSamples = prevTotalBeats / juce::jmax (1.0e-9, bps);
-    loopLen = juce::jlimit (16.0, (double) (ringLen - maxBlock - 8), totalSamples);
+    loopLen = juce::jlimit (16.0, (double) (ringLen / 2 - maxBlock - 8), totalSamples);
     loopStart = (double) writePos - loopLen;
+    loopValid = true;
 }
 
 void SliceEngine::publish() noexcept
@@ -153,6 +155,13 @@ float SliceEngine::readRing (int ch, double absPos) const noexcept
     return d[a] + (d[b] - d[a]) * frac;
 }
 
+float SliceEngine::readCaptured (int ch, double absPos, float live) const noexcept
+{
+    if (absPos < (double) writePos - writtenSamples() || absPos > (double) writePos - 2.0)
+        return live;
+    return readRing (ch, absPos);
+}
+
 float SliceEngine::osc (int wave, double ph) const noexcept
 {
     switch (wave)
@@ -183,12 +192,12 @@ void SliceEngine::startVoice (const Event& ev, double posBeats, const Controls& 
     v->rate = rate;
     v->age  = 0.0;
     v->started = ++voiceClock;
-    double off;
+    v->start = loopStart;
+    v->len   = juce::jmax (1.0, loopLen);
     if (c.mode == 2)   // SCAN: anywhere the slice fits
-        off = seedRng.nextDouble() * juce::jmax (1.0, loopLen - durS * rate);
+        v->off = seedRng.nextDouble() * juce::jmax (1.0, v->len - durS * rate);
     else               // CHOP: where continuous playback of the loop would be
-        off = std::fmod ((posBeats / bps) * c.speed, loopLen);
-    v->pos = clampRead (loopStart + off);
+        v->off = std::fmod ((posBeats / bps) * c.speed, v->len);
     v->active = true;
 }
 
@@ -209,7 +218,8 @@ void SliceEngine::process (juce::AudioBuffer<float>& io, const Controls& c, cons
     bool relocate = false;
     if (h.playing && h.hasPpq)
     {
-        if (! hostDriven || std::abs (h.ppq - beat) > 0.02) relocate = true;
+        // a jump beyond what one block could account for = the host relocated
+        if (! hostDriven || std::abs (h.ppq - beat) > juce::jmax (0.05, 2.0 * n * bps)) relocate = true;
         beat = h.ppq;
         hostDriven = true;
     }
@@ -229,6 +239,10 @@ void SliceEngine::process (juce::AudioBuffer<float>& io, const Controls& c, cons
         rebuild (P);
     else if (publishPending)
         publish();
+    // Before any pass boundary the "previous pass" is whatever precedes now —
+    // on a fresh instance that's unwritten ring, which readCaptured turns
+    // into the live input.
+    if (! loopValid) refreshLoop (pass.total, bps);
     if (relocate || passStart > beat || beat >= passStart + pass.total * 4.0)
         anchor (P, c);
 
@@ -335,8 +349,8 @@ void SliceEngine::process (juce::AudioBuffer<float>& io, const Controls& c, cons
             float gL = inL, gR = inR;
             if (bend.active)
             {
-                gL = readRing (0, bend.pos);
-                gR = readRing (1, bend.pos);
+                gL = readCaptured (0, bend.pos, inL);
+                gR = readCaptured (1, bend.pos, inR);
                 bend.pos = clampRead (bend.pos + bend.rate);
             }
             sL = gL * (float) env;
@@ -352,9 +366,9 @@ void SliceEngine::process (juce::AudioBuffer<float>& io, const Controls& c, cons
                 else if (v.age < v.hold)         e = v.peak;
                 else if (v.age < v.hold + v.rel) e = v.peak * (float) (1.0 - (v.age - v.hold) / v.rel);
                 else { v.active = false; continue; }
-                sL += readRing (0, v.pos) * e;
-                sR += readRing (1, v.pos) * e;
-                v.pos = clampRead (v.pos + v.rate);
+                const double p = v.pos();
+                sL += readCaptured (0, p, inL) * e;
+                sR += readCaptured (1, p, inR) * e;
                 v.age += 1.0;
             }
         }

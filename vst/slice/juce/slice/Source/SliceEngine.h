@@ -83,7 +83,12 @@ private:
     bool hasPattern (Pattern) const noexcept;
 
     float readRing (int ch, double absPos) const noexcept;
+    // Ring read that falls back to the live sample where the ring hasn't been
+    // written yet (a fresh instance, the first pass): CHOP/SCAN degrade to a
+    // gate instead of silence until the loop exists.
+    float readCaptured (int ch, double absPos, float live) const noexcept;
     double clampRead (double absPos) const noexcept;
+    double writtenSamples() const noexcept { return juce::jmin ((double) writePos, (double) (ringLen - 4)); }
     float osc (int wave, double phase) const noexcept;
 
     double sr = 48000.0;
@@ -123,18 +128,23 @@ private:
     int ringLen = 0;
     juce::int64 writePos = 0;
     double loopStart = 0.0, loopLen = 1.0;   // absolute sample positions into the ring
+    bool   loopValid = false;                // false until the first pass has defined one
 
     // GATE dah± bend reads the ring at a shifted speed for the length of a long hit
     struct Bend { bool active = false; double pos = 0.0, rate = 1.0; } bend;
 
     // CHOP / SCAN voices
+    // A slice plays inside its own copy of the loop bounds (so a boundary
+    // refresh mid-slice doesn't jump it) and wraps within them, so SPEED
+    // above 1 keeps shifting instead of running into the write head.
     struct Voice
     {
         bool   active = false;
-        double pos = 0.0, rate = 1.0;
+        double start = 0.0, len = 1.0, off = 0.0, rate = 1.0;
         double age = 0.0, atk = 1.0, hold = 1.0, rel = 1.0;
         float  peak = 1.0f;
         juce::int64 started = 0;
+        double pos() const noexcept { return start + std::fmod (off + age * rate, len); }
     };
     std::array<Voice, numVoices> voices;
     juce::int64 voiceClock = 0;

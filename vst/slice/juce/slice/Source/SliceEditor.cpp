@@ -219,6 +219,9 @@ void SliceEditor::timerCallback()
     dim (*freq,    ! tone);
     dim (*waveSeg, ! tone);
     dim (capturePanel, tone);
+    // FREEZE and SPEED act on the captured loop — CHOP/SCAN only
+    dim (*freeze, mode == 0);
+    dim (*speed,  mode == 0);
     dim (*depth, ! tone && mode != 0);
     // SYNC on with a host tempo: the knob has nothing to do; SYNC off: it is the clock
     dim (*bpm, proc.hostBpm() > 0.0);
