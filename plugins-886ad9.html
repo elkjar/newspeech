@@ -3,12 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Unlisted plugin-download page — not linked from anywhere on the site.
-     Keep out of search indexes; the URL itself is the invite. -->
+<meta name="theme-color" content="#050505">
+<!-- Unlisted until launch — the URL is the invite. Drop the noindex + rename
+     to plugins.html (and add the nav entry) when it goes public. -->
 <meta name="robots" content="noindex, nofollow">
-<title>plugins — download</title>
+<title>NEWSPEECH // plugins</title>
+<meta name="description" content="free audio effect plugins for macos — vibe + saturate. au + vst3, apple silicon + intel, signed + notarized. free for everything.">
 <meta property="og:title" content="NEWSPEECH // plugins">
-<meta property="og:description" content="free audio plugins for macos — vibe + saturate. au + vst3.">
+<meta property="og:description" content="free audio effect plugins for macos — vibe + saturate. au + vst3. free for everything.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/plugins-886ad9.html">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -20,40 +22,23 @@
 <meta property="og:image:alt" content="NEWSPEECH plugins">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // plugins">
-<meta name="twitter:description" content="free audio plugins for macos — vibe + saturate. au + vst3.">
+<meta name="twitter:description" content="free audio effect plugins for macos — vibe + saturate. au + vst3. free for everything.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
   @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
-  :root { --fg: #ddd; }
+  @font-face { font-family: "zxx-bold"; src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+
+  :root { --bg: #050505; --panel: #0a0a0a; --fg: #ffffff; --rule: rgba(255, 255, 255, 0.18); }
   * { box-sizing: border-box; }
-  html { height: 100%; }
-  body {
-    margin: 0;
-    min-height: 100%;
-    background: #050505;
-    color: var(--fg);
-    font-family: "zxx-sans", ui-monospace, SFMono-Regular, Menlo, monospace;
-    display: flex;
-    padding: 32px 20px;
-  }
-  /* margin:auto (not align/justify center) so content taller than the
-     viewport scrolls instead of clipping off the top. */
-  main { max-width: 52ch; margin: auto; }
-  section { margin-top: 44px; }
-  section:first-of-type { margin-top: 0; }
-  h2 { font-size: 26px; font-weight: 400; letter-spacing: 0.02em; margin: 0 0 16px; }
-  .kicker {
-    font-size: 11px;
-    letter-spacing: 0.14em;
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow-x: hidden; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .mono-kicker {
+    font-size: 12px;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     opacity: 0.55;
-    margin-bottom: 14px;
-  }
-  h1 {
-    font-size: 34px;
-    font-weight: 400;
-    letter-spacing: 0.02em;
-    margin: 0 0 24px;
   }
   p {
     font-size: 13px;
@@ -62,15 +47,10 @@
     color: rgba(255, 255, 255, 0.78);
     margin: 0 0 14px;
   }
-  p a {
-    color: var(--fg);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
+  p a { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
   .cta {
     display: inline-flex;
     width: fit-content;
-    margin-top: 22px;
     padding: 16px 22px;
     border: 1px solid rgba(255, 255, 255, 0.7);
     color: var(--fg);
@@ -80,49 +60,252 @@
     letter-spacing: 0.04em;
   }
   .cta:hover { background: rgba(255, 255, 255, 0.08); }
-  .aux {
-    margin-top: 18px;
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    opacity: 0.55;
+  .cta.ghost { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.7); }
+  .aux { font-size: 11px; letter-spacing: 0.06em; opacity: 0.5; }
+  .aux a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.3); }
+  .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
+  code { font-family: inherit; font-size: 11px; color: rgba(255, 255, 255, 0.8); }
+
+  /* ---- hero ---- */
+  #hero {
+    min-height: 80svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: calc(96px + var(--ns-nav-h, 0px)) 72px 72px;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
   }
-  .notes {
-    margin-top: 40px;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    padding-top: 22px;
+  #hero .mono-kicker { margin-bottom: 28px; }
+  #hero h1 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(64px, 11vw, 168px);
+    line-height: 0.95;
+    letter-spacing: 0.01em;
+    font-weight: normal;
+    margin: 0 0 40px;
+    user-select: none;
   }
-  .notes p { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
-  code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  #hero .lede { max-width: 58ch; }
+  #hero .lede p { font-size: 15px; line-height: 1.75; }
+  #hero .lede p.first { color: rgba(255, 255, 255, 0.92); }
+  #hero .jump { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  #hero .specs {
+    position: absolute;
+    right: 72px;
+    bottom: 32px;
+    display: flex;
+    gap: 28px;
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.8);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.5;
+  }
+
+  /* ---- plugin vignettes: copy panel + editor image, alternating sides ---- */
+  .plugin {
+    display: grid;
+    grid-template-columns: 38fr 62fr;
+    min-height: 100svh;
+    border-bottom: 1px solid var(--rule);
+  }
+  .plugin.flip { grid-template-columns: 62fr 38fr; }
+  .plugin.flip .copy { order: 2; }
+  .plugin.flip .shot { order: 1; }
+  .plugin.lift, .plugin.lift .copy { background: var(--panel); }
+
+  .plugin .copy {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 72px 64px;
+    background: var(--bg);
+  }
+  .plugin .copy .mono-kicker { margin-bottom: 28px; }
+  .plugin h2 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(38px, 4.2vw, 72px);
+    line-height: 1;
+    letter-spacing: 0.01em;
+    font-weight: normal;
+    margin: 0 0 24px;
+    user-select: none;
+  }
+  .badge {
+    display: inline-block;
+    width: fit-content;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    padding: 6px 10px;
+    margin: 0 0 26px;
+    opacity: 0.85;
+  }
+  .plugin .copy p { max-width: 44ch; }
+  .plugin .copy .cta { margin-top: 26px; }
+  .plugin .copy .aux { margin-top: 20px; }
+
+  /* the stages — a compact spec block, same register as the plugin's own labels */
+  .stages {
+    list-style: none;
+    margin: 18px 0 0;
+    padding: 18px 0 0;
+    border-top: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 22px;
+    row-gap: 8px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .stages dt { color: rgba(255, 255, 255, 0.85); }
+  .stages dd { margin: 0; color: rgba(255, 255, 255, 0.45); }
+
+  .plugin .shot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 72px 64px;
+  }
+  .plugin .shot img {
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    height: auto;
+    image-rendering: auto;
+  }
+
+  /* ---- next up ---- */
+  #next {
+    padding: 72px;
+    border-bottom: 1px solid var(--rule);
+  }
+  #next .mono-kicker { margin-bottom: 28px; }
+  #next .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; max-width: 1100px; }
+  #next h3 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(30px, 3vw, 48px);
+    line-height: 1;
+    font-weight: normal;
+    margin: 0 0 18px;
+  }
+  #next p { max-width: 44ch; }
+
+  /* ---- notes ---- */
+  #notes { padding: 56px 72px 96px; }
+  #notes .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; max-width: 1200px; }
+  #notes h4 { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: normal; opacity: 0.55; margin: 0 0 14px; }
+  #notes p { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+
+  @media (max-width: 1164px) {
+    #hero { padding-left: 28px; padding-right: 28px; }
+    #hero .specs { position: static; margin-top: 40px; flex-wrap: wrap; gap: 14px 24px; }
+    .plugin, .plugin.flip { grid-template-columns: 1fr; min-height: 0; }
+    .plugin .shot, .plugin.flip .shot { order: 1; padding: 48px 28px 0; }
+    .plugin .copy, .plugin.flip .copy { order: 2; padding: 40px 28px 64px; }
+    #next { padding: 56px 28px; }
+    #next .row { grid-template-columns: 1fr; gap: 40px; }
+    #notes { padding: 48px 28px 80px; }
+    #notes .grid { grid-template-columns: 1fr; gap: 28px; }
   }
 </style>
 </head>
 <body>
-<main>
-  <div class="kicker">newspeech</div>
-  <h1>plugins</h1>
-  <p>free audio effect plugins for macos — the destruction i run everything through, packaged so you can run yours through it too. apple silicon + intel, au + vst3, signed + notarized.</p>
-  <p>free for everything. use them on anything, commercial or not, no credit needed. if you make something cool with them please share it — tag <a href="https://www.instagram.com/newspeechsound/" target="_blank" rel="noopener noreferrer">@newspeechsound</a> so i get to hear it.</p>
 
-  <section>
-    <h2>vibe</h2>
-    <p>three stages in series: a tape loop that grabs and mangles the incoming audio (grains, hold), a tempo-synced repeat that dices to your session bpm, and a big plate reverb to smear whatever survives. nothing about it is subtle or transparent. that's the point.</p>
-    <a class="cta" href="/dl/vibe">download vibe for macos</a>
-  </section>
+<script src="nav.js"></script>
 
-  <section>
-    <h2>saturate</h2>
-    <p>drive into a squelching filter, with a micro-loop that grabs and repeats slices whenever the signal crosses a threshold — tilt, bias and drive shape the curve; tone and body shape what comes out.</p>
-    <a class="cta" href="/dl/saturate">download saturate for macos</a>
-  </section>
-
-  <div class="notes">
-    <p>install: unzip, then copy the <code>.component</code> to <code>~/Library/Audio/Plug-Ins/Components</code> and the <code>.vst3</code> to <code>~/Library/Audio/Plug-Ins/VST3</code>. restart your daw (logic may need a moment to rescan).</p>
-    <p>au covers logic + garageband; vst3 covers ableton, reaper, bitwig, fl studio, studio one, cubase. no aax — pro tools users can wrap them with blue cat patchwork.</p>
-    <p>open source under gplv3 — <a href="https://github.com/elkjar/newspeech/tree/main/vst" target="_blank" rel="noopener noreferrer">source is here</a>: faust dsp + a juce wrapper, one shared ui kit.</p>
+<section id="hero">
+  <div class="mono-kicker">newspeech // plugins</div>
+  <h1>free plugins</h1>
+  <div class="lede">
+    <p class="first">free audio effect plugins built specifically for commercially successful and financially viable use cases. used on all my projects — maybe use it on yours too?</p>
+    <p>free for everything. use them on anything, commercial or not, no credit needed. if you make something cool with them please share it — tag <a href="https://www.instagram.com/newspeechsound/" target="_blank" rel="noopener noreferrer">@newspeechsound</a> so i get to hear it.</p>
   </div>
-</main>
+  <div class="jump">
+    <a class="cta" href="#vibe">vibe ↓</a>
+    <a class="cta" href="#saturate">saturate ↓</a>
+  </div>
+  <div class="specs" aria-label="specs">
+    <span>macos</span><span>apple silicon + intel</span><span>au + vst3</span><span>signed + notarized</span><span>open source</span>
+  </div>
+</section>
+
+<section class="plugin" id="vibe">
+  <div class="copy">
+    <div class="mono-kicker">01 / vibe</div>
+    <h2>vibe</h2>
+    <span class="badge">v1.0.0 · free</span>
+    <p>the destruction chain i run everything through. three stages in series: a tape loop that grabs and mangles the incoming audio, a tempo-synced repeat that dices to your session bpm, and a big plate reverb to smear whatever survives.</p>
+    <p>nothing about it is subtle or transparent. that's the point.</p>
+    <dl class="stages">
+      <dt>tape</dt><dd>position · length · hold · grain&nbsp;rate · grain&nbsp;mix · mix</dd>
+      <dt>repeat</dt><dd>chance · mix — locked to host bpm</dd>
+      <dt>reverb</dt><dd>damping · diffusion · size · mix</dd>
+      <dt>out</dt><dd>trim</dd>
+    </dl>
+    <a class="cta" href="/dl/vibe">download vibe for macos</a>
+    <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/vibe" target="_blank" rel="noopener noreferrer">source</a></div>
+  </div>
+  <div class="shot">
+    <img src="assets/plugins/vibe.png" width="1200" height="838" alt="vibe — tape, repeat, reverb and out sections in the newspeech plugin ui" loading="lazy">
+  </div>
+</section>
+
+<section class="plugin flip lift" id="saturate">
+  <div class="copy">
+    <div class="mono-kicker">02 / saturate</div>
+    <h2>saturate</h2>
+    <span class="badge">v1.0.0 · free</span>
+    <p>drive into a squelching filter, with a micro-loop that grabs and repeats slices whenever the signal crosses a threshold. tilt, bias and drive shape the curve; tone and body shape what comes out.</p>
+    <p>from a gentle push to the whole signal folding in on itself — and the loop stage means it never quite sits still.</p>
+    <dl class="stages">
+      <dt>loop</dt><dd>enable · threshold · chance · window · auto · division</dd>
+      <dt>destroy</dt><dd>tilt · bias · drive</dd>
+      <dt>filter</dt><dd>tone · body</dd>
+      <dt>out</dt><dd>trim · mix</dd>
+    </dl>
+    <a class="cta" href="/dl/saturate">download saturate for macos</a>
+    <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/saturate" target="_blank" rel="noopener noreferrer">source</a></div>
+  </div>
+  <div class="shot">
+    <img src="assets/plugins/saturate.png" width="1200" height="838" alt="saturate — loop, destroy, filter and out sections in the newspeech plugin ui" loading="lazy">
+  </div>
+</section>
+
+<section id="next">
+  <div class="mono-kicker">next up</div>
+  <div class="row">
+    <div>
+      <h3>glitch</h3>
+      <p>the pattern destruction engine from the browser tool, as a plugin: six stages — crush, noise, drive, chop, glitch, feedback — drawn as blocks on a grid that locks to your session, mutating pass by pass.</p>
+      <span class="aux">in the works</span>
+    </div>
+    <div>
+      <h3>slice</h3>
+      <p>the pattern slicer as an insert: type a message and it gates whatever you send it in morse rhythm, tempo-locked, then flips, ratchets and drops symbols until it erodes into noise.</p>
+      <span class="aux">in the works</span>
+    </div>
+  </div>
+</section>
+
+<section id="notes">
+  <div class="grid">
+    <div>
+      <h4>install</h4>
+      <p>unzip, then copy the <code>.component</code> to <code>~/Library/Audio/Plug-Ins/Components</code> and the <code>.vst3</code> to <code>~/Library/Audio/Plug-Ins/VST3</code>. restart your daw — logic may need a moment to rescan.</p>
+    </div>
+    <div>
+      <h4>compatibility</h4>
+      <p>au covers logic + garageband; vst3 covers ableton, reaper, bitwig, fl studio, studio one, cubase. no aax — pro tools users can wrap them with blue cat patchwork. signed + notarized, so macos opens them without complaint.</p>
+    </div>
+    <div>
+      <h4>license</h4>
+      <p>free for everything — commercial or not, no credit needed. the code is open source under gplv3: faust dsp + a juce wrapper, one shared ui kit. <a href="https://github.com/elkjar/newspeech/tree/main/vst" target="_blank" rel="noopener noreferrer">source is here</a>.</p>
+    </div>
+  </div>
+</section>
+
 </body>
 </html>
