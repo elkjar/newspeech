@@ -14,7 +14,7 @@ void NewspeechSectionPanel::addControl (juce::Component* c, int width)
 
 void NewspeechSectionPanel::addWideControl (juce::Component* c, int contentWidth)
 {
-    addControl (c, contentWidth + 2 * pad);
+    addControl (c, contentWidth + 2 * wideMargin);
 }
 
 int NewspeechSectionPanel::preferredWidth() const noexcept

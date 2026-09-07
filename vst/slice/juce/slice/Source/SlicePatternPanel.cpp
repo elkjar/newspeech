@@ -13,9 +13,9 @@ SlicePatternPanel::SlicePatternPanel (NewspeechSegment& s, NewspeechTextField& f
 
 void SlicePatternPanel::resized()
 {
-    // Inner column: the box edge + pad → same left as a knob ring (cellMargin).
-    const int left  = cellMargin;
-    const int right = getWidth() - cellMargin;
+    // Inner column: hard edges line up with the heading text (wideMargin).
+    const int left  = wideMargin;
+    const int right = getWidth() - wideMargin;
     int y = lineY + pad;
 
     // line 1: segment · field · RESTORE

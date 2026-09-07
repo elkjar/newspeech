@@ -24,7 +24,8 @@ public:
     // their own width and get the same cell height.
     void addControl (juce::Component* control, int width = cellWidth);
     // A control that fills its own width (a segmented switch, a button): the
-    // cell gets `pad` either side so it sits inside the box like a knob ring.
+    // cell gets `wideMargin` either side so its hard left edge lines up with
+    // the heading text (a ring is round, so its 2px difference never reads).
     void addWideControl (juce::Component* control, int contentWidth);
     int  preferredWidth() const noexcept;
 
@@ -40,6 +41,7 @@ public:
     static constexpr int headingLead   = 14;   // box edge → heading text
     static constexpr int headingGapPad = 5;    // border gap either side of the text
     static constexpr int lineY         = headingHeight / 2;
+    static constexpr int wideMargin    = boxInset + headingLead;                             // 20
     static constexpr int totalHeight   = lineY + pad + NewspeechKnob::totalHeight + pad + 1;
 
     // The left rail for the editor crumb: the box's left edge.
