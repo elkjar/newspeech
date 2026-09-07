@@ -5,6 +5,12 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# /api/subscribe — Resend contact capture (netlify/functions/subscribe.mjs);
+# needs RESEND_API_KEY in the site env
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # /start — the link-in-bio hub (instagram bio points here)
 [[redirects]]
   from = "/start"

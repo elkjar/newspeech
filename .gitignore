@@ -36,3 +36,9 @@ samples-manifest.json
 /news-latest.html
 /feed.xml
 tools/drone-gen-out/
+
+# Local Netlify folder
+.netlify
+
+# netlify cli link state
+.netlify/

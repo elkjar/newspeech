@@ -362,8 +362,7 @@
 <section class="vignette" id="hero">
   <canvas id="bg"></canvas>
 
-  <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" novalidate>
-    <input type="hidden" name="form-name" value="subscribe">
+  <form id="subscribe" novalidate>
     <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
     <label class="sub-label" for="sub-email" data-link>mailing list — releases + new tools</label>
     <div class="sub-row">
@@ -2210,11 +2209,9 @@ async function setupLinks() {
 
 setupLinks();
 
-// ---- subscribe: AJAX post to Netlify Forms so the page never navigates ----
-// the form markup carries data-netlify + the form-name hidden field, so
-// Netlify's build-time detection registers it; runtime we just POST the
-// urlencoded pairs to "/" and swap in a confirmation. only works on the
-// deployed site — local POSTs 404 and fall into the error branch.
+// ---- subscribe: post to /api/subscribe (Resend contact + "general" segment)
+// so the page never navigates; swap in a confirmation on 200. locally this
+// needs `netlify dev` for the function — a plain static server 404s.
 const subForm = document.getElementById("subscribe");
 subForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2233,10 +2230,14 @@ subForm.addEventListener("submit", async (e) => {
   }
   btn.disabled = true;
   try {
-    const res = await fetch("/", {
+    const res = await fetch("/api/subscribe", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(new FormData(subForm)).toString(),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: emailInput.value.trim(),
+        source: "homepage",
+        "bot-field": subForm.querySelector('[name="bot-field"]').value,
+      }),
     });
     if (!res.ok) throw new Error(String(res.status));
     subForm.innerHTML = '<span class="sub-msg">signal received — you\'re on the list</span>';
