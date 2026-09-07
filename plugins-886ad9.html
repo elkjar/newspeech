@@ -102,25 +102,21 @@
     opacity: 0.5;
   }
 
-  /* ---- plugin vignettes: copy panel + editor image, alternating sides ---- */
-  .plugin {
+  /* ---- plugin sections: copy + editor image side by side, alternating ---- */
+  .plugin { border-bottom: 1px solid var(--rule); }
+  .plugin.lift { background: var(--panel); }
+  .plugin .inner {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 96px 72px;
     display: grid;
-    grid-template-columns: 38fr 62fr;
-    min-height: 100svh;
-    border-bottom: 1px solid var(--rule);
+    grid-template-columns: minmax(300px, 5fr) 7fr;
+    gap: 72px;
+    align-items: center;
   }
-  .plugin.flip { grid-template-columns: 62fr 38fr; }
-  .plugin.flip .copy { order: 2; }
-  .plugin.flip .shot { order: 1; }
-  .plugin.lift, .plugin.lift .copy { background: var(--panel); }
+  .plugin.flip .inner .copy { order: 2; }
+  .plugin.flip .inner .shot { order: 1; }
 
-  .plugin .copy {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 72px 64px;
-    background: var(--bg);
-  }
   .plugin .copy .mono-kicker { margin-bottom: 28px; }
   .plugin h2 {
     font-family: "zxx-sans", ui-monospace, monospace;
@@ -145,53 +141,7 @@
   .plugin .copy p { max-width: 44ch; }
   .plugin .copy .cta { margin-top: 26px; }
   .plugin .copy .aux { margin-top: 20px; }
-
-  /* the stages — a compact spec block, same register as the plugin's own labels */
-  .stages {
-    list-style: none;
-    margin: 18px 0 0;
-    padding: 18px 0 0;
-    border-top: 1px solid var(--rule);
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    column-gap: 22px;
-    row-gap: 8px;
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .stages dt { color: rgba(255, 255, 255, 0.85); }
-  .stages dd { margin: 0; color: rgba(255, 255, 255, 0.45); }
-
-  .plugin .shot {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 72px 64px;
-  }
-  .plugin .shot img {
-    display: block;
-    width: 100%;
-    max-width: 640px;
-    height: auto;
-    image-rendering: auto;
-  }
-
-  /* ---- next up ---- */
-  #next {
-    padding: 72px;
-    border-bottom: 1px solid var(--rule);
-  }
-  #next .mono-kicker { margin-bottom: 28px; }
-  #next .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; max-width: 1100px; }
-  #next h3 {
-    font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: clamp(30px, 3vw, 48px);
-    line-height: 1;
-    font-weight: normal;
-    margin: 0 0 18px;
-  }
-  #next p { max-width: 44ch; }
+  .plugin .shot img { display: block; width: 100%; height: auto; }
 
   /* ---- notes ---- */
   #notes { padding: 56px 72px 96px; }
@@ -199,14 +149,12 @@
   #notes h4 { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: normal; opacity: 0.55; margin: 0 0 14px; }
   #notes p { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
 
-  @media (max-width: 1164px) {
+  @media (max-width: 1000px) {
     #hero { padding-left: 28px; padding-right: 28px; }
     #hero .specs { position: static; margin-top: 40px; flex-wrap: wrap; gap: 14px 24px; }
-    .plugin, .plugin.flip { grid-template-columns: 1fr; min-height: 0; }
-    .plugin .shot, .plugin.flip .shot { order: 1; padding: 48px 28px 0; }
-    .plugin .copy, .plugin.flip .copy { order: 2; padding: 40px 28px 64px; }
-    #next { padding: 56px 28px; }
-    #next .row { grid-template-columns: 1fr; gap: 40px; }
+    .plugin .inner { grid-template-columns: 1fr; gap: 40px; padding: 64px 28px; }
+    .plugin .inner .shot, .plugin.flip .inner .shot { order: 1; }
+    .plugin .inner .copy, .plugin.flip .inner .copy { order: 2; }
     #notes { padding: 48px 28px 80px; }
     #notes .grid { grid-template-columns: 1fr; gap: 28px; }
   }
@@ -233,62 +181,39 @@
 </section>
 
 <section class="plugin" id="vibe">
+  <div class="inner">
   <div class="copy">
     <div class="mono-kicker">01 / vibe</div>
     <h2>vibe</h2>
     <span class="badge">v1.0.0 · free</span>
-    <p>the destruction chain i run everything through. three stages in series: a tape loop that grabs and mangles the incoming audio, a tempo-synced repeat that dices to your session bpm, and a big plate reverb to smear whatever survives.</p>
-    <p>nothing about it is subtle or transparent. that's the point.</p>
-    <dl class="stages">
-      <dt>tape</dt><dd>position · length · hold · grain&nbsp;rate · grain&nbsp;mix · mix</dd>
-      <dt>repeat</dt><dd>chance · mix — locked to host bpm</dd>
-      <dt>reverb</dt><dd>damping · diffusion · size · mix</dd>
-      <dt>out</dt><dd>trim</dd>
-    </dl>
+    <p>based on my "always on" modular synth bed of delay, grains, reverb and glitches. vibe is three stages in series: a tape loop that grabs and mangles the incoming audio, a tempo-synced repeat that dices to your session bpm, and a big plate reverb to smear whatever survives.</p>
+    <p>put it on your master bus, probably.</p>
     <a class="cta" href="/dl/vibe">download vibe for macos</a>
     <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/vibe" target="_blank" rel="noopener noreferrer">source</a></div>
   </div>
   <div class="shot">
-    <img src="assets/plugins/vibe.png" width="1200" height="838" alt="vibe — tape, repeat, reverb and out sections in the newspeech plugin ui" loading="lazy">
+    <img src="assets/plugins/vibe.png" width="1104" height="742" alt="vibe — tape, repeat, reverb and out sections in the newspeech plugin ui" loading="lazy">
+  </div>
   </div>
 </section>
 
 <section class="plugin flip lift" id="saturate">
+  <div class="inner">
   <div class="copy">
     <div class="mono-kicker">02 / saturate</div>
     <h2>saturate</h2>
     <span class="badge">v1.0.0 · free</span>
     <p>drive into a squelching filter, with a micro-loop that grabs and repeats slices whenever the signal crosses a threshold. tilt, bias and drive shape the curve; tone and body shape what comes out.</p>
     <p>from a gentle push to the whole signal folding in on itself — and the loop stage means it never quite sits still.</p>
-    <dl class="stages">
-      <dt>loop</dt><dd>enable · threshold · chance · window · auto · division</dd>
-      <dt>destroy</dt><dd>tilt · bias · drive</dd>
-      <dt>filter</dt><dd>tone · body</dd>
-      <dt>out</dt><dd>trim · mix</dd>
-    </dl>
     <a class="cta" href="/dl/saturate">download saturate for macos</a>
     <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/saturate" target="_blank" rel="noopener noreferrer">source</a></div>
   </div>
   <div class="shot">
-    <img src="assets/plugins/saturate.png" width="1200" height="838" alt="saturate — loop, destroy, filter and out sections in the newspeech plugin ui" loading="lazy">
+    <img src="assets/plugins/saturate.png" width="1104" height="742" alt="saturate — loop, destroy, filter and out sections in the newspeech plugin ui" loading="lazy">
+  </div>
   </div>
 </section>
 
-<section id="next">
-  <div class="mono-kicker">next up</div>
-  <div class="row">
-    <div>
-      <h3>glitch</h3>
-      <p>the pattern destruction engine from the browser tool, as a plugin: six stages — crush, noise, drive, chop, glitch, feedback — drawn as blocks on a grid that locks to your session, mutating pass by pass.</p>
-      <span class="aux">in the works</span>
-    </div>
-    <div>
-      <h3>slice</h3>
-      <p>the pattern slicer as an insert: type a message and it gates whatever you send it in morse rhythm, tempo-locked, then flips, ratchets and drops symbols until it erodes into noise.</p>
-      <span class="aux">in the works</span>
-    </div>
-  </div>
-</section>
 
 <section id="notes">
   <div class="grid">
