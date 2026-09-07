@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  #label {
+    position: absolute;
+    left: 127px;
+    top: 315px;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    white-space: nowrap;
+    font-size: 30px;
+    color: #fff;
+    letter-spacing: 0.04em;
+    font-family: "zxx-sans", monospace;
+  }
+  canvas { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div id="label">new×speech× | ×plugins×</div>
+<script>
+// og-plugins comp — same anatomy as og-slice / og-drone: vertical zxx label
+// left, the instrument graphic right. The graphic is the plugin UI kit
+// itself: two section boxes (VIBE, SATURATE) with the heading riding the
+// top border, a row of ring/arc/tick knobs in each, labels below — the
+// exact construction of vst/common. One knob per box is mid-turn and lit.
+const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
+const label = document.getElementById('label');
+label.innerHTML = [...label.textContent]
+  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
+  .join('');
+
+const c = document.getElementById('c').getContext('2d');
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+const X0 = 250, X1 = 1130;
+
+// knob: Knob.tsx geometry — ring r=0.36·size (white/12), arc from -135° (white/70,
+// 1.75px), tick from 0.17·size to the ring (white/90). Scaled ×1.6 for OG.
+function knob(cx, cy, size, v, lit) {
+  const r = size * 0.36, tin = size * 0.17;
+  const a0 = -135 * Math.PI / 180, a = (-135 + 270 * v) * Math.PI / 180;
+  c.lineCap = 'round';
+  c.strokeStyle = `rgba(255,255,255,${lit ? 0.22 : 0.12})`; c.lineWidth = 1.5;
+  c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke();
+  if (v > 0.001) {
+    c.strokeStyle = `rgba(255,255,255,${lit ? 0.95 : 0.7})`; c.lineWidth = 2.6;
+    c.beginPath(); c.arc(cx, cy, r, a0 - Math.PI / 2, a - Math.PI / 2); c.stroke();
+  }
+  c.strokeStyle = `rgba(255,255,255,${lit ? 1 : 0.9})`; c.lineWidth = 2.6;
+  c.beginPath();
+  c.moveTo(cx + tin * Math.sin(a), cy - tin * Math.cos(a));
+  c.lineTo(cx + r * Math.sin(a), cy - r * Math.cos(a));
+  c.stroke();
+}
+function dot(cx, cy, size, on) {
+  const r = size * 0.18;
+  c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2);
+  if (on) { c.fillStyle = '#fff'; c.fill(); }
+  else { c.strokeStyle = 'rgba(255,255,255,0.3)'; c.lineWidth = 1.5; c.stroke(); }
+}
+
+// section box: 1px white/15, heading on the line (line interrupted behind it)
+function section(x, y, w, h, title, controls) {
+  c.strokeStyle = 'rgba(255,255,255,0.15)'; c.lineWidth = 1.5;
+  c.strokeRect(x + 0.5, y + 0.5, w, h);
+  c.font = `500 15px ${MONO}`; c.textAlign = 'left'; c.textBaseline = 'middle';
+  const t = title.toUpperCase(); const tw = c.measureText(t).width + t.length * 1.5 + 12;
+  c.fillStyle = '#000'; c.fillRect(x + 22 - 8, y - 12, tw + 16, 24);
+  c.fillStyle = 'rgba(255,255,255,0.4)';
+  letterSpaced(t, x + 22, y + 1, 0.1, false, 15);
+  const cellW = 128, size = 70;
+  const startX = x + 24 + (w - 48 - (controls.length * cellW)) / 2;
+  const ky = y + 30 + size / 2 + 6;
+  controls.forEach((k, i) => {
+    const cx = startX + i * cellW + cellW / 2;
+    if (k.dot !== undefined) dot(cx, ky, size, k.dot); else knob(cx, ky, size, k.v, k.lit);
+    c.font = `14px ${MONO}`; c.fillStyle = `rgba(255,255,255,${k.lit ? 0.95 : 0.7})`;
+    c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    letterSpaced(k.l.toUpperCase(), cx, ky + size / 2 + 30, 0.12, true, 14);
+  });
+}
+function letterSpaced(text, x, y, em, center, fs) {
+  const sp = fs * em;
+  let w = 0; for (const ch of text) w += c.measureText(ch).width + sp; w -= sp;
+  let cx = center ? x - w / 2 : x;
+  const prevAlign = c.textAlign; c.textAlign = 'left';
+  for (const ch of text) { c.fillText(ch, cx, y); cx += c.measureText(ch).width + sp; }
+  c.textAlign = prevAlign;
+}
+
+const W = X1 - X0;
+section(X0, 118, W, 172, 'vibe', [
+  { l: 'position', v: 0.28 }, { l: 'length', v: 0.55 }, { l: 'hold', dot: false },
+  { l: 'grain rate', v: 0.62, lit: true }, { l: 'grain mix', v: 0.71 }, { l: 'mix', v: 0.53 },
+]);
+section(X0, 336, W, 172, 'saturate', [
+  { l: 'enable', dot: true }, { l: 'threshold', v: 0.64 }, { l: 'chance', v: 0.9, lit: true },
+  { l: 'window', v: 0.5 }, { l: 'tilt', v: 0.4 }, { l: 'drive', v: 0.86 },
+]);
+
+// caption, bottom-right — the datafield's register
+c.font = `16px ${MONO}`; c.textAlign = 'right'; c.textBaseline = 'alphabetic';
+c.fillStyle = 'rgba(255,255,255,0.4)';
+c.fillText('vibe 1.0.0 · saturate 1.0.0 · au + vst3 · macos · free for everything', X1, 560);
+</script>
+</body>
+</html>
