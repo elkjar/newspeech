@@ -10,3 +10,17 @@
   from = "/start"
   to = "/start.html"
   status = 200
+
+# dl:vibe begin — managed by vst/release.sh
+[[redirects]]
+  from = "/dl/vibe"
+  to = "https://github.com/elkjar/newspeech/releases/download/vibe-v1.0.0/Vibe-1.0.0.zip"
+  status = 302
+# dl:vibe end
+
+# dl:saturate begin — managed by vst/release.sh
+[[redirects]]
+  from = "/dl/saturate"
+  to = "https://github.com/elkjar/newspeech/releases/download/saturate-v1.0.0/Saturate-1.0.0.zip"
+  status = 302
+# dl:saturate end
