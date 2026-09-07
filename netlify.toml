@@ -24,3 +24,10 @@
   to = "https://github.com/elkjar/newspeech/releases/download/saturate-v1.0.0/Saturate-1.0.0.zip"
   status = 302
 # dl:saturate end
+
+# dl:slice begin — managed by vst/release.sh
+[[redirects]]
+  from = "/dl/slice"
+  to = "https://github.com/elkjar/newspeech/releases/download/slice-v1.0.0/Slice-1.0.0.zip"
+  status = 302
+# dl:slice end
