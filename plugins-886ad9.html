@@ -215,7 +215,7 @@
     <span class="badge">v1.0.0 · free</span>
     <p>based on my "always on" modular synth bed of delay, grains, reverb and glitches. vibe is three stages in series: a tape loop that grabs and mangles the incoming audio, a tempo-synced repeat that dices to your session bpm, and a big plate reverb to smear whatever survives.</p>
     <p>put it on your master bus, probably.</p>
-    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" data-plugin="vibe">
+    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" novalidate data-plugin="vibe">
       <input type="hidden" name="form-name" value="plugin-download">
       <input type="hidden" name="plugin" value="vibe">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
@@ -240,7 +240,7 @@
     <span class="badge">v1.0.0 · free</span>
     <p>drive into a squelching filter, with a pll style micro-loop that grabs and repeats slices whenever the signal crosses a threshold. very tasteful. also features a distortion block that goes from gentle to basically square waves.</p>
     <p>enjoy on everything.</p>
-    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" data-plugin="saturate">
+    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" novalidate data-plugin="saturate">
       <input type="hidden" name="form-name" value="plugin-download">
       <input type="hidden" name="plugin" value="saturate">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
@@ -265,7 +265,7 @@
     <span class="badge">v1.0.0 · free</span>
     <p>type a message and it plays back as rhythm. morse by default, or every character as its bits, or paste in a series of numbers and let a threshold decide what hits. the pattern gates whatever you feed it, locked to your session tempo, then the mangle section starts corrupting the message itself, letter by letter, until it's noise.</p>
     <p>put it on drums. or a pad. or a voice.</p>
-    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" data-plugin="slice">
+    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" novalidate data-plugin="slice">
       <input type="hidden" name="form-name" value="plugin-download">
       <input type="hidden" name="plugin" value="slice">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
@@ -319,11 +319,19 @@
       e.preventDefault();
       const btn = form.querySelector("button");
       const plugin = form.dataset.plugin;
-      btn.disabled = true;
       const old = form.querySelector(".gate-msg");
       if (old) old.remove();
       const msg = document.createElement("span");
       msg.className = "gate-msg";
+      // our own validation line instead of the browser's bubble (novalidate)
+      if (!input.checkValidity()) {
+        msg.classList.add("err");
+        msg.textContent = input.value.trim() ? "that doesn't look like an email" : "an email goes here first";
+        form.appendChild(msg);
+        input.focus();
+        return;
+      }
+      btn.disabled = true;
       try {
         const res = await fetch("/", {
           method: "POST",

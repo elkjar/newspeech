@@ -362,7 +362,7 @@
 <section class="vignette" id="hero">
   <canvas id="bg"></canvas>
 
-  <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field">
+  <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" novalidate>
     <input type="hidden" name="form-name" value="subscribe">
     <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
     <label class="sub-label" for="sub-email" data-link>mailing list — releases + new tools</label>
@@ -2219,9 +2219,19 @@ const subForm = document.getElementById("subscribe");
 subForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = subForm.querySelector("button");
-  btn.disabled = true;
   const oldMsg = subForm.querySelector(".sub-msg");
   if (oldMsg) oldMsg.remove();
+  // our own validation line instead of the browser's bubble (novalidate)
+  const emailInput = subForm.querySelector('input[type="email"]');
+  if (!emailInput.checkValidity()) {
+    const m = document.createElement("span");
+    m.className = "sub-msg err";
+    m.textContent = emailInput.value.trim() ? "that doesn't look like an email" : "an email goes here first";
+    subForm.appendChild(m);
+    emailInput.focus();
+    return;
+  }
+  btn.disabled = true;
   try {
     const res = await fetch("/", {
       method: "POST",
