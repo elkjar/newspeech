@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="Gl1tch" name="Glitch" projectType="audioplug" version="1.0.0"
+              bundleIdentifier="com.newspeech.audiounit.Glitch" includeBinaryInAppConfig="1"
+              buildVST="0" buildVST3="1" buildAU="1" buildAUv3="0" buildRTAS="0"
+              buildAAX="0" buildStandalone="1" pluginName="GLITCH" pluginDesc="GLITCH"
+              pluginManufacturer="NEWSPEECH" pluginManufacturerCode="Nwsp"
+              pluginCode="Gltc" pluginChannelConfigs="" pluginIsSynth="0" pluginWantsMidiIn="0"
+              pluginProducesMidiOut="0" pluginIsMidiEffectPlugin="0" pluginEditorRequiresKeys="1"
+              pluginAUExportPrefix="GlitchAU" pluginRTASCategory="" aaxIdentifier="com.newspeech.glitch"
+              pluginAAXCategory="2" pluginFormats="buildAU,buildVST3,buildStandalone"
+              displaySplashScreen="1" jucerFormatVersion="1" enableIAA="0"
+              pluginCharacteristicsValue="pluginEditorRequiresKeys" cppLanguageStandard="17">
+  <MAINGROUP id="GlMgRp" name="Glitch">
+    <GROUP id="{GLc00000-0000-0000-0000-000000000001}" name="Source">
+      <FILE id="GlPr01" name="GlitchProcessor.h" compile="0" resource="0"
+            file="Source/GlitchProcessor.h"/>
+      <FILE id="GlPr02" name="GlitchProcessor.cpp" compile="1" resource="0"
+            file="Source/GlitchProcessor.cpp"/>
+      <FILE id="GlEn01" name="GlitchEngine.h" compile="0" resource="0" file="Source/GlitchEngine.h"/>
+      <FILE id="GlEn02" name="GlitchEngine.cpp" compile="1" resource="0"
+            file="Source/GlitchEngine.cpp"/>
+      <FILE id="GlSt01" name="GlitchStages.h" compile="0" resource="0" file="Source/GlitchStages.h"/>
+      <FILE id="GlPa02" name="GlitchPattern.cpp" compile="1" resource="0"
+            file="Source/GlitchPattern.cpp"/>
+      <FILE id="GlEd01" name="GlitchEditor.h" compile="0" resource="0" file="Source/GlitchEditor.h"/>
+      <FILE id="GlEd02" name="GlitchEditor.cpp" compile="1" resource="0"
+            file="Source/GlitchEditor.cpp"/>
+      <FILE id="GlLg01" name="GlitchLaneGrid.h" compile="0" resource="0"
+            file="Source/GlitchLaneGrid.h"/>
+      <FILE id="GlLg02" name="GlitchLaneGrid.cpp" compile="1" resource="0"
+            file="Source/GlitchLaneGrid.cpp"/>
+    </GROUP>
+    <GROUP id="{GLc00000-0000-0000-0000-000000000002}" name="Common">
+      <FILE id="GlCm00" name="NewspeechColors.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechColors.h"/>
+      <FILE id="GlCm01" name="NewspeechLookAndFeel.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechLookAndFeel.h"/>
+      <FILE id="GlCm02" name="NewspeechLookAndFeel.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechLookAndFeel.cpp"/>
+      <FILE id="GlCm03" name="NewspeechKnob.h" compile="0" resource="0" file="../../../common/ui/NewspeechKnob.h"/>
+      <FILE id="GlCm04" name="NewspeechKnob.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechKnob.cpp"/>
+      <FILE id="GlCm05" name="NewspeechToggle.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechToggle.h"/>
+      <FILE id="GlCm06" name="NewspeechToggle.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechToggle.cpp"/>
+      <FILE id="GlCm07" name="NewspeechSectionPanel.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechSectionPanel.h"/>
+      <FILE id="GlCm08" name="NewspeechSectionPanel.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechSectionPanel.cpp"/>
+      <FILE id="GlCm09" name="NewspeechButton.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechButton.h"/>
+      <FILE id="GlCm10" name="NewspeechButton.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechButton.cpp"/>
+      <FILE id="GlCm11" name="NewspeechEditor.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechEditor.h"/>
+      <FILE id="GlCm12" name="NewspeechEditor.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechEditor.cpp"/>
+      <FILE id="GlCm13" name="NewspeechTelemetry.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechTelemetry.h"/>
+      <FILE id="GlCm14" name="NewspeechDatafield.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechDatafield.h"/>
+      <FILE id="GlCm15" name="NewspeechDatafield.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechDatafield.cpp"/>
+      <FILE id="GlCm16" name="NewspeechSegment.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechSegment.h"/>
+      <FILE id="GlCm17" name="NewspeechSegment.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechSegment.cpp"/>
+      <FILE id="GlCm18" name="NewspeechTextField.h" compile="0" resource="0"
+            file="../../../common/ui/NewspeechTextField.h"/>
+      <FILE id="GlCm19" name="NewspeechTextField.cpp" compile="1" resource="0"
+            file="../../../common/ui/NewspeechTextField.cpp"/>
+    </GROUP>
+  </MAINGROUP>
+  <EXPORTFORMATS>
+    <XCODE_MAC targetFolder="Builds/MacOSX" extraCompilerFlags="-I $(SRCROOT)/../../../../../common/ui -I $(SRCROOT)/../../Source"
+               extraDefs="">
+      <CONFIGURATIONS>
+        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="Glitch"/>
+        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="Glitch"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_utils" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_basics" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="/Users/chriselkjar/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="../../../../../../../../JUCE/modules"/>
+      </MODULEPATHS>
+    </XCODE_MAC>
+  </EXPORTFORMATS>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_VST3_CAN_REPLACE_VST2="0"/>
+  <LIVE_SETTINGS>
+    <WINDOWS/>
+  </LIVE_SETTINGS>
+</JUCERPROJECT>

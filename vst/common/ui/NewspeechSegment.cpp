@@ -7,7 +7,21 @@ using namespace newspeech::colors;
 
 NewspeechSegment::NewspeechSegment (juce::RangedAudioParameter& param, const juce::String& displayLabel,
                                     const juce::StringArray& names)
-    : parameter (param)
+    : parameter (&param)
+{
+    build (displayLabel, names);
+    parameter->addListener (this);
+    latest = parameter->getValue();
+    select (indexFromNormalised (latest.load()), false);
+}
+
+NewspeechSegment::NewspeechSegment (const juce::String& displayLabel, const juce::StringArray& names)
+{
+    build (displayLabel, names);
+    select (0, false);
+}
+
+void NewspeechSegment::build (const juce::String& displayLabel, const juce::StringArray& names)
 {
     for (int i = 0; i < names.size(); ++i)
     {
@@ -24,20 +38,17 @@ NewspeechSegment::NewspeechSegment (juce::RangedAudioParameter& param, const juc
     label.setColour (juce::Label::textColourId, white (alpha::label));
     label.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (label);
-
-    parameter.addListener (this);
-    latest = parameter.getValue();
-    select (indexFromNormalised (latest.load()), false);
 }
 
 NewspeechSegment::~NewspeechSegment()
 {
-    parameter.removeListener (this);
+    if (parameter != nullptr) parameter->removeListener (this);
 }
 
 int NewspeechSegment::indexFromNormalised (float v) const noexcept
 {
-    return juce::jlimit (0, buttons.size() - 1, juce::roundToInt (parameter.convertFrom0to1 (v)));
+    if (parameter == nullptr) return current;
+    return juce::jlimit (0, buttons.size() - 1, juce::roundToInt (parameter->convertFrom0to1 (v)));
 }
 
 int NewspeechSegment::preferredWidth() const
@@ -92,9 +103,16 @@ void NewspeechSegment::select (int index, bool notifyHost)
     }
     if (notifyHost)
     {
-        parameter.beginChangeGesture();
-        parameter.setValueNotifyingHost (parameter.convertTo0to1 ((float) current));
-        parameter.endChangeGesture();
+        if (parameter != nullptr)
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) current));
+            parameter->endChangeGesture();
+        }
+        else if (onChange)
+        {
+            onChange (current);
+        }
     }
 }
 

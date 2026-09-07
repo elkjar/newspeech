@@ -6,15 +6,34 @@ using namespace newspeech::colors;
 
 NewspeechToggle::NewspeechToggle (juce::RangedAudioParameter& param,
                                   const juce::String& displayLabel)
-    : parameter (param)
+    : parameter (&param)
+{
+    build (displayLabel);
+    button.setToggleState (parameter->getValue() >= 0.5f, juce::dontSendNotification);
+    parameter->addListener (this);
+    latest = parameter->getValue();
+}
+
+NewspeechToggle::NewspeechToggle (const juce::String& displayLabel)
+{
+    build (displayLabel);
+}
+
+void NewspeechToggle::build (const juce::String& displayLabel)
 {
     button.setClickingTogglesState (true);
-    button.setToggleState (parameter.getValue() >= 0.5f, juce::dontSendNotification);
     button.onClick = [this]
     {
-        parameter.beginChangeGesture();
-        parameter.setValueNotifyingHost (button.getToggleState() ? 1.0f : 0.0f);
-        parameter.endChangeGesture();
+        if (parameter != nullptr)
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (button.getToggleState() ? 1.0f : 0.0f);
+            parameter->endChangeGesture();
+        }
+        else if (onChange)
+        {
+            onChange (button.getToggleState());
+        }
     };
     addAndMakeVisible (button);
 
@@ -24,14 +43,11 @@ NewspeechToggle::NewspeechToggle (juce::RangedAudioParameter& param,
     label.setColour (juce::Label::textColourId, white (alpha::label));
     label.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (label);
-
-    parameter.addListener (this);
-    latest = parameter.getValue();
 }
 
 NewspeechToggle::~NewspeechToggle()
 {
-    parameter.removeListener (this);
+    if (parameter != nullptr) parameter->removeListener (this);
 }
 
 void NewspeechToggle::resized()

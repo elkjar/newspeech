@@ -11,7 +11,13 @@ class NewspeechToggle : public juce::Component,
 {
 public:
     NewspeechToggle (juce::RangedAudioParameter& param, const juce::String& displayLabel);
+    // Free toggle (no parameter): owner reads isOn() / gets onChange.
+    explicit NewspeechToggle (const juce::String& displayLabel);
     ~NewspeechToggle() override;
+
+    std::function<void (bool)> onChange;
+    bool isOn() const noexcept { return button.getToggleState(); }
+    void setOn (bool on) { button.setToggleState (on, juce::dontSendNotification); }
 
     void resized() override;
 
@@ -20,7 +26,9 @@ private:
     void parameterGestureChanged (int, bool) override {}
     void handleAsyncUpdate() override;
 
-    juce::RangedAudioParameter& parameter;
+    void build (const juce::String& displayLabel);
+
+    juce::RangedAudioParameter* parameter = nullptr;   // null for a free toggle
     juce::ToggleButton button;
     juce::Label label;
     std::atomic<float> latest { 0.0f };

@@ -15,7 +15,12 @@ public:
     // `names` are the button captions; count must match the parameter's steps.
     NewspeechSegment (juce::RangedAudioParameter& param, const juce::String& displayLabel,
                       const juce::StringArray& names);
+    // Free segment (no parameter): the owner reads selectedIndex() / gets onChange.
+    NewspeechSegment (const juce::String& displayLabel, const juce::StringArray& names);
     ~NewspeechSegment() override;
+
+    std::function<void (int)> onChange;                 // free segments: user picked an index
+    void setSelectedIndex (int index) { select (index, false); }
 
     int  preferredWidth() const;
     int  selectedIndex() const noexcept { return current; }
@@ -34,7 +39,9 @@ private:
     void select (int index, bool notifyHost);
     int  indexFromNormalised (float v) const noexcept;
 
-    juce::RangedAudioParameter& parameter;
+    void build (const juce::String& displayLabel, const juce::StringArray& names);
+
+    juce::RangedAudioParameter* parameter = nullptr;   // null for a free segment
     juce::OwnedArray<juce::TextButton> buttons;
     juce::Label label;
     int current = 0;
