@@ -61,6 +61,33 @@
   }
   .cta:hover { background: rgba(255, 255, 255, 0.08); }
   .cta.ghost { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.7); }
+  /* download gate: an email for a free plugin. the email input and the cta
+     share one row and one height; the label above says what the trade is. */
+  .gate { margin-top: 26px; }
+  .gate .hp { display: none; }
+  .gate-label { display: block; font-size: 11px; letter-spacing: 0.06em; opacity: 0.5; margin-bottom: 10px; }
+  .gate-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+  .gate-row input[type="email"] {
+    flex: 1 1 200px;
+    min-width: 0;
+    max-width: 300px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.04em;
+    padding: 16px 14px;
+    outline: none;
+  }
+  .gate-row input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
+  .gate-row input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
+  .gate-row .cta { margin-top: 0; cursor: pointer; background: none; font-family: inherit; }
+  .gate-row .cta:disabled { opacity: 0.4; cursor: default; }
+  .gate-msg { display: block; margin-top: 12px; font-size: 11px; letter-spacing: 0.06em; opacity: 0.6; }
+  .gate-msg.err { opacity: 0.8; }
+  .plugin .copy .gate .cta { margin-top: 0; }
   .aux { font-size: 11px; letter-spacing: 0.06em; opacity: 0.5; }
   .aux a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.3); }
   .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
@@ -186,7 +213,16 @@
     <span class="badge">v1.0.0 · free</span>
     <p>based on my "always on" modular synth bed of delay, grains, reverb and glitches. vibe is three stages in series: a tape loop that grabs and mangles the incoming audio, a tempo-synced repeat that dices to your session bpm, and a big plate reverb to smear whatever survives.</p>
     <p>put it on your master bus, probably.</p>
-    <a class="cta" href="/dl/vibe">download vibe for macos</a>
+    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" data-plugin="vibe">
+      <input type="hidden" name="form-name" value="plugin-download">
+      <input type="hidden" name="plugin" value="vibe">
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <label class="gate-label" for="gate-vibe">leave an email for the download and a note when new versions land</label>
+      <div class="gate-row">
+        <input id="gate-vibe" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+        <button type="submit" class="cta">download vibe for macos</button>
+      </div>
+    </form>
     <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/vibe" target="_blank" rel="noopener noreferrer">source</a></div>
   </div>
   <div class="shot">
@@ -203,7 +239,16 @@
     <span class="badge">v1.0.0 · free</span>
     <p>drive into a squelching filter, with a pll style micro-loop that grabs and repeats slices whenever the signal crosses a threshold. very tasteful. also features a distortion block that goes from gentle to basically square waves.</p>
     <p>enjoy on everything.</p>
-    <a class="cta" href="/dl/saturate">download saturate for macos</a>
+    <form class="gate" name="plugin-download" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field" data-plugin="saturate">
+      <input type="hidden" name="form-name" value="plugin-download">
+      <input type="hidden" name="plugin" value="saturate">
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <label class="gate-label" for="gate-saturate">leave an email for the download and a note when new versions land</label>
+      <div class="gate-row">
+        <input id="gate-saturate" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+        <button type="submit" class="cta">download saturate for macos</button>
+      </div>
+    </form>
     <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/saturate" target="_blank" rel="noopener noreferrer">source</a></div>
   </div>
   <div class="shot">
@@ -230,5 +275,52 @@
   </div>
 </section>
 
+<script>
+// ---- download gate: AJAX post to Netlify Forms, then start the download ----
+// same mechanics as the homepage subscribe box: the markup carries
+// data-netlify + form-name so Netlify registers "plugin-download" at build
+// time; at runtime we POST the urlencoded pairs to "/" and, on 200, send the
+// browser to /dl/<plugin> (a 302 to the release zip — the page stays put).
+// the email is remembered so the second plugin doesn't ask again. only works
+// on the deployed site — local POSTs 404 and land in the error branch.
+(() => {
+  const KEY = "newspeech.email";
+  let remembered = "";
+  try { remembered = localStorage.getItem(KEY) || ""; } catch (_) {}
+  document.querySelectorAll("form.gate").forEach((form) => {
+    const input = form.querySelector('input[type="email"]');
+    if (remembered && !input.value) input.value = remembered;
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector("button");
+      const plugin = form.dataset.plugin;
+      btn.disabled = true;
+      const old = form.querySelector(".gate-msg");
+      if (old) old.remove();
+      const msg = document.createElement("span");
+      msg.className = "gate-msg";
+      try {
+        const res = await fetch("/", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams(new FormData(form)).toString(),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        try { localStorage.setItem(KEY, input.value.trim()); } catch (_) {}
+        document.querySelectorAll('form.gate input[type="email"]').forEach((i) => { if (!i.value) i.value = input.value; });
+        msg.textContent = "signal received — your download is starting";
+        form.appendChild(msg);
+        window.location.href = "/dl/" + plugin;
+        setTimeout(() => { btn.disabled = false; }, 4000);
+      } catch (err) {
+        btn.disabled = false;
+        msg.classList.add("err");
+        msg.textContent = "transmission failed — try again";
+        form.appendChild(msg);
+      }
+    });
+  });
+})();
+</script>
 </body>
 </html>
