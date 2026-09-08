@@ -20,12 +20,22 @@ fn main() {
         let _ = window.set_size(tauri::LogicalSize::new(1920.0, 1080.0));
         sequence_lib::lock_content_aspect(&window, 16.0, 9.0);
       }
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
+      // Log always — an unattended box needs a trail. Dev: stdout (the
+      // terminal). Release: ~/Library/Logs/com.newspeechsound.broadcast/
+      // broadcast.log, rotated at 8 MB, old files kept.
+      {
+        use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
+        let mut b = tauri_plugin_log::Builder::default()
+          .level(log::LevelFilter::Info)
+          .max_file_size(8 * 1024 * 1024)
+          .rotation_strategy(RotationStrategy::KeepAll)
+          .clear_targets();
+        b = if cfg!(debug_assertions) {
+          b.target(Target::new(TargetKind::Stdout))
+        } else {
+          b.target(Target::new(TargetKind::LogDir { file_name: Some("broadcast".into()) }))
+        };
+        app.handle().plugin(b.build())?;
       }
       sequence_lib::spawn_level_emitter(app.handle().clone());
       Ok(())
