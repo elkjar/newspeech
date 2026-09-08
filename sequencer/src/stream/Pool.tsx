@@ -206,6 +206,7 @@ export function Pool() {
         />
       )}
       <div
+        data-pool-caption
         className="absolute bottom-3 left-1/2 -translate-x-1/2 font-mono text-[9px] uppercase tracking-[0.25em] opacity-50 text-white pointer-events-none select-none whitespace-nowrap"
         style={{ textShadow: '0 0 4px rgba(0,0,0,0.8)' }}
       >

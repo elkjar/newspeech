@@ -11,6 +11,8 @@
 //   - underneath it all a slow drift so even a still or a static clip moves.
 // Styling is applied straight to the wrapper element (no React re-render on
 // the audio path). The bank-swap count-in glitch (GlitchWrap) stays nested.
+// Intensities halved 2026-09-08 after a first look (Chris: "2x too intense").
+// The pool's filename caption is hidden here — the desktop carries the text.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -20,11 +22,13 @@ import { useTransitionCountIn } from '../../stream/useTransitionCountIn';
 
 const DRIFT_KEYFRAMES = `@keyframes ns-visual-drift {
   0%   { transform: scale(1.0) translate(0%, 0%); }
-  50%  { transform: scale(1.07) translate(1.2%, -0.8%); }
-  100% { transform: scale(1.02) translate(-0.8%, 0.6%); }
+  50%  { transform: scale(1.035) translate(0.6%, -0.4%); }
+  100% { transform: scale(1.01) translate(-0.4%, 0.3%); }
 }`;
 
 const KICKISH = /kick|\bbd\b|909|808|sub|boom/i;
+
+const HIDE_CAPTION = `.ns-reactive-visual [data-pool-caption] { display: none; }`;
 
 export function ReactiveVisual({ children }: { children: ReactNode }) {
   const outer = useRef<HTMLDivElement>(null);
@@ -36,7 +40,7 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
     if (document.getElementById('ns-visual-drift')) return;
     const st = document.createElement('style');
     st.id = 'ns-visual-drift';
-    st.textContent = DRIFT_KEYFRAMES;
+    st.textContent = DRIFT_KEYFRAMES + '\n' + HIDE_CAPTION;
     document.head.appendChild(st);
   }, []);
 
@@ -54,14 +58,14 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
       const el = inner.current;
       if (!el) return;
       // Breathe: a touch brighter and harder on louder passages.
-      const b = 0.88 + 0.45 * Math.min(1, env * 1.6);
-      const c = 1 + 0.35 * Math.min(1, env * 1.4);
+      const b = 0.94 + 0.22 * Math.min(1, env * 1.6);
+      const c = 1 + 0.18 * Math.min(1, env * 1.4);
       el.style.filter = `brightness(${b.toFixed(3)}) contrast(${c.toFixed(3)})`;
       // Onset: a jump well above the running average.
       const now = performance.now();
       if (lvl > 0.06 && lvl > avg * 1.9 && now - lastOnset > 140) {
         lastOnset = now;
-        const t = Math.max(0.25, Math.min(1, (lvl - avg) * 2.5));
+        const t = Math.max(0.12, Math.min(0.5, (lvl - avg) * 1.25));
         const style = GLITCH_STYLES[Math.floor(Math.random() * GLITCH_STYLES.length)](t);
         outer.current?.animate(style.keyframes, { duration: style.duration, easing: style.easing });
       }
@@ -92,7 +96,7 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
       el.animate(
         [
           { transform: 'scale(1)', offset: 0 },
-          { transform: `scale(${(1 + 0.014 * k).toFixed(4)})`, offset: 0.25 },
+          { transform: `scale(${(1 + 0.007 * k).toFixed(4)})`, offset: 0.25 },
           { transform: 'scale(1)', offset: 1 },
         ],
         { duration: 110, easing: 'ease-out', composite: 'add' },
@@ -116,7 +120,7 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div ref={outer} className="absolute inset-0 overflow-hidden" style={{ background: '#050505' }}>
+    <div ref={outer} className="absolute inset-0 overflow-hidden ns-reactive-visual" style={{ background: '#050505' }}>
       <div
         ref={inner}
         className="absolute inset-0"
