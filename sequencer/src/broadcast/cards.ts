@@ -20,7 +20,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { useSequencerStore } from '../state/store';
 import { useBroadcast } from './setlist';
-import { siblingFolders } from './gap';
+import { siblingFolders, useGap } from './gap';
 import { fmtUptime } from './os/windows/NowWindow';
 import { useSettings } from './settings';
 
@@ -177,7 +177,9 @@ function scheduleNext(first: boolean): void {
   timer = window.setTimeout(() => {
     timer = null;
     const { enabled, active } = useCards.getState();
-    if (enabled && !active && useBroadcast.getState().status === 'running') {
+    // Only while actually on air (not in standby / a gap / signed off) — a
+    // card fired during standby once, invisible under the collapse.
+    if (enabled && !active && useBroadcast.getState().status === 'running' && useGap.getState().phase === 'none') {
       showCard();
       timer = window.setTimeout(() => {
         timer = null;
