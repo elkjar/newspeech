@@ -44,6 +44,9 @@ export interface BroadcastState {
   // File-level FX (master chain, reverb, delay, tape, glitch, saturation)
   // per staged performance slot — applied when that slot becomes current.
   slotFx: Record<number, SeqGlobalFx | null>;
+  // `--first <name>`: open the set with this song (name match, case-insensitive,
+  // prefix ok). Only the first pick — the rest is the pick mode.
+  firstPick: string | null;
   setMode: (mode: PickMode) => void;
   setDevSongBars: (bars: number | null) => void;
 }
@@ -62,6 +65,7 @@ export const useBroadcast = create<BroadcastState>((set) => ({
   startedAt: null,
   setPaths: [],
   slotFx: {},
+  firstPick: null,
   setMode: (mode) => set({ mode }),
   setDevSongBars: (devSongBars) => set({ devSongBars }),
 }));
@@ -265,7 +269,19 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
   let first: number | null = null;
   let read: Awaited<ReturnType<typeof readSetSong>> = null;
   for (let attempt = 0; attempt < 16 && read === null; attempt++) {
-    first = pickIndex();
+    const want = useBroadcast.getState().firstPick;
+    if (attempt === 0 && want) {
+      const w = want.toLowerCase();
+      const es = useBroadcast.getState().entries;
+      const hit = es.findIndex((e) => e.name.toLowerCase() === w);
+      first = hit >= 0 ? hit : es.findIndex((e) => e.name.toLowerCase().startsWith(w));
+      if (first < 0) {
+        console.warn(`[broadcast] --first "${want}" not in set; picking at random`);
+        first = pickIndex();
+      }
+    } else {
+      first = pickIndex();
+    }
     if (first === null) break;
     read = await readSetSong(useBroadcast.getState().entries[first]);
     if (!read) {

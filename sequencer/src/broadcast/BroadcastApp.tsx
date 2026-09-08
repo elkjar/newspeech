@@ -81,12 +81,14 @@ interface LaunchArgs {
   autostart: boolean;
   // Sign off after N songs (a capture of known length). null = forever.
   songs: number | null;
+  // Open with this song (name), then the pick mode takes over.
+  first: string | null;
   // Dev: force every song to N bars.
   songBars: number | null;
 }
 
 function parseLaunchArgs(argv: string[]): LaunchArgs {
-  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null, autostart: false, songs: null };
+  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null, autostart: false, songs: null, first: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i] ?? null;
@@ -101,6 +103,8 @@ function parseLaunchArgs(argv: string[]): LaunchArgs {
     else if (a === '--song-bars') out.songBars = Number(next()) || null;
     else if (a.startsWith('--song-bars=')) out.songBars = Number(a.slice(12)) || null;
     else if (a === '--autostart' || a === '--go') out.autostart = true;
+    else if (a === '--first') out.first = next() ?? null;
+    else if (a.startsWith('--first=')) out.first = a.slice(8) || null;
     else if (a === '--songs') out.songs = Number(next()) || null;
     else if (a.startsWith('--songs=')) out.songs = Number(a.slice(8)) || null;
     else if (a === '--gap-every') out.gapEvery = Number(next()) || null;
@@ -126,6 +130,7 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
     if (args.device) presetNativeDeviceName(args.device);
     useBroadcast.getState().setDevSongBars(args.songBars);
     useGap.setState({ devEvery: args.gapEvery, songLimit: args.songs });
+    useBroadcast.setState({ firstPick: args.first });
     startSamplesBoot();
   }, [args]);
   // Interstitials + idents: the conductor owns occasional song ends; cards
