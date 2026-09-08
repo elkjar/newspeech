@@ -21,7 +21,10 @@ import { rescanAllKits } from '../../instruments/userSamplesDir';
 const ROWS = 14;
 const ROW_H = 18;
 const W = 620;
-const H_STANDBY = 22 + 14 + 16 * ROW_H + 14 + 2;
+// Standby box: header + the config block + the rule. The block is sized to
+// its rows (8 × 28 + the title, the facts, the GO row) so nothing spills.
+const CONFIG_H = 384;
+const H_STANDBY = 22 + CONFIG_H + 2;
 
 async function pickFolder(title: string): Promise<string | null> {
   if (!isTauri()) return null;
@@ -206,7 +209,7 @@ function StandbyConfig({ ready, blink }: { ready: boolean; blink: boolean }) {
     (b.status === 'loading' ? 'loading the set…' : b.status === 'error' ? b.error ?? 'error' : ready ? 'ready · GO or space goes on air' : b.entries.length ? 'preparing…' : 'pick a set folder');
 
   return (
-    <div className="flex flex-col px-5 pt-4 text-[10px]" style={{ height: 16 * ROW_H + 14 }}>
+    <div className="flex flex-col px-5 pt-4 text-[10px] overflow-hidden" style={{ height: CONFIG_H }}>
       <div className="flex items-baseline gap-4">
         <div>
           <div className="text-[8px] tracking-[0.18em] uppercase text-white/45">NEWSPEECH // BROADCAST</div>

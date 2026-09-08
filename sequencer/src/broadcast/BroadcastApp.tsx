@@ -34,7 +34,7 @@ import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
 import { installGapConductor, scanInterstitials, useGap } from './gap';
 import { installCards, scanCards } from './cards';
 import { installStationBoot, stationGo, useStationBoot } from './boot';
-import { applyLaunchArgs, useSettings } from './settings';
+import { mergeLaunchArgs, rememberLaunchArgs, useSettings } from './settings';
 import { startGapPhase } from './gap';
 import { Desktop } from './os/Desktop';
 import { installStreamState } from './os/streamState';
@@ -123,7 +123,8 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
 
   // Flags over the remembered settings — a bare double-click launch has no
   // argv and resumes last time's setup; flags override and are remembered.
-  const cfg = useMemo(() => applyLaunchArgs(args), [args]);
+  const cfg = useMemo(() => mergeLaunchArgs(args), [args]);
+  useEffect(() => rememberLaunchArgs(args), [args]);
   useEffect(() => installStationBoot({ set: cfg.setPaths, samples: cfg.samplesDir, device: cfg.device, autostart: cfg.autostart }), [cfg]);
   useEffect(() => {
     if (NATIVE) document.body.classList.add('tauri-native');

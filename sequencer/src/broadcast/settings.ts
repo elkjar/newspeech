@@ -77,16 +77,16 @@ export const useSettings = create<SettingsState>((set, get) => ({
   },
 }));
 
-// Launch flags (parsed by BroadcastApp) laid over the remembered settings.
-// Anything given on the command line wins and is remembered.
-export function applyLaunchArgs(args: {
+export interface LaunchFlags {
   set: string[];
   samples: string | null;
   device: string | null;
   songs: number | null;
   first: string | null;
   autostart: boolean;
-}): BroadcastSettings {
+}
+
+function flagsPatch(args: LaunchFlags): Partial<BroadcastSettings> {
   const patch: Partial<BroadcastSettings> = {};
   if (args.set.length) patch.setPaths = args.set;
   if (args.samples) patch.samplesDir = args.samples;
@@ -94,7 +94,11 @@ export function applyLaunchArgs(args: {
   if (args.songs !== null) patch.songs = args.songs;
   if (args.first) patch.first = args.first;
   if (args.autostart) patch.autostart = true;
-  if (Object.keys(patch).length) useSettings.getState().update(patch);
+  return patch;
+}
+
+// Launch flags laid over the remembered settings — pure (safe during render).
+export function mergeLaunchArgs(args: LaunchFlags): BroadcastSettings {
   const s = useSettings.getState();
   return {
     setPaths: s.setPaths,
@@ -105,7 +109,15 @@ export function applyLaunchArgs(args: {
     songs: s.songs,
     first: s.first,
     autostart: s.autostart,
+    ...flagsPatch(args),
   };
+}
+
+// Anything given on the command line becomes the remembered value. Call from
+// an effect, not during render.
+export function rememberLaunchArgs(args: LaunchFlags): void {
+  const patch = flagsPatch(args);
+  if (Object.keys(patch).length) useSettings.getState().update(patch);
 }
 
 // Short display form of a path: last two segments.
