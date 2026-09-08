@@ -81,7 +81,7 @@ export function Desktop() {
           behind one item so the bar stays quiet on a stream. */}
       <div
         className="absolute top-0 inset-x-0 flex items-center gap-5 px-4 text-[9px] tracking-[0.16em] uppercase"
-        style={{ height: 28, background: 'rgba(5,5,5,0.85)', borderBottom: '1px solid rgba(255,255,255,0.22)', zIndex: 10000 }}
+        style={{ height: 28, background: 'rgba(5,5,5,0.85)', zIndex: 10000 }}
       >
         <span className="font-sans text-[12px] tracking-[0.22em] normal-case">NEWSPEECH // BROADCAST</span>
         <span className="ml-auto flex items-center gap-5 text-white/45">
