@@ -100,20 +100,19 @@ export function installStationBoot(args: BootArgs): () => void {
   if (installed) return () => {};
   installed = true;
   const unsubs: Array<() => void> = [];
-  useStationBoot.setState({
-    lines: [],
-    startedAt: performance.now(),
-    phase: 'standby',
-    goAt: 0,
-    autostart: args.autostart,
-    ready: false,
-  });
+  const fresh = useStationBoot.getState().lines.length === 0;
+  useStationBoot.setState({ phase: 'standby', goAt: 0, autostart: args.autostart, ready: false });
+  if (fresh) useStationBoot.setState({ startedAt: performance.now() });
   startGapPhase('boot', 1);
 
-  bootLog(`NEWSPEECH // BROADCAST v${__BROADCAST_VERSION__}`);
-  bootLog('station initializing');
-  if (args.device) bootLog(`device requested: ${args.device}`);
-  if (args.samples) bootLog(`samples: ${args.samples.split('/').filter(Boolean).slice(-2).join('/')}`);
+  // Header once — a re-run of the install effect (dev double mount) keeps
+  // the lines already logged rather than repeating them.
+  if (fresh) {
+    bootLog(`NEWSPEECH // BROADCAST v${__BROADCAST_VERSION__}`);
+    bootLog('station initializing');
+    if (args.device) bootLog(`device requested: ${args.device}`);
+    if (args.samples) bootLog(`samples: ${args.samples.split('/').filter(Boolean).slice(-2).join('/')}`);
+  }
   if (args.set.length === 0) {
     // Nothing to come on air with: show the desktop (and its "no set" window)
     // after a moment instead of holding a boot screen forever.
@@ -133,9 +132,22 @@ export function installStationBoot(args: BootArgs): () => void {
       engineLogged = true;
       bootLog('engine: ready');
       if (isTauri()) {
-        void invoke<{ channels: number; sample_rate: number }>('audio_status')
-          .then((st) => bootLog(`audio: ${st.channels} ch · ${(st.sample_rate / 1000).toFixed(1)} kHz`))
-          .catch(() => bootLog('audio: device not open yet'));
+        // The device opens a beat after the engine reports ready — poll until
+        // it has a real rate rather than logging zeros.
+        let tries = 0;
+        const probe = () => {
+          void invoke<{ channels: number; sample_rate: number }>('audio_status')
+            .then((st) => {
+              if (st.sample_rate > 0) bootLog(`audio: ${st.channels} ch · ${(st.sample_rate / 1000).toFixed(1)} kHz`);
+              else if (++tries < 40) window.setTimeout(probe, 250);
+              else bootLog('audio: device not open');
+            })
+            .catch(() => {
+              if (++tries < 40) window.setTimeout(probe, 250);
+              else bootLog('audio: device not open');
+            });
+        };
+        probe();
       }
     }
     // First downbeat → on air → reboot the OS.
