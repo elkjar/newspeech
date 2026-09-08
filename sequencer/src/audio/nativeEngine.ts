@@ -221,10 +221,14 @@ export async function initNativeAudio(): Promise<NativeOpenedInfo | null> {
     devices.find((d) => d.name === persisted.deviceName) ??
     devices.find((d) => d.isDefault) ??
     devices[0];
+  // A persisted MONO count is never a choice — it's a degraded open that got
+  // remembered (a BT headset held in HFP reports 1 ch; BROADCAST's fresh
+  // storage learned 1 that way and stayed mono for every run after). Floor
+  // at stereo whenever the device can do it; multi-out counts (≥2) are kept.
   const channels =
-    persisted.channels && persisted.channels <= device.maxOutputChannels
+    persisted.channels && persisted.channels >= 2 && persisted.channels <= device.maxOutputChannels
       ? persisted.channels
-      : device.maxOutputChannels;
+      : Math.min(2, device.maxOutputChannels);
   // Sample rate always follows the device's native default — never the
   // persisted/previous value. Catches the case where a prior session
   // saved 44.1 but the actual device runs at 48 (or vice versa for an
