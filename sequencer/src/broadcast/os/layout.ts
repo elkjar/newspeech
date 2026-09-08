@@ -26,22 +26,25 @@ export const WINDOW_TITLES: Record<WindowId, string> = {
 
 export const WINDOW_ORDER: WindowId[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys'];
 
-// Designed on 1920×1080 under a 28px menubar.
+// Chris's arrangement, laid out by hand on a 1512×850 screen (2026-09-08)
+// under the 28px menubar. Scaled to whatever screen the runner boots on.
+const DESIGN_W = 1512;
+const DESIGN_H = 850;
 const DEFAULT: Record<WindowId, WinRect> = {
-  ghost: { x: 24, y: 52, w: 560, h: 964, open: true, z: 7 },
-  visual: { x: 610, y: 52, w: 900, h: 506, open: true, z: 1 },
-  set: { x: 1536, y: 52, w: 360, h: 506, open: true, z: 2 },
-  now: { x: 610, y: 584, w: 440, h: 250, open: true, z: 3 },
-  banks: { x: 1076, y: 584, w: 434, h: 250, open: true, z: 4 },
-  shape: { x: 1536, y: 584, w: 360, h: 250, open: true, z: 5 },
-  sys: { x: 610, y: 860, w: 1286, h: 156, open: true, z: 6 },
+  ghost: { x: 53, y: 218, w: 411, h: 592, open: true, z: 1 },
+  visual: { x: 547, y: 72, w: 900, h: 520, open: true, z: 2 },
+  now: { x: 1298, y: 56, w: 200, h: 284, open: true, z: 3 },
+  set: { x: 447, y: 516, w: 298, h: 172, open: true, z: 4 },
+  sys: { x: 391, y: 681, w: 483, h: 105, open: true, z: 5 },
+  banks: { x: 1131, y: 654, w: 332, h: 137, open: true, z: 6 },
+  shape: { x: 1286, y: 643, w: 200, h: 124, open: true, z: 7 },
 };
 
 const LS_KEY = 'broadcast.layout.v1';
 
-// Default layout scaled from the 1920×1080 design to this screen.
+// Default layout scaled from the design screen to this one.
 function scaledDefault(): Record<WindowId, WinRect> {
-  const k = Math.min(1, window.innerWidth / 1920, window.innerHeight / 1080);
+  const k = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
   const out = {} as Record<WindowId, WinRect>;
   for (const id of Object.keys(DEFAULT) as WindowId[]) {
     const r = DEFAULT[id];
