@@ -61,7 +61,7 @@ export function Desktop() {
           bleed, with a breath of grain over it so the windows sit in it */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{ backgroundImage: `url(${desktopBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+        style={{ backgroundImage: `url(${desktopBg})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'grayscale(1)' }}
       />
       <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.05, mixBlendMode: 'screen' }}>
         <filter id="ns-grain">
