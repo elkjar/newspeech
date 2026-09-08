@@ -37,6 +37,8 @@ fn main() {
       // drains it into the set loader.
       sequence_lib::buffer_opened_files(app_handle, &event);
       if let tauri::RunEvent::Exit = &event {
+        // Fade to silence before the stream dies — no click on quit.
+        sequence_lib::audio::audio_exit_cleanup();
         sequence_lib::midi_exit_cleanup(app_handle);
       }
     });

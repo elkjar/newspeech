@@ -589,6 +589,7 @@ pub fn run() {
       // external gear (e.g. the Mutant Brain) sustain forever. Same message as
       // the panic button.
       if let tauri::RunEvent::Exit = &event {
+        audio::audio_exit_cleanup();
         midi_exit_cleanup(app_handle);
       }
     });

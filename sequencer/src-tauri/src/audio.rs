@@ -40,6 +40,10 @@ use crate::reverb::ReverbBus;
 // nominally 0..1; clipped output can exceed but the visualizer clamps.
 
 static AUDIO_OUTPUT_LEVEL: AtomicU32 = AtomicU32::new(0);
+// Exit fade: armed by audio_exit_cleanup() on app quit; the callback ramps
+// its output to silence over ~50 ms so the stream can be closed without the
+// DAC seeing a truncated block (the click on Cmd+Q, BROADCAST 2026-09-08).
+static EXIT_FADE_ARMED: AtomicBool = AtomicBool::new(false);
 
 pub fn audio_output_level() -> f32 {
   f32::from_bits(AUDIO_OUTPUT_LEVEL.load(Ordering::Relaxed))
@@ -6067,6 +6071,11 @@ fn build_stream(
   // JS re-seeds its extrapolator when it sees the counter jump backward.
   ENGINE_FRAMES.store(0, Ordering::Release);
 
+  // Exit fade state (see EXIT_FADE_ARMED): per interleaved sample, ~50 ms
+  // at stereo.
+  let mut exit_gain: f32 = 1.0;
+  let exit_step: f32 = 1.0 / (0.05 * sample_rate as f32 * 2.0);
+
   let cb_state = state.clone();
   let stream = device
     .build_output_stream(
@@ -8913,6 +8922,14 @@ fn build_stream(
           }
         }
 
+        // Quitting: ramp to silence so the stream closes on nothing.
+        if EXIT_FADE_ARMED.load(Ordering::Relaxed) {
+          for s in buf.iter_mut() {
+            *s *= exit_gain;
+            exit_gain = (exit_gain - exit_step).max(0.0);
+          }
+        }
+
         // Block peak for the visualizer level meter. Computed AFTER all
         // FX + master processing so the meter reflects what the audience
         // actually hears. abs() of all samples in the interleaved buffer
@@ -9058,6 +9075,15 @@ pub fn audio_open_device(
 #[tauri::command]
 pub fn audio_close_device() -> Result<(), String> {
   engine().close()
+}
+
+// App quit: fade the output to silence, then close the stream, so the last
+// thing the device plays is a ramp and not a chopped block. Synchronous —
+// called from the RunEvent::Exit handler on the main thread; ~90 ms.
+pub fn audio_exit_cleanup() {
+  EXIT_FADE_ARMED.store(true, Ordering::Relaxed);
+  std::thread::sleep(std::time::Duration::from_millis(90));
+  let _ = engine().close();
 }
 
 #[derive(Debug, Serialize)]
