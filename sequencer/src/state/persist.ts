@@ -547,6 +547,10 @@ export interface SeqGlobalFx {
   delay: DelayParams;
   saturation: SaturationParams;
   master: MasterParams;
+  // NOISE unit knobs, raw — applyNoiseSettings hydrates + applies in one go
+  // (same call importProject makes). The loop unit is deliberately left out:
+  // its settings without its capture mean nothing (Chris 2026-09-08).
+  noise: unknown;
 }
 
 export function parseGlobalFxFromSeq(json: string): SeqGlobalFx | null {
@@ -564,6 +568,7 @@ export function parseGlobalFxFromSeq(json: string): SeqGlobalFx | null {
     delay: hydrateDelay(data.delay),
     saturation: hydrateSaturation(data.saturation),
     master: hydrateMaster(data.master),
+    noise: data.noise,
   };
 }
 

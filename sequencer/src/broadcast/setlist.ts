@@ -13,6 +13,7 @@ import { useSequencerStore, DEFAULT_PERFORMANCE } from '../state/store';
 import { setNextSongProvider, setSongLengthProvider } from '../ghost/ghost';
 import { expandSetPaths, readSeqEntry, songVoiceIds, type SetEntry } from '../state/setLoader';
 import type { SeqGlobalFx } from '../state/persist';
+import { applyNoiseSettings } from '../audio/noise';
 import { samplePlayer } from '../audio/samplePlayer';
 import { togglePlayback } from '../audio/transport';
 
@@ -121,6 +122,9 @@ function applyGlobalFx(fx: SeqGlobalFx | null | undefined): void {
   s.setTape(fx.tape);
   s.setGlitch(fx.glitch);
   s.setSaturation(fx.saturation);
+  // NOISE unit: knobs + level restore, so a bed saved with the unit open
+  // comes back sounding — the same restore a .seq open does in Sequence.
+  applyNoiseSettings(fx.noise);
 }
 
 // Preload a song's voices into the native registry ahead of its swap so its
