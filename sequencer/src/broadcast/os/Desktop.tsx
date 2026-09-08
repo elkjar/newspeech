@@ -107,6 +107,12 @@ export function Desktop() {
   const [menu, setMenu] = useState(false);
   const hidden = useCollapse();
   const cardUp = useCards((s) => s.active !== null);
+  // An ident always comes to the front — its saved z is whatever it was
+  // when last dragged, and a raised visual window otherwise buries it.
+  const raise = useLayout((s) => s.raise);
+  useEffect(() => {
+    if (cardUp) raise('card');
+  }, [cardUp, raise]);
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
