@@ -6,6 +6,7 @@ import { useStreamState, type Snapshot } from './streamState';
 import { forceSignalEvent } from './signal';
 import { demoGap } from '../gap';
 import { useCards, showCard } from '../cards';
+import { demoBoot } from '../boot';
 
 const NAMES = [
   'rdll', 'breaks', 'noisy-ns', 'enrichment-time', 'newspeech-2026-05-19-0119', 'scene-2-test',
@@ -19,6 +20,8 @@ export function seedDemo(): void {
   // window.__nsGap('hold' | 'reboot' | 'none'), window.__nsCard()
   (window as unknown as { __nsGap: typeof demoGap }).__nsGap = demoGap;
   (window as unknown as { __nsCard: () => void }).__nsCard = () => showCard();
+  // window.__nsBoot() — replay the station-initializing sequence.
+  (window as unknown as { __nsBoot: () => void }).__nsBoot = demoBoot;
   useCards.setState({
     cards: [
       { path: '/demo/CARDS/ident-receiving.txt', kind: 'ident', weight: 1, url: null, headline: 'You are receiving', body: ['NEWSPEECH // BROADCAST', 'uptime {uptime} · {songs} songs in rotation'] },

@@ -261,7 +261,8 @@ export function sampleSignal(now: number): SignalFrame {
   // the first quarter, then sits) and drains back as it reboots. Chris:
   // "have the OS fully collapse into noise … and then come back together."
   const g = useGap.getState();
-  const gapLevel = g.phase === 'hold' ? clamp01(g.progress / 0.25) : g.phase === 'reboot' ? clamp01(1 - g.progress) ** 1.4 : 0;
+  const gapLevel =
+    g.phase === 'hold' ? clamp01(g.progress / 0.25) : g.phase === 'boot' ? 0.7 : g.phase === 'reboot' ? clamp01(1 - g.progress) ** 1.4 : 0;
   gapNow = gapLevel;
 
   const quality = clamp01(baseNow - drop - endDrop - ciDrop - gapLevel * 0.85);

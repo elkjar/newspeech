@@ -22,7 +22,9 @@ import { togglePlayback } from '../audio/transport';
 import { useBroadcast } from './setlist';
 import { dirOf } from '../state/persist';
 
-export type GapPhase = 'none' | 'hold' | 'reboot';
+// `boot` = station initializing at launch (boot.ts) — same collapse as a
+// hold, then the same reboot when the first song's transport starts.
+export type GapPhase = 'none' | 'hold' | 'reboot' | 'boot';
 
 export interface GapState {
   phase: GapPhase;
@@ -125,6 +127,7 @@ function tick(): void {
   if (g.phase === 'none') return;
   const p = Math.min(1, (performance.now() - g.startedAt) / g.duration);
   useGap.setState({ progress: p });
+  if (g.phase === 'boot') return;
   if (g.phase === 'reboot' && p >= 1) {
     useGap.setState({ phase: 'none', progress: 0 });
     if (ticker !== null) {
@@ -213,18 +216,20 @@ export function installGapConductor(): () => void {
   };
 }
 
+// Enter a phase now (boot.ts uses this for boot → reboot).
+export function startGapPhase(phase: GapPhase, secs: number): void {
+  useGap.setState({ phase, progress: 0, startedAt: performance.now(), duration: secs * 1000 });
+  if (phase !== 'none') startTicker();
+}
+
 // Demo / screenshots: fake a phase without the engine.
 export function demoGap(phase: GapPhase, secs = 60): void {
   useGap.setState({
-    phase,
-    progress: 0,
-    startedAt: performance.now(),
-    duration: secs * 1000,
     wav: '/demo/INTERSTITIALS/glitch-test.wav',
     nextIdx: 11,
     files: ['/demo/INTERSTITIALS/glitch-test.wav'],
   });
-  if (phase !== 'none') startTicker();
+  startGapPhase(phase, secs);
 }
 
 // Dev: force an interstitial at the next song end.

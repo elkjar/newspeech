@@ -33,6 +33,8 @@ import { togglePlayback, panicKill } from '../audio/transport';
 import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
 import { installGapConductor, scanInterstitials, useGap } from './gap';
 import { installCards, scanCards } from './cards';
+import { installStationBoot } from './boot';
+import { startGapPhase } from './gap';
 import { Desktop } from './os/Desktop';
 import { installStreamState } from './os/streamState';
 import { seedDemo } from './os/demo';
@@ -107,6 +109,7 @@ function parseLaunchArgs(argv: string[]): LaunchArgs {
 function BroadcastEngine({ args }: { args: LaunchArgs }) {
   const bootDone = useSequencerStore((s) => s.bootDone);
 
+  useEffect(() => installStationBoot(args), [args]);
   useEffect(() => {
     if (NATIVE) document.body.classList.add('tauri-native');
     return bootEngine({ initProject: false, controllers: false });
@@ -232,6 +235,9 @@ export function BroadcastApp() {
       seedDemo();
       return;
     }
+    // Collapse the desktop before the first paint settles — the station is
+    // initializing until the first downbeat (boot.ts takes it from here).
+    startGapPhase('boot', 1);
     void (async () => {
       let argv: string[] = [];
       if (NATIVE) {

@@ -14,6 +14,7 @@ import { setNextSongProvider, setSongLengthProvider } from '../ghost/ghost';
 import { expandSetPaths, readSeqEntry, songVoiceIds, type SetEntry } from '../state/setLoader';
 import type { SeqGlobalFx } from '../state/persist';
 import { applyNoiseSettings } from '../audio/noise';
+import { bootLog, stationBootGate } from './boot';
 import { samplePlayer } from '../audio/samplePlayer';
 import { togglePlayback } from '../audio/transport';
 
@@ -286,11 +287,21 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
   applyGlobalFx(read.fx);
   useBroadcast.setState((s) => ({ current: first, status: 'running', startedAt: Date.now(), slotFx: { ...s.slotFx, [slot]: read.fx } }));
   console.info(`[broadcast] set loaded: ${useBroadcast.getState().entries.length} song(s); first: ${firstEntry.name} (slot ${slot})`);
+  bootLog(`set: ${useBroadcast.getState().entries.length} songs · ${paths.map((p) => p.split('/').filter(Boolean).pop()).join(', ')}`);
+  bootLog(`mode: ${useBroadcast.getState().mode} · ghost: on`);
+  bootLog(`loading ${read.voices.length} voices for ${firstEntry.name}`);
   await preloadVoices(read.voices);
+  bootLog(`first: ${firstEntry.name}`);
   // Ghost drives everything in BROADCAST. Session-level flag — applySong
   // preserves it across every swap.
   useSequencerStore.getState().setSceneGraphEnabled(true);
   await prepareNext();
+  const nx = useBroadcast.getState();
+  if (nx.next !== null && nx.entries[nx.next]) bootLog(`staged: ${nx.entries[nx.next].name}`);
+  // Station initializing: don't start the first downbeat before the boot
+  // sequence has had its moment on screen.
+  await stationBootGate();
+  bootLog('transport: start');
   if (!useSequencerStore.getState().playing) await togglePlayback();
 }
 

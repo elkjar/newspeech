@@ -19,6 +19,7 @@ import { VisualWindow } from './windows/VisualWindow';
 import { SysWindow } from './windows/SysWindow';
 import { CardWindow } from './windows/CardWindow';
 import { NextPanel } from './NextPanel';
+import { BootPanel } from './BootPanel';
 import { useGap } from '../gap';
 import { useCards } from '../cards';
 import desktopBg from './assets/desktop-bg.png';
@@ -62,6 +63,7 @@ function useCollapse(): Set<Falls> {
         lastPhase = g.phase;
       }
       const next = new Set<Falls>();
+      if (g.phase === 'boot') for (const id of FALLERS) next.add(id);
       if (g.phase === 'hold') for (const id of FALLERS) if (g.progress >= order[id].fall) next.add(id);
       if (g.phase === 'reboot') for (const id of FALLERS) if (g.progress < order[id].rise) next.add(id);
       const key = [...next].sort().join(',');
@@ -212,6 +214,7 @@ export function Desktop() {
       </div>
       <SignalOverlay />
       <NextPanel />
+      <BootPanel />
     </div>
   );
 }
