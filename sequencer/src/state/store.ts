@@ -2127,6 +2127,11 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       composition: playing
         ? state.composition
         : { ...state.composition, pendingScene: null },
+      // The arrangement row's start step is on the same clock — reset it with
+      // globalStep so a stop+start doesn't leave row 0 with a stale origin.
+      arrangement: playing
+        ? state.arrangement
+        : { ...state.arrangement, cursor: 0, displayCursor: 0, cursorStartStep: 0 },
     })),
   snapBank: (i) => {
     if (i < 0 || i >= BANK_SLOT_COUNT) return;
@@ -3276,7 +3281,11 @@ function applySong(
           rows: song.arrangement.rows.map((r) => ({ ...r, mutes: [...r.mutes] })),
           cursor: 0,
           displayCursor: 0,
-          cursorStartStep: 0,
+          // Row 0 starts at the swap step. With 0 here a LIVE swap (globalStep
+          // large) read a huge elapsed on the first tick and skipped row 0 —
+          // or, for a one-row song, ended it instantly (BROADCAST 2026-09-08:
+          // ns_2306 lasted 2 s). Stopped loads pass globalStep 0, unchanged.
+          cursorStartStep: atGlobalStep,
           pendingEnd: false,
         }
       : { ...DEFAULT_ARRANGEMENT, rows: [] },
