@@ -6,9 +6,11 @@ import type { Song } from './store';
 import {
   parseSeqset,
   parseSongFromSeq,
+  parseGlobalFxFromSeq,
   resolveRelativePath,
   songNameFromFilename,
   dirOf,
+  type SeqGlobalFx,
 } from './persist';
 
 export interface SetEntry {
@@ -64,6 +66,14 @@ export async function expandSetPaths(paths: string[]): Promise<SetEntry[]> {
 
 // Read + parse one song. Null when the file is missing or not a .seq.
 export async function readSongFile(entry: SetEntry): Promise<Song | null> {
+  const r = await readSeqEntry(entry);
+  return r ? r.song : null;
+}
+
+// Song + the file-level FX block (master / reverb / delay / tape / glitch /
+// saturation) — a Song snapshot doesn't carry those, so the set conductor
+// applies them itself at the swap.
+export async function readSeqEntry(entry: SetEntry): Promise<{ song: Song; fx: SeqGlobalFx | null } | null> {
   let text: string;
   try {
     text = await invoke<string>('read_text_file', { path: entry.path });
@@ -73,7 +83,7 @@ export async function readSongFile(entry: SetEntry): Promise<Song | null> {
   }
   const song = parseSongFromSeq(text);
   if (!song) return null;
-  return { ...song, name: entry.name || song.name };
+  return { song: { ...song, name: entry.name || song.name }, fx: parseGlobalFxFromSeq(text) };
 }
 
 // Every voice id a song can trigger: live tracks, every bank, every scene's

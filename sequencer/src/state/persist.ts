@@ -536,6 +536,37 @@ export function parseSceneFromSeqscene(json: string): Scene | null {
 // song format are literally the same thing; the import path accepts
 // both. Distinct from `parseSceneFromSeqscene` — songs hold many
 // scenes, scenes hold none.
+// The file-level FX a .seq carries that are NOT part of a Song snapshot
+// (project-global in Sequence: one master chain / reverb / delay / tape /
+// glitch / saturation per file). BROADCAST applies these at every song
+// swap so a set folder sounds like each file does in Sequence.
+export interface SeqGlobalFx {
+  tape: TapeParams;
+  glitch: GlitchParams;
+  reverb: ReverbParams;
+  delay: DelayParams;
+  saturation: SaturationParams;
+  master: MasterParams;
+}
+
+export function parseGlobalFxFromSeq(json: string): SeqGlobalFx | null {
+  let data: PersistedState;
+  try {
+    data = JSON.parse(json) as PersistedState;
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  return {
+    tape: hydrateTape(data.tape),
+    glitch: hydrateGlitch(data.glitch),
+    reverb: hydrateReverb(data.reverb),
+    delay: hydrateDelay(data.delay),
+    saturation: hydrateSaturation(data.saturation),
+    master: hydrateMaster(data.master),
+  };
+}
+
 export function parseSongFromSeq(json: string): Song | null {
   let data: PersistedState;
   try {

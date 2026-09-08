@@ -11,7 +11,8 @@
 import { create } from 'zustand';
 import { useSequencerStore, DEFAULT_PERFORMANCE } from '../state/store';
 import { setNextSongProvider, setSongLengthProvider } from '../ghost/ghost';
-import { expandSetPaths, readSongFile, songVoiceIds, type SetEntry } from '../state/setLoader';
+import { expandSetPaths, readSeqEntry, songVoiceIds, type SetEntry } from '../state/setLoader';
+import type { SeqGlobalFx } from '../state/persist';
 import { samplePlayer } from '../audio/samplePlayer';
 import { togglePlayback } from '../audio/transport';
 
@@ -38,6 +39,9 @@ export interface BroadcastState {
   // Every folder / file path the set was built from (launch args + drops);
   // CARDS/ and INTERSTITIALS/ are looked up beside these.
   setPaths: string[];
+  // File-level FX (master chain, reverb, delay, tape, glitch, saturation)
+  // per staged performance slot — applied when that slot becomes current.
+  slotFx: Record<number, SeqGlobalFx | null>;
   setMode: (mode: PickMode) => void;
   setDevSongBars: (bars: number | null) => void;
 }
@@ -55,6 +59,7 @@ export const useBroadcast = create<BroadcastState>((set) => ({
   played: 0,
   startedAt: null,
   setPaths: [],
+  slotFx: {},
   setMode: (mode) => set({ mode }),
   setDevSongBars: (devSongBars) => set({ devSongBars }),
 }));
@@ -85,8 +90,9 @@ function pickIndex(): number | null {
 // Read a song for the set: null when unreadable OR when it has no sample
 // voices (external-MIDI-only — silent through the runner). Caller drops it.
 async function readSetSong(entry: SetEntry) {
-  const song = await readSongFile(entry);
-  if (!song) return null;
+  const read = await readSeqEntry(entry);
+  if (!read) return null;
+  const { song, fx } = read;
   // Song mode authored (rows exist) → engage it: the arrangement is the
   // song's length and progression in BROADCAST, whether or not song mode
   // happened to be switched on when the file was saved.
@@ -98,7 +104,23 @@ async function readSetSong(entry: SetEntry) {
     console.warn(`[broadcast] skipping ${entry.name}: no sample voices (midi-only)`);
     return null;
   }
-  return { song, voices };
+  return { song, voices, fx };
+}
+
+// A .seq's file-level FX are project-global in Sequence and never part of a
+// Song snapshot, so a swap leaves the engine on whatever the previous song
+// (or the defaults) set. Apply the incoming file's block so each song sounds
+// the way it does when opened in Sequence. Store setters only — paramPush
+// mirrors them to the engine on its next tick.
+function applyGlobalFx(fx: SeqGlobalFx | null | undefined): void {
+  if (!fx) return;
+  const s = useSequencerStore.getState();
+  s.setMaster(fx.master);
+  s.setReverb(fx.reverb);
+  s.setDelay(fx.delay);
+  s.setTape(fx.tape);
+  s.setGlitch(fx.glitch);
+  s.setSaturation(fx.saturation);
 }
 
 // Preload a song's voices into the native registry ahead of its swap so its
@@ -153,7 +175,7 @@ async function prepareNextInner(): Promise<void> {
       useBroadcast.setState({ next: null, nextSlot: null });
       return;
     }
-    useBroadcast.setState({ next: idx, nextSlot: slot });
+    useBroadcast.setState((s) => ({ next: idx, nextSlot: slot, slotFx: { ...s.slotFx, [slot]: read.fx } }));
     console.info(`[broadcast] staged next: ${entry.name} → slot ${slot} (${read.voices.length} voices)`);
     // Ahead of the swap — a whole song early.
     void preloadVoices(read.voices);
@@ -187,6 +209,7 @@ function installConductor(): void {
     // The pre-loaded next just became current. Free the outgoing slot and
     // stage the following pick.
     const prevSlot = prev.performance.activeSong;
+    applyGlobalFx(b.slotFx[cur]);
     console.info(`[broadcast] now playing: ${b.next !== null ? b.entries[b.next]?.name : '?'} (slot ${cur}, freed ${prevSlot})`);
     useBroadcast.setState((s) => ({
       current: s.next,
@@ -256,7 +279,8 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
     return;
   }
   useSequencerStore.getState().loadSong(slot);
-  useBroadcast.setState({ current: first, status: 'running', startedAt: Date.now() });
+  applyGlobalFx(read.fx);
+  useBroadcast.setState((s) => ({ current: first, status: 'running', startedAt: Date.now(), slotFx: { ...s.slotFx, [slot]: read.fx } }));
   console.info(`[broadcast] set loaded: ${useBroadcast.getState().entries.length} song(s); first: ${firstEntry.name} (slot ${slot})`);
   await preloadVoices(read.voices);
   // Ghost drives everything in BROADCAST. Session-level flag — applySong
