@@ -28,19 +28,12 @@ import {
 } from '../stream/streamBridge';
 import { announceStreamPresence } from '../stream/streamEvents';
 import { presetNativeDeviceName } from '../audio/nativeEngine';
-import {
-  getConfiguredUserSamplesDir,
-  setConfiguredUserSamplesDir,
-  resolveUserSamplesDir,
-  scanAndLoadUserSamples,
-} from '../instruments/userSamplesDir';
+import { setConfiguredUserSamplesDir } from '../instruments/userSamplesDir';
 import { togglePlayback, panicKill } from '../audio/transport';
-import { Datafeed } from '../stream/Datafeed';
-import { Visualizer } from '../stream/Visualizer';
-import { GlitchWrap } from '../stream/GlitchWrap';
-import { TransitionCue } from '../stream/TransitionCue';
-import { useTransitionCountIn } from '../stream/useTransitionCountIn';
 import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
+import { Desktop } from './os/Desktop';
+import { installStreamState } from './os/streamState';
+import { seedDemo } from './os/demo';
 
 const NATIVE = isTauri();
 
@@ -205,42 +198,17 @@ function useDropTarget(onPaths: (paths: string[]) => void) {
   }, [onPaths]);
 }
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
-function useUptime(startedAt: number | null): string {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => tick((n) => n + 1), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-  if (startedAt === null) return '--:--:--';
-  const s = Math.floor((Date.now() - startedAt) / 1000);
-  const h = String(Math.floor(s / 3600)).padStart(2, '0');
-  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-  const sec = String(s % 60).padStart(2, '0');
-  return `${h}:${m}:${sec}`;
-}
-
-async function pickFolder(): Promise<string | null> {
-  const { open } = await import('@tauri-apps/plugin-dialog');
-  const picked = await open({ directory: true, multiple: false });
-  return typeof picked === 'string' ? picked : null;
-}
+const DEMO = new URLSearchParams(window.location.search).get('demo') === '1';
 
 export function BroadcastApp() {
   const [args, setArgs] = useState<LaunchArgs | null>(null);
-  const [samplesDir, setSamplesDir] = useState<string | null>(null);
-  const bootDone = useSequencerStore((s) => s.bootDone);
-  const playing = useSequencerStore((s) => s.playing);
-  const songTitle = useSequencerStore((s) => s.songTitle);
-  const bpm = useSequencerStore((s) => s.bpm);
-  const rootNote = useSequencerStore((s) => s.rootNote);
-  const scale = useSequencerStore((s) => s.scale);
-  const b = useBroadcast();
-  const uptime = useUptime(b.startedAt);
-  const count = useTransitionCountIn();
+  const status = useBroadcast((s) => s.status);
 
   useEffect(() => {
+    if (DEMO) {
+      seedDemo();
+      return;
+    }
     void (async () => {
       let argv: string[] = [];
       if (NATIVE) {
@@ -254,10 +222,7 @@ export function BroadcastApp() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!bootDone) return;
-    void resolveUserSamplesDir().then(setSamplesDir);
-  }, [bootDone]);
+  useEffect(() => (NATIVE ? installStreamState() : undefined), []);
 
   useDropTarget((paths) => void addToSet(paths));
 
@@ -268,102 +233,19 @@ export function BroadcastApp() {
         panicKill();
         return;
       }
-      if (e.code === 'Space' && b.status === 'running') {
+      if (e.code === 'Space' && status === 'running') {
         e.preventDefault();
         void togglePlayback();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [b.status]);
-
-  const changeSamples = async () => {
-    const dir = await pickFolder();
-    if (!dir) return;
-    setConfiguredUserSamplesDir(dir);
-    setSamplesDir(dir);
-    const r = await scanAndLoadUserSamples();
-    console.info(`[broadcast] rescanned samples: ${r.loaded} kit(s)`);
-  };
-  const chooseSet = async () => {
-    const dir = await pickFolder();
-    if (dir) void loadAndStartSet([dir]);
-  };
-
-  const idx = b.current !== null ? b.current + 1 : 0;
-  const key = `${NOTE_NAMES[((rootNote % 12) + 12) % 12]} ${scale}`;
+  }, [status]);
 
   return (
-    <div className="fixed inset-0 bg-[#050505] text-white overflow-hidden font-mono" style={{ cursor: 'default' }}>
-      <GlitchWrap count={count}>
-        <Visualizer />
-      </GlitchWrap>
-      <div className="absolute inset-y-0 left-0" style={{ width: '34%', pointerEvents: 'none' }}>
-        <Datafeed />
-      </div>
-      <TransitionCue count={count} />
-
-      {/* top strip — now playing */}
-      <div className="absolute top-0 inset-x-0 h-10 flex items-center gap-6 px-4 text-[11px] tracking-[0.18em] uppercase bg-[#050505]/70 border-b border-white/15">
-        <span className="font-sans text-[15px] tracking-[0.2em] normal-case">BROADCAST</span>
-        <span className="text-white/45">
-          {b.status === 'running' ? (
-            <>
-              {idx}/{b.entries.length} · {songTitle ?? 'untitled'} · {Math.round(bpm)} bpm · {key}
-              {b.next !== null && b.entries[b.next] ? ` · next ${b.entries[b.next].name}` : ''}
-            </>
-          ) : b.status === 'loading' ? 'loading set…' : bootDone ? 'no set loaded' : 'booting…'}
-        </span>
-        <span className="ml-auto flex items-center gap-5 text-white/45">
-          <button
-            className="hover:text-white"
-            onClick={() => b.setMode(b.mode === 'random' ? 'sequence' : 'random')}
-            title="pick mode"
-          >
-            {b.mode === 'random' ? '● random' : '○ sequence'}
-          </button>
-          <span>{playing ? '▶' : '■'} {uptime}</span>
-          <span>played {b.played}</span>
-        </span>
-      </div>
-
-      {/* empty state — the loading surface */}
-      {b.status !== 'running' && (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
-          <div
-            className="border border-white/25 bg-[#050505]/85 px-10 py-8 text-center text-[12px] tracking-[0.12em] uppercase text-white/70"
-            style={{ pointerEvents: 'auto', minWidth: 460 }}
-          >
-            <div className="font-sans text-[26px] tracking-[0.2em] normal-case text-white mb-4">BROADCAST</div>
-            {!bootDone ? (
-              <div>booting engine…</div>
-            ) : (
-              <>
-                <div className="mb-5">drop a folder of .seq files here</div>
-                <button
-                  className="border border-white/40 px-4 py-2 hover:bg-white hover:text-black"
-                  onClick={() => void chooseSet()}
-                >
-                  choose folder…
-                </button>
-                <div className="mt-6 text-[10px] text-white/40 normal-case tracking-normal">
-                  samples: {samplesDir ?? '…'}{' '}
-                  <button className="underline hover:text-white" onClick={() => void changeSamples()}>
-                    change
-                  </button>
-                  {getConfiguredUserSamplesDir() ? '' : ' (default)'}
-                </div>
-                {b.error && <div className="mt-4 text-red-400 normal-case tracking-normal">{b.error}</div>}
-                <div className="mt-6 text-[10px] text-white/30 normal-case tracking-normal">
-                  launch flags: --set &lt;folder|.seqset&gt; · --samples &lt;dir&gt; · --device &lt;name&gt; · --song-bars &lt;n&gt; (dev)
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
+    <>
+      <Desktop />
       {args && <BroadcastEngine args={args} />}
-    </div>
+    </>
   );
 }
