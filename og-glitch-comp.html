@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  #label {
+    position: absolute;
+    left: 127px;
+    top: 315px;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    white-space: nowrap;
+    font-size: 30px;
+    color: #fff;
+    letter-spacing: 0.04em;
+    font-family: "zxx-sans", monospace;
+  }
+  canvas { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div id="label">new×speech× | ×glitch×</div>
+<script>
+// og-glitch comp — same anatomy as the og-sequence family: vertical zxx label
+// left, the instrument graphic right. glitch's graphic is its lane timeline
+// mid-pass: six stages, blocks drawn in cells, the authored pattern ghosted
+// under the live mutated one, playhead lighting the block it's inside.
+const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
+const label = document.getElementById('label');
+label.innerHTML = [...label.textContent]
+  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
+  .join('');
+
+const c = document.getElementById('c').getContext('2d');
+const X0 = 340, X1 = 1120, TOP = 150, ROWH = 56, CELLS = 64;
+const LANES = ['crush', 'noise', 'drive', 'chop', 'glitch', 'feedback'];
+// authored blocks (what was drawn) and the live pass (mutated) — fixed so the
+// image is deterministic; chosen to read as a real mid-session pattern
+const AUTHORED = [
+  [[6, 30]],
+  [[34, 58]],
+  [[0, 12], [40, 52]],
+  [[10, 12], [22, 23], [30, 33], [47, 48]],
+  [[5, 7], [18, 20], [26, 27], [37, 40], [56, 58]],
+  [[44, 64]],
+];
+const LIVE = [
+  [[8, 28]],
+  [[36, 60]],
+  [[0, 12], [42, 50]],
+  [[10, 12], [21, 22], [31, 33], [46, 47], [51, 52]],
+  [[5, 6], [18, 20], [27, 28], [37, 41], [55, 58]],
+  [[41, 64]],
+];
+const HEAD = 38.4; // playhead cell — inside glitch's [37,41] and drive's [42,50]? no: lights glitch + feedback edge
+const laneW = X1 - X0;
+const cw = laneW / CELLS;
+
+c.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace';
+c.textAlign = 'left';
+c.fillStyle = 'rgba(255,255,255,0.4)';
+c.fillText('pass 04 · seed 9c2f1a · ÷64 · 128 bpm', X0, TOP - 22);
+
+for (let li = 0; li < LANES.length; li++) {
+  const y = TOP + li * ROWH;
+  c.fillStyle = 'rgba(255,255,255,0.1)';
+  c.fillRect(X0, y + ROWH - 1, laneW, 1);
+  c.font = '15px ui-monospace, SFMono-Regular, Menlo, monospace';
+  c.textAlign = 'right';
+  c.fillStyle = 'rgba(255,255,255,0.32)';
+  c.fillText(LANES[li], X0 - 16, y + ROWH * 0.64);
+  for (const [s, e] of AUTHORED[li]) {
+    c.fillStyle = 'rgba(255,255,255,0.07)';
+    c.fillRect(X0 + s * cw, y + 7, (e - s) * cw - 2, ROWH - 15);
+  }
+  for (const [s, e] of LIVE[li]) {
+    const on = HEAD >= s && HEAD < e;
+    c.fillStyle = on ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.24)';
+    c.fillRect(X0 + s * cw, y + 7, Math.max(2, (e - s) * cw - 2), ROWH - 15);
+    if (!on) {
+      c.strokeStyle = 'rgba(255,255,255,0.55)';
+      c.lineWidth = 1.5;
+      c.strokeRect(X0 + s * cw + 0.75, y + 7.75, Math.max(2, (e - s) * cw - 3.5), ROWH - 16.5);
+    }
+  }
+}
+// playhead
+c.fillStyle = '#fff';
+c.fillRect(X0 + HEAD * cw, TOP - 6, 2, ROWH * LANES.length + 6);
+</script>
+</body>
+</html>

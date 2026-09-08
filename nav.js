@@ -31,9 +31,9 @@
 
   // wordmark | links — links drive straight into the pages; sequence is the
   // one exception (no standalone page yet — it anchors to its homepage
-  // vignette). the four browser tools collapse under a "tools" trigger that
+  // vignette). the five browser tools collapse under a "tools" trigger that
   // opens the mega panel below the bar (desktop) — one bar slot instead of
-  // four. socials are icons (no data-ns-link — the text treatment skips them).
+  // five. socials are icons (no data-ns-link — the text treatment skips them).
   const TOOLS = [
     { page: "texture.html", name: "texture",
       dek: "a loop mangler — drop any audio file, pull it apart: vari-speed tape, a granular cloud, a self-oscillating noise filter." },
@@ -43,6 +43,8 @@
       dek: "disintegration loops — let the tape rot, pass after pass, until the loop plays itself to silence. print the whole collapse." },
     { page: "drone.html",   name: "drone",
       dek: "a breathing drone instrument — one tone, six harmonics on their own slow clocks. export the kit for any sampler." },
+    { page: "glitch.html",  name: "glitch",
+      dek: "audio destruction — drop a wav, get a worse wav. draw where each stage hits; every pass mutates what you drew." },
   ];
   const IN_TOOLS = TOOLS.some((t) => t.page === PAGE);
   const ICON_CARET = `<svg class="ns-caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;

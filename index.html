@@ -449,10 +449,21 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-left" id="v-samples">
+<section class="vignette viz-left" id="v-glitch">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">06 / sample</div>
+    <div class="kicker">06 / glitch</div>
+    <h2 data-link>glitch</h2>
+    <p>audio destruction — drop a wav, get a worse wav. six stages in a fixed order: crush, noise, drive, chop, glitch, feedback. draw blocks into the lanes to say where each one hits; every block carries its own settings.</p>
+    <p>every pass mutates what you drew. loop a region, lock the grid to the file's bpm, reseed for a random set. print the last pass, or the whole arc, as one wav.</p>
+    <a class="cta" href="glitch.html" data-link>open the tool</a>
+  </div>
+</section>
+
+<section class="vignette viz-right" id="v-samples">
+  <canvas class="viz"></canvas>
+  <div class="copy">
+    <div class="kicker">07 / sample</div>
     <h2 data-link>sample</h2>
     <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
     <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
@@ -460,10 +471,10 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-right" id="v-visuals">
+<section class="vignette viz-left" id="v-visuals">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">07 / visual</div>
+    <div class="kicker">08 / visual</div>
     <h2 data-link>visual</h2>
     <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
     <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
@@ -471,10 +482,10 @@ fetch("news-latest.html")
   </div>
 </section>
 
-<section class="vignette viz-left" id="v-code">
+<section class="vignette viz-right" id="v-code">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">08 / code</div>
+    <div class="kicker">09 / code</div>
     <h2 data-link>code</h2>
     <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
     <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
@@ -2104,11 +2115,134 @@ function drawDroneViz(v, t, dt) {
   }
 }
 
+// ---- 06 glitch: the tool's lane timeline — six stages, blocks drawn in
+// cells, a playhead sweeping the loop; at every wrap the pattern mutates
+// (shift / resize / drop / split / rare add) and the pass counter climbs.
+// the engaged block under the head lights up, same as the page ----
+const GLITCH_LANES = ["crush", "noise", "drive", "chop", "glitch", "feedback"];
+function drawGlitchViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  const CELLS = 64;
+  if (!state.lanes) {
+    state.reseed = () => {
+      state.seed = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
+      state.lanes = GLITCH_LANES.map((name, li) => {
+        const blocks = [];
+        // a few long blocks on the slow stages, scattered hits on the fast ones
+        const n = li >= 3 ? 4 + ((Math.random() * 5) | 0) : 1 + ((Math.random() * 2) | 0);
+        for (let k = 0; k < n; k++) {
+          const len = li >= 3 ? 1 + ((Math.random() * 3) | 0) : 8 + ((Math.random() * 20) | 0);
+          const s0 = (Math.random() * (CELLS - len)) | 0;
+          blocks.push({ s: s0, e: s0 + len });
+        }
+        return { name, blocks: mergeBlocks(blocks) };
+      });
+      state.pass = 1;
+      state.pos = 0;
+      state.authored = state.lanes.map((l) => l.blocks.map((b) => ({ ...b })));
+    };
+    state.reseed();
+  }
+  function mergeBlocks(bs) {
+    bs.sort((a, b) => a.s - b.s);
+    const out = [];
+    for (const b of bs) {
+      const last = out[out.length - 1];
+      if (last && b.s <= last.e) last.e = Math.max(last.e, b.e);
+      else out.push(b);
+    }
+    return out;
+  }
+  const env = intensity();
+  state.pos += dt / (6 - 2.5 * env);
+  if (state.pos >= 1) {
+    state.pos -= 1;
+    state.pass++;
+    if (state.pass > 9) { state.reseed(); }
+    else {
+      // mutate: each lane rolls for one edit, biased to shift + resize
+      for (const lane of state.lanes) {
+        const bs = lane.blocks;
+        const r = Math.random();
+        if (r < 0.35 && bs.length) {
+          const b = bs[(Math.random() * bs.length) | 0];
+          const d = ((Math.random() * 9) | 0) - 4;
+          const len = b.e - b.s;
+          b.s = Math.max(0, Math.min(CELLS - len, b.s + d));
+          b.e = b.s + len;
+        } else if (r < 0.6 && bs.length) {
+          const b = bs[(Math.random() * bs.length) | 0];
+          b.e = Math.max(b.s + 1, Math.min(CELLS, b.e + ((Math.random() * 7) | 0) - 3));
+        } else if (r < 0.72 && bs.length > 1) {
+          bs.splice((Math.random() * bs.length) | 0, 1);
+        } else if (r < 0.82 && bs.length) {
+          const b = bs[(Math.random() * bs.length) | 0];
+          if (b.e - b.s >= 3) {
+            const cut = b.s + 1 + ((Math.random() * (b.e - b.s - 2)) | 0);
+            bs.push({ s: cut + 1, e: b.e });
+            b.e = cut;
+          }
+        } else if (r < 0.9) {
+          const len = 1 + ((Math.random() * 3) | 0);
+          const s0 = (Math.random() * (CELLS - len)) | 0;
+          bs.push({ s: s0, e: s0 + len });
+        }
+        lane.blocks = mergeBlocks(bs);
+      }
+    }
+  }
+
+  c.clearRect(0, 0, w, h);
+  const mobile = w < 720;
+  const laneW = w * (mobile ? 0.88 : 0.7);
+  const lx = (w - laneW) / 2;
+  const rows = GLITCH_LANES.length;
+  const rowH = Math.min(34, (h * (mobile ? 0.42 : 0.6)) / rows);
+  const top = (mobile ? h * 0.34 : h / 2) - (rowH * rows) / 2;
+  const cw = laneW / CELLS;
+  const headCell = state.pos * CELLS;
+
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+  c.fillStyle = "rgba(255, 255, 255, 0.35)";
+  c.fillText(`pass ${String(state.pass).padStart(2, "0")} · seed ${state.seed} · ÷${CELLS}`, lx, top - 14);
+
+  for (let li = 0; li < rows; li++) {
+    const y = top + li * rowH;
+    // lane rule + label
+    c.fillStyle = "rgba(255, 255, 255, 0.08)";
+    c.fillRect(lx, y + rowH - 1, laneW, 1);
+    c.fillStyle = "rgba(255, 255, 255, 0.28)";
+    c.textAlign = "right";
+    c.fillText(GLITCH_LANES[li], lx - 10, y + rowH * 0.66);
+    // authored ghost (what was drawn) under the live, mutated blocks
+    for (const b of state.authored[li]) {
+      c.fillStyle = "rgba(255, 255, 255, 0.06)";
+      c.fillRect(lx + b.s * cw, y + 4, (b.e - b.s) * cw - 1, rowH - 9);
+    }
+    for (const b of state.lanes[li].blocks) {
+      const on = headCell >= b.s && headCell < b.e;
+      c.fillStyle = on ? "rgba(255, 255, 255, 0.85)" : "rgba(255, 255, 255, 0.22)";
+      c.fillRect(lx + b.s * cw, y + 4, Math.max(1.5, (b.e - b.s) * cw - 1), rowH - 9);
+      if (!on) {
+        c.strokeStyle = "rgba(255, 255, 255, 0.5)";
+        c.lineWidth = 1;
+        c.strokeRect(lx + b.s * cw + 0.5, y + 4.5, Math.max(1.5, (b.e - b.s) * cw - 2), rowH - 10);
+      }
+    }
+  }
+  // playhead
+  c.fillStyle = "#fff";
+  c.fillRect(lx + state.pos * laneW, top - 4, 1.5, rowH * rows + 4);
+}
+
 registerViz("v-sequence", drawSeqViz);
 registerViz("v-texture", drawTextureViz);
 registerViz("v-slice", drawSliceViz);
 registerViz("v-decay", drawDecayViz);
 registerViz("v-drone", drawDroneViz);
+registerViz("v-glitch", drawGlitchViz);
 registerViz("v-samples", drawSamplesViz);
 registerViz("v-visuals", drawVisualsViz);
 registerViz("v-code", drawCodeViz);
