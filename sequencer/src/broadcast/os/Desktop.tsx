@@ -152,6 +152,7 @@ export function Desktop() {
       {/* menubar — wordmark, what's playing, clock. Window management lives
           behind one item so the bar stays quiet on a stream. */}
       <div
+        data-tauri-drag-region
         className="absolute top-0 inset-x-0 flex items-center gap-5 px-4 text-[9px] tracking-[0.16em] uppercase"
         style={{
           height: 28,
