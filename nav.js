@@ -36,15 +36,15 @@
   // five. socials are icons (no data-ns-link — the text treatment skips them).
   const TOOLS = [
     { page: "texture.html", name: "texture",
-      dek: "a loop mangler — drop any audio file, pull it apart: vari-speed tape, a granular cloud, a self-oscillating noise filter." },
+      dek: "a loop mangler — vari-speed tape, a granular cloud, a noise filter." },
     { page: "slice.html",   name: "slice",
-      dek: "a pattern slicer — messages and data as tempo-locked rhythm. gate, chop, or scan a loop; scramble the phrase until it erodes." },
+      dek: "a pattern slicer — messages and data as tempo-locked rhythm." },
     { page: "decay.html",   name: "decay",
-      dek: "disintegration loops — let the tape rot, pass after pass, until the loop plays itself to silence. print the whole collapse." },
+      dek: "disintegration loops — let the tape rot until it plays itself to silence." },
     { page: "drone.html",   name: "drone",
-      dek: "a breathing drone instrument — one tone, six harmonics on their own slow clocks. export the kit for any sampler." },
+      dek: "a breathing drone — six harmonics on their own slow clocks. export the kit." },
     { page: "glitch.html",  name: "glitch",
-      dek: "audio destruction — drop a wav, get a worse wav. draw where each stage hits; every pass mutates what you drew." },
+      dek: "audio destruction — draw where each stage hits; every pass mutates." },
   ];
   const IN_TOOLS = TOOLS.some((t) => t.page === PAGE);
   const ICON_CARET = `<svg class="ns-caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;
@@ -301,15 +301,15 @@
   }
   #ns-mega .mega-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
   #ns-mega .mega-card {
     display: block;
     color: #fff;
     text-decoration: none;
-    padding: 4px 28px 8px 0;
+    padding: 4px 18px 8px 0;
     border-left: 1px solid rgba(255, 255, 255, 0.18);
-    padding-left: 22px;
+    padding-left: 18px;
     opacity: 0.6;
     transition: opacity 120ms ease;
   }
@@ -317,10 +317,10 @@
   #ns-mega .mega-card:hover, #ns-mega .mega-card:focus-visible, #ns-mega .mega-card.current { opacity: 1; outline: none; }
   #ns-mega .mc-t {
     font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: 30px;
-    line-height: 32px; /* fixed so font swaps can't shift the box */
+    font-size: 26px;
+    line-height: 28px; /* fixed so font swaps can't shift the box */
     letter-spacing: 0.01em;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   #ns-mega .mc-t span { display: inline-block; text-align: center; vertical-align: top; }
   #ns-mega .mc-d {

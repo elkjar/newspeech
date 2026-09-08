@@ -254,13 +254,6 @@
   .vignette.viz-right .copy { left: 0; }
   .vignette.viz-left  .copy { right: 0; }
 
-  .copy .kicker {
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    opacity: 0.55;
-    margin-bottom: 28px;
-  }
   .copy h2 {
     font-family: "zxx-sans", ui-monospace, monospace;
     /* sized against the 38vw copy panel: "sequence" (8 chars) must fit inside
@@ -397,7 +390,6 @@ fetch("news-latest.html")
 <section class="vignette viz-right" id="v-sequence">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">01 / sequence</div>
     <h2 data-link>sequence</h2>
     <span class="badge">coming soon</span>
     <p>a step sequencer with a chord-relative harmonic engine. set a root and a scale, author chords by degree — the rest of the band harmonizes against whatever played last.</p>
@@ -408,7 +400,6 @@ fetch("news-latest.html")
 <section class="vignette viz-left" id="v-texture">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">02 / texture</div>
     <h2 data-link>texture</h2>
     <p>a loop mangler in the browser — drop any audio file, select the slice you want, pull it apart: vari-speed tape, a granular cloud, a self-oscillating noise filter.</p>
     <p>print the result as a longer texture wav — one full pass at whatever speed you've bent it to.</p>
@@ -419,7 +410,6 @@ fetch("news-latest.html")
 <section class="vignette viz-right" id="v-slice">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">03 / slice</div>
     <h2 data-link>slice</h2>
     <p>a pattern slicer — type a message and it plays as morse rhythm, locked to a clock you set. run the internal tone, or drop a loop and let the phrase gate, chop, or scan it.</p>
     <p>a mangle stage flips, ratchets, and drops symbols — or scrambles the message itself pass by pass until it erodes into noise. feed it a dataset and the numbers play instead.</p>
@@ -430,7 +420,6 @@ fetch("news-latest.html")
 <section class="vignette viz-left" id="v-decay">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">04 / decay</div>
     <h2 data-link>decay</h2>
     <p>disintegration loops — drop a loop and let the tape rot. wear lands where it already hurts, pass after pass: dropouts, stutters, muffled patches, until the loop plays itself to silence.</p>
     <p>nothing is immediate; everything accumulates. print the whole collapse as one wav — a handful of passes, or the full run to silence.</p>
@@ -441,7 +430,6 @@ fetch("news-latest.html")
 <section class="vignette viz-right" id="v-drone">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">05 / drone</div>
     <h2 data-link>drone</h2>
     <p>a breathing drone instrument — one tone, six harmonics, each swelling on its own slow clock, never twice the same balance. twist the spectrum, the width, the breath; reroll the seed for a new performance of the same tone.</p>
     <p>when it's right, export the kit: nine note-named single-tone wavs, seamless loops — built for sequence's pad instruments, ready for any sampler.</p>
@@ -452,7 +440,6 @@ fetch("news-latest.html")
 <section class="vignette viz-left" id="v-glitch">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">06 / glitch</div>
     <h2 data-link>glitch</h2>
     <p>audio destruction — drop a wav, get a worse wav. six stages in a fixed order: crush, noise, drive, chop, glitch, feedback. draw blocks into the lanes to say where each one hits; every block carries its own settings.</p>
     <p>every pass mutates what you drew. loop a region, lock the grid to the file's bpm, reseed for a random set. print the last pass, or the whole arc, as one wav.</p>
@@ -463,7 +450,6 @@ fetch("news-latest.html")
 <section class="vignette viz-right" id="v-samples">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">07 / sample</div>
     <h2 data-link>sample</h2>
     <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
     <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
@@ -474,7 +460,6 @@ fetch("news-latest.html")
 <section class="vignette viz-left" id="v-visuals">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">08 / visual</div>
     <h2 data-link>visual</h2>
     <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
     <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
@@ -485,7 +470,6 @@ fetch("news-latest.html")
 <section class="vignette viz-right" id="v-code">
   <canvas class="viz"></canvas>
   <div class="copy">
-    <div class="kicker">09 / code</div>
     <h2 data-link>code</h2>
     <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
     <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
