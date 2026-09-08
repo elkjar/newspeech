@@ -3,6 +3,7 @@
 import { useSequencerStore } from '../../state/store';
 import { useBroadcast } from '../setlist';
 import { useStreamState, type Snapshot } from './streamState';
+import { forceSignalEvent } from './signal';
 
 const NAMES = [
   'rdll', 'breaks', 'noisy-ns', 'enrichment-time', 'newspeech-2026-05-19-0119', 'scene-2-test',
@@ -11,6 +12,8 @@ const NAMES = [
 ];
 
 export function seedDemo(): void {
+  // Screenshots: window.__nsSignal('sync' | 'dropout' | 'tear' | 'roll' | 'fade')
+  (window as unknown as { __nsSignal: typeof forceSignalEvent }).__nsSignal = forceSignalEvent;
   useBroadcast.setState({
     entries: NAMES.map((n) => ({ path: `/Users/demo/Desktop/BROADCAST-TEST/${n}.seq`, name: n })),
     current: 6,

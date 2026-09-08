@@ -101,11 +101,14 @@ interface LayoutState {
   windows: Record<WindowId, WinRect>;
   // Visual behind everything, full-bleed, instead of in its window.
   backdrop: boolean;
+  // The transmission layer (SignalOverlay): scanlines, static, sync loss.
+  signal: boolean;
   move: (id: WindowId, x: number, y: number) => void;
   resize: (id: WindowId, w: number, h: number) => void;
   raise: (id: WindowId) => void;
   toggle: (id: WindowId) => void;
   setBackdrop: (v: boolean) => void;
+  setSignal: (v: boolean) => void;
   reset: () => void;
   clamp: () => void;
 }
@@ -128,9 +131,19 @@ function loadBackdrop(): boolean {
   }
 }
 
+// Signal defaults ON — the transmission is part of the face.
+function loadSignal(): boolean {
+  try {
+    return localStorage.getItem(LS_KEY + '.signal') !== '0';
+  } catch {
+    return true;
+  }
+}
+
 export const useLayout = create<LayoutState>((set, get) => ({
   windows: load(),
   backdrop: loadBackdrop(),
+  signal: loadSignal(),
   move: (id, x, y) =>
     set((s) => {
       const windows = { ...s.windows, [id]: { ...s.windows[id], x, y } };
@@ -162,6 +175,15 @@ export const useLayout = create<LayoutState>((set, get) => ({
   setBackdrop: (backdrop) => {
     persist(get().windows, backdrop);
     set({ backdrop });
+  },
+  setSignal: (signal) => {
+    try {
+      localStorage.setItem(LS_KEY + '.signal', signal ? '1' : '0');
+    } catch {
+      // ignore
+    }
+    console.info(`[layout] signal=${signal}`);
+    set({ signal });
   },
   reset: () => {
     const windows = clampToViewport(scaledDefault());

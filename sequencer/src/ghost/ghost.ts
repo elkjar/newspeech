@@ -978,6 +978,17 @@ function rollSongBars(store: ReturnType<typeof useSequencerStore.getState>): num
   return Math.max(SONG_ROLL_MIN, Math.min(SONG_ROLL_MAX, bars));
 }
 
+// Read-only view of the current song's set dwell for observers (the BROADCAST
+// signal layer degrades the picture into the last bar of a song). Null when
+// no length is known yet — a composition-driven song, or a roll not yet made.
+export function currentSongDwellBars(store: ReturnType<typeof useSequencerStore.getState>): number | null {
+  if (!nextSongProvider) return null;
+  const fixed = songLengthProvider ? songLengthProvider() : null;
+  if (fixed !== null) return fixed;
+  if (songRoll && songRoll.startStep === store.ghostCompositionStartStep) return songRoll.bars;
+  return null;
+}
+
 // Set-conductor song end. With a provider present, a song ends when the
 // fixed length elapses, or — for a song with no composition — Ghost's rolled
 // length elapses. Songs WITH scenes and no fixed length keep their natural

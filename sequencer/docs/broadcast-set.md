@@ -133,6 +133,20 @@ so unattended it always looks the same. Everything below reads the existing 10 H
 The existing `Datafeed.tsx` (density trace, entropy histogram, breakdown, shape preview, event
 log) is the seed for **ghost**, **banks** and **shape** — split it into windows rather than rewrite.
 
+### The transmission (signal layer) — built 2026-09-08
+
+The picture is a signal that degrades and comes back. `src/broadcast/os/signal.ts` is one envelope
+(quality 0..1): a slow random walk (retargets every 30–90 s) plus Poisson-scheduled dropouts /
+tears / long fades minutes apart, and the set's own hooks — the last bar of a song pulls the picture
+down, the swap (= the incoming downbeat) fires a static burst then a lock flash, a bank count-in
+fizzes 4·3·2·1, active-bank entropy leans the drift. `SignalOverlay.tsx` paints it on a canvas over
+the whole desktop: 3 px scanlines, a rolling bar (~24 s), phosphor flicker, vignette, full-resolution
+static from pre-rendered tiles (capped at 0.55 so the desktop always reads), thin tear strips. The
+DOM is only ever tinted (brightness/contrast), never moved — whole-frame motion and full-screen static
+were tried and cut (Chris: "awkward", "heavy handed"). `windows ▾ → signal` toggles it (persisted;
+off when the physical CRT/camcorder chain does the job). Later tiers on the same envelope: SVG
+displacement events, WebGL CRT sim on the visual window. Demo: `?demo=1` + `window.__nsSignal(kind)`.
+
 ## Phase 3 — interstitials: the gap is a moment
 
 - Today: `fadeTextures` 6 s, then a hard `swapSongImmediate` into bar one. Over a night the gap is

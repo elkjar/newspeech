@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { Visualizer } from '../../stream/Visualizer';
 import { ReactiveVisual } from './ReactiveVisual';
+import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
+import { setSignalEnabled } from './signal';
 import { useLayout, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
@@ -48,6 +50,9 @@ export function Desktop() {
   const backdrop = useLayout((s) => s.backdrop);
   const toggle = useLayout((s) => s.toggle);
   const clamp = useLayout((s) => s.clamp);
+  const signal = useLayout((s) => s.signal);
+  const setSignal = useLayout((s) => s.setSignal);
+  useEffect(() => setSignalEnabled(signal), [signal]);
   useEffect(() => {
     clamp();
     window.addEventListener('resize', clamp);
@@ -57,7 +62,14 @@ export function Desktop() {
   const [menu, setMenu] = useState(false);
 
   return (
-    <div className="fixed inset-0 overflow-hidden text-white font-mono select-none" style={{ background: '#050505', cursor: 'default' }}>
+    <div className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
+      {/* the transmission root: everything the signal layer tints (SignalOverlay
+          sets a brightness/contrast filter here); the overlay canvas sits outside it */}
+      <div
+        id={TRANSMISSION_ID}
+        className="absolute inset-0 overflow-hidden text-white font-mono select-none"
+        style={{ background: '#050505', cursor: 'default', willChange: 'filter' }}
+      >
       {/* ground: Chris's desktop-bg (a glitched light streak on dark), full
           bleed, with a breath of grain over it so the windows sit in it */}
       <div
@@ -110,6 +122,15 @@ export function Desktop() {
                     {WINDOW_TITLES[id]}
                   </button>
                 ))}
+                <div className="my-1" style={{ borderTop: '1px solid rgba(255,255,255,0.14)' }} />
+                <button
+                  className="flex items-center gap-2 px-3 leading-[22px] text-left hover:bg-white/10"
+                  style={{ color: signal ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}
+                  onClick={() => setSignal(!signal)}
+                >
+                  <span className="w-3">{signal ? '■' : '□'}</span>
+                  signal
+                </button>
               </div>
             )}
           </span>
@@ -127,6 +148,8 @@ export function Desktop() {
           </OSWindow>
         );
       })}
+      </div>
+      <SignalOverlay />
     </div>
   );
 }
