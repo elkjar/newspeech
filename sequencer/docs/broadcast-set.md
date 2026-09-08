@@ -165,6 +165,24 @@ displacement events, WebGL CRT sim on the visual window. Demo: `?demo=1` + `wind
   machine.
 - Per-song `tailOutBars` so a drone rings 8 bars and a beat cuts at 1.
 
+### Interstitials + idents — BUILT 2026-09-08 (06fbb1a)
+
+Shape changed from the plan above: interstitials fire **occasionally on a station clock** (first
+14–22 min after boot, then every 18–30 min; `--gap-every N` songs for dev), never between every
+song. `src/broadcast/gap.ts` intercepts a song end (`ghost.ts setSongEndInterceptor`), stops the
+transport, fires one random WAV from `INTERSTITIALS/` (beside or inside the set folder — Chris's
+layout is `BROADCAST/{SEQ_01, INTERSTITIALS, CARDS}`) as a one-shot, and when it ends `loadSong`s
+the staged slot and restarts the transport. Phases `hold` → `reboot` (28 s) drive: the signal layer
+(gap level → static ceiling 0.86: the OS collapses into noise), `Desktop.tsx` (windows fall away in
+a rolled order, menubar + backdrop last; come back one by one), and the fixed-size **NEXT panel**
+(`os/NextPanel.tsx`, above the overlay: roll settling on the pick, incoming name, progress bar).
+**Station idents** (`src/broadcast/cards.ts`): `CARDS/*.txt` (header lines `kind:`/`weight:`/`url:`,
+headline + ≤2 body lines, tokens `{uptime} {songs} {played} {song} {bpm} {time}`); a card every
+5–9 min for 32 s in the draggable `ident` window (zxx scramble settles in); folders re-scanned
+every minute. Rust `list_dir_files(dir, exts)`. Verified end to end in dev (gap → 64 s WAV →
+now playing → reboot). Chris: "the system coming back online after an interstitial is absolutely
+incredible."
+
 ## Phase 4 — the sidecar and the capture chain
 
 - `now-playing.txt` (or JSON) in the set folder, rewritten by `applySong`: song, bpm, key, shape,
