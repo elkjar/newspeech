@@ -45,6 +45,7 @@ export const BOOT_LINE_MS = 650;
 // downbeat waits for it, capped here (long WAVs fade out into the downbeat).
 export const BOOT_WAV_CAP_SECS = 32;
 const BOOT_WAV_FADE_SECS = 3.5;
+let staticFiredFor = -1; // goAt of the GO whose static already fired
 
 export const useStationBoot = create<StationBootState>(() => ({
   lines: [],
@@ -111,9 +112,13 @@ export async function stationBootGate(): Promise<void> {
   }
   // The static under the boot: one random interstitial, fired as a texture
   // voice so it can be faded into the downbeat if it's longer than the cap.
+  // Once per GO — two set loads can be parked at the gate (standby re-pick),
+  // and both wake; only the first fires the static.
   let wavMs = 0;
-  const wav = pickInterstitial();
+  const goAtNow = useStationBoot.getState().goAt;
+  const wav = staticFiredFor === goAtNow ? null : pickInterstitial();
   if (wav) {
+    staticFiredFor = goAtNow;
     try {
       const info = await loadSample(wav);
       wavMs = info.durationSecs * 1000;
