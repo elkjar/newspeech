@@ -640,18 +640,20 @@ function arrangementAdvance(
   if (elapsed < rowBars - 1) return;
   let next = arr.cursor + 1;
   if (next >= arr.rows.length) {
-    if (!arr.loop) {
+    // In a BROADCAST set one full pass of the arrangement IS the song — the
+    // loop flag is a Sequence-side convenience and doesn't hold the set on
+    // one song forever. If nothing is staged yet a looping song wraps and
+    // tries again next pass; a non-looping one ends as authored.
+    const setNext = nextSongProvider ? nextSongProvider(store) : null;
+    if (setNext !== null || !arr.loop) {
       // End of song. Let the final row play its full `bars` (elapsed reaches
       // rowBars-1 = its last bar → return), then at the next boundary
       // (elapsed === rowBars) gate that bar's emission via pendingEnd and tear
       // down the transport. The stop is deferred: scheduler.stop() called
       // synchronously from inside its own tick loop corrupts the step counter.
       if (elapsed >= rowBars && !arr.pendingEnd) {
-        // In a BROADCAST set the song's end hands to the next song instead
-        // of stopping the transport.
-        const next = nextSongProvider ? nextSongProvider(store) : null;
-        if (next !== null) {
-          handToNextSong(store, next, globalStep);
+        if (setNext !== null) {
+          handToNextSong(store, setNext, globalStep);
           return;
         }
         store.setArrangementPendingEnd(true);
@@ -1023,6 +1025,9 @@ function maybeEndSongForSet(
   if (!nextSongProvider) return false;
   const { composition, performance } = store;
   if (performance.activeSong === null || performance.pendingSong !== null) return false;
+  // Song mode authored → the arrangement IS the song's length (one full
+  // pass, see arrangementAdvance). Never roll over it. (Chris 2026-09-08.)
+  if (store.arrangement.active && store.arrangement.rows.length > 0) return false;
   const filled = composition.scenes.filter((s) => s !== null).length;
   const sceneless = composition.activeScene === null || filled === 0;
   const fixed = songLengthProvider ? songLengthProvider() : null;

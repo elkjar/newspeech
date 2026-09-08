@@ -87,6 +87,12 @@ function pickIndex(): number | null {
 async function readSetSong(entry: SetEntry) {
   const song = await readSongFile(entry);
   if (!song) return null;
+  // Song mode authored (rows exist) → engage it: the arrangement is the
+  // song's length and progression in BROADCAST, whether or not song mode
+  // happened to be switched on when the file was saved.
+  if (song.arrangement && song.arrangement.rows.length > 0 && !song.arrangement.active) {
+    song.arrangement = { ...song.arrangement, active: true };
+  }
   const voices = songVoiceIds(song);
   if (voices.length === 0) {
     console.warn(`[broadcast] skipping ${entry.name}: no sample voices (midi-only)`);
