@@ -79,12 +79,14 @@ interface LaunchArgs {
   gapEvery: number | null;
   // Skip standby: the unattended box goes on air by itself (Login Item).
   autostart: boolean;
+  // Sign off after N songs (a capture of known length). null = forever.
+  songs: number | null;
   // Dev: force every song to N bars.
   songBars: number | null;
 }
 
 function parseLaunchArgs(argv: string[]): LaunchArgs {
-  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null, autostart: false };
+  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null, autostart: false, songs: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i] ?? null;
@@ -99,6 +101,8 @@ function parseLaunchArgs(argv: string[]): LaunchArgs {
     else if (a === '--song-bars') out.songBars = Number(next()) || null;
     else if (a.startsWith('--song-bars=')) out.songBars = Number(a.slice(12)) || null;
     else if (a === '--autostart' || a === '--go') out.autostart = true;
+    else if (a === '--songs') out.songs = Number(next()) || null;
+    else if (a.startsWith('--songs=')) out.songs = Number(a.slice(8)) || null;
     else if (a === '--gap-every') out.gapEvery = Number(next()) || null;
     else if (a.startsWith('--gap-every=')) out.gapEvery = Number(a.slice(12)) || null;
     else if (!a.startsWith('-')) out.set.push(a); // bare path
@@ -121,7 +125,7 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
     if (args.samples) setConfiguredUserSamplesDir(args.samples);
     if (args.device) presetNativeDeviceName(args.device);
     useBroadcast.getState().setDevSongBars(args.songBars);
-    useGap.setState({ devEvery: args.gapEvery });
+    useGap.setState({ devEvery: args.gapEvery, songLimit: args.songs });
     startSamplesBoot();
   }, [args]);
   // Interstitials + idents: the conductor owns occasional song ends; cards

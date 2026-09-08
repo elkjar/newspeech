@@ -262,7 +262,15 @@ export function sampleSignal(now: number): SignalFrame {
   // "have the OS fully collapse into noise … and then come back together."
   const g = useGap.getState();
   const gapLevel =
-    g.phase === 'hold' ? clamp01(g.progress / 0.25) : g.phase === 'boot' ? 0.7 : g.phase === 'reboot' ? clamp01(1 - g.progress) ** 1.4 : 0;
+    g.phase === 'hold'
+      ? clamp01(g.progress / 0.25)
+      : g.phase === 'boot'
+        ? 0.7
+        : g.phase === 'off'
+          ? 0.45 + 0.55 * clamp01(1 - g.progress) // signed off: heavy static settling to a resting hiss
+          : g.phase === 'reboot'
+            ? clamp01(1 - g.progress) ** 1.4
+            : 0;
   gapNow = gapLevel;
 
   const quality = clamp01(baseNow - drop - endDrop - ciDrop - gapLevel * 0.85);

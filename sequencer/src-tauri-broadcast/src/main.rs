@@ -13,6 +13,10 @@ fn main() {
       sequence_lib::set_dock_icon_bytes(include_bytes!("../icons/icon.png"));
       if let Some(window) = app.get_webview_window("main") {
         sequence_lib::install_media_permission(&window);
+        // 16:9 picture whatever size the window is dragged to; start exactly
+        // 1920×1080 of content so a capture is a clean frame.
+        let _ = window.set_size(tauri::LogicalSize::new(1920.0, 1080.0));
+        sequence_lib::lock_content_aspect(&window, 16.0, 9.0);
       }
       if cfg!(debug_assertions) {
         app.handle().plugin(

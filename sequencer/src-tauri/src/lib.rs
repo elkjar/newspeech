@@ -447,6 +447,29 @@ pub fn install_media_permission(window: &tauri::WebviewWindow) {
   }
 }
 
+// Lock a window's CONTENT aspect ratio (macOS): the user can resize freely
+// but the picture stays w:h, so a windowed screen capture is a clean frame.
+// BROADCAST locks 16:9 — Chris won't fullscreen (the layout scales up on a
+// 5K display while type stays small). No-op elsewhere.
+pub fn lock_content_aspect(window: &tauri::WebviewWindow, w: f64, h: f64) {
+  #[cfg(target_os = "macos")]
+  {
+    use objc2_app_kit::NSWindow;
+    use objc2_foundation::NSSize;
+    if let Ok(ptr) = window.ns_window() {
+      if !ptr.is_null() {
+        // Main thread only — callers run this from `setup`.
+        let ns: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+        unsafe { ns.setContentAspectRatio(NSSize::new(w, h)) };
+      }
+    }
+  }
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = (window, w, h);
+  }
+}
+
 // Audio output level + engine-clock emitter — reads the per-block
 // peak the cpal callback stashes in audio::AUDIO_OUTPUT_LEVEL and
 // the absolute frame counter, forwarding them to all webviews as

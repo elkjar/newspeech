@@ -19,7 +19,7 @@ import { samplePlayer } from '../audio/samplePlayer';
 import { togglePlayback } from '../audio/transport';
 
 export type PickMode = 'random' | 'sequence';
-export type BroadcastStatus = 'idle' | 'loading' | 'running' | 'error';
+export type BroadcastStatus = 'idle' | 'loading' | 'running' | 'error' | 'ended';
 
 export interface BroadcastState {
   entries: SetEntry[];

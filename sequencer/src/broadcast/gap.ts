@@ -24,7 +24,9 @@ import { dirOf } from '../state/persist';
 
 // `boot` = station initializing at launch (boot.ts) — same collapse as a
 // hold, then the same reboot when the first song's transport starts.
-export type GapPhase = 'none' | 'hold' | 'reboot' | 'boot';
+// `off` = signed off (end of transmission): transport stopped, static
+// settling, the sign-off panel up. Terminal.
+export type GapPhase = 'none' | 'hold' | 'reboot' | 'boot' | 'off';
 
 export interface GapState {
   phase: GapPhase;
@@ -40,6 +42,9 @@ export interface GapState {
   // Dev only (`--gap-every N`): an interstitial every N songs instead of the
   // clock. No UI.
   devEvery: number | null;
+  // `--songs N`: sign off after N songs have played (null = forever).
+  songLimit: number | null;
+  signedOffAt: number | null; // Date.now()
 }
 
 export const REBOOT_SECS = 28;
@@ -61,6 +66,8 @@ export const useGap = create<GapState>(() => ({
   lastAt: null,
   nextDueAt: null,
   devEvery: null,
+  songLimit: null,
+  signedOffAt: null,
 }));
 
 // Candidate folders beside / inside the set paths. macOS is case-insensitive
@@ -127,7 +134,7 @@ function tick(): void {
   if (g.phase === 'none') return;
   const p = Math.min(1, (performance.now() - g.startedAt) / g.duration);
   useGap.setState({ progress: p });
-  if (g.phase === 'boot') return;
+  if (g.phase === 'boot' || g.phase === 'off') return;
   if (g.phase === 'reboot' && p >= 1) {
     useGap.setState({ phase: 'none', progress: 0 });
     if (ticker !== null) {
@@ -196,6 +203,37 @@ async function runGap(nextSlot: number): Promise<void> {
   }, Math.max(0, secs * 1000 - lead));
 }
 
+// End of transmission: the Nth song has ended. Same collapse as a hold, one
+// interstitial under it, then the transport stays stopped and the static
+// settles — the station signs off rather than cutting to nothing.
+async function runSignOff(): Promise<void> {
+  const files = useGap.getState().files;
+  const wav = files.length ? pickWav() : null;
+  useGap.setState({ phase: 'off', progress: 0, startedAt: performance.now(), duration: 60_000, wav, signedOffAt: Date.now() });
+  startTicker();
+  console.info(`[gap] signing off after ${useBroadcast.getState().played + 1} songs${wav ? ` · ${wav.split('/').pop()}` : ''}`);
+  await Promise.resolve();
+  const seq = useSequencerStore.getState();
+  if (seq.playing) await togglePlayback();
+  if (wav) {
+    try {
+      const info = await loadSample(wav);
+      useGap.setState({ duration: Math.max(4, info.durationSecs) * 1000 });
+      await triggerSample(wav, { gain: 1 });
+    } catch (err) {
+      console.warn('[gap] sign-off interstitial failed:', err);
+    }
+  }
+  useBroadcast.setState({ status: 'ended' });
+}
+
+function shouldSignOff(): boolean {
+  const g = useGap.getState();
+  if (g.songLimit === null || g.phase !== 'none') return false;
+  const b = useBroadcast.getState();
+  return b.status === 'running' && b.played + 1 >= g.songLimit;
+}
+
 let installed = false;
 export function installGapConductor(): () => void {
   if (installed) return () => {};
@@ -203,7 +241,11 @@ export function installGapConductor(): () => void {
   setSongEndInterceptor((_store, nextSlot) => {
     // While a gap is running (the tick or two before the transport stops,
     // and the reboot) the end stays ours — Ghost must not swap under us.
-    if (useGap.getState().phase === 'hold') return true;
+    if (useGap.getState().phase === 'hold' || useGap.getState().phase === 'off') return true;
+    if (shouldSignOff()) {
+      void runSignOff();
+      return true;
+    }
     if (!shouldGap()) return false;
     void runGap(nextSlot);
     return true;
