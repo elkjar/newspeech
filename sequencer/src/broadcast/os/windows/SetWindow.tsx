@@ -9,10 +9,9 @@ const STEPS_PER_BAR = 32;
 // on the desktop to add to it.
 export function SetWindow() {
   const b = useBroadcast();
-  const globalStep = useSequencerStore((s) => s.globalStep);
-  const startStep = useSequencerStore((s) => s.ghostCompositionStartStep);
+  // Bars, derived in the selector: re-render per bar, not per step.
+  const elapsedBars = useSequencerStore((s) => Math.max(0, Math.floor((s.globalStep - s.ghostCompositionStartStep) / STEPS_PER_BAR)));
   const listRef = useRef<HTMLDivElement>(null);
-  const elapsedBars = Math.max(0, Math.floor((globalStep - startStep) / STEPS_PER_BAR));
   const recent = new Set(b.recent.slice(-8));
 
   useEffect(() => {

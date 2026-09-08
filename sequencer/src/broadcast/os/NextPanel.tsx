@@ -1,22 +1,29 @@
 // The decision, on screen. During an interstitial hold the desktop has
-// fallen into static and this is the one stable thing: the set's songs as
-// candidates (recent ones greyed), a roll that runs through them and slows
-// onto the pick over the first part of the gap, then the incoming song's
-// name large, with the gap's progress underneath. Sits ABOVE the signal
-// overlay so it stays legible through the noise; it carries its own faint
-// flicker instead.
+// fallen into static; for most of the WAV that is all there is (Chris
+// 2026-09-08: just static / noise with the interstitial, the picker at the
+// end). Over the last PICK_SECS of the hold this comes up: the set's songs
+// as candidates (recent ones greyed), a roll that runs through them and
+// slows onto the pick, then the incoming song's name large, with the
+// picker's own progress underneath. Sits ABOVE the signal overlay so it
+// stays legible through the noise; it carries its own faint flicker instead.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGap } from '../gap';
 import { useBroadcast } from '../setlist';
 
-const ROLL_END = 0.42; // fraction of the hold spent rolling
+const PICK_SECS = 12; // the picker's life at the end of the hold
+const ROLL_END = 0.42; // fraction of the picker's life spent rolling
 const ROWS = 12; // list rows always drawn (padded) so the box never resizes
 const ROW_H = 18;
 
 export function NextPanel() {
   const phase = useGap((s) => s.phase);
-  const progress = useGap((s) => s.progress);
+  const gapProgress = useGap((s) => s.progress);
+  const duration = useGap((s) => s.duration);
   const nextIdx = useGap((s) => s.nextIdx);
+  // The picker's own 0..1 across the last PICK_SECS of the hold (negative
+  // before it starts — a short interstitial shows it from the top).
+  const tailStart = duration > 0 ? Math.max(0, 1 - (PICK_SECS * 1000) / duration) : 0;
+  const progress = tailStart < 1 ? (gapProgress - tailStart) / (1 - tailStart) : 1;
   const wav = useGap((s) => s.wav);
   const entries = useBroadcast((s) => s.entries);
   const recent = useBroadcast((s) => s.recent);
@@ -34,7 +41,7 @@ export function NextPanel() {
   }, [entries, recent, current]);
 
   useEffect(() => {
-    if (phase !== 'hold') {
+    if (phase !== 'hold' || progress < 0) {
       setRoll(null);
       return;
     }
@@ -52,7 +59,7 @@ export function NextPanel() {
     }
   }, [phase, progress, nextIdx, candidates, roll]);
 
-  if (phase !== 'hold' || entries.length === 0) return null;
+  if (phase !== 'hold' || progress < 0 || entries.length === 0) return null;
   const settled = progress >= ROLL_END && nextIdx !== null;
   const lit = settled ? nextIdx : roll;
   const recentSet = new Set(recent.slice(-8));

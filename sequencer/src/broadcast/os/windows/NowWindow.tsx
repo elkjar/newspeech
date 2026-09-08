@@ -29,12 +29,11 @@ export function NowWindow() {
   const rootNote = useSequencerStore((s) => s.rootNote);
   const scale = useSequencerStore((s) => s.scale);
   const playing = useSequencerStore((s) => s.playing);
-  const globalStep = useSequencerStore((s) => s.globalStep);
-  const startStep = useSequencerStore((s) => s.ghostCompositionStartStep);
+  // Bars, derived in the selector: re-render per bar, not per step.
+  const bars = useSequencerStore((s) => Math.max(0, Math.floor((s.globalStep - s.ghostCompositionStartStep) / STEPS_PER_BAR)));
   const shape = useSequencerStore((s) => s.sceneGraph.shape);
   const b = useBroadcast();
   const now = useClock();
-  const bars = Math.max(0, Math.floor((globalStep - startStep) / STEPS_PER_BAR));
   const key = `${NOTE_NAMES[((rootNote % 12) + 12) % 12]} ${scale}`;
   const title = b.status === 'running' ? songTitle ?? 'untitled' : '—';
 

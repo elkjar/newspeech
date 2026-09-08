@@ -131,12 +131,12 @@ export function Desktop() {
         className="absolute overflow-hidden"
         style={{ left: fit.ox, top: fit.oy, width: STAGE_W, height: STAGE_H, transform: `scale(${fit.scale})`, transformOrigin: '0 0' }}
       >
-      {/* the transmission root: everything the signal layer tints (SignalOverlay
-          sets a brightness/contrast filter here); the overlay canvas sits outside it */}
+      {/* the transmission root: the picture the signal layer sits over (the
+          overlay is a sibling, never a filter on this — see SignalOverlay) */}
       <div
         id={TRANSMISSION_ID}
         className="absolute inset-0 overflow-hidden text-white font-mono select-none"
-        style={{ background: '#050505', cursor: 'default', willChange: 'filter' }}
+        style={{ background: '#050505', cursor: 'default' }}
       >
       {/* ground: Chris's desktop-bg (a glitched light streak on dark), full
           bleed, with a breath of grain over it so the windows sit in it */}

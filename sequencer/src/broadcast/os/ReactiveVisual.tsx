@@ -4,10 +4,10 @@
 //   - engine output level (audio:level, ~30 Hz) breathes brightness and
 //     contrast, and an onset (level jumping over its running average) fires
 //     one of the count-in glitch styles at an intensity set by the jump;
-//   - every audible hit (stream `step` events, with velocity) pops the frame
-//     a hair — more for louder hits;
 //   - a hard kick-like hit sometimes seeks the clip to a new point: a cut
-//     without reloading the video;
+//     without reloading the video (the per-hit zoom pops that used to ride
+//     the same events are gone — Chris 2026-09-08: drop the video zooming
+//     in and out with the music);
 //   - underneath it all a slow drift so even a still or a static clip moves.
 // Styling is applied straight to the wrapper element (no React re-render on
 // the audio path). The bank-swap count-in glitch (GlitchWrap) stays nested.
@@ -27,6 +27,9 @@ const DRIFT_KEYFRAMES = `@keyframes ns-visual-drift {
 }`;
 
 const KICKISH = /kick|\bbd\b|909|808|sub|boom/i;
+
+// Onset glitches: every style but the scale "punch" (no zoom with the music).
+const ONSET_STYLES = GLITCH_STYLES.filter((_, i) => i !== 4);
 
 const HIDE_CAPTION = `.ns-reactive-visual [data-pool-caption] { display: none; }`;
 
@@ -51,22 +54,32 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
     let env = 0;
     let avg = 0.02;
     let lastOnset = 0;
+    let lastFilter = '';
     void listen<number>('audio:level', (e) => {
       const lvl = Math.max(0, Math.min(1, e.payload));
       env += (lvl - env) * (lvl > env ? 0.6 : 0.12);
-      avg += (lvl - avg) * 0.05;
+      // The running average rises fast and falls slowly: a song coming in
+      // from silence is loud relative to silence for a moment, not a stream
+      // of onsets (it used to fire one every 140 ms for a second at every
+      // song start — the visual lag Chris felt).
+      avg += (lvl - avg) * (lvl > avg ? 0.3 : 0.04);
       const el = inner.current;
       if (!el) return;
-      // Breathe: a touch brighter and harder on louder passages.
+      // Breathe: a touch brighter and harder on louder passages. Written
+      // only when it moved — a filter change re-composites the video layer.
       const b = 0.94 + 0.22 * Math.min(1, env * 1.6);
       const c = 1 + 0.18 * Math.min(1, env * 1.4);
-      el.style.filter = `brightness(${b.toFixed(3)}) contrast(${c.toFixed(3)})`;
+      const filter = `brightness(${b.toFixed(2)}) contrast(${c.toFixed(2)})`;
+      if (filter !== lastFilter) {
+        lastFilter = filter;
+        el.style.filter = filter;
+      }
       // Onset: a jump well above the running average.
       const now = performance.now();
-      if (lvl > 0.06 && lvl > avg * 1.9 && now - lastOnset > 140) {
+      if (lvl > 0.06 && lvl > avg * 1.9 && now - lastOnset > 260) {
         lastOnset = now;
         const t = Math.max(0.12, Math.min(0.5, (lvl - avg) * 1.25));
-        const style = GLITCH_STYLES[Math.floor(Math.random() * GLITCH_STYLES.length)](t);
+        const style = ONSET_STYLES[Math.floor(Math.random() * ONSET_STYLES.length)](t);
         outer.current?.animate(style.keyframes, { duration: style.duration, easing: style.easing });
       }
     }).then((fn) => {
@@ -75,34 +88,20 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
     return () => un?.();
   }, []);
 
-  // Hits → pops + occasional seek.
+  // Hard kicks → an occasional seek (a cut without reloading the video).
   useEffect(() => {
     let un: (() => void) | null = null;
     let cancelled = false;
     let lastSeek = 0;
     void subscribeStreamEvents((batch) => {
       if (cancelled) return;
-      let vel = 0;
       let kick = false;
       for (const e of batch) {
-        if (e.kind !== 'step') continue;
-        vel = Math.max(vel, e.velocity);
-        if (e.velocity >= 0.8 && KICKISH.test(e.voice)) kick = true;
+        if (e.kind === 'step' && e.velocity >= 0.8 && KICKISH.test(e.voice)) kick = true;
       }
-      if (vel <= 0) return;
-      const el = inner.current;
-      if (!el) return;
-      const k = Math.min(1, vel);
-      el.animate(
-        [
-          { transform: 'scale(1)', offset: 0 },
-          { transform: `scale(${(1 + 0.007 * k).toFixed(4)})`, offset: 0.25 },
-          { transform: 'scale(1)', offset: 1 },
-        ],
-        { duration: 110, easing: 'ease-out', composite: 'add' },
-      );
+      if (!kick) return;
       const now = performance.now();
-      if (kick && now - lastSeek > 1800 && Math.random() < 0.3) {
+      if (now - lastSeek > 1800 && Math.random() < 0.3) {
         const v = outer.current?.querySelector('video');
         if (v && Number.isFinite(v.duration) && v.duration > 2) {
           lastSeek = now;

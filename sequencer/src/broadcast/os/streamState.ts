@@ -42,12 +42,28 @@ export const useStreamState = create<StreamState>((set) => ({
   rows: [],
   hearing: [],
   walk: [],
+  // Same references back for anything untouched — a batch that is only the
+  // 10 Hz snapshot must not re-render the ghost window's rows and hearing.
   push: (events) =>
     set((s) => {
       let snapshot = s.snapshot;
       let walk = s.walk;
-      const rows = s.rows.slice();
-      const hearing = s.hearing.map((h) => ({ ...h }));
+      let rows = s.rows;
+      let hearing = s.hearing;
+      let rowsCopied = false;
+      let hearingCopied = false;
+      const copyRows = () => {
+        if (!rowsCopied) {
+          rows = rows.slice();
+          rowsCopied = true;
+        }
+      };
+      const copyHearing = () => {
+        if (!hearingCopied) {
+          hearing = hearing.map((h) => ({ ...h }));
+          hearingCopied = true;
+        }
+      };
       const t = performance.now();
       for (const e of events) {
         if (e.kind === 'state') {
@@ -56,23 +72,31 @@ export const useStreamState = create<StreamState>((set) => ({
           }
           snapshot = e;
         } else if (e.kind === 'step') {
+          copyHearing();
           const h = hearing.find((x) => x.voice === e.voice);
           if (h) {
-            if (t - h.lastT > REAPPEAR_MS) rows.push({ id: nextId++, t, kind: 'hit', label: e.voice });
+            if (t - h.lastT > REAPPEAR_MS) {
+              copyRows();
+              rows.push({ id: nextId++, t, kind: 'hit', label: e.voice });
+            }
             h.lastT = t;
             h.velocity = e.velocity;
             h.count += 1;
           } else {
             hearing.push({ voice: e.voice, lastT: t, velocity: e.velocity, count: 1 });
+            copyRows();
             rows.push({ id: nextId++, t, kind: 'hit', label: e.voice });
           }
         } else {
+          copyRows();
           rows.push({ id: nextId++, t, kind: e.kind, label: e.label });
         }
       }
-      const kept = hearing.filter((h) => t - h.lastT < HEARING_KEEP_MS).sort((a, b) => b.lastT - a.lastT);
-      if (rows.length > MAX_ROWS) rows.splice(0, rows.length - MAX_ROWS);
-      return { snapshot, rows, walk, hearing: kept };
+      if (hearingCopied || hearing.some((h) => t - h.lastT >= HEARING_KEEP_MS)) {
+        hearing = hearing.filter((h) => t - h.lastT < HEARING_KEEP_MS).sort((a, b) => b.lastT - a.lastT);
+      }
+      if (rowsCopied && rows.length > MAX_ROWS) rows.splice(0, rows.length - MAX_ROWS);
+      return { snapshot, rows, walk, hearing };
     }),
   seed: (snapshot, rows, walk) => set({ snapshot, rows, walk }),
 }));
