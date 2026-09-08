@@ -145,14 +145,19 @@ async function preloadVoices(voices: string[]): Promise<void> {
 }
 
 let preparing = false;
+let preparingPromise: Promise<void> | null = null;
 async function prepareNext(): Promise<void> {
   if (preparing) return;
   preparing = true;
-  try {
-    await prepareNextInner();
-  } finally {
-    preparing = false;
-  }
+  preparingPromise = (async () => {
+    try {
+      await prepareNextInner();
+    } finally {
+      preparing = false;
+      preparingPromise = null;
+    }
+  })();
+  await preparingPromise;
 }
 
 async function prepareNextInner(): Promise<void> {
@@ -197,9 +202,18 @@ let unsubscribe: (() => void) | null = null;
 
 // Wire the provider + the "swap landed" subscription once per session.
 function installConductor(): void {
-  setNextSongProvider(() => {
+  setNextSongProvider((store) => {
     const b = useBroadcast.getState();
     if (b.status !== 'running') return null;
+    if (b.nextSlot !== null && !store.performance.songs[b.nextSlot]) {
+      // The staged slot was emptied under us (a set reload raced a staging
+      // — 2026-09-08: ns_2306 "stuck forever", the swap into an empty slot
+      // was a silent no-op). Drop it and re-stage; this bar plays on.
+      console.warn(`[broadcast] staged slot ${b.nextSlot} is empty — restaging`);
+      useBroadcast.setState({ next: null, nextSlot: null });
+      void prepareNext();
+      return null;
+    }
     if (b.nextSlot === null && !preparing) {
       // Self-heal: nothing staged (a failed read, a slow disk) — stage now so
       // the next bar can take it.
@@ -243,6 +257,11 @@ let loadGen = 0;
 export async function loadAndStartSet(paths: string[]): Promise<void> {
   const gen = ++loadGen;
   useBroadcast.setState({ status: 'loading', error: null });
+  // Let an in-flight staging finish before we replace the slots it's
+  // writing into — otherwise it lands a song in a slot we're about to clear
+  // and the conductor keeps pointing at the hole.
+  if (preparingPromise) await preparingPromise;
+  if (gen !== loadGen) return;
   let entries: SetEntry[];
   try {
     entries = await expandSetPaths(paths);
