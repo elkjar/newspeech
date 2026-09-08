@@ -14,6 +14,7 @@ import { useStationBoot, stationGo, cancelAutoGo, BOOT_LINE_MS, AUTO_GO_SECS } f
 import { useBroadcast, loadAndStartSet } from '../setlist';
 import { useCards, scanCards } from '../cards';
 import { useSettings, shortPath } from '../settings';
+import { useLayout } from './layout';
 import { listOutputDevices, applyOutputDeviceConfig, presetNativeDeviceName, type NativeDeviceInfo } from '../../audio/nativeEngine';
 import { setConfiguredUserSamplesDir } from '../../instruments/userSamplesDir';
 import { rescanAllKits } from '../../instruments/userSamplesDir';
@@ -42,6 +43,12 @@ export function BootPanel() {
   const ready = useStationBoot((s) => s.ready);
   const goAt = useStationBoot((s) => s.goAt);
   const lines = useStationBoot((s) => s.lines);
+  const arranging = useLayout((s) => s.arranging);
+  const setArranging = useLayout((s) => s.setArranging);
+  // Arrange mode is a standby thing — GO (or autostart) ends it.
+  useEffect(() => {
+    if (station !== 'standby' && arranging) setArranging(false);
+  }, [station, arranging, setArranging]);
   const [blink, setBlink] = useState(true);
   const [, tick] = useState(0);
   useEffect(() => {
@@ -66,12 +73,24 @@ export function BootPanel() {
     opacity: flicker * fade,
   };
 
+  if (station === 'standby' && arranging) {
+    return (
+      <div className="fixed inset-0 flex items-end justify-center pb-5" style={{ zIndex: 20001, pointerEvents: 'none' }}>
+        <div className="font-mono text-white" style={{ ...chrome, width: W, pointerEvents: 'auto' }}>
+          <Header right="arranging" />
+          <ArrangeStrip onDone={() => setArranging(false)} />
+          <div className="h-[2px] bg-white/10" />
+        </div>
+      </div>
+    );
+  }
+
   if (station === 'standby') {
     return (
       <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 20001, pointerEvents: 'none' }}>
         <div className="font-mono text-white" style={{ ...chrome, width: W, pointerEvents: 'auto' }}>
           <Header right="standby" />
-          <StandbyConfig ready={ready} blink={blink} />
+          <StandbyConfig ready={ready} blink={blink} onArrange={() => setArranging(true)} />
           <div className="h-[2px] bg-white/10">
             <div className="h-full bg-white/40" style={{ width: ready ? '100%' : '35%' }} />
           </div>
@@ -124,7 +143,28 @@ function Header({ right }: { right: string }) {
 
 // The config. Every change is remembered (settings.ts) and applied now:
 // folders rescan, the set reloads, the device reopens.
-function StandbyConfig({ ready, blink }: { ready: boolean; blink: boolean }) {
+// Arrange mode: the desktop is up behind this strip; drag windows by their
+// title bars, the corner resizes, `windows ▾` in the menubar toggles them.
+// The layout is saved as it changes, same as on air.
+function ArrangeStrip({ onDone }: { onDone: () => void }) {
+  const backdrop = useLayout((s) => s.backdrop);
+  const setBackdrop = useLayout((s) => s.setBackdrop);
+  const reset = useLayout((s) => s.reset);
+  return (
+    <div className="flex items-center gap-4 px-5 text-[10px]" style={{ height: 44 }}>
+      <span className="text-[9px] tracking-[0.16em] uppercase text-white/45 truncate">
+        drag a title to move · corner resizes · windows ▾ toggles · esc when done
+      </span>
+      <span className="ml-auto flex items-center gap-2 shrink-0">
+        <Btn onClick={() => setBackdrop(!backdrop)}>{backdrop ? '■' : '□'} backdrop</Btn>
+        <Btn onClick={reset}>reset</Btn>
+        <Btn onClick={onDone}>done</Btn>
+      </span>
+    </div>
+  );
+}
+
+function StandbyConfig({ ready, blink, onArrange }: { ready: boolean; blink: boolean; onArrange: () => void }) {
   const st = useSettings();
   const b = useBroadcast();
   const gapFiles = useGap((s) => s.files.length);
@@ -364,6 +404,9 @@ function StandbyConfig({ ready, blink }: { ready: boolean; blink: boolean }) {
         </button>
         <span className="text-[9px] tracking-[0.16em] uppercase text-white/40 truncate">{status}</span>
         {autoLeft !== null && <Btn onClick={cancelAutoGo}>hold</Btn>}
+        <span className="ml-auto shrink-0">
+          <Btn onClick={onArrange}>arrange windows</Btn>
+        </span>
       </div>
     </div>
   );

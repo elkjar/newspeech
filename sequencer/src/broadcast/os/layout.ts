@@ -1,7 +1,31 @@
 // Desktop layout — one rect per window, z-order, open flag. Persisted so the
 // runner boots into the same arrangement every time; a saved layout is the
-// broadcast layout. Positions are in px on the window's own coordinate space.
+// broadcast layout.
+//
+// THE STAGE. The face is one fixed picture — Chris's 1512×850 design screen
+// (16:9) — and the window shows it scaled uniformly to fit: a laptop shrinks
+// it, the Studio Display grows it, type and grain scale with the windows
+// (Chris 2026-09-08: position-only scaling left type small on a 5K; the
+// laptop squashed the arrangement against the edges). Every rect here is in
+// STAGE px; `useStage` is the fit (scale + letterbox offset) the desktop
+// applies with one CSS transform and the drag/resize math divides by.
 import { create } from 'zustand';
+
+export const STAGE_W = 1512;
+export const STAGE_H = 850;
+export const MENUBAR_H = 28;
+
+export interface StageFit {
+  scale: number;
+  ox: number;
+  oy: number;
+}
+export function fitStage(W = window.innerWidth, H = window.innerHeight): StageFit {
+  const scale = Math.min(W / STAGE_W, H / STAGE_H);
+  return { scale, ox: Math.round((W - STAGE_W * scale) / 2), oy: Math.round((H - STAGE_H * scale) / 2) };
+}
+export const useStage = create<StageFit>(() => fitStage());
+if (typeof window !== 'undefined') window.addEventListener('resize', () => useStage.setState(fitStage()));
 
 export type WindowId = 'set' | 'ghost' | 'banks' | 'shape' | 'now' | 'visual' | 'sys' | 'card';
 
@@ -27,10 +51,8 @@ export const WINDOW_TITLES: Record<WindowId, string> = {
 
 export const WINDOW_ORDER: WindowId[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys', 'card'];
 
-// Chris's arrangement, laid out by hand on a 1512×850 screen (2026-09-08)
-// under the 28px menubar. Scaled to whatever screen the runner boots on.
-const DESIGN_W = 1512;
-const DESIGN_H = 850;
+// Chris's arrangement, laid out by hand on the 1512×850 stage (2026-09-08)
+// under the 28px menubar.
 const DEFAULT: Record<WindowId, WinRect> = {
   ghost: { x: 53, y: 218, w: 411, h: 592, open: true, z: 1 },
   visual: { x: 547, y: 72, w: 900, h: 520, open: true, z: 2 },
@@ -44,32 +66,39 @@ const DEFAULT: Record<WindowId, WinRect> = {
   card: { x: 566, y: 430, w: 400, h: 146, open: true, z: 8 },
 };
 
-const LS_KEY = 'broadcast.layout.v1';
+// v1 was window px (whatever screen it was saved on); v2 is stage px.
+const LS_KEY = 'broadcast.layout.v2';
+const LS_KEY_V1 = 'broadcast.layout.v1';
 
-// Default layout scaled from the design screen to this one.
-function scaledDefault(): Record<WindowId, WinRect> {
-  const k = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
+function defaults(): Record<WindowId, WinRect> {
   const out = {} as Record<WindowId, WinRect>;
-  for (const id of Object.keys(DEFAULT) as WindowId[]) {
-    const r = DEFAULT[id];
-    out[id] = { ...r, x: Math.round(r.x * k), y: 28 + Math.round((r.y - 28) * k), w: Math.round(r.w * k), h: Math.round(r.h * k) };
+  for (const id of Object.keys(DEFAULT) as WindowId[]) out[id] = { ...DEFAULT[id] };
+  return out;
+}
+
+// Keep every window on the stage (a layout saved elsewhere would otherwise
+// hide windows off the picture).
+export function clampToStage(windows: Record<WindowId, WinRect>): Record<WindowId, WinRect> {
+  const out = { ...windows };
+  for (const id of Object.keys(out) as WindowId[]) {
+    const r = { ...out[id] };
+    r.w = Math.min(r.w, STAGE_W - 8);
+    r.h = Math.min(r.h, STAGE_H - MENUBAR_H - 8);
+    r.x = Math.max(0, Math.min(r.x, STAGE_W - r.w));
+    r.y = Math.max(MENUBAR_H, Math.min(r.y, STAGE_H - r.h));
+    out[id] = r;
   }
   return out;
 }
 
-// Keep every window inside the viewport (a layout saved on a bigger screen,
-// or the design defaults on a laptop, would otherwise hide windows offscreen).
-export function clampToViewport(windows: Record<WindowId, WinRect>): Record<WindowId, WinRect> {
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  const out = { ...windows };
-  for (const id of Object.keys(out) as WindowId[]) {
-    const r = { ...out[id] };
-    r.w = Math.min(r.w, W - 8);
-    r.h = Math.min(r.h, H - 36);
-    r.x = Math.max(0, Math.min(r.x, W - r.w));
-    r.y = Math.max(28, Math.min(r.y, H - r.h));
-    out[id] = r;
+function parseSaved(raw: string, k: number): Record<WindowId, WinRect> {
+  const parsed = JSON.parse(raw) as Partial<Record<WindowId, WinRect>>;
+  const out = defaults();
+  for (const id of Object.keys(DEFAULT) as WindowId[]) {
+    const r = parsed[id];
+    if (r && typeof r.x === 'number' && typeof r.w === 'number') {
+      out[id] = { ...DEFAULT[id], ...r, x: Math.round(r.x / k), y: Math.round(r.y / k), w: Math.round(r.w / k), h: Math.round(r.h / k) };
+    }
   }
   return out;
 }
@@ -81,23 +110,26 @@ function logLayout(windows: Record<WindowId, WinRect>, backdrop: boolean) {
   if (logTimer !== null) window.clearTimeout(logTimer);
   logTimer = window.setTimeout(() => {
     logTimer = null;
-    console.info(`[layout] ${window.innerWidth}x${window.innerHeight} backdrop=${backdrop} ${JSON.stringify(windows)}`);
+    console.info(`[layout] stage ${STAGE_W}x${STAGE_H} in ${window.innerWidth}x${window.innerHeight} backdrop=${backdrop} ${JSON.stringify(windows)}`);
   }, 800);
 }
 
 function load(): Record<WindowId, WinRect> {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return clampToViewport(scaledDefault());
-    const parsed = JSON.parse(raw) as Partial<Record<WindowId, WinRect>>;
-    const out = { ...DEFAULT };
-    for (const id of Object.keys(DEFAULT) as WindowId[]) {
-      const r = parsed[id];
-      if (r && typeof r.x === 'number' && typeof r.w === 'number') out[id] = { ...DEFAULT[id], ...r };
+    if (raw) return clampToStage(parseSaved(raw, 1));
+    // Migrate a v1 layout: it was saved in window px, most likely on the
+    // window we are opening in now, so the stage fit of this window is the
+    // best guess at the factor. Close enough to rearrange from.
+    const v1 = localStorage.getItem(LS_KEY_V1);
+    if (v1) {
+      const out = clampToStage(parseSaved(v1, fitStage().scale));
+      localStorage.setItem(LS_KEY, JSON.stringify(out));
+      return out;
     }
-    return clampToViewport(out);
+    return clampToStage(defaults());
   } catch {
-    return clampToViewport(scaledDefault());
+    return clampToStage(defaults());
   }
 }
 
@@ -107,12 +139,16 @@ interface LayoutState {
   backdrop: boolean;
   // The transmission layer (SignalOverlay): scanlines, static, sync loss.
   signal: boolean;
+  // Standby's "arrange windows": the desktop shows with every window up so
+  // the layout can be set before going on air. Not persisted.
+  arranging: boolean;
   move: (id: WindowId, x: number, y: number) => void;
   resize: (id: WindowId, w: number, h: number) => void;
   raise: (id: WindowId) => void;
   toggle: (id: WindowId) => void;
   setBackdrop: (v: boolean) => void;
   setSignal: (v: boolean) => void;
+  setArranging: (v: boolean) => void;
   reset: () => void;
   clamp: () => void;
 }
@@ -148,6 +184,7 @@ export const useLayout = create<LayoutState>((set, get) => ({
   windows: load(),
   backdrop: loadBackdrop(),
   signal: loadSignal(),
+  arranging: false,
   move: (id, x, y) =>
     set((s) => {
       const windows = { ...s.windows, [id]: { ...s.windows[id], x, y } };
@@ -189,12 +226,13 @@ export const useLayout = create<LayoutState>((set, get) => ({
     console.info(`[layout] signal=${signal}`);
     set({ signal });
   },
+  setArranging: (arranging) => set({ arranging }),
   reset: () => {
-    const windows = clampToViewport(scaledDefault());
+    const windows = clampToStage(defaults());
     persist(windows, false);
     set({ windows, backdrop: false });
   },
-  clamp: () => set((s) => ({ windows: clampToViewport(s.windows) })),
+  clamp: () => set((s) => ({ windows: clampToStage(s.windows) })),
 }));
 
 // Log the layout we booted with, once, so the current arrangement is readable
@@ -202,6 +240,6 @@ export const useLayout = create<LayoutState>((set, get) => ({
 if (typeof window !== 'undefined') {
   window.setTimeout(() => {
     const s = useLayout.getState();
-    console.info(`[layout] boot ${window.innerWidth}x${window.innerHeight} backdrop=${s.backdrop} ${JSON.stringify(s.windows)}`);
+    console.info(`[layout] boot stage ${STAGE_W}x${STAGE_H} in ${window.innerWidth}x${window.innerHeight} backdrop=${s.backdrop} ${JSON.stringify(s.windows)}`);
   }, 1500);
 }

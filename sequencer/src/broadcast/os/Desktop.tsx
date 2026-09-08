@@ -8,7 +8,7 @@ import { Visualizer } from '../../stream/Visualizer';
 import { ReactiveVisual } from './ReactiveVisual';
 import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
 import { setSignalEnabled } from './signal';
-import { useLayout, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
+import { useLayout, useStage, STAGE_W, STAGE_H, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
 import { NowWindow } from './windows/NowWindow';
@@ -23,6 +23,7 @@ import { BootPanel } from './BootPanel';
 import { EndPanel } from './EndPanel';
 import { useGap } from '../gap';
 import { useCards } from '../cards';
+import { useStationBoot } from '../boot';
 import desktopBg from './assets/desktop-bg.png';
 
 const CONTENT: Record<WindowId, () => JSX.Element | null> = {
@@ -101,16 +102,20 @@ export function Desktop() {
   const clamp = useLayout((s) => s.clamp);
   const signal = useLayout((s) => s.signal);
   const setSignal = useLayout((s) => s.setSignal);
-  useEffect(() => setSignalEnabled(signal), [signal]);
-  useEffect(() => {
-    clamp();
-    window.addEventListener('resize', clamp);
-    return () => window.removeEventListener('resize', clamp);
-  }, [clamp]);
+  useEffect(() => clamp(), [clamp]);
+  const fit = useStage();
   const clock = useClockText();
   const [menu, setMenu] = useState(false);
-  const hidden = useCollapse();
-  const cardUp = useCards((s) => s.active !== null);
+  const collapsed = useCollapse();
+  // Standby's arrange mode: the whole desktop up, ident window included, so
+  // the layout can be set before GO. Only meaningful in standby. The
+  // transmission (static, scanlines) and the ground image are off while
+  // arranging so the windows read plainly (Chris 2026-09-08).
+  const station = useStationBoot((s) => s.phase);
+  const arranging = useLayout((s) => s.arranging) && station === 'standby';
+  useEffect(() => setSignalEnabled(signal && !arranging), [signal, arranging]);
+  const hidden = arranging ? new Set<Falls>() : collapsed;
+  const cardUp = useCards((s) => s.active !== null) || arranging;
   // An ident always comes to the front — its saved z is whatever it was
   // when last dragged, and a raised visual window otherwise buries it.
   const raise = useLayout((s) => s.raise);
@@ -120,6 +125,12 @@ export function Desktop() {
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
+      {/* the stage: the 1512×850 picture, scaled to fit the window (letterboxed
+          in a browser; the Tauri window is aspect-locked so it fills) */}
+      <div
+        className="absolute overflow-hidden"
+        style={{ left: fit.ox, top: fit.oy, width: STAGE_W, height: STAGE_H, transform: `scale(${fit.scale})`, transformOrigin: '0 0' }}
+      >
       {/* the transmission root: everything the signal layer tints (SignalOverlay
           sets a brightness/contrast filter here); the overlay canvas sits outside it */}
       <div
@@ -129,10 +140,12 @@ export function Desktop() {
       >
       {/* ground: Chris's desktop-bg (a glitched light streak on dark), full
           bleed, with a breath of grain over it so the windows sit in it */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{ backgroundImage: `url(${desktopBg})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'grayscale(1)' }}
-      />
+      {!arranging && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ backgroundImage: `url(${desktopBg})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'grayscale(1)' }}
+        />
+      )}
       <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.05, mixBlendMode: 'screen' }}>
         <filter id="ns-grain">
           <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
@@ -155,7 +168,7 @@ export function Desktop() {
         data-tauri-drag-region
         className="absolute top-0 inset-x-0 flex items-center gap-5 px-4 text-[9px] tracking-[0.16em] uppercase"
         style={{
-          height: 28,
+          height: MENUBAR_H,
           background: 'rgba(5,5,5,0.85)',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
           zIndex: 10000,
@@ -215,10 +228,11 @@ export function Desktop() {
         );
       })}
       </div>
-      <SignalOverlay />
+      {!arranging && <SignalOverlay />}
       <NextPanel />
       <BootPanel />
       <EndPanel />
+      </div>
     </div>
   );
 }

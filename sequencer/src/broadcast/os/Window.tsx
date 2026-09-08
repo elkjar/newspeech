@@ -2,7 +2,7 @@
 // resizable from the corner, raised on pointer-down, closable. Content is
 // whatever the window is about — the OS only frames it.
 import { useRef, type ReactNode } from 'react';
-import { useLayout, WINDOW_TITLES, type WindowId } from './layout';
+import { useLayout, useStage, MENUBAR_H, WINDOW_TITLES, type WindowId } from './layout';
 
 export function OSWindow({ id, children, index }: { id: WindowId; children: ReactNode; index: number }) {
   const rect = useLayout((s) => s.windows[id]);
@@ -10,6 +10,10 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
   const resize = useLayout((s) => s.resize);
   const raise = useLayout((s) => s.raise);
   const toggle = useLayout((s) => s.toggle);
+  // The desktop is a scaled stage: pointer px → stage px through the fit.
+  const fit = useStage();
+  const sx = (clientX: number) => (clientX - fit.ox) / fit.scale;
+  const sy = (clientY: number) => (clientY - fit.oy) / fit.scale;
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const size = useRef<{ x0: number; y0: number; w0: number; h0: number } | null>(null);
 
@@ -18,25 +22,25 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
   const onTitleDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
     raise(id);
-    drag.current = { dx: e.clientX - rect.x, dy: e.clientY - rect.y };
+    drag.current = { dx: sx(e.clientX) - rect.x, dy: sy(e.clientY) - rect.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onTitleMove = (e: React.PointerEvent) => {
     if (!drag.current) return;
-    move(id, Math.max(0, e.clientX - drag.current.dx), Math.max(28, e.clientY - drag.current.dy));
+    move(id, Math.round(Math.max(0, sx(e.clientX) - drag.current.dx)), Math.round(Math.max(MENUBAR_H, sy(e.clientY) - drag.current.dy)));
   };
   const onTitleUp = () => {
     drag.current = null;
   };
   const onGripDown = (e: React.PointerEvent) => {
     raise(id);
-    size.current = { x0: e.clientX, y0: e.clientY, w0: rect.w, h0: rect.h };
+    size.current = { x0: sx(e.clientX), y0: sy(e.clientY), w0: rect.w, h0: rect.h };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     e.stopPropagation();
   };
   const onGripMove = (e: React.PointerEvent) => {
     if (!size.current) return;
-    resize(id, size.current.w0 + (e.clientX - size.current.x0), size.current.h0 + (e.clientY - size.current.y0));
+    resize(id, Math.round(size.current.w0 + (sx(e.clientX) - size.current.x0)), Math.round(size.current.h0 + (sy(e.clientY) - size.current.y0)));
   };
   const onGripUp = () => {
     size.current = null;

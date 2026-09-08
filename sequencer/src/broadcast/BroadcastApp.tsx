@@ -37,6 +37,7 @@ import { installStationBoot, stationGo, cancelAutoGo, useStationBoot } from './b
 import { mergeLaunchArgs, rememberLaunchArgs, useSettings } from './settings';
 import { startGapPhase } from './gap';
 import { Desktop } from './os/Desktop';
+import { useLayout } from './os/layout';
 import { installStreamState } from './os/streamState';
 import { seedDemo } from './os/demo';
 
@@ -288,10 +289,13 @@ export function BroadcastApp() {
       }
       if (e.code === 'Escape' && useStationBoot.getState().phase === 'standby') {
         e.preventDefault();
-        cancelAutoGo();
+        if (useLayout.getState().arranging) useLayout.getState().setArranging(false);
+        else cancelAutoGo();
         return;
       }
       if (e.code === 'Space') {
+        // Arranging: space is not GO (a window title might have focus).
+        if (useLayout.getState().arranging && useStationBoot.getState().phase === 'standby') return;
         if (useStationBoot.getState().phase === 'standby') {
           e.preventDefault();
           stationGo();

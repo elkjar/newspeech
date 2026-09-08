@@ -11,15 +11,6 @@ fn main() {
     .setup(|app| {
       #[cfg(target_os = "macos")]
       sequence_lib::set_dock_icon_bytes(include_bytes!("../icons/icon.png"));
-      if let Some(window) = app.get_webview_window("main") {
-        sequence_lib::install_media_permission(&window);
-        // Frameless (no title bar — `decorations: false`), so the window IS
-        // the picture: 16:9 whatever size it's dragged to, exactly 1920×1080
-        // at launch, and a windowed capture is a clean frame. Our menubar is
-        // the drag handle (data-tauri-drag-region).
-        let _ = window.set_size(tauri::LogicalSize::new(1920.0, 1080.0));
-        sequence_lib::lock_content_aspect(&window, 16.0, 9.0);
-      }
       // Log always — an unattended box needs a trail. Dev: stdout (the
       // terminal). Release: ~/Library/Logs/com.newspeechsound.broadcast/
       // broadcast.log, rotated at 8 MB, old files kept.
@@ -36,6 +27,43 @@ fn main() {
           b.target(Target::new(TargetKind::LogDir { file_name: Some("broadcast".into()) }))
         };
         app.handle().plugin(b.build())?;
+      }
+      if let Some(window) = app.get_webview_window("main") {
+        sequence_lib::install_media_permission(&window);
+        // Frameless (no title bar — `decorations: false`), so the window IS
+        // the picture: 16:9 whatever size it's dragged to, and a windowed
+        // capture is a clean frame. Launch at 1920×1080 where it fits; on a
+        // smaller screen (a laptop) the largest 16:9 inside the work area
+        // (the frontend scales its fixed stage to the window). Our menubar
+        // is the drag handle (data-tauri-drag-region).
+        let (mut w, mut h) = (1920.0_f64, 1080.0_f64);
+        match window.current_monitor() {
+          Ok(Some(mon)) => {
+            let k = mon.scale_factor();
+            let area = mon.work_area();
+            // Work area = screen minus menu bar and Dock, in physical px.
+            let (ax, ay) = (area.position.x as f64 / k, area.position.y as f64 / k);
+            let (aw, ah) = (area.size.width as f64 / k, area.size.height as f64 / k);
+            if aw - 24.0 < w || ah - 24.0 < h {
+              w = (aw - 24.0).min((ah - 24.0) * 16.0 / 9.0).floor();
+              h = (w * 9.0 / 16.0).floor();
+            }
+            let _ = window.set_size(tauri::LogicalSize::new(w, h));
+            // Centre in the work area ourselves — `center()` uses the whole
+            // screen and would tuck the bottom behind the Dock.
+            let _ = window.set_position(tauri::LogicalPosition::new(ax + ((aw - w) / 2.0).floor(), ay + ((ah - h) / 2.0).floor()));
+            log::info!(
+              "[window] monitor {}x{} @{k} work area {aw}x{ah} at {ax},{ay} → {w}x{h}",
+              mon.size().width as f64 / k,
+              mon.size().height as f64 / k
+            );
+          }
+          _ => {
+            let _ = window.set_size(tauri::LogicalSize::new(w, h));
+            let _ = window.center();
+          }
+        }
+        sequence_lib::lock_content_aspect(&window, 16.0, 9.0);
       }
       sequence_lib::spawn_level_emitter(app.handle().clone());
       Ok(())

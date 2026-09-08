@@ -11,6 +11,7 @@
 // WebGL CRT sim on the visual are later tiers of the same envelope.
 import { useEffect, useRef } from 'react';
 import { installSignalHooks, sampleSignal, signalEnabled, type SignalFrame } from './signal';
+import { STAGE_W, STAGE_H, useStage } from './layout';
 
 export const TRANSMISSION_ID = 'ns-transmission';
 
@@ -98,10 +99,13 @@ export function SignalOverlay() {
     let tiles: CanvasPattern[] = [];
     let vignette: HTMLCanvasElement | null = null;
 
+    // The canvas lives on the stage (stage px, scaled with everything else);
+    // its backing store follows the on-screen scale so a grown stage stays
+    // sharp and the grain stays 1 stage px — the same px the type is set in.
     const resize = () => {
-      const next = Math.min(2, window.devicePixelRatio || 1);
-      W = window.innerWidth;
-      H = window.innerHeight;
+      const next = Math.min(3, (window.devicePixelRatio || 1) * useStage.getState().scale);
+      W = STAGE_W;
+      H = STAGE_H;
       if (next !== dpr || !scan) {
         dpr = next;
         scan = makeScanPattern(ctx, dpr);
@@ -114,7 +118,7 @@ export function SignalOverlay() {
       vignette = makeVignette(W, H);
     };
     resize();
-    window.addEventListener('resize', resize);
+    const unsubStage = useStage.subscribe(resize);
 
     // Static fill: a random tile at a random offset. `setTransform` moves the
     // pattern origin; the rect is drawn in the same shifted space.
@@ -226,11 +230,11 @@ export function SignalOverlay() {
 
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener('resize', resize);
+      unsubStage();
       uninstall();
       if (root) root.style.filter = '';
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 20000 }} aria-hidden />;
+  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" style={{ zIndex: 20000 }} aria-hidden />;
 }

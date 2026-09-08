@@ -5,6 +5,7 @@
 // the layout's — Chris drags it where the ident should live.
 import { useEffect, useMemo, useState } from 'react';
 import { useCards, renderCardLine, type Card } from '../../cards';
+import { useLayout } from '../layout';
 
 const GLYPHS = '▓▒░█▄▀■□▪▫—·/\\|_╱╲=+*#%&$@01xzq';
 
@@ -72,6 +73,15 @@ function CardBody({ card }: { card: Card }) {
 
 export function CardWindow() {
   const active = useCards((s) => s.active);
-  if (!active) return null;
+  const arranging = useLayout((s) => s.arranging);
+  if (!active) {
+    // Arrange mode: the frame is up with no card so it can be placed.
+    if (!arranging) return null;
+    return (
+      <div className="absolute inset-0 flex items-center justify-center text-[8px] tracking-[0.18em] uppercase text-white/35">
+        ident lands here while a card is up
+      </div>
+    );
+  }
   return <CardBody key={active.path} card={active} />;
 }
