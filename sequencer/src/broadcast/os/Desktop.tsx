@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { Visualizer } from '../../stream/Visualizer';
+import { ReactiveVisual } from './ReactiveVisual';
 import { useLayout, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
@@ -73,7 +74,9 @@ export function Desktop() {
 
       {backdrop && isTauri() && (
         <div className="absolute inset-0" style={{ opacity: 0.55 }}>
-          <Visualizer />
+          <ReactiveVisual>
+            <Visualizer />
+          </ReactiveVisual>
         </div>
       )}
 

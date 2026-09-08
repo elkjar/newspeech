@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { Visualizer } from '../../../stream/Visualizer';
+import { ReactiveVisual } from '../ReactiveVisual';
 
 // The visualizer (pool video / camera) framed as a window. In a plain browser
 // (demo screenshots) a procedural placeholder stands in.
 export function VisualWindow() {
-  if (isTauri()) return <Visualizer />;
-  return <Placeholder />;
+  return <ReactiveVisual>{isTauri() ? <Visualizer /> : <Placeholder />}</ReactiveVisual>;
 }
 
 function Placeholder() {

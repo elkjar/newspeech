@@ -19,7 +19,7 @@ type GlitchStyle = (t: number) => {
 
 // `t` is 0.25 → 1.0 across the count-in (wider/harder toward the drop). Each
 // style returns its keyframes + timing; the caller fires it on the wrapper.
-const STYLES: GlitchStyle[] = [
+export const GLITCH_STYLES: GlitchStyle[] = [
   // 0 — horizontal tear: clip-path bands + translateX jumps, invert mid.
   (t) => ({
     keyframes: [
@@ -134,10 +134,10 @@ export function GlitchWrap({
 
     // 0.25 at "4" → 1.0 at "1".
     const t = (5 - count) / 4;
-    let idx = Math.floor(Math.random() * STYLES.length);
-    if (idx === lastStyle.current) idx = (idx + 1) % STYLES.length;
+    let idx = Math.floor(Math.random() * GLITCH_STYLES.length);
+    if (idx === lastStyle.current) idx = (idx + 1) % GLITCH_STYLES.length;
     lastStyle.current = idx;
-    const { keyframes, duration, easing } = STYLES[idx](t);
+    const { keyframes, duration, easing } = GLITCH_STYLES[idx](t);
     el.animate(keyframes, { duration, easing });
   }, [count]);
 
