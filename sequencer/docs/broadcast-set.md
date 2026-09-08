@@ -183,6 +183,84 @@ every minute. Rust `list_dir_files(dir, exts)`. Verified end to end in dev (gap 
 now playing → reboot). Chris: "the system coming back online after an interstitial is absolutely
 incredible."
 
+## Status — 2026-09-08, end of day (the first real transmission)
+
+Three test runs on Chris's machine; the third was the one: `NS_BROADCAST-test01.mov`, 24 min,
+standby → GO → 8 songs → 2 interstitials → sign-off. Private YouTube POC. What exists now, all
+local on `main`:
+
+**Coming on air.** Launch lands in **standby** (`src/broadcast/boot.ts`, `os/BootPanel.tsx`): the
+desktop collapsed, a panel with the set facts and one GO button (space works). GO replays the boot
+log typed at 650 ms/line — version, engine, audio device, samples, set, mode, folders, first pick,
+staged next — the set loader holds the first downbeat until the last line, then the OS reboots
+window by window. `--autostart` (alias `--go`) skips standby for the unattended box.
+
+**Signing off.** `--songs N` (`gap.ts runSignOff`): at the Nth song's end the transport stops, one
+interstitial plays under the collapse, the station stays off (gap phase `off`, status `ended`) with
+an end-of-transmission panel (`os/EndPanel.tsx`: songs, time on air, interstitials, idents, last).
+
+**The window.** Frameless (`decorations: false`), 16:9 content lock via NSWindow
+`contentAspectRatio` (`lock_content_aspect` in the shared lib), exactly 1920×1080 at launch, our
+menubar is the drag handle (`data-tauri-drag-region`). Chris won't fullscreen: the layout scales
+positions on a 5K display while type stays small (→ future: uniform CSS zoom of the 1512×850 design).
+
+**Sound parity with Sequence.** Three fixes: (1) unsaved instrument edits live in Sequence's
+localStorage — Chris "save all"s so they land in kit manifests; (2) `.seq` file-level FX (master
+chain, reverb, delay, tape, glitch, saturation, NOISE knobs) were never in a Song snapshot →
+`persist.ts parseGlobalFxFromSeq` + `setLoader.readSeqEntry` + `setlist.ts applyGlobalFx` at every
+swap (loop unit excluded — no capture, no meaning); (3) `nativeEngine` floors the channel count at
+stereo — BROADCAST's fresh storage had remembered a mono (HFP) open and every run was 1 ch.
+
+**Song length.** An authored arrangement (song mode rows) IS the song: one full pass then hand to
+the next song, loop flag ignored in a set; Ghost never rolls a length over it; the set loader
+engages song mode when rows exist. Row 0 now starts at the swap step (`applySong
+cursorStartStep: atGlobalStep`) — live swaps used to skip row 0 and end one-row songs in 2 s.
+
+**Idents.** Cards were firing from the start but drew behind the raised visual window (z 8 vs 84);
+a card now raises the ident window. `--first <name>` opens the set with a chosen song.
+
+**Capture chain that works.** `--device BROADCAST` (a Loopback virtual device; Loopback Pass-Thru
++ a monitor to speakers) → QuickTime screen recording with that device as the mic. Loopback's
+per-app capture of the dev binary did not work. A device tap for diagnosis:
+`ffmpeg -f avfoundation -i ":BROADCAST" -t 20 tap.wav`. Both "audio collapse" reports traced to
+files (piper-maru-EXT's master at comp 1.0 / drive 0.68; ns_1548 pan-modulated), not the runner.
+
+**Launch recipe (dev):**
+```
+cd sequencer/src-tauri-broadcast && npx tauri dev -- -- \
+  --set ~/Desktop/BROADCAST/SEQ_01 --samples "<Dropbox>/___NEWSPEECH/__SEQUENCE/SAMPLES" \
+  --device BROADCAST --gap-every 3 --songs 8 --first piano-swell
+```
+Flags: `--set <dir|.seq|.seqset>…` · `--samples <dir>` · `--device <name>` · `--autostart` ·
+`--songs N` · `--first <name>` · dev: `--gap-every N` · `--song-bars N`. Folder layout:
+`BROADCAST/{SEQ_01, INTERSTITIALS, CARDS}` — the sibling folders are found beside the set.
+
+**Open, in order:** (1) boot audio in-app (an interstitial under the boot log; the gate takes the
+WAV's length); (2) a fixed safety limiter at the end of the chain — no file may clip the stream;
+(3) uniform CSS zoom for big displays; (4) standalone app (below); (5) WebGL tube on the visual;
+(6) unattended layer (LaunchAgent, watchdogs, file log, soak); (7) CRT-safe layout for the
+physical chain.
+
+## Standalone app — the next step
+
+BROADCAST runs today only as `tauri dev` from a terminal with flags. To be a thing Chris
+double-clicks:
+
+1. **Remember the launch.** The app's own storage keeps the last set folder, samples dir, output
+   device, `--songs`, `--first`, and pacing; a bare launch (no argv — that's what a double-click
+   is) resumes them and lands in standby. Finder-open of the BROADCAST folder (drop on the icon)
+   already reaches the set loader via PendingOpenFiles.
+2. **Standby is the settings surface.** The one place operator controls belong: set folder
+   (choose…), samples dir, output device (dropdown from the engine's device list — this is how the
+   Loopback device gets picked without a flag), songs (∞ / N), first song, autostart. Saved on GO.
+3. **A build path.** `npm run broadcast:build` (tauri build in `src-tauri-broadcast/`) already
+   produces `BROADCAST.app`. Sequence's `release.sh` does codesign + notarize + dmg + updater
+   publish; BROADCAST needs the same minus the updater (no updater plugin in the crate) — copy the
+   script, drop steps 4–5, sign with the same Developer ID (team E2587RP7D9). Unsigned it runs
+   with a right-click → Open once; notarized it just opens.
+4. **Then** the unattended layer (LaunchAgent w/ `--autostart`, watchdogs, rotating file log — the
+   log plugin is dev-only today so a release build leaves no trail).
+
 ## Phase 4 — the sidecar and the capture chain
 
 - `now-playing.txt` (or JSON) in the set folder, rewritten by `applySong`: song, bpm, key, shape,
