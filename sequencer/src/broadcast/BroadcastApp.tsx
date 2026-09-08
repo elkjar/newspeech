@@ -33,7 +33,7 @@ import { togglePlayback, panicKill } from '../audio/transport';
 import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
 import { installGapConductor, scanInterstitials, useGap } from './gap';
 import { installCards, scanCards } from './cards';
-import { installStationBoot } from './boot';
+import { installStationBoot, stationGo, useStationBoot } from './boot';
 import { startGapPhase } from './gap';
 import { Desktop } from './os/Desktop';
 import { installStreamState } from './os/streamState';
@@ -77,12 +77,14 @@ interface LaunchArgs {
   samples: string | null;
   device: string | null;
   gapEvery: number | null;
+  // Skip standby: the unattended box goes on air by itself (Login Item).
+  autostart: boolean;
   // Dev: force every song to N bars.
   songBars: number | null;
 }
 
 function parseLaunchArgs(argv: string[]): LaunchArgs {
-  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null };
+  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null, autostart: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i] ?? null;
@@ -96,6 +98,7 @@ function parseLaunchArgs(argv: string[]): LaunchArgs {
     else if (a.startsWith('--device=')) out.device = a.slice(9);
     else if (a === '--song-bars') out.songBars = Number(next()) || null;
     else if (a.startsWith('--song-bars=')) out.songBars = Number(a.slice(12)) || null;
+    else if (a === '--autostart' || a === '--go') out.autostart = true;
     else if (a === '--gap-every') out.gapEvery = Number(next()) || null;
     else if (a.startsWith('--gap-every=')) out.gapEvery = Number(a.slice(12)) || null;
     else if (!a.startsWith('-')) out.set.push(a); // bare path
@@ -262,9 +265,16 @@ export function BroadcastApp() {
         panicKill();
         return;
       }
-      if (e.code === 'Space' && status === 'running') {
-        e.preventDefault();
-        void togglePlayback();
+      if (e.code === 'Space') {
+        if (useStationBoot.getState().phase === 'standby') {
+          e.preventDefault();
+          stationGo();
+          return;
+        }
+        if (status === 'running' && useStationBoot.getState().phase === 'onair') {
+          e.preventDefault();
+          void togglePlayback();
+        }
       }
     };
     window.addEventListener('keydown', onKey);

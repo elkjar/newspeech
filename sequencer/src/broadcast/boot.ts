@@ -1,5 +1,11 @@
-// Station initializing — the broadcast doesn't just appear, it comes on
-// air. From launch until the first downbeat the desktop is collapsed (same
+// Station standby → GO → initializing → on air. The broadcast doesn't just
+// appear, it comes on air — and it waits for the operator first: launch
+// lands in STANDBY (desktop collapsed, a panel with the set facts and a GO
+// button) so Loopback / the recorder can be set up against the running
+// app; GO (or space) replays the boot log from the top, typed, then the
+// first downbeat, then the reboot. `--autostart` skips standby for the
+// unattended box (Login Item).
+// From launch until the first downbeat the desktop is collapsed (same
 // as an interstitial hold, a little less static) and the BootPanel types a
 // log of the station finding itself: version, engine, audio device, samples,
 // the set, the first pick. When the transport starts the OS reboots window
@@ -17,39 +23,76 @@ export interface BootLine {
   text: string;
 }
 
+export type StationPhase = 'standby' | 'booting' | 'onair';
+
 interface StationBootState {
   lines: BootLine[];
   startedAt: number; // performance.now()
-  onAir: boolean; // first downbeat reached
+  phase: StationPhase;
+  goAt: number; // performance.now() when GO was pressed (typed replay origin)
+  autostart: boolean;
+  ready: boolean; // set loaded + first song staged — GO does something
 }
 
 export const BOOT_MIN_SECS = 12;
+// Typed replay pace after GO.
+export const BOOT_LINE_MS = 650;
 
 export const useStationBoot = create<StationBootState>(() => ({
   lines: [],
   startedAt: performance.now(),
-  onAir: false,
+  phase: 'standby',
+  goAt: 0,
+  autostart: false,
+  ready: false,
 }));
+
+let goWaiters: Array<() => void> = [];
+
+// The operator's one control. Space or the GO button.
+export function stationGo(): void {
+  const s = useStationBoot.getState();
+  if (s.phase !== 'standby') return;
+  useStationBoot.setState({ phase: 'booting', goAt: performance.now() });
+  console.info('[boot] GO');
+  const w = goWaiters;
+  goWaiters = [];
+  for (const r of w) r();
+}
 
 export function bootLog(text: string): void {
   const s = useStationBoot.getState();
-  if (s.onAir) return;
+  if (s.phase === 'onair') return;
   useStationBoot.setState({ lines: [...s.lines, { t: performance.now() - s.startedAt, text }].slice(-40) });
   console.info(`[boot] ${text}`);
 }
 
-// Resolves once the boot sequence has been on screen for BOOT_MIN_SECS.
-export function stationBootGate(): Promise<void> {
+// The set loader calls this before the first downbeat. Autostart: at least
+// BOOT_MIN_SECS on screen. Standby: wait for GO, then long enough for the
+// typed replay of everything logged so far to finish.
+export async function stationBootGate(): Promise<void> {
   const s = useStationBoot.getState();
-  const left = BOOT_MIN_SECS * 1000 - (performance.now() - s.startedAt);
-  if (s.onAir || left <= 0) return Promise.resolve();
-  return new Promise((r) => window.setTimeout(r, left));
+  if (s.phase === 'onair') return;
+  useStationBoot.setState({ ready: true });
+  if (s.autostart) {
+    const left = BOOT_MIN_SECS * 1000 - (performance.now() - s.startedAt);
+    if (left > 0) await new Promise((r) => window.setTimeout(r, left));
+    return;
+  }
+  if (useStationBoot.getState().phase === 'standby') {
+    bootLog('ready');
+    await new Promise<void>((r) => goWaiters.push(r));
+  }
+  const n = useStationBoot.getState().lines.length;
+  const typed = n * BOOT_LINE_MS + 1200 - (performance.now() - useStationBoot.getState().goAt);
+  if (typed > 0) await new Promise((r) => window.setTimeout(r, typed));
 }
 
 interface BootArgs {
   set: string[];
   samples: string | null;
   device: string | null;
+  autostart: boolean;
 }
 
 let installed = false;
@@ -57,7 +100,14 @@ export function installStationBoot(args: BootArgs): () => void {
   if (installed) return () => {};
   installed = true;
   const unsubs: Array<() => void> = [];
-  useStationBoot.setState({ lines: [], startedAt: performance.now(), onAir: false });
+  useStationBoot.setState({
+    lines: [],
+    startedAt: performance.now(),
+    phase: 'standby',
+    goAt: 0,
+    autostart: args.autostart,
+    ready: false,
+  });
   startGapPhase('boot', 1);
 
   bootLog(`NEWSPEECH // BROADCAST v${__BROADCAST_VERSION__}`);
@@ -70,7 +120,7 @@ export function installStationBoot(args: BootArgs): () => void {
     bootLog('no set given — drop a folder of .seq files');
     window.setTimeout(() => {
       if (useGap.getState().phase === 'boot') {
-        useStationBoot.setState({ onAir: true });
+        useStationBoot.setState({ phase: 'onair' });
         startGapPhase('reboot', REBOOT_SECS);
       }
     }, 6000);
@@ -91,7 +141,7 @@ export function installStationBoot(args: BootArgs): () => void {
     // First downbeat → on air → reboot the OS.
     if (s.playing && useGap.getState().phase === 'boot') {
       bootLog('on air');
-      useStationBoot.setState({ onAir: true });
+      useStationBoot.setState({ phase: 'onair' });
       startGapPhase('reboot', REBOOT_SECS);
     }
   };
@@ -122,7 +172,7 @@ export function installStationBoot(args: BootArgs): () => void {
 
 // Demo / screenshots: replay the sequence with canned lines, then reboot.
 export function demoBoot(): void {
-  useStationBoot.setState({ lines: [], startedAt: performance.now(), onAir: false });
+  useStationBoot.setState({ lines: [], startedAt: performance.now(), phase: 'standby', goAt: 0, autostart: false, ready: false });
   startGapPhase('boot', 1);
   const script: Array<[number, string]> = [
     [0, `NEWSPEECH // BROADCAST v${__BROADCAST_VERSION__}`],
@@ -137,12 +187,20 @@ export function demoBoot(): void {
     [5600, 'loading 15 voices for piper-maru-EXT'],
     [7800, 'first: piper-maru-EXT'],
     [8600, 'staged: test-wave'],
-    [11000, 'transport: start'],
-    [11600, 'on air'],
+    [9000, 'ready'],
   ];
   for (const [t, text] of script) window.setTimeout(() => bootLog(text), t);
-  window.setTimeout(() => {
-    useStationBoot.setState({ onAir: true });
-    startGapPhase('reboot', REBOOT_SECS);
-  }, 11800);
+  window.setTimeout(() => useStationBoot.setState({ ready: true }), 9000);
+  // GO (space / button) → typed replay → then pretend the downbeat lands.
+  const unsub = useStationBoot.subscribe((s) => {
+    if (s.phase !== 'booting') return;
+    unsub();
+    const n = s.lines.length;
+    window.setTimeout(() => bootLog('transport: start'), n * BOOT_LINE_MS + 600);
+    window.setTimeout(() => {
+      bootLog('on air');
+      useStationBoot.setState({ phase: 'onair' });
+      startGapPhase('reboot', REBOOT_SECS);
+    }, n * BOOT_LINE_MS + 1400);
+  });
 }
