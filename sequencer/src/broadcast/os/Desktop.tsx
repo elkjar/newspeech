@@ -4,9 +4,7 @@
 // persists so the machine boots into the same face every time.
 import { useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { useSequencerStore } from '../../state/store';
 import { Visualizer } from '../../stream/Visualizer';
-import { useBroadcast } from '../setlist';
 import { useLayout, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
@@ -47,19 +45,14 @@ export function Desktop() {
   const windows = useLayout((s) => s.windows);
   const backdrop = useLayout((s) => s.backdrop);
   const toggle = useLayout((s) => s.toggle);
-  const setBackdrop = useLayout((s) => s.setBackdrop);
-  const reset = useLayout((s) => s.reset);
   const clamp = useLayout((s) => s.clamp);
   useEffect(() => {
     clamp();
     window.addEventListener('resize', clamp);
     return () => window.removeEventListener('resize', clamp);
   }, [clamp]);
-  const playing = useSequencerStore((s) => s.playing);
-  const songTitle = useSequencerStore((s) => s.songTitle);
-  const bpm = useSequencerStore((s) => s.bpm);
-  const b = useBroadcast();
   const clock = useClockText();
+  const [menu, setMenu] = useState(false);
 
   return (
     <div className="fixed inset-0 overflow-hidden text-white font-mono select-none" style={{ background: '#050505', cursor: 'default' }}>
@@ -87,39 +80,38 @@ export function Desktop() {
         </div>
       )}
 
-      {/* menubar */}
+      {/* menubar — wordmark, what's playing, clock. Window management lives
+          behind one item so the bar stays quiet on a stream. */}
       <div
-        className="absolute top-0 inset-x-0 flex items-center gap-5 px-4 text-[8px] tracking-[0.16em] uppercase"
+        className="absolute top-0 inset-x-0 flex items-center gap-5 px-4 text-[9px] tracking-[0.16em] uppercase"
         style={{ height: 28, background: 'rgba(5,5,5,0.85)', borderBottom: '1px solid rgba(255,255,255,0.22)', zIndex: 10000 }}
       >
-        <span className="font-sans text-[12px] tracking-[0.22em] normal-case">BROADCAST</span>
-        <span className="text-white/50">
-          {b.status === 'running'
-            ? `${playing ? '▶' : '■'} ${songTitle ?? 'untitled'} · ${Math.round(bpm)} bpm · ${b.current !== null ? b.current + 1 : 0}/${b.entries.length}`
-            : b.status === 'loading'
-              ? 'loading set…'
-              : 'no set'}
-        </span>
-        <span className="ml-auto flex items-center gap-4 text-white/45">
-          {WINDOW_ORDER.map((id) => (
-            <button
-              key={id}
-              className="hover:text-white"
-              style={{ color: windows[id].open ? 'rgba(255,255,255,0.85)' : undefined }}
-              onClick={() => toggle(id)}
-              title={windows[id].open ? 'close' : 'open'}
-            >
-              {windows[id].open ? '■' : '□'} {WINDOW_TITLES[id]}
+        <span className="font-sans text-[12px] tracking-[0.22em] normal-case">NEWSPEECH // BROADCAST</span>
+        <span className="ml-auto flex items-center gap-5 text-white/45">
+          <span className="relative">
+            <button className="hover:text-white" style={{ color: menu ? '#fff' : undefined }} onClick={() => setMenu((m) => !m)}>
+              windows {menu ? '▴' : '▾'}
             </button>
-          ))}
-          <span className="text-white/20">|</span>
-          <button className="hover:text-white" style={{ color: backdrop ? 'rgba(255,255,255,0.85)' : undefined }} onClick={() => setBackdrop(!backdrop)}>
-            {backdrop ? '■' : '□'} backdrop
-          </button>
-          <button className="hover:text-white" onClick={reset} title="reset window layout">
-            reset
-          </button>
-          <span className="text-white/20">|</span>
+            {menu && (
+              <div
+                className="absolute right-0 top-[22px] flex flex-col py-1 min-w-[150px] normal-case tracking-[0.08em] text-[10px]"
+                style={{ background: 'rgba(5,5,5,0.97)', border: '1px solid rgba(255,255,255,0.28)' }}
+                onPointerLeave={() => setMenu(false)}
+              >
+                {WINDOW_ORDER.map((id) => (
+                  <button
+                    key={id}
+                    className="flex items-center gap-2 px-3 leading-[22px] text-left hover:bg-white/10"
+                    style={{ color: windows[id].open ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}
+                    onClick={() => toggle(id)}
+                  >
+                    <span className="w-3">{windows[id].open ? '■' : '□'}</span>
+                    {WINDOW_TITLES[id]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
           <span className="tabular-nums text-white/70">{clock}</span>
         </span>
       </div>

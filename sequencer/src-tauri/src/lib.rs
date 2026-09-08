@@ -100,22 +100,27 @@ pub mod media_permission {
 
 #[cfg(target_os = "macos")]
 fn set_dock_icon() {
-  // Programmatic Dock icon binding bypasses macOS IconServices caching of
-  // the dev binary — the cache otherwise sticks to whatever icon resource
-  // was resolved first against this binary path.
+  set_dock_icon_bytes(include_bytes!("../icons/icon.png"));
+}
+
+// Programmatic Dock icon binding bypasses macOS IconServices caching of
+// the dev binary — the cache otherwise sticks to whatever icon resource
+// was resolved first against this binary path. Shared so BROADCAST can
+// bind its own icon (src-tauri-broadcast/icons/icon.png).
+#[cfg(target_os = "macos")]
+pub fn set_dock_icon_bytes(icon_bytes: &'static [u8]) {
   use objc2::{AnyThread, MainThreadMarker};
   use objc2_app_kit::{NSApplication, NSImage};
   use objc2_foundation::NSData;
-  static ICON_BYTES: &[u8] = include_bytes!("../icons/icon.png");
   let Some(mtm) = MainThreadMarker::new() else {
     return;
   };
-  // SAFETY: ICON_BYTES is a valid 'static slice; dataWithBytes:length: copies
+  // SAFETY: icon_bytes is a valid 'static slice; dataWithBytes:length: copies
   // it, so the resulting NSData owns its bytes.
   let data = unsafe {
     NSData::dataWithBytes_length(
-      ICON_BYTES.as_ptr() as *const std::ffi::c_void,
-      ICON_BYTES.len(),
+      icon_bytes.as_ptr() as *const std::ffi::c_void,
+      icon_bytes.len(),
     )
   };
   if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {

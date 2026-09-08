@@ -9,6 +9,8 @@ fn main() {
 
   sequence_lib::shared_builder()
     .setup(|app| {
+      #[cfg(target_os = "macos")]
+      sequence_lib::set_dock_icon_bytes(include_bytes!("../icons/icon.png"));
       if let Some(window) = app.get_webview_window("main") {
         sequence_lib::install_media_permission(&window);
       }
