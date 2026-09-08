@@ -1,4 +1,4 @@
-# BROADCAST — design (Phase 0 done, Phase 1 in progress)
+# BROADCAST — design (Phases 0–1 done; next: interstitials + the face)
 
 *2026-09-07. Chris: "a 'broadcast' version … create a series of seq files and we could load them
 up and have a 'set' of ever changing variations on the .seq files broadcasting out." Then: "I'd like
@@ -65,7 +65,7 @@ factor the 100-entry `invoke_handler` list (`lib.rs:337-433`) into a reusable `r
 
 Ships as a Sequence point release with zero user-visible change. Soak it a few days before Phase 1.
 
-## Phase 1 — the runner boots and plays a set — IN PROGRESS 2026-09-07
+## Phase 1 — the runner boots and plays a set — ✅ DONE 2026-09-08 (commit e843dfa, verified in dev)
 
 Built so far (uncommitted): `sequence_lib::shared_builder()` + `install_media_permission` /
 `spawn_level_emitter` / `buffer_opened_files` / `midi_exit_cleanup` in `src-tauri/src/lib.rs`
@@ -80,7 +80,11 @@ registers `ghost.setNextSongProvider`; frees the outgoing slot after each swap);
 (engine installs in App order, `--set/--samples/--device` flags, Finder open + drop → set,
 now-playing strip, empty-state loading surface, Space play/stop, Cmd+. panic);
 `nativeEngine.presetNativeDeviceName`; npm `broadcast:dev` / `broadcast:build`.
-Not yet: Login Item docs, watchdog, `.seqset` written beside the folder, setlist persistence.
+Also landed from the first runs: Ghost-rolled song length for scene-less songs (`maybeEndSongForSet`),
+arrangement end → next song, `--song-bars N` dev flag (no UI — the runner has no human controls),
+MIDI-only songs skipped, staged song's voices preloaded a song ahead, `js_log` console→Rust trail.
+Test set: `~/Desktop/BROADCAST-TEST`. Not yet: Login Item docs, watchdog, `.seqset` written beside
+the folder, setlist persistence, `--device` untested against the interface.
 
 - **Crate**: `src-tauri-broadcast/` (product name BROADCAST, identifier `com.newspeechsound.broadcast`) with its own `tauri.conf.json`, `capabilities/`,
   and `sequence_lib = { path = "../src-tauri" }`. Add a root workspace `Cargo.toml` (one lock, one
