@@ -33,7 +33,7 @@ import { togglePlayback, panicKill } from '../audio/transport';
 import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
 import { installGapConductor, scanInterstitials, useGap } from './gap';
 import { installCards, scanCards } from './cards';
-import { installStationBoot, stationGo, useStationBoot } from './boot';
+import { installStationBoot, stationGo, cancelAutoGo, useStationBoot } from './boot';
 import { mergeLaunchArgs, rememberLaunchArgs, useSettings } from './settings';
 import { startGapPhase } from './gap';
 import { Desktop } from './os/Desktop';
@@ -284,6 +284,11 @@ export function BroadcastApp() {
       if ((e.metaKey || e.ctrlKey) && (e.key === '.' || e.code === 'Period')) {
         e.preventDefault();
         panicKill();
+        return;
+      }
+      if (e.code === 'Escape' && useStationBoot.getState().phase === 'standby') {
+        e.preventDefault();
+        cancelAutoGo();
         return;
       }
       if (e.code === 'Space') {

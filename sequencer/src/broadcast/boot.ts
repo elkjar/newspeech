@@ -32,6 +32,9 @@ interface StationBootState {
   goAt: number; // performance.now() when GO was pressed (typed replay origin)
   autostart: boolean;
   ready: boolean; // set loaded + first song staged — GO does something
+  // Autostart: standby still shows, with a countdown to GO. Esc / "hold"
+  // cancels it and leaves the config up (how autostart gets turned off).
+  autoGoAt: number | null; // performance.now()
 }
 
 export const BOOT_MIN_SECS = 12;
@@ -45,7 +48,20 @@ export const useStationBoot = create<StationBootState>(() => ({
   goAt: 0,
   autostart: false,
   ready: false,
+  autoGoAt: null,
 }));
+
+export const AUTO_GO_SECS = 10;
+let autoGoTimer: number | null = null;
+
+export function cancelAutoGo(): void {
+  if (autoGoTimer !== null) window.clearTimeout(autoGoTimer);
+  autoGoTimer = null;
+  if (useStationBoot.getState().autoGoAt !== null) {
+    useStationBoot.setState({ autoGoAt: null });
+    console.info('[boot] autostart held');
+  }
+}
 
 let goWaiters: Array<() => void> = [];
 
@@ -53,7 +69,9 @@ let goWaiters: Array<() => void> = [];
 export function stationGo(): void {
   const s = useStationBoot.getState();
   if (s.phase !== 'standby') return;
-  useStationBoot.setState({ phase: 'booting', goAt: performance.now() });
+  useStationBoot.setState({ phase: 'booting', goAt: performance.now(), autoGoAt: null });
+  if (autoGoTimer !== null) window.clearTimeout(autoGoTimer);
+  autoGoTimer = null;
   console.info('[boot] GO');
   const w = goWaiters;
   goWaiters = [];
@@ -74,13 +92,16 @@ export async function stationBootGate(): Promise<void> {
   const s = useStationBoot.getState();
   if (s.phase === 'onair') return;
   useStationBoot.setState({ ready: true });
-  if (s.autostart) {
-    const left = BOOT_MIN_SECS * 1000 - (performance.now() - s.startedAt);
-    if (left > 0) await new Promise((r) => window.setTimeout(r, left));
-    return;
-  }
   if (useStationBoot.getState().phase === 'standby') {
     bootLog('ready');
+    if (s.autostart && autoGoTimer === null && useStationBoot.getState().autoGoAt === null) {
+      // Unattended: count down in standby, then GO by itself. Esc holds.
+      useStationBoot.setState({ autoGoAt: performance.now() + AUTO_GO_SECS * 1000 });
+      autoGoTimer = window.setTimeout(() => {
+        autoGoTimer = null;
+        if (useStationBoot.getState().autoGoAt !== null) stationGo();
+      }, AUTO_GO_SECS * 1000);
+    }
     await new Promise<void>((r) => goWaiters.push(r));
   }
   const n = useStationBoot.getState().lines.length;
@@ -101,7 +122,7 @@ export function installStationBoot(args: BootArgs): () => void {
   installed = true;
   const unsubs: Array<() => void> = [];
   const fresh = useStationBoot.getState().lines.length === 0;
-  useStationBoot.setState({ phase: 'standby', goAt: 0, autostart: args.autostart, ready: false });
+  useStationBoot.setState({ phase: 'standby', goAt: 0, autostart: args.autostart, ready: false, autoGoAt: null });
   if (fresh) useStationBoot.setState({ startedAt: performance.now() });
   startGapPhase('boot', 1);
 
@@ -175,7 +196,7 @@ export function installStationBoot(args: BootArgs): () => void {
 
 // Demo / screenshots: replay the sequence with canned lines, then reboot.
 export function demoBoot(): void {
-  useStationBoot.setState({ lines: [], startedAt: performance.now(), phase: 'standby', goAt: 0, autostart: false, ready: false });
+  useStationBoot.setState({ lines: [], startedAt: performance.now(), phase: 'standby', goAt: 0, autostart: false, ready: false, autoGoAt: null });
   startGapPhase('boot', 1);
   const script: Array<[number, string]> = [
     [0, `NEWSPEECH // BROADCAST v${__BROADCAST_VERSION__}`],

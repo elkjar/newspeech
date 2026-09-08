@@ -10,7 +10,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { useGap, scanInterstitials } from '../gap';
-import { useStationBoot, stationGo, BOOT_LINE_MS } from '../boot';
+import { useStationBoot, stationGo, cancelAutoGo, BOOT_LINE_MS, AUTO_GO_SECS } from '../boot';
 import { useBroadcast, loadAndStartSet } from '../setlist';
 import { useCards, scanCards } from '../cards';
 import { useSettings, shortPath } from '../settings';
@@ -129,6 +129,14 @@ function StandbyConfig({ ready, blink }: { ready: boolean; blink: boolean }) {
   const cards = useCards((s) => s.cards.length);
   const [devices, setDevices] = useState<NativeDeviceInfo[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const autoGoAt = useStationBoot((s) => s.autoGoAt);
+  const [, tickAuto] = useState(0);
+  useEffect(() => {
+    if (autoGoAt === null) return;
+    const id = window.setInterval(() => tickAuto((n) => n + 1), 200);
+    return () => window.clearInterval(id);
+  }, [autoGoAt]);
+  const autoLeft = autoGoAt === null ? null : Math.max(0, Math.ceil((autoGoAt - performance.now()) / 1000));
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -206,7 +214,17 @@ function StandbyConfig({ ready, blink }: { ready: boolean; blink: boolean }) {
 
   const status =
     busy ??
-    (b.status === 'loading' ? 'loading the set…' : b.status === 'error' ? b.error ?? 'error' : ready ? 'ready · GO or space goes on air' : b.entries.length ? 'preparing…' : 'pick a set folder');
+    (autoLeft !== null
+      ? `autostart · on air in ${autoLeft} s · esc holds`
+      : b.status === 'loading'
+        ? 'loading the set…'
+        : b.status === 'error'
+          ? b.error ?? 'error'
+          : ready
+            ? 'ready · GO or space goes on air'
+            : b.entries.length
+              ? 'preparing…'
+              : 'pick a set folder');
 
   return (
     <div className="flex flex-col px-5 pt-4 text-[10px] overflow-hidden" style={{ height: CONFIG_H }}>
@@ -311,12 +329,15 @@ function StandbyConfig({ ready, blink }: { ready: boolean; blink: boolean }) {
         </Row>
         <Row k="autostart">
           <button
-            onClick={() => st.update({ autostart: !st.autostart })}
+            onClick={() => {
+              if (st.autostart) cancelAutoGo();
+              st.update({ autostart: !st.autostart });
+            }}
             className="text-left"
             style={{ color: st.autostart ? '#fff' : 'rgba(255,255,255,0.45)' }}
           >
             <span className="inline-block w-4">{st.autostart ? '■' : '□'}</span>
-            next launch goes on air by itself
+            launches go on air by themselves after a {AUTO_GO_SECS} s countdown · esc holds
           </button>
           <span />
         </Row>
@@ -340,6 +361,7 @@ function StandbyConfig({ ready, blink }: { ready: boolean; blink: boolean }) {
           go
         </button>
         <span className="text-[9px] tracking-[0.16em] uppercase text-white/40 truncate">{status}</span>
+        {autoLeft !== null && <Btn onClick={cancelAutoGo}>hold</Btn>}
       </div>
     </div>
   );
