@@ -119,6 +119,12 @@ function shouldGap(): boolean {
   return Date.now() >= g.nextDueAt;
 }
 
+// A random interstitial (not the last one), or null when the folder is empty.
+// The boot sequence uses this too (boot.ts) — the static under the log.
+export function pickInterstitial(): string | null {
+  return useGap.getState().files.length ? pickWav() : null;
+}
+
 let lastWav: string | null = null;
 function pickWav(): string {
   const files = useGap.getState().files;

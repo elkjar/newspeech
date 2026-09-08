@@ -15,8 +15,9 @@
 import { create } from 'zustand';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore } from '../state/store';
-import { useGap, startGapPhase, REBOOT_SECS } from './gap';
+import { useGap, startGapPhase, pickInterstitial, REBOOT_SECS } from './gap';
 import { useCards } from './cards';
+import { loadSample, triggerSample, fadeTextures } from '../audio/nativeEngine';
 
 export interface BootLine {
   t: number; // ms since boot start
@@ -40,6 +41,10 @@ interface StationBootState {
 export const BOOT_MIN_SECS = 12;
 // Typed replay pace after GO.
 export const BOOT_LINE_MS = 650;
+// Boot static: GO fires a random interstitial under the typed log; the first
+// downbeat waits for it, capped here (long WAVs fade out into the downbeat).
+export const BOOT_WAV_CAP_SECS = 32;
+const BOOT_WAV_FADE_SECS = 3.5;
 
 export const useStationBoot = create<StationBootState>(() => ({
   lines: [],
@@ -104,9 +109,31 @@ export async function stationBootGate(): Promise<void> {
     }
     await new Promise<void>((r) => goWaiters.push(r));
   }
+  // The static under the boot: one random interstitial, fired as a texture
+  // voice so it can be faded into the downbeat if it's longer than the cap.
+  let wavMs = 0;
+  const wav = pickInterstitial();
+  if (wav) {
+    try {
+      const info = await loadSample(wav);
+      wavMs = info.durationSecs * 1000;
+      await triggerSample(wav, { gain: 1, isTexture: true });
+      bootLog(`static: ${wav.split('/').pop()} (${info.durationSecs.toFixed(0)} s)`);
+    } catch (err) {
+      console.warn('[boot] boot static failed:', err);
+      wavMs = 0;
+    }
+  }
+  const goAt = useStationBoot.getState().goAt;
   const n = useStationBoot.getState().lines.length;
-  const typed = n * BOOT_LINE_MS + 1200 - (performance.now() - useStationBoot.getState().goAt);
-  if (typed > 0) await new Promise((r) => window.setTimeout(r, typed));
+  const typedMs = n * BOOT_LINE_MS + 1200;
+  const holdMs = Math.max(typedMs, Math.min(wavMs, BOOT_WAV_CAP_SECS * 1000));
+  if (wavMs > holdMs) {
+    // Longer than the hold: fade it under the downbeat rather than cut.
+    window.setTimeout(() => void fadeTextures(BOOT_WAV_FADE_SECS), Math.max(0, holdMs - BOOT_WAV_FADE_SECS * 1000 - (performance.now() - goAt)));
+  }
+  const left = holdMs - (performance.now() - goAt);
+  if (left > 0) await new Promise((r) => window.setTimeout(r, left));
 }
 
 interface BootArgs {
