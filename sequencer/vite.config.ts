@@ -14,6 +14,11 @@ const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 const APP_VERSION = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'),
 ).version as string;
+// BROADCAST versions independently of Sequence — its tauri.conf.json is the
+// single source, injected as __BROADCAST_VERSION__ for the menubar.
+const BROADCAST_VERSION = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, 'src-tauri-broadcast/tauri.conf.json'), 'utf8'),
+).version as string;
 
 // Generates samples/index.json — the bundled-samples discovery index used
 // by the runtime to enumerate kits without a hardcoded list. Build time:
@@ -78,6 +83,7 @@ export default defineConfig({
   clearScreen: false,
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __BROADCAST_VERSION__: JSON.stringify(BROADCAST_VERSION),
   },
   // Two entries: index.html (Sequence) and broadcast.html (BROADCAST, the
   // autonomous set player — src/broadcast/). Both binaries load from the

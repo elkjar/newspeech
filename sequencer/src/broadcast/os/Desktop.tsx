@@ -81,9 +81,10 @@ export function Desktop() {
           behind one item so the bar stays quiet on a stream. */}
       <div
         className="absolute top-0 inset-x-0 flex items-center gap-5 px-4 text-[9px] tracking-[0.16em] uppercase"
-        style={{ height: 28, background: 'rgba(5,5,5,0.85)', zIndex: 10000 }}
+        style={{ height: 28, background: 'rgba(5,5,5,0.85)', borderBottom: '1px solid rgba(255,255,255,0.07)', zIndex: 10000 }}
       >
         <span className="font-sans text-[12px] tracking-[0.22em] normal-case">NEWSPEECH // BROADCAST</span>
+        <span className="text-[8px] tracking-[0.14em] text-white/30 tabular-nums normal-case -ml-2">v{__BROADCAST_VERSION__}</span>
         <span className="ml-auto flex items-center gap-5 text-white/45">
           <span className="relative">
             <button className="hover:text-white" style={{ color: menu ? '#fff' : undefined }} onClick={() => setMenu((m) => !m)}>
