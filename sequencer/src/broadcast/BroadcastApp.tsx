@@ -31,6 +31,8 @@ import { presetNativeDeviceName } from '../audio/nativeEngine';
 import { setConfiguredUserSamplesDir } from '../instruments/userSamplesDir';
 import { togglePlayback, panicKill } from '../audio/transport';
 import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
+import { installGapConductor, scanInterstitials, useGap } from './gap';
+import { installCards, scanCards } from './cards';
 import { Desktop } from './os/Desktop';
 import { installStreamState } from './os/streamState';
 import { seedDemo } from './os/demo';
@@ -72,12 +74,13 @@ interface LaunchArgs {
   set: string[];
   samples: string | null;
   device: string | null;
+  gapEvery: number | null;
   // Dev: force every song to N bars.
   songBars: number | null;
 }
 
 function parseLaunchArgs(argv: string[]): LaunchArgs {
-  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null };
+  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i] ?? null;
@@ -91,6 +94,8 @@ function parseLaunchArgs(argv: string[]): LaunchArgs {
     else if (a.startsWith('--device=')) out.device = a.slice(9);
     else if (a === '--song-bars') out.songBars = Number(next()) || null;
     else if (a.startsWith('--song-bars=')) out.songBars = Number(a.slice(12)) || null;
+    else if (a === '--gap-every') out.gapEvery = Number(next()) || null;
+    else if (a.startsWith('--gap-every=')) out.gapEvery = Number(a.slice(12)) || null;
     else if (!a.startsWith('-')) out.set.push(a); // bare path
   }
   return out;
@@ -110,8 +115,26 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
     if (args.samples) setConfiguredUserSamplesDir(args.samples);
     if (args.device) presetNativeDeviceName(args.device);
     useBroadcast.getState().setDevSongBars(args.songBars);
+    useGap.setState({ devEvery: args.gapEvery });
     startSamplesBoot();
   }, [args]);
+  // Interstitials + idents: the conductor owns occasional song ends; cards
+  // run on their own clock. Both re-scan their sibling folders whenever the
+  // set's paths change (launch, drops).
+  useEffect(() => installGapConductor(), []);
+  useEffect(() => installCards(() => useBroadcast.getState().setPaths), []);
+  useEffect(() => {
+    let last = '';
+    const scan = (paths: string[]) => {
+      const key = paths.join('\n');
+      if (key === last || paths.length === 0) return;
+      last = key;
+      void scanInterstitials(paths);
+      void scanCards(paths);
+    };
+    scan(useBroadcast.getState().setPaths);
+    return useBroadcast.subscribe((s) => scan(s.setPaths));
+  }, []);
   useEffect(() => installStreamPresence(), []);
   useEffect(() => {
     // Same webview is both emitter and listener — announce so the presence

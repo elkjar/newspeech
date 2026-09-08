@@ -3,7 +3,7 @@
 // broadcast layout. Positions are in px on the window's own coordinate space.
 import { create } from 'zustand';
 
-export type WindowId = 'set' | 'ghost' | 'banks' | 'shape' | 'now' | 'visual' | 'sys';
+export type WindowId = 'set' | 'ghost' | 'banks' | 'shape' | 'now' | 'visual' | 'sys' | 'card';
 
 export interface WinRect {
   x: number;
@@ -22,9 +22,10 @@ export const WINDOW_TITLES: Record<WindowId, string> = {
   now: 'now playing',
   visual: 'visual',
   sys: 'sys',
+  card: 'ident',
 };
 
-export const WINDOW_ORDER: WindowId[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys'];
+export const WINDOW_ORDER: WindowId[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys', 'card'];
 
 // Chris's arrangement, laid out by hand on a 1512×850 screen (2026-09-08)
 // under the 28px menubar. Scaled to whatever screen the runner boots on.
@@ -38,6 +39,9 @@ const DEFAULT: Record<WindowId, WinRect> = {
   sys: { x: 391, y: 681, w: 483, h: 105, open: true, z: 5 },
   banks: { x: 1131, y: 654, w: 332, h: 137, open: true, z: 6 },
   shape: { x: 1286, y: 643, w: 200, h: 124, open: true, z: 7 },
+  // The ident: shows only while a card is up (cards.ts), lower-left of the
+  // visual like a lower-third. `open` false = idents off.
+  card: { x: 566, y: 430, w: 400, h: 146, open: true, z: 8 },
 };
 
 const LS_KEY = 'broadcast.layout.v1';

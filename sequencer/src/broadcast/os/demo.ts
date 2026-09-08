@@ -4,6 +4,8 @@ import { useSequencerStore } from '../../state/store';
 import { useBroadcast } from '../setlist';
 import { useStreamState, type Snapshot } from './streamState';
 import { forceSignalEvent } from './signal';
+import { demoGap } from '../gap';
+import { useCards, showCard } from '../cards';
 
 const NAMES = [
   'rdll', 'breaks', 'noisy-ns', 'enrichment-time', 'newspeech-2026-05-19-0119', 'scene-2-test',
@@ -14,6 +16,15 @@ const NAMES = [
 export function seedDemo(): void {
   // Screenshots: window.__nsSignal('sync' | 'dropout' | 'tear' | 'roll' | 'fade')
   (window as unknown as { __nsSignal: typeof forceSignalEvent }).__nsSignal = forceSignalEvent;
+  // window.__nsGap('hold' | 'reboot' | 'none'), window.__nsCard()
+  (window as unknown as { __nsGap: typeof demoGap }).__nsGap = demoGap;
+  (window as unknown as { __nsCard: () => void }).__nsCard = () => showCard();
+  useCards.setState({
+    cards: [
+      { path: '/demo/CARDS/ident-receiving.txt', kind: 'ident', weight: 1, url: null, headline: 'You are receiving', body: ['NEWSPEECH // BROADCAST', 'uptime {uptime} · {songs} songs in rotation'] },
+      { path: '/demo/CARDS/support-plugins.txt', kind: 'plugin', weight: 1, url: 'newspeechsound.com/plugins', headline: 'Four plugins', body: ['VIBE · GLITCH · SATURATE · SLICE', 'free, in exchange for an address'] },
+    ],
+  });
   useBroadcast.setState({
     entries: NAMES.map((n) => ({ path: `/Users/demo/Desktop/BROADCAST-TEST/${n}.seq`, name: n })),
     current: 6,

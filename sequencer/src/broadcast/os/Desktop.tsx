@@ -17,9 +17,13 @@ import { ShapeWindow } from './windows/ShapeWindow';
 import { GhostWindow } from './windows/GhostWindow';
 import { VisualWindow } from './windows/VisualWindow';
 import { SysWindow } from './windows/SysWindow';
+import { CardWindow } from './windows/CardWindow';
+import { NextPanel } from './NextPanel';
+import { useGap } from '../gap';
+import { useCards } from '../cards';
 import desktopBg from './assets/desktop-bg.png';
 
-const CONTENT: Record<WindowId, () => JSX.Element> = {
+const CONTENT: Record<WindowId, () => JSX.Element | null> = {
   set: SetWindow,
   now: NowWindow,
   banks: BanksWindow,
@@ -27,7 +31,48 @@ const CONTENT: Record<WindowId, () => JSX.Element> = {
   ghost: GhostWindow,
   visual: VisualWindow,
   sys: SysWindow,
+  card: CardWindow,
 };
+
+// The collapse and the reboot. During an interstitial hold the windows fall
+// away one by one (then the menubar, then the visual); on reboot they come
+// back one by one over REBOOT_SECS. Order is rolled fresh per gap. Only the
+// hidden-set changes cause a render — not the 20 Hz progress.
+type Falls = 'menubar' | 'backdrop' | WindowId;
+const FALLERS: Falls[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys', 'card', 'menubar', 'backdrop'];
+function rollOrder(): Record<Falls, { fall: number; rise: number }> {
+  const out = {} as Record<Falls, { fall: number; rise: number }>;
+  for (const id of FALLERS) {
+    out[id] = { fall: 0.04 + Math.random() * 0.34, rise: 0.06 + Math.random() * 0.88 };
+  }
+  // The chrome goes last and comes back first.
+  out.menubar = { fall: 0.42, rise: 0.02 };
+  out.backdrop = { fall: 0.4, rise: 0.05 };
+  return out;
+}
+function useCollapse(): Set<Falls> {
+  const [hidden, setHidden] = useState<Set<Falls>>(() => new Set());
+  useEffect(() => {
+    let order = rollOrder();
+    let lastPhase = useGap.getState().phase;
+    let lastKey = '';
+    return useGap.subscribe((g) => {
+      if (g.phase !== lastPhase) {
+        if (g.phase === 'hold') order = rollOrder();
+        lastPhase = g.phase;
+      }
+      const next = new Set<Falls>();
+      if (g.phase === 'hold') for (const id of FALLERS) if (g.progress >= order[id].fall) next.add(id);
+      if (g.phase === 'reboot') for (const id of FALLERS) if (g.progress < order[id].rise) next.add(id);
+      const key = [...next].sort().join(',');
+      if (key !== lastKey) {
+        lastKey = key;
+        setHidden(next);
+      }
+    });
+  }, []);
+  return hidden;
+}
 
 function useClockText(): string {
   const [t, setT] = useState('');
@@ -60,6 +105,8 @@ export function Desktop() {
   }, [clamp]);
   const clock = useClockText();
   const [menu, setMenu] = useState(false);
+  const hidden = useCollapse();
+  const cardUp = useCards((s) => s.active !== null);
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
@@ -84,7 +131,7 @@ export function Desktop() {
         <rect width="100%" height="100%" filter="url(#ns-grain)" />
       </svg>
 
-      {backdrop && isTauri() && (
+      {backdrop && isTauri() && !hidden.has('backdrop') && (
         <div className="absolute inset-0" style={{ opacity: 0.55 }}>
           <ReactiveVisual>
             <Visualizer />
@@ -96,7 +143,13 @@ export function Desktop() {
           behind one item so the bar stays quiet on a stream. */}
       <div
         className="absolute top-0 inset-x-0 flex items-center gap-5 px-4 text-[9px] tracking-[0.16em] uppercase"
-        style={{ height: 28, background: 'rgba(5,5,5,0.85)', borderBottom: '1px solid rgba(255,255,255,0.07)', zIndex: 10000 }}
+        style={{
+          height: 28,
+          background: 'rgba(5,5,5,0.85)',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          zIndex: 10000,
+          visibility: hidden.has('menubar') ? 'hidden' : 'visible',
+        }}
       >
         <span className="font-sans text-[12px] tracking-[0.22em] normal-case">NEWSPEECH // BROADCAST</span>
         <span className="text-[8px] tracking-[0.14em] text-white/30 tabular-nums normal-case -ml-2">v{__BROADCAST_VERSION__}</span>
@@ -141,6 +194,8 @@ export function Desktop() {
       {/* windows */}
       {WINDOW_ORDER.map((id, i) => {
         if (id === 'visual' && backdrop) return null;
+        if (id === 'card' && !cardUp) return null;
+        if (hidden.has(id)) return null;
         const C = CONTENT[id];
         return (
           <OSWindow key={id} id={id} index={i + 1}>
@@ -150,6 +205,7 @@ export function Desktop() {
       })}
       </div>
       <SignalOverlay />
+      <NextPanel />
     </div>
   );
 }

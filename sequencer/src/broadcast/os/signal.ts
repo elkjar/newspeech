@@ -22,6 +22,7 @@
 import { useSequencerStore } from '../../state/store';
 import { currentSongDwellBars } from '../../ghost/ghost';
 import { useStreamState } from './streamState';
+import { useGap } from '../gap';
 
 export type SignalEventKind = 'dropout' | 'tear' | 'sync' | 'fade' | 'lock';
 
@@ -56,8 +57,14 @@ export interface SignalFrame {
 }
 
 const STEPS_PER_BAR = 32;
-// The most static the picture ever carries — always readable underneath.
+// The most static the picture ever carries — always readable underneath —
+// except during an interstitial, when the OS is meant to be gone.
 export const STATIC_CEIL = 0.55;
+export const GAP_STATIC_CEIL = 0.86;
+let gapNow = 0;
+export function gapLevelNow(): number {
+  return gapNow;
+}
 
 // Ambient event rates, per second, at full base quality. Scaled up as the
 // base falls (see rateScale).
@@ -184,7 +191,7 @@ export function sampleSignal(now: number): SignalFrame {
   const baseNow = clamp01(base + wobble);
 
   // Ambient scheduling, Poisson per kind, rate rising with weak reception.
-  const rateScale = 1 + 2 * (1 - baseNow) + 1.5 * countIn;
+  const rateScale = 1 + 2 * (1 - baseNow) + 1.5 * countIn + 6 * gapNow;
   for (const k of Object.keys(RATES) as Array<keyof typeof RATES>) {
     if (Math.random() < RATES[k] * rateScale * dt) push(k, now, 0.5 + Math.random() * 0.5);
   }
@@ -250,10 +257,18 @@ export function sampleSignal(now: number): SignalFrame {
   const endDrop = ending * ending * 0.6;
   const ciDrop = countIn * 0.15;
 
-  const quality = clamp01(baseNow - drop - endDrop - ciDrop);
+  // The interstitial: the OS collapses into noise (hold — level climbs over
+  // the first quarter, then sits) and drains back as it reboots. Chris:
+  // "have the OS fully collapse into noise … and then come back together."
+  const g = useGap.getState();
+  const gapLevel = g.phase === 'hold' ? clamp01(g.progress / 0.25) : g.phase === 'reboot' ? clamp01(1 - g.progress) ** 1.4 : 0;
+  gapNow = gapLevel;
+
+  const quality = clamp01(baseNow - drop - endDrop - ciDrop - gapLevel * 0.85);
   const weak = 1 - quality;
-  noise = Math.min(STATIC_CEIL, Math.max(noise, weak * weak * 0.9, ending * 0.4, countIn * 0.12));
-  const flicker = 0.02 + weak * 0.22 + ending * 0.08;
+  const ceil = STATIC_CEIL + gapLevel * (GAP_STATIC_CEIL - STATIC_CEIL);
+  noise = Math.min(ceil, Math.max(noise, weak * weak * 0.9, ending * 0.4, countIn * 0.12, gapLevel * GAP_STATIC_CEIL));
+  const flicker = 0.02 + weak * 0.22 + ending * 0.08 + gapLevel * 0.15;
   const bar = 0.06 + weak * 0.4;
   const brightness = 1 - weak * 0.12 + lock * 0.4;
   const contrast = 1 + weak * 0.15 + lock * 0.18;

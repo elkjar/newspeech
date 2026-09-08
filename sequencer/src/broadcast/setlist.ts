@@ -35,6 +35,9 @@ export interface BroadcastState {
   error: string | null;
   played: number;
   startedAt: number | null;
+  // Every folder / file path the set was built from (launch args + drops);
+  // CARDS/ and INTERSTITIALS/ are looked up beside these.
+  setPaths: string[];
   setMode: (mode: PickMode) => void;
   setDevSongBars: (bars: number | null) => void;
 }
@@ -51,6 +54,7 @@ export const useBroadcast = create<BroadcastState>((set) => ({
   error: null,
   played: 0,
   startedAt: null,
+  setPaths: [],
   setMode: (mode) => set({ mode }),
   setDevSongBars: (devSongBars) => set({ devSongBars }),
 }));
@@ -219,6 +223,7 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
     recent: [],
     played: 0,
     startedAt: null,
+    setPaths: [...paths],
   });
   installConductor();
   // First song: pick, parse, load into the working state (stopped → applies
@@ -263,6 +268,7 @@ export async function addToSet(paths: string[]): Promise<void> {
     return;
   }
   const more = await expandSetPaths(paths);
+  useBroadcast.setState((s) => ({ setPaths: [...new Set([...s.setPaths, ...paths])] }));
   const have = new Set(b.entries.map((e) => e.path));
   const fresh = more.filter((e) => !have.has(e.path));
   if (fresh.length === 0) return;

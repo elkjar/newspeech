@@ -168,6 +168,43 @@ pub fn list_seq_files(paths: Vec<String>) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+// Files directly inside one directory whose extension is in `exts`
+// (case-insensitive), sorted. Missing / non-directory → empty, not an
+// error — BROADCAST probes sibling folders (CARDS/, INTERSTITIALS/) that
+// may simply not exist. Dotfiles skipped.
+#[tauri::command]
+pub fn list_dir_files(dir: String, exts: Vec<String>) -> Vec<String> {
+    let path = std::path::Path::new(&dir);
+    let Ok(rd) = fs::read_dir(path) else { return Vec::new() };
+    let mut out = Vec::new();
+    for entry in rd.flatten() {
+        let p = entry.path();
+        if !p.is_file() {
+            continue;
+        }
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name.starts_with('.') {
+            continue;
+        }
+        let ok = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| exts.iter().any(|x| x.eq_ignore_ascii_case(e)))
+            .unwrap_or(false);
+        if ok {
+            // Canonical so a folder probed under two spellings (INTERSTITIALS
+            // / interstitials on a case-insensitive FS) yields one path.
+            let real = fs::canonicalize(&p).unwrap_or(p);
+            if let Some(s) = real.to_str() {
+                out.push(s.to_string());
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 // The process argv, for launch flags the frontend interprets (BROADCAST's
 // `--set <path>` / `--samples <dir>` / `--device <name>`). macOS Finder opens
 // arrive as Apple events, not argv — those go through PendingOpenFiles.

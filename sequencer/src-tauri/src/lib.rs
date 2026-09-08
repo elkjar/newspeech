@@ -424,6 +424,7 @@ pub fn shared_builder() -> tauri::Builder<tauri::Wry> {
       pool_list_visuals,
       pool_get_dir,
       projectfs::list_seq_files,
+      projectfs::list_dir_files,
       projectfs::launch_args,
       projectfs::js_log,
     ])

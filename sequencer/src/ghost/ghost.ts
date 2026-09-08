@@ -651,8 +651,7 @@ function arrangementAdvance(
         // of stopping the transport.
         const next = nextSongProvider ? nextSongProvider(store) : null;
         if (next !== null) {
-          void fadeTextures(SONG_FADE_SECS);
-          store.swapSongImmediate(next, globalStep);
+          handToNextSong(store, next, globalStep);
           return;
         }
         store.setArrangementPendingEnd(true);
@@ -978,6 +977,29 @@ function rollSongBars(store: ReturnType<typeof useSequencerStore.getState>): num
   return Math.max(SONG_ROLL_MIN, Math.min(SONG_ROLL_MAX, bars));
 }
 
+// BROADCAST interstitials: before handing to the next song, Ghost offers the
+// end to an interceptor. Returning true means "I own this transition" — the
+// conductor stops the transport, plays a gap, and swaps + restarts itself;
+// Ghost must then do nothing. Null in Sequence.
+export type SongEndInterceptor = (
+  store: ReturnType<typeof useSequencerStore.getState>,
+  nextSlot: number,
+  globalStep: number
+) => boolean;
+let songEndInterceptor: SongEndInterceptor | null = null;
+export function setSongEndInterceptor(fn: SongEndInterceptor | null): void {
+  songEndInterceptor = fn;
+}
+function handToNextSong(
+  store: ReturnType<typeof useSequencerStore.getState>,
+  nextSlot: number,
+  globalStep: number
+): void {
+  if (songEndInterceptor && songEndInterceptor(store, nextSlot, globalStep)) return;
+  void fadeTextures(SONG_FADE_SECS);
+  store.swapSongImmediate(nextSlot, globalStep);
+}
+
 // Read-only view of the current song's set dwell for observers (the BROADCAST
 // signal layer degrades the picture into the last bar of a song). Null when
 // no length is known yet — a composition-driven song, or a roll not yet made.
@@ -1029,8 +1051,7 @@ function maybeEndSongForSet(
     return false;
   }
   console.info(`[ghost] song end after ${elapsed} bars → slot ${next}`);
-  void fadeTextures(SONG_FADE_SECS);
-  store.swapSongImmediate(next, globalStep);
+  handToNextSong(store, next, globalStep);
   return true;
 }
 
@@ -1085,8 +1106,7 @@ function maybeAutoAdvanceScene(
   // new song via fadeTextures, so the transition bridges on the textural
   // layer rather than a silent gap.
   if (nextSong !== null) {
-    void fadeTextures(SONG_FADE_SECS);
-    store.swapSongImmediate(nextSong, globalStep);
+    handToNextSong(store, nextSong, globalStep);
     return true;
   }
 
