@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { Visualizer } from '../../stream/Visualizer';
 import { ReactiveVisual } from './ReactiveVisual';
+import { Brand } from './Brand';
 import { useLayout, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
@@ -55,6 +56,7 @@ export function Desktop() {
   }, [clamp]);
   const clock = useClockText();
   const [menu, setMenu] = useState(false);
+  const k = Math.min(window.innerWidth / 1512, window.innerHeight / 850);
 
   return (
     <div className="fixed inset-0 overflow-hidden text-white font-mono select-none" style={{ background: '#050505', cursor: 'default' }}>
@@ -115,6 +117,11 @@ export function Desktop() {
           </span>
           <span className="tabular-nums text-white/70">{clock}</span>
         </span>
+      </div>
+
+      {/* brand — in the gap above the windows, left, scaled like the layout */}
+      <div className="absolute" style={{ left: 53 * k, top: 28 + 60 * k, transform: `scale(${k})`, transformOrigin: 'top left', zIndex: 0 }}>
+        <Brand />
       </div>
 
       {/* windows */}
