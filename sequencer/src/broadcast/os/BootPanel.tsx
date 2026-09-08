@@ -23,8 +23,10 @@ const ROW_H = 18;
 const W = 620;
 // Standby box: header + the config block + the rule. The block is sized to
 // its rows (8 × 28 + the title, the facts, the GO row) so nothing spills.
+// The boxes size themselves to their fixed-height children — a hand-summed
+// outer height double-counted the block's padding and left the rule floating
+// a dozen px above the bottom edge (ns 2026-09-08).
 const CONFIG_H = 384;
-const H_STANDBY = 22 + CONFIG_H + 2;
 
 async function pickFolder(title: string): Promise<string | null> {
   if (!isTauri()) return null;
@@ -67,7 +69,7 @@ export function BootPanel() {
   if (station === 'standby') {
     return (
       <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 20001, pointerEvents: 'none' }}>
-        <div className="font-mono text-white" style={{ ...chrome, width: W, height: H_STANDBY, pointerEvents: 'auto' }}>
+        <div className="font-mono text-white" style={{ ...chrome, width: W, pointerEvents: 'auto' }}>
           <Header right="standby" />
           <StandbyConfig ready={ready} blink={blink} />
           <div className="h-[2px] bg-white/10">
@@ -86,7 +88,7 @@ export function BootPanel() {
 
   return (
     <div className="fixed inset-0 pointer-events-none flex items-center justify-center" style={{ zIndex: 20001 }}>
-      <div className="font-mono text-white" style={{ ...chrome, width: 560, height: 22 + 14 + ROWS * ROW_H + 14 + 2 }}>
+      <div className="font-mono text-white" style={{ ...chrome, width: 560 }}>
         <Header right="initializing" />
         <div className="px-4 py-[7px] text-[10px]" style={{ height: ROWS * ROW_H + 14 }}>
           {shown.map((l, i) => {

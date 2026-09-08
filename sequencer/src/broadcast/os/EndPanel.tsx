@@ -34,7 +34,6 @@ export function EndPanel() {
         className="font-mono text-white"
         style={{
           width: 560,
-          height: 22 + 14 + 14 * 18 + 14 + 2,
           background: 'rgba(5,5,5,0.9)',
           border: '1px solid rgba(255,255,255,0.28)',
           boxShadow: '0 0 0 1px rgba(0,0,0,0.9), 0 18px 40px rgba(0,0,0,0.55)',
