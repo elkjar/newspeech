@@ -1,4 +1,4 @@
-# Broadcast runner — design (not yet built)
+# BROADCAST — design (Phase 0 in progress)
 
 *2026-09-07. Chris: "a 'broadcast' version … create a series of seq files and we could load them
 up and have a 'set' of ever changing variations on the .seq files broadcasting out." Then: "I'd like
@@ -7,7 +7,7 @@ boatload of seq files and set loose." Face: "a visual of the decisioning that is
 the .seq files … tie in the visualizer aspects … the wreckage systems visual feel of this being
 '65dos OS' … a desktop / terminal window."*
 
-Working name in this doc: **the runner**. Chris names it.
+The app is **BROADCAST** (Chris, 2026-09-07). "The runner" below means BROADCAST.
 
 ## What it is
 
@@ -67,7 +67,7 @@ Ships as a Sequence point release with zero user-visible change. Soak it a few d
 
 ## Phase 1 — the runner boots and plays a set
 
-- **Crate**: `src-tauri-broadcast/` with its own `tauri.conf.json`, identifier, `capabilities/`,
+- **Crate**: `src-tauri-broadcast/` (product name BROADCAST, identifier `com.newspeechsound.broadcast`) with its own `tauri.conf.json`, `capabilities/`,
   and `sequence_lib = { path = "../src-tauri" }`. Add a root workspace `Cargo.toml` (one lock, one
   target dir). Skip the updater, dock-icon and WKUIDelegate code; register the shared handlers.
 - **Entry**: `?window=broadcast` in `main.tsx` → `<BroadcastApp/>`: `bootEngine({ initProject:

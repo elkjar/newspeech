@@ -868,6 +868,10 @@ export interface SequencerState {
   // voice as the count-in on every beat (accented on the bar downbeat) for as
   // long as transport runs. Native path uses SECTION_NONE so it stays OUT of
   // recordings (unlike the count-in). Session-only; not persisted to .seq.
+  // Sample kits scanned + manifests registered (engine/boot.ts). Gates the
+  // splash and the bootDone-dependent engine installs in App.tsx.
+  bootDone: boolean;
+  setBootDone: (v: boolean) => void;
   metronome: boolean;
   setMetronome: (v: boolean) => void;
   toggleMetronome: () => void;
@@ -1435,6 +1439,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   clickIn: false,
   setClickIn: (v) => set({ clickIn: v }),
   toggleClickIn: () => set((s) => ({ clickIn: !s.clickIn })),
+  bootDone: false,
+  setBootDone: (v) => set({ bootDone: v }),
   metronome: false,
   setMetronome: (v) => set({ metronome: v }),
   toggleMetronome: () => set((s) => ({ metronome: !s.metronome })),
