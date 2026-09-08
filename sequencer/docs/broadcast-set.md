@@ -241,6 +241,20 @@ WAV's length); (2) a fixed safety limiter at the end of the chain — no file ma
 (6) unattended layer (LaunchAgent, watchdogs, file log, soak); (7) CRT-safe layout for the
 physical chain.
 
+## Standalone app — BUILT 2026-09-08 (v0.1.0 in /Applications)
+
+`bash scripts/release-broadcast.sh <version> [--install] [--no-notarize]` → universal
+`BROADCAST.app` + dmg, signed with the Developer ID (team E2587RP7D9), notarized via
+`sequencer/.release-env` credentials, stapled, optionally copied to `/Applications`. No updater, no
+GitHub Release, **no git push**. First build: 0.1.0, notarization Accepted, `spctl` accepted,
+installed. Release builds log to `~/Library/Logs/com.newspeechsound.broadcast/broadcast.log`
+(8 MB rotation, old files kept); dev logs to the terminal as before. Gotcha: `tauri build` refuses
+a workspace where an npm plugin and its Rust crate differ in minor version — the broadcast lock had
+resolved `tauri-plugin-updater` to 2.11.0 against npm 2.10.1; pinned with
+`cargo update -p tauri-plugin-updater --precise 2.10.1` in `src-tauri-broadcast/`. The installed app
+shares the dev app's storage (same bundle identifier), so remembered settings carry over: a
+double-click lands in standby with the last set / samples / device / songs.
+
 ## Standalone app — the next step
 
 BROADCAST runs today only as `tauri dev` from a terminal with flags. To be a thing Chris
