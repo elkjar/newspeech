@@ -117,3 +117,73 @@ pub fn reveal_in_finder(path: String) -> Result<(), String> {
         Err("reveal_in_finder not implemented on this platform".to_string())
     }
 }
+
+// Expand a list of dropped / launch-arg paths into the `.seq` files they
+// contain. Directories are walked (a few levels deep — a set folder may
+// group songs in subfolders), `.seq` files pass through, everything else is
+// ignored. Sorted + deduped so a folder always yields the same order.
+// Shared by BROADCAST's set loader; harmless in Sequence.
+#[tauri::command]
+pub fn list_seq_files(paths: Vec<String>) -> Result<Vec<String>, String> {
+    fn walk(dir: &std::path::Path, depth: u32, out: &mut Vec<String>) {
+        let Ok(rd) = fs::read_dir(dir) else { return };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if depth > 0 {
+                    walk(&path, depth - 1, out);
+                }
+                continue;
+            }
+            let is_seq = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("seq"))
+                .unwrap_or(false);
+            if is_seq {
+                if let Some(s) = path.to_str() {
+                    out.push(s.to_string());
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for p in paths {
+        let path = std::path::Path::new(&p);
+        if path.is_dir() {
+            walk(path, 3, &mut out);
+        } else if path.is_file() {
+            let is_seq = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("seq"))
+                .unwrap_or(false);
+            if is_seq {
+                out.push(p);
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+// The process argv, for launch flags the frontend interprets (BROADCAST's
+// `--set <path>` / `--samples <dir>` / `--device <name>`). macOS Finder opens
+// arrive as Apple events, not argv — those go through PendingOpenFiles.
+#[tauri::command]
+pub fn launch_args() -> Vec<String> {
+    std::env::args().skip(1).collect()
+}
+
+// Frontend → Rust log bridge. BROADCAST mirrors its console here so an
+// unattended run leaves a trail in the process log (dev terminal / Console.app)
+// — the webview console isn't reachable once the window is on a stream box.
+#[tauri::command]
+pub fn js_log(level: String, message: String) {
+    match level.as_str() {
+        "error" => log::error!("[js] {message}"),
+        "warn" => log::warn!("[js] {message}"),
+        _ => log::info!("[js] {message}"),
+    }
+}

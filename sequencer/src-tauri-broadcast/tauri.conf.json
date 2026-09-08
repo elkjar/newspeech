@@ -1,0 +1,61 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "BROADCAST",
+  "version": "0.1.0",
+  "identifier": "com.newspeechsound.broadcast",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420/",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "BROADCAST",
+        "url": "broadcast.html",
+        "width": 1920,
+        "height": 1080,
+        "minWidth": 1280,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost blob: data:; media-src 'self' asset: http://asset.localhost blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-src 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost blob: data:; media-src 'self' asset: http://asset.localhost blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-src 'none'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/Documents/newspeech-visuals/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "hardenedRuntime": true,
+      "entitlements": "../src-tauri/Entitlements.plist"
+    },
+    "fileAssociations": [
+      {
+        "ext": ["seqset"],
+        "name": "newspeech set",
+        "description": "newspeech sequence set",
+        "role": "Viewer",
+        "mimeType": "application/json"
+      }
+    ],
+    "icon": [
+      "../src-tauri/icons/32x32.png",
+      "../src-tauri/icons/128x128.png",
+      "../src-tauri/icons/128x128@2x.png",
+      "../src-tauri/icons/icon.icns",
+      "../src-tauri/icons/icon.ico"
+    ]
+  }
+}

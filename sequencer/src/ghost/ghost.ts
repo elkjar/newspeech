@@ -647,6 +647,14 @@ function arrangementAdvance(
       // down the transport. The stop is deferred: scheduler.stop() called
       // synchronously from inside its own tick loop corrupts the step counter.
       if (elapsed >= rowBars && !arr.pendingEnd) {
+        // In a BROADCAST set the song's end hands to the next song instead
+        // of stopping the transport.
+        const next = nextSongProvider ? nextSongProvider(store) : null;
+        if (next !== null) {
+          void fadeTextures(SONG_FADE_SECS);
+          store.swapSongImmediate(next, globalStep);
+          return;
+        }
         store.setArrangementPendingEnd(true);
         queueMicrotask(endArrangementPlayback);
       }
@@ -855,6 +863,10 @@ export function tickBar(globalStep: number): void {
   // even with the ghost off; the ghost's per-bar performance work (lead
   // mutation + fills above) still runs when enabled. Only the bank/scene CHOICE
   // is taken over — we skip the autonomous pick + composition auto-advance below.
+  // Set conductor (BROADCAST): fixed song length / scene-less songs end here,
+  // ahead of both the arrangement and the composition logic.
+  if (maybeEndSongForSet(store, globalStep)) return;
+
   if (store.arrangement.active && store.arrangement.rows.length > 0) {
     arrangementAdvance(store, globalStep);
     return; // arrangement owns progression — skip the ghost pick below
@@ -927,6 +939,90 @@ function findNextSong(
   return null;
 }
 
+// Pluggable "which song next" — BROADCAST (src/broadcast/setlist.ts) owns a
+// setlist far larger than the 8 performance slots and pages the next pick
+// into a slot one song ahead; it registers a provider that returns that
+// slot. Sequence leaves this null and gets the slot-order walk above.
+// Called at composition end with the current store snapshot; return a
+// filled slot index, or null for "no next song" (ends / loops as before).
+export type NextSongProvider = (
+  store: ReturnType<typeof useSequencerStore.getState>
+) => number | null;
+let nextSongProvider: NextSongProvider | null = null;
+export function setNextSongProvider(fn: NextSongProvider | null): void {
+  nextSongProvider = fn;
+}
+
+// Fixed song length in bars for a set (BROADCAST's `--song-bars` dev flag),
+// or null = Ghost decides. Only consulted when a nextSongProvider is
+// registered, so Sequence is untouched.
+export type SongLengthProvider = () => number | null;
+let songLengthProvider: SongLengthProvider | null = null;
+export function setSongLengthProvider(fn: SongLengthProvider | null): void {
+  songLengthProvider = fn;
+}
+
+// Ghost's own song length for a song with no composition (older .seq files
+// have no scenes, so composition end never comes). Rolled once per song at
+// its first bar: more material → longer stay. 1 bank ≈ 28 bars, 4 ≈ 64,
+// 8+ ≈ 112, ±20% jitter, snapped to 4-bar multiples, clamped 24–128.
+// Songs WITH scenes keep their authored end (composition → provider).
+const SONG_ROLL_MIN = 24;
+const SONG_ROLL_MAX = 128;
+let songRoll: { startStep: number; bars: number } | null = null;
+function rollSongBars(store: ReturnType<typeof useSequencerStore.getState>): number {
+  const material = store.banks.filter((b) => b !== null && b.kind !== 'transition').length;
+  const base = 16 + 12 * Math.max(1, material);
+  const jitter = 1 + (Math.random() * 0.4 - 0.2);
+  const bars = Math.round((base * jitter) / 4) * 4;
+  return Math.max(SONG_ROLL_MIN, Math.min(SONG_ROLL_MAX, bars));
+}
+
+// Set-conductor song end. With a provider present, a song ends when the
+// fixed length elapses, or — for a song with no composition — Ghost's rolled
+// length elapses. Songs WITH scenes and no fixed length keep their natural
+// end (composition end → provider, in maybeAutoAdvanceScene).
+// Returns true when it swapped songs (store changed; caller must bail).
+function maybeEndSongForSet(
+  store: ReturnType<typeof useSequencerStore.getState>,
+  globalStep: number
+): boolean {
+  if (!nextSongProvider) return false;
+  const { composition, performance } = store;
+  if (performance.activeSong === null || performance.pendingSong !== null) return false;
+  const filled = composition.scenes.filter((s) => s !== null).length;
+  const sceneless = composition.activeScene === null || filled === 0;
+  const fixed = songLengthProvider ? songLengthProvider() : null;
+  let dwell: number | null = fixed;
+  if (dwell === null && sceneless) {
+    if (!songRoll || songRoll.startStep !== store.ghostCompositionStartStep) {
+      songRoll = { startStep: store.ghostCompositionStartStep, bars: rollSongBars(store) };
+      store.pushGhostPickEvent({
+        kind: 'system',
+        globalStep,
+        label: `song ${songRoll.bars} bars`,
+        nonce: `song-${store.ghostCompositionStartStep}`,
+      });
+      console.info(`[ghost] song length rolled: ${songRoll.bars} bars`);
+    }
+    dwell = songRoll.bars;
+  }
+  if (dwell === null) return false;
+  const elapsed = Math.floor(
+    (globalStep - store.ghostCompositionStartStep) / STEPS_PER_BAR
+  );
+  if (elapsed < dwell) return false;
+  const next = nextSongProvider(store);
+  if (next === null) {
+    if (elapsed === dwell) console.warn('[ghost] song end reached but no next song staged yet');
+    return false;
+  }
+  console.info(`[ghost] song end after ${elapsed} bars → slot ${next}`);
+  void fadeTextures(SONG_FADE_SECS);
+  store.swapSongImmediate(next, globalStep);
+  return true;
+}
+
 // Returns true if it changed the store (advanced a scene, swapped songs,
 // or stopped) — the caller must then bail rather than continue acting on
 // its now-stale snapshot.
@@ -946,7 +1042,9 @@ function maybeAutoAdvanceScene(
   // otherwise loop in place forever and never reach the next song).
   const nextSong =
     performance.activeSong !== null && performance.pendingSong === null
-      ? findNextSong(performance.songs, performance.activeSong)
+      ? nextSongProvider
+        ? nextSongProvider(store)
+        : findNextSong(performance.songs, performance.activeSong)
       : null;
 
   // A solo, looping (!endsAfterLast) scene with no next song just plays

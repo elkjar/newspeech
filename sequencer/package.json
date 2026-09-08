@@ -10,6 +10,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "broadcast:dev": "cd src-tauri-broadcast && tauri dev",
+    "broadcast:build": "cd src-tauri-broadcast && tauri build",
     "release": "bash scripts/release.sh"
   },
   "dependencies": {

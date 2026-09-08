@@ -1,4 +1,4 @@
-# BROADCAST — design (Phase 0 in progress)
+# BROADCAST — design (Phase 0 done, Phase 1 in progress)
 
 *2026-09-07. Chris: "a 'broadcast' version … create a series of seq files and we could load them
 up and have a 'set' of ever changing variations on the .seq files broadcasting out." Then: "I'd like
@@ -45,7 +45,7 @@ What is NOT clean: **`App.tsx` (2,408 lines) holds ~1,400 lines of engine wiring
 into modules before a thin entry can exist. That extraction is the real work; the app shell after
 it is a few hundred lines.
 
-## Phase 0 — extract the engine out of App.tsx (Sequence-only refactor, no behavior change)
+## Phase 0 — extract the engine out of App.tsx — ✅ DONE 2026-09-07 (commit 3053bb9, verified by ear)
 
 Mechanical moves, each verified by playing the same `.seq` in Sequence before/after. Order matters:
 the dispatcher last, because it's the delicate one.
@@ -65,7 +65,22 @@ factor the 100-entry `invoke_handler` list (`lib.rs:337-433`) into a reusable `r
 
 Ships as a Sequence point release with zero user-visible change. Soak it a few days before Phase 1.
 
-## Phase 1 — the runner boots and plays a set
+## Phase 1 — the runner boots and plays a set — IN PROGRESS 2026-09-07
+
+Built so far (uncommitted): `sequence_lib::shared_builder()` + `install_media_permission` /
+`spawn_level_emitter` / `buffer_opened_files` / `midi_exit_cleanup` in `src-tauri/src/lib.rs`
+(`pub mod audio/midi/projectfs/samples`); `projectfs::list_seq_files(paths)` + `launch_args()`;
+crate `src-tauri-broadcast/` (bin `broadcast`, product BROADCAST, `com.newspeechsound.broadcast`,
+no updater, window `broadcast.html` 1920×1080, `.seqset` association); Vite second entry
+`broadcast.html` → `src/broadcast/main.tsx`; `src/state/setLoader.ts` (expandSetPaths incl.
+.seqset refs, readSongFile); `src/broadcast/setlist.ts` (zustand `useBroadcast`: entries /
+current / next / recent / mode random|sequence; pre-loads the next pick into a free slot and
+registers `ghost.setNextSongProvider`; frees the outgoing slot after each swap); `ghost.ts`
+`setNextSongProvider` hook (Sequence unchanged when null); `src/broadcast/BroadcastApp.tsx`
+(engine installs in App order, `--set/--samples/--device` flags, Finder open + drop → set,
+now-playing strip, empty-state loading surface, Space play/stop, Cmd+. panic);
+`nativeEngine.presetNativeDeviceName`; npm `broadcast:dev` / `broadcast:build`.
+Not yet: Login Item docs, watchdog, `.seqset` written beside the folder, setlist persistence.
 
 - **Crate**: `src-tauri-broadcast/` (product name BROADCAST, identifier `com.newspeechsound.broadcast`) with its own `tauri.conf.json`, `capabilities/`,
   and `sequence_lib = { path = "../src-tauri" }`. Add a root workspace `Cargo.toml` (one lock, one

@@ -1906,7 +1906,7 @@ impl Modulator {
 // IPC shape for one modulator (matches the JS ModSpec; camelCase over the wire).
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ModSpecIpc {
+pub struct ModSpecIpc {
   slot: u8,
   is_lfo: bool,
   depth: f32,
@@ -4182,7 +4182,7 @@ enum MixerCommand {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct EnvelopeSpec {
+pub struct EnvelopeSpec {
   attack_secs: f32,
   decay_secs: f32,
   sustain_level: f32,

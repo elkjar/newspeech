@@ -13,6 +13,8 @@ import {
   parseSongFromSeq,
   resolveRelativePath,
   songToSeqText,
+  songNameFromFilename,
+  dirOf,
 } from '../state/persist';
 import { ensureWorkingSongSaved, switchToSong } from '../state/songFileSync';
 import { NOTE_NAMES } from '../audio/scale';
@@ -44,16 +46,6 @@ function songSummary(s: Song): string {
 // Derive a song title from an imported .seq file path/name: drop any
 // directory prefix and the known extension. Handles both the Tauri full
 // path (forward + back slashes) and a bare web filename.
-function songNameFromFilename(filename: string): string {
-  const base = filename.split(/[/\\]/).pop() ?? filename;
-  return base.replace(/\.(seq|seqcomp|json)$/i, '');
-}
-
-function dirOf(p: string): string {
-  const i = p.lastIndexOf('/');
-  return i <= 0 ? '/' : p.slice(0, i);
-}
-
 // Existence probe via the read command — no dedicated stat IPC, and at
 // most 8 small .seq reads behind an explicit save gesture.
 async function fileExists(path: string): Promise<boolean> {

@@ -1224,3 +1224,11 @@ export function subscribeReportedChannelCount(cb: () => void): () => void {
     channelListeners.delete(cb);
   };
 }
+
+// BROADCAST launch flag `--device <name>`: pre-seed the persisted device
+// choice so initNativeAudio opens that device instead of the system default.
+// Same key the Settings picker writes; a typo falls back to default.
+export function presetNativeDeviceName(name: string): void {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(LS_DEVICE, name);
+}

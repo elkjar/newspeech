@@ -1,12 +1,14 @@
-mod audio;
+// `pub` so a second binary (BROADCAST, src-tauri-broadcast/) can link this
+// crate and reuse the engine + commands. See docs/broadcast-set.md.
+pub mod audio;
 mod delay;
-mod midi;
-mod projectfs;
+pub mod midi;
+pub mod projectfs;
 mod reverb;
-mod samples;
+pub mod samples;
 
 #[cfg(target_os = "macos")]
-mod media_permission {
+pub mod media_permission {
   // WKWebView auto-denies getUserMedia and media-device enumeration when no
   // WKUIDelegate is set. We register a delegate class that always grants the
   // request, so `navigator.mediaDevices.getUserMedia` and the subsequent
@@ -322,14 +324,13 @@ async fn toggle_stream_window(app: tauri::AppHandle) -> Result<(), String> {
   Ok(())
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-  use tauri::Manager;
-
+// Everything both binaries share: plugins (minus the updater — BROADCAST
+// must never pop an update prompt over a live stream), managed state, and
+// the full command surface. Each binary adds its own setup/run hooks.
+pub fn shared_builder() -> tauri::Builder<tauri::Wry> {
   tauri::Builder::default()
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_process::init())
     .manage(midi::MidiRegistry::default())
     .manage(midi::ClockState::default())
@@ -417,18 +418,109 @@ pub fn run() {
       toggle_stream_window,
       pool_list_visuals,
       pool_get_dir,
+      projectfs::list_seq_files,
+      projectfs::launch_args,
+      projectfs::js_log,
     ])
+}
+
+// Grant getUserMedia on a window's webview (macOS WKUIDelegate). No-op
+// elsewhere. Both binaries call this for every window they create.
+pub fn install_media_permission(window: &tauri::WebviewWindow) {
+  #[cfg(target_os = "macos")]
+  {
+    let _ = window.with_webview(|webview| {
+      // wry's PlatformWebview on macOS exposes the underlying WKWebView
+      // via .inner() as a *mut c_void (NSObject pointer).
+      media_permission::install_on_webview(webview.inner());
+    });
+  }
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = window;
+  }
+}
+
+// Audio output level + engine-clock emitter — reads the per-block
+// peak the cpal callback stashes in audio::AUDIO_OUTPUT_LEVEL and
+// the absolute frame counter, forwarding them to all webviews as
+// the `audio:level` / `audio:time` Tauri events at ~30Hz. The JS
+// engine-clock extrapolator (engineClock.ts) corrects itself off
+// each `audio:time` and extrapolates between them.
+// Daemon thread (no shutdown plumbing) — OS reaps on app exit.
+pub fn spawn_level_emitter(app_handle: tauri::AppHandle) {
+  use tauri::Emitter;
+  std::thread::spawn(move || loop {
+    std::thread::sleep(std::time::Duration::from_millis(33));
+    let level = audio::audio_output_level();
+    if let Err(e) = app_handle.emit("audio:level", level) {
+      log::warn!("[audio:level emit] {}", e);
+    }
+    let time = audio::engine_time();
+    if let Err(e) = app_handle.emit("audio:time", time) {
+      log::warn!("[audio:time emit] {}", e);
+    }
+  });
+}
+
+// Finder "open with" — .seq double-click or a drop on the dock icon. macOS
+// delivers these as an Apple event (never argv), surfaced by tauri as
+// RunEvent::Opened. Buffer the paths (a cold-launch open arrives before the
+// webview has listeners), then ping the frontend, which drains via
+// take_pending_open_files. Shared: BROADCAST accepts .seqset / folders this way.
+pub fn buffer_opened_files(app_handle: &tauri::AppHandle, event: &tauri::RunEvent) {
+  #[cfg(target_os = "macos")]
+  if let tauri::RunEvent::Opened { urls } = event {
+    use tauri::{Emitter, Manager};
+    let paths: Vec<String> = urls
+      .iter()
+      .filter_map(|u| u.to_file_path().ok())
+      .map(|p| p.to_string_lossy().to_string())
+      .collect();
+    if !paths.is_empty() {
+      let pending = app_handle.state::<projectfs::PendingOpenFiles>();
+      if let Ok(mut buf) = pending.0.lock() {
+        buf.extend(paths);
+      }
+      if let Err(e) = app_handle.emit("open-files-pending", ()) {
+        log::warn!("[open-files emit] {}", e);
+      }
+    }
+  }
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = (app_handle, event);
+  }
+}
+
+// On ACTUAL exit (not merely requested — a held exit must not stop the
+// clock mid-session), flush an all-notes-off to every MIDI output before
+// the process tears down the CoreMIDI client — otherwise notes left on
+// external gear (e.g. the Mutant Brain) sustain forever. Same message as
+// the panic button.
+pub fn midi_exit_cleanup(app_handle: &tauri::AppHandle) {
+  use tauri::Manager;
+  // Stop the clock master first (sends MIDI Stop + joins the thread) so
+  // followers don't free-run after we're gone, then all-notes-off.
+  let clock = app_handle.state::<midi::ClockState>();
+  midi::clock_stop_blocking(clock.inner(), true);
+  let registry = app_handle.state::<midi::MidiRegistry>();
+  midi::panic_all(registry.inner());
+  // Give CoreMIDI a moment to push the bytes out before we exit.
+  std::thread::sleep(std::time::Duration::from_millis(20));
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+  use tauri::Manager;
+
+  shared_builder()
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .setup(|app| {
       #[cfg(target_os = "macos")]
-      {
-        set_dock_icon();
-        if let Some(window) = app.get_webview_window("main") {
-          let _ = window.with_webview(|webview| {
-            // wry's PlatformWebview on macOS exposes the underlying WKWebView
-            // via .inner() as a *mut c_void (NSObject pointer).
-            media_permission::install_on_webview(webview.inner());
-          });
-        }
+      set_dock_icon();
+      if let Some(window) = app.get_webview_window("main") {
+        install_media_permission(&window);
       }
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -437,58 +529,13 @@ pub fn run() {
             .build(),
         )?;
       }
-
-      // Audio output level + engine-clock emitter — reads the per-block
-      // peak the cpal callback stashes in audio::AUDIO_OUTPUT_LEVEL and
-      // the absolute frame counter, forwarding them to all webviews as
-      // the `audio:level` / `audio:time` Tauri events at ~30Hz. The JS
-      // engine-clock extrapolator (engineClock.ts) corrects itself off
-      // each `audio:time` and extrapolates between them.
-      // Daemon thread (no shutdown plumbing) — OS reaps on app exit.
-      {
-        use tauri::Emitter;
-        let app_handle = app.handle().clone();
-        std::thread::spawn(move || loop {
-          std::thread::sleep(std::time::Duration::from_millis(33));
-          let level = audio::audio_output_level();
-          if let Err(e) = app_handle.emit("audio:level", level) {
-            log::warn!("[audio:level emit] {}", e);
-          }
-          let time = audio::engine_time();
-          if let Err(e) = app_handle.emit("audio:time", time) {
-            log::warn!("[audio:time emit] {}", e);
-          }
-        });
-      }
-
+      spawn_level_emitter(app.handle().clone());
       Ok(())
     })
     .build(tauri::generate_context!())
     .expect("error while building tauri application")
     .run(|app_handle, event| {
-      // Finder "open with Sequence" — .seq double-click or a drop on the dock
-      // icon. macOS delivers these as an Apple event (never argv), surfaced
-      // by tauri as RunEvent::Opened. Buffer the paths (a cold-launch open
-      // arrives before the webview has listeners), then ping the frontend,
-      // which drains via take_pending_open_files.
-      #[cfg(target_os = "macos")]
-      if let tauri::RunEvent::Opened { urls } = &event {
-        use tauri::Emitter;
-        let paths: Vec<String> = urls
-          .iter()
-          .filter_map(|u| u.to_file_path().ok())
-          .map(|p| p.to_string_lossy().to_string())
-          .collect();
-        if !paths.is_empty() {
-          let pending = app_handle.state::<projectfs::PendingOpenFiles>();
-          if let Ok(mut buf) = pending.0.lock() {
-            buf.extend(paths);
-          }
-          if let Err(e) = app_handle.emit("open-files-pending", ()) {
-            log::warn!("[open-files emit] {}", e);
-          }
-        }
-      }
+      buffer_opened_files(app_handle, &event);
 
       // Cmd+Q (or last-window close): hold user-initiated exits (code None)
       // and ask the frontend, which owns dirty state and can compare
@@ -513,14 +560,7 @@ pub fn run() {
       // external gear (e.g. the Mutant Brain) sustain forever. Same message as
       // the panic button.
       if let tauri::RunEvent::Exit = &event {
-        // Stop the clock master first (sends MIDI Stop + joins the thread) so
-        // followers don't free-run after we're gone, then all-notes-off.
-        let clock = app_handle.state::<midi::ClockState>();
-        midi::clock_stop_blocking(clock.inner(), true);
-        let registry = app_handle.state::<midi::MidiRegistry>();
-        midi::panic_all(registry.inner());
-        // Give CoreMIDI a moment to push the bytes out before we exit.
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        midi_exit_cleanup(app_handle);
       }
     });
 }

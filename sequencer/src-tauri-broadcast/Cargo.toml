@@ -1,0 +1,27 @@
+[package]
+name = "broadcast"
+# Bundle version comes from tauri.conf.json; this is meaningless (see src-tauri).
+version = "0.0.0"
+description = "BROADCAST — newspeech autonomous set player"
+authors = ["newspeech"]
+license = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+[[bin]]
+name = "broadcast"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.6.1", features = [] }
+
+[dependencies]
+# The whole engine + command surface comes from Sequence's crate.
+sequence_lib = { path = "../src-tauri", package = "sequence" }
+tauri = { version = "2.11.1", features = ["protocol-asset"] }
+tauri-plugin-log = "2"
+# Direct deps so tauri-build registers their permissions for capabilities/.
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-process = "2.3.1"
+log = "0.4"

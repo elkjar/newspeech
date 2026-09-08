@@ -79,6 +79,17 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
+  // Two entries: index.html (Sequence) and broadcast.html (BROADCAST, the
+  // autonomous set player — src/broadcast/). Both binaries load from the
+  // same dist/ and the same dev server.
+  build: {
+    rollupOptions: {
+      input: {
+        index: path.resolve(__dirname, 'index.html'),
+        broadcast: path.resolve(__dirname, 'broadcast.html'),
+      },
+    },
+  },
   server: {
     strictPort: true,
     port: isTauri ? 1420 : 5173,
