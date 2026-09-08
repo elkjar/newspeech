@@ -113,17 +113,8 @@ export function installStationBoot(args: BootArgs): () => void {
     if (args.device) bootLog(`device requested: ${args.device}`);
     if (args.samples) bootLog(`samples: ${args.samples.split('/').filter(Boolean).slice(-2).join('/')}`);
   }
-  if (args.set.length === 0) {
-    // Nothing to come on air with: show the desktop (and its "no set" window)
-    // after a moment instead of holding a boot screen forever.
-    bootLog('no set given — drop a folder of .seq files');
-    window.setTimeout(() => {
-      if (useGap.getState().phase === 'boot') {
-        useStationBoot.setState({ phase: 'onair' });
-        startGapPhase('reboot', REBOOT_SECS);
-      }
-    }, 6000);
-  }
+  // No set yet → standby stays up: it's the config surface (pick a folder).
+  if (args.set.length === 0) bootLog('no set — pick a set folder');
 
   // Engine + audio device.
   let engineLogged = false;

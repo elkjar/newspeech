@@ -236,7 +236,12 @@ function installConductor(): void {
 
 // Load a set from dropped / launch paths and start it. Replaces any running
 // set. Stops and restarts playback so the first song starts on its downbeat.
+// Re-entrant: standby lets the operator re-pick the set folder / samples /
+// first song, each of which reloads — a newer load wins, an older one
+// parked at the boot gate quietly steps aside.
+let loadGen = 0;
 export async function loadAndStartSet(paths: string[]): Promise<void> {
+  const gen = ++loadGen;
   useBroadcast.setState({ status: 'loading', error: null });
   let entries: SetEntry[];
   try {
@@ -249,6 +254,7 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
     useBroadcast.setState({ status: 'error', error: 'no .seq files found' });
     return;
   }
+  if (gen !== loadGen) return;
   const seq = useSequencerStore.getState();
   if (seq.playing) await togglePlayback();
   // Fresh slots — clears whatever Sequence-side set was in the store.
@@ -293,6 +299,7 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
     useBroadcast.setState({ status: 'error', error: 'no playable songs in set (all midi-only or unreadable)' });
     return;
   }
+  if (gen !== loadGen) return;
   const firstEntry = useBroadcast.getState().entries[first];
   const slot = useSequencerStore.getState().importSong(read.song, firstEntry.path);
   if (slot === null) {
@@ -307,6 +314,7 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
   bootLog(`mode: ${useBroadcast.getState().mode} · ghost: on`);
   bootLog(`loading ${read.voices.length} voices for ${firstEntry.name}`);
   await preloadVoices(read.voices);
+  if (gen !== loadGen) return;
   bootLog(`first: ${firstEntry.name}`);
   // Ghost drives everything in BROADCAST. Session-level flag — applySong
   // preserves it across every swap.
@@ -317,6 +325,7 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
   // Station initializing: don't start the first downbeat before the boot
   // sequence has had its moment on screen.
   await stationBootGate();
+  if (gen !== loadGen) return;
   bootLog('transport: start');
   if (!useSequencerStore.getState().playing) await togglePlayback();
 }

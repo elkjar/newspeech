@@ -3,7 +3,7 @@
 // pieces), loads a set from launch args / Finder open / drop, turns Ghost
 // on and plays forever. The face is the stream window promoted to the whole
 // app; the "65dos OS" desktop lands in Phase 2 (docs/broadcast-set.md).
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useSequencerStore } from '../state/store';
@@ -34,6 +34,7 @@ import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
 import { installGapConductor, scanInterstitials, useGap } from './gap';
 import { installCards, scanCards } from './cards';
 import { installStationBoot, stationGo, useStationBoot } from './boot';
+import { applyLaunchArgs, useSettings } from './settings';
 import { startGapPhase } from './gap';
 import { Desktop } from './os/Desktop';
 import { installStreamState } from './os/streamState';
@@ -120,19 +121,22 @@ function parseLaunchArgs(argv: string[]): LaunchArgs {
 function BroadcastEngine({ args }: { args: LaunchArgs }) {
   const bootDone = useSequencerStore((s) => s.bootDone);
 
-  useEffect(() => installStationBoot(args), [args]);
+  // Flags over the remembered settings — a bare double-click launch has no
+  // argv and resumes last time's setup; flags override and are remembered.
+  const cfg = useMemo(() => applyLaunchArgs(args), [args]);
+  useEffect(() => installStationBoot({ set: cfg.setPaths, samples: cfg.samplesDir, device: cfg.device, autostart: cfg.autostart }), [cfg]);
   useEffect(() => {
     if (NATIVE) document.body.classList.add('tauri-native');
     return bootEngine({ initProject: false, controllers: false });
   }, []);
   useEffect(() => {
-    if (args.samples) setConfiguredUserSamplesDir(args.samples);
-    if (args.device) presetNativeDeviceName(args.device);
+    if (cfg.samplesDir) setConfiguredUserSamplesDir(cfg.samplesDir);
+    if (cfg.device) presetNativeDeviceName(cfg.device);
     useBroadcast.getState().setDevSongBars(args.songBars);
-    useGap.setState({ devEvery: args.gapEvery, songLimit: args.songs });
-    useBroadcast.setState({ firstPick: args.first });
+    useGap.setState({ devEvery: args.gapEvery, songLimit: cfg.songs });
+    useBroadcast.setState({ firstPick: cfg.first });
     startSamplesBoot();
-  }, [args]);
+  }, [args, cfg]);
   // Interstitials + idents: the conductor owns occasional song ends; cards
   // run on their own clock. Both re-scan their sibling folders whenever the
   // set's paths change (launch, drops).
@@ -140,15 +144,22 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
   useEffect(() => installCards(() => useBroadcast.getState().setPaths), []);
   useEffect(() => {
     let last = '';
-    const scan = (paths: string[]) => {
-      const key = paths.join('\n');
-      if (key === last || paths.length === 0) return;
+    const scan = () => {
+      const paths = useBroadcast.getState().setPaths;
+      const st = useSettings.getState();
+      const key = [...paths, '|', st.interstitialsDir ?? '', st.cardsDir ?? ''].join('\n');
+      if (key === last || (paths.length === 0 && !st.interstitialsDir && !st.cardsDir)) return;
       last = key;
-      void scanInterstitials(paths);
-      void scanCards(paths);
+      void scanInterstitials(paths, st.interstitialsDir);
+      void scanCards(paths, st.cardsDir);
     };
-    scan(useBroadcast.getState().setPaths);
-    return useBroadcast.subscribe((s) => scan(s.setPaths));
+    scan();
+    const a = useBroadcast.subscribe(scan);
+    const b = useSettings.subscribe(scan);
+    return () => {
+      a();
+      b();
+    };
   }, []);
   useEffect(() => installStreamPresence(), []);
   useEffect(() => {
@@ -195,14 +206,14 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
         console.error('[broadcast] open-files drain failed:', err);
       }
     };
-    if (args.set.length) void loadAndStartSet(args.set);
+    if (cfg.setPaths.length) void loadAndStartSet(cfg.setPaths);
     const unlisten = listen('open-files-pending', () => void drain());
     void drain();
     return () => {
       disposed = true;
       void unlisten.then((u) => u());
     };
-  }, [bootDone, args]);
+  }, [bootDone, cfg]);
 
   return null;
 }

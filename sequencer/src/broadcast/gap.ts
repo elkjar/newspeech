@@ -84,9 +84,9 @@ export function siblingFolders(setPaths: string[], name: string): string[] {
   return [...out];
 }
 
-export async function scanInterstitials(setPaths: string[]): Promise<void> {
+export async function scanInterstitials(setPaths: string[], explicitDir: string | null = null): Promise<void> {
   const files = new Set<string>();
-  for (const dir of siblingFolders(setPaths, 'INTERSTITIALS')) {
+  for (const dir of explicitDir ? [explicitDir] : siblingFolders(setPaths, 'INTERSTITIALS')) {
     try {
       for (const f of await invoke<string[]>('list_dir_files', { dir, exts: ['wav', 'aif', 'aiff', 'flac'] })) files.add(f);
     } catch {

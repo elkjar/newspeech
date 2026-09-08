@@ -22,6 +22,7 @@ import { useSequencerStore } from '../state/store';
 import { useBroadcast } from './setlist';
 import { siblingFolders } from './gap';
 import { fmtUptime } from './os/windows/NowWindow';
+import { useSettings } from './settings';
 
 export type CardKind = 'ident' | 'support' | 'plugin';
 
@@ -89,9 +90,9 @@ export function parseCard(path: string, text: string): Card | null {
   return { path, kind, weight, url, headline: body[0], body: body.slice(1, 3) };
 }
 
-export async function scanCards(setPaths: string[]): Promise<void> {
+export async function scanCards(setPaths: string[], explicitDir: string | null = null): Promise<void> {
   const files = new Set<string>();
-  for (const dir of siblingFolders(setPaths, 'CARDS')) {
+  for (const dir of explicitDir ? [explicitDir] : siblingFolders(setPaths, 'CARDS')) {
     try {
       for (const f of await invoke<string[]>('list_dir_files', { dir, exts: ['txt', 'md'] })) files.add(f);
     } catch {
@@ -193,7 +194,7 @@ export function installCards(getSetPaths: () => string[]): () => void {
   if (installed) return () => {};
   installed = true;
   scheduleNext(true);
-  rescan = window.setInterval(() => void scanCards(getSetPaths()), 60_000);
+  rescan = window.setInterval(() => void scanCards(getSetPaths(), useSettings.getState().cardsDir), 60_000);
   return () => {
     installed = false;
     if (timer !== null) window.clearTimeout(timer);
