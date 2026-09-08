@@ -14,6 +14,7 @@ import { ShapeWindow } from './windows/ShapeWindow';
 import { GhostWindow } from './windows/GhostWindow';
 import { VisualWindow } from './windows/VisualWindow';
 import { SysWindow } from './windows/SysWindow';
+import desktopBg from './assets/desktop-bg.png';
 
 const CONTENT: Record<WindowId, () => JSX.Element> = {
   set: SetWindow,
@@ -56,17 +57,13 @@ export function Desktop() {
 
   return (
     <div className="fixed inset-0 overflow-hidden text-white font-mono select-none" style={{ background: '#050505', cursor: 'default' }}>
-      {/* grid + grain ground */}
+      {/* ground: Chris's desktop-bg (a glitched light streak on dark), full
+          bleed, with a breath of grain over it so the windows sit in it */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            'radial-gradient(rgba(255,255,255,0.10) 0.6px, transparent 0.7px)',
-          backgroundSize: '24px 24px',
-          backgroundPosition: '12px 12px',
-        }}
+        style={{ backgroundImage: `url(${desktopBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
       />
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.07, mixBlendMode: 'screen' }}>
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.05, mixBlendMode: 'screen' }}>
         <filter id="ns-grain">
           <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
           <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0" />
