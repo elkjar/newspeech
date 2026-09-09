@@ -8,7 +8,7 @@ image_in_post: false
 ---
 
 <figure class="wide">
-<div class="video"><iframe src="https://www.youtube.com/embed/yFnVTDXG_tM" title="NEWSPEECH // BROADCAST — piano-swell" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+<div class="video"><iframe src="https://www.youtube.com/embed/yFnVTDXG_tM?controls=0&amp;rel=0&amp;iv_load_policy=3&amp;fs=0&amp;color=white&amp;playsinline=1" title="NEWSPEECH // BROADCAST — piano-swell" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
 </figure>
 
 every project has a folder like this. mine is called SEQFILES and it's where sequence projects go when i stop believing in them. dozens of em at this point. some are ten minutes of a tuesday night, some are the third attempt at something that never turned into anything, a few are just a kick drum and a bad idea. i don't delete them, i just stop opening them.
