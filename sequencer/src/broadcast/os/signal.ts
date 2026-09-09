@@ -179,6 +179,13 @@ function retarget(now: number): void {
   nextRetarget = now + 30000 + Math.random() * 60000;
 }
 
+// The frame the overlay drew last — the tube (TubeLayer) reads the same
+// envelope without advancing it a second time.
+let lastFrame: SignalFrame | null = null;
+export function lastSignal(): SignalFrame | null {
+  return lastFrame;
+}
+
 export function sampleSignal(now: number): SignalFrame {
   const dt = lastNow ? Math.min(0.1, (now - lastNow) / 1000) : 0.016;
   lastNow = now;
@@ -284,7 +291,7 @@ export function sampleSignal(now: number): SignalFrame {
   const brightness = 1 - weak * 0.12 + lock * 0.4;
   const contrast = 1 + weak * 0.15 + lock * 0.18;
 
-  return {
+  lastFrame = {
     quality,
     noise,
     flicker: clamp01(flicker),
@@ -297,4 +304,5 @@ export function sampleSignal(now: number): SignalFrame {
     countIn,
     events: live,
   };
+  return lastFrame;
 }

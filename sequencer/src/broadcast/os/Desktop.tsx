@@ -8,7 +8,8 @@ import { Visualizer } from '../../stream/Visualizer';
 import { ReactiveVisual } from './ReactiveVisual';
 import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
 import { setSignalEnabled } from './signal';
-import { useLayout, useStage, FORMATS, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
+import { setTubeEnabled } from './TubeLayer';
+import { useLayout, useStage, FORMATS, LOOKS, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
 import { NowWindow } from './windows/NowWindow';
@@ -102,8 +103,8 @@ export function Desktop() {
   const backdrop = useLayout((s) => s.backdrop);
   const toggle = useLayout((s) => s.toggle);
   const clamp = useLayout((s) => s.clamp);
-  const signal = useLayout((s) => s.signal);
-  const setSignal = useLayout((s) => s.setSignal);
+  const look = useLayout((s) => s.look);
+  const setLook = useLayout((s) => s.setLook);
   useEffect(() => clamp(), [clamp]);
   const fit = useStage();
   const clock = useClockText();
@@ -121,7 +122,12 @@ export function Desktop() {
   const format = useLayout((s) => s.format);
   const spec = FORMATS[format];
   const menubarUp = spec.menubarOnAir || arranging;
-  useEffect(() => setSignalEnabled(signal && !arranging), [signal, arranging]);
+  // The look: clean = nothing over the picture (CRT chain); signal = the 2D
+  // overlay; tube = overlay + the WebGL treatment on the visual.
+  useEffect(() => {
+    setSignalEnabled(look !== 'clean' && !arranging);
+    setTubeEnabled(look === 'tube' && !arranging);
+  }, [look, arranging]);
   const hidden = arranging ? new Set<Falls>() : collapsed;
   const cardUp = useCards((s) => s.active !== null) || arranging;
   // An ident always comes to the front — its saved z is whatever it was
@@ -155,6 +161,7 @@ export function Desktop() {
           style={{ backgroundImage: `url(${desktopBg})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'grayscale(1)' }}
         />
       )}
+      {look !== 'clean' && (
       <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.05, mixBlendMode: 'screen' }}>
         <filter id="ns-grain">
           <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
@@ -162,6 +169,7 @@ export function Desktop() {
         </filter>
         <rect width="100%" height="100%" filter="url(#ns-grain)" />
       </svg>
+      )}
 
       {backdrop && isTauri() && !hidden.has('backdrop') && (
         <div className="absolute inset-0" style={{ opacity: 0.55 }}>
@@ -209,14 +217,18 @@ export function Desktop() {
                   </button>
                 ))}
                 <div className="my-1" style={{ borderTop: '1px solid rgba(255,255,255,0.14)' }} />
-                <button
-                  className="flex items-center gap-2 px-3 leading-[22px] text-left hover:bg-white/10"
-                  style={{ color: signal ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}
-                  onClick={() => setSignal(!signal)}
-                >
-                  <span className="w-3">{signal ? '■' : '□'}</span>
-                  signal
-                </button>
+                <div className="px-3 leading-[18px] text-[8px] tracking-[0.18em] uppercase text-white/35">look</div>
+                {LOOKS.map((l) => (
+                  <button
+                    key={l}
+                    className="flex items-center gap-2 px-3 leading-[22px] text-left hover:bg-white/10"
+                    style={{ color: look === l ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}
+                    onClick={() => setLook(l)}
+                  >
+                    <span className="w-3">{look === l ? '●' : '○'}</span>
+                    {l}
+                  </button>
+                ))}
               </div>
             )}
           </span>
@@ -261,7 +273,7 @@ export function Desktop() {
         );
       })}
       </div>
-      {!arranging && <SignalOverlay />}
+      {!arranging && look !== 'clean' && <SignalOverlay />}
       <NextPanel />
       <BootPanel />
       <EndPanel />

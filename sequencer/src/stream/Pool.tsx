@@ -165,7 +165,10 @@ export function Pool() {
 
   return (
     <div className="absolute inset-0 bg-[#050505]">
-      {/* Single-element render. key={current} forces a fresh <video>
+      {/* crossOrigin: BROADCAST's tube (TubeLayer) samples the element as a
+          WebGL texture; without a CORS request the texture is tainted. The
+          asset protocol answers CORS for the window's origin.
+          Single-element render. key={current} forces a fresh <video>
           mount on each advance — fresh decoder, fresh autoplay, no
           carry-over state from the previous file. Pays a small load
           lag per advance but plays reliably. */}
@@ -173,6 +176,7 @@ export function Pool() {
         <video
           key={current}
           src={url}
+          crossOrigin="anonymous"
           autoPlay
           loop
           muted
@@ -193,6 +197,7 @@ export function Pool() {
         <img
           key={current}
           src={url}
+          crossOrigin="anonymous"
           alt=""
           style={{
             position: 'absolute',

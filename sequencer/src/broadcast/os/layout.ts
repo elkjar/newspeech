@@ -22,6 +22,16 @@ import { create } from 'zustand';
 
 export type Format = '16:9' | '4:3';
 
+// The output look (Chris 2026-09-09): `tube` = the WebGL treatment on the
+// visual (tears, interlace shimmer, bloom, ghosting) + the signal overlay —
+// the best picture for a plain screen capture; `signal` = the 2D overlay
+// only (the 09-08 look); `clean` = nothing over the picture, no grain — for
+// the CRT chain, where a real tube does all of this and fine grain would not
+// survive the trip anyway. Saved per format: 16:9 defaults to tube, 4:3 to
+// clean.
+export type Look = 'clean' | 'signal' | 'tube';
+export const LOOKS: Look[] = ['clean', 'signal', 'tube'];
+
 export const MENUBAR_H = 28;
 
 export interface Safe {
@@ -47,6 +57,7 @@ interface FormatSpec {
   // height at zoom 2); it still shows while arranging for the windows menu.
   menubarOnAir: boolean;
   backdrop: boolean;
+  look: Look;
   lsKey: string;
 }
 
@@ -58,6 +69,7 @@ export const FORMATS: Record<Format, FormatSpec> = {
     zoom: 1,
     menubarOnAir: true,
     backdrop: false,
+    look: 'tube',
     // v1 was window px (whatever screen it was saved on); v2 is stage px.
     lsKey: 'broadcast.layout.v2',
   },
@@ -68,6 +80,7 @@ export const FORMATS: Record<Format, FormatSpec> = {
     zoom: 1.5,
     menubarOnAir: false,
     backdrop: true,
+    look: 'clean',
     lsKey: 'broadcast.layout.43.v1',
   },
 };
@@ -141,10 +154,10 @@ const DEFAULT_169: Record<WindowId, WinRect> = {
 const DEFAULT_43: Record<WindowId, WinRect> = {
   ghost: { x: 80, y: 60, w: 300, h: 480, open: true, z: 1 },
   visual: { x: 396, y: 60, w: 324, h: 170, open: true, z: 2 },
-  now: { x: 396, y: 60, w: 324, h: 190, open: true, z: 3 },
-  banks: { x: 396, y: 262, w: 324, h: 126, open: true, z: 4 },
-  set: { x: 396, y: 262, w: 324, h: 126, open: false, z: 5 },
-  shape: { x: 396, y: 262, w: 324, h: 126, open: false, z: 6 },
+  now: { x: 396, y: 60, w: 324, h: 180, open: true, z: 3 },
+  banks: { x: 396, y: 252, w: 324, h: 136, open: true, z: 4 },
+  set: { x: 396, y: 252, w: 324, h: 136, open: false, z: 5 },
+  shape: { x: 396, y: 252, w: 324, h: 136, open: false, z: 6 },
   sys: { x: 396, y: 400, w: 324, h: 60, open: false, z: 7 },
   card: { x: 396, y: 400, w: 324, h: 140, open: true, z: 8 },
 };
@@ -200,7 +213,7 @@ function logLayout(format: Format, windows: Record<WindowId, WinRect>, backdrop:
     logTimer = null;
     const f = FORMATS[format];
     console.info(
-      `[layout] ${format} stage ${f.w}x${f.h} in ${window.innerWidth}x${window.innerHeight} backdrop=${backdrop} zoom=${zoom} ${JSON.stringify(windows)}`,
+      `[layout] ${format} stage ${f.w}x${f.h} in ${window.innerWidth}x${window.innerHeight} backdrop=${backdrop} zoom=${zoom} look=${useLayout.getState().look} ${JSON.stringify(windows)}`,
     );
   }, 800);
 }
@@ -250,13 +263,16 @@ function loadZoom(format: Format): number {
   }
 }
 
-// Signal defaults ON — the transmission is part of the face. Shared by both
-// formats.
-function loadSignal(): boolean {
+function loadLook(format: Format): Look {
+  const f = FORMATS[format];
   try {
-    return localStorage.getItem(LS_SIGNAL) !== '0';
+    const v = localStorage.getItem(f.lsKey + '.look');
+    if (v === 'clean' || v === 'signal' || v === 'tube') return v;
+    // The 09-08 signal on/off switch (16:9 only): off → clean.
+    if (format === '16:9' && localStorage.getItem(LS_SIGNAL) === '0') return 'clean';
+    return f.look;
   } catch {
-    return true;
+    return f.look;
   }
 }
 
@@ -267,8 +283,8 @@ interface LayoutState {
   backdrop: boolean;
   // Window content zoom (see FormatSpec.zoom).
   zoom: number;
-  // The transmission layer (SignalOverlay): scanlines, static, sync loss.
-  signal: boolean;
+  // What sits over the picture: see Look.
+  look: Look;
   // Standby's "arrange windows": the desktop shows with every window up so
   // the layout can be set before going on air. Not persisted.
   arranging: boolean;
@@ -278,7 +294,7 @@ interface LayoutState {
   toggle: (id: WindowId) => void;
   setBackdrop: (v: boolean) => void;
   setZoom: (v: number) => void;
-  setSignal: (v: boolean) => void;
+  setLook: (v: Look) => void;
   setArranging: (v: boolean) => void;
   // The window's aspect changed class (Rust refit the window to a new
   // display, or a browser resize): swap to that format's saved arrangement.
@@ -306,7 +322,7 @@ export const useLayout = create<LayoutState>((set, get) => ({
   windows: load(initialFormat),
   backdrop: loadBackdrop(initialFormat),
   zoom: loadZoom(initialFormat),
-  signal: loadSignal(),
+  look: loadLook(initialFormat),
   arranging: false,
   move: (id, x, y) =>
     set((s) => {
@@ -347,20 +363,21 @@ export const useLayout = create<LayoutState>((set, get) => ({
     persist(s.format, s.windows, s.backdrop, zoom);
     set({ zoom });
   },
-  setSignal: (signal) => {
+  setLook: (look) => {
+    const s = get();
     try {
-      localStorage.setItem(LS_SIGNAL, signal ? '1' : '0');
+      localStorage.setItem(FORMATS[s.format].lsKey + '.look', look);
     } catch {
       // ignore
     }
-    console.info(`[layout] signal=${signal}`);
-    set({ signal });
+    console.info(`[layout] ${s.format} look=${look}`);
+    set({ look });
   },
   setArranging: (arranging) => set({ arranging }),
   setFormat: (format) => {
     if (get().format === format) return;
     console.info(`[layout] format ${format} (window ${window.innerWidth}x${window.innerHeight})`);
-    set({ format, windows: load(format), backdrop: loadBackdrop(format), zoom: loadZoom(format) });
+    set({ format, windows: load(format), backdrop: loadBackdrop(format), zoom: loadZoom(format), look: loadLook(format) });
   },
   reset: () => {
     const s = get();
@@ -384,7 +401,7 @@ if (typeof window !== 'undefined') {
     const s = useLayout.getState();
     const f = FORMATS[s.format];
     console.info(
-      `[layout] boot ${s.format} stage ${f.w}x${f.h} in ${window.innerWidth}x${window.innerHeight} backdrop=${s.backdrop} zoom=${s.zoom} ${JSON.stringify(s.windows)}`,
+      `[layout] boot ${s.format} stage ${f.w}x${f.h} in ${window.innerWidth}x${window.innerHeight} backdrop=${s.backdrop} zoom=${s.zoom} look=${s.look} ${JSON.stringify(s.windows)}`,
     );
   }, 1500);
 }

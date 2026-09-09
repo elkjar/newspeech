@@ -235,12 +235,14 @@ Flags: `--set <dir|.seq|.seqset>…` · `--samples <dir>` · `--device <name>` �
 `--songs N` · `--first <name>` · dev: `--gap-every N` · `--song-bars N`. Folder layout:
 `BROADCAST/{SEQ_01, INTERSTITIALS, CARDS}` — the sibling folders are found beside the set.
 
-**Open (updated 2026-09-09, afternoon):** (1) WebGL tube on the visual; (2) unattended layer
+**Open (updated 2026-09-09, evening):** (1) tune the tube and the 4:3 arrangement by eye on real
+runs; (2) unattended layer
 (LaunchAgent with `--autostart`, silence + heartbeat watchdogs, overnight soak, hot-unplug policy)
 — **future state** per Chris 09-09: "the use case of me running a set and capturing the output
 works for now". Closed since: boot audio (boot static, 09-08), uniform zoom (the 1512×850 stage,
 09-08), standalone app (09-08), safety limiter (09-09), Ghost density vs the per-track lock
-(lock exempts thin/fill, 8228c92, 09-09), CRT picture (4:3 format, 09-09, below). Declined 09-09:
+(lock exempts thin/fill, 8228c92, 09-09), CRT picture (4:3 format, 09-09, below), the tube +
+clean looks (09-09, below). Declined 09-09:
 row mutes releasing ringing voices — Chris: "having the longer things ring out is the behavior
 i'd expect"; mutes and row masks stay scheduler-only.
 
@@ -325,6 +327,39 @@ desktop one. If macOS drives the converter at a 16:9 mode, pick a 4:3 resolution
 (System Settings → Displays, option-click Scaled shows them) — a 16:9 frame squashed to 4:3 by
 the converter would distort the picture. Verified in a browser build at 800×600 and 1512×850
 (`?demo=1`); the display-follow and fullscreen paths are Tauri-only and need the app.
+
+## Status — 2026-09-09 (v0.1.8) — the tube, and broadcasting clean
+
+Chris: "I do like the idea of making the 'glitchy' style stuff within OpenGL and then also having
+the ability to broadcast 'clean' if we're using a CRT. the subtle grain and such isn't going to
+render on a CRT anyways so we may as well drop that … setting up the camcorder, TV etc is a lot
+of effort vs. just doing a screen capture so having the best version possible for that does
+still make sense." And: "we can do it flat and just focus on the tear / shimmer / bloom etc."
+
+**The look** (`os/layout.ts` `Look`, per format, `windows ▾ → look`): **clean** = nothing over
+the picture — no signal overlay, no grain SVG, no tube (for the CRT chain: a real tube does all
+of it and grain would not survive the trip); **signal** = the 09-08 2D overlay only; **tube** =
+the overlay + the WebGL treatment on the visual. Defaults: 16:9 → tube, 4:3 → clean, saved with
+the format's layout (`<lsKey>.look`; the old `…v2.signal = 0` migrates to clean).
+
+**The tube** (`os/TubeLayer.tsx`, wrapping the source inside `ReactiveVisual`'s `GlitchWrap`, so
+the breathing filter, onset animations, drift and count-in glitch still land on top). FLAT, mono.
+The source element (pool video/image — now `crossOrigin="anonymous"` so WebGL may sample it; the
+asset protocol answers CORS — camera video, or the demo canvas) keeps playing at opacity 0 and
+the canvas draws over it. Per frame: upload the frame as a texture; **bloom** = threshold at
+quarter res → two separable gaussian passes → added back, opening with level; **tears** = the
+signal envelope's tear bands (`lastSignal()`, the overlay's frame — sampled once, not twice)
+displace rows sideways and fill with static, and an onset adds a band of its own; **interlace
+shimmer** = alternate lines shifted ~0.7 px with the parity flipping every frame, more with weak
+reception and level, plus a sub-pixel field jitter on weak reception; **ghost** = a faint echo
+shifted 1.1% right; scanline mask, static at half the overlay's weight, brightness/contrast from
+the envelope, a mild flat vignette. Level/onset arrive via `os/reactiveLevel.ts`, written by
+ReactiveVisual's `audio:level` listener. Backing store = device pixels (× stage scale) so the
+per-line effects sit on real lines (a resampled 1-px mask moirés), capped at 3072 on the long
+side; bloom buffers at 1/4. Strengths in the `TUBE` constant — tune by eye. Falls back to the
+plain source when WebGL is missing or a clip's texture upload throws (tainted; logged once).
+Verified on the demo page (headless Chrome + SwiftShader): scanlines, bloom on the bright bars,
+ghosting visible; 4:3 clean shows no overlay and no grain.
 
 ## Standalone app — BUILT 2026-09-08 (v0.1.0 in /Applications)
 
