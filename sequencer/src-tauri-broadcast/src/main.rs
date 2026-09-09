@@ -89,6 +89,33 @@ fn main() {
             sequence_lib::lock_content_aspect(&window, 16.0, 9.0);
           }
         }
+        // `d` in the frontend: hop to the next display and re-fit there —
+        // a frameless window on a display with the menubar collapsed
+        // (standby) has nothing to drag by, and the CRT is another display.
+        {
+          use tauri::Listener;
+          let w3 = window.clone();
+          window.listen("broadcast:cycle-display", move |_| {
+            let w4 = w3.clone();
+            let _ = w3.run_on_main_thread(move || {
+              let Ok(monitors) = w4.available_monitors() else { return };
+              if monitors.len() < 2 {
+                return;
+              }
+              let cur = w4.current_monitor().ok().flatten();
+              let idx = cur
+                .as_ref()
+                .and_then(|c| monitors.iter().position(|m| m.position() == c.position()))
+                .unwrap_or(0);
+              let next = &monitors[(idx + 1) % monitors.len()];
+              if w4.is_fullscreen().unwrap_or(false) {
+                let _ = w4.set_fullscreen(false);
+              }
+              log::info!("[window] next display → {}", next.name().map(|n| n.as_str()).unwrap_or("?"));
+              fit_to_monitor(&w4, next);
+            });
+          });
+        }
         let last = std::sync::Mutex::new(window.current_monitor().ok().flatten().map(|m| aspect_class(&m)));
         let w2 = window.clone();
         window.on_window_event(move |ev| {

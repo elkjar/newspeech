@@ -138,7 +138,7 @@ export function Desktop() {
   }, [cardUp, raise]);
 
   return (
-    <div className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
+    <div data-tauri-drag-region className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
       {/* the stage: the picture (1512×850 or 800×600), scaled to fit the
           window (letterboxed in a browser; the Tauri window is aspect-locked
           to its display so it fills) */}
@@ -148,8 +148,12 @@ export function Desktop() {
       >
       {/* the transmission root: the picture the signal layer sits over (the
           overlay is a sibling, never a filter on this — see SignalOverlay) */}
+      {/* Empty ground drags the window (data-tauri-drag-region applies to
+          the element itself, not its children — the windows, menubar and
+          panels keep their own pointer behaviour) */}
       <div
         id={TRANSMISSION_ID}
+        data-tauri-drag-region
         className="absolute inset-0 overflow-hidden text-white font-mono select-none"
         style={{ background: '#050505', cursor: 'default' }}
       >

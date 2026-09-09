@@ -294,11 +294,18 @@ export function BroadcastApp() {
         panicKill();
         return;
       }
+      const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement | null)?.tagName ?? '');
+      // d — hop the window to the next display (Rust re-fits it there: the
+      // 4:3 picture on a CRT, 16:9 elsewhere). The frameless window has no
+      // title bar and standby hides the menubar, so this is how it travels.
+      if (e.key === 'd' && !e.metaKey && !e.ctrlKey && !e.altKey && NATIVE && !typing) {
+        e.preventDefault();
+        void import('@tauri-apps/api/event').then(({ emit }) => emit('broadcast:cycle-display'));
+        return;
+      }
       // f — fullscreen on the display the window is on (the CRT, or a
       // capture display). Not while typing in standby's fields.
-      if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && NATIVE) {
-        const tag = (e.target as HTMLElement | null)?.tagName;
-        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && NATIVE && !typing) {
         e.preventDefault();
         void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
           const w = getCurrentWindow();

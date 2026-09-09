@@ -320,8 +320,16 @@ nothing moves there. Small squeeze fixes that hold in both formats: GhostWindow'
 yields to decisions (min 60 / 46 px) instead of the two labels overlapping; BanksWindow's header
 row is nowrap so the chart keeps its height.
 
-**How to use it.** Plug the CRT chain in (Mac → HDMI-to-composite → CRT), drag BROADCAST onto
-that display: it re-fits to 4:3, the 4:3 layout comes up. `f` for fullscreen. Standby → arrange
+**Moving the window (Chris 09-09: "with the borderless frame you cant drag the window").** The
+menubar was the only drag handle and standby collapses it. Now: the empty desktop ground and the
+station panel's title bar are `data-tauri-drag-region` (the attribute applies to the element
+itself, so windows/panels keep their pointer behaviour), and **`d`** hops the window to the next
+display — the frontend emits `broadcast:cycle-display`, `main.rs` listens and runs
+`fit_to_monitor` on the next monitor (leaving fullscreen first). Standby shows "d display · f
+fullscreen".
+
+**How to use it.** Plug the CRT chain in (Mac → HDMI-to-composite → CRT), press `d` until
+BROADCAST lands on that display: it re-fits to 4:3, the 4:3 layout comes up. `f` for fullscreen. Standby → arrange
 windows to tune; the arrangement is logged (`[layout] 4:3 stage 800x600 … zoom=…`) like the
 desktop one. If macOS drives the converter at a 16:9 mode, pick a 4:3 resolution for that display
 (System Settings → Displays, option-click Scaled shows them) — a 16:9 frame squashed to 4:3 by

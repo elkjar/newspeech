@@ -134,9 +134,14 @@ export function BootPanel() {
   );
 }
 
+// The station panel's title bar drags the window (standby has no menubar).
 function Header({ right }: { right: string }) {
   return (
-    <div className="flex items-center gap-3 px-3" style={{ height: 22, borderBottom: '1px solid rgba(255,255,255,0.22)', background: 'rgba(255,255,255,0.04)' }}>
+    <div
+      data-tauri-drag-region
+      className="flex items-center gap-3 px-3"
+      style={{ height: 22, borderBottom: '1px solid rgba(255,255,255,0.22)', background: 'rgba(255,255,255,0.04)', cursor: 'grab' }}
+    >
       <span className="text-[8px] tracking-[0.2em] opacity-40">··</span>
       <span className="font-sans text-[10px] tracking-[0.18em] lowercase">station</span>
       <span className="ml-auto text-[8px] tracking-[0.16em] uppercase text-white/45">{right}</span>
@@ -420,7 +425,8 @@ function StandbyConfig({ ready, blink, onArrange }: { ready: boolean; blink: boo
         </button>
         <span className="text-[9px] tracking-[0.16em] uppercase text-white/40 truncate">{status}</span>
         {autoLeft !== null && <Btn onClick={cancelAutoGo}>hold</Btn>}
-        <span className="ml-auto shrink-0">
+        <span className="ml-auto flex items-center gap-3 shrink-0">
+          <span className="text-[8px] tracking-[0.16em] uppercase text-white/35">d display · f fullscreen</span>
           <Btn onClick={onArrange}>arrange windows</Btn>
         </span>
       </div>
