@@ -5,13 +5,16 @@
 // "we can do it flat and just focus on the tear / shimmer / bloom etc.").
 //
 // What it does, all monochrome (the site is mono; no colour fringing):
-//   - tears: the signal envelope's tear bands (signal.ts) displace source
-//     rows sideways; an onset adds a band of its own;
-//   - interlace shimmer: alternate lines shift half a pixel, the parity
-//     flipping every frame; a sub-pixel field jitter rides weak reception;
+//   - slips: the tube's own Poisson-scheduled bands of rows shoved sideways
+//     (every few seconds; more on weak reception), the signal envelope's tear
+//     bands, and a band per onset; hold slips jump the picture vertically
+//     for a moment with a dark seam;
+//   - per-line jitter: every line lands a little off, differently each
+//     frame (VHS shimmer), more with weak reception and level;
 //   - bloom: bright areas bleed — quarter-res threshold + two separable
 //     gaussian passes, added back; opens up with level;
-//   - ghost: a faint offset echo of the picture (signal ringing);
+//   - ghost: a second image offset right — the doubling — with a slowly
+//     drifting offset;
 //   - scanline mask, brightness/contrast from the envelope, a mild flat
 //     vignette. No static of its own — the visuals are already mangled and
 //     the desktop overlay carries the noise (Chris 2026-09-09).
@@ -30,7 +33,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { lastSignal } from './signal';
 import { reactive } from './reactiveLevel';
-import { useStage } from './layout';
+import { useStage, useLayout, type TubeLevel } from './layout';
 
 export const useTube = create<{ on: boolean }>(() => ({ on: false }));
 export function setTubeEnabled(on: boolean): void {
@@ -39,35 +42,60 @@ export function setTubeEnabled(on: boolean): void {
 
 // Strengths. Tuned by eye on the demo; Chris tunes by eye on a run.
 const TUBE = {
-  // Chris 2026-09-09 on the first defaults: "switching between tube and
-  // signal … not seeing much difference" — everything was sub-pixel on real
-  // footage. These read at a glance; ease off by eye.
-  shimmerPx: 1.4, // interlace half-shift at rest (px, canvas)
-  shimmerWeak: 2.2, // + per unit weak reception
-  shimmerLevel: 1.6, // + per unit level
-  jitterWeak: 2.0, // field jitter px per unit weak
-  bloomThreshold: 0.42,
-  bloomRest: 0.55,
-  bloomLevel: 0.8, // + per unit level
-  bloomPasses: 2, // separable blur rounds at 1/4 res
-  ghostRest: 0.26,
-  ghostWeak: 0.5,
-  ghostDx: 0.016, // fraction of width
-  scan: 0.42, // scanline mask depth
+  // Chris 2026-09-09, twice: tube vs signal "VERY similar … not really
+  // seeing any of the slip / tear / doubling". So the tube schedules its own
+  // slips (the overlay's tears are ~one per 90 s) and the doubling is a real
+  // second image, not a 13% echo. Ease off by eye.
+  lineJitterPx: 0.8, // per-line horizontal jitter at rest (VHS shimmer)
+  lineJitterWeak: 3.0,
+  lineJitterLevel: 2.0,
+  // Bloom is highlights only — Chris 2026-09-09 on 0.1.11: the visuals were
+  // "giant blurs on the tube setting vs. signal where they are readable".
+  bloomThreshold: 0.62,
+  bloomRest: 0.2,
+  bloomLevel: 0.35,
+  bloomPasses: 1,
+  // The double: further out and lighter than the first pass, so it reads as
+  // two images rather than a smear on soft footage.
+  ghostRest: 0.24,
+  ghostWeak: 0.3,
+  ghostDx: 0.034, // fraction of width, centre of a slow drift
+  ghostDrift: 0.014,
+  scan: 0.42,
   scanWeak: 0.3,
-  scanPeriodPx: 3, // device px per scanline period (1-px lines vanish at 1080)
-  wobblePx: 3.0, // tracking wobble: a band of horizontal drift crawling up
-  wobbleWeak: 6.0,
-  vignette: 0.24,
+  scanPeriodPx: 3,
+  wobblePx: 5.0, // tracking wobble band, px
+  wobbleWeak: 9.0,
+  vignette: 0.12,
+  // Slips: bands of rows shoved sideways. Poisson, per second, at rest;
+  // rate climbs with weak reception.
+  slipRate: 1 / 3.5,
+  slipRateWeak: 3,
+  slipDxMin: 0.04, // fraction of width
+  slipDxMax: 0.14,
+  slipMsMin: 180,
+  slipMsMax: 700,
+  // Hold slips: the whole picture jumps vertically for a moment, a dark
+  // seam where it wraps. Rare.
+  rollRate: 1 / 14,
+  rollMin: 0.03,
+  rollMax: 0.12,
+  rollMsMin: 120,
+  rollMsMax: 320,
   onsetTearMs: 170,
   maxTears: 6,
-  bloomDiv: 4, // bloom buffers at 1/4 res
-  // Longest side of the canvas backing store. Chris 2026-09-09: device-px
-  // backing "is REALLY hurting the framerate" — 1280 is plenty: the
-  // scanline mask is a smooth cosine (no moiré on resample) and the source
-  // is 720p anyway.
+  bloomDiv: 4,
   maxBacking: 1280,
-  minFrameMs: 30, // draw at ≤ ~30 fps
+  minFrameMs: 30,
+};
+
+// Subtle / distorted / destroyed (Chris 2026-09-09): multipliers over TUBE.
+// `distorted` is the tuned default (all 1); subtle halves the motion and
+// doubling; destroyed is a signal that is barely holding on.
+const LEVELS: Record<TubeLevel, { jitter: number; ghost: number; slipRate: number; slipDx: number; roll: number; wobble: number; bloom: number }> = {
+  subtle: { jitter: 0.45, ghost: 0.45, slipRate: 0.3, slipDx: 0.6, roll: 0.25, wobble: 0.45, bloom: 0.8 },
+  distorted: { jitter: 1, ghost: 1, slipRate: 1, slipDx: 1, roll: 1, wobble: 1, bloom: 1 },
+  destroyed: { jitter: 2.4, ghost: 1.5, slipRate: 3.2, slipDx: 1.7, roll: 3.5, wobble: 2.2, bloom: 1.35 },
 };
 
 const VS = `
@@ -119,9 +147,9 @@ varying vec2 vUv;
 uniform sampler2D uBloom;
 uniform vec2 uRes;
 uniform float uTime;
-uniform float uField;
-uniform float uShimmer;
-uniform float uJitter;
+uniform float uSeed;
+uniform float uLineJitter;
+uniform float uRoll;
 uniform float uBloomAmt;
 uniform float uGhost;
 uniform float uGhostDx;
@@ -134,14 +162,23 @@ uniform float uVig;
 uniform vec4 uTears[${TUBE.maxTears}];
 uniform int uTearN;
 ${SRC_FN}
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
 void main() {
   vec2 uv = vUv;
   vec2 px = 1.0 / uRes;
-  // Interlace: alternate lines, parity flipping per frame; field jitter.
+  // Hold slip: the picture jumps vertically and wraps; dark seam.
+  float seam = 0.0;
+  if (uRoll > 0.0) {
+    uv.y = fract(uv.y + uRoll);
+    seam = 1.0 - smoothstep(0.0, 3.0 * px.y, abs(uv.y - fract(uRoll)) );
+  }
+  // Per-line jitter: every line lands a little off, differently each frame.
   float line = floor(uv.y * uRes.y);
-  float odd = mod(line + uField, 2.0);
-  uv.x += (odd * 2.0 - 1.0) * uShimmer * px.x;
-  uv.y += uJitter * px.y;
+  uv.x += (hash(vec2(line, uSeed)) - 0.5) * uLineJitter * px.x;
   // Tracking wobble: a band of horizontal drift crawling up the picture.
   float bandY = fract(uTime * 0.045);
   float dy = uv.y - bandY;
@@ -160,17 +197,20 @@ void main() {
     }
   }
   float l = luma(uv);
-  // Ghost: a faint echo shifted right.
-  l = mix(l, luma(uv + vec2(uGhostDx, 0.0)), uGhost * 0.5);
+  // Ghost: a second image shifted right — the doubling.
+  l = mix(l, luma(uv + vec2(uGhostDx, 0.0)), uGhost);
   // Bloom.
   l += texture2D(uBloom, uv).r * uBloomAmt;
-  // Scanline mask — coarser than the interlace lines so it reads at 1080.
+  // Scanline mask — coarse enough to read at 1080, and brightness-neutral:
+  // dark lines darker, bright lines brighter (Chris 2026-09-09 on 0.1.11:
+  // tube "MUCH darker" — a subtract-only mask took a fifth of the light).
   float scan = 0.5 + 0.5 * cos(vUv.y * uRes.y * 6.2832 / uScanPeriod);
-  l *= 1.0 - uScan * scan;
+  l *= 1.0 - uScan * (scan - 0.5);
   // No static here (Chris 2026-09-09: "the visuals themselves are already
   // very mangled") — the desktop overlay carries the noise; a tear only
   // dims its band a touch so the slip reads.
   l *= 1.0 - tearA * 0.25;
+  l *= 1.0 - seam * 0.85;
   // Grade + a flat vignette.
   l = (l - 0.5) * uContrast + 0.5;
   l *= uBright;
@@ -259,6 +299,15 @@ export function TubeLayer({ children }: { children: ReactNode }) {
     let uploadedEl: Source | null = null;
     let lastVideoTime = -1;
     let frame = 0;
+    // The tube's own slips and hold rolls (Poisson; see TUBE).
+    interface Slip {
+      t0: number;
+      dur: number;
+      bands: Array<{ y: number; h: number; dx: number }>;
+    }
+    let slips: Slip[] = [];
+    let roll: { t0: number; dur: number; amt: number } | null = null;
+    let lastNow = 0;
     let onsetSeed = 0;
     let lastOnsetAt = -1;
 
@@ -415,17 +464,50 @@ export function TubeLayer({ children }: { children: ReactNode }) {
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
 
-      // Tears: the envelope's bands, plus one from an onset.
+      const L = LEVELS[useLayout.getState().tubeLevel];
+      // Schedule slips and rolls.
+      const dt = lastNow ? Math.min(0.1, (now - lastNow) / 1000) : 0.03;
+      lastNow = now;
+      const slipRate = TUBE.slipRate * (1 + TUBE.slipRateWeak * weak) * L.slipRate;
+      if (Math.random() < slipRate * dt) {
+        const nb = 1 + Math.floor(Math.random() * 3);
+        const bands = [];
+        for (let i = 0; i < nb; i++) {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          bands.push({
+            y: Math.random() * 0.92,
+            h: 0.02 + Math.random() * 0.1,
+            dx: dir * (TUBE.slipDxMin + Math.random() * (TUBE.slipDxMax - TUBE.slipDxMin)) * L.slipDx,
+          });
+        }
+        slips.push({ t0: now, dur: TUBE.slipMsMin + Math.random() * (TUBE.slipMsMax - TUBE.slipMsMin), bands });
+      }
+      slips = slips.filter((sl) => now < sl.t0 + sl.dur);
+      if (!roll && Math.random() < TUBE.rollRate * L.roll * dt) {
+        roll = { t0: now, dur: TUBE.rollMsMin + Math.random() * (TUBE.rollMsMax - TUBE.rollMsMin), amt: Math.min(0.3, (TUBE.rollMin + Math.random() * (TUBE.rollMax - TUBE.rollMin)) * Math.sqrt(L.roll)) };
+      }
+      if (roll && now >= roll.t0 + roll.dur) roll = null;
+      const rollAmt = roll ? roll.amt * (1 - ((now - roll.t0) / roll.dur) ** 2) : 0;
+
+      // Tears: the tube's slips first, then the envelope's bands, then an onset.
       let n = 0;
+      for (const sl of slips) {
+        const env = 1 - (now - sl.t0) / sl.dur;
+        for (const b of sl.bands) {
+          if (n >= TUBE.maxTears) break;
+          tearBuf.set([b.y, b.h, b.dx * (0.6 + 0.4 * env), 0.5 * env], n * 4);
+          n++;
+        }
+      }
       if (sig) {
         for (const t of sig.tears) {
           if (n >= TUBE.maxTears) break;
-          tearBuf.set([1 - t.y - t.h, t.h, t.dx, t.a], n * 4);
+          tearBuf.set([1 - t.y - t.h, t.h, t.dx * 2.5, t.a], n * 4);
           n++;
         }
       }
       if (onset > 0 && n < TUBE.maxTears) {
-        tearBuf.set([onsetSeed * 0.9, 0.02 + onset * 0.06, (onsetSeed - 0.5) * 0.08 * onset, onset * 0.6], n * 4);
+        tearBuf.set([onsetSeed * 0.9, 0.03 + onset * 0.08, (onsetSeed - 0.5) * 0.2 * onset, onset * 0.6], n * 4);
         n++;
       }
 
@@ -442,16 +524,15 @@ export function TubeLayer({ children }: { children: ReactNode }) {
       gl.uniform2f(u(pFinal, 'uCover'), cx, cy);
       gl.uniform2f(u(pFinal, 'uRes'), W, H);
       gl.uniform1f(u(pFinal, 'uTime'), now / 1000);
-      gl.uniform1f(u(pFinal, 'uField'), frame % 2);
-      gl.uniform1f(u(pFinal, 'uShimmer'), (TUBE.shimmerPx + TUBE.shimmerWeak * weak + TUBE.shimmerLevel * env) * (W / 1000));
-      const jit = weak > 0.02 ? (Math.random() - 0.5) * 2 * TUBE.jitterWeak * weak * (H / 600) : 0;
-      gl.uniform1f(u(pFinal, 'uJitter'), jit + onset * (Math.random() - 0.5) * 3);
-      gl.uniform1f(u(pFinal, 'uBloomAmt'), TUBE.bloomRest + TUBE.bloomLevel * env);
-      gl.uniform1f(u(pFinal, 'uGhost'), TUBE.ghostRest + TUBE.ghostWeak * weak);
-      gl.uniform1f(u(pFinal, 'uGhostDx'), TUBE.ghostDx);
+      gl.uniform1f(u(pFinal, 'uSeed'), frame % 997);
+      gl.uniform1f(u(pFinal, 'uLineJitter'), (TUBE.lineJitterPx + TUBE.lineJitterWeak * weak + TUBE.lineJitterLevel * env + onset * 4) * L.jitter * (W / 1000));
+      gl.uniform1f(u(pFinal, 'uRoll'), rollAmt);
+      gl.uniform1f(u(pFinal, 'uBloomAmt'), (TUBE.bloomRest + TUBE.bloomLevel * env) * L.bloom);
+      gl.uniform1f(u(pFinal, 'uGhost'), Math.min(0.6, (TUBE.ghostRest + TUBE.ghostWeak * weak) * L.ghost));
+      gl.uniform1f(u(pFinal, 'uGhostDx'), TUBE.ghostDx + TUBE.ghostDrift * Math.sin(now / 1000 * 0.37));
       gl.uniform1f(u(pFinal, 'uScan'), TUBE.scan + TUBE.scanWeak * weak);
       gl.uniform1f(u(pFinal, 'uScanPeriod'), TUBE.scanPeriodPx);
-      gl.uniform1f(u(pFinal, 'uWobble'), (TUBE.wobblePx + TUBE.wobbleWeak * weak) * (W / 1000));
+      gl.uniform1f(u(pFinal, 'uWobble'), (TUBE.wobblePx + TUBE.wobbleWeak * weak) * L.wobble * (W / 1000));
       gl.uniform1f(u(pFinal, 'uBright'), sig ? sig.brightness : 1);
       gl.uniform1f(u(pFinal, 'uContrast'), sig ? sig.contrast : 1);
       gl.uniform1f(u(pFinal, 'uVig'), TUBE.vignette);

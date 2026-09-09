@@ -31,6 +31,10 @@ export type Format = '16:9' | '4:3';
 // clean.
 export type Look = 'clean' | 'signal' | 'tube';
 export const LOOKS: Look[] = ['clean', 'signal', 'tube'];
+// How hard the tube works (Chris 2026-09-09: "Tube - Subtle / Distorted /
+// Destroyed"). Multipliers over the tube's strengths (TubeLayer LEVELS).
+export type TubeLevel = 'subtle' | 'distorted' | 'destroyed';
+export const TUBE_LEVELS: TubeLevel[] = ['subtle', 'distorted', 'destroyed'];
 
 export const MENUBAR_H = 28;
 
@@ -276,6 +280,16 @@ function loadLook(format: Format): Look {
   }
 }
 
+function loadTubeLevel(format: Format): TubeLevel {
+  try {
+    const v = localStorage.getItem(FORMATS[format].lsKey + '.tubeLevel');
+    if (v === 'subtle' || v === 'distorted' || v === 'destroyed') return v;
+  } catch {
+    // ignore
+  }
+  return 'distorted';
+}
+
 interface LayoutState {
   format: Format;
   windows: Record<WindowId, WinRect>;
@@ -285,6 +299,7 @@ interface LayoutState {
   zoom: number;
   // What sits over the picture: see Look.
   look: Look;
+  tubeLevel: TubeLevel;
   // Standby's "arrange windows": the desktop shows with every window up so
   // the layout can be set before going on air. Not persisted.
   arranging: boolean;
@@ -295,6 +310,7 @@ interface LayoutState {
   setBackdrop: (v: boolean) => void;
   setZoom: (v: number) => void;
   setLook: (v: Look) => void;
+  setTubeLevel: (v: TubeLevel) => void;
   setArranging: (v: boolean) => void;
   // The window's aspect changed class (Rust refit the window to a new
   // display, or a browser resize): swap to that format's saved arrangement.
@@ -323,6 +339,7 @@ export const useLayout = create<LayoutState>((set, get) => ({
   backdrop: loadBackdrop(initialFormat),
   zoom: loadZoom(initialFormat),
   look: loadLook(initialFormat),
+  tubeLevel: loadTubeLevel(initialFormat),
   arranging: false,
   move: (id, x, y) =>
     set((s) => {
@@ -373,11 +390,21 @@ export const useLayout = create<LayoutState>((set, get) => ({
     console.info(`[layout] ${s.format} look=${look}`);
     set({ look });
   },
+  setTubeLevel: (tubeLevel) => {
+    const s = get();
+    try {
+      localStorage.setItem(FORMATS[s.format].lsKey + '.tubeLevel', tubeLevel);
+    } catch {
+      // ignore
+    }
+    console.info(`[layout] ${s.format} tube=${tubeLevel}`);
+    set({ tubeLevel });
+  },
   setArranging: (arranging) => set({ arranging }),
   setFormat: (format) => {
     if (get().format === format) return;
     console.info(`[layout] format ${format} (window ${window.innerWidth}x${window.innerHeight})`);
-    set({ format, windows: load(format), backdrop: loadBackdrop(format), zoom: loadZoom(format), look: loadLook(format) });
+    set({ format, windows: load(format), backdrop: loadBackdrop(format), zoom: loadZoom(format), look: loadLook(format), tubeLevel: loadTubeLevel(format) });
   },
   reset: () => {
     const s = get();

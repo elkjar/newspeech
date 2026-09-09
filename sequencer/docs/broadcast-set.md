@@ -382,6 +382,20 @@ layers still move every frame); the tube's backing is capped at 1280, it draws a
 the video → texture upload (WebKit's expensive step) happens only when the video has a new frame.
 `[tube] drawing WxH from video …` is logged once so the app log confirms the tube is live.
 
+**Tube, third pass (0.1.12) — Chris on 0.1.10/0.1.11, in order:** "not really seeing any of
+the slip / tear / doubling" → the tube schedules its **own slips** (Poisson ~1 per 3.5 s at rest,
+×(1+3·weak); 1–3 bands 2–12% tall shoved 4–14% sideways for 180–700 ms), **hold slips** (the
+picture jumps 3–12% vertically for 120–320 ms, dark seam; ~1 per 14 s), the **double** is a real
+second image (24% at 3.4% offset, drifting), and the interlace parity shimmer became **per-line
+jitter** (each line lands a little off, differently every frame). "MUCH darker" → the scanline
+mask is brightness-neutral (dark lines darker, bright lines brighter) and the vignette halved.
+"giant blurs … vs. signal where they are readable" → bloom is highlights only (threshold 0.62,
+0.2 + 0.35·level, one blur pass), jitter 0.8 px at rest. "Tube - Subtle / Distorted /
+Destroyed" → `TubeLevel` per format (`windows ▾ → look → tube` shows the three), multipliers in
+`TubeLayer` `LEVELS` over jitter / double / slip rate + distance / roll / wobble / bloom; distorted
+= the tuned default. Also since 0.1.11: no static of the tube's own (the footage is pre-mangled;
+the desktop overlay carries the noise).
+
 ## Standalone app — BUILT 2026-09-08 (v0.1.0 in /Applications)
 
 `bash scripts/release-broadcast.sh <version> [--install] [--no-notarize]` → universal
