@@ -2,6 +2,8 @@
 title: piano-swell, or the folder of misfit ideas
 date: 2026-09-09
 dek: a fun discovery in a folder full of another type of debris, abandoned .seq files. 
+image: assets/piano-swell.jpg
+image_alt: the BROADCAST now-playing window reading piano-swell, over a datamoshed frame with a colour streak running through it
 ---
 
 <div class="video"><iframe src="https://www.youtube.com/embed/yFnVTDXG_tM" title="NEWSPEECH // BROADCAST — piano-swell" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
