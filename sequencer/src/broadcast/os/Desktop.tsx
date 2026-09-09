@@ -27,6 +27,24 @@ import { useCards } from '../cards';
 import { useStationBoot } from '../boot';
 import desktopBg from './assets/desktop-bg.png';
 
+// A 256×256 white-noise tile, made once at module load (blank in SSR-less
+// non-DOM contexts, which never render this anyway).
+const GRAIN_TILE: string = (() => {
+  if (typeof document === 'undefined') return '';
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  if (!ctx) return '';
+  const img = ctx.createImageData(256, 256);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random() * 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c.toDataURL('image/png');
+})();
+
 const CONTENT: Record<WindowId, () => JSX.Element | null> = {
   set: SetWindow,
   now: NowWindow,
@@ -165,14 +183,13 @@ export function Desktop() {
           style={{ backgroundImage: `url(${desktopBg})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'grayscale(1)' }}
         />
       )}
+      {/* grain: a noise tile rendered ONCE (grainTile) and repeated as a
+          background — the live SVG feTurbulence filter + mix-blend-mode it
+          replaces was re-rasterised by WebKit whenever the layers above it
+          moved (Chris 2026-09-09: signal "absolutely crushing the rendering
+          framerate"). Off in the clean look. */}
       {look !== 'clean' && (
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.05, mixBlendMode: 'screen' }}>
-        <filter id="ns-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
-          <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#ns-grain)" />
-      </svg>
+        <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.07, backgroundImage: `url(${GRAIN_TILE})`, backgroundSize: '256px 256px' }} />
       )}
 
       {backdrop && isTauri() && !hidden.has('backdrop') && (

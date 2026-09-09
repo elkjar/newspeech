@@ -369,6 +369,19 @@ plain source when WebGL is missing or a clip's texture upload throws (tainted; l
 Verified on the demo page (headless Chrome + SwiftShader): scanlines, bloom on the bright bars,
 ghosting visible; 4:3 clean shows no overlay and no grain.
 
+**Tube, second pass (0.1.10).** Chris on 0.1.9: tube vs signal "not seeing much difference" —
+every effect was sub-pixel on real footage — and both looks "REALLY hurting the framerate".
+Visible now: scanline mask is a 3-device-px cosine at 0.42 (1-px lines vanish at 1080), bloom
+threshold 0.42 / rest 0.55, ghost 0.26 at 1.6%, shimmer 1.4 px, static ×0.8, plus a **tracking
+wobble** — a band of horizontal drift crawling up the picture (3 px, 9 px on weak reception).
+Performance: the ground grain is a 256² noise tile rendered once and repeated (the live SVG
+`feTurbulence` + `mix-blend-mode` it replaces was re-rasterised by WebKit whenever the layers
+above it moved — the likely reason the *signal* look was slow too); the overlay's static canvas
+is capped at 1600 px on the long side and repaints at ≤ 30 fps (the composited bar/veil/flash
+layers still move every frame); the tube's backing is capped at 1280, it draws at ≤ 30 fps, and
+the video → texture upload (WebKit's expensive step) happens only when the video has a new frame.
+`[tube] drawing WxH from video …` is logged once so the app log confirms the tube is live.
+
 ## Standalone app — BUILT 2026-09-08 (v0.1.0 in /Applications)
 
 `bash scripts/release-broadcast.sh <version> [--install] [--no-notarize]` → universal

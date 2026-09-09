@@ -59,6 +59,10 @@ function makeStaticTiles(ctx: CanvasRenderingContext2D, dpr: number): CanvasPatt
 }
 
 const LAYER: CSSProperties = { position: 'absolute', inset: 0, pointerEvents: 'none' };
+const STATIC_MAX_PX = 1600;
+// The static canvas repaints at most this often; the composited layers
+// (bar, veil, flash) still move every display frame.
+const STATIC_MIN_MS = 30;
 
 export function SignalOverlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -85,10 +89,13 @@ export function SignalOverlay() {
     // The canvas lives on the stage (stage px, scaled with everything else);
     // its backing store follows the on-screen scale so a grown stage stays
     // sharp and the grain stays 1 stage px — the same px the type is set in.
+    // Backing store capped at STATIC_MAX_PX on the long side: full device px
+    // (3024 wide on the laptop) cleared and pattern-filled per frame cost
+    // more than the grain is worth (Chris 2026-09-09: framerate).
     const resize = () => {
       W = useStage.getState().w;
       H = useStage.getState().h;
-      const next = Math.min(3, (window.devicePixelRatio || 1) * useStage.getState().scale);
+      const next = Math.min(3, (window.devicePixelRatio || 1) * useStage.getState().scale, STATIC_MAX_PX / Math.max(W, H));
       if (next !== dpr || !tiles.length) {
         dpr = next;
         tiles = makeStaticTiles(ctx, dpr);
@@ -131,6 +138,7 @@ export function SignalOverlay() {
     let barPhase = Math.random();
     let last = performance.now();
     let canvasDirty = false;
+    let lastStaticAt = 0;
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
       const dt = Math.min(0.1, (now - last) / 1000);
@@ -146,15 +154,17 @@ export function SignalOverlay() {
       }
       const f = sampleSignal(now);
 
-      // Canvas: static + tears, only when there is any.
+      // Canvas: static + tears, only when there is any, at ≤ ~30 fps.
       const hasStatic = f.noise > 0.003 || f.tears.length > 0;
-      if (hasStatic || canvasDirty) {
+      const due = now - lastStaticAt >= STATIC_MIN_MS;
+      if ((hasStatic && due) || (!hasStatic && canvasDirty)) {
+        lastStaticAt = now;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, W, H);
         ctx.globalCompositeOperation = 'source-over';
         canvasDirty = hasStatic;
       }
-      if (hasStatic) {
+      if (hasStatic && due) {
         // Static — fine grain, capped so the desktop always reads through.
         paintStatic(f.noise, 0, 0, W, H);
         // Tear strips: thin bands of static slipping sideways.

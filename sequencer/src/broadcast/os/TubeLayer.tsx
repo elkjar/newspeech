@@ -39,28 +39,36 @@ export function setTubeEnabled(on: boolean): void {
 
 // Strengths. Tuned by eye on the demo; Chris tunes by eye on a run.
 const TUBE = {
-  shimmerPx: 0.7, // interlace half-shift at rest (px, canvas)
-  shimmerWeak: 1.6, // + per unit weak reception
-  shimmerLevel: 0.9, // + per unit level
-  jitterWeak: 1.4, // field jitter px per unit weak
-  bloomThreshold: 0.58,
-  bloomRest: 0.32,
-  bloomLevel: 0.55, // + per unit level
-  ghostRest: 0.12,
-  ghostWeak: 0.45,
-  ghostDx: 0.011, // fraction of width
-  scan: 0.24,
-  scanWeak: 0.25,
-  noiseScale: 0.5, // × overlay static
-  vignette: 0.2,
+  // Chris 2026-09-09 on the first defaults: "switching between tube and
+  // signal … not seeing much difference" — everything was sub-pixel on real
+  // footage. These read at a glance; ease off by eye.
+  shimmerPx: 1.4, // interlace half-shift at rest (px, canvas)
+  shimmerWeak: 2.2, // + per unit weak reception
+  shimmerLevel: 1.6, // + per unit level
+  jitterWeak: 2.0, // field jitter px per unit weak
+  bloomThreshold: 0.42,
+  bloomRest: 0.55,
+  bloomLevel: 0.8, // + per unit level
+  bloomPasses: 2, // separable blur rounds at 1/4 res
+  ghostRest: 0.26,
+  ghostWeak: 0.5,
+  ghostDx: 0.016, // fraction of width
+  scan: 0.42, // scanline mask depth
+  scanWeak: 0.3,
+  scanPeriodPx: 3, // device px per scanline period (1-px lines vanish at 1080)
+  wobblePx: 3.0, // tracking wobble: a band of horizontal drift crawling up
+  wobbleWeak: 6.0,
+  noiseScale: 0.8, // × overlay static
+  vignette: 0.24,
   onsetTearMs: 170,
   maxTears: 6,
   bloomDiv: 4, // bloom buffers at 1/4 res
-  // Longest side of the canvas backing store. The backing store is meant to
-  // be 1:1 with device pixels — the interlace and scanline mask are per
-  // line, and a resampled 1-px mask aliases into moiré — so this only bites
-  // on a backdrop over a very large display.
-  maxBacking: 3072,
+  // Longest side of the canvas backing store. Chris 2026-09-09: device-px
+  // backing "is REALLY hurting the framerate" — 1280 is plenty: the
+  // scanline mask is a smooth cosine (no moiré on resample) and the source
+  // is 720p anyway.
+  maxBacking: 1280,
+  minFrameMs: 30, // draw at ≤ ~30 fps
 };
 
 const VS = `
@@ -119,6 +127,8 @@ uniform float uBloomAmt;
 uniform float uGhost;
 uniform float uGhostDx;
 uniform float uScan;
+uniform float uScanPeriod;
+uniform float uWobble;
 uniform float uNoise;
 uniform float uBright;
 uniform float uContrast;
@@ -139,6 +149,12 @@ void main() {
   float odd = mod(line + uField, 2.0);
   uv.x += (odd * 2.0 - 1.0) * uShimmer * px.x;
   uv.y += uJitter * px.y;
+  // Tracking wobble: a band of horizontal drift crawling up the picture.
+  float bandY = fract(uTime * 0.045);
+  float dy = uv.y - bandY;
+  dy -= floor(dy + 0.5);
+  float band = exp(-dy * dy * 90.0);
+  uv.x += uWobble * px.x * band * sin(uv.y * 38.0 + uTime * 2.3);
   // Tears: rows inside a band slip sideways and carry static.
   float tearA = 0.0;
   for (int i = 0; i < ${TUBE.maxTears}; i++) {
@@ -155,8 +171,9 @@ void main() {
   l = mix(l, luma(uv + vec2(uGhostDx, 0.0)), uGhost * 0.5);
   // Bloom.
   l += texture2D(uBloom, uv).r * uBloomAmt;
-  // Scanline mask.
-  l *= 1.0 - uScan * odd * 0.4;
+  // Scanline mask — coarser than the interlace lines so it reads at 1080.
+  float scan = 0.5 + 0.5 * cos(vUv.y * uRes.y * 6.2832 / uScanPeriod);
+  l *= 1.0 - uScan * scan;
   // Static: fine, mono, heavier in a tear.
   float n = hash(uv * uRes + vec2(fract(uTime * 0.731) * 917.0, fract(uTime * 0.377) * 613.0));
   l = mix(l, n, min(0.9, uNoise * 0.35 + tearA * 0.55));
@@ -245,6 +262,8 @@ export function TubeLayer({ children }: { children: ReactNode }) {
     let dead = false;
     let raf = 0;
     let tainted: Source | null = null;
+    let uploadedEl: Source | null = null;
+    let lastVideoTime = -1;
     let frame = 0;
     let onsetSeed = 0;
     let lastOnsetAt = -1;
@@ -324,9 +343,13 @@ export function TubeLayer({ children }: { children: ReactNode }) {
       return sa > ca ? [ca / sa, 1] : [1, sa / ca];
     };
 
+    let lastDraw = 0;
     const draw = (now: number) => {
       if (dead) return;
       raf = requestAnimationFrame(draw);
+      // ~30 fps: fields, not frames — and half the shader cost.
+      if (now - lastDraw < TUBE.minFrameMs) return;
+      lastDraw = now;
       const src = hostEl.querySelector<Source>('video, img, canvas:not([data-tube])');
       if (!src || src === tainted || !sourceReady(src) || !bloomA || !bloomB) {
         // Nothing to draw over: let the source show through.
@@ -334,15 +357,30 @@ export function TubeLayer({ children }: { children: ReactNode }) {
         hostEl.style.setProperty('--tube-src-opacity', '1');
         return;
       }
-      try {
-        gl.bindTexture(gl.TEXTURE_2D, srcTex);
-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
-      } catch (err) {
-        tainted = src;
-        console.warn('[tube] source not sampleable (CORS?) — plain visual for this clip:', err);
-        return;
+      // Upload only when the source has a new frame: a video advances at its
+      // own rate (24–30 fps) while this loop runs at the display's, and the
+      // video→texture copy is the expensive step in WebKit. Images upload
+      // once; a canvas (demo) every frame.
+      let upload = true;
+      if (src instanceof HTMLVideoElement) {
+        upload = src !== uploadedEl || src.currentTime !== lastVideoTime;
+        lastVideoTime = src.currentTime;
+      } else if (src instanceof HTMLImageElement) {
+        upload = src !== uploadedEl;
       }
+      if (upload) {
+        try {
+          gl.bindTexture(gl.TEXTURE_2D, srcTex);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+          uploadedEl = src;
+        } catch (err) {
+          tainted = src;
+          console.warn('[tube] source not sampleable (CORS?) — plain visual for this clip:', err);
+          return;
+        }
+      }
+      if (frame === 0) console.info(`[tube] drawing ${W}x${H} from ${src.tagName.toLowerCase()} ${sourceDims(src).join('x')}`);
       canvas.style.opacity = '1';
       hostEl.style.setProperty('--tube-src-opacity', '0');
       frame++;
@@ -372,7 +410,7 @@ export function TubeLayer({ children }: { children: ReactNode }) {
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       bindQuad(pBlur);
       gl.uniform1i(u(pBlur, 'uTex'), 0);
-      for (let pass = 0; pass < 2; pass++) {
+      for (let pass = 0; pass < TUBE.bloomPasses; pass++) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, bloomB.fb);
         gl.bindTexture(gl.TEXTURE_2D, bloomA.tex);
         gl.uniform2f(u(pBlur, 'uDir'), 1 / bloomA.w, 0);
@@ -418,6 +456,8 @@ export function TubeLayer({ children }: { children: ReactNode }) {
       gl.uniform1f(u(pFinal, 'uGhost'), TUBE.ghostRest + TUBE.ghostWeak * weak);
       gl.uniform1f(u(pFinal, 'uGhostDx'), TUBE.ghostDx);
       gl.uniform1f(u(pFinal, 'uScan'), TUBE.scan + TUBE.scanWeak * weak);
+      gl.uniform1f(u(pFinal, 'uScanPeriod'), TUBE.scanPeriodPx);
+      gl.uniform1f(u(pFinal, 'uWobble'), (TUBE.wobblePx + TUBE.wobbleWeak * weak) * (W / 1000));
       gl.uniform1f(u(pFinal, 'uNoise'), (sig ? sig.noise : 0) * TUBE.noiseScale);
       gl.uniform1f(u(pFinal, 'uBright'), sig ? sig.brightness : 1);
       gl.uniform1f(u(pFinal, 'uContrast'), sig ? sig.contrast : 1);
