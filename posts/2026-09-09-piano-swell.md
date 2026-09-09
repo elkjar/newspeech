@@ -4,9 +4,12 @@ date: 2026-09-09
 dek: a fun discovery in a folder full of another type of debris, abandoned .seq files. 
 image: assets/piano-swell.jpg
 image_alt: the BROADCAST now-playing window reading piano-swell, over a datamoshed frame with a colour streak running through it
+image_in_post: false
 ---
 
+<figure class="wide">
 <div class="video"><iframe src="https://www.youtube.com/embed/yFnVTDXG_tM" title="NEWSPEECH // BROADCAST — piano-swell" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+</figure>
 
 every project has a folder like this. mine is called SEQFILES and it's where sequence projects go when i stop believing in them. dozens of em at this point. some are ten minutes of a tuesday night, some are the third attempt at something that never turned into anything, a few are just a kick drum and a bad idea. i don't delete them, i just stop opening them.
 

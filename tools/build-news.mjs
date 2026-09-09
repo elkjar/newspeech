@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // build-news.mjs — the news/blog generator.
 //
-// posts/*.md (tiny frontmatter: title / date / dek / image) in, static pages
+// posts/*.md (tiny frontmatter: title / date / dek / image [/ image_in_post]) in, static pages
 // out. deliberately NOT an SSG framework — a markdown subset plus raw-HTML
 // passthrough is the whole feature set. emits:
 //   news/<slug>.html   one page per post (slug = filename minus date prefix)
@@ -314,7 +314,10 @@ function postPage(post) {
   const { meta, html, slug } = post;
   const url = `${SITE}/news/${slug}.html`;
   const ogImage = meta.image ? new URL(meta.image, `${SITE}/news/`).href : `${SITE}/og-image.png`;
-  const featured = meta.image
+  // `image_in_post: false` keeps the image for the index card and share
+  // preview but leaves it off the article (e.g. when a video embed opens the
+  // post with the same frame).
+  const featured = meta.image && meta.image_in_post !== "false"
     ? `\n  <div class="featured">${figureHtml(meta.image, meta.image_alt || meta.title, meta.image_caption, "")}</div>`
     : "";
   return `<!doctype html>
