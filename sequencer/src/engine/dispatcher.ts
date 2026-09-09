@@ -16,7 +16,12 @@ import {
 } from '../audio/perform';
 import { samplePlayer } from '../audio/samplePlayer';
 import { voiceRole } from '../audio/voices';
-import { resolveVoiceEnvelope, voiceTrim } from '../instruments/voiceEditsStore';
+import {
+  resolveVoiceEnvelope,
+  voiceTrim,
+  voiceGranular,
+  voiceWavetable,
+} from '../instruments/voiceEditsStore';
 import {
   triggerSample,
   triggerBatch,
@@ -331,13 +336,19 @@ export function installDispatcher(): () => void {
                 const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi, ev.trackId);
                 if (!pick) continue;
                 if (pick.sliceIndex !== null) emitSliceHit(ev.voice, pick.sliceIndex);
-                // Continuous loop modes need a synthetic gate so they don't
-                // ring forever (see the standard-path note below). Monophonic
-                // choke ends earlier tones; the gate bounds the final one.
-                // A chop punch replaces the envelope wholesale — snappy
-                // synthetic gate regardless of the voice's authored shape.
+                // Endless voices need a synthetic gate so they don't ring
+                // forever (see the standard-path note below): continuous loop
+                // modes, and the granular / wavetable playmodes, which never end
+                // by position either. Monophonic choke ends earlier tones; the
+                // gate bounds the final one. A chop punch replaces the envelope
+                // wholesale — snappy synthetic gate regardless of the voice's
+                // authored shape.
                 const arpLooping =
-                  pick.loop === 1 || pick.loop === 2 || pick.loop === 3;
+                  pick.loop === 1 ||
+                  pick.loop === 2 ||
+                  pick.loop === 3 ||
+                  pick.granular.on ||
+                  pick.wavetable.on;
                 const arpEnv =
                   perfChop !== null
                     ? { attack: 0.0015, release: 0.02 }
@@ -420,9 +431,21 @@ export function installDispatcher(): () => void {
             // makes it loop while the step is held, then release — same as a
             // hardware sampler. `rev` (reverse one-shot, code 4) and `off`
             // self-terminate, so they don't need it.
+            //
+            // The granular and wavetable playmodes (editor Phase C) are endless
+            // the same way — a grain repeats / a cycle scans until something
+            // stops the voice — and were missed when they landed: a 909 kick
+            // switched to granular with the drive up spawned an infinite driven
+            // grain loop on every hit, stacking two voices a bar until the
+            // whole mix was a wall that only a stream reopen cleared
+            // (black-eyes.seq, 2026-09-08). Same rule, same gate.
             const loopCode = voiceTrim(ev.voice).loop;
             const isContinuousLoop =
-              loopCode === 1 || loopCode === 2 || loopCode === 3;
+              loopCode === 1 ||
+              loopCode === 2 ||
+              loopCode === 3 ||
+              voiceGranular(ev.voice).on ||
+              voiceWavetable(ev.voice).on;
             // A chop punch replaces the envelope wholesale — snappy
             // synthetic gate on EVERY masked voice (drums included),
             // holding for the slot's fraction of the step.
