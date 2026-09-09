@@ -357,10 +357,10 @@ asset protocol answers CORS — camera video, or the demo canvas) keeps playing 
 the canvas draws over it. Per frame: upload the frame as a texture; **bloom** = threshold at
 quarter res → two separable gaussian passes → added back, opening with level; **tears** = the
 signal envelope's tear bands (`lastSignal()`, the overlay's frame — sampled once, not twice)
-displace rows sideways and fill with static, and an onset adds a band of its own; **interlace
+displace rows sideways (no static of their own since 0.1.11), and an onset adds a band of its own; **interlace
 shimmer** = alternate lines shifted ~0.7 px with the parity flipping every frame, more with weak
 reception and level, plus a sub-pixel field jitter on weak reception; **ghost** = a faint echo
-shifted 1.1% right; scanline mask, static at half the overlay's weight, brightness/contrast from
+shifted right; scanline mask, brightness/contrast from
 the envelope, a mild flat vignette. Level/onset arrive via `os/reactiveLevel.ts`, written by
 ReactiveVisual's `audio:level` listener. Backing store = device pixels (× stage scale) so the
 per-line effects sit on real lines (a resampled 1-px mask moirés), capped at 3072 on the long

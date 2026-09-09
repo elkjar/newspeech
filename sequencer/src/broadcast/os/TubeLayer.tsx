@@ -6,15 +6,15 @@
 //
 // What it does, all monochrome (the site is mono; no colour fringing):
 //   - tears: the signal envelope's tear bands (signal.ts) displace source
-//     rows sideways and fill with static; an onset adds a band of its own;
+//     rows sideways; an onset adds a band of its own;
 //   - interlace shimmer: alternate lines shift half a pixel, the parity
 //     flipping every frame; a sub-pixel field jitter rides weak reception;
 //   - bloom: bright areas bleed — quarter-res threshold + two separable
 //     gaussian passes, added back; opens up with level;
 //   - ghost: a faint offset echo of the picture (signal ringing);
-//   - scanline mask, static (half the overlay's weight — the overlay covers
-//     the whole desktop already), brightness/contrast from the envelope, a
-//     mild flat vignette.
+//   - scanline mask, brightness/contrast from the envelope, a mild flat
+//     vignette. No static of its own — the visuals are already mangled and
+//     the desktop overlay carries the noise (Chris 2026-09-09).
 //
 // It wraps the source element (pool video / image, camera video, the demo
 // canvas) — the source keeps playing at opacity 0 and the canvas draws over
@@ -58,7 +58,6 @@ const TUBE = {
   scanPeriodPx: 3, // device px per scanline period (1-px lines vanish at 1080)
   wobblePx: 3.0, // tracking wobble: a band of horizontal drift crawling up
   wobbleWeak: 6.0,
-  noiseScale: 0.8, // × overlay static
   vignette: 0.24,
   onsetTearMs: 170,
   maxTears: 6,
@@ -129,18 +128,12 @@ uniform float uGhostDx;
 uniform float uScan;
 uniform float uScanPeriod;
 uniform float uWobble;
-uniform float uNoise;
 uniform float uBright;
 uniform float uContrast;
 uniform float uVig;
 uniform vec4 uTears[${TUBE.maxTears}];
 uniform int uTearN;
 ${SRC_FN}
-float hash(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
-}
 void main() {
   vec2 uv = vUv;
   vec2 px = 1.0 / uRes;
@@ -174,9 +167,10 @@ void main() {
   // Scanline mask — coarser than the interlace lines so it reads at 1080.
   float scan = 0.5 + 0.5 * cos(vUv.y * uRes.y * 6.2832 / uScanPeriod);
   l *= 1.0 - uScan * scan;
-  // Static: fine, mono, heavier in a tear.
-  float n = hash(uv * uRes + vec2(fract(uTime * 0.731) * 917.0, fract(uTime * 0.377) * 613.0));
-  l = mix(l, n, min(0.9, uNoise * 0.35 + tearA * 0.55));
+  // No static here (Chris 2026-09-09: "the visuals themselves are already
+  // very mangled") — the desktop overlay carries the noise; a tear only
+  // dims its band a touch so the slip reads.
+  l *= 1.0 - tearA * 0.25;
   // Grade + a flat vignette.
   l = (l - 0.5) * uContrast + 0.5;
   l *= uBright;
@@ -458,7 +452,6 @@ export function TubeLayer({ children }: { children: ReactNode }) {
       gl.uniform1f(u(pFinal, 'uScan'), TUBE.scan + TUBE.scanWeak * weak);
       gl.uniform1f(u(pFinal, 'uScanPeriod'), TUBE.scanPeriodPx);
       gl.uniform1f(u(pFinal, 'uWobble'), (TUBE.wobblePx + TUBE.wobbleWeak * weak) * (W / 1000));
-      gl.uniform1f(u(pFinal, 'uNoise'), (sig ? sig.noise : 0) * TUBE.noiseScale);
       gl.uniform1f(u(pFinal, 'uBright'), sig ? sig.brightness : 1);
       gl.uniform1f(u(pFinal, 'uContrast'), sig ? sig.contrast : 1);
       gl.uniform1f(u(pFinal, 'uVig'), TUBE.vignette);
