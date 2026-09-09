@@ -2128,10 +2128,12 @@ export const useSequencerStore = create<SequencerState>((set) => ({
         ? state.composition
         : { ...state.composition, pendingScene: null },
       // The arrangement row's start step is on the same clock — reset it with
-      // globalStep so a stop+start doesn't leave row 0 with a stale origin.
-      arrangement: playing
-        ? state.arrangement
-        : { ...state.arrangement, cursor: 0, displayCursor: 0, cursorStartStep: 0 },
+      // globalStep so a stop+start doesn't restart the row from a stale origin.
+      // The row itself stays put (like activeBank / activeScene do on stop): the
+      // channels still carry this row's mute mask and bank, and nothing
+      // re-lands row 0 on play, so rewinding the cursor here (2026-09-08) left
+      // the panel on row 0 while the last row's bank and mutes kept sounding.
+      arrangement: playing ? state.arrangement : { ...state.arrangement, cursorStartStep: 0 },
     })),
   snapBank: (i) => {
     if (i < 0 || i >= BANK_SLOT_COUNT) return;
@@ -2501,9 +2503,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       let changed = false;
       const tracks = s.tracks.map((t) => {
         const m = muted.has(t.id);
-        if (t.mute === m) return t;
+        // The row mask is the complete audibility statement in song mode, so
+        // it also clears solo: bank snapshots save solo with the track, and a
+        // soloed track riding in on a bank swap silenced every other track no
+        // matter what the row said (black-eyes.seq, 2026-09-08 — bank 0 came in
+        // with t11 soloed AND muted, so its rows played the chord master alone).
+        if (t.mute === m && !t.solo) return t;
         changed = true;
-        return { ...t, mute: m };
+        return { ...t, mute: m, solo: false };
       });
       return changed ? { tracks } : {};
     }),
