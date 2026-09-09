@@ -277,15 +277,21 @@ export function resolveStepMutation(inputs: MutationInputs): StepResolution {
   const gate = Math.max(0.1, Math.min(MAX_STEPS, step.gate + gateBias + gateJitter));
   const tied = isSilencedByTie(track, localStep);
   let gated = on && !tied;
+  // Density thin / fill honour the per-track lock as well as the harmonic
+  // anchor: a locked track plays its authored rhythm exactly. Before
+  // 2026-09-09 the lock only stopped mutation flips, so a locked melody still
+  // gained and lost notes with Ghost's density gestures — the "ad-lib" feel
+  // Chris wanted to pin down inside compositions.
+  const rhythmFixed = harmonicAnchor || track.lockTiming;
   if (gated) {
-    if (!isBarDownbeatTick && !harmonicAnchor) {
+    if (!isBarDownbeatTick && !rhythmFixed) {
       const mul = computeThinMul(modDensity, localStep, track.length);
       const effectiveProb = step.probability * mul;
       if (effectiveProb < 100 && Math.random() * 100 >= effectiveProb) {
         gated = false;
       }
     }
-  } else if (!on && !tied && !harmonicAnchor) {
+  } else if (!on && !tied && !rhythmFixed) {
     const hasAuthoredOn = track.steps
       .slice(0, track.length)
       .some((s) => s.on);

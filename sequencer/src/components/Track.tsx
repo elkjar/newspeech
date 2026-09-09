@@ -332,8 +332,8 @@ export function Track({ trackId, trackIndex }: { trackId: string; trackIndex: nu
         className="flex items-center justify-center bg-transparent transition-colors group"
         title={
           track.lockTiming
-            ? 'timing locked — mutation only changes notes (click to unlock)'
-            : 'click to lock timing — keeps pattern fixed while mutation evolves notes'
+            ? 'timing locked — mutation only changes notes; density leaves the rhythm alone (click to unlock)'
+            : 'click to lock timing — keeps the authored rhythm fixed against mutation and density while notes evolve'
         }
         aria-pressed={track.lockTiming}
       >
