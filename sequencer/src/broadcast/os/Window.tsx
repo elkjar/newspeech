@@ -2,7 +2,7 @@
 // resizable from the corner, raised on pointer-down, closable. Content is
 // whatever the window is about — the OS only frames it.
 import { useRef, type ReactNode } from 'react';
-import { useLayout, useStage, MENUBAR_H, WINDOW_TITLES, type WindowId } from './layout';
+import { useLayout, useStage, FORMATS, WINDOW_TITLES, type WindowId } from './layout';
 
 export function OSWindow({ id, children, index }: { id: WindowId; children: ReactNode; index: number }) {
   const rect = useLayout((s) => s.windows[id]);
@@ -10,6 +10,9 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
   const resize = useLayout((s) => s.resize);
   const raise = useLayout((s) => s.raise);
   const toggle = useLayout((s) => s.toggle);
+  const format = useLayout((s) => s.format);
+  const zoom = useLayout((s) => s.zoom);
+  const { safe } = FORMATS[format];
   // The desktop is a scaled stage: pointer px → stage px through the fit.
   const fit = useStage();
   const sx = (clientX: number) => (clientX - fit.ox) / fit.scale;
@@ -27,7 +30,7 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
   };
   const onTitleMove = (e: React.PointerEvent) => {
     if (!drag.current) return;
-    move(id, Math.round(Math.max(0, sx(e.clientX) - drag.current.dx)), Math.round(Math.max(MENUBAR_H, sy(e.clientY) - drag.current.dy)));
+    move(id, Math.round(Math.max(safe.x, sx(e.clientX) - drag.current.dx)), Math.round(Math.max(safe.y, sy(e.clientY) - drag.current.dy)));
   };
   const onTitleUp = () => {
     drag.current = null;
@@ -64,6 +67,9 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
       <header
         className="flex items-center gap-2 select-none shrink-0"
         style={{
+          // Chrome grows half as fast as content: legible on a CRT without
+          // eating the small 4:3 windows.
+          zoom: zoom !== 1 ? 1 + (zoom - 1) / 2 : undefined,
           height: 22,
           padding: '0 8px',
           borderBottom: '1px solid rgba(255,255,255,0.22)',
@@ -84,7 +90,17 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
           </button>
         </span>
       </header>
-      <div className="relative flex-1 min-h-0 overflow-hidden">{children}</div>
+      {/* Content zoom (4:3 defaults to 1.5 — CRT type). `zoom` scales layout,
+          so the content lays out in w/zoom × h/zoom px; the 4:3 picture also
+          makes this box the container for the cq units the headline sizes
+          use (NowWindow/CardWindow) so a title fits its window rather than
+          sizing off the viewport. 16:9 is left exactly as it was. */}
+      <div
+        className="relative flex-1 min-h-0 overflow-hidden"
+        style={zoom !== 1 ? { zoom, containerType: 'inline-size' } : undefined}
+      >
+        {children}
+      </div>
       <div
         className="absolute right-0 bottom-0"
         style={{ width: 14, height: 14, cursor: 'nwse-resize', touchAction: 'none' }}

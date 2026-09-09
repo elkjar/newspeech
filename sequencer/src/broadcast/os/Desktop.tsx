@@ -8,7 +8,7 @@ import { Visualizer } from '../../stream/Visualizer';
 import { ReactiveVisual } from './ReactiveVisual';
 import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
 import { setSignalEnabled } from './signal';
-import { useLayout, useStage, STAGE_W, STAGE_H, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
+import { useLayout, useStage, FORMATS, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
 import { NowWindow } from './windows/NowWindow';
@@ -115,6 +115,12 @@ export function Desktop() {
   // arranging so the windows read plainly (Chris 2026-09-08).
   const station = useStationBoot((s) => s.phase);
   const arranging = useLayout((s) => s.arranging) && station === 'standby';
+  // 16:9 or 4:3 — follows the window (layout.ts). The 4:3 picture has no
+  // menubar on air (the wordmark would be 9% of a CRT's height) and a
+  // title-safe area the windows keep to; both are drawn while arranging.
+  const format = useLayout((s) => s.format);
+  const spec = FORMATS[format];
+  const menubarUp = spec.menubarOnAir || arranging;
   useEffect(() => setSignalEnabled(signal && !arranging), [signal, arranging]);
   const hidden = arranging ? new Set<Falls>() : collapsed;
   const cardUp = useCards((s) => s.active !== null) || arranging;
@@ -127,11 +133,12 @@ export function Desktop() {
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
-      {/* the stage: the 1512×850 picture, scaled to fit the window (letterboxed
-          in a browser; the Tauri window is aspect-locked so it fills) */}
+      {/* the stage: the picture (1512×850 or 800×600), scaled to fit the
+          window (letterboxed in a browser; the Tauri window is aspect-locked
+          to its display so it fills) */}
       <div
         className="absolute overflow-hidden"
-        style={{ left: fit.ox, top: fit.oy, width: STAGE_W, height: STAGE_H, transform: `scale(${fit.scale})`, transformOrigin: '0 0' }}
+        style={{ left: fit.ox, top: fit.oy, width: fit.w, height: fit.h, transform: `scale(${fit.scale})`, transformOrigin: '0 0' }}
       >
       {/* the transmission root: the picture the signal layer sits over (the
           overlay is a sibling, never a filter on this — see SignalOverlay) */}
@@ -174,7 +181,7 @@ export function Desktop() {
           background: 'rgba(5,5,5,0.85)',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
           zIndex: 10000,
-          visibility: hidden.has('menubar') ? 'hidden' : 'visible',
+          visibility: hidden.has('menubar') || !menubarUp ? 'hidden' : 'visible',
         }}
       >
         <span className="font-sans text-[12px] tracking-[0.22em] normal-case">NEWSPEECH // BROADCAST</span>
@@ -216,6 +223,30 @@ export function Desktop() {
           <span className="tabular-nums text-white/70">{clock}</span>
         </span>
       </div>
+
+      {/* arranging: the safe area the windows clamp to, and the picture's
+          format, so the 4:3 overscan margin reads as intended rather than as
+          wasted space */}
+      {arranging && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: spec.safe.x,
+            top: spec.safe.y,
+            width: spec.safe.w,
+            height: spec.safe.h,
+            border: '1px dashed rgba(255,255,255,0.28)',
+            zIndex: 9999,
+          }}
+        >
+          <span
+            className="absolute right-0 text-[8px] tracking-[0.18em] uppercase text-white/40 px-1"
+            style={{ bottom: -14, background: '#050505' }}
+          >
+            {format} · {spec.w}×{spec.h}{format === '4:3' ? ' · title safe' : ''}
+          </span>
+        </div>
+      )}
 
       {/* windows */}
       {WINDOW_ORDER.map((id, i) => {

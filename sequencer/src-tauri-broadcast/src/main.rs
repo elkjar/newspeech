@@ -4,6 +4,45 @@
 // sequencer/docs/broadcast-set.md.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Which picture a display gets: (4, 3) below CRT_ASPECT_MAX (a 4:3 CRT is
+// 1.33, 5:4 is 1.25), else (16, 9). A MacBook is 3:2 (1.54) and stays 16:9.
+// Mirrors `formatFor` in src/broadcast/os/layout.ts — keep the threshold in
+// step.
+const CRT_ASPECT_MAX: f64 = 1.45;
+fn aspect_class(mon: &tauri::Monitor) -> (u32, u32) {
+  let s = mon.size();
+  let r = s.width as f64 / s.height.max(1) as f64;
+  if r < CRT_ASPECT_MAX { (4, 3) } else { (16, 9) }
+}
+
+// Size the window for a display: the format's full size (1920×1080 or
+// 1440×1080) where it fits the work area, else the largest of that aspect
+// inside it; centred in the work area (`center()` uses the whole screen and
+// would tuck the bottom behind the Dock); content aspect locked so a drag
+// keeps the picture.
+fn fit_to_monitor(window: &tauri::WebviewWindow, mon: &tauri::Monitor) {
+  let (ax_, ay_) = aspect_class(mon);
+  let (aw_, ah_) = (ax_ as f64, ay_ as f64);
+  let k = mon.scale_factor();
+  let area = mon.work_area();
+  // Work area = screen minus menu bar and Dock, in physical px.
+  let (ax, ay) = (area.position.x as f64 / k, area.position.y as f64 / k);
+  let (aw, ah) = (area.size.width as f64 / k, area.size.height as f64 / k);
+  let (mut w, mut h) = (1080.0 * aw_ / ah_, 1080.0_f64);
+  if aw - 24.0 < w || ah - 24.0 < h {
+    w = (aw - 24.0).min((ah - 24.0) * aw_ / ah_).floor();
+    h = (w * ah_ / aw_).floor();
+  }
+  let _ = window.set_size(tauri::LogicalSize::new(w, h));
+  let _ = window.set_position(tauri::LogicalPosition::new(ax + ((aw - w) / 2.0).floor(), ay + ((ah - h) / 2.0).floor()));
+  sequence_lib::lock_content_aspect(window, aw_, ah_);
+  log::info!(
+    "[window] monitor {}x{} @{k} work area {aw}x{ah} at {ax},{ay} → {ax_}:{ay_} {w}x{h}",
+    mon.size().width as f64 / k,
+    mon.size().height as f64 / k
+  );
+}
+
 fn main() {
   use tauri::Manager;
 
@@ -31,39 +70,42 @@ fn main() {
       if let Some(window) = app.get_webview_window("main") {
         sequence_lib::install_media_permission(&window);
         // Frameless (no title bar — `decorations: false`), so the window IS
-        // the picture: 16:9 whatever size it's dragged to, and a windowed
-        // capture is a clean frame. Launch at 1920×1080 where it fits; on a
-        // smaller screen (a laptop) the largest 16:9 inside the work area
-        // (the frontend scales its fixed stage to the window). Our menubar
-        // is the drag handle (data-tauri-drag-region).
-        let (mut w, mut h) = (1920.0_f64, 1080.0_f64);
+        // the picture: a clean frame for a windowed capture. Its aspect
+        // follows the display it is on (Chris 2026-09-09: "the CRT thing
+        // would just be swapping from 16:9 to 4:3 … the way sequence
+        // detected the size of the external display would be great to
+        // match"): a 16:9 / 3:2 / 16:10 screen → 16:9 at 1920×1080 where it
+        // fits, else the largest 16:9 inside the work area; a 4:3 (or 5:4)
+        // screen — the CRT in the analog chain — → 4:3 at 1440×1080 or the
+        // largest 4:3 that fits. The frontend reads the window's aspect and
+        // swaps its picture (layout.ts). Re-fitted when the window is
+        // dragged onto a display of the other class. Our menubar is the drag
+        // handle (data-tauri-drag-region).
         match window.current_monitor() {
-          Ok(Some(mon)) => {
-            let k = mon.scale_factor();
-            let area = mon.work_area();
-            // Work area = screen minus menu bar and Dock, in physical px.
-            let (ax, ay) = (area.position.x as f64 / k, area.position.y as f64 / k);
-            let (aw, ah) = (area.size.width as f64 / k, area.size.height as f64 / k);
-            if aw - 24.0 < w || ah - 24.0 < h {
-              w = (aw - 24.0).min((ah - 24.0) * 16.0 / 9.0).floor();
-              h = (w * 9.0 / 16.0).floor();
-            }
-            let _ = window.set_size(tauri::LogicalSize::new(w, h));
-            // Centre in the work area ourselves — `center()` uses the whole
-            // screen and would tuck the bottom behind the Dock.
-            let _ = window.set_position(tauri::LogicalPosition::new(ax + ((aw - w) / 2.0).floor(), ay + ((ah - h) / 2.0).floor()));
-            log::info!(
-              "[window] monitor {}x{} @{k} work area {aw}x{ah} at {ax},{ay} → {w}x{h}",
-              mon.size().width as f64 / k,
-              mon.size().height as f64 / k
-            );
-          }
+          Ok(Some(mon)) => fit_to_monitor(&window, &mon),
           _ => {
-            let _ = window.set_size(tauri::LogicalSize::new(w, h));
+            let _ = window.set_size(tauri::LogicalSize::new(1920.0, 1080.0));
             let _ = window.center();
+            sequence_lib::lock_content_aspect(&window, 16.0, 9.0);
           }
         }
-        sequence_lib::lock_content_aspect(&window, 16.0, 9.0);
+        let last = std::sync::Mutex::new(window.current_monitor().ok().flatten().map(|m| aspect_class(&m)));
+        let w2 = window.clone();
+        window.on_window_event(move |ev| {
+          if let tauri::WindowEvent::Moved(_) = ev {
+            if w2.is_fullscreen().unwrap_or(false) {
+              return;
+            }
+            if let Ok(Some(mon)) = w2.current_monitor() {
+              let class = aspect_class(&mon);
+              let mut guard = last.lock().unwrap();
+              if *guard != Some(class) {
+                *guard = Some(class);
+                fit_to_monitor(&w2, &mon);
+              }
+            }
+          }
+        });
       }
       sequence_lib::spawn_level_emitter(app.handle().clone());
       Ok(())

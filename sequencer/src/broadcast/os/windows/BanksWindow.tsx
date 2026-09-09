@@ -16,14 +16,14 @@ export function BanksWindow() {
 
   return (
     <div className="h-full flex flex-col px-3 py-2 font-mono text-[9px]">
-      <div className="flex items-center gap-4 text-[8px] tracking-[0.18em] uppercase text-white/45">
+      <div className="flex items-center gap-4 text-[8px] tracking-[0.18em] uppercase text-white/45 whitespace-nowrap overflow-hidden shrink-0">
         <span>{snap.bankOrderMode === 'sequence' ? 'sequence' : 'entropy'} walk</span>
         <span>
           E {snap.minE.toFixed(2)}→{snap.maxE.toFixed(2)}
         </span>
         <span>T {snap.targetEntropy.toFixed(2)}</span>
         {snap.transitionCountIn !== null && (
-          <span className="ml-auto text-white">→ {snap.pendingBank !== null ? snap.pendingBank + 1 : ''} in {snap.transitionCountIn}</span>
+          <span className="ml-auto text-white shrink-0">→ {snap.pendingBank !== null ? snap.pendingBank + 1 : ''} in {snap.transitionCountIn}</span>
         )}
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="flex-1 w-full mt-2">

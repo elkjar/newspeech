@@ -235,11 +235,14 @@ Flags: `--set <dir|.seq|.seqset>…` · `--samples <dir>` · `--device <name>` �
 `--songs N` · `--first <name>` · dev: `--gap-every N` · `--song-bars N`. Folder layout:
 `BROADCAST/{SEQ_01, INTERSTITIALS, CARDS}` — the sibling folders are found beside the set.
 
-**Open, in order (updated 2026-09-09):** (1) unattended layer (LaunchAgent with `--autostart`,
-silence + heartbeat watchdogs, overnight soak, hot-unplug policy); (2) WebGL tube on the visual;
-(3) CRT-safe layout for the physical chain; (4) Ghost density on melodic tracks (see the 09-09
-status). Closed since: boot audio (boot static, 09-08), uniform zoom (the 1512×850 stage, 09-08),
-standalone app (09-08), safety limiter (09-09).
+**Open (updated 2026-09-09, afternoon):** (1) WebGL tube on the visual; (2) unattended layer
+(LaunchAgent with `--autostart`, silence + heartbeat watchdogs, overnight soak, hot-unplug policy)
+— **future state** per Chris 09-09: "the use case of me running a set and capturing the output
+works for now". Closed since: boot audio (boot static, 09-08), uniform zoom (the 1512×850 stage,
+09-08), standalone app (09-08), safety limiter (09-09), Ghost density vs the per-track lock
+(lock exempts thin/fill, 8228c92, 09-09), CRT picture (4:3 format, 09-09, below). Declined 09-09:
+row mutes releasing ringing voices — Chris: "having the longer things ring out is the behavior
+i'd expect"; mutes and row masks stay scheduler-only.
 
 ## Status — 2026-09-09 (v0.1.5)
 
@@ -280,6 +283,48 @@ mutation flips ONLY — density thin/fill in `tick.ts` checks `harmonicAnchor` b
 `lockTiming`, so locking a track in the .seq does not stop density touching it, though the
 button's tooltip promises a fixed pattern. Candidate fix: `lockTiming` also exempts thin/fill
 (two conditions in `tick.ts`). Decision pending.
+
+## Status — 2026-09-09 (v0.1.7) — the 4:3 picture
+
+Chris: "the CRT thing would just be swapping from 16:9 to 4:3 right? … the way sequence detected
+the size of the external display would be great to match." So the picture's aspect follows the
+display the window is on; nothing is chosen by hand.
+
+**Rust (`src-tauri-broadcast/main.rs`).** `aspect_class(monitor)` = (4, 3) when the display is
+narrower than 1.45:1 (a 4:3 CRT is 1.33, 5:4 is 1.25; a MacBook is 3:2 = 1.54 and stays 16:9),
+else (16, 9). `fit_to_monitor` sizes the frameless window to that format's full size (1920×1080
+or 1440×1080) where it fits the work area, else the largest of that aspect inside it, centres it
+in the work area, and locks the content aspect. Runs at launch and again on `WindowEvent::Moved`
+when the window lands on a display of the other class (not while fullscreen). **`f`** toggles
+fullscreen on the current display (capabilities: `core:window:allow-set-fullscreen` /
+`allow-is-fullscreen`) — on the CRT that is the whole tube.
+
+**Frontend (`os/layout.ts`).** `formatFor(innerWidth, innerHeight)` with the same 1.45 threshold →
+`Format` `'16:9' | '4:3'`. `FORMATS` carries each picture: 16:9 is the 1512×850 stage exactly as
+before (windows under the 28 px menubar, zoom 1, layout key `broadcast.layout.v2`); 4:3 is an
+**800×600** picture with a **title-safe area 10% in from every edge** (80,60 → 640×480) that the
+windows clamp to (CRT overscan + camcorder framing both eat the border), window **content zoom
+1.5** (CSS `zoom` on the window body; the header grows half as fast) so 9–10 px type is ~2.4% of
+the picture height, **no menubar on air** (it shows while arranging for the windows menu),
+backdrop on by default, layout key `broadcast.layout.43.v1`. Each format keeps its own windows,
+backdrop and zoom; `useStage` now carries `{format, w, h, scale, ox, oy}` and a window resize
+that changes class swaps the layout (`setFormat`). The 4:3 default arrangement: ghost tall on the
+left (300×480), now playing / banks / ident stacked on the right (324 wide); set, shape and sys
+closed. Arrange mode draws the safe rectangle with the format label, and in 4:3 a **type −/+**
+control (1–3 in 0.25 steps, saved). `SignalOverlay` reads the picture size from the stage. In
+4:3 the window body is also the container for the `cqw` headline sizes (NowWindow/CardWindow) so
+a title fits its window instead of sizing off the viewport; 16:9 keeps viewport semantics so
+nothing moves there. Small squeeze fixes that hold in both formats: GhostWindow's hearing block
+yields to decisions (min 60 / 46 px) instead of the two labels overlapping; BanksWindow's header
+row is nowrap so the chart keeps its height.
+
+**How to use it.** Plug the CRT chain in (Mac → HDMI-to-composite → CRT), drag BROADCAST onto
+that display: it re-fits to 4:3, the 4:3 layout comes up. `f` for fullscreen. Standby → arrange
+windows to tune; the arrangement is logged (`[layout] 4:3 stage 800x600 … zoom=…`) like the
+desktop one. If macOS drives the converter at a 16:9 mode, pick a 4:3 resolution for that display
+(System Settings → Displays, option-click Scaled shows them) — a 16:9 frame squashed to 4:3 by
+the converter would distort the picture. Verified in a browser build at 800×600 and 1512×850
+(`?demo=1`); the display-follow and fullscreen paths are Tauri-only and need the app.
 
 ## Standalone app — BUILT 2026-09-08 (v0.1.0 in /Applications)
 

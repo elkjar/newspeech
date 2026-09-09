@@ -16,7 +16,7 @@
 // WebGL CRT sim on the visual are later tiers of the same envelope.
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { installSignalHooks, sampleSignal, signalEnabled } from './signal';
-import { STAGE_W, STAGE_H, useStage } from './layout';
+import { useStage } from './layout';
 
 export const TRANSMISSION_ID = 'ns-transmission';
 
@@ -75,8 +75,10 @@ export function SignalOverlay() {
     if (!ctx) return;
     const uninstall = installSignalHooks();
 
-    const W = STAGE_W;
-    const H = STAGE_H;
+    // Picture size follows the format (16:9 or 4:3, layout.ts); re-read on
+    // every stage change so the canvas covers the picture it is over.
+    let W = useStage.getState().w;
+    let H = useStage.getState().h;
     let dpr = 1;
     let tiles: CanvasPattern[] = [];
 
@@ -84,6 +86,8 @@ export function SignalOverlay() {
     // its backing store follows the on-screen scale so a grown stage stays
     // sharp and the grain stays 1 stage px — the same px the type is set in.
     const resize = () => {
+      W = useStage.getState().w;
+      H = useStage.getState().h;
       const next = Math.min(3, (window.devicePixelRatio || 1) * useStage.getState().scale);
       if (next !== dpr || !tiles.length) {
         dpr = next;

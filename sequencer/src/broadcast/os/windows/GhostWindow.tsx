@@ -62,7 +62,9 @@ export function GhostWindow() {
           </div>
         ))}
       </div>
-      <div className="shrink-0 border-b border-white/10" style={{ minHeight: 120 }}>
+      {/* Hearing yields to decisions in a short window (the 4:3 picture);
+          both keep a label and a few rows rather than overlapping. */}
+      <div className="border-b border-white/10 overflow-hidden" style={{ minHeight: 60 }}>
         <div className="px-3 py-1 text-[8px] tracking-[0.18em] uppercase text-white/40">hearing</div>
         <div className="px-3 pb-2 flex flex-col">
           {heard.length === 0 && <div className="text-white/30 leading-[15px]">—</div>}
@@ -82,7 +84,7 @@ export function GhostWindow() {
           })}
         </div>
       </div>
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden" style={{ minHeight: 46 }}>
         <div className="px-3 py-1 text-[8px] tracking-[0.18em] uppercase text-white/40 shrink-0">decisions</div>
         <div className="flex-1 overflow-hidden px-3 flex flex-col justify-end">
           {decisions.map((e, i) => (

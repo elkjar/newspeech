@@ -294,6 +294,20 @@ export function BroadcastApp() {
         panicKill();
         return;
       }
+      // f — fullscreen on the display the window is on (the CRT, or a
+      // capture display). Not while typing in standby's fields.
+      if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && NATIVE) {
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+        e.preventDefault();
+        void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+          const w = getCurrentWindow();
+          const full = await w.isFullscreen();
+          await w.setFullscreen(!full);
+          console.info(`[window] fullscreen=${!full}`);
+        });
+        return;
+      }
       if (e.code === 'Escape' && useStationBoot.getState().phase === 'standby') {
         e.preventDefault();
         if (useLayout.getState().arranging) useLayout.getState().setArranging(false);

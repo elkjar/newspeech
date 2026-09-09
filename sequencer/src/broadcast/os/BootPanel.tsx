@@ -14,7 +14,7 @@ import { useStationBoot, stationGo, cancelAutoGo, BOOT_LINE_MS, AUTO_GO_SECS } f
 import { useBroadcast, loadAndStartSet } from '../setlist';
 import { useCards, scanCards } from '../cards';
 import { useSettings, shortPath } from '../settings';
-import { useLayout } from './layout';
+import { useLayout, ZOOM_STEP } from './layout';
 import { listOutputDevices, applyOutputDeviceConfig, presetNativeDeviceName, type NativeDeviceInfo } from '../../audio/nativeEngine';
 import { setConfiguredUserSamplesDir } from '../../instruments/userSamplesDir';
 import { rescanAllKits } from '../../instruments/userSamplesDir';
@@ -149,16 +149,29 @@ function Header({ right }: { right: string }) {
 // Arrange mode: the desktop is up behind this strip; drag windows by their
 // title bars, the corner resizes, `windows ▾` in the menubar toggles them.
 // The layout is saved as it changes, same as on air.
+// The 4:3 (CRT) picture also has a type size: the windows' content zoom,
+// stepped here and saved with that format's layout.
 function ArrangeStrip({ onDone }: { onDone: () => void }) {
   const backdrop = useLayout((s) => s.backdrop);
   const setBackdrop = useLayout((s) => s.setBackdrop);
   const reset = useLayout((s) => s.reset);
+  const format = useLayout((s) => s.format);
+  const zoom = useLayout((s) => s.zoom);
+  const setZoom = useLayout((s) => s.setZoom);
   return (
     <div className="flex items-center gap-4 px-5 text-[10px]" style={{ height: 44 }}>
       <span className="text-[9px] tracking-[0.16em] uppercase text-white/45 truncate">
-        drag a title to move · corner resizes · windows ▾ toggles · esc when done
+        {format} · drag a title to move · corner resizes · windows ▾ toggles · esc when done
       </span>
       <span className="ml-auto flex items-center gap-2 shrink-0">
+        {format === '4:3' && (
+          <span className="flex items-center gap-1 mr-2">
+            <span className="text-[8px] tracking-[0.18em] uppercase text-white/40 mr-1">type</span>
+            <Btn onClick={() => setZoom(zoom - ZOOM_STEP)}>−</Btn>
+            <span className="tabular-nums text-white/70 w-8 text-center">{zoom.toFixed(2)}</span>
+            <Btn onClick={() => setZoom(zoom + ZOOM_STEP)}>+</Btn>
+          </span>
+        )}
         <Btn onClick={() => setBackdrop(!backdrop)}>{backdrop ? '■' : '□'} backdrop</Btn>
         <Btn onClick={reset}>reset</Btn>
         <Btn onClick={onDone}>done</Btn>
