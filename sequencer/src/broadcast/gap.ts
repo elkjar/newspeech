@@ -18,7 +18,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { useSequencerStore } from '../state/store';
 import { setSongEndInterceptor } from '../ghost/ghost';
 import { loadSample, triggerSample } from '../audio/nativeEngine';
-import type { MasterParams } from '../audio/master';
 import { togglePlayback } from '../audio/transport';
 import { useBroadcast } from './setlist';
 import { dirOf } from '../state/persist';
@@ -60,41 +59,6 @@ export interface GapState {
 }
 
 export const REBOOT_SECS = 28;
-
-// The station's own master for the static — one sound for every
-// interstitial whatever the songs around it were mastered at (Chris
-// 2026-09-08: "the interstitials should be consistent"): unity input and
-// trim, no compression, no drive. Glided in over the outgoing tails at the
-// top of a gap; the incoming song's master lands with its downbeat.
-export const STATION_MASTER: Pick<MasterParams, 'input' | 'trim' | 'comp'> = { input: 0.4, trim: 1.0, comp: 0 };
-export const GAP_WAV_GAIN = 1.0;
-let glideTimer: number | null = null;
-export function cancelMasterGlide(): void {
-  if (glideTimer !== null) window.clearInterval(glideTimer);
-  glideTimer = null;
-}
-export function glideMasterToStation(ms: number): void {
-  cancelMasterGlide();
-  const seq = useSequencerStore.getState();
-  const from = { input: seq.master.input, trim: seq.master.trim, comp: seq.master.comp };
-  // The character stages step now — nothing new is sounding under a stop.
-  seq.setMaster({ drive: 0, mix: 0, gateEnabled: false, bypass: false });
-  if (ms <= 0) {
-    seq.setMaster({ ...STATION_MASTER });
-    return;
-  }
-  const t0 = performance.now();
-  glideTimer = window.setInterval(() => {
-    const u = Math.min(1, (performance.now() - t0) / ms);
-    const k = u * u * (3 - 2 * u);
-    useSequencerStore.getState().setMaster({
-      input: from.input + (STATION_MASTER.input - from.input) * k,
-      trim: from.trim + (STATION_MASTER.trim - from.trim) * k,
-      comp: from.comp + (STATION_MASTER.comp - from.comp) * k,
-    });
-    if (u >= 1) cancelMasterGlide();
-  }, 40);
-}
 export const SWAP_GAP_SECS = 8;
 const SWAP_FADE_IN_SECS = 1.2;
 const SWAP_FADE_SECS = 1.5;
@@ -231,7 +195,6 @@ async function runGap(nextSlot: number, short: boolean): Promise<void> {
   const seq = useSequencerStore.getState();
   if (seq.clickIn) useSequencerStore.setState({ clickIn: false });
   if (seq.playing) await togglePlayback();
-  glideMasterToStation(1500);
   let secs = short ? SWAP_GAP_SECS : 30;
   if (wav) {
     try {
@@ -252,13 +215,13 @@ async function runGap(nextSlot: number, short: boolean): Promise<void> {
         wav,
         short
           ? {
-              gain: GAP_WAV_GAIN,
+              gain: 1,
               isTexture: true,
               envelopeAttack: SWAP_FADE_IN_SECS,
               envelopeHold: Math.max(0.5, secs - SWAP_FADE_SECS),
               envelopeRelease: SWAP_FADE_SECS,
             }
-          : { gain: GAP_WAV_GAIN },
+          : { gain: 1 },
       );
     } catch (err) {
       console.warn('[gap] interstitial trigger failed:', err);
@@ -273,7 +236,6 @@ async function runGap(nextSlot: number, short: boolean): Promise<void> {
       useGap.setState({ phase: 'none', progress: 0 });
       return;
     }
-    cancelMasterGlide();
     if (st.performance.songs[nextSlot]) st.loadSong(nextSlot);
     else console.warn('[gap] staged slot emptied during the gap; restarting current');
     if (!useSequencerStore.getState().playing) await togglePlayback();
@@ -296,12 +258,11 @@ async function runSignOff(): Promise<void> {
   await Promise.resolve();
   const seq = useSequencerStore.getState();
   if (seq.playing) await togglePlayback();
-  glideMasterToStation(1500);
   if (wav) {
     try {
       const info = await loadSample(wav);
       useGap.setState({ duration: Math.max(4, info.durationSecs) * 1000 });
-      await triggerSample(wav, { gain: GAP_WAV_GAIN });
+      await triggerSample(wav, { gain: 1 });
     } catch (err) {
       console.warn('[gap] sign-off interstitial failed:', err);
     }
