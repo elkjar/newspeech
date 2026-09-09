@@ -8,8 +8,7 @@ import { Visualizer } from '../../stream/Visualizer';
 import { ReactiveVisual } from './ReactiveVisual';
 import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
 import { setSignalEnabled } from './signal';
-import { setTubeEnabled } from './TubeLayer';
-import { useLayout, useStage, FORMATS, LOOKS, TUBE_LEVELS, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
+import { useLayout, useStage, FORMATS, LOOKS, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
 import { NowWindow } from './windows/NowWindow';
@@ -123,8 +122,6 @@ export function Desktop() {
   const clamp = useLayout((s) => s.clamp);
   const look = useLayout((s) => s.look);
   const setLook = useLayout((s) => s.setLook);
-  const tubeLevel = useLayout((s) => s.tubeLevel);
-  const setTubeLevel = useLayout((s) => s.setTubeLevel);
   useEffect(() => clamp(), [clamp]);
   const fit = useStage();
   const clock = useClockText();
@@ -142,12 +139,9 @@ export function Desktop() {
   const format = useLayout((s) => s.format);
   const spec = FORMATS[format];
   const menubarUp = spec.menubarOnAir || arranging;
-  // The look: clean = nothing over the picture (CRT chain); signal = the 2D
-  // overlay; tube = overlay + the WebGL treatment on the visual.
-  useEffect(() => {
-    setSignalEnabled(look !== 'clean' && !arranging);
-    setTubeEnabled(look === 'tube' && !arranging);
-  }, [look, arranging]);
+  // The look, for the whole picture: clean = nothing over it (CRT chain);
+  // signal = the transmission overlay.
+  useEffect(() => setSignalEnabled(look !== 'clean' && !arranging), [look, arranging]);
   const hidden = arranging ? new Set<Falls>() : collapsed;
   const cardUp = useCards((s) => s.active !== null) || arranging;
   // An ident always comes to the front — its saved z is whatever it was
@@ -252,18 +246,6 @@ export function Desktop() {
                     {l}
                   </button>
                 ))}
-                {look === 'tube' &&
-                  TUBE_LEVELS.map((lv) => (
-                    <button
-                      key={lv}
-                      className="flex items-center gap-2 pl-7 pr-3 leading-[20px] text-left hover:bg-white/10"
-                      style={{ color: tubeLevel === lv ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)' }}
-                      onClick={() => setTubeLevel(lv)}
-                    >
-                      <span className="w-3">{tubeLevel === lv ? '▪' : '·'}</span>
-                      {lv}
-                    </button>
-                  ))}
               </div>
             )}
           </span>

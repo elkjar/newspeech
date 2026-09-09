@@ -235,8 +235,9 @@ Flags: `--set <dir|.seq|.seqset>…` · `--samples <dir>` · `--device <name>` �
 `--songs N` · `--first <name>` · dev: `--gap-every N` · `--song-bars N`. Folder layout:
 `BROADCAST/{SEQ_01, INTERSTITIALS, CARDS}` — the sibling folders are found beside the set.
 
-**Open (updated 2026-09-09, evening):** (1) tune the tube and the 4:3 arrangement by eye on real
-runs; (2) unattended layer
+**Open (updated 2026-09-09, night):** (1) tune the 4:3 arrangement by eye on a CRT run; (2)
+signal-overlay levels for the whole OS (subtle / distorted / destroyed — Chris's idea, meant for
+the entire picture) if wanted; (3) unattended layer
 (LaunchAgent with `--autostart`, silence + heartbeat watchdogs, overnight soak, hot-unplug policy)
 — **future state** per Chris 09-09: "the use case of me running a set and capturing the output
 works for now". Closed since: boot audio (boot static, 09-08), uniform zoom (the 1512×850 stage,
@@ -395,6 +396,15 @@ Destroyed" → `TubeLevel` per format (`windows ▾ → look → tube` shows the
 `TubeLayer` `LEVELS` over jitter / double / slip rate + distance / roll / wobble / bloom; distorted
 = the tuned default. Also since 0.1.11: no static of the tube's own (the footage is pre-mangled;
 the desktop overlay carries the noise).
+
+**Tube PULLED (0.1.13).** Chris, on seeing the tube's tears confined to the visual window: "the
+idea for these looks is the entire operating system visual vs. just the visual window within the
+OS … we can just pull this then. The signal version renders better." WebGL can only sample the
+video, never the desktop, so a GL pass can never be the whole-OS look. Removed: `TubeLayer.tsx`,
+`reactiveLevel.ts`, the `tube` look and its levels, the pool media's `crossOrigin`, `lastSignal()`.
+Kept: the **clean / signal** looks per format (16:9 → signal, 4:3 → clean; a saved `tube` reads
+as signal), the framerate fixes (grain tile, overlay canvas cap + 30 fps), the 4:3 picture, the
+window-travel keys. If the looks grow levels, they grow on the signal overlay — the whole OS.
 
 ## Standalone app — BUILT 2026-09-08 (v0.1.0 in /Applications)
 

@@ -22,19 +22,16 @@ import { create } from 'zustand';
 
 export type Format = '16:9' | '4:3';
 
-// The output look (Chris 2026-09-09): `tube` = the WebGL treatment on the
-// visual (tears, interlace shimmer, bloom, ghosting) + the signal overlay —
-// the best picture for a plain screen capture; `signal` = the 2D overlay
-// only (the 09-08 look); `clean` = nothing over the picture, no grain — for
-// the CRT chain, where a real tube does all of this and fine grain would not
-// survive the trip anyway. Saved per format: 16:9 defaults to tube, 4:3 to
-// clean.
-export type Look = 'clean' | 'signal' | 'tube';
-export const LOOKS: Look[] = ['clean', 'signal', 'tube'];
-// How hard the tube works (Chris 2026-09-09: "Tube - Subtle / Distorted /
-// Destroyed"). Multipliers over the tube's strengths (TubeLayer LEVELS).
-export type TubeLevel = 'subtle' | 'distorted' | 'destroyed';
-export const TUBE_LEVELS: TubeLevel[] = ['subtle', 'distorted', 'destroyed'];
+// The output look (Chris 2026-09-09) — for the ENTIRE operating-system
+// picture, not the visual window: `signal` = the transmission overlay
+// (scanlines, static, sync loss, grain); `clean` = nothing over the picture,
+// no grain — for the CRT chain, where a real tube does all of this and grain
+// would not survive the trip anyway. Saved per format: 16:9 defaults to
+// signal, 4:3 to clean. (A WebGL "tube" pass on the visual window alone was
+// built and pulled the same day — the looks are about the whole OS; the
+// signal overlay renders better.)
+export type Look = 'clean' | 'signal';
+export const LOOKS: Look[] = ['clean', 'signal'];
 
 export const MENUBAR_H = 28;
 
@@ -73,7 +70,7 @@ export const FORMATS: Record<Format, FormatSpec> = {
     zoom: 1,
     menubarOnAir: true,
     backdrop: false,
-    look: 'tube',
+    look: 'signal',
     // v1 was window px (whatever screen it was saved on); v2 is stage px.
     lsKey: 'broadcast.layout.v2',
   },
@@ -271,23 +268,14 @@ function loadLook(format: Format): Look {
   const f = FORMATS[format];
   try {
     const v = localStorage.getItem(f.lsKey + '.look');
-    if (v === 'clean' || v === 'signal' || v === 'tube') return v;
+    if (v === 'clean' || v === 'signal') return v;
+    if (v === 'tube') return 'signal'; // 0.1.8–0.1.12
     // The 09-08 signal on/off switch (16:9 only): off → clean.
     if (format === '16:9' && localStorage.getItem(LS_SIGNAL) === '0') return 'clean';
     return f.look;
   } catch {
     return f.look;
   }
-}
-
-function loadTubeLevel(format: Format): TubeLevel {
-  try {
-    const v = localStorage.getItem(FORMATS[format].lsKey + '.tubeLevel');
-    if (v === 'subtle' || v === 'distorted' || v === 'destroyed') return v;
-  } catch {
-    // ignore
-  }
-  return 'distorted';
 }
 
 interface LayoutState {
@@ -299,7 +287,6 @@ interface LayoutState {
   zoom: number;
   // What sits over the picture: see Look.
   look: Look;
-  tubeLevel: TubeLevel;
   // Standby's "arrange windows": the desktop shows with every window up so
   // the layout can be set before going on air. Not persisted.
   arranging: boolean;
@@ -310,7 +297,6 @@ interface LayoutState {
   setBackdrop: (v: boolean) => void;
   setZoom: (v: number) => void;
   setLook: (v: Look) => void;
-  setTubeLevel: (v: TubeLevel) => void;
   setArranging: (v: boolean) => void;
   // The window's aspect changed class (Rust refit the window to a new
   // display, or a browser resize): swap to that format's saved arrangement.
@@ -339,7 +325,6 @@ export const useLayout = create<LayoutState>((set, get) => ({
   backdrop: loadBackdrop(initialFormat),
   zoom: loadZoom(initialFormat),
   look: loadLook(initialFormat),
-  tubeLevel: loadTubeLevel(initialFormat),
   arranging: false,
   move: (id, x, y) =>
     set((s) => {
@@ -390,21 +375,11 @@ export const useLayout = create<LayoutState>((set, get) => ({
     console.info(`[layout] ${s.format} look=${look}`);
     set({ look });
   },
-  setTubeLevel: (tubeLevel) => {
-    const s = get();
-    try {
-      localStorage.setItem(FORMATS[s.format].lsKey + '.tubeLevel', tubeLevel);
-    } catch {
-      // ignore
-    }
-    console.info(`[layout] ${s.format} tube=${tubeLevel}`);
-    set({ tubeLevel });
-  },
   setArranging: (arranging) => set({ arranging }),
   setFormat: (format) => {
     if (get().format === format) return;
     console.info(`[layout] format ${format} (window ${window.innerWidth}x${window.innerHeight})`);
-    set({ format, windows: load(format), backdrop: loadBackdrop(format), zoom: loadZoom(format), look: loadLook(format), tubeLevel: loadTubeLevel(format) });
+    set({ format, windows: load(format), backdrop: loadBackdrop(format), zoom: loadZoom(format), look: loadLook(format) });
   },
   reset: () => {
     const s = get();

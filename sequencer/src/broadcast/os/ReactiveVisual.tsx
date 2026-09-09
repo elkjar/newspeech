@@ -12,9 +12,6 @@
 // Styling is applied straight to the wrapper element (no React re-render on
 // the audio path). The bank-swap count-in glitch (GlitchWrap) stays nested.
 // Intensities halved 2026-09-08 after a first look (Chris: "2x too intense").
-// The level/onset also feed `reactiveLevel` for the tube shader (TubeLayer),
-// which wraps the source inside the GlitchWrap so every CSS effect here
-// still lands on top of the GL picture.
 // The pool's filename caption is hidden here — the desktop carries the text.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
@@ -22,8 +19,6 @@ import { listen } from '@tauri-apps/api/event';
 import { subscribeStreamEvents } from '../../stream/streamEvents';
 import { GlitchWrap, GLITCH_STYLES } from '../../stream/GlitchWrap';
 import { useTransitionCountIn } from '../../stream/useTransitionCountIn';
-import { TubeLayer } from './TubeLayer';
-import { reactive } from './reactiveLevel';
 
 const DRIFT_KEYFRAMES = `@keyframes ns-visual-drift {
   0%   { transform: scale(1.0) translate(0%, 0%); }
@@ -63,7 +58,6 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
     void listen<number>('audio:level', (e) => {
       const lvl = Math.max(0, Math.min(1, e.payload));
       env += (lvl - env) * (lvl > env ? 0.6 : 0.12);
-      reactive.env = env;
       // The running average rises fast and falls slowly: a song coming in
       // from silence is loud relative to silence for a moment, not a stream
       // of onsets (it used to fire one every 140 ms for a second at every
@@ -85,8 +79,6 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
       if (lvl > 0.06 && lvl > avg * 1.9 && now - lastOnset > 260) {
         lastOnset = now;
         const t = Math.max(0.12, Math.min(0.5, (lvl - avg) * 1.25));
-        reactive.onsetAt = now;
-        reactive.onsetAmp = Math.min(1, t * 2);
         const style = ONSET_STYLES[Math.floor(Math.random() * ONSET_STYLES.length)](t);
         outer.current?.animate(style.keyframes, { duration: style.duration, easing: style.easing });
       }
@@ -133,9 +125,7 @@ export function ReactiveVisual({ children }: { children: ReactNode }) {
         className="absolute inset-0"
         style={{ animation: 'ns-visual-drift 26s ease-in-out infinite alternate', willChange: 'transform, filter' }}
       >
-        <GlitchWrap count={count}>
-          <TubeLayer>{children}</TubeLayer>
-        </GlitchWrap>
+        <GlitchWrap count={count}>{children}</GlitchWrap>
       </div>
     </div>
   );
