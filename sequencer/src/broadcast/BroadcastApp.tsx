@@ -81,6 +81,7 @@ interface LaunchArgs {
   gapEvery: number | null;
   // Skip standby: the unattended box goes on air by itself (Login Item).
   autostart: boolean;
+  noAutostart: boolean;
   // Sign off after N songs (a capture of known length). null = forever.
   songs: number | null;
   // Open with this song (name), then the pick mode takes over.
@@ -90,7 +91,7 @@ interface LaunchArgs {
 }
 
 function parseLaunchArgs(argv: string[]): LaunchArgs {
-  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null, autostart: false, songs: null, first: null };
+  const out: LaunchArgs = { set: [], samples: null, device: null, songBars: null, gapEvery: null, autostart: false, noAutostart: false, songs: null, first: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i] ?? null;
@@ -105,6 +106,7 @@ function parseLaunchArgs(argv: string[]): LaunchArgs {
     else if (a === '--song-bars') out.songBars = Number(next()) || null;
     else if (a.startsWith('--song-bars=')) out.songBars = Number(a.slice(12)) || null;
     else if (a === '--autostart' || a === '--go') out.autostart = true;
+    else if (a === '--no-autostart') out.noAutostart = true; // forget a remembered autostart
     else if (a === '--first') out.first = next() ?? null;
     else if (a.startsWith('--first=')) out.first = a.slice(8) || null;
     else if (a === '--songs') out.songs = Number(next()) || null;

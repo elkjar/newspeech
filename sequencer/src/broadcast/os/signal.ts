@@ -264,6 +264,8 @@ export function sampleSignal(now: number): SignalFrame {
   const gapLevel =
     g.phase === 'hold'
       ? clamp01(g.progress / 0.25)
+      : g.phase === 'swap'
+        ? clamp01(g.progress / 0.15) // the short gap: static up in about a second
       : g.phase === 'boot'
         ? 0.7
         : g.phase === 'off'

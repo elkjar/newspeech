@@ -84,6 +84,7 @@ export interface LaunchFlags {
   songs: number | null;
   first: string | null;
   autostart: boolean;
+  noAutostart: boolean;
 }
 
 function flagsPatch(args: LaunchFlags): Partial<BroadcastSettings> {
@@ -94,6 +95,7 @@ function flagsPatch(args: LaunchFlags): Partial<BroadcastSettings> {
   if (args.songs !== null) patch.songs = args.songs;
   if (args.first) patch.first = args.first;
   if (args.autostart) patch.autostart = true;
+  if (args.noAutostart) patch.autostart = false;
   return patch;
 }
 

@@ -61,13 +61,15 @@ function useCollapse(): Set<Falls> {
     let lastKey = '';
     return useGap.subscribe((g) => {
       if (g.phase !== lastPhase) {
-        if (g.phase === 'hold') order = rollOrder();
+        if (g.phase === 'hold' || g.phase === 'swap') order = rollOrder();
         lastPhase = g.phase;
       }
       const next = new Set<Falls>();
       if (g.phase === 'boot') for (const id of FALLERS) next.add(id);
       if (g.phase === 'off') for (const id of FALLERS) if (g.progress >= order[id].fall * 0.5) next.add(id);
       if (g.phase === 'hold') for (const id of FALLERS) if (g.progress >= order[id].fall) next.add(id);
+      // The short swap gap: everything falls within its first couple of seconds.
+      if (g.phase === 'swap') for (const id of FALLERS) if (g.progress >= order[id].fall * 0.6) next.add(id);
       if (g.phase === 'reboot') for (const id of FALLERS) if (g.progress < order[id].rise) next.add(id);
       const key = [...next].sort().join(',');
       if (key !== lastKey) {

@@ -39,6 +39,7 @@ async function pickFolder(title: string): Promise<string | null> {
 export function BootPanel() {
   const phase = useGap((s) => s.phase);
   const progress = useGap((s) => s.progress);
+  const shortGap = useGap((s) => s.short);
   const station = useStationBoot((s) => s.phase);
   const ready = useStationBoot((s) => s.ready);
   const goAt = useStationBoot((s) => s.goAt);
@@ -62,7 +63,9 @@ export function BootPanel() {
     return () => window.clearInterval(id);
   }, [station]);
 
-  const visible = phase === 'boot' || (phase === 'reboot' && progress < 0.1);
+  // The boot log flashes at the top of a full reboot; a swap gap's short
+  // reboot skips it.
+  const visible = phase === 'boot' || (phase === 'reboot' && progress < 0.1 && !shortGap);
   if (!visible) return null;
   const fade = phase === 'reboot' ? 1 - progress / 0.1 : 1;
   const flicker = 0.84 + 0.16 * Math.random();

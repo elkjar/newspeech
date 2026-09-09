@@ -26,7 +26,15 @@ import { dirOf } from '../state/persist';
 // hold, then the same reboot when the first song's transport starts.
 // `off` = signed off (end of transmission): transport stopped, static
 // settling, the sign-off panel up. Terminal.
-export type GapPhase = 'none' | 'hold' | 'reboot' | 'boot' | 'off';
+// 'swap' = the short gap between every two songs (Chris 2026-09-08: "the
+// swap between songs could use some space … fading into static with a short
+// interstitial wav with a loading indicator"): the transport stops on the
+// bar, the outgoing tails ring under rising static, a random interstitial
+// plays for SWAP_GAP_SECS (faded out if longer), the staged song starts on
+// its own downbeat with its own master — no more +13 dB step of the incoming
+// master landing on the outgoing tails (measured 2026-09-08). 'hold' is the
+// full interstitial on the station clock, picker at its end.
+export type GapPhase = 'none' | 'hold' | 'swap' | 'reboot' | 'boot' | 'off';
 
 export interface GapState {
   phase: GapPhase;
@@ -36,6 +44,9 @@ export interface GapState {
   wav: string | null;
   nextIdx: number | null;
   files: string[];
+  // The running/last gap was a short swap gap (its reboot is short too and
+  // shows no boot log).
+  short: boolean;
   count: number; // interstitials played this session
   lastAt: number | null; // Date.now()
   nextDueAt: number | null; // Date.now() — the station clock
@@ -48,6 +59,10 @@ export interface GapState {
 }
 
 export const REBOOT_SECS = 28;
+export const SWAP_GAP_SECS = 8;
+const SWAP_FADE_IN_SECS = 1.2;
+const SWAP_FADE_SECS = 1.5;
+export const SWAP_REBOOT_SECS = 8;
 // Station clock: first interstitial this long after boot, then this range
 // between them (Chris: occasionally, not between every song).
 const FIRST_MIN = [14, 22];
@@ -62,6 +77,7 @@ export const useGap = create<GapState>(() => ({
   wav: null,
   nextIdx: null,
   files: [],
+  short: false,
   count: 0,
   lastAt: null,
   nextDueAt: null,
@@ -153,22 +169,25 @@ function startTicker(): void {
   if (ticker === null) ticker = window.setInterval(tick, 50);
 }
 
-// The interstitial itself. Called from the interceptor; the transport stop
-// is deferred (scheduler.stop() must not run inside its own tick).
-async function runGap(nextSlot: number): Promise<void> {
-  const wav = pickWav();
+// The gap between songs. Called from the interceptor; the transport stop is
+// deferred (scheduler.stop() must not run inside its own tick). `short` is
+// the swap gap between every two songs; otherwise the full interstitial,
+// whose WAV's length IS the gap.
+async function runGap(nextSlot: number, short: boolean): Promise<void> {
+  const files = useGap.getState().files;
+  const wav = files.length ? pickWav() : null;
   const b = useBroadcast.getState();
   // Claim the phase synchronously — the interceptor is asked again every
   // tick until the transport actually stops.
   useGap.setState({
-    phase: 'hold',
+    phase: short ? 'swap' : 'hold',
     progress: 0,
     startedAt: performance.now(),
-    duration: 30_000,
+    duration: short ? SWAP_GAP_SECS * 1000 : 30_000,
     wav,
     nextIdx: b.next,
-    count: useGap.getState().count + 1,
-    lastAt: Date.now(),
+    short,
+    ...(short ? {} : { count: useGap.getState().count + 1, lastAt: Date.now() }),
   });
   startTicker();
   // Stop the transport (fades textures) — deferred out of the tick.
@@ -176,22 +195,39 @@ async function runGap(nextSlot: number): Promise<void> {
   const seq = useSequencerStore.getState();
   if (seq.clickIn) useSequencerStore.setState({ clickIn: false });
   if (seq.playing) await togglePlayback();
-  // The WAV's length IS the gap.
-  let secs = 30;
-  try {
-    const info = await loadSample(wav);
-    secs = Math.max(4, info.durationSecs);
-  } catch (err) {
-    console.warn('[gap] could not load interstitial, using 30 s of silence:', wav, err);
+  let secs = short ? SWAP_GAP_SECS : 30;
+  if (wav) {
+    try {
+      const info = await loadSample(wav);
+      if (!short) secs = Math.max(4, info.durationSecs);
+    } catch (err) {
+      console.warn('[gap] could not load interstitial, using silence:', wav, err);
+    }
   }
   useGap.setState({ startedAt: performance.now(), duration: secs * 1000 });
-  console.info(`[gap] interstitial ${wav.split('/').pop()} (${secs.toFixed(1)} s) → then slot ${nextSlot}`);
-  try {
-    await triggerSample(wav, { gain: 1 });
-  } catch (err) {
-    console.warn('[gap] interstitial trigger failed:', err);
+  console.info(`[gap] ${short ? 'swap gap' : 'interstitial'} ${wav ? wav.split('/').pop() : '(silence)'} (${secs.toFixed(1)} s) → then slot ${nextSlot}`);
+  if (wav) {
+    try {
+      // The short gap's WAV fades in and out on its own envelope — static
+      // rising under the outgoing tails, gone under the downbeat — and is a
+      // texture voice so a transport stop rings it down rather than cutting.
+      await triggerSample(
+        wav,
+        short
+          ? {
+              gain: 1,
+              isTexture: true,
+              envelopeAttack: SWAP_FADE_IN_SECS,
+              envelopeHold: Math.max(0.5, secs - SWAP_FADE_SECS),
+              envelopeRelease: SWAP_FADE_SECS,
+            }
+          : { gain: 1 },
+      );
+    } catch (err) {
+      console.warn('[gap] interstitial trigger failed:', err);
+    }
   }
-  // Swap + restart when the WAV ends. loadSong while stopped applies at
+  // Swap + restart when the gap ends. loadSong while stopped applies at
   // once (same path loadAndStartSet uses for the first song).
   const lead = 120;
   window.setTimeout(async () => {
@@ -203,9 +239,10 @@ async function runGap(nextSlot: number): Promise<void> {
     if (st.performance.songs[nextSlot]) st.loadSong(nextSlot);
     else console.warn('[gap] staged slot emptied during the gap; restarting current');
     if (!useSequencerStore.getState().playing) await togglePlayback();
-    useGap.setState({ phase: 'reboot', progress: 0, startedAt: performance.now(), duration: REBOOT_SECS * 1000 });
-    armClock(false);
-    console.info('[gap] reboot');
+    const rebootSecs = short ? SWAP_REBOOT_SECS : REBOOT_SECS;
+    useGap.setState({ phase: 'reboot', progress: 0, startedAt: performance.now(), duration: rebootSecs * 1000 });
+    if (!short) armClock(false);
+    console.info(`[gap] reboot (${rebootSecs} s)`);
   }, Math.max(0, secs * 1000 - lead));
 }
 
@@ -247,13 +284,15 @@ export function installGapConductor(): () => void {
   setSongEndInterceptor((_store, nextSlot) => {
     // While a gap is running (the tick or two before the transport stops,
     // and the reboot) the end stays ours — Ghost must not swap under us.
-    if (useGap.getState().phase === 'hold' || useGap.getState().phase === 'off') return true;
+    const phase = useGap.getState().phase;
+    if (phase === 'hold' || phase === 'swap' || phase === 'off') return true;
     if (shouldSignOff()) {
       void runSignOff();
       return true;
     }
-    if (!shouldGap()) return false;
-    void runGap(nextSlot);
+    // Every song end is a gap: the full interstitial when the station clock
+    // says so, the short swap gap otherwise.
+    void runGap(nextSlot, !shouldGap());
     return true;
   });
   return () => {
@@ -266,7 +305,7 @@ export function installGapConductor(): () => void {
 
 // Enter a phase now (boot.ts uses this for boot → reboot).
 export function startGapPhase(phase: GapPhase, secs: number): void {
-  useGap.setState({ phase, progress: 0, startedAt: performance.now(), duration: secs * 1000 });
+  useGap.setState({ phase, progress: 0, startedAt: performance.now(), duration: secs * 1000, short: phase === 'swap' });
   if (phase !== 'none') startTicker();
 }
 

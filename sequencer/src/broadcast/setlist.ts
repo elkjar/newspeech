@@ -233,7 +233,10 @@ function installConductor(): void {
     // stage the following pick.
     const prevSlot = prev.performance.activeSong;
     applyGlobalFx(b.slotFx[cur]);
-    console.info(`[broadcast] now playing: ${b.next !== null ? b.entries[b.next]?.name : '?'} (slot ${cur}, freed ${prevSlot})`);
+    const fx = b.slotFx[cur];
+    console.info(
+      `[broadcast] now playing: ${b.next !== null ? b.entries[b.next]?.name : '?'} (slot ${cur}, freed ${prevSlot}) at ${new Date().toISOString()} · master input ${fx?.master?.input ?? '?'} trim ${fx?.master?.trim ?? '?'}`,
+    );
     useBroadcast.setState((s) => ({
       current: s.next,
       next: null,

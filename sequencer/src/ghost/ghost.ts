@@ -998,6 +998,7 @@ function handToNextSong(
   globalStep: number
 ): void {
   if (songEndInterceptor && songEndInterceptor(store, nextSlot, globalStep)) return;
+  console.info(`[ghost] hand to slot ${nextSlot} at step ${globalStep} · ${new Date().toISOString()}`);
   void fadeTextures(SONG_FADE_SECS);
   store.swapSongImmediate(nextSlot, globalStep);
 }

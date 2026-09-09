@@ -59,6 +59,7 @@ export function NextPanel() {
     }
   }, [phase, progress, nextIdx, candidates, roll]);
 
+  if (phase === 'swap') return <LoadingPanel progress={gapProgress} wav={wav} next={nextIdx !== null ? entries[nextIdx]?.name ?? null : null} />;
   if (phase !== 'hold' || progress < 0 || entries.length === 0) return null;
   const settled = progress >= ROLL_END && nextIdx !== null;
   const lit = settled ? nextIdx : roll;
@@ -127,6 +128,49 @@ export function NextPanel() {
         </div>
         <div className="h-[2px] bg-white/10">
           <div className="h-full bg-white/70" style={{ width: `${(progress * 100).toFixed(1)}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The short swap gap's one stable thing: a small loading indicator over the
+// static (Chris 2026-09-08). The incoming song's name sits small under it.
+function LoadingPanel({ progress, wav, next }: { progress: number; wav: string | null; next: string | null }) {
+  const [blink, setBlink] = useState(true);
+  useEffect(() => {
+    const id = window.setInterval(() => setBlink((v) => !v), 530);
+    return () => window.clearInterval(id);
+  }, []);
+  const dots = '.'.repeat(1 + (Math.floor(progress * 12) % 3));
+  const flicker = 0.82 + 0.18 * Math.random();
+  return (
+    <div className="fixed inset-0 pointer-events-none flex items-center justify-center" style={{ zIndex: 20001 }}>
+      <div
+        className="font-mono text-white"
+        style={{
+          width: 360,
+          background: 'rgba(5,5,5,0.86)',
+          border: '1px solid rgba(255,255,255,0.28)',
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.9), 0 18px 40px rgba(0,0,0,0.55)',
+          opacity: flicker,
+        }}
+      >
+        <div className="flex items-center gap-3 px-3" style={{ height: 22, borderBottom: '1px solid rgba(255,255,255,0.22)', background: 'rgba(255,255,255,0.04)' }}>
+          <span className="text-[8px] tracking-[0.2em] opacity-40">··</span>
+          <span className="font-sans text-[10px] tracking-[0.18em] lowercase">station</span>
+          <span className="ml-auto text-[8px] tracking-[0.16em] uppercase text-white/45 truncate">{wav ? wav.split('/').pop() : ''}</span>
+        </div>
+        <div className="px-4 pt-3 pb-3" style={{ height: 78 }}>
+          <div className="text-[8px] tracking-[0.18em] uppercase text-white/45">retuning</div>
+          <div className="font-sans mt-1 whitespace-nowrap" style={{ fontSize: 24, lineHeight: '30px', letterSpacing: '0.02em' }}>
+            loading{dots}
+            <span style={{ opacity: blink ? 1 : 0 }}> ▍</span>
+          </div>
+          <div className="mt-1 text-[9px] tracking-[0.08em] text-white/40 truncate">{next ?? ''}</div>
+        </div>
+        <div className="h-[2px] bg-white/10">
+          <div className="h-full bg-white/70" style={{ width: `${(Math.max(0, Math.min(1, progress)) * 100).toFixed(1)}%` }} />
         </div>
       </div>
     </div>
