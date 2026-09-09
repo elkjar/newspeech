@@ -348,6 +348,9 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
   // sequence has had its moment on screen.
   await stationBootGate();
   if (gen !== loadGen) return;
+  // The boot static ran under the station master; the first song's own
+  // master lands with its downbeat, like every song after it.
+  applyGlobalFx(read.fx);
   bootLog('transport: start');
   if (!useSequencerStore.getState().playing) await togglePlayback();
 }

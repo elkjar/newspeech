@@ -15,7 +15,7 @@
 import { create } from 'zustand';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore } from '../state/store';
-import { useGap, startGapPhase, pickInterstitial, REBOOT_SECS } from './gap';
+import { useGap, startGapPhase, pickInterstitial, glideMasterToStation, GAP_WAV_GAIN, REBOOT_SECS } from './gap';
 import { useCards } from './cards';
 import { loadSample, triggerSample, fadeTextures } from '../audio/nativeEngine';
 
@@ -120,9 +120,12 @@ export async function stationBootGate(): Promise<void> {
   if (wav) {
     staticFiredFor = goAtNow;
     try {
+      // The station master under the static (same as every gap); the
+      // first song's own master lands with its downbeat.
+      glideMasterToStation(0);
       const info = await loadSample(wav);
       wavMs = info.durationSecs * 1000;
-      await triggerSample(wav, { gain: 1, isTexture: true });
+      await triggerSample(wav, { gain: GAP_WAV_GAIN, isTexture: true });
       bootLog(`static: ${wav.split('/').pop()} (${info.durationSecs.toFixed(0)} s)`);
     } catch (err) {
       console.warn('[boot] boot static failed:', err);
