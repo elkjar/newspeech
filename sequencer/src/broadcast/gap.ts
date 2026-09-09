@@ -209,14 +209,12 @@ async function runGap(nextSlot: number, short: boolean): Promise<void> {
   if (wav) {
     try {
       // The short gap's WAV fades in and out on its own envelope — static
-      // rising under the outgoing tails, gone under the downbeat — and is a
-      // texture voice so a transport stop rings it down rather than cutting.
+      // rising under the outgoing tails, gone under the downbeat.
       await triggerSample(
         wav,
         short
           ? {
               gain: 1,
-              isTexture: true,
               envelopeAttack: SWAP_FADE_IN_SECS,
               envelopeHold: Math.max(0.5, secs - SWAP_FADE_SECS),
               envelopeRelease: SWAP_FADE_SECS,
