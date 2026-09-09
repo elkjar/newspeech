@@ -17,7 +17,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore } from '../state/store';
 import { useGap, startGapPhase, pickInterstitial, REBOOT_SECS } from './gap';
 import { useCards } from './cards';
-import { loadSample, triggerSample, fadeTextures } from '../audio/nativeEngine';
+import { loadSample, triggerSample } from '../audio/nativeEngine';
 
 export interface BootLine {
   t: number; // ms since boot start
@@ -41,10 +41,17 @@ interface StationBootState {
 export const BOOT_MIN_SECS = 12;
 // Typed replay pace after GO.
 export const BOOT_LINE_MS = 650;
-// Boot static: GO fires a random interstitial under the typed log; the first
-// downbeat waits for it, capped here (long WAVs fade out into the downbeat).
+// Boot static: GO fires a random interstitial under the typed log on its own
+// envelope — a plain voice, NOT a texture (a texture would be caught by any
+// fadeTextures in flight, the swap-gap lesson). It rises over the attack,
+// holds, and its long release runs UNDER the first bars: the downbeat lands
+// BOOT_WAV_OVERLAP_SECS into the release, so the song emerges out of the
+// static rather than after it. Long WAVs hold at most BOOT_WAV_CAP_SECS;
+// short ones spend their own tail on the release.
 export const BOOT_WAV_CAP_SECS = 32;
-const BOOT_WAV_FADE_SECS = 3.5;
+const BOOT_WAV_ATTACK_SECS = 1.5;
+const BOOT_WAV_RELEASE_SECS = 8;
+const BOOT_WAV_OVERLAP_SECS = 1;
 let staticFiredFor = -1; // goAt of the GO whose static already fired
 
 export const useStationBoot = create<StationBootState>(() => ({
@@ -110,34 +117,44 @@ export async function stationBootGate(): Promise<void> {
     }
     await new Promise<void>((r) => goWaiters.push(r));
   }
-  // The static under the boot: one random interstitial, fired as a texture
-  // voice so it can be faded into the downbeat if it's longer than the cap.
-  // Once per GO — two set loads can be parked at the gate (standby re-pick),
-  // and both wake; only the first fires the static.
-  let wavMs = 0;
+  // The static under the boot: one random interstitial on its own envelope
+  // (see BOOT_WAV_*). Once per GO — two set loads can be parked at the gate
+  // (standby re-pick), and both wake; only the first fires the static.
+  // downbeatMs = where the first downbeat should land after the trigger:
+  // one second into the static's release.
+  let downbeatMs = 0;
+  let firedAt = performance.now();
   const goAtNow = useStationBoot.getState().goAt;
   const wav = staticFiredFor === goAtNow ? null : pickInterstitial();
   if (wav) {
     staticFiredFor = goAtNow;
     try {
       const info = await loadSample(wav);
-      wavMs = info.durationSecs * 1000;
-      await triggerSample(wav, { gain: 1, isTexture: true });
-      bootLog(`static: ${wav.split('/').pop()} (${info.durationSecs.toFixed(0)} s)`);
+      const hold = Math.min(
+        Math.max(0.5, info.durationSecs - BOOT_WAV_ATTACK_SECS - BOOT_WAV_RELEASE_SECS),
+        BOOT_WAV_CAP_SECS - BOOT_WAV_ATTACK_SECS,
+      );
+      await triggerSample(wav, {
+        gain: 1,
+        envelopeAttack: BOOT_WAV_ATTACK_SECS,
+        envelopeHold: hold,
+        envelopeRelease: BOOT_WAV_RELEASE_SECS,
+      });
+      firedAt = performance.now();
+      downbeatMs = (BOOT_WAV_ATTACK_SECS + hold + BOOT_WAV_OVERLAP_SECS) * 1000;
+      bootLog(`static: ${wav.split('/').pop()} (${(BOOT_WAV_ATTACK_SECS + hold + BOOT_WAV_RELEASE_SECS).toFixed(0)} s)`);
     } catch (err) {
       console.warn('[boot] boot static failed:', err);
-      wavMs = 0;
+      downbeatMs = 0;
     }
   }
   const goAt = useStationBoot.getState().goAt;
   const n = useStationBoot.getState().lines.length;
   const typedMs = n * BOOT_LINE_MS + 1200;
-  const holdMs = Math.max(typedMs, Math.min(wavMs, BOOT_WAV_CAP_SECS * 1000));
-  if (wavMs > holdMs) {
-    // Longer than the hold: fade it under the downbeat rather than cut.
-    window.setTimeout(() => void fadeTextures(BOOT_WAV_FADE_SECS), Math.max(0, holdMs - BOOT_WAV_FADE_SECS * 1000 - (performance.now() - goAt)));
-  }
-  const left = holdMs - (performance.now() - goAt);
+  // Typed replay is timed from GO; the static from its trigger (the sample
+  // load sits between the two), so the downbeat really lands in the release.
+  const now = performance.now();
+  const left = Math.max(typedMs - (now - goAt), downbeatMs - (now - firedAt));
   if (left > 0) await new Promise((r) => window.setTimeout(r, left));
 }
 

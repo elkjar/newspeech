@@ -392,6 +392,8 @@ pub fn shared_builder() -> tauri::Builder<tauri::Wry> {
       audio::audio_set_master_dist,
       audio::audio_set_master_gate,
       audio::audio_set_master_bypass,
+      audio::audio_set_safety_limiter,
+      audio::audio_safety_limiter_gr,
       audio::audio_start_recording_combined,
       audio::audio_stop_recording_combined,
       audio::audio_is_recording_combined,
@@ -488,6 +490,13 @@ pub fn spawn_level_emitter(app_handle: tauri::AppHandle) {
     let time = audio::engine_time();
     if let Err(e) = app_handle.emit("audio:time", time) {
       log::warn!("[audio:time emit] {}", e);
+    }
+    // Safety-limiter gain reduction (dB) — only while the limiter is on
+    // (BROADCAST); Sequence has no listener and gets no traffic.
+    if audio::safety_limiter_enabled() {
+      if let Err(e) = app_handle.emit("audio:limiter", audio::safety_limiter_gr_db()) {
+        log::warn!("[audio:limiter emit] {}", e);
+      }
     }
   });
 }

@@ -943,6 +943,14 @@ export async function setMasterBypass(bypass: boolean): Promise<void> {
   await invoke<void>('audio_set_master_bypass', { bypass });
 }
 
+// Fixed brick-wall safety limiter at the very end of the master path
+// (ceiling −1 dBFS, ~2 ms lookahead). Off by default; BROADCAST enables it
+// once at boot so no file can clip the stream. Gain reduction streams as
+// the `audio:limiter` event (dB ≥ 0) while enabled.
+export async function setSafetyLimiter(enabled: boolean): Promise<void> {
+  await invoke<void>('audio_set_safety_limiter', { enabled });
+}
+
 // Combined recording (phase 7f-1). Path is absolute filesystem path —
 // caller builds it from the configured recordings dir + a timestamped
 // filename. Rust opens the WAV (16-bit PCM, stereo, device sample

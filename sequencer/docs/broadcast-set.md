@@ -235,11 +235,51 @@ Flags: `--set <dir|.seq|.seqset>…` · `--samples <dir>` · `--device <name>` �
 `--songs N` · `--first <name>` · dev: `--gap-every N` · `--song-bars N`. Folder layout:
 `BROADCAST/{SEQ_01, INTERSTITIALS, CARDS}` — the sibling folders are found beside the set.
 
-**Open, in order:** (1) boot audio in-app (an interstitial under the boot log; the gate takes the
-WAV's length); (2) a fixed safety limiter at the end of the chain — no file may clip the stream;
-(3) uniform CSS zoom for big displays; (4) standalone app (below); (5) WebGL tube on the visual;
-(6) unattended layer (LaunchAgent, watchdogs, file log, soak); (7) CRT-safe layout for the
-physical chain.
+**Open, in order (updated 2026-09-09):** (1) unattended layer (LaunchAgent with `--autostart`,
+silence + heartbeat watchdogs, overnight soak, hot-unplug policy); (2) WebGL tube on the visual;
+(3) CRT-safe layout for the physical chain; (4) Ghost density on melodic tracks (see the 09-09
+status). Closed since: boot audio (boot static, 09-08), uniform zoom (the 1512×850 stage, 09-08),
+standalone app (09-08), safety limiter (09-09).
+
+## Status — 2026-09-09 (v0.1.5)
+
+**Safety limiter.** `audio.rs` `SafetyLimiter`: a fixed brick-wall at the very end of the master
+path — after the master stage, before the recorder tap and the device, so recordings match the
+stream. Stereo-linked lookahead design: per-frame target gain `min(1, ceiling/peak)` → sliding
+minimum over the 2 ms window → exponential release (120 ms) toward unity → moving average over the
+same window, applied to audio delayed window−1 frames. Min-then-average makes the gain a linear
+ramp that arrives with the peak (no step, no overshoot), and the average of window minimums is ≤
+the target of the frame being output, so the ceiling (−1 dBFS) holds by construction; a clamp
+stays behind it for float rounding only. OFF by default — Sequence never calls it (one atomic load
+per block). BROADCAST enables it once at boot (`BroadcastApp` → `setSafetyLimiter(true)`), before
+anything plays, so there is no enable click. Telemetry: `audio:limiter` event (gain reduction in
+dB, 30 Hz, only while enabled) → the **sys** window's `limit` row (bar + held peak, 12 dB scale).
+Commands: `audio_set_safety_limiter`, `audio_safety_limiter_gr`.
+
+**Boot static crossfade.** The boot WAV is no longer a texture voice with a scheduled
+`fadeTextures` (which either cut at the file's end for WAVs under the 32 s cap, or fully faded
+before the downbeat — static, a beat of nothing, then song). It is a plain voice on its own
+envelope (`boot.ts` `BOOT_WAV_*`): 1.5 s attack, hold, 8 s release, and the gate lands the first
+downbeat **1 s into the release** — the song emerges out of the static. Long files hold at most
+32 s; short files spend their own tail on the release.
+
+**Interstitials RC000099 / RC000100.** Both originals (Dropbox `___DEBRIS`) carry a constant
++0.22 FS DC offset on both channels, start to end — a DC-coupled source (the drones) into a
+DC-coupled recorder input; the other RC files are AC-clean, so the offset is in the source, not the
+recorder. The 09-09 normalization pass (5 Hz one-pole highpass) removed the offset but turned the
+step at t=0 (and the file end) into a 32 ms decaying thump. Re-derived from the originals with
+the constant removed first (`dcshift`), then the same highpass + two-pass loudnorm to −18 LUFS;
+DC now 0.000, no start transient.
+
+**Ghost density on melodic tracks (Chris, 09-09: "a bit weird").** Facts: Ghost holds density at
+0.5 (= as authored) and gestures +0.05 for 1 bar every ~10–14 bars and +0.1 over the 2-bar
+pre-transition build; above 0.5 authored-OFF steps fill in (melodic at half the drum rate), below
+0.5 authored-ON steps thin. Anchored tracks (first two melodic slots, root-follow) are exempt;
+any further melodic track is not. The per-track **lock** (`lockTiming`, saved in the .seq) exempts
+mutation flips ONLY — density thin/fill in `tick.ts` checks `harmonicAnchor` but not
+`lockTiming`, so locking a track in the .seq does not stop density touching it, though the
+button's tooltip promises a fixed pattern. Candidate fix: `lockTiming` also exempts thin/fill
+(two conditions in `tick.ts`). Decision pending.
 
 ## Standalone app — BUILT 2026-09-08 (v0.1.0 in /Applications)
 

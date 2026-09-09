@@ -15,6 +15,8 @@ export function SysWindow() {
   const [status, setStatus] = useState<RawStatus | null>(null);
   const [level, setLevel] = useState(0);
   const [peak, setPeak] = useState(0);
+  const [lim, setLim] = useState(0);
+  const [limHold, setLimHold] = useState(0);
   const [now, setNow] = useState(Date.now());
   const bootDone = useSequencerStore((s) => s.bootDone);
   const playing = useSequencerStore((s) => s.playing);
@@ -53,6 +55,17 @@ export function SysWindow() {
     });
     return () => un?.();
   }, []);
+  useEffect(() => {
+    if (!isTauri()) return;
+    let un: (() => void) | null = null;
+    void listen<number>('audio:limiter', (e) => {
+      setLim(e.payload);
+      setLimHold((p) => Math.max(p * 0.96, e.payload));
+    }).then((fn) => {
+      un = fn;
+    });
+    return () => un?.();
+  }, []);
 
   const db = level > 0 ? (20 * Math.log10(level)).toFixed(1) : '-inf';
 
@@ -74,6 +87,14 @@ export function SysWindow() {
         <Row k="uptime" v={fmtUptime(b.startedAt, now)} />
         <Row k="played" v={String(b.played)} />
         <Row k="mode" v={`${b.mode}${b.devSongBars ? ` · dev ${b.devSongBars} bars` : ''}`} />
+        <div className="flex items-center gap-2">
+          <span className="w-16 text-[8px] tracking-[0.16em] uppercase text-white/40">limit</span>
+          <div className="flex-1 h-[6px] bg-white/10 relative">
+            <div className="absolute inset-y-0 left-0 bg-white/80" style={{ width: `${Math.min(100, Math.round((lim / 12) * 100))}%` }} />
+            <div className="absolute inset-y-0 w-px bg-white" style={{ left: `${Math.min(100, Math.round((limHold / 12) * 100))}%` }} />
+          </div>
+          <span className="w-12 text-right tabular-nums">{lim > 0.05 ? `-${lim.toFixed(1)}` : '0.0'}</span>
+        </div>
       </div>
     </div>
   );

@@ -27,7 +27,7 @@ import {
   installStreamInteractionEmit,
 } from '../stream/streamBridge';
 import { announceStreamPresence } from '../stream/streamEvents';
-import { presetNativeDeviceName } from '../audio/nativeEngine';
+import { presetNativeDeviceName, setSafetyLimiter } from '../audio/nativeEngine';
 import { setConfiguredUserSamplesDir } from '../instruments/userSamplesDir';
 import { togglePlayback, panicKill } from '../audio/transport';
 import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
@@ -182,6 +182,11 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
   useEffect(() => installStreamSnapshot(), []);
   useEffect(() => installStreamInteractionEmit(), []);
   useEffect(() => installNativeAudio({ recorder: false }), []);
+  // Brick-wall at the end of the chain, on before anything plays: a set of
+  // files mastered at every level must never clip the stream.
+  useEffect(() => {
+    if (NATIVE) void setSafetyLimiter(true).catch((err) => console.warn('[broadcast] safety limiter:', err));
+  }, []);
   useEffect(() => installMixRoutingPush(), []);
   useEffect(() => {
     if (!bootDone) return;

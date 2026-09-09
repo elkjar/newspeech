@@ -2271,6 +2271,212 @@ impl DcBlock {
   }
 }
 
+// --- safety limiter (audio-thread only) ---
+//
+// A fixed brick-wall at the very end of the master path, for BROADCAST: a
+// stream that runs for days through files mastered at every level must never
+// clip the encoder, and nobody is at the desk to turn it down. OFF by default
+// (Sequence is untouched; zero cost besides one atomic load per block) — the
+// runner switches it on once at boot via audio_set_safety_limiter.
+//
+// Design: stereo-linked lookahead limiter. Per frame the gain the ceiling
+// demands, t = min(1, ceiling / peak), goes through a sliding MINIMUM over the
+// lookahead window (N frames), then an exponential RELEASE toward unity, then
+// a moving AVERAGE over the same N frames; the audio is delayed N-1 frames and
+// multiplied by the result. min-then-average turns a gain step into a linear
+// ramp that arrives at the reduction exactly as the peak does — no overshoot
+// and no step — and the average of a window of minimums is provably ≤ the
+// target of the frame being output, so nothing gets past the ceiling; the
+// clamp at the end is a backstop for float rounding only. Adds ~2 ms of
+// latency while enabled, none when off (and no click on enable at boot,
+// since the runner turns it on before anything plays).
+static SAFETY_LIMITER_ENABLED: AtomicBool = AtomicBool::new(false);
+// Gain reduction over the most recent block, dB ≥ 0, f32 bits — the meter.
+static SAFETY_LIMITER_GR_DB: AtomicU32 = AtomicU32::new(0);
+const SAFETY_LIMITER_CEILING_DB: f32 = -1.0;
+const SAFETY_LIMITER_LOOKAHEAD_MS: f32 = 2.0;
+const SAFETY_LIMITER_RELEASE_MS: f32 = 120.0;
+
+pub fn safety_limiter_enabled() -> bool {
+  SAFETY_LIMITER_ENABLED.load(Ordering::Relaxed)
+}
+
+pub fn safety_limiter_gr_db() -> f32 {
+  f32::from_bits(SAFETY_LIMITER_GR_DB.load(Ordering::Relaxed))
+}
+
+struct SafetyLimiter {
+  // Lookahead window in frames (≥ 2).
+  n: usize,
+  ceiling: f32,
+  release_coef: f32,
+  // Sliding minimum of the per-frame gain targets over the last n frames.
+  // `targets` is a ring; `min_age` = frames since `min_val` was pushed, so
+  // when it reaches n the minimum has left the window and we rescan.
+  targets: Vec<f32>,
+  tpos: usize,
+  min_val: f32,
+  min_age: usize,
+  // Release-smoothed gain: follows the minimum down instantly, recovers
+  // toward 1 with the release time constant, never above the minimum.
+  rel_env: f32,
+  // Moving average of rel_env over n frames (f64 sum: no drift).
+  avg: Vec<f32>,
+  apos: usize,
+  avg_sum: f64,
+  // n-1 frame stereo delay so the ramp lands before the peak.
+  delay_l: Vec<f32>,
+  delay_r: Vec<f32>,
+  dpos: usize,
+  // True once process() has run since the last idle(); idle() resets once.
+  active: bool,
+}
+
+impl SafetyLimiter {
+  fn new(sample_rate: u32) -> Self {
+    let n = ((SAFETY_LIMITER_LOOKAHEAD_MS * 0.001 * sample_rate as f32).round() as usize).max(2);
+    Self {
+      n,
+      ceiling: 10.0_f32.powf(SAFETY_LIMITER_CEILING_DB / 20.0),
+      release_coef: one_pole_coef(SAFETY_LIMITER_RELEASE_MS, sample_rate as f32),
+      targets: vec![1.0; n],
+      tpos: 0,
+      min_val: 1.0,
+      min_age: 0,
+      rel_env: 1.0,
+      avg: vec![1.0; n],
+      apos: 0,
+      avg_sum: n as f64,
+      delay_l: vec![0.0; n - 1],
+      delay_r: vec![0.0; n - 1],
+      dpos: 0,
+      active: false,
+    }
+  }
+
+  fn reset(&mut self) {
+    for t in self.targets.iter_mut() {
+      *t = 1.0;
+    }
+    self.tpos = 0;
+    self.min_val = 1.0;
+    self.min_age = 0;
+    self.rel_env = 1.0;
+    for a in self.avg.iter_mut() {
+      *a = 1.0;
+    }
+    self.apos = 0;
+    self.avg_sum = self.n as f64;
+    for d in self.delay_l.iter_mut() {
+      *d = 0.0;
+    }
+    for d in self.delay_r.iter_mut() {
+      *d = 0.0;
+    }
+    self.dpos = 0;
+  }
+
+  // Blocks where the limiter is off: forget state once, so a later enable
+  // starts clean and no stale delay-line audio leaks out.
+  fn idle(&mut self) {
+    if self.active {
+      self.reset();
+      self.active = false;
+      SAFETY_LIMITER_GR_DB.store(0, Ordering::Relaxed);
+    }
+  }
+
+  // The minimum left the window: rescan the ring. Ties go to the newest
+  // entry (smallest age) so it expires last. Newest is at tpos-1.
+  fn rescan_min(&mut self) {
+    let n = self.n;
+    let mut best = f32::INFINITY;
+    let mut best_age = 0;
+    for age in 0..n {
+      let idx = (self.tpos + n - 1 - age) % n;
+      let v = self.targets[idx];
+      if v < best {
+        best = v;
+        best_age = age;
+      }
+    }
+    self.min_val = best;
+    self.min_age = best_age;
+  }
+
+  fn process(&mut self, buf: &mut [f32], frames: usize, n_ch: usize) {
+    if n_ch == 0 || frames == 0 {
+      return;
+    }
+    self.active = true;
+    if !self.avg_sum.is_finite() || !self.rel_env.is_finite() {
+      self.reset();
+    }
+    let n = self.n;
+    let inv_n = 1.0 / n as f32;
+    let c = self.ceiling;
+    let mut block_min: f32 = 1.0;
+    for f in 0..frames {
+      let il = f * n_ch;
+      let ir = if n_ch >= 2 { il + 1 } else { il };
+      let xl = buf[il];
+      let xr = buf[ir];
+      let peak = xl.abs().max(xr.abs());
+      // NaN compares false → t = 1 (the master stage's poison recovery
+      // handles the source; we must not latch on it).
+      let t = if peak > c { c / peak } else { 1.0 };
+      // Sliding minimum.
+      self.targets[self.tpos] = t;
+      self.tpos += 1;
+      if self.tpos == n {
+        self.tpos = 0;
+      }
+      if t <= self.min_val {
+        self.min_val = t;
+        self.min_age = 0;
+      } else {
+        self.min_age += 1;
+        if self.min_age >= n {
+          self.rescan_min();
+        }
+      }
+      // Release (never above the window minimum).
+      let g = self.min_val;
+      self.rel_env = if g < self.rel_env {
+        g
+      } else {
+        (self.rel_env + self.release_coef * (1.0 - self.rel_env)).min(g)
+      };
+      // Moving average → the gain actually applied.
+      self.avg_sum += (self.rel_env - self.avg[self.apos]) as f64;
+      self.avg[self.apos] = self.rel_env;
+      self.apos += 1;
+      if self.apos == n {
+        self.apos = 0;
+      }
+      let s = (self.avg_sum as f32 * inv_n).clamp(0.0, 1.0);
+      if s < block_min {
+        block_min = s;
+      }
+      // Delayed audio × gain, clamped as the arithmetic backstop.
+      let yl = self.delay_l[self.dpos];
+      let yr = self.delay_r[self.dpos];
+      self.delay_l[self.dpos] = xl;
+      self.delay_r[self.dpos] = xr;
+      self.dpos += 1;
+      if self.dpos == n - 1 {
+        self.dpos = 0;
+      }
+      buf[il] = (yl * s).clamp(-c, c);
+      if n_ch >= 2 {
+        buf[ir] = (yr * s).clamp(-c, c);
+      }
+    }
+    let gr_db = if block_min > 0.0 { -20.0 * block_min.log10() } else { 60.0 };
+    SAFETY_LIMITER_GR_DB.store(gr_db.to_bits(), Ordering::Relaxed);
+  }
+}
+
 // Phase 7e-1: input gain → DC block (5Hz one-pole) → lo-cut HPF (bypassed
 // when Flat) → hi-cut LPF → trim → DC block → tail EQ (always-on -1dB peak
 // at 450Hz). Compressor / distortion / gate slot in between lo-cut and
@@ -6108,6 +6314,7 @@ fn build_stream(
   let mut tape_buffer = TapeBuffer::new(sample_rate);
   let mut glitch_machine = GlitchMachine::new(sample_rate);
   let mut master_stage = MasterStage::new(sample_rate);
+  let mut safety_limiter = SafetyLimiter::new(sample_rate);
   // Audio-thread-safe RNG (seeded once at stream construction, then
   // never touches the OS again). Used for per-trigger ±3-cent detune
   // jitter so stacked voices don't lock in tune and phase out. Mirrors
@@ -8898,6 +9105,13 @@ fn build_stream(
             gate_threshold_norm,
             master_bypass,
           );
+          // 5.6) Safety limiter — the last thing before the recorder tap and
+          // the device, so recordings match the stream. BROADCAST only.
+          if SAFETY_LIMITER_ENABLED.load(Ordering::Relaxed) {
+            safety_limiter.process(buf, frames, n_ch);
+          } else {
+            safety_limiter.idle();
+          }
         }
 
         // 6) Recorder tap — push the post-master stereo bus into the
@@ -9590,6 +9804,21 @@ pub fn audio_set_master_bypass(bypass: bool) -> Result<(), String> {
   Ok(())
 }
 
+// Safety limiter at the end of the master path (see SafetyLimiter). Global
+// flag, read once per block; BROADCAST turns it on at boot, Sequence never
+// calls it.
+#[tauri::command]
+pub fn audio_set_safety_limiter(enabled: bool) -> Result<(), String> {
+  SAFETY_LIMITER_ENABLED.store(enabled, Ordering::Release);
+  Ok(())
+}
+
+// Current gain reduction in dB (≥ 0; 0 when off or not limiting).
+#[tauri::command]
+pub fn audio_safety_limiter_gr() -> f32 {
+  safety_limiter_gr_db()
+}
+
 // Combined recording (phase 7f-1). Path is an absolute filesystem path
 // — JS computes a timestamped filename inside the user's configured
 // recordings dir (see `recorderConfig.getConfiguredRecordingsDir`).
@@ -9924,4 +10153,103 @@ pub fn audio_loop_peaks() -> Vec<f32> {
 pub fn audio_set_lfos(lfos: Vec<LfoIpc>) -> Result<(), String> {
   install_lfo_snapshot(lfos);
   Ok(())
+}
+
+#[cfg(test)]
+mod safety_limiter_tests {
+  use super::*;
+
+  fn run(lim: &mut SafetyLimiter, input: &[f32], n_ch: usize) -> Vec<f32> {
+    let mut out = input.to_vec();
+    let frames = out.len() / n_ch;
+    // Feed in realistic block sizes so block boundaries are exercised.
+    let block = 256;
+    let mut f = 0;
+    while f < frames {
+      let n = block.min(frames - f);
+      lim.process(&mut out[f * n_ch..(f + n) * n_ch], n, n_ch);
+      f += n;
+    }
+    out
+  }
+
+  #[test]
+  fn ceiling_holds_on_hot_material() {
+    let sr = 48_000u32;
+    let mut lim = SafetyLimiter::new(sr);
+    let c = lim.ceiling;
+    // +6 dB sine with a burst of full-scale impulses and a DC-ish ramp: the
+    // kinds of peaks a wildly mastered .seq or a hot interstitial produce.
+    let mut input = Vec::with_capacity(sr as usize * 2 * 2);
+    for i in 0..(sr as usize * 2) {
+      let t = i as f32 / sr as f32;
+      let mut l = 2.0 * (std::f32::consts::TAU * 1000.0 * t).sin();
+      let mut r = 2.0 * (std::f32::consts::TAU * 1300.0 * t).sin();
+      if i % 7919 == 0 {
+        l = 4.0;
+        r = -4.0;
+      }
+      if (0.9..1.1).contains(&t) {
+        r += 3.0 * (t - 0.9) / 0.2;
+      }
+      input.push(l);
+      input.push(r);
+    }
+    let out = run(&mut lim, &input, 2);
+    let peak = out.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(peak <= c + 1e-6, "peak {peak} exceeds ceiling {c}");
+    // It actually worked as a limiter (reduced), not as a mute.
+    let rms = (out.iter().map(|s| s * s).sum::<f32>() / out.len() as f32).sqrt();
+    assert!(rms > 0.3, "output rms {rms} too low — over-limited");
+    assert!(safety_limiter_gr_db() > 0.0);
+  }
+
+  #[test]
+  fn quiet_material_passes_untouched_but_delayed() {
+    let sr = 44_100u32;
+    let mut lim = SafetyLimiter::new(sr);
+    let d = lim.n - 1;
+    let frames = 20_000usize;
+    let mut input = Vec::with_capacity(frames * 2);
+    for i in 0..frames {
+      let t = i as f32 / sr as f32;
+      input.push(0.5 * (std::f32::consts::TAU * 440.0 * t).sin());
+      input.push(0.5 * (std::f32::consts::TAU * 660.0 * t).sin());
+    }
+    let out = run(&mut lim, &input, 2);
+    for f in d..frames {
+      for ch in 0..2 {
+        let expect = input[(f - d) * 2 + ch];
+        let got = out[f * 2 + ch];
+        assert!((expect - got).abs() < 1e-6, "frame {f} ch {ch}: {got} vs {expect}");
+      }
+    }
+  }
+
+  #[test]
+  fn gain_ramps_before_the_peak_and_releases_after() {
+    let sr = 48_000u32;
+    let mut lim = SafetyLimiter::new(sr);
+    let c = lim.ceiling;
+    let frames = 24_000usize;
+    // Silence, then a single 0.4 s block of +6 dB square, then silence.
+    let mut input = vec![0.0f32; frames * 2];
+    for f in 4_800..(4_800 + 19_200) {
+      input[f * 2] = 2.0;
+      input[f * 2 + 1] = 2.0;
+    }
+    let out = run(&mut lim, &input, 2);
+    let peak = out.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(peak <= c + 1e-6, "peak {peak}");
+    // Inside the plateau (well after the lookahead) the output sits AT the
+    // ceiling — a limiter, not a compressor with slack.
+    let mid = out[(4_800 + 9_600) * 2];
+    assert!((mid - c).abs() < 1e-3, "plateau {mid} vs ceiling {c}");
+    // Mono callers get the same treatment on their one channel.
+    let mut lim1 = SafetyLimiter::new(sr);
+    let mono: Vec<f32> = (0..frames).map(|f| input[f * 2]).collect();
+    let out1 = run(&mut lim1, &mono, 1);
+    let peak1 = out1.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    assert!(peak1 <= c + 1e-6, "mono peak {peak1}");
+  }
 }
