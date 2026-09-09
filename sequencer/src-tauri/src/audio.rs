@@ -904,9 +904,10 @@ fn glitch_state() -> &'static GlitchState {
 //
 // Final-stage tone-shaping unit applied to buf[0]/buf[1] after the FX
 // bus output has been mixed in. Phase 7e-1 ships the static character
-// shaping: input gain → 5Hz DC block → lo-cut HPF → hi-cut LPF →
-// trim → always-on -1dB peak at 450Hz. Compressor / distortion / gate
-// land in later 7e phases between lo-cut and hi-cut.
+// shaping: input gain → 5Hz DC block → lo-cut HPF (skipped when Flat) →
+// hi-cut LPF → trim → 5Hz DC block → always-on -1dB peak at 450Hz.
+// Compressor / distortion / gate land in later 7e phases between lo-cut
+// and hi-cut.
 //
 // `input` 0..1 → -12..+18 dB (linearized via 10^(db/20)).
 // `lo_cut` 0..3 → [Flat (1Hz), 75Hz, 150Hz, 300Hz] — Flat is rendered
@@ -2238,17 +2239,56 @@ impl TapeBuffer {
 
 // --- master stage (audio-thread only) ---
 //
-// Phase 7e-1: input gain → DC block (5Hz HPF) → lo-cut HPF → hi-cut LPF
-// → trim → tail EQ (always-on -1dB peak at 450Hz). Compressor /
-// distortion / gate slot in between lo-cut and hi-cut in later phases.
+// One-pole DC blocker: y = x - x1 + r·y1. Numerically benign in f32 at any
+// sample rate — unlike a 2nd-order RBJ high-pass at a few Hz, whose f32
+// feedback coefficients sum to ~0 (at 1 Hz / 44.1 kHz EXACTLY 0: a pole on
+// DC), so the section integrates rounding error into a slowly wandering
+// offset. That was the master's "Flat (1 Hz)" lo-cut: BROADCAST's output
+// carried ±0.2–0.3 FS of drifting DC, scaled by trim (measured off a device
+// tap, 2026-09-08). The same form guards the NOISE unit.
+#[derive(Clone, Copy)]
+struct DcBlock {
+  r: f32,
+  x1: f32,
+  y1: f32,
+}
+
+impl DcBlock {
+  fn new(sample_rate: f32, fc_hz: f32) -> Self {
+    let r = (1.0 - std::f32::consts::TAU * fc_hz / sample_rate.max(1.0)).clamp(0.0, 0.99999);
+    Self { r, x1: 0.0, y1: 0.0 }
+  }
+  #[inline]
+  fn process(&mut self, x: f32) -> f32 {
+    let y = x - self.x1 + self.r * self.y1;
+    self.x1 = x;
+    self.y1 = y;
+    y
+  }
+  fn reset_state(&mut self) {
+    self.x1 = 0.0;
+    self.y1 = 0.0;
+  }
+}
+
+// Phase 7e-1: input gain → DC block (5Hz one-pole) → lo-cut HPF (bypassed
+// when Flat) → hi-cut LPF → trim → DC block → tail EQ (always-on -1dB peak
+// at 450Hz). Compressor / distortion / gate slot in between lo-cut and
+// hi-cut in later phases.
 //
 // Coefficients are recomputed once per block when lo-cut index or
 // hi-cut value change (not per-sample). Per-channel biquad state
 // keeps L/R independent.
 struct MasterStage {
   sample_rate: f32,
-  dc_l: Biquad,
-  dc_r: Biquad,
+  dc_l: DcBlock,
+  dc_r: DcBlock,
+  // After trim: catches offset the nonlinear stages themselves create
+  // (asymmetric Tube/Fuzz bias residue) before it reaches the device.
+  out_dc_l: DcBlock,
+  out_dc_r: DcBlock,
+  // Lo-cut index 0 = Flat: the biquad is skipped, not run at 1 Hz.
+  lo_cut_flat: bool,
   lo_l: Biquad,
   lo_r: Biquad,
   hi_l: Biquad,
@@ -2315,10 +2355,8 @@ struct MasterStage {
 impl MasterStage {
   fn new(sample_rate: u32) -> Self {
     let sr = sample_rate as f32;
-    let mut dc_l = Biquad::new_unity();
-    let mut dc_r = Biquad::new_unity();
-    dc_l.set_highpass(sr, MASTER_DC_BLOCK_HZ, 0.707);
-    dc_r.set_highpass(sr, MASTER_DC_BLOCK_HZ, 0.707);
+    let dc_l = DcBlock::new(sr, MASTER_DC_BLOCK_HZ);
+    let dc_r = DcBlock::new(sr, MASTER_DC_BLOCK_HZ);
     let mut tail_l = Biquad::new_unity();
     let mut tail_r = Biquad::new_unity();
     tail_l.set_peaking(sr, MASTER_TAIL_EQ_HZ, MASTER_TAIL_EQ_Q, MASTER_TAIL_EQ_GAIN_DB);
@@ -2335,6 +2373,9 @@ impl MasterStage {
       sample_rate: sr,
       dc_l,
       dc_r,
+      out_dc_l: DcBlock::new(sr, MASTER_DC_BLOCK_HZ),
+      out_dc_r: DcBlock::new(sr, MASTER_DC_BLOCK_HZ),
+      lo_cut_flat: true,
       lo_l: Biquad::new_unity(),
       lo_r: Biquad::new_unity(),
       hi_l: Biquad::new_unity(),
@@ -2384,6 +2425,8 @@ impl MasterStage {
   fn reset_state(&mut self) {
     self.dc_l.reset_state();
     self.dc_r.reset_state();
+    self.out_dc_l.reset_state();
+    self.out_dc_r.reset_state();
     self.lo_l.reset_state();
     self.lo_r.reset_state();
     self.hi_l.reset_state();
@@ -2419,6 +2462,8 @@ impl MasterStage {
   fn state_is_poisoned(&self) -> bool {
     let probe = self.dc_l.y1
       + self.dc_r.y1
+      + self.out_dc_l.y1
+      + self.out_dc_r.y1
       + self.lo_l.y1
       + self.lo_r.y1
       + self.hi_l.y1
@@ -2516,6 +2561,13 @@ impl MasterStage {
       let fc = MASTER_LO_CUT_FREQS[lo_cut_idx.min(MASTER_LO_CUT_FREQS.len() - 1)];
       self.lo_l.set_highpass(self.sample_rate, fc, 0.707);
       self.lo_r.set_highpass(self.sample_rate, fc, 0.707);
+      // Flat: skip the section entirely (a 1 Hz biquad is marginal in f32
+      // — see DcBlock); its state is cleared so re-engaging starts clean.
+      self.lo_cut_flat = lo_cut_idx == 0;
+      if self.lo_cut_flat {
+        self.lo_l.reset_state();
+        self.lo_r.reset_state();
+      }
       self.last_lo_cut_idx = lo_cut_idx;
     }
     if (hi_cut_hz - self.last_hi_cut_hz).abs() > 1.0 {
@@ -2611,7 +2663,9 @@ impl MasterStage {
         let dry_in = buf[idx];
         let mut s = buf[idx] * input_gain;
         s = self.dc_l.process(s);
-        s = self.lo_l.process(s);
+        if !self.lo_cut_flat {
+          s = self.lo_l.process(s);
+        }
         // Compressor (mono path uses L state only).
         let abs_s = s.abs();
         self.comp_peak_env_l = if abs_s > self.comp_peak_env_l {
@@ -2710,6 +2764,7 @@ impl MasterStage {
           }
         }
         s = s * trim_gain;
+        s = self.out_dc_l.process(s);
         s = self.tail_l.process(s);
         // Bypass crossfade — slew `bypass_wet` toward target each
         // sample, equal-power mix of dry input vs processed output.
@@ -2734,8 +2789,10 @@ impl MasterStage {
       let mut r = buf[ir] * input_gain;
       l = self.dc_l.process(l);
       r = self.dc_r.process(r);
-      l = self.lo_l.process(l);
-      r = self.lo_r.process(r);
+      if !self.lo_cut_flat {
+        l = self.lo_l.process(l);
+        r = self.lo_r.process(r);
+      }
 
       // Compressor — stereo-linked detector: peak + RMS per channel,
       // then max across both channels for the gain-reduction decision.
@@ -2897,6 +2954,8 @@ impl MasterStage {
 
       l = l * trim_gain;
       r = r * trim_gain;
+      l = self.out_dc_l.process(l);
+      r = self.out_dc_r.process(r);
       l = self.tail_l.process(l);
       r = self.tail_r.process(r);
 
