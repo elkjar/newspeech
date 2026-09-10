@@ -362,19 +362,22 @@
     -webkit-user-drag: none;
     will-change: transform;
   }
+  /* the mark keeps a 30px-tall box at every width, so the bar's height never
+     changes across the burger breakpoint (no layout shift). on narrow screens
+     the box is width-capped and the picture letterboxes inside it, left-aligned. */
   #ns-stage img {
     display: block;
     height: 30px;
     width: auto;
-    max-width: 100%;
+    max-width: min(390px, calc(100vw - 2 * var(--ns-gutter) - 70px));
+    object-fit: contain;
+    object-position: left center;
   }
   #ns-stage.chroma img {
     filter: drop-shadow(-2px 0 0 #00ffff) drop-shadow(2px 0 0 #ff00ff);
   }
   /* the full link row gets cramped below BREAK — switch to burger + takeover */
   @media (max-width: ${BREAK}px) {
-    #ns-links { padding: 16px var(--ns-gutter); }
-    #ns-stage img { height: auto; width: clamp(180px, 56vw, 380px); }
     #ns-pages { display: none; }
     #ns-burger { display: inline-flex; }
   }`;
