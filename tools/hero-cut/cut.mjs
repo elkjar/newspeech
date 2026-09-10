@@ -37,12 +37,12 @@ const pool = (name) => path.join(POOL, name);
 // (the same idiom as the wordmark's chroma flash)
 const BARS = process.env.HERO_BARS || path.join(os.homedir(), "Desktop/test-video.mp4");
 // the PIPER MARU 3 edit (Resolve export) — archival space-program footage.
-// exported to the Desktop 2026-09-09; move it beside the test-flight master
-// in Dropbox CONTENT/VIDEO and point HERO_PM at it once it lives there.
 // black-eyes-2 (EP2 NIGHT SCHOOL social cut) — one continuous snare closeup
 const BE2 = process.env.HERO_BE2 || path.join(os.homedir(),
   "Library/CloudStorage/Dropbox-Personal/___MUSIC/___NEWSPEECH/__EP2_NIGHT_SCHOOL/03 - BLACK EYES/SOCIAL/black-eyes-2.mp4");
-const PM = process.env.HERO_PM || path.join(os.homedir(), "Desktop/PIPER MARU 3 - edit.mov");
+const PM = process.env.HERO_PM || path.join(os.homedir(),
+  "Library/CloudStorage/Dropbox-Personal/___MUSIC/___NEWSPEECH/__EP2_NIGHT_SCHOOL/02 - PIPER MARU/VIDEO ASSETS/PIPER MARU 3 - edit.mov");
+// masters (clean + moshed) live in Dropbox CONTENT/VIDEO/20260909_web-hero/
 
 // holds are short — nothing sits (Chris, 2026-09-09: the hold shots aren't
 // cool enough to sit on). ~0.5 s vs 8-frame stutters.
@@ -72,9 +72,11 @@ const EDL = [
   [H2, 20.0, STUT],                // knobs
   [H2, 112.5, HOLD_L],             // eye, glitched
   [H2, 30.6, HOLD_S],              // arm + terminal
+  [H2, 45.0, HOLD],                // PJ — face, cymbal close
   [pool("v06.mp4"), 10.0, STUT],
   [H2, 110.0, STUT],               // eye, glitched
   [PM, 258.5, STUT],               // archival: cosmonaut helmet
+  [H2, 46.5, STUT],                // PJ — stick blur
   [pool("v08.mp4"), 4.0, STUT],
   [H2, 41.2, HOLD_S],              // pedalboard
   [H2, 84.0, HOLD_S],              // guitar hands 2, pick
@@ -86,11 +88,13 @@ const EDL = [
   [H2, 100.3, STUT],               // launchpad
   [H2, 60.8, STUT],                // density terminal 2
   [PM, 246.0, STUT],               // archival: launch flame
+  [H2, 62.5, STUT],                // PJ — the kit, wide, as a flash only
   [pool("grid-01.mp4"), 12.0, STUT],
   [PM, 264.0, STUT],               // archival: satellite
   [BARS, 4.0, STUT / 2, { color: true }], // test pattern, half a beat
   [H2, 92.5, HOLD_S],              // hands
   [BE2, 22.0, STUT],               // snare, hit
+  [H2, 45.6, HOLD_S],              // PJ — face, closer
   [H2, 105.5, HOLD],               // pads screen → loops into the opening
 ];
 
