@@ -1,7 +1,8 @@
 // hero-cut — the homepage hero loop, cut from an edit list.
 //
 // usage: node tools/hero-cut/cut.mjs            → assets/hero/hero.mp4 + hero.jpg
-//        HERO_W=1280 node tools/hero-cut/cut.mjs → smaller render
+//        HERO_W=1920 HERO_CRF=12 HERO_DENOISE=0 HERO_OUT=~/Desktop HERO_NAME=hero-master node tools/hero-cut/cut.mjs
+//                                            → high-quality master for further mangling
 //
 // the cut follows the SOUP homepage header: ~1–1.5 s holds broken by bursts of
 // 8-frame stutters, live footage from the sequence test-flight master intercut
@@ -15,7 +16,8 @@ import path from "node:path";
 const FPS = 24;
 const W = Number(process.env.HERO_W || 1280);
 const H = Math.round((W * 9) / 16);
-const OUT_DIR = path.resolve("assets/hero");
+const OUT_DIR = path.resolve(process.env.HERO_OUT || "assets/hero");
+const NAME = process.env.HERO_NAME || "hero";
 
 const H2 = process.env.HERO_H2 ||
   path.join(os.homedir(), "Library/CloudStorage/Dropbox-Personal/___MUSIC/___NEWSPEECH/CONTENT/VIDEO/20260610_NS_T1/20260613_NS_T1_H2_1.mov");
@@ -96,11 +98,11 @@ const list = path.join(tmp, "list.txt");
 fs.writeFileSync(list, segs.map((s) => `file '${s}'`).join("\n") + "\n");
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
-const mp4 = path.join(OUT_DIR, "hero.mp4");
+const mp4 = path.join(OUT_DIR, `${NAME}.mp4`);
 execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", list,
   "-c:v", "libx264", "-crf", CRF, "-preset", "slow", "-profile:v", "high", "-pix_fmt", "yuv420p",
   "-g", String(FPS * 2), "-movflags", "+faststart", "-an", mp4], { stdio: "inherit" });
-execFileSync("ffmpeg", ["-v", "error", "-y", "-i", mp4, "-frames:v", "1", "-q:v", "4", path.join(OUT_DIR, "hero.jpg")], { stdio: "inherit" });
+execFileSync("ffmpeg", ["-v", "error", "-y", "-i", mp4, "-frames:v", "1", "-q:v", "4", path.join(OUT_DIR, `${NAME}.jpg`)], { stdio: "inherit" });
 
 const frames = EDL.reduce((a, [, , n]) => a + n, 0);
 console.log(`hero-cut: ${EDL.length} cuts, ${(frames / FPS).toFixed(1)} s, ${W}x${H} → ${mp4} (${(fs.statSync(mp4).size / 1e6).toFixed(1)} MB)`);
