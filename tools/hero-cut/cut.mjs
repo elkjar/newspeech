@@ -3,6 +3,7 @@
 // usage: node tools/hero-cut/cut.mjs            → assets/hero/hero.mp4 + hero.jpg
 //        HERO_W=1920 HERO_CRF=12 HERO_DENOISE=0 HERO_OUT=~/Desktop HERO_NAME=hero-master node tools/hero-cut/cut.mjs
 //                                            → high-quality master for further mangling
+// shot choice: closeups over wides.
 //
 // the cut follows the SOUP homepage header idea but faster: ~0.5 s holds broken
 // by bursts of 8-frame stutters, live footage from the sequence test-flight master intercut
@@ -29,6 +30,9 @@ const BARS = process.env.HERO_BARS || path.join(os.homedir(), "Desktop/test-vide
 // the PIPER MARU 3 edit (Resolve export) — archival space-program footage.
 // exported to the Desktop 2026-09-09; move it beside the test-flight master
 // in Dropbox CONTENT/VIDEO and point HERO_PM at it once it lives there.
+// black-eyes-2 (EP2 NIGHT SCHOOL social cut) — one continuous snare closeup
+const BE2 = process.env.HERO_BE2 || path.join(os.homedir(),
+  "Library/CloudStorage/Dropbox-Personal/___MUSIC/___NEWSPEECH/__EP2_NIGHT_SCHOOL/03 - BLACK EYES/SOCIAL/black-eyes-2.mp4");
 const PM = process.env.HERO_PM || path.join(os.homedir(), "Desktop/PIPER MARU 3 - edit.mov");
 
 // holds are short — nothing sits (Chris, 2026-09-09: the hold shots aren't
@@ -57,7 +61,7 @@ const EDL = [
   [PM, 51.5, STUT],                // archival: radar screen
   [H2, 103.0, STUT],               // pads screen
   [H2, 17.6, STUT],                // laptop grid
-  [H2, 67.5, HOLD_L],              // guitarist
+  [H2, 112.5, HOLD_L],             // eye, glitched
   [H2, 30.6, HOLD_S],              // arm + terminal
   [pool("v06.mp4"), 10.0, STUT],
   [H2, 110.0, STUT],               // eye, glitched
@@ -69,8 +73,8 @@ const EDL = [
   [H2, 76.0, STUT],                // amp
   [pool("swarm-02.mp4"), 5.0, STUT],
   [PM, 227.6, STUT],               // archival: mission control
-  [H2, 57.3, HOLD],                // guitar + rack
-  [H2, 59.6, HOLD_S],              // drummer
+  [H2, 9.2, HOLD],                 // cables 2
+  [BE2, 9.0, HOLD_S],              // snare head, sticks
   [H2, 100.3, STUT],               // launchpad
   [H2, 62.8, STUT],                // density terminal
   [PM, 246.0, STUT],               // archival: launch flame
@@ -78,7 +82,8 @@ const EDL = [
   [PM, 264.0, STUT],               // archival: satellite
   [BARS, 4.0, STUT / 2, { color: true }], // test pattern, half a beat
   [H2, 78.8, HOLD_S],              // hands, laptop
-  [H2, 46.0, HOLD],                // drummer → loops into the opening wide
+  [BE2, 22.0, STUT],               // snare, hit
+  [H2, 105.5, HOLD],               // pads screen → loops into the opening
 ];
 
 for (const [src] of EDL) if (!fs.existsSync(src)) { console.error("missing source:", src); process.exit(1); }
