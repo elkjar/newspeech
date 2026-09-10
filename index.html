@@ -217,6 +217,32 @@
   }
   #subscribe .win-idx { font-size: 10px; letter-spacing: 0.2em; opacity: 0.4; }
   #subscribe .win-title { font-family: "zxx-sans", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: lowercase; }
+  /* scroll: the in-hero window fades as it rises so it's gone before it slides
+     under the glass nav (opacity is scroll-driven from script) */
+  #subscribe.gone { pointer-events: none; }
+  /* docked: once the hero has scrolled away the same window lands in the
+     bottom-right corner, collapsed to its title bar. click the bar to open. */
+  #subscribe.docked {
+    position: fixed;
+    right: var(--ns-gutter, 20px);
+    bottom: 24px;
+    margin: 0;
+    z-index: 9;
+    max-width: calc(100vw - 2 * var(--ns-gutter, 20px));
+    opacity: 1 !important;
+    pointer-events: auto;
+    animation: sub-dock-in 0.24s ease both;
+  }
+  @keyframes sub-dock-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  #subscribe.docked .win-bar { cursor: pointer; padding-right: 10px; }
+  #subscribe.docked .win-bar:hover { background: rgba(255, 255, 255, 0.08); }
+  #subscribe.docked .win-body { display: none; }
+  #subscribe.docked.open .win-body { display: flex; }
+  /* the bar's open/close mark — docked only */
+  #subscribe .win-toggle { display: none; margin-left: 18px; font-size: 12px; line-height: 1; opacity: 0.5; }
+  #subscribe.docked .win-toggle { display: inline-block; }
+  #subscribe.docked .win-toggle::before { content: "+"; }
+  #subscribe.docked.open .win-toggle::before { content: "−"; }
   #subscribe .win-body {
     display: flex;
     flex-direction: column;
@@ -419,6 +445,7 @@
     <div class="win-bar">
       <span class="win-idx">//</span>
       <span class="win-title">distro list</span>
+      <span class="win-toggle" aria-hidden="true"></span>
     </div>
     <div class="win-body">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
@@ -2422,6 +2449,45 @@ setupLinks();
 // needs `netlify dev` for the function — a plain static server 404s.
 const subForm = document.getElementById("subscribe");
 const subBody = subForm.querySelector(".win-body");
+
+// ---- scroll: fade the in-hero window before it slides under the nav; once
+// the hero has scrolled away the window docks bottom-right, collapsed to its
+// title bar; click the bar to open it there ----
+const heroEl = document.getElementById("hero");
+const subBar = subForm.querySelector(".win-bar");
+let subDocked = false;
+let subRestTop = 0; // the window's page-y when resting in the hero
+function measureSub() {
+  if (subDocked) return;
+  subRestTop = subForm.getBoundingClientRect().top + window.scrollY;
+}
+function syncSub() {
+  const navH = document.getElementById("ns-top")?.offsetHeight || 0;
+  const dock = heroEl.getBoundingClientRect().bottom <= navH;
+  if (dock !== subDocked) {
+    subDocked = dock;
+    subForm.classList.toggle("docked", dock);
+    subForm.classList.remove("open");
+    if (dock) { subForm.style.opacity = ""; subForm.classList.remove("gone"); }
+  }
+  if (subDocked) return;
+  // fully faded by the time its top would meet the bar's bottom edge
+  const fullAt = Math.max(1, subRestTop - navH - 12);
+  const t = Math.min(1, Math.max(0, window.scrollY / fullAt));
+  subForm.style.opacity = String(1 - t);
+  subForm.classList.toggle("gone", t >= 1);
+}
+subBar.addEventListener("click", () => {
+  if (!subDocked) return;
+  const open = subForm.classList.toggle("open");
+  if (open) { const input = subForm.querySelector('input[type="email"]'); if (input) input.focus(); }
+});
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") subForm.classList.remove("open"); });
+window.addEventListener("scroll", syncSub, { passive: true });
+window.addEventListener("resize", () => { measureSub(); syncSub(); });
+measureSub();
+syncSub();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { measureSub(); syncSub(); });
 subForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = subBody.querySelector('button[type="submit"]');
