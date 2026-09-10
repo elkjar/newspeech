@@ -284,10 +284,12 @@
   }
   #subscribe .win-body button:hover { background: rgba(255, 255, 255, 0.08); }
   #subscribe .win-body button:disabled { opacity: 0.4; cursor: default; }
-  /* the hover font-cycle swaps each char span between zxx variants whose
-     ascent/descent differ. inline-blocks align by baseline, so mixed variants
-     would grow the line box and pump the window's height. pin every slot to
-     the 18px line and align to top so the box can't flex. */
+  /* the button's hover font-cycle swaps each char span between zxx variants
+     whose ascent/descent differ. inline-blocks align by baseline, so mixed
+     variants would grow the line box and pump the window's height. pin every
+     slot to the 18px line and align to top so the box can't flex — glyphs
+     still shift within the slot, and that's the intended feel. the label is
+     plain text on purpose: no hover, no scramble. */
   #subscribe [data-link] > span { vertical-align: top; height: 18px; line-height: 18px; }
   #subscribe .sub-msg { opacity: 0.85; letter-spacing: 0.06em; }
   #subscribe .sub-msg.err { opacity: 0.55; }
@@ -453,7 +455,7 @@
     </div>
     <div class="win-body">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-      <label class="sub-label" for="sub-email" data-link>releases + new tools, when they land</label>
+      <label class="sub-label" for="sub-email">releases + new tools, when they land</label>
       <div class="sub-row">
         <input id="sub-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
         <button type="submit" data-link>join list</button>
