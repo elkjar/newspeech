@@ -170,8 +170,11 @@
     #home-news .hn-lead .ttl { font-size: 22px; }
   }
 
-  /* full-bleed hero canvas. absolute (not fixed) so the hero scrolls away
-     with its section. */
+  /* full-bleed hero video (assets/hero/hero.mp4, cut by tools/hero-cut).
+     absolute (not fixed) so the hero scrolls away with its section. the
+     canvas visualizer that used to draw here stays in the page but idle —
+     HERO_VIDEO in the script gates it. */
+  #hero-video,
   #bg {
     position: absolute;
     top: 0;
@@ -181,6 +184,8 @@
     z-index: 0;
     pointer-events: none;
   }
+  #hero-video { object-fit: cover; background: var(--bg); }
+  #hero.has-video #bg { display: none; }
 
   /* nav bar (markup + styles + treatment) comes from nav.js */
 
@@ -387,7 +392,11 @@
 
 <script src="nav.js"></script>
 
-<section class="vignette" id="hero">
+<section class="vignette has-video" id="hero">
+  <video id="hero-video" autoplay muted loop playsinline preload="auto" disablepictureinpicture disableremoteplayback
+         poster="assets/hero/hero.jpg" aria-hidden="true">
+    <source src="assets/hero/hero.mp4" type="video/mp4">
+  </video>
   <canvas id="bg"></canvas>
 
   <form id="subscribe" novalidate>
@@ -548,7 +557,20 @@ function poisson(rateFn, fire) {
 
 // (the NEWSPEECH wordmark + nav links and their glitch treatment live in nav.js)
 
-// ---- background: VHS-streak signal field ----
+// ---- hero: the video loop. reduced-motion users get the poster frame. ----
+const HERO_VIDEO = document.getElementById("hero").classList.contains("has-video");
+{
+  const hv = document.getElementById("hero-video");
+  const rm = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const applyMotion = () => {
+    if (rm.matches) { hv.pause(); hv.removeAttribute("autoplay"); }
+    else hv.play().catch(() => {});
+  };
+  applyMotion();
+  if (rm.addEventListener) rm.addEventListener("change", applyMotion);
+}
+
+// ---- background: VHS-streak signal field (idle while HERO_VIDEO) ----
 const canvas = document.getElementById("bg");
 const ctx = canvas.getContext("2d");
 
@@ -1250,7 +1272,7 @@ function frame(t) {
 
   // hero only renders while its section is on-screen; the vignette canvases
   // below likewise gate on their own IntersectionObservers.
-  if (heroVisible) {
+  if (heroVisible && !HERO_VIDEO) {
     MODES[currentMode](t, dt);
   }
   for (const v of vizSections) {
@@ -1287,6 +1309,7 @@ window.addEventListener("click", (e) => {
   if (!heroVisible) return; // hero punch effects only while the hero is on-screen
   // chroma flash on the nav wordmark (slightly longer than ambient flashes)
   if (window.NSNav) NSNav.chroma(140);
+  if (HERO_VIDEO) return; // the canvas punch effects below have nothing to hit
 
   // tear band at click Y
   const th = 6 + Math.random() * 18;
