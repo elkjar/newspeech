@@ -71,7 +71,6 @@ const EDL = [
   [H2, 84.0, HOLD_S],              // guitar hands 2, pick
   [PM, 110.0, STUT],               // archival: crosswalk from above
   [H2, 76.0, STUT],                // amp
-  [pool("swarm-02.mp4"), 5.0, STUT],
   [PM, 227.6, STUT],               // archival: mission control
   [H2, 96.5, HOLD],                // feet on pedals
   [BE2, 9.0, HOLD_S],              // snare head, sticks
