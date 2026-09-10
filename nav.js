@@ -69,10 +69,10 @@
   @font-face { font-family: "zxx-camo";  src: url("${ROOT}fonts/zxx-camo.woff2")         format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-xed";   src: url("${ROOT}fonts/zxx-xed.woff2")          format("woff2"); font-display: swap; }
 
-  /* site-wide side gutter: 20px, 3× wider once the window is small enough
+  /* site-wide side gutter: 20px, 2× wider once the window is small enough
      for the burger — pages pad with var(--ns-gutter) to stay in step */
   :root { --ns-gutter: 20px; }
-  @media (max-width: 1024px) { :root { --ns-gutter: 60px; } }
+  @media (max-width: 1024px) { :root { --ns-gutter: 40px; } }
   #ns-top {
     position: fixed;
     top: 0;
