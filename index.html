@@ -53,13 +53,13 @@
   }
 
   /* nav bar is fixed above; subscribe dialog centers (margin:auto) over the
-     visualizer. 80svh (not the vignette's 100) so the news block below
-     peeks into the first viewport. */
+     visualizer. 90svh (not the vignette's 100) so the news block below
+     still peeks into the first viewport. */
   #hero {
     display: flex;
     flex-direction: column;
-    height: 80vh;
-    height: 80svh;
+    height: 90vh;
+    height: 90svh;
     /* the fixed bar covers the top of the hero — pad it out so the
        subscribe box (margin:auto) centers in the visible area */
     padding-top: var(--ns-nav-h, 0px);
@@ -240,15 +240,16 @@
   #subscribe .sub-msg.err { opacity: 0.55; }
   #subscribe.fade-out { opacity: 0; transition: opacity 0.7s ease; }
 
+  /* just the arrow, centered along the bottom edge */
   #scroll-hint {
     position: absolute;
-    right: 72px;
-    bottom: 72px;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
     z-index: 2;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-size: 20px;
+    line-height: 1;
     opacity: 0.55;
     pointer-events: none;
   }
@@ -361,11 +362,7 @@
       width: min(70vw, 280px);
       font-size: 16px; /* <16px makes iOS Safari zoom the page on focus */
     }
-    #scroll-hint {
-      right: 50%;
-      transform: translateX(50%);
-      bottom: 20px;
-    }
+    #scroll-hint { bottom: 20px; }
   }
 
   /* stacked vignettes: viz full-bleed behind, copy bottom-anchored over a
@@ -402,7 +399,7 @@
     </div>
   </form>
 
-  <div id="scroll-hint" aria-hidden="true">scroll ↓</div>
+  <div id="scroll-hint" aria-hidden="true">↓</div>
 </section>
 
 <!-- latest 4 posts — rows come from news-latest.html (build-news.mjs emits
