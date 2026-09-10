@@ -49,18 +49,18 @@ const EDL = [
   [pool("network-01.mp4"), 2.0, STUT],
   [H2, 24.5, HOLD],                // hand on the keys
   [H2, 69.0, HOLD_S],              // guitar hands
-  [H2, 62.3, STUT],                // density terminal
-  [H2, 34.0, STUT],                // eye
+  [H2, 60.0, STUT],                // density terminal
+  [H2, 31.0, STUT],                // eye, glitched close
   [PM, 162.0, STUT],               // archival: moon edge, near-white flash
   [pool("scans-01.mp4"), 5.0, STUT],
   [BARS, 1.2, STUT, { color: true }], // test pattern flash
-  [H2, 65.8, HOLD],                // feet on pedals
-  [H2, 7.7, HOLD_S],               // patching cables
+  [H2, 86.0, HOLD],                // guitar hands, pick
+  [H2, 38.5, HOLD_S],              // pedals + knobs, close
   [PM, 124.9, HOLD_S],             // archival: rocket launch
   [pool("v04.mp4"), 15.0, STUT],
   [PM, 51.5, STUT],                // archival: radar screen
   [H2, 103.0, STUT],               // pads screen
-  [H2, 17.6, STUT],                // laptop grid
+  [H2, 20.0, STUT],                // knobs
   [H2, 112.5, HOLD_L],             // eye, glitched
   [H2, 30.6, HOLD_S],              // arm + terminal
   [pool("v06.mp4"), 10.0, STUT],
@@ -73,15 +73,15 @@ const EDL = [
   [H2, 76.0, STUT],                // amp
   [pool("swarm-02.mp4"), 5.0, STUT],
   [PM, 227.6, STUT],               // archival: mission control
-  [H2, 9.2, HOLD],                 // cables 2
+  [H2, 96.5, HOLD],                // feet on pedals
   [BE2, 9.0, HOLD_S],              // snare head, sticks
   [H2, 100.3, STUT],               // launchpad
-  [H2, 62.8, STUT],                // density terminal
+  [H2, 60.8, STUT],                // density terminal 2
   [PM, 246.0, STUT],               // archival: launch flame
   [pool("grid-01.mp4"), 12.0, STUT],
   [PM, 264.0, STUT],               // archival: satellite
   [BARS, 4.0, STUT / 2, { color: true }], // test pattern, half a beat
-  [H2, 78.8, HOLD_S],              // hands, laptop
+  [H2, 92.5, HOLD_S],              // hands
   [BE2, 22.0, STUT],               // snare, hit
   [H2, 105.5, HOLD],               // pads screen → loops into the opening
 ];
