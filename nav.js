@@ -79,11 +79,20 @@
     z-index: 10;
     background: #050505;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    transition: transform 0.28s ease;
     /* the 1px line spans the full bar; the links live in a 1280 container */
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   }
   #ns-top.nav-hidden { transform: translateY(-100%); }
+  /* glass: over a page's [data-ns-glass] element (the homepage hero video) the
+     bar drops its fill + rule and floats on a soft top scrim; it turns solid
+     again as soon as that element scrolls out from under it, or while the
+     tools panel is open (a solid panel hanging off a see-through bar reads
+     wrong). */
+  #ns-top.ns-glass {
+    background: linear-gradient(rgba(5, 5, 5, 0.55), rgba(5, 5, 5, 0));
+    border-bottom-color: transparent;
+  }
+  #ns-top { transition: transform 0.28s ease, background 0.28s ease, border-color 0.28s ease; }
   #ns-links {
     display: flex;
     align-items: center;
@@ -389,6 +398,7 @@
     closeTimer = null;
     mega.hidden = !open;
     toolsWrap.classList.toggle("open", open);
+    syncGlass();
     toolsBtn.setAttribute("aria-expanded", String(open));
     if (open) lockLinkWidths(); // card titles measure 0 while hidden — lock on first reveal
   }
@@ -466,6 +476,21 @@
   overlay.addEventListener("click", (e) => { if (e.target.closest("a")) setMenuOpen(false); });
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenuOpen(false); });
   window.addEventListener("resize", () => { if (window.innerWidth > 1024) setMenuOpen(false); });
+
+  // ---- glass over [data-ns-glass] (see the css) ----
+  // nav.js runs at the top of <body>, before the page's sections exist — so
+  // the element is looked up lazily, and again once the DOM has parsed.
+  let glassEl = null;
+  function syncGlass() {
+    if (!glassEl) glassEl = document.querySelector("[data-ns-glass]");
+    if (!glassEl) return;
+    const r = glassEl.getBoundingClientRect();
+    root.classList.toggle("ns-glass", !megaOpen && r.bottom > root.offsetHeight);
+  }
+  window.addEventListener("scroll", syncGlass, { passive: true });
+  window.addEventListener("resize", syncGlass);
+  document.addEventListener("DOMContentLoaded", syncGlass);
+  syncGlass();
 
   // ---- live bar height → --ns-nav-h (wrapping changes it on mobile) ----
   function syncHeight() {

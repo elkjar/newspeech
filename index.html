@@ -53,16 +53,13 @@
   }
 
   /* nav bar is fixed above; subscribe dialog centers (margin:auto) over the
-     visualizer. 90svh (not the vignette's 100) so the news block below
-     still peeks into the first viewport. */
+     video. full viewport; the nav floats over it as glass (nav.js reads
+     data-ns-glass) so the box centers on the screen, not under the bar. */
   #hero {
     display: flex;
     flex-direction: column;
-    height: 90vh;
-    height: 90svh;
-    /* the fixed bar covers the top of the hero — pad it out so the
-       subscribe box (margin:auto) centers in the visible area */
-    padding-top: var(--ns-nav-h, 0px);
+    height: 100vh;
+    height: 100svh;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   }
 
@@ -189,22 +186,65 @@
 
   /* nav bar (markup + styles + treatment) comes from nav.js */
 
-  /* ---- subscribe: bordered dialog centered over the hero visualizer ---- */
+  /* ---- subscribe: a BROADCAST OS window floated over the hero video.
+     chrome matches sequencer/src/broadcast/os/Window.tsx — near-black fill,
+     1px light border in a dark halo, 22px title bar with index + lowercase
+     title + ×, corner grip. ---- */
   #subscribe {
     position: relative;
     z-index: 1;
-    margin: auto; /* centers in the space left under the nav bar */
+    margin: auto; /* centers on the screen — the nav floats over the hero as glass */
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 18px;
-    padding: 32px 40px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    background: rgba(5, 5, 5, 0.8);
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(5, 5, 5, 0.94);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9), 0 18px 40px rgba(0, 0, 0, 0.55);
     font-size: 12px;
     line-height: 18px;
     letter-spacing: 0.04em;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  #subscribe .win-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 22px;
+    padding: 0 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.04);
+    user-select: none;
+  }
+  #subscribe .win-idx { font-size: 8px; letter-spacing: 0.2em; opacity: 0.4; font-variant-numeric: tabular-nums; }
+  #subscribe .win-title { font-family: "zxx-sans", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: lowercase; }
+  #subscribe .win-close {
+    margin-left: auto;
+    background: none;
+    border: 0;
+    padding: 0 4px;
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.5;
+    cursor: pointer;
+  }
+  #subscribe .win-close:hover { opacity: 1; background: none; }
+  #subscribe .win-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding: 30px 40px 34px;
+  }
+  #subscribe .win-grip {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    opacity: 0.4;
+    pointer-events: none;
   }
   #subscribe .sub-row {
     display: flex;
@@ -229,7 +269,7 @@
   }
   #subscribe input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
   #subscribe input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
-  #subscribe button {
+  #subscribe .win-body button {
     background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.7);
     color: var(--fg);
@@ -238,9 +278,9 @@
     padding: 7px 16px;
     cursor: pointer;
   }
-  #subscribe button:hover { background: rgba(255, 255, 255, 0.08); }
-  #subscribe button:disabled { opacity: 0.4; cursor: default; }
-  #subscribe button span { display: inline-block; }
+  #subscribe .win-body button:hover { background: rgba(255, 255, 255, 0.08); }
+  #subscribe .win-body button:disabled { opacity: 0.4; cursor: default; }
+  #subscribe .win-body button span { display: inline-block; }
   #subscribe .sub-msg { opacity: 0.85; letter-spacing: 0.06em; }
   #subscribe .sub-msg.err { opacity: 0.55; }
   #subscribe.fade-out { opacity: 0; transition: opacity 0.7s ease; }
@@ -358,10 +398,8 @@
 
   /* mobile */
   @media (max-width: 640px) {
-    #subscribe {
-      margin: auto 24px;
-      padding: 26px 24px;
-    }
+    #subscribe { margin: auto 24px; }
+    #subscribe .win-body { padding: 24px 20px 28px; }
     #subscribe .sub-row { flex-wrap: wrap; justify-content: center; }
     #subscribe input[type="email"] {
       width: min(70vw, 280px);
@@ -392,7 +430,7 @@
 
 <script src="nav.js"></script>
 
-<section class="vignette has-video" id="hero">
+<section class="vignette has-video" id="hero" data-ns-glass>
   <video id="hero-video" autoplay muted loop playsinline preload="auto" disablepictureinpicture disableremoteplayback
          poster="assets/hero/hero.jpg" aria-hidden="true">
     <source src="assets/hero/hero.mp4" type="video/mp4">
@@ -400,12 +438,20 @@
   <canvas id="bg"></canvas>
 
   <form id="subscribe" novalidate>
-    <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-    <label class="sub-label" for="sub-email" data-link>mailing list — releases + new tools</label>
-    <div class="sub-row">
-      <input id="sub-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
-      <button type="submit" data-link>subscribe</button>
+    <div class="win-bar">
+      <span class="win-idx">08</span>
+      <span class="win-title">mailing list</span>
+      <button type="button" class="win-close" aria-label="close" title="close">×</button>
     </div>
+    <div class="win-body">
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <label class="sub-label" for="sub-email" data-link>releases + new tools, when they land</label>
+      <div class="sub-row">
+        <input id="sub-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+        <button type="submit" data-link>subscribe</button>
+      </div>
+    </div>
+    <svg class="win-grip" width="14" height="14" aria-hidden="true"><path d="M13 6 L6 13 M13 10 L10 13" stroke="white" stroke-width="1"/></svg>
   </form>
 
   <div id="scroll-hint" aria-hidden="true">↓</div>
@@ -2399,9 +2445,15 @@ setupLinks();
 // so the page never navigates; swap in a confirmation on 200. locally this
 // needs `netlify dev` for the function — a plain static server 404s.
 const subForm = document.getElementById("subscribe");
+const subBody = subForm.querySelector(".win-body");
+// × closes the window like any BROADCAST window (same fade as a successful send)
+subForm.querySelector(".win-close").addEventListener("click", () => {
+  subForm.classList.add("fade-out");
+  setTimeout(() => { subForm.style.display = "none"; }, 800);
+});
 subForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const btn = subForm.querySelector("button");
+  const btn = subBody.querySelector('button[type="submit"]');
   const oldMsg = subForm.querySelector(".sub-msg");
   if (oldMsg) oldMsg.remove();
   // our own validation line instead of the browser's bubble (novalidate)
@@ -2410,7 +2462,7 @@ subForm.addEventListener("submit", async (e) => {
     const m = document.createElement("span");
     m.className = "sub-msg err";
     m.textContent = emailInput.value.trim() ? "that doesn't look like an email" : "an email goes here first";
-    subForm.appendChild(m);
+    subBody.appendChild(m);
     emailInput.focus();
     return;
   }
@@ -2426,7 +2478,7 @@ subForm.addEventListener("submit", async (e) => {
       }),
     });
     if (!res.ok) throw new Error(String(res.status));
-    subForm.innerHTML = '<span class="sub-msg">signal received — you\'re on the list</span>';
+    subBody.innerHTML = '<span class="sub-msg">signal received — you\'re on the list</span>';
     // hold the confirmation 4s, fade the dialog out, then drop it from the page
     setTimeout(() => {
       subForm.classList.add("fade-out");
@@ -2437,7 +2489,7 @@ subForm.addEventListener("submit", async (e) => {
     const msg = document.createElement("span");
     msg.className = "sub-msg err";
     msg.textContent = "transmission failed — try again";
-    subForm.appendChild(msg);
+    subBody.appendChild(msg);
   }
 });
 </script>
