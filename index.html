@@ -288,8 +288,8 @@
      whose ascent/descent differ. inline-blocks align by baseline, so mixed
      variants would grow the line box and pump the window's height. pin every
      slot to the 18px line and align to top so the box can't flex — glyphs
-     still shift within the slot, and that's the intended feel. the label is
-     plain text on purpose: no hover, no scramble. */
+     still shift within the slot, and that's the intended feel. the label
+     keeps the ambient scramble but opts out of the hover (data-no-hover). */
   #subscribe [data-link] > span { vertical-align: top; height: 18px; line-height: 18px; }
   #subscribe .sub-msg { opacity: 0.85; letter-spacing: 0.06em; }
   #subscribe .sub-msg.err { opacity: 0.55; }
@@ -455,7 +455,7 @@
     </div>
     <div class="win-body">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-      <label class="sub-label" for="sub-email">releases + new tools, when they land</label>
+      <label class="sub-label" for="sub-email" data-link data-no-hover>releases + new tools, when they land</label>
       <div class="sub-row">
         <input id="sub-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
         <button type="submit" data-link>join list</button>
@@ -2404,8 +2404,11 @@ async function setupLinks() {
     // each char starts at a different point in the cycle so they desync
     const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
 
+    // data-no-hover: keep the ambient scramble but skip the font-cycle hover
+    // (subscribe label — it's copy, not a control)
+    const hover = !link.hasAttribute("data-no-hover");
     let timer = null;
-    link.addEventListener("mouseenter", () => {
+    if (hover) link.addEventListener("mouseenter", () => {
       if (timer) return;
       timer = setInterval(() => {
         for (let i = 0; i < charSpans.length; i++) {
@@ -2414,7 +2417,7 @@ async function setupLinks() {
         }
       }, LINK_CYCLE_MS);
     });
-    link.addEventListener("mouseleave", () => {
+    if (hover) link.addEventListener("mouseleave", () => {
       clearInterval(timer);
       timer = null;
       for (const s of charSpans) s.style.fontFamily = "";
