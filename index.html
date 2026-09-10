@@ -98,8 +98,8 @@
     gap: 20px;
     color: inherit;
     text-decoration: none;
-    padding: 12px 10px;
-    margin: 0 -10px;
+    padding: 14px; /* equal all round — the hover fill is a square-cornered pad */
+    margin: 0 -14px; /* bleed the pad so the text stays on the column */
     transition: background 80ms ease;
   }
   #home-news .post-row:hover { background: rgba(255, 255, 255, 0.05); }
@@ -156,8 +156,6 @@
       grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
       gap: 56px;
     }
-    #home-news .hn-side .post-row { padding: 18px 10px; }
-    #home-news .hn-side .post-row:first-child { padding-top: 12px; } /* image tops align with the lead */
     #home-news .hn-side .thumb { width: 128px; }
   }
   @media (max-width: 640px) {
