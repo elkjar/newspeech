@@ -121,7 +121,7 @@
   #home-news .post-row:hover .thumb img { opacity: 1; }
   #home-news .txt { min-width: 0; }
   #home-news .line { display: flex; align-items: baseline; gap: 24px; }
-  #home-news .date { color: #666; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  #home-news .date { display: none; } /* dates read clunky here — the news index still shows them */
   #home-news .ttl { color: rgba(255, 255, 255, 0.9); letter-spacing: 0.04em; }
   #home-news .post-row:hover .ttl { color: #fff; }
   #home-news .dek { display: block; color: #666; font-size: 12px; margin-top: 3px; }
@@ -131,7 +131,7 @@
     gap: 18px;
   }
   #home-news .hn-lead .thumb { width: 100%; }
-  #home-news .hn-lead .line { flex-direction: column; gap: 6px; }
+  #home-news .hn-lead .line { flex-direction: column; gap: 0; }
   #home-news .hn-lead .ttl {
     font-family: "zxx-sans", ui-monospace, monospace;
     font-size: 26px;
