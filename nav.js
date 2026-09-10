@@ -1,8 +1,8 @@
 // nav.js — the unified site navigation bar.
 //
 // self-contained: injects its own fonts/styles/markup, applies the newspeech
-// text treatment (poisson font swaps, char scrambles, jitter, chroma flashes,
-// cursor-proximity boost on the wordmark), the sticky check-up behavior (hide
+// text treatment to the links (poisson font swaps, char scrambles) and to the
+// SVG wordmark (jitter, chroma flashes), the sticky check-up behavior (hide
 // on scroll-down, reveal on scroll-up), and marks the current page.
 //
 // usage: <script src="nav.js"></script> anywhere in <body>. the bar is fixed;
@@ -350,25 +350,28 @@
     letter-spacing: 0.02em;
     color: rgba(255, 255, 255, 0.72);
   }
+  /* the wordmark: assets/ns-text.svg (ascii-art NEWSPEECH, ~13:1). sized by
+     height; the grid column takes its width. */
   #ns-stage {
-    color: #fff;
-    text-decoration: none;
-    font-family: "zxx-sans", monospace;
-    font-size: clamp(26px, 2.8vw, 36px);
-    letter-spacing: 0.04em;
-    line-height: 1;
+    display: block;
+    flex-shrink: 0;
     user-select: none;
+    -webkit-user-drag: none;
+    will-change: transform;
   }
-  #ns-stage span { display: inline-block; will-change: transform; }
-  #ns-stage.chroma {
-    text-shadow:
-      -2px 0 0 #00ffff,
-       2px 0 0 #ff00ff;
+  #ns-stage img {
+    display: block;
+    height: 30px;
+    width: auto;
+    max-width: 100%;
+  }
+  #ns-stage.chroma img {
+    filter: drop-shadow(-2px 0 0 #00ffff) drop-shadow(2px 0 0 #ff00ff);
   }
   /* the full link row gets cramped below ~1024 — switch to burger + takeover */
   @media (max-width: 1024px) {
     #ns-links { padding: 16px var(--ns-gutter); }
-    #ns-stage { font-size: 26px; }
+    #ns-stage img { height: auto; width: clamp(180px, 56vw, 380px); }
     #ns-pages { display: none; }
     #ns-burger { display: inline-flex; }
   }`;
@@ -382,7 +385,7 @@
   const ICON_BURGER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6.5h18M3 12h18M3 17.5h18"/></svg>`;
   root.innerHTML =
     `<nav id="ns-links">` +
-    `<a id="ns-stage" href="${ROOT}index.html" aria-label="newspeech">NEWSPEECH</a>` +
+    `<a id="ns-stage" href="${ROOT}index.html" aria-label="newspeech"><img src="${ROOT}assets/ns-text.svg" alt="" draggable="false"></a>` +
     `<div id="ns-pages">${PAGES}</div>` +
     `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>` +
     `<div id="ns-mega" hidden><div class="mega-in">` +
@@ -555,74 +558,37 @@
     })();
   }
 
-  // ---- wordmark: per-char font swaps, jitter, chroma, proximity-kill ----
-  const FONTS = [
-    ["zxx-sans",  1],
-    ["zxx-bold",  0],
-    ["zxx-noise", 7],
-    ["zxx-camo",  3],
-    ["zxx-xed",   5],
-  ];
-  const TOTAL_W = FONTS.reduce((a, [, w]) => a + w, 0);
-  function pickFont() {
-    let r = Math.random() * TOTAL_W;
-    for (const [f, w] of FONTS) {
-      r -= w;
-      if (r <= 0) return f;
-    }
-    return FONTS[FONTS.length - 1][0];
-  }
-
+  // ---- wordmark: the SVG jitters as one piece and takes the chroma flash.
+  // (per-character font swaps need live text — they live on in the links.)
   const stage = document.getElementById("ns-stage");
-  const spans = [...stage.textContent].map((ch) => {
-    const s = document.createElement("span");
-    s.textContent = ch;
-    s.style.fontFamily = '"zxx-sans", monospace';
-    s._hoverI = 0;
-    return s;
-  });
-  stage.textContent = "";
-  for (const s of spans) stage.appendChild(s);
-
-  for (const s of spans) {
-    poisson(
-      () => 0.7 + 7.7 * intensity() + 21 * s._hoverI,
-      () => { s.style.fontFamily = `"${pickFont()}", monospace`; }
-    );
-  }
-
-  const JITTER_X = 5; // nav-scale: keep jitter inside the bar
-  for (const s of spans) {
-    poisson(
-      () => 0.030 + 0.270 * intensity() + 0.8 * s._hoverI,
-      () => {
-        const boost = 1 + 3 * s._hoverI;
-        const jx = (Math.random() * 2 - 1) * JITTER_X * boost;
-        s.style.transform = `translateX(${jx.toFixed(1)}px)`;
-        setTimeout(() => { s.style.transform = ""; }, 80 + Math.random() * 140);
-      }
-    );
-  }
+  let stageHover = 0;
+  const JITTER_X = 3; // nav-scale: keep jitter inside the bar
+  poisson(
+    () => 0.030 + 0.270 * intensity() + 0.8 * stageHover,
+    () => {
+      const boost = 1 + 2 * stageHover;
+      const jx = (Math.random() * 2 - 1) * JITTER_X * boost;
+      stage.style.transform = `translateX(${jx.toFixed(1)}px)`;
+      setTimeout(() => { stage.style.transform = ""; }, 80 + Math.random() * 140);
+    }
+  );
 
   function chroma(ms) {
     stage.classList.add("chroma");
     setTimeout(() => stage.classList.remove("chroma"), ms);
   }
   poisson(
-    () => 0.05 + 0.95 * intensity(),
+    () => 0.05 + 0.95 * intensity() + 1.5 * stageHover,
     () => chroma(80 + Math.random() * 80)
   );
 
-  // cursor proximity: chars near the cursor swap fonts and jitter faster
-  // (via _hoverI) — nothing disappears. the old proximity-kill (letters
-  // blanking under the cursor) was pulled 2026-09-09.
-  const HOVER_RADIUS = 140;
+  // cursor proximity: near the wordmark the jitter and chroma run hotter
+  const HOVER_RADIUS = 160;
   function updateHover() {
-    for (const s of spans) {
-      const r = s.getBoundingClientRect();
-      const dist = Math.hypot(r.left + r.width / 2 - lastMX, r.top + r.height / 2 - lastMY);
-      s._hoverI = dist < HOVER_RADIUS ? 1 - dist / HOVER_RADIUS : 0;
-    }
+    const r = stage.getBoundingClientRect();
+    const cx = Math.max(r.left, Math.min(r.right, lastMX));
+    const dist = Math.hypot(cx - lastMX, r.top + r.height / 2 - lastMY);
+    stageHover = dist < HOVER_RADIUS ? 1 - dist / HOVER_RADIUS : 0;
   }
 
   let lastT = performance.now();
