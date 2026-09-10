@@ -69,6 +69,10 @@
   @font-face { font-family: "zxx-camo";  src: url("${ROOT}fonts/zxx-camo.woff2")         format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-xed";   src: url("${ROOT}fonts/zxx-xed.woff2")          format("woff2"); font-display: swap; }
 
+  /* site-wide side gutter: 20px, 3× wider once the window is small enough
+     for the burger — pages pad with var(--ns-gutter) to stay in step */
+  :root { --ns-gutter: 20px; }
+  @media (max-width: 1024px) { :root { --ns-gutter: 60px; } }
   #ns-top {
     position: fixed;
     top: 0;
@@ -89,7 +93,7 @@
     gap: 32px;
     max-width: 1280px;
     margin: 0 auto;
-    padding: 26px 20px;
+    padding: 26px var(--ns-gutter);
     font-size: 13px;
     line-height: 18px; /* fixed in px so swapping fonts can't shift line-box height */
     letter-spacing: 0.04em;
@@ -346,7 +350,7 @@
   }
   /* the full link row gets cramped below ~1024 — switch to burger + takeover */
   @media (max-width: 1024px) {
-    #ns-links { padding: 16px 20px; }
+    #ns-links { padding: 16px var(--ns-gutter); }
     #ns-stage { font-size: 26px; }
     #ns-pages { display: none; }
     #ns-burger { display: inline-flex; }
