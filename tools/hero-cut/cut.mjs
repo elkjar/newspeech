@@ -4,8 +4,8 @@
 //        HERO_W=1920 HERO_CRF=12 HERO_DENOISE=0 HERO_OUT=~/Desktop HERO_NAME=hero-master node tools/hero-cut/cut.mjs
 //                                            → high-quality master for further mangling
 //
-// the cut follows the SOUP homepage header: ~1–1.5 s holds broken by bursts of
-// 8-frame stutters, live footage from the sequence test-flight master intercut
+// the cut follows the SOUP homepage header idea but faster: ~0.5 s holds broken
+// by bursts of 8-frame stutters, live footage from the sequence test-flight master intercut
 // with visualizer renders from the pool. no audio. everything is forced mono.
 // durations are in FRAMES at 24 fps so cuts land exactly.
 import { execFileSync } from "node:child_process";
@@ -31,7 +31,9 @@ const BARS = process.env.HERO_BARS || path.join(os.homedir(), "Desktop/test-vide
 // in Dropbox CONTENT/VIDEO and point HERO_PM at it once it lives there.
 const PM = process.env.HERO_PM || path.join(os.homedir(), "Desktop/PIPER MARU 3 - edit.mov");
 
-const HOLD = 30, HOLD_S = 24, HOLD_L = 36, STUT = 8; // frames
+// holds are short — nothing sits (Chris, 2026-09-09: the hold shots aren't
+// cool enough to sit on). ~0.5 s vs 8-frame stutters.
+const HOLD = 14, HOLD_S = 12, HOLD_L = 16, STUT = 8; // frames
 
 // [source, in-point seconds, frames, opts?]  opts.color keeps the clip's colour
 const EDL = [
