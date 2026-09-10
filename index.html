@@ -284,7 +284,11 @@
   }
   #subscribe .win-body button:hover { background: rgba(255, 255, 255, 0.08); }
   #subscribe .win-body button:disabled { opacity: 0.4; cursor: default; }
-  #subscribe .win-body button span { display: inline-block; }
+  /* the hover font-cycle swaps each char span between zxx variants whose
+     ascent/descent differ. inline-blocks align by baseline, so mixed variants
+     would grow the line box and pump the window's height. pin every slot to
+     the 18px line and align to top so the box can't flex. */
+  #subscribe [data-link] > span { vertical-align: top; height: 18px; line-height: 18px; }
   #subscribe .sub-msg { opacity: 0.85; letter-spacing: 0.06em; }
   #subscribe .sub-msg.err { opacity: 0.55; }
   #subscribe.fade-out { opacity: 0; transition: opacity 0.7s ease; }
@@ -386,7 +390,7 @@
     letter-spacing: 0.04em;
     cursor: pointer;
   }
-  .copy .cta span { display: inline-block; }
+  .copy .cta span { vertical-align: top; height: 18px; line-height: 18px; } /* same baseline lock as #subscribe */
   .copy .aux {
     margin-top: 20px;
     font-size: 11px;
