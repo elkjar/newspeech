@@ -90,6 +90,11 @@
      wrong). */
   #ns-top.ns-glass {
     background: linear-gradient(rgba(5, 5, 5, 0.55), rgba(5, 5, 5, 0));
+    /* the gradient must span the BORDER box: sized to the padding box it
+       repeats into the 1px border row, which then shows the gradient's dark
+       start — a visible line under a bar that's supposed to have none. */
+    background-origin: border-box;
+    background-repeat: no-repeat;
     border-bottom-color: transparent;
   }
   #ns-top { transition: transform 0.28s ease, background 0.28s ease, border-color 0.28s ease; }
