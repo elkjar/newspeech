@@ -239,7 +239,7 @@
   #subscribe.docked .win-body { display: none; }
   #subscribe.docked.open .win-body { display: flex; }
   /* the bar's open/close mark — docked only */
-  #subscribe .win-toggle { display: none; margin-left: 18px; font-size: 12px; line-height: 1; opacity: 0.5; }
+  #subscribe .win-toggle { display: none; margin-left: auto; padding-left: 18px; font-size: 12px; line-height: 1; opacity: 0.5; }
   #subscribe.docked .win-toggle { display: inline-block; }
   #subscribe.docked .win-toggle::before { content: "+"; }
   #subscribe.docked.open .win-toggle::before { content: "−"; }
@@ -444,7 +444,7 @@
   <form id="subscribe" novalidate>
     <div class="win-bar">
       <span class="win-idx">//</span>
-      <span class="win-title">distro list</span>
+      <span class="win-title">subscribe</span>
       <span class="win-toggle" aria-hidden="true"></span>
     </div>
     <div class="win-body">
