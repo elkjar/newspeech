@@ -188,8 +188,8 @@
 
   /* ---- subscribe: a BROADCAST OS window floated over the hero video.
      chrome matches sequencer/src/broadcast/os/Window.tsx — near-black fill,
-     1px light border in a dark halo, 22px title bar with index + lowercase
-     title + ×, corner grip. ---- */
+     1px light border in a dark halo, 22px title bar. no close, no grip —
+     it's a fixture, not a window you manage. ---- */
   #subscribe {
     position: relative;
     z-index: 1;
@@ -215,36 +215,14 @@
     background: rgba(255, 255, 255, 0.04);
     user-select: none;
   }
-  #subscribe .win-idx { font-size: 8px; letter-spacing: 0.2em; opacity: 0.4; font-variant-numeric: tabular-nums; }
+  #subscribe .win-idx { font-size: 10px; letter-spacing: 0.2em; opacity: 0.4; }
   #subscribe .win-title { font-family: "zxx-sans", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: lowercase; }
-  #subscribe .win-close {
-    margin-left: auto;
-    background: none;
-    border: 0;
-    padding: 0 4px;
-    color: #fff;
-    font: inherit;
-    font-size: 12px;
-    line-height: 1;
-    opacity: 0.5;
-    cursor: pointer;
-  }
-  #subscribe .win-close:hover { opacity: 1; background: none; }
   #subscribe .win-body {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 18px;
     padding: 30px 40px 34px;
-  }
-  #subscribe .win-grip {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 14px;
-    height: 14px;
-    opacity: 0.4;
-    pointer-events: none;
   }
   #subscribe .sub-row {
     display: flex;
@@ -439,9 +417,8 @@
 
   <form id="subscribe" novalidate>
     <div class="win-bar">
-      <span class="win-idx">08</span>
-      <span class="win-title">mailing list</span>
-      <button type="button" class="win-close" aria-label="close" title="close">×</button>
+      <span class="win-idx">//</span>
+      <span class="win-title">distro list</span>
     </div>
     <div class="win-body">
       <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
@@ -451,7 +428,6 @@
         <button type="submit" data-link>subscribe</button>
       </div>
     </div>
-    <svg class="win-grip" width="14" height="14" aria-hidden="true"><path d="M13 6 L6 13 M13 10 L10 13" stroke="white" stroke-width="1"/></svg>
   </form>
 
   <div id="scroll-hint" aria-hidden="true">↓</div>
@@ -2446,11 +2422,6 @@ setupLinks();
 // needs `netlify dev` for the function — a plain static server 404s.
 const subForm = document.getElementById("subscribe");
 const subBody = subForm.querySelector(".win-body");
-// × closes the window like any BROADCAST window (same fade as a successful send)
-subForm.querySelector(".win-close").addEventListener("click", () => {
-  subForm.classList.add("fade-out");
-  setTimeout(() => { subForm.style.display = "none"; }, 800);
-});
 subForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = subBody.querySelector('button[type="submit"]');
