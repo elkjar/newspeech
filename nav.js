@@ -2,7 +2,7 @@
 //
 // self-contained: injects its own fonts/styles/markup, applies the newspeech
 // text treatment (poisson font swaps, char scrambles, jitter, chroma flashes,
-// cursor proximity-kill on the wordmark), the sticky check-up behavior (hide
+// cursor-proximity boost on the wordmark), the sticky check-up behavior (hide
 // on scroll-down, reveal on scroll-up), and marks the current page.
 //
 // usage: <script src="nav.js"></script> anywhere in <body>. the bar is fixed;
@@ -89,7 +89,7 @@
     gap: 32px;
     max-width: 1280px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 26px 20px;
     font-size: 13px;
     line-height: 18px; /* fixed in px so swapping fonts can't shift line-box height */
     letter-spacing: 0.04em;
@@ -333,7 +333,7 @@
     color: #fff;
     text-decoration: none;
     font-family: "zxx-sans", monospace;
-    font-size: clamp(18px, 2vw, 26px);
+    font-size: clamp(26px, 2.8vw, 36px);
     letter-spacing: 0.04em;
     line-height: 1;
     user-select: none;
@@ -346,8 +346,8 @@
   }
   /* the full link row gets cramped below ~1024 — switch to burger + takeover */
   @media (max-width: 1024px) {
-    #ns-links { padding: 14px 20px; }
-    #ns-stage { font-size: 22px; }
+    #ns-links { padding: 16px 20px; }
+    #ns-stage { font-size: 26px; }
     #ns-pages { display: none; }
     #ns-burger { display: inline-flex; }
   }`;
@@ -542,7 +542,6 @@
     s.textContent = ch;
     s.style.fontFamily = '"zxx-sans", monospace';
     s._hoverI = 0;
-    s._reviveAt = 0;
     return s;
   });
   stage.textContent = "";
@@ -555,7 +554,7 @@
     );
   }
 
-  const JITTER_X = 4; // nav-scale: keep jitter inside the bar
+  const JITTER_X = 5; // nav-scale: keep jitter inside the bar
   for (const s of spans) {
     poisson(
       () => 0.030 + 0.270 * intensity() + 0.8 * s._hoverI,
@@ -577,32 +576,15 @@
     () => chroma(80 + Math.random() * 80)
   );
 
-  // proximity-kill: chars die within KILL px of the cursor, revive as a
-  // probabilistic binary flicker (no smooth tween — bar vocabulary matches
-  // the rest of the site). constants scaled to the nav-size wordmark.
-  const HOVER_KILL_DIST = 14;
-  const HOVER_RADIUS = 110;
-  const REVIVE_MS = 250;
-  function updateHover(t) {
+  // cursor proximity: chars near the cursor swap fonts and jitter faster
+  // (via _hoverI) — nothing disappears. the old proximity-kill (letters
+  // blanking under the cursor) was pulled 2026-09-09.
+  const HOVER_RADIUS = 140;
+  function updateHover() {
     for (const s of spans) {
       const r = s.getBoundingClientRect();
       const dist = Math.hypot(r.left + r.width / 2 - lastMX, r.top + r.height / 2 - lastMY);
-      if (dist < HOVER_KILL_DIST) {
-        s.style.opacity = "0";
-        s._reviveAt = t + REVIVE_MS;
-        s._hoverI = 1;
-      } else {
-        s._hoverI = dist < HOVER_RADIUS
-          ? 1 - (dist - HOVER_KILL_DIST) / (HOVER_RADIUS - HOVER_KILL_DIST)
-          : 0;
-        if (s._reviveAt && t < s._reviveAt) {
-          const p = 1 - (s._reviveAt - t) / REVIVE_MS;
-          s.style.opacity = Math.random() < p ? "1" : "0";
-        } else if (s._reviveAt) {
-          s.style.opacity = "1";
-          s._reviveAt = 0;
-        }
-      }
+      s._hoverI = dist < HOVER_RADIUS ? 1 - dist / HOVER_RADIUS : 0;
     }
   }
 
@@ -611,7 +593,7 @@
     const dt = (t - lastT) / 1000;
     lastT = t;
     mouseActivity = Math.max(0, mouseActivity - 1.2 * dt);
-    updateHover(t);
+    updateHover();
     requestAnimationFrame(loop);
   });
 

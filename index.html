@@ -63,7 +63,9 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   }
 
-  /* ---- home news block: latest 3 posts, injected from news-latest.html ---- */
+  /* ---- home news block: latest 4 posts, injected from news-latest.html.
+     desktop: the newest post leads on the left (image, text under), the
+     next three stack as rows on the right. narrow: lead card, then rows. ---- */
   #home-news {
     scroll-snap-align: start;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
@@ -73,7 +75,7 @@
     display: none; /* shown once the snippet fetch lands */
   }
   #home-news .hn-inner {
-    max-width: 1060px;
+    max-width: 1280px;
     margin: 0 auto;
     padding: 56px 20px 64px;
   }
@@ -83,6 +85,12 @@
     letter-spacing: 0.2em;
     color: #eee;
     margin: 0 0 28px;
+  }
+  #home-news-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
   }
   #home-news .post-row {
     display: flex;
@@ -117,6 +125,23 @@
   #home-news .ttl { color: rgba(255, 255, 255, 0.9); letter-spacing: 0.04em; }
   #home-news .post-row:hover .ttl { color: #fff; }
   #home-news .dek { display: block; color: #666; font-size: 12px; margin-top: 3px; }
+  /* the lead: image on top at full column width, text under */
+  #home-news .hn-lead {
+    flex-direction: column;
+    gap: 18px;
+  }
+  #home-news .hn-lead .thumb { width: 100%; }
+  #home-news .hn-lead .line { flex-direction: column; gap: 6px; }
+  #home-news .hn-lead .ttl {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: 26px;
+    line-height: 1.15;
+    letter-spacing: 0.01em;
+  }
+  #home-news .hn-lead .dek { font-size: 13px; margin-top: 10px; max-width: 560px; }
+  /* the side rows: hairlines between */
+  #home-news .hn-side { display: flex; flex-direction: column; }
+  #home-news .hn-side .post-row + .post-row { border-top: 1px solid rgba(255, 255, 255, 0.1); }
   #home-news .all-posts {
     display: inline-block;
     margin-top: 22px;
@@ -126,10 +151,20 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.25);
   }
   #home-news .all-posts:hover { color: #ddd; border-bottom-color: rgba(255, 255, 255, 0.7); }
+  @media (min-width: 900px) {
+    #home-news-list {
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 56px;
+    }
+    #home-news .hn-side .post-row { padding: 18px 10px; }
+    #home-news .hn-side .post-row:first-child { padding-top: 12px; } /* image tops align with the lead */
+    #home-news .hn-side .thumb { width: 128px; }
+  }
   @media (max-width: 640px) {
     #home-news .post-row { gap: 14px; }
-    #home-news .thumb { width: 84px; }
-    #home-news .line { flex-direction: column; gap: 2px; }
+    #home-news .hn-side .thumb { width: 84px; }
+    #home-news .hn-side .line { flex-direction: column; gap: 2px; }
+    #home-news .hn-lead .ttl { font-size: 22px; }
   }
 
   /* full-bleed hero canvas. absolute (not fixed) so the hero scrolls away
@@ -367,9 +402,10 @@
   <div id="scroll-hint" aria-hidden="true">scroll ↓</div>
 </section>
 
-<!-- latest 3 posts — rows come from news-latest.html (build-news.mjs emits
-     it per deploy). hidden until the fetch lands; hidden for good if it 404s
-     (e.g. no posts yet). -->
+<!-- latest 4 posts — rows come from news-latest.html (build-news.mjs emits
+     it per deploy). the first row becomes the lead card, the rest are wrapped
+     into the side column. hidden until the fetch lands; hidden for good if
+     it 404s (e.g. no posts yet). -->
 <section id="home-news" aria-label="news">
   <div class="hn-inner">
     <h2 class="news-kicker">// NEWS</h2>
@@ -381,7 +417,16 @@
 fetch("news-latest.html")
   .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
   .then((html) => {
-    document.getElementById("home-news-list").innerHTML = html;
+    const list = document.getElementById("home-news-list");
+    list.innerHTML = html;
+    const rows = [...list.querySelectorAll(".post-row")];
+    if (rows.length) rows[0].classList.add("hn-lead");
+    if (rows.length > 1) {
+      const side = document.createElement("div");
+      side.className = "hn-side";
+      for (const r of rows.slice(1)) side.appendChild(r);
+      list.appendChild(side);
+    }
     document.getElementById("home-news").style.display = "block";
   })
   .catch(() => {}); // no snippet → section stays hidden

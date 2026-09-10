@@ -514,5 +514,5 @@ if (fs.existsSync(ASSETS)) {
 fs.writeFileSync(path.join(ROOT, "news.html"), indexPage(posts));
 fs.writeFileSync(path.join(ROOT, "feed.xml"), rss(posts));
 // bare rows for the homepage news block (index.html fetches + injects it)
-fs.writeFileSync(path.join(ROOT, "news-latest.html"), posts.slice(0, 3).map(postRowHtml).join("\n") + "\n");
+fs.writeFileSync(path.join(ROOT, "news-latest.html"), posts.slice(0, 4).map(postRowHtml).join("\n") + "\n");
 console.log(`build-news: ${posts.length} ${posts.length === 1 ? "post" : "posts"} → news/, news.html, news-latest.html, feed.xml`);
