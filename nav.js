@@ -62,6 +62,9 @@
     `<a class="ns-icon" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a class="ns-icon" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>`;
 
+  // burger breakpoint: the ~380px wordmark + six links + socials wrap below this
+  const BREAK = 1100;
+
   const css = `
   @font-face { font-family: "zxx-sans";  src: url("${ROOT}fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-bold";  src: url("${ROOT}fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
@@ -102,14 +105,6 @@
   #ns-top.ns-glass #ns-links a[data-ns-link],
   #ns-top.ns-glass #ns-tools-btn,
   #ns-top.ns-glass .ns-icon { opacity: 1; }
-  /* the video flashes to near-white now and then — a soft dark halo keeps
-     the white mark and links readable through it */
-  #ns-top.ns-glass #ns-pages { text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8); }
-  #ns-top.ns-glass .ns-icon svg { filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9)); }
-  #ns-top.ns-glass #ns-stage img { filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
-  #ns-top.ns-glass #ns-stage.chroma img {
-    filter: drop-shadow(-2px 0 0 #00ffff) drop-shadow(2px 0 0 #ff00ff) drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
-  }
   #ns-top { transition: transform 0.28s ease, background 0.28s ease, border-color 0.28s ease; }
   #ns-links {
     display: flex;
@@ -376,8 +371,8 @@
   #ns-stage.chroma img {
     filter: drop-shadow(-2px 0 0 #00ffff) drop-shadow(2px 0 0 #ff00ff);
   }
-  /* the full link row gets cramped below ~1024 — switch to burger + takeover */
-  @media (max-width: 1024px) {
+  /* the full link row gets cramped below BREAK — switch to burger + takeover */
+  @media (max-width: ${BREAK}px) {
     #ns-links { padding: 16px var(--ns-gutter); }
     #ns-stage img { height: auto; width: clamp(180px, 56vw, 380px); }
     #ns-pages { display: none; }
@@ -496,7 +491,7 @@
   overlay.querySelector(".ov-close").addEventListener("click", () => setMenuOpen(false));
   overlay.addEventListener("click", (e) => { if (e.target.closest("a")) setMenuOpen(false); });
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenuOpen(false); });
-  window.addEventListener("resize", () => { if (window.innerWidth > 1024) setMenuOpen(false); });
+  window.addEventListener("resize", () => { if (window.innerWidth > BREAK) setMenuOpen(false); });
 
   // ---- glass over [data-ns-glass] (see the css) ----
   // nav.js runs at the top of <body>, before the page's sections exist — so
@@ -619,7 +614,7 @@
   // 0 — locking then would freeze the links at zero width. so lock lazily,
   // per group, whenever a group is actually rendered (desktop row on first
   // desktop layout; mega-card titles on first panel open).
-  const deskMq = window.matchMedia("(min-width: 1025px)");
+  const deskMq = window.matchMedia(`(min-width: ${BREAK + 1}px)`);
   const lockables = []; // { spans, locked }
   function lockLinkWidths() {
     for (const group of lockables) {
