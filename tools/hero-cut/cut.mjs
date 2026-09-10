@@ -1,6 +1,15 @@
 // hero-cut — the homepage hero loop, cut from an edit list.
 //
-// usage: node tools/hero-cut/cut.mjs            → assets/hero/hero.mp4 + hero.jpg
+// THE LIVE FILE IS NOT THIS SCRIPT'S OUTPUT. assets/hero/hero.mp4 is Chris's
+// datamoshed pass over the 1080p master this script renders (2026-09-09), then
+// encoded for the web with:
+//   ffmpeg -err_detect ignore_err -i <moshed master> \
+//     -vf "fps=24,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,format=yuv420p" \
+//     -c:v libx264 -crf 30 -preset slow -profile:v high -g 48 -movflags +faststart -an assets/hero/hero.mp4
+//   ffmpeg -i assets/hero/hero.mp4 -frames:v 1 -q:v 4 assets/hero/hero.jpg
+// so this script defaults to hero-clean.* (gitignored) and never clobbers it.
+//
+// usage: node tools/hero-cut/cut.mjs            → assets/hero/hero-clean.mp4 + .jpg (the un-moshed cut)
 //        HERO_W=1920 HERO_CRF=12 HERO_DENOISE=0 HERO_OUT=~/Desktop HERO_NAME=hero-master node tools/hero-cut/cut.mjs
 //                                            → high-quality master for further mangling
 // shot choice: closeups over wides.
@@ -18,7 +27,7 @@ const FPS = 24;
 const W = Number(process.env.HERO_W || 1280);
 const H = Math.round((W * 9) / 16);
 const OUT_DIR = path.resolve(process.env.HERO_OUT || "assets/hero");
-const NAME = process.env.HERO_NAME || "hero";
+const NAME = process.env.HERO_NAME || "hero-clean";
 
 const H2 = process.env.HERO_H2 ||
   path.join(os.homedir(), "Library/CloudStorage/Dropbox-Personal/___MUSIC/___NEWSPEECH/CONTENT/VIDEO/20260610_NS_T1/20260613_NS_T1_H2_1.mov");

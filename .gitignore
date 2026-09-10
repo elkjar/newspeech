@@ -37,6 +37,9 @@ samples-manifest.json
 /feed.xml
 tools/drone-gen-out/
 
+# un-moshed hero cut from tools/hero-cut (the live hero.mp4 is the moshed pass)
+assets/hero/hero-clean.*
+
 # Local Netlify folder
 .netlify
 
