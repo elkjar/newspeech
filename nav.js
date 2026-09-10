@@ -299,7 +299,7 @@
   #ns-mega .mega-in {
     max-width: 1280px;
     margin: 0 auto;
-    padding: 28px 20px 32px;
+    padding: 28px var(--ns-gutter) 32px;
   }
   #ns-mega .mega-grid {
     display: grid;
