@@ -102,6 +102,14 @@
   #ns-top.ns-glass #ns-links a[data-ns-link],
   #ns-top.ns-glass #ns-tools-btn,
   #ns-top.ns-glass .ns-icon { opacity: 1; }
+  /* the video flashes to near-white now and then — a soft dark halo keeps
+     the white mark and links readable through it */
+  #ns-top.ns-glass #ns-pages { text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8); }
+  #ns-top.ns-glass .ns-icon svg { filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9)); }
+  #ns-top.ns-glass #ns-stage img { filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
+  #ns-top.ns-glass #ns-stage.chroma img {
+    filter: drop-shadow(-2px 0 0 #00ffff) drop-shadow(2px 0 0 #ff00ff) drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
+  }
   #ns-top { transition: transform 0.28s ease, background 0.28s ease, border-color 0.28s ease; }
   #ns-links {
     display: flex;
