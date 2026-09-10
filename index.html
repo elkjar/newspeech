@@ -321,14 +321,26 @@
     --panel: #0a0a0a;
     background: var(--panel);
   }
+  /* the copy locks to the site column (nav + news block: a 1280 container
+     with --ns-gutter inside it) — its text edge lands on the same x as the
+     nav links and the news rows. the panel is 38% of the column's text width;
+     the viz takes the remainder and bleeds from the panel's inner edge to the
+     viewport edge on its side. */
+  .vignette {
+    --col: min(1280px, 100vw);
+    --col-x: calc((100vw - var(--col)) / 2 + var(--ns-gutter, 40px)); /* column text edge */
+    --col-w: calc(var(--col) - 2 * var(--ns-gutter, 40px));            /* column text width */
+    --copy-w: calc(var(--col-w) * 0.38);
+  }
   .vignette .viz {
     position: absolute;
     top: 0;
     height: 100%;
-    width: 62vw;
     z-index: 0;
     pointer-events: none;
   }
+  /* canvas is a replaced element — left+right won't size it, so width is explicit */
+  .vignette .viz { width: calc(100% - var(--col-x) - var(--copy-w)); }
   .vignette.viz-right .viz { right: 0; }
   .vignette.viz-left  .viz { left: 0; }
 
@@ -336,22 +348,22 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 38vw;
+    width: var(--copy-w);
     z-index: 1;
     background: var(--panel, var(--bg));
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 72px 64px;
+    padding: 72px 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
-  .vignette.viz-right .copy { left: 0; }
-  .vignette.viz-left  .copy { right: 0; }
+  .vignette.viz-right .copy { left: var(--col-x); padding-right: 64px; }
+  .vignette.viz-left  .copy { right: var(--col-x); padding-left: 64px; }
 
   .copy h2 {
     font-family: "zxx-sans", ui-monospace, monospace;
-    /* sized against the 38vw copy panel: "sequence" (8 chars) must fit inside
-       38vw minus padding at every viewport, so scale gentler than the panel */
+    /* sized against the copy panel (38% of the column text width, 456px max):
+       "sequence" (8 chars) must fit inside it minus padding at every viewport */
     font-size: clamp(38px, 4.2vw, 72px);
     line-height: 1;
     letter-spacing: 0.01em;
@@ -422,8 +434,9 @@
      gradient so the hard side-mask construction relaxes into a fade.
      the side-by-side layout gets cramped below ~1164 — stack from there. */
   @media (max-width: 1164px) {
-    .vignette .viz { width: 100%; left: 0; right: 0; }
-    .vignette .copy {
+    /* selectors carry the side class so they out-specify the side rules above */
+    .vignette.viz-right .viz, .vignette.viz-left .viz { width: 100%; left: 0; right: 0; }
+    .vignette.viz-right .copy, .vignette.viz-left .copy {
       left: 0;
       right: 0;
       top: auto;
