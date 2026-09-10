@@ -97,6 +97,11 @@
     background-repeat: no-repeat;
     border-bottom-color: transparent;
   }
+  /* glass sits on moving video, so the resting links go to true white for
+     contrast (they rest at 0.5 over the solid bar). */
+  #ns-top.ns-glass #ns-links a[data-ns-link],
+  #ns-top.ns-glass #ns-tools-btn,
+  #ns-top.ns-glass .ns-icon { opacity: 1; }
   #ns-top { transition: transform 0.28s ease, background 0.28s ease, border-color 0.28s ease; }
   #ns-links {
     display: flex;
