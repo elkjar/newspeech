@@ -57,7 +57,7 @@ const EDL = [
   [H2, 86.0, HOLD],                // guitar hands, pick
   [H2, 38.5, HOLD_S],              // pedals + knobs, close
   [PM, 124.9, HOLD_S],             // archival: rocket launch
-  [pool("v04.mp4"), 15.0, STUT],
+  [pool("scans-01.mp4"), 12.0, STUT],
   [PM, 51.5, STUT],                // archival: radar screen
   [H2, 103.0, STUT],               // pads screen
   [H2, 20.0, STUT],                // knobs
@@ -68,7 +68,7 @@ const EDL = [
   [PM, 258.5, STUT],               // archival: cosmonaut helmet
   [pool("v08.mp4"), 4.0, STUT],
   [H2, 41.2, HOLD_S],              // pedalboard
-  [H2, 71.5, HOLD_S],              // guitar hands 2
+  [H2, 84.0, HOLD_S],              // guitar hands 2, pick
   [PM, 110.0, STUT],               // archival: crosswalk from above
   [H2, 76.0, STUT],                // amp
   [pool("swarm-02.mp4"), 5.0, STUT],
