@@ -50,12 +50,14 @@
   const ICON_CARET = `<svg class="ns-caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;
   const ICON_IG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" stroke="none"/></svg>`;
   const ICON_YT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z" fill="currentColor" stroke="none"/></svg>`;
-  const PAGES =
+  // the links split around the centered wordmark: three left, three + socials right
+  const PAGES_L =
     `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
     `<a href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}" data-ns-link>sequence</a>` +
     `<div id="ns-tools"${IN_TOOLS ? " class=\"current\"" : ""}>` +
     `<button id="ns-tools-btn" aria-expanded="false" aria-controls="ns-mega" aria-haspopup="true">` +
-    `<span data-ns-link>tools</span>${ICON_CARET}</button></div>` +
+    `<span data-ns-link>tools</span>${ICON_CARET}</button></div>`;
+  const PAGES_R =
     `<a href="${ROOT}samples.html"${here("samples.html")} data-ns-link>samples</a>` +
     `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
     `<a href="${ROOT}live.html"${here("live.html")} data-ns-link>code</a>` +
@@ -104,17 +106,19 @@
   #ns-top.ns-glass .ns-icon { opacity: 1; }
   /* the video flashes to near-white now and then — a soft dark halo keeps
      the white mark and links readable through it */
-  #ns-top.ns-glass #ns-pages { text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8); }
+  #ns-top.ns-glass .ns-pages { text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8); }
   #ns-top.ns-glass .ns-icon svg { filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9)); }
   #ns-top.ns-glass #ns-stage img { filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
   #ns-top.ns-glass #ns-stage.chroma img {
     filter: drop-shadow(-2px 0 0 #00ffff) drop-shadow(2px 0 0 #ff00ff) drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
   }
   #ns-top { transition: transform 0.28s ease, background 0.28s ease, border-color 0.28s ease; }
+  /* three columns: links | wordmark | links. the outer columns are equal so
+     the wordmark sits on the true center of the bar whatever each side holds */
   #ns-links {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: space-between;
     gap: 32px;
     max-width: 1280px;
     margin: 0 auto;
@@ -123,16 +127,19 @@
     line-height: 18px; /* fixed in px so swapping fonts can't shift line-box height */
     letter-spacing: 0.04em;
   }
-  #ns-pages {
+  .ns-pages {
     display: flex;
     align-items: center;
     gap: 28px;
   }
+  #ns-pages-l { justify-self: start; }
+  #ns-pages-r { justify-self: end; }
   .ns-icon { opacity: 0.5; transition: opacity 120ms ease; }
   .ns-icon:hover { opacity: 1; }
   .ns-icon svg { width: 17px; height: 17px; display: block; }
   #ns-burger {
     display: none;
+    justify-self: end;
     background: none;
     border: 0;
     color: #fff;
@@ -362,7 +369,7 @@
      height; the grid column takes its width. */
   #ns-stage {
     display: block;
-    flex-shrink: 0;
+    justify-self: center;
     user-select: none;
     -webkit-user-drag: none;
     will-change: transform;
@@ -379,9 +386,11 @@
   /* the full link row gets cramped below ~1024 — switch to burger + takeover */
   @media (max-width: 1024px) {
     #ns-links { padding: 16px var(--ns-gutter); }
+    /* the hidden link groups vacate their cells — pin the mark and burger */
+    #ns-stage { grid-column: 2; }
     #ns-stage img { height: auto; width: clamp(180px, 56vw, 380px); }
-    #ns-pages { display: none; }
-    #ns-burger { display: inline-flex; }
+    .ns-pages { display: none; }
+    #ns-burger { display: inline-flex; grid-column: 3; }
   }`;
 
   const style = document.createElement("style");
@@ -393,8 +402,9 @@
   const ICON_BURGER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6.5h18M3 12h18M3 17.5h18"/></svg>`;
   root.innerHTML =
     `<nav id="ns-links">` +
+    `<div class="ns-pages" id="ns-pages-l">${PAGES_L}</div>` +
     `<a id="ns-stage" href="${ROOT}index.html" aria-label="newspeech"><img src="${ROOT}assets/ns-text.svg" alt="" draggable="false"></a>` +
-    `<div id="ns-pages">${PAGES}</div>` +
+    `<div class="ns-pages" id="ns-pages-r">${PAGES_R}</div>` +
     `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>` +
     `<div id="ns-mega" hidden><div class="mega-in">` +
     `<div class="mega-grid">` +
