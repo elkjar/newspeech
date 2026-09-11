@@ -63,9 +63,9 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   }
 
-  /* ---- home news block: latest 4 posts, injected from news-latest.html.
+  /* ---- home news block: latest 5 posts, injected from news-latest.html.
      desktop: the newest post leads on the left (image, text under), the
-     next three stack as rows on the right. narrow: lead card, then rows. ---- */
+     next four stack as rows on the right. narrow: lead card, then rows. ---- */
   #home-news {
     scroll-snap-align: start;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
@@ -477,7 +477,7 @@
   <div id="scroll-hint" aria-hidden="true">↓</div>
 </section>
 
-<!-- latest 4 posts — rows come from news-latest.html (build-news.mjs emits
+<!-- latest 5 posts — rows come from news-latest.html (build-news.mjs emits
      it per deploy). the first row becomes the lead card, the rest are wrapped
      into the side column. hidden until the fetch lands; hidden for good if
      it 404s (e.g. no posts yet). -->
