@@ -13,7 +13,7 @@ image_in_post: false
 
 i've been working with [valhalla amplification](https://valhallaamplification.com/) for a while on the other side of the camera so when the opportunity came to spend some time with rich good (psychedelic furs, the pleased) making noise with the modular rig and SEQUENCE on the other end of the lens i couldn't say no. this was the first real test of playing the sequence app + modular rig as an instrument vs. a writing and recording tool.
 
-i had an incredibly great time with rich and yael rallis (drums) at desert dome studio in the high desert - the perfect vibe to make this type of outlandish demo video. hopefully this helps sell a ton of amps.
+i had an incredibly great time with rich and yael rallis (drums) at [desert dome studio](https://desertdomestudio.com/) in the high desert - the perfect vibe to make this type of outlandish demo video. hopefully this helps sell a ton of amps.
 
 recorded at desert dome studios.
 recorded + mix: pj solo.
