@@ -201,17 +201,19 @@
   .sec h2 { font-weight: 400; font-size: 14px; letter-spacing: 0.2em; color: #eee; margin: 0 0 6px; }
   .sec .lede { color: #777; margin: 0 0 40px; max-width: 60ch; }
 
-  /* scores: three composition figures, each drawing itself on hover */
-  #scores .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
-  .score { display: block; color: inherit; text-decoration: none; cursor: default; }
-  .score .fig { position: relative; aspect-ratio: 1; border: 1px solid #1c1c1c; overflow: hidden; }
-  .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .55; transition: opacity .5s ease; }
-  .score:hover .fig svg, .score.drawing .fig svg { opacity: 1; }
-  .score .cap { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; color: #888; }
-  .score .cap .name { font-family: "zxx-sans", ui-monospace, monospace; font-size: 15px; letter-spacing: 0.06em; color: #ccc; }
-  .score .cap .meta { color: #555; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  /* scores: three composition figures, full-bleed, each half the viewport
+     wide, stacked and stepped left → centre → right. no text — just the
+     figures, each drawing and erasing itself on a loop. */
+  #scores { padding: 0; border-top: 1px solid #1c1c1c; }
+  #scores .grid { display: flex; flex-direction: column; }
+  .score { display: block; width: 50vw; aspect-ratio: 1; color: inherit; text-decoration: none; cursor: default; }
+  .score:nth-child(1) { align-self: flex-start; }
+  .score:nth-child(2) { align-self: center; }
+  .score:nth-child(3) { align-self: flex-end; }
+  .score .fig { position: relative; width: 100%; height: 100%; }
+  .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .9; }
 
-  @media (max-width: 900px) { #scores .grid { grid-template-columns: 1fr; gap: 28px; } }
+  @media (max-width: 720px) { .score { width: 80vw; } }
 
   @media (max-width: 720px) {
     #scrim {
@@ -295,9 +297,7 @@
 </div>
 </section>
 
-<section id="scores" class="sec">
-  <h2><span data-link>scores</span></h2>
-  <p class="lede">each track as one figure — every section of the arrangement drawn at the angle where it happens in the piece. hover to watch it draw.</p>
+<section id="scores">
   <div class="grid" id="score-grid"></div>
 </section>
 
@@ -859,12 +859,13 @@
     loadFrame(ep.tracks[cur]); markCurrent();
   }
 
-  // ---- scores: inline each exported composition svg and animate the draw ----
+  // ---- scores: inline each exported composition svg and loop the draw ------
   // the svg recorder writes strokes in piece order, so revealing them in
-  // order along their own length is the arrangement unfolding. resting state
-  // is the finished figure at low ink; hover redraws it from nothing.
-  const DRAW_MS = 1700, STROKE_MS = 520;
-  async function mountScore(t, host) {
+  // order along their own length is the arrangement unfolding. each figure
+  // draws on, holds, sweeps off and starts again; the three run out of phase,
+  // and pause while off screen (black eyes is 1600 strokes).
+  const CYCLE_MS = 11000, DRAW_MS = 2600, STROKE_MS = 700, HOLD_UNTIL_MS = 6400;
+  async function mountScore(t, host, phase) {
     const url = (ep.scoresBase || "assets/ep/scores/") + t.slug + ".svg";
     let text;
     try { const r = await fetch(url); if (!r.ok) throw 0; text = await r.text(); } catch (_) { host.remove(); return; }
@@ -882,35 +883,45 @@
       el.dataset.len = String(Math.max(1, L));
       el.style.strokeDasharray = el.dataset.len;
     }
-    let anims = [];
+    // one infinite animation per stroke, keyframed over the shared cycle:
+    // hidden → sweep on (staggered by order) → hold → sweep off → hidden
     const N = Math.max(1, strokes.length);
-    function draw() {
-      anims.forEach((a) => a.cancel()); anims = [];
-      host.classList.add("drawing");
-      strokes.forEach((el, i) => {
-        const L = el.dataset.len;
-        const a = el.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: STROKE_MS, delay: (i / N) * DRAW_MS, easing: "cubic-bezier(.3,0,.2,1)", fill: "both" });
-        anims.push(a);
-      });
-      fills.forEach((el, i) => {
-        const a = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: ((i + 0.5) / Math.max(1, fills.length)) * DRAW_MS, fill: "both" });
-        anims.push(a);
-      });
-      const last = anims[anims.length - 1];
-      if (last) last.onfinish = () => host.classList.remove("drawing");
-    }
-    host.addEventListener("mouseenter", draw);
-    host.addEventListener("focus", draw);
-    host.addEventListener("touchstart", draw, { passive: true });
+    const anims = [];
+    const at = (ms) => Math.min(1, Math.max(0, ms / CYCLE_MS));
+    strokes.forEach((el, i) => {
+      const L = +el.dataset.len;
+      const d0 = (i / N) * DRAW_MS, d1 = d0 + STROKE_MS;
+      const e0 = HOLD_UNTIL_MS + (i / N) * DRAW_MS, e1 = e0 + STROKE_MS;
+      anims.push(el.animate([
+        { strokeDashoffset: L, offset: 0 },
+        { strokeDashoffset: L, offset: at(d0) },
+        { strokeDashoffset: 0, offset: at(d1), easing: "linear" },
+        { strokeDashoffset: 0, offset: at(e0) },
+        { strokeDashoffset: -L, offset: at(e1) },
+        { strokeDashoffset: -L, offset: 1 },
+      ], { duration: CYCLE_MS, iterations: Infinity, delay: -phase, easing: "linear" }));
+    });
+    const F = Math.max(1, fills.length);
+    fills.forEach((el, i) => {
+      const d0 = ((i + 0.5) / F) * DRAW_MS, e0 = HOLD_UNTIL_MS + ((i + 0.5) / F) * DRAW_MS;
+      anims.push(el.animate([
+        { opacity: 0, offset: 0 }, { opacity: 0, offset: at(d0) }, { opacity: 1, offset: at(d0 + 300) },
+        { opacity: 1, offset: at(e0) }, { opacity: 0, offset: at(e0 + 300) }, { opacity: 0, offset: 1 },
+      ], { duration: CYCLE_MS, iterations: Infinity, delay: -phase }));
+    });
+    // only spend the frames while the figure is on screen
+    const io = new IntersectionObserver(([e]) => { anims.forEach((a) => (e.isIntersecting ? a.play() : a.pause())); }, { threshold: 0.05 });
+    io.observe(host);
   }
   {
     const grid = $("score-grid");
     ep.tracks.forEach((t, i) => {
       const host = document.createElement("a");
       host.className = "score"; host.tabIndex = 0;
-      host.innerHTML = `<div class="fig"></div><div class="cap"><span class="name">${t.title}</span><span class="meta">${String(i + 1).padStart(2, "0")} · composition${t.bpm ? ` · ${t.bpm} bpm` : ""}</span></div>`;
+      host.setAttribute("aria-label", `${t.title} — composition score`);
+      host.innerHTML = `<div class="fig"></div>`;
       grid.appendChild(host);
-      mountScore(t, host);
+      mountScore(t, host, i * (CYCLE_MS / 3)); // out of phase by a third of the cycle
     });
   }
 
