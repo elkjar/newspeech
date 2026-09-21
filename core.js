@@ -2479,9 +2479,11 @@
       if (isFinite(v)) _globalHaze = Math.max(0, Math.min(2, v));
     } catch (_) {}
   }
-  function setHaze(v) {
+  // persist=false: apply for this page load only (the EP listening room quiets
+  // its frame without overwriting the visitor's site-wide setting)
+  function setHaze(v, persist = true) {
     _globalHaze = Math.max(0, Math.min(2, +v || 0));
-    try { localStorage.setItem(HAZE_KEY, String(_globalHaze)); } catch (_) {}
+    if (persist) try { localStorage.setItem(HAZE_KEY, String(_globalHaze)); } catch (_) {}
     refreshHazeUI();
   }
   function hazeAmount() { return _globalHaze; }
@@ -2510,9 +2512,9 @@
       if (isFinite(v)) _globalGrain = Math.max(0, Math.min(1, v));
     } catch (_) {}
   }
-  function setGrain(v) {
+  function setGrain(v, persist = true) {
     _globalGrain = Math.max(0, Math.min(1, +v || 0));
-    try { localStorage.setItem(GRAIN_KEY, String(_globalGrain)); } catch (_) {}
+    if (persist) try { localStorage.setItem(GRAIN_KEY, String(_globalGrain)); } catch (_) {}
     applyGrainOpacityVar();
     refreshGrainUI();
   }
@@ -2601,10 +2603,10 @@
       if (!isNaN(v) && v >= 0 && v <= 128) _globalDataPoints = v;
     } catch (_) {}
   }
-  function setDataPoints(v) {
+  function setDataPoints(v, persist = true) {
     const n = parseInt(v, 10);
     _globalDataPoints = isNaN(n) ? 0 : Math.max(0, Math.min(128, n));
-    try { localStorage.setItem(DATA_POINTS_KEY, String(_globalDataPoints)); } catch (_) {}
+    if (persist) try { localStorage.setItem(DATA_POINTS_KEY, String(_globalDataPoints)); } catch (_) {}
     refreshDataPointsUI();
   }
   function dataPointsAmount() { return _globalDataPoints; }

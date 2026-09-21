@@ -48,6 +48,17 @@ for (const t of tracks) {
   // the page's tempo clock is a global (localStorage) in core.js; carry it into
   // the render only when the listening room would also run it.
   if (t.beat && t.bpm) state.localStorage = { ...(state.localStorage || {}), 'newspeech.bpm': String(t.bpm) };
+  // the room's quiet layer, as the page globals reel-render can set (its
+  // headless profile is throwaway, so persisting there is fine). dim is frame
+  // opacity in the room — not representable here; darken the mp4 in post or
+  // fold it into the params if a pairing needs it.
+  const q = ep.quiet || {};
+  const ls = { ...(state.localStorage || {}) };
+  if (q.haze != null) ls['newspeech.haze'] = String(q.haze);
+  if (q.grain != null) ls['newspeech.grain'] = String(q.grain);
+  if (q.dataPoints != null) ls['newspeech.dataPoints'] = String(q.dataPoints);
+  if (q.telemetry === false) ls['newspeech.telemetryEnabled'] = '[]';
+  if (Object.keys(ls).length) state.localStorage = ls;
   const timeline = { segments: [{ page: t.page, seconds: t.duration, state }] };
   const tlPath = resolve(outDir, `${t.slug}.timeline.json`);
   await writeFile(tlPath, JSON.stringify(timeline, null, 2) + '\n');

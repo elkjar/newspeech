@@ -4,6 +4,7 @@
   "buy": { "label": "buy on subvert", "url": "" },
   "streaming": { "date": "", "note": "streaming everywhere one month after release" },
   "audioBase": "assets/ep/",
+  "quiet": { "dim": 0.5, "haze": 0.35, "grain": 0, "dataPoints": 0, "telemetry": false },
   "visualizers": [
     "1-streaks", "2-static", "8-rings", "3-invert", "4-blocks", "5-stars",
     "6-grid", "7-ridges", "9-swarm", "16-network", "17-flare", "18-chevron"

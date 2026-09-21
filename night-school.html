@@ -265,10 +265,30 @@
     // panel closed ([0] in the frame still opens it — it's hidden, not removed)
     const panel = doc.getElementById("panel");
     if (panel) panel.hidden = true;
+    applyQuiet(doc, NS);
     attach();
     // the frame owns the keyboard once clicked — mirror the room's keys back
     viz.contentWindow.addEventListener("keydown", onKey);
   });
+  // quiet layer: the visualizers were built to hold a screen alone; behind a
+  // record they sit back. dim = frame opacity over the #050505 body; the site
+  // globals are applied for this load only (persist=false) so a visitor's own
+  // haze/grain/data-points settings survive; the telemetry HUD is hidden by
+  // style rather than toggled, for the same reason. all values live in the
+  // EP config so the room and the rendered videos agree.
+  const quiet = ep.quiet || {};
+  if (quiet.dim != null) viz.style.opacity = String(quiet.dim);
+  function applyQuiet(doc, NS) {
+    if (quiet.haze != null && NS.setHaze) NS.setHaze(quiet.haze, false);
+    if (quiet.grain != null && NS.setGrain) NS.setGrain(quiet.grain, false);
+    if (quiet.dataPoints != null && NS.setDataPoints) NS.setDataPoints(quiet.dataPoints, false);
+    if (quiet.telemetry === false) {
+      const st = doc.createElement("style");
+      st.textContent = "#hud-overlay{display:none !important}";
+      doc.head.appendChild(st);
+    }
+  }
+
   // keep the page fed: re-attach if it dropped the analyser (someone pressed a
   // for the mic, or the page swapped) and mirror the transport state
   function tick() {
