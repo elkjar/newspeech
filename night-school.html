@@ -33,10 +33,14 @@
   body { font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace; overflow-x: hidden; }
 
   /* ---- album: cover + the facts, first thing on the page ---- */
-  #album { position: relative; z-index: 3; max-width: 1280px; margin: 0 auto; padding: calc(56px + var(--ns-nav-h, 0px)) var(--ns-gutter, 40px) 64px; display: grid; grid-template-columns: minmax(240px, 420px) 1fr; gap: 48px; align-items: end; }
+  #album {
+    position: relative; z-index: 3; max-width: 1280px; margin: 0 auto; min-height: 100vh; box-sizing: border-box;
+    padding: calc(40px + var(--ns-nav-h, 0px)) var(--ns-gutter, 40px) 48px;
+    display: grid; grid-template-columns: minmax(240px, 420px) 1fr; gap: 56px; align-items: center; align-content: center;
+  }
   #album .cover { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border: 1px solid #1c1c1c; background: #0a0a0a; }
   #album .artist { color: #666; letter-spacing: 0.18em; margin: 0 0 6px; }
-  #album .name { font-family: "zxx-sans", ui-monospace, monospace; font-weight: 400; font-size: clamp(34px, 4.6vw, 56px); line-height: 1; letter-spacing: 0.04em; color: #eee; margin: 0 0 14px; }
+  #album .name { font-family: "zxx-sans", ui-monospace, monospace; font-weight: 400; font-size: clamp(26px, 3vw, 38px); line-height: 1.1; letter-spacing: 0.05em; color: #eee; margin: 0 0 12px; }
   #album .facts { color: #777; margin: 0 0 34px; }
   #album .facts b { color: #ccc; font-weight: 400; }
   #album .avail { display: grid; grid-template-columns: max-content 1fr; gap: 12px 28px; align-items: baseline; }
@@ -49,7 +53,7 @@
   #album a.svc:hover { color: #fff; }
   #album .svc.pending { color: #555; pointer-events: none; }
   #album .soon dd .svc { color: #666; }
-  @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; } #album .cover { max-width: 420px; } }
+  @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } #album .cover { max-width: 420px; } }
 
   /* the room is the hero: one viewport tall, the visualizer lives inside it
      and scrolls away with it; the record keeps playing underneath the page */
