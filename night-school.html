@@ -218,7 +218,7 @@
       <div class="seedrow">
         <span>seed <span class="seed" id="ruin-seed"></span></span>
         <button class="reseed" id="ruin-reseed" title="another wreck at the same settings">⟳</button>
-        <button id="ruin-keep" title="print the whole track through these settings and download it">keep this ruin ↓</button>
+        <button id="ruin-keep" title="print the whole track through these settings and download it">download ↓</button>
         <button id="ruin-share" title="copy a link — the room opens on this track with these exact settings">share</button>
         <span class="state" id="ruin-state"></span>
       </div>
@@ -233,13 +233,13 @@
   </div>
   <div id="gate-wrap" hidden>
     <form id="gate" class="win" novalidate>
-      <div class="win-bar"><span class="win-idx">//</span><span class="win-title">keep this ruin</span><button type="button" class="win-close" id="gate-close" aria-label="close">×</button></div>
+      <div class="win-bar"><span class="win-idx">//</span><span class="win-title">download</span><button type="button" class="win-close" id="gate-close" aria-label="close">×</button></div>
       <div class="win-body">
         <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
         <label class="lbl" for="gate-email" data-link data-no-hover>an email, and the copy is yours</label>
         <div class="row">
           <input id="gate-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
-          <button type="submit" id="gate-go" data-link>keep</button>
+          <button type="submit" id="gate-go" data-link>download</button>
         </div>
         <span class="msg" id="gate-msg" hidden></span>
         <span class="stream">releases + new tools, when they land · no spam</span>
@@ -516,7 +516,7 @@
     stateEl.textContent = touched ? "ruined" : "clean";
     stateEl.classList.toggle("on", touched);
     keepBtn.disabled = !touched || printing;
-    if (!printing) keepBtn.textContent = touched ? `keep this ruin ↓ ~${Math.round(takeSeconds() * SR * 6 / 1048576)} MB` : "keep this ruin ↓";
+    if (!printing) keepBtn.textContent = touched ? `download ↓ ~${Math.round(takeSeconds() * SR * 6 / 1048576)} MB` : "download ↓";
   }
   function syncUrl() {
     if (!history.replaceState) return;
@@ -582,7 +582,7 @@
     if (!mixOnly && key !== irKey) { irKey = key; c.buffer = makeImpulse(ctx, p.decay, seedStr); }
   }
 
-  // ---- keep: the whole record through the same graph, offline, to a 24-bit wav ----
+  // ---- download: the whole record through the same graph, offline, to a 24-bit wav ----
   // rendered in one-minute pieces with a pre-roll (the reverb tail + a
   // margin) so a 40-minute take doesn't need a gigabyte of float32: the
   // worklet is positional, so a piece started from any frame is exactly the
@@ -711,7 +711,7 @@
       a.download = `${(ep.title || "ep").replace(/\s+/g, "-")}-${t.slug}-${bits.join("-")}-${k.seed}.wav`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-      toast(`kept — ${a.download} (${fmt(frames / SR)})`);
+      toast(`${a.download} (${fmt(frames / SR)})`);
     } catch (err) {
       console.error(err); toast("print failed — see console");
     } finally {
@@ -754,12 +754,10 @@
     loadFrame(ep.tracks[cur]); markCurrent();
   }
 
-  // ---- the text treatment (home-page signature, trimmed to what this page has) ----
-  const FONTS = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+  // ---- the text treatment: the ambient character scramble only. the hover
+  // font-cycle is left off here — the variant fonts differ in ascent and
+  // pump the line height, which the sleeve's rows can't absorb.
   const SCRAMBLE = "#*/\\_+=~<>.,:;|?!@$%^&-";
-  if (document.fonts && document.fonts.load) {
-    await Promise.all(FONTS.map((f) => document.fonts.load(`13px "${f}"`))).catch(() => {});
-  }
   document.querySelectorAll("[data-link]").forEach((link) => {
     const txt = link.textContent; link.textContent = "";
     const spans = [...txt].map((ch) => {
@@ -767,18 +765,6 @@
       s.textContent = ch; s.dataset.original = ch; s.style.display = "inline-block"; s.style.whiteSpace = "pre";
       link.appendChild(s); return s;
     });
-    const idx = spans.map(() => (Math.random() * FONTS.length) | 0);
-    let timer = null;
-    link.addEventListener("mouseenter", () => {
-      if (timer) return;
-      timer = setInterval(() => {
-        for (let i = 0; i < spans.length; i++) {
-          idx[i] = (idx[i] + 1) % FONTS.length;
-          spans[i].style.fontFamily = `"${FONTS[idx[i]]}", monospace`;
-        }
-      }, 80);
-    });
-    link.addEventListener("mouseleave", () => { clearInterval(timer); timer = null; spans.forEach((s) => { s.style.fontFamily = ""; }); });
     (function schedule() {
       const wait = -Math.log(1 - Math.random()) * 6000 + 1500;
       setTimeout(() => {
