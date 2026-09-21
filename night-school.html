@@ -158,11 +158,6 @@
   #gate-wrap[hidden] { display: none; }
   #gate { width: min(440px, calc(100vw - 32px)); }
 
-  #status {
-    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
-    color: #555; white-space: nowrap; text-align: center;
-  }
-  #status b { color: #999; font-weight: 400; }
 
   /* progress: the whole bottom edge is the scrubber */
   #progress { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; cursor: pointer; }
@@ -245,7 +240,6 @@
       </div>
     </form>
   </div>
-  <div id="status"><b id="viz-name"></b></div>
   <div id="progress"><div class="bar"></div><div class="buf"></div><div class="fill"></div></div>
   <div id="toast"></div>
 </div>
@@ -369,9 +363,7 @@
   // ---- the visualizer frame ---------------------------------------------------
   function pageFor(t) { return t.page || ep.default || "16-network"; }
   function loadFrame(t) {
-    const page = pageFor(t);
-    $("viz-name").textContent = page.replace(/^\d+-/, "");
-    viz.src = `${page}.html`;
+    viz.src = `${pageFor(t)}.html`;
   }
   viz.addEventListener("load", () => {
     const t = ep.tracks[cur];
