@@ -85,10 +85,30 @@
   #tracks .title:hover { color: #fff; }
   #tracks .meta { color: #555; display: flex; gap: 12px; white-space: nowrap; }
   #tracks .dur { min-width: 4ch; text-align: right; }
-  #tracks .destroy a { color: #666; text-decoration: none; border-bottom: 1px solid #2a2a2a; }
-  #tracks .destroy a:hover { color: #eee; border-color: #777; }
-  #tracks .destroy a + a { margin-left: 8px; }
   #tracks .note { grid-column: 2 / -1; color: #4a4a4a; font-size: 11px; }
+
+  /* ruin: one knob on the record. clean at 0, gone at 1. */
+  #ruin { margin-top: 18px; display: grid; grid-template-columns: 26px 1fr; gap: 6px 14px; align-items: center; color: #888; }
+  #ruin .lbl { color: #555; letter-spacing: 0.18em; }
+  #ruin .row { display: flex; align-items: center; gap: 12px; }
+  #ruin input[type=range] {
+    -webkit-appearance: none; appearance: none; flex: 1; height: 18px; background: transparent; cursor: pointer; margin: 0;
+  }
+  #ruin input[type=range]::-webkit-slider-runnable-track { height: 1px; background: #333; }
+  #ruin input[type=range]::-moz-range-track { height: 1px; background: #333; }
+  #ruin input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 10px; height: 18px; margin-top: -8.5px; background: #ddd; border: 0; border-radius: 0;
+  }
+  #ruin input[type=range]::-moz-range-thumb { width: 10px; height: 18px; background: #ddd; border: 0; border-radius: 0; }
+  #ruin .val { min-width: 4ch; text-align: right; color: #eee; font-variant-numeric: tabular-nums; }
+  #ruin .seedrow { grid-column: 2; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 11px; color: #555; }
+  #ruin .seed { color: #999; letter-spacing: 0.08em; }
+  #ruin button { background: none; border: 1px solid #333; color: #999; font: inherit; padding: 3px 9px; cursor: pointer; letter-spacing: 0.06em; }
+  #ruin button:hover { border-color: #888; color: #eee; }
+  #ruin button:disabled { opacity: .4; cursor: default; }
+  #ruin button.reseed { padding: 3px 7px; }
+  #ruin .state { color: #444; }
+  #ruin .state.on { color: #777; }
 
   #buy {
     position: absolute; right: 28px; top: calc(28px + var(--ns-nav-h, 0px));
@@ -146,6 +166,20 @@
   <div id="sleeve">
     <h1><span data-link id="title"></span></h1>
     <ol id="tracks"></ol>
+    <div id="ruin">
+      <span class="lbl">ruin</span>
+      <div class="row">
+        <input type="range" id="ruin-amt" min="0" max="1" step="0.01" value="0" aria-label="ruin amount">
+        <span class="val" id="ruin-val">0.00</span>
+      </div>
+      <div class="seedrow">
+        <span>seed <span class="seed" id="ruin-seed"></span></span>
+        <button class="reseed" id="ruin-reseed" title="another wreck at the same amount">⟳</button>
+        <button id="ruin-keep" title="print the whole track through this ruin and download it">keep this ruin ↓</button>
+        <button id="ruin-share" title="copy a link — the room opens on this track, playing this exact wreck">share</button>
+        <span class="state" id="ruin-state"></span>
+      </div>
+    </div>
   </div>
   <div id="buy"></div>
   <div id="status"><b id="viz-name"></b><span class="keys">[space] play · [←→] track · [ ] visualizer · [0] params · [9] levels · [c] copy state</span></div>
@@ -171,11 +205,6 @@
   $("title").textContent = ep.title;
   const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const audioUrl = (t) => (ep.audioBase || "") + t.file;
-  const destroyHref = (tool, t) => {
-    const q = new URLSearchParams({ src: audioUrl(t) });
-    if (t.bpm) q.set("bpm", String(t.bpm));
-    return `${tool}.html?${q}`;
-  };
   const list = $("tracks");
   ep.tracks.forEach((t, i) => {
     const li = document.createElement("li");
@@ -185,10 +214,6 @@
       <button class="title" data-link>${t.title}</button>
       <span class="meta">
         <span class="dur">${t.duration ? fmt(t.duration) : ""}</span>
-        <span class="destroy">destroy →
-          <a href="${destroyHref("glitch", t)}" target="_blank" rel="noopener" title="open this track in glitch — every take has a seed you can share">glitch</a>
-          <a href="${destroyHref("decay", t)}" target="_blank" rel="noopener" title="open this track in decay — wear it down pass by pass">decay</a>
-        </span>
       </span>
       ${t.note ? `<span class="note">${t.note}</span>` : ""}`;
     li.querySelector(".title").addEventListener("click", (e) => { e.currentTarget.blur(); (i === cur ? togglePlay() : play(i)); });
@@ -215,17 +240,32 @@
   }
 
   // ---- audio graph: <audio> → analyser → out; the analyser is handed to the frame ----
-  let actx = null, analyser = null;
+  let actx = null, analyser = null, ruinNode = null, graphReady = null;
   function ensureGraph() {
-    if (actx) return;
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    actx = new Ctx();
-    const src = actx.createMediaElementSource(player);
-    analyser = actx.createAnalyser();
-    analyser.fftSize = 1024;            // matches core.js's mic analyser
-    analyser.smoothingTimeConstant = 0; // core.js does its own smoothing
-    src.connect(analyser);
-    src.connect(actx.destination);
+    if (graphReady) return graphReady;
+    graphReady = (async () => {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      actx = new Ctx();
+      const src = actx.createMediaElementSource(player);
+      analyser = actx.createAnalyser();
+      analyser.fftSize = 1024;            // matches core.js's mic analyser
+      analyser.smoothingTimeConstant = 0; // core.js does its own smoothing
+      // the ruin stage sits BEFORE the analyser: the visualizer reacts to
+      // what you hear, holes and all
+      try {
+        await actx.audioWorklet.addModule("ruin-worklet.js");
+        ruinNode = new AudioWorkletNode(actx, "ruin", { outputChannelCount: [2] });
+        src.connect(ruinNode);
+        ruinNode.connect(analyser);
+        ruinNode.connect(actx.destination);
+        pushRuin();
+      } catch (e) {
+        console.warn("ruin worklet unavailable, playing clean:", e);
+        src.connect(analyser);
+        src.connect(actx.destination);
+      }
+    })();
+    return graphReady;
   }
   function frameNS() {
     try { return viz.contentWindow && viz.contentWindow.Newspeech; } catch (_) { return null; }
@@ -291,9 +331,13 @@
 
   // keep the page fed: re-attach if it dropped the analyser (someone pressed a
   // for the mic, or the page swapped) and mirror the transport state
+  let syncCount = 0;
   function tick() {
     const NS = frameNS();
     if (NS && analyser && NS.audioActive && !NS.audioActive() && !player.paused) attach();
+    if (ruinNode && !player.paused && (syncCount++ % 8) === 0) {
+      ruinNode.port.postMessage({ type: "sync", frame: Math.round(player.currentTime * actx.sampleRate) });
+    }
     if (player.duration) {
       $("progress").querySelector(".fill").style.width = `${(player.currentTime / player.duration) * 100}%`;
       const b = player.buffered;
@@ -314,19 +358,21 @@
   async function play(i) {
     const t = ep.tracks[i];
     if (!t) return;
-    ensureGraph();
+    await ensureGraph();
     await actx.resume();
     if (i !== cur) {
       cur = i;
       player.src = audioUrl(t);
       loadFrame(t);
+      pushRuin();
+      syncUrl();
     }
     try { await player.play(); } catch (e) { console.warn("play blocked:", e); }
     markCurrent();
   }
   async function togglePlay() {
     if (cur < 0) return play(0);
-    ensureGraph();
+    await ensureGraph();
     await actx.resume();
     if (player.paused) { try { await player.play(); } catch (_) {} } else player.pause();
     markCurrent();
@@ -343,6 +389,109 @@
     const r = e.currentTarget.getBoundingClientRect();
     player.currentTime = ((e.clientX - r.left) / r.width) * player.duration;
   });
+
+  // ---- ruin: one knob on the record -----------------------------------------------
+  // amount + seed are the whole wreck. the worklet decides positionally, so the
+  // stream you hear and the file you keep agree, and the URL reproduces both.
+  const ruin = { amount: 0, seed: "" };
+  const randomSeed = () => Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
+  const amtEl = $("ruin-amt"), valEl = $("ruin-val"), seedEl = $("ruin-seed"), stateEl = $("ruin-state");
+  function pushRuin() {
+    const t = ep.tracks[cur < 0 ? 0 : cur];
+    if (ruinNode) ruinNode.port.postMessage({ type: "set", amount: ruin.amount, seed: ruin.seed, bpm: (t && t.bpm) || 120 });
+  }
+  function showRuin() {
+    amtEl.value = String(ruin.amount);
+    valEl.textContent = ruin.amount.toFixed(2);
+    seedEl.textContent = ruin.seed;
+    stateEl.textContent = ruin.amount > 0 ? "ruined" : "clean";
+    stateEl.classList.toggle("on", ruin.amount > 0);
+    $("ruin-keep").disabled = ruin.amount <= 0;
+  }
+  function setRuin(amount, seed) {
+    if (amount != null) ruin.amount = Math.max(0, Math.min(1, +amount || 0));
+    if (seed) ruin.seed = String(seed).trim().slice(0, 32);
+    showRuin(); pushRuin(); syncUrl();
+  }
+  function syncUrl() {
+    if (!history.replaceState) return;
+    const q = new URLSearchParams();
+    const t = ep.tracks[cur];
+    if (t) q.set("t", t.slug);
+    if (ruin.amount > 0) { q.set("ruin", ruin.amount.toFixed(2)); q.set("seed", ruin.seed); }
+    if (EP_URL !== "assets/ep/night-school.json") q.set("ep", EP_URL);
+    const qs = q.toString();
+    history.replaceState(null, "", location.pathname + (qs ? `?${qs}` : ""));
+  }
+  amtEl.addEventListener("input", () => setRuin(amtEl.value, null));
+  $("ruin-reseed").addEventListener("click", () => setRuin(null, randomSeed()));
+  $("ruin-share").addEventListener("click", async (e) => {
+    syncUrl();
+    try { await navigator.clipboard.writeText(location.href); toast("link copied — it opens on this track, at this ruin"); }
+    catch (_) { toast("link is in the address bar"); }
+  });
+
+  // print: the whole track through the same worklet, offline, then a 24-bit wav.
+  const decoded = new Map(); // slug → AudioBuffer (a 50MB flac decodes once)
+  async function decodeTrack(t) {
+    if (decoded.has(t.slug)) return decoded.get(t.slug);
+    const bytes = await (await fetch(audioUrl(t))).arrayBuffer();
+    const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const tmp = new Ctx(2, 1, 48000);
+    const buf = await tmp.decodeAudioData(bytes);
+    decoded.set(t.slug, buf);
+    return buf;
+  }
+  async function renderRuin(t, amount, seed) {
+    const buf = await decodeTrack(t);
+    const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const oc = new Ctx(2, buf.length, buf.sampleRate);
+    await oc.audioWorklet.addModule("ruin-worklet.js");
+    const src = oc.createBufferSource(); src.buffer = buf;
+    const n = new AudioWorkletNode(oc, "ruin", { outputChannelCount: [2] });
+    const ack = new Promise((res) => { n.port.onmessage = (e) => { if (e.data.type === "ack") res(); }; });
+    n.port.postMessage({ type: "set", amount, seed, bpm: t.bpm || 120 });
+    src.connect(n); n.connect(oc.destination); src.start(0);
+    await ack; // settings are in before the first block renders
+    return oc.startRendering();
+  }
+  function encodeWav24(b) {
+    const nCh = 2, n = b.length, sr = b.sampleRate, bps = 3;
+    const dataBytes = n * nCh * bps;
+    const ab = new ArrayBuffer(44 + dataBytes), dv = new DataView(ab);
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, "RIFF"); dv.setUint32(4, 36 + dataBytes, true); str(8, "WAVE"); str(12, "fmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, nCh, true); dv.setUint32(24, sr, true);
+    dv.setUint32(28, sr * nCh * bps, true); dv.setUint16(32, nCh * bps, true); dv.setUint16(34, 24, true);
+    str(36, "data"); dv.setUint32(40, dataBytes, true);
+    const l = b.getChannelData(0), r = b.numberOfChannels > 1 ? b.getChannelData(1) : l;
+    let o = 44;
+    const put = (v) => { const x = Math.round(Math.max(-1, Math.min(1, v)) * 8388607); dv.setUint8(o, x & 255); dv.setUint8(o + 1, (x >> 8) & 255); dv.setUint8(o + 2, (x >> 16) & 255); o += 3; };
+    for (let i = 0; i < n; i++) { put(l[i]); put(r[i]); }
+    return new Blob([ab], { type: "audio/wav" });
+  }
+  let printing = false;
+  $("ruin-keep").addEventListener("click", async (e) => {
+    if (printing || ruin.amount <= 0) return;
+    const t = ep.tracks[cur < 0 ? 0 : cur];
+    const btn = e.currentTarget;
+    printing = true; btn.disabled = true; btn.textContent = "printing ···";
+    try {
+      const out = await renderRuin(t, ruin.amount, ruin.seed);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(encodeWav24(out));
+      a.download = `${(ep.title || "ep").replace(/\s+/g, "-")}-${t.slug}-ruin${ruin.amount.toFixed(2)}-${ruin.seed}.wav`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      toast(`kept — ${a.download}`);
+    } catch (err) {
+      console.error(err); toast("print failed — see console");
+    } finally {
+      printing = false; btn.textContent = "keep this ruin ↓"; showRuin();
+    }
+  });
+  // test hook — headless checks call this to prove print determinism
+  window.__nightSchool = { renderRuin, setRuin, tracks: ep.tracks, ruin };
 
   // ---- auditioning: cycle visualizers, copy the pairing out ----------------------
   function cycleViz(dir) {
@@ -387,9 +536,17 @@
   }
   window.addEventListener("keydown", onKey);
 
-  // show the first pairing before anyone presses play
-  cur = 0; player.src = audioUrl(ep.tracks[0]); loadFrame(ep.tracks[0]); markCurrent();
-  player.pause();
+  // show the first pairing before anyone presses play — or the shared one
+  {
+    const q = new URLSearchParams(location.search);
+    const want = ep.tracks.findIndex((t) => t.slug === q.get("t"));
+    cur = want >= 0 ? want : 0;
+    ruin.seed = (q.get("seed") || "").trim().slice(0, 32) || randomSeed();
+    ruin.amount = Math.max(0, Math.min(1, parseFloat(q.get("ruin")) || 0));
+    showRuin();
+    player.src = audioUrl(ep.tracks[cur]); loadFrame(ep.tracks[cur]); markCurrent();
+    player.pause();
+  }
 
   // ---- the text treatment (home-page signature, trimmed to what this page has) ----
   const FONTS = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
