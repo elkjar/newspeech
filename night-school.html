@@ -54,10 +54,14 @@
      page underneath still gets mouse movement everywhere else */
   #room { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
   #room > * { pointer-events: auto; }
+  /* the column: the nav's 1280px / --ns-gutter box, so the player and the
+     listen window share its edges at every viewport width */
+  #col { position: absolute; inset: 0; max-width: 1280px; margin: 0 auto; pointer-events: none; }
+  #col > * { pointer-events: auto; }
 
   #sleeve {
-    position: absolute; left: 28px; top: 50%; transform: translateY(-50%);
-    width: min(560px, calc(100vw - 56px));
+    position: absolute; left: var(--ns-gutter, 40px); top: 50%; transform: translateY(-50%);
+    width: min(560px, calc(100% - 2 * var(--ns-gutter, 40px)));
   }
   h1 {
     font-family: "zxx-sans", ui-monospace, monospace;
@@ -150,7 +154,7 @@
   .win .msg.err { opacity: .55; }
   .win .stream { opacity: .45; font-size: 11px; }
 
-  #buy { position: absolute; right: 28px; top: calc(28px + var(--ns-nav-h, 0px)); }
+  #buy { position: absolute; right: var(--ns-gutter, 40px); top: calc(28px + var(--ns-nav-h, 0px)); }
   #buy .win-body { padding: 22px 28px 24px; gap: 12px; }
 
   /* the gate: an email for your copy, same door as the plugins */
@@ -178,11 +182,11 @@
         linear-gradient(0deg, rgba(5,5,5,.94) 0%, rgba(5,5,5,.9) 48%, rgba(5,5,5,.3) 70%, rgba(5,5,5,0) 100%),
         linear-gradient(180deg, rgba(5,5,5,.8) 0%, rgba(5,5,5,0) 26%);
     }
-    #sleeve { left: 16px; right: 16px; top: auto; bottom: 64px; transform: none; width: auto; }
+    #sleeve { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); top: auto; bottom: 64px; transform: none; width: auto; }
     h1 { margin-bottom: 14px; }
     #tracks li { grid-template-columns: 22px 1fr; }
     #tracks .meta { grid-column: 2; }
-    #buy { left: 16px; right: 16px; text-align: left; }
+    #buy { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); }
   }
 </style>
 </head>
@@ -191,6 +195,7 @@
 <div id="scrim"></div>
 
 <div id="room">
+  <div id="col">
   <div id="sleeve">
     <h1><span data-link id="title"></span></h1>
     <ol id="tracks"></ol>
@@ -225,6 +230,7 @@
       <div class="row" id="buy-links"></div>
       <span class="stream" id="buy-stream" hidden></span>
     </div>
+  </div>
   </div>
   <div id="gate-wrap" hidden>
     <form id="gate" class="win" novalidate>
