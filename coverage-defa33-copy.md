@@ -107,7 +107,7 @@ after the residency the library is published as an online instrument on newspeec
 
 - **h2:** about newspeech
 
-newspeech is chris elkjar's audio and video creative output: a band, a software sequencer, a set of destruction and loop-wear tools, a 24/7 generative broadcast programme, and some records made with them. the practice is built around the concept of unsynced systems intersecting and destruction, noise and wear as material.
+newspeech is chris elkjar's audio and video creative output: a band, a software sequencer, a set of destruction and loop-wear tools, a 24/7 generative broadcast programme, and some records made with some combination of all of them. the practice is built around the concept of unsynced systems intersecting and destruction, noise and wear as core materials.
 
 - [broadcast](https://www.newspeechsound.com/) — the studio's autonomous set programme: idents, interstitials, standby, a picture that follows the display.
 - [decay](https://www.newspeechsound.com/decay.html) — digital disintegration loops: a wear map applied to a loop on every pass. the instrument for this piece starts here.
