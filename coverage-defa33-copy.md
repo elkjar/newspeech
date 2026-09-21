@@ -12,7 +12,7 @@ ground rules for the reload to stay mechanical:
 - **coverage** is a working title. rename it here and everything follows (title, h1,
   og, statement).
 - the statement block is the text that goes into wave farm's form. their word limit
-  isn't published — the draft runs ~190 words; expect to cut.
+  isn't published — the draft runs ~240 words; expect to cut.
 - facts about wave farm / wgxc / the fcc rules were checked 2026-09-20 against their
   site and the ecfr. if you change one, flag it.
 
@@ -50,11 +50,11 @@ it is audio only. there is no picture. the receiver is the screen.
 
 ## the statement
 
-- **note:** the application text. ~190 words; wave farm's limit isn't published, expect to cut.
+- **note:** the application text. ~240 words; wave farm's limit isn't published, expect to cut.
 
 *coverage* is a loop broadcast, received off-air, and broadcast again. each pass through the air is one generation: the transmitter's modulation ceiling, the path across the valley, and the receiver's front end each take something, and what comes back becomes the next transmission. no processing is applied between generations. the transmitter, the air, and the receiver are the only instruments of change.
 
-over the residency i would run the loop through wgxc 90.7-fm: from the acra studio to the tower, across the coverage area, back into a receiver at wave farm, and out again. new layers are played live over the loop and committed to it by ear, one at a time. under the deviation limit a new layer can only be broadcast instead of the old ones, never in addition, so each commit pushes the earlier layers further down. after enough generations the music is gone and what remains is a recording of the station and the landscape it covers.
+over the residency the loop goes out on wgxc 90.7-fm in short bursts at published times. between bursts a receiver is carried to a new point in the coverage area, a ridge, a valley floor, the edge of the signal, and what it records there becomes the next transmission. the station's processing wears the loop on every pass; the terrain wears it wherever the receiver stands. new layers are played live over the loop and committed by ear, one at a time. under the deviation limit a new layer can only be broadcast instead of the old ones, never in addition, so each commit pushes the earlier layers further down. after enough generations the music is gone and what remains is a recording of the station and the landscape it covers.
 
 the piece culminates in a live evening transmission with no loudspeakers. audiences in the art park listen on handheld radios, and each hears a different generation depending on where they stand. every sound released, on air or on record, has passed through the air at least once.
 
@@ -66,8 +66,11 @@ the loop is a fixed-length buffer on a laptop. it plays out through the transmit
 
 a live feedback path would howl in seconds; the air is only milliseconds long. the buffer is what makes it a loop rather than a larsen tone, and it is the same structure basinski and lucier used: discrete passes, each one a complete trip through the medium.
 
+there are two kinds of wear. **the station's**: wgxc runs 3,300 watts and wave farm sits inside its footprint, so a receiver at the studio hears a strong, quiet signal, and what wears the loop is the station's own chain: the broadcast processor's multiband compression and clipper, the 15 khz brickwall, the stereo generator, the receiver's de-emphasis. compounded, that sounds like radio eating itself. **the landscape's**: hiss, fading, the neighbour on the next channel. that wear only exists at the edge of the signal, miles from the studio, so the receiver goes out to get it.
+
 ### what compounds per pass
 
+- the processor — the station's multiband compressor and clipper act on every pass. dynamics flatten, density builds, the clipping stacks.
 - top end — the transmitter stops at 12.5 khz, fm itself at 15, and the receiver rolls off below that. the ceilings stack. highs go first, like tape.
 - noise floor — every reception adds the path's hiss. it never leaves.
 - tilt — pre-emphasis at the transmitter and de-emphasis at the receiver never cancel exactly. the tone leans a little further each time.
@@ -100,11 +103,19 @@ a live feedback path would howl in seconds; the air is only milliseconds long. t
 
 everything else is the air. every return is recorded whether or not it takes, so the whole stratigraphy exists afterwards: each layer at every age, every committed sum.
 
+## the bursts
+
+- **h2:** the bursts
+
+the loop goes out in short scheduled bursts, two or three a day, at times published on wgxc's calendar. each burst is the current generation repeated for ten or fifteen minutes, long enough for a receiver in the field to catch it whole. between bursts, staff and i carry the receiver to the next position: a ridge above the valley, a hollow behind it, the last place the signal still reads. the recording comes back on the card and becomes the next buffer. position, time and weather are logged with every generation.
+
+listeners can follow it. each burst is one generation older than the last, on a schedule, so anyone in range can hear the loop wear across the week on their own radio. the evening transmission is the last burst, long enough to layer.
+
 ## the broadcast
 
 - **h2:** no loudspeakers
 
-the culminating event is a live evening transmission on wgxc 90.7-fm and wavefarm.org/listen, two to three hours, from the acra studio. the only way to hear it in the art park is through a receiver. the audience walks with handheld radios and each hears a different piece: a different generation, a different fade, a different neighbour bleeding in, depending on where they stand.
+the culminating event is the last burst: a live evening transmission on wgxc 90.7-fm and wavefarm.org/listen, two to three hours, from the acra studio, seeded from everything the week's receivers brought back. the only way to hear it in the art park is through a receiver. the audience walks with handheld radios and each hears a different piece: a different generation, a different fade, a different neighbour bleeding in, depending on where they stand.
 
 over the evening i add five or six layers by ear and let the first ones disappear underneath. the listening is the performance. each commit is audible: the loop lurches as the new sum comes back through the air.
 
@@ -115,8 +126,8 @@ over the evening i add five or six layers by ear and let the first ones disappea
 ### schedule
 
 - before — the loop tool, the seed, and generation zero are built and tested at home against a part 15 transmitter. nothing that can be done in advance is left for acra.
-- days 1–3 — wire into wgxc's chain. place the receiver. calibrate what comes back against what was sent. this is the part that is impossible anywhere but here.
-- days 4–8 — sessions. short transmissions at different times of day and in different weather, a handful of generations each. between sessions, listen and decide what commits.
+- days 1–3 — wire into wgxc's chain. scout receiver positions across the coverage area with staff who know the signal. calibrate what comes back against what was sent. this is the part that is impossible anywhere but here.
+- days 4–8 — the bursts. two or three a day at published times, the receiver at a new position for each. between bursts, load the return, listen, decide what commits, and ride the next layer.
 - days 9–10 — the evening transmission, recorded off-air. documentation: receiver positions, generation counts, the wear scores.
 
 the ten days are working time with the transmitter, the library and the engineers. the broadcast is something that happens during the residency, not the residency itself.
@@ -146,7 +157,7 @@ alvin lucier, *i am sitting in a room*, 1969: a voice re-recorded through a room
 ### rig table
 
 - transmitter — at wave farm, wgxc 90.7-fm through the station's own chain. at home, a rolls hr70, fcc-certified under part 15.239.
-- receiver — a polyend tracker, first generation: fm radio in, line out. off-air and mono by design.
+- receiver — a polyend tracker, first generation: fm radio in, records to card, line out. portable, so the return can travel. off-air and mono by design.
 - the loop — a browser page on the laptop: buffer, take, ride, commit. built on the studio's existing loop-wear tool.
 - limiter — in front of the transmitter, so nothing over-deviates. the only processing anywhere in the chain, and it sits before the air, not after.
 - ride layers — sequence, the studio's sequencer, or a small instrument. whatever is played live over the loop.
