@@ -1,10 +1,16 @@
 {
   "title": "night school",
   "artist": "newspeech",
-  "buy": {
-    "label": "buy on subvert",
-    "url": ""
-  },
+  "buy": [
+    {
+      "label": "subvert",
+      "url": ""
+    },
+    {
+      "label": "bandcamp",
+      "url": ""
+    }
+  ],
   "streaming": {
     "date": "",
     "note": "streaming everywhere one month after release"

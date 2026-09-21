@@ -112,17 +112,51 @@
   #ruin .state { color: #444; }
   #ruin .state.on { color: #777; }
 
-  #buy {
-    position: absolute; right: 28px; top: calc(28px + var(--ns-nav-h, 0px));
-    text-align: right;
+  /* window chrome — the homepage subscribe box, verbatim */
+  .win {
+    display: flex; flex-direction: column; padding: 0;
+    border: 1px solid rgba(255,255,255,.28); background: rgba(5,5,5,.94);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.9), 0 18px 40px rgba(0,0,0,.55);
+    font-size: 12px; line-height: 18px; letter-spacing: 0.04em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #eee;
   }
-  #buy a.cta {
-    display: inline-block; border: 1px solid #555; color: #eee; padding: 10px 18px;
-    text-decoration: none; letter-spacing: 0.16em; text-transform: lowercase;
+  .win .win-bar {
+    display: flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px;
+    border-bottom: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.04); user-select: none;
   }
-  #buy a.cta:hover { border-color: #eee; }
-  #buy a.cta.pending { border-style: dashed; color: #777; pointer-events: none; }
-  #buy .stream { color: #555; margin-top: 8px; }
+  .win .win-idx { font-size: 10px; letter-spacing: 0.2em; opacity: .4; }
+  .win .win-title { font-family: "zxx-sans", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.18em; text-transform: lowercase; }
+  .win .win-close { margin-left: auto; background: none; border: 0; color: inherit; font: inherit; opacity: .5; cursor: pointer; padding: 0 2px; line-height: 1; }
+  .win .win-close:hover { opacity: 1; }
+  .win .win-body { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 30px 40px 34px; }
+  .win .row { display: flex; align-items: center; gap: 12px; }
+  .win .hp { display: none; }
+  .win .lbl { opacity: .55; }
+  .win input[type="email"] {
+    background: transparent; border: 1px solid rgba(255,255,255,.45); color: #eee; font: inherit;
+    letter-spacing: 0.04em; padding: 7px 12px; width: 260px; border-radius: 0; outline: none;
+  }
+  .win input[type="email"]:focus { border-color: rgba(255,255,255,.9); }
+  .win input[type="email"]::placeholder { color: rgba(255,255,255,.3); }
+  .win .win-body button, .win .win-body a.cta {
+    background: transparent; border: 1px solid rgba(255,255,255,.7); color: #eee; font: inherit;
+    letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; text-decoration: none; display: inline-block;
+  }
+  .win .win-body button:hover, .win .win-body a.cta:hover { background: rgba(255,255,255,.08); }
+  .win .win-body button:disabled { opacity: .4; cursor: default; }
+  .win .win-body a.cta.pending { border-style: dashed; opacity: .5; pointer-events: none; }
+  .win [data-link] > span { vertical-align: top; height: 18px; line-height: 18px; }
+  .win .msg { opacity: .85; letter-spacing: 0.06em; }
+  .win .msg.err { opacity: .55; }
+  .win .stream { opacity: .45; font-size: 11px; }
+
+  #buy { position: absolute; right: 28px; top: calc(28px + var(--ns-nav-h, 0px)); }
+  #buy .win-body { padding: 22px 28px 24px; gap: 12px; }
+
+  /* the gate: an email for your copy, same door as the plugins */
+  #gate-wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,5,5,.55); }
+  #gate-wrap[hidden] { display: none; }
+  #gate { width: min(440px, calc(100vw - 32px)); }
 
   #status {
     position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
@@ -190,7 +224,27 @@
       </div>
     </div>
   </div>
-  <div id="buy"></div>
+  <div id="buy" class="win">
+    <div class="win-bar"><span class="win-idx">//</span><span class="win-title">listen</span></div>
+    <div class="win-body">
+      <div class="row" id="buy-links"></div>
+      <span class="stream" id="buy-stream" hidden></span>
+    </div>
+  </div>
+  <div id="gate-wrap" hidden>
+    <form id="gate" class="win" novalidate>
+      <div class="win-bar"><span class="win-idx">//</span><span class="win-title">keep this ruin</span><button type="button" class="win-close" id="gate-close" aria-label="close">×</button></div>
+      <div class="win-body">
+        <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+        <label class="lbl" for="gate-email" data-link data-no-hover>an email for your copy — releases + new tools, when they land</label>
+        <div class="row">
+          <input id="gate-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+          <button type="submit" id="gate-go" data-link>keep</button>
+        </div>
+        <span class="msg" id="gate-msg" hidden></span>
+      </div>
+    </form>
+  </div>
   <div id="status"><b id="viz-name"></b></div>
   <div id="progress"><div class="bar"></div><div class="buf"></div><div class="fill"></div></div>
   <div id="toast"></div>
@@ -228,21 +282,19 @@
 
   // ---- buy / streaming ---------------------------------------------------------
   {
-    const b = ep.buy || {};
-    const a = document.createElement("a");
-    a.className = "cta" + (b.url ? "" : " pending");
-    a.href = b.url || "#";
-    if (b.url) { a.target = "_blank"; a.rel = "noopener"; }
-    a.textContent = b.label || "buy";
-    a.setAttribute("data-link", "");
-    $("buy").appendChild(a);
-    const s = ep.streaming || {};
-    if (s.date || s.note) {
-      const p = document.createElement("div");
-      p.className = "stream";
-      p.textContent = s.date ? `streaming everywhere ${s.date}` : s.note;
-      $("buy").appendChild(p);
+    // ep.buy = [{label, url}] — a dashed button until its url is filled in
+    const links = Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : [];
+    for (const b of links) {
+      const a = document.createElement("a");
+      a.className = "cta" + (b.url ? "" : " pending");
+      a.href = b.url || "#";
+      if (b.url) { a.target = "_blank"; a.rel = "noopener"; }
+      a.textContent = b.label || "buy";
+      a.setAttribute("data-link", "");
+      $("buy-links").appendChild(a);
     }
+    const s = ep.streaming || {};
+    if (s.date || s.note) { $("buy-stream").textContent = s.date ? `streaming everywhere ${s.date}` : s.note; $("buy-stream").hidden = false; }
   }
 
   // ---- the record: fetched once, decoded once, handed to the worklet ------------
@@ -586,11 +638,66 @@
     str(36, "data"); dv.setUint32(40, dataBytes, true);
     return ab;
   }
+  // ---- the gate: an email before the copy, the same door as the plugins -----------
+  // POST /api/subscribe (Resend) with source night-school + the track slug; the
+  // email is remembered (shared key with the plugin pages) so the second copy
+  // doesn't ask again — it still posts, so the track property stays current.
+  const EMAIL_KEY = "newspeech.email";
+  const gateWrap = $("gate-wrap"), gate = $("gate"), gateEmail = $("gate-email"), gateMsg = $("gate-msg"), gateGo = $("gate-go");
+  let gateResolve = null;
+  function remembered() { try { return localStorage.getItem(EMAIL_KEY) || ""; } catch (_) { return ""; } }
+  async function postGate(email, slug) {
+    const res = await fetch("/api/subscribe", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, source: "night-school", track: slug, "bot-field": gate.querySelector('[name="bot-field"]').value }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    try { localStorage.setItem(EMAIL_KEY, email); } catch (_) {}
+  }
+  function openGate(prefill, err) {
+    gateEmail.value = prefill || "";
+    gateMsg.hidden = !err; gateMsg.textContent = err || ""; gateMsg.classList.toggle("err", !!err);
+    gateWrap.hidden = false; gateGo.disabled = false;
+    setTimeout(() => gateEmail.focus(), 0);
+    return new Promise((res) => { gateResolve = res; });
+  }
+  function closeGate(ok) { gateWrap.hidden = true; const r = gateResolve; gateResolve = null; if (r) r(ok); }
+  $("gate-close").addEventListener("click", () => closeGate(false));
+  gateWrap.addEventListener("click", (e) => { if (e.target === gateWrap) closeGate(false); });
+  gate.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const slug = ep.tracks[cur < 0 ? 0 : cur].slug;
+    if (!gateEmail.checkValidity()) {
+      gateMsg.hidden = false; gateMsg.classList.add("err");
+      gateMsg.textContent = gateEmail.value.trim() ? "that doesn't look like an email" : "an email goes here first";
+      gateEmail.focus(); return;
+    }
+    gateGo.disabled = true; gateMsg.hidden = true;
+    try {
+      await postGate(gateEmail.value.trim(), slug);
+      gateMsg.hidden = false; gateMsg.classList.remove("err"); gateMsg.textContent = "signal received — printing your copy";
+      setTimeout(() => closeGate(true), 700);
+    } catch (_) {
+      gateGo.disabled = false; gateMsg.hidden = false; gateMsg.classList.add("err"); gateMsg.textContent = "transmission failed — try again";
+    }
+  });
+  // remembered email: post quietly and go; if that fails, ask in the window
+  async function passGate(slug) {
+    const known = remembered();
+    if (known) {
+      try { await postGate(known, slug); return true; } catch (_) { return openGate(known, "transmission failed — try again"); }
+    }
+    return openGate("", null);
+  }
+
   let printing = false;
   keepBtn.addEventListener("click", async () => {
     if (printing || keepBtn.disabled) return;
     const t = ep.tracks[cur < 0 ? 0 : cur];
     const k = { ...knobs };
+    keepBtn.disabled = true;
+    const ok = await passGate(t.slug);
+    if (!ok) { showKnobs(); return; }
     printing = true; keepBtn.disabled = true; keepBtn.textContent = "printing 0%";
     try {
       const { parts, frames } = await renderTake(t, k, (f) => { keepBtn.textContent = `printing ${Math.round(f * 100)}%`; });
@@ -621,6 +728,8 @@
 
   function onKey(e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "Escape") { if (!gateWrap.hidden) closeGate(false); return; }
+    if (!gateWrap.hidden) return; // the gate has the keyboard
     if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.key !== " ") return;
     switch (e.key) {
       case " ": e.preventDefault(); togglePlay(); break;
