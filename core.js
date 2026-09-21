@@ -467,6 +467,26 @@
     _bandOnset.low = _bandOnset.mid = _bandOnset.high = false;
   }
 
+  // ---- external analyser (used by night-school.html: the listening room
+  // owns the <audio> element + AudioContext and hands this page's core.js the
+  // AnalyserNode, so tickAudio/intensity/bandLevel/onset run exactly as they
+  // do for the mic — no feature duplication on the parent side). same-origin
+  // frames can pass the node object straight across. pass null to detach.
+  function attachAnalyser(node) {
+    if (_audioActive && _stream) disableAudio(); // mic was on — hand over
+    if (!node) {
+      _analyser = null; _fftBuf = null; _audioActive = false;
+      _audioLevel = 0;
+      _bandLevel.low = _bandLevel.mid = _bandLevel.high = 0;
+      updateAudioStatus();
+      return;
+    }
+    _analyser = node;
+    _fftBuf = new Uint8Array(node.frequencyBinCount);
+    _audioActive = true;
+    updateAudioStatus();
+  }
+
   // analyser → smoothed overall + 3-band levels + per-band onset detection.
   // mirrors the live.html analyser tap so existing tuning carries over.
   function tickAudio(dtMs) {
@@ -2971,7 +2991,7 @@
 
   window.Newspeech = {
     intensity, poisson, installInputs, tickInputs, bumpActivity, installPanel,
-    enableAudio, disableAudio, audioActive, audioLevel, bandLevel, onset, setExternalAudio,
+    enableAudio, disableAudio, audioActive, audioLevel, bandLevel, onset, setExternalAudio, attachAnalyser,
     installMarkers, tickMarkers,
     installTelemetry, tickTelemetry,
     tap, setBpm, clearBpm, bpm, beat: beatCount, beatPhase, onBeat,

@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // night school</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — night school. the EP, played through the visualizers. destroy any track.">
+<meta property="og:title" content="NEWSPEECH // night school">
+<meta property="og:description" content="newspeech — night school. the EP, played through the visualizers. destroy any track.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/night-school.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NEWSPEECH // NIGHT SCHOOL">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // night school">
+<meta name="twitter:description" content="newspeech — night school. the EP, played through the visualizers. destroy any track.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); font-display: swap; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; overflow: hidden; }
+  body {
+    width: 100vw; height: 100vh;
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+  }
+
+  /* the visualizer: a real N-*.html page in a frame. the room hands its core.js
+     the AnalyserNode so the page reacts to the EP exactly as it would to a mic. */
+  #viz { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; z-index: 0; background: #050505; }
+
+  /* the room overlays the frame; only the controls take the pointer so the
+     page underneath still gets mouse movement everywhere else */
+  #room { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+  #room > * { pointer-events: auto; }
+
+  #sleeve {
+    position: absolute; left: 28px; top: 50%; transform: translateY(-50%);
+    max-width: min(560px, calc(100vw - 56px));
+  }
+  .kicker { color: #666; letter-spacing: 0.18em; text-transform: lowercase; margin: 0 0 6px; }
+  h1 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-weight: 400; font-size: clamp(34px, 6vw, 64px); line-height: 1;
+    letter-spacing: 0.04em; color: #eee; margin: 0 0 22px; cursor: default;
+  }
+  h1 [data-link] { display: inline-block; }
+
+  ol#tracks { list-style: none; margin: 0; padding: 0; }
+  #tracks li {
+    display: grid; grid-template-columns: 26px 1fr auto; align-items: baseline; gap: 0 14px;
+    padding: 9px 0; border-top: 1px solid #1c1c1c; color: #888;
+  }
+  #tracks li:last-child { border-bottom: 1px solid #1c1c1c; }
+  #tracks li.current { color: #eee; }
+  #tracks li.current .num::before { content: "▶"; }
+  #tracks li.current.paused .num::before { content: "▮▮"; letter-spacing: -0.3em; }
+  #tracks .num { color: #555; }
+  #tracks li.current .num { color: #eee; }
+  #tracks .num::before { content: attr(data-n); }
+  #tracks .title {
+    font-family: "zxx-sans", ui-monospace, monospace; font-size: 18px; letter-spacing: 0.06em;
+    cursor: pointer; background: none; border: 0; color: inherit; padding: 0; text-align: left;
+  }
+  #tracks .title:hover { color: #fff; }
+  #tracks .meta { color: #555; display: flex; gap: 12px; white-space: nowrap; }
+  #tracks .dur { min-width: 4ch; text-align: right; }
+  #tracks .destroy a { color: #666; text-decoration: none; border-bottom: 1px solid #2a2a2a; }
+  #tracks .destroy a:hover { color: #eee; border-color: #777; }
+  #tracks .destroy a + a { margin-left: 8px; }
+  #tracks .note { grid-column: 2 / -1; color: #4a4a4a; font-size: 11px; }
+
+  #buy {
+    position: absolute; right: 28px; top: calc(28px + var(--ns-nav-h, 0px));
+    text-align: right;
+  }
+  #buy a.cta {
+    display: inline-block; border: 1px solid #555; color: #eee; padding: 10px 18px;
+    text-decoration: none; letter-spacing: 0.16em; text-transform: lowercase;
+  }
+  #buy a.cta:hover { border-color: #eee; }
+  #buy a.cta.pending { border-style: dashed; color: #777; pointer-events: none; }
+  #buy .stream { color: #555; margin-top: 8px; }
+
+  #status {
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    color: #555; white-space: nowrap; text-align: center;
+  }
+  #status b { color: #999; font-weight: 400; }
+  #status .keys { display: block; margin-top: 3px; font-size: 11px; color: #444; }
+
+  /* progress: the whole bottom edge is the scrubber */
+  #progress { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; cursor: pointer; }
+  #progress .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #1c1c1c; }
+  #progress .fill { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: #ddd; }
+  #progress .buf { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: #333; }
+
+  #toast {
+    position: absolute; left: 50%; top: calc(28px + var(--ns-nav-h, 0px)); transform: translateX(-50%);
+    background: #050505; border: 1px solid #333; color: #ccc; padding: 6px 12px; opacity: 0;
+    transition: opacity .2s; pointer-events: none;
+  }
+  #toast.on { opacity: 1; }
+
+  @media (max-width: 720px) {
+    #sleeve { left: 16px; right: 16px; top: auto; bottom: 64px; transform: none; max-width: none; }
+    h1 { margin-bottom: 14px; }
+    #tracks li { grid-template-columns: 22px 1fr; }
+    #tracks .meta { grid-column: 2; }
+    #buy { left: 16px; right: 16px; text-align: left; }
+    #status .keys { display: none; }
+  }
+</style>
+</head>
+<body>
+<iframe id="viz" title="visualizer" allow="midi"></iframe>
+<audio id="player" crossorigin="anonymous" preload="metadata"></audio>
+
+<div id="room">
+  <div id="sleeve">
+    <p class="kicker" id="kicker"></p>
+    <h1><span data-link id="title"></span></h1>
+    <ol id="tracks"></ol>
+  </div>
+  <div id="buy"></div>
+  <div id="status"><b id="viz-name"></b><span class="keys">[space] play · [←→] track · [ ] visualizer · [0] params · [9] levels · [c] copy state</span></div>
+  <div id="progress"><div class="bar"></div><div class="buf"></div><div class="fill"></div></div>
+  <div id="toast"></div>
+</div>
+
+<script src="nav.js"></script>
+<script>
+(async () => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const player = $("player");
+  const viz = $("viz");
+
+  const EP_URL = new URLSearchParams(location.search).get("ep") || "assets/ep/night-school.json";
+  const ep = await (await fetch(EP_URL)).json();
+  const VIZ = ep.visualizers || [];
+  let cur = -1;          // current track index
+  let pageOverride = {}; // slug → page picked live with [ ] (not persisted — press c to copy)
+
+  // ---- sleeve ------------------------------------------------------------------
+  $("kicker").textContent = `${ep.artist} · ${ep.kicker || "EP"}`;
+  $("title").textContent = ep.title;
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const audioUrl = (t) => (ep.audioBase || "") + t.file;
+  const destroyHref = (tool, t) => {
+    const q = new URLSearchParams({ src: audioUrl(t) });
+    if (t.bpm) q.set("bpm", String(t.bpm));
+    return `${tool}.html?${q}`;
+  };
+  const list = $("tracks");
+  ep.tracks.forEach((t, i) => {
+    const li = document.createElement("li");
+    li.dataset.i = i;
+    li.innerHTML = `
+      <span class="num" data-n="${String(i + 1).padStart(2, "0")}"></span>
+      <button class="title" data-link>${t.title}</button>
+      <span class="meta">
+        <span class="dur">${t.duration ? fmt(t.duration) : ""}</span>
+        <span class="destroy">destroy →
+          <a href="${destroyHref("glitch", t)}" target="_blank" rel="noopener" title="open this track in glitch — every take has a seed you can share">glitch</a>
+          <a href="${destroyHref("decay", t)}" target="_blank" rel="noopener" title="open this track in decay — wear it down pass by pass">decay</a>
+        </span>
+      </span>
+      ${t.note ? `<span class="note">${t.note}</span>` : ""}`;
+    li.querySelector(".title").addEventListener("click", (e) => { e.currentTarget.blur(); (i === cur ? togglePlay() : play(i)); });
+    list.appendChild(li);
+  });
+
+  // ---- buy / streaming ---------------------------------------------------------
+  {
+    const b = ep.buy || {};
+    const a = document.createElement("a");
+    a.className = "cta" + (b.url ? "" : " pending");
+    a.href = b.url || "#";
+    if (b.url) { a.target = "_blank"; a.rel = "noopener"; }
+    a.textContent = b.label || "buy";
+    a.setAttribute("data-link", "");
+    $("buy").appendChild(a);
+    const s = ep.streaming || {};
+    if (s.date || s.note) {
+      const p = document.createElement("div");
+      p.className = "stream";
+      p.textContent = s.date ? `streaming everywhere ${s.date}` : s.note;
+      $("buy").appendChild(p);
+    }
+  }
+
+  // ---- audio graph: <audio> → analyser → out; the analyser is handed to the frame ----
+  let actx = null, analyser = null;
+  function ensureGraph() {
+    if (actx) return;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    actx = new Ctx();
+    const src = actx.createMediaElementSource(player);
+    analyser = actx.createAnalyser();
+    analyser.fftSize = 1024;            // matches core.js's mic analyser
+    analyser.smoothingTimeConstant = 0; // core.js does its own smoothing
+    src.connect(analyser);
+    src.connect(actx.destination);
+  }
+  function frameNS() {
+    try { return viz.contentWindow && viz.contentWindow.Newspeech; } catch (_) { return null; }
+  }
+  function attach() {
+    const NS = frameNS();
+    if (NS && NS.attachAnalyser && analyser) NS.attachAnalyser(analyser);
+  }
+
+  // ---- the visualizer frame ---------------------------------------------------
+  function pageFor(t) { return pageOverride[t.slug] || t.page || VIZ[0]; }
+  let frameReadyFor = null;
+  function loadFrame(t) {
+    const page = pageFor(t);
+    $("viz-name").textContent = page.replace(/^\d+-/, "");
+    frameReadyFor = null;
+    viz.src = `${page}.html`;
+  }
+  viz.addEventListener("load", () => {
+    const t = ep.tracks[cur];
+    const NS = frameNS();
+    if (!t || !NS) return;
+    frameReadyFor = t.slug;
+    // tuned params — same dispatch reel-render uses, so the page looks the same
+    // here as it will in the rendered video
+    const params = (t.state && t.state.params) || {};
+    const doc = viz.contentDocument;
+    for (const [k, val] of Object.entries(params)) {
+      const el = doc.querySelector(`#panel [data-k="${k}"]`);
+      if (!el) continue;
+      el.value = val;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (t.beat && t.bpm && NS.setBpm) NS.setBpm(t.bpm); else if (NS.clearBpm) NS.clearBpm();
+    // the room is a listening surface first: start with the page's params
+    // panel closed ([0] in the frame still opens it — it's hidden, not removed)
+    const panel = doc.getElementById("panel");
+    if (panel) panel.hidden = true;
+    attach();
+    // the frame owns the keyboard once clicked — mirror the room's keys back
+    viz.contentWindow.addEventListener("keydown", onKey);
+  });
+  // keep the page fed: re-attach if it dropped the analyser (someone pressed a
+  // for the mic, or the page swapped) and mirror the transport state
+  function tick() {
+    const NS = frameNS();
+    if (NS && analyser && NS.audioActive && !NS.audioActive() && !player.paused) attach();
+    if (player.duration) {
+      $("progress").querySelector(".fill").style.width = `${(player.currentTime / player.duration) * 100}%`;
+      const b = player.buffered;
+      if (b.length) $("progress").querySelector(".buf").style.width = `${(b.end(b.length - 1) / player.duration) * 100}%`;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // ---- transport ---------------------------------------------------------------
+  function markCurrent() {
+    list.querySelectorAll("li").forEach((li) => {
+      const i = +li.dataset.i;
+      li.classList.toggle("current", i === cur);
+      li.classList.toggle("paused", i === cur && player.paused);
+    });
+  }
+  async function play(i) {
+    const t = ep.tracks[i];
+    if (!t) return;
+    ensureGraph();
+    await actx.resume();
+    if (i !== cur) {
+      cur = i;
+      player.src = audioUrl(t);
+      loadFrame(t);
+    }
+    try { await player.play(); } catch (e) { console.warn("play blocked:", e); }
+    markCurrent();
+  }
+  async function togglePlay() {
+    if (cur < 0) return play(0);
+    ensureGraph();
+    await actx.resume();
+    if (player.paused) { try { await player.play(); } catch (_) {} } else player.pause();
+    markCurrent();
+  }
+  player.addEventListener("ended", () => { if (cur + 1 < ep.tracks.length) play(cur + 1); else markCurrent(); });
+  player.addEventListener("pause", markCurrent);
+  player.addEventListener("play", markCurrent);
+  player.addEventListener("loadedmetadata", () => {
+    const li = list.querySelector(`li[data-i="${cur}"] .dur`);
+    if (li && player.duration) li.textContent = fmt(player.duration);
+  });
+  $("progress").addEventListener("click", (e) => {
+    if (!player.duration) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    player.currentTime = ((e.clientX - r.left) / r.width) * player.duration;
+  });
+
+  // ---- auditioning: cycle visualizers, copy the pairing out ----------------------
+  function cycleViz(dir) {
+    const t = ep.tracks[cur < 0 ? 0 : cur];
+    const i = Math.max(0, VIZ.indexOf(pageFor(t)));
+    pageOverride[t.slug] = VIZ[(i + dir + VIZ.length) % VIZ.length];
+    if (cur < 0) { cur = 0; player.src = audioUrl(t); markCurrent(); }
+    loadFrame(t);
+  }
+  function copyState() {
+    const t = ep.tracks[cur < 0 ? 0 : cur];
+    const params = {};
+    const doc = viz.contentDocument;
+    if (doc) doc.querySelectorAll("#panel [data-k]").forEach((el) => {
+      if (el.closest("[data-global]")) return; // site-wide globals aren't the pairing
+      params[el.dataset.k] = isNaN(+el.value) ? el.value : +el.value;
+    });
+    const snap = { page: pageFor(t), state: { params } };
+    const json = JSON.stringify(snap, null, 2);
+    navigator.clipboard.writeText(json).then(
+      () => toast(`copied ${t.slug} → ${snap.page} · paste into ${EP_URL}`),
+      () => { console.log(json); toast("clipboard blocked — state logged to console"); });
+  }
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $("toast"); el.textContent = msg; el.classList.add("on");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("on"), 2400);
+  }
+
+  function onKey(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    switch (e.key) {
+      case " ": e.preventDefault(); togglePlay(); break;
+      case "ArrowRight": play(Math.min(ep.tracks.length - 1, Math.max(0, cur + 1))); break;
+      case "ArrowLeft": play(Math.max(0, cur - 1)); break;
+      case "]": cycleViz(1); break;
+      case "[": cycleViz(-1); break;
+      case "c": case "C": copyState(); break;
+      default: return;
+    }
+  }
+  window.addEventListener("keydown", onKey);
+
+  // show the first pairing before anyone presses play
+  cur = 0; player.src = audioUrl(ep.tracks[0]); loadFrame(ep.tracks[0]); markCurrent();
+  player.pause();
+
+  // ---- the text treatment (home-page signature, trimmed to what this page has) ----
+  const FONTS = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+  const SCRAMBLE = "#*/\\_+=~<>.,:;|?!@$%^&-";
+  if (document.fonts && document.fonts.load) {
+    await Promise.all(FONTS.map((f) => document.fonts.load(`13px "${f}"`))).catch(() => {});
+  }
+  document.querySelectorAll("[data-link]").forEach((link) => {
+    const txt = link.textContent; link.textContent = "";
+    const spans = [...txt].map((ch) => {
+      const s = document.createElement("span");
+      s.textContent = ch; s.dataset.original = ch; s.style.display = "inline-block"; s.style.whiteSpace = "pre";
+      link.appendChild(s); return s;
+    });
+    const idx = spans.map(() => (Math.random() * FONTS.length) | 0);
+    let timer = null;
+    link.addEventListener("mouseenter", () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        for (let i = 0; i < spans.length; i++) {
+          idx[i] = (idx[i] + 1) % FONTS.length;
+          spans[i].style.fontFamily = `"${FONTS[idx[i]]}", monospace`;
+        }
+      }, 80);
+    });
+    link.addEventListener("mouseleave", () => { clearInterval(timer); timer = null; spans.forEach((s) => { s.style.fontFamily = ""; }); });
+    (function schedule() {
+      const wait = -Math.log(1 - Math.random()) * 6000 + 1500;
+      setTimeout(() => {
+        const n = 1 + ((Math.random() * Math.max(1, spans.length / 4)) | 0);
+        const hit = [];
+        for (let k = 0; k < n; k++) {
+          const s = spans[(Math.random() * spans.length) | 0];
+          if (s.dataset.original === " ") continue;
+          s.textContent = SCRAMBLE[(Math.random() * SCRAMBLE.length) | 0]; hit.push(s);
+        }
+        setTimeout(() => hit.forEach((s) => { s.textContent = s.dataset.original; }), 200);
+        schedule();
+      }, wait);
+    })();
+  });
+})();
+</script>
+</body>
+</html>

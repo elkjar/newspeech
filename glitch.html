@@ -269,6 +269,7 @@
     <input id="seed" value="" spellcheck="false" autocomplete="off">
     <button id="reseed" title="new seed — populates the grid with random blocks, modes and settings; the same seed also drives every dice roll inside">⟳</button>
     <button class="toggle" id="autoseed" title="a fresh seed and grid on every play and every print — the field shows the one used">○ auto</button>
+    <button id="share" title="copy a link that reopens this file with this seed, pass count and print mode — someone else hears the same wreck" hidden>share ↗</button>
   </div>
   <span class="hint">[space] play/stop &nbsp;·&nbsp; [1–6] select lane &nbsp;·&nbsp; [⌫] erase selected block &nbsp;·&nbsp; ⟳ seeds the grid &nbsp;·&nbsp; every block has its own settings</span>
 </div>
@@ -1602,6 +1603,7 @@ function applySeed(str) {
   ui.seed = str;
   seedEl.value = str;
   seedGrid(str);
+  syncUrl();
 }
 const seedEl = document.getElementById('seed');
 ui.seed = randomSeed();
@@ -1639,8 +1641,8 @@ function segWire(id, attr, cb) {
   });
 }
 segWire('gridseg', 'g', (v) => regrid(parseInt(v, 10)));
-segWire('passes', 'p', (v) => { ui.passes = parseInt(v, 10); updateRenderInfo(); });
-segWire('printmode', 'm', (v) => { ui.printMode = v; updateRenderInfo(); });
+segWire('passes', 'p', (v) => { ui.passes = parseInt(v, 10); updateRenderInfo(); syncUrl(); });
+segWire('printmode', 'm', (v) => { ui.printMode = v; updateRenderInfo(); syncUrl(); });
 segWire('loopmode', 'v', (v) => setLoopMode(v));
 document.querySelectorAll('#looplen button').forEach((b) => b.addEventListener('click', () => setLoopBeats(parseInt(b.dataset.b, 10))));
 document.getElementById('loopfull').addEventListener('click', () => { if (fileL) { setLoop(0, fileL.length, false); commitLoop(); } });
@@ -1673,6 +1675,71 @@ document.addEventListener('drop', (e) => {
 
 document.getElementById('play').addEventListener('click', () => void togglePlay());
 document.getElementById('render').addEventListener('click', () => void renderWav());
+
+// --- links in, links out ----------------------------------------------------------
+// ?src=<url>            load that file instead of waiting for a drop (same-origin
+//                       or CORS-enabled — the EP listening room points here)
+// &seed=<hex>           the seed to populate the grid with (the whole take)
+// &g=<passes> &m=end|arc  pass count + print mode
+// &bpm=<n>              rides in through the filename so the beat grid + the
+//                       printed wav's name pick it up like a dropped file would
+// The address bar tracks seed/passes/mode as they change, so it is always a
+// shareable link to the current take (hand-drawn blocks are not in the URL —
+// a shared link reproduces a seeded grid, not a hand-edited one).
+let srcUrl = '';
+function syncUrl() {
+  if (!srcUrl || !window.history || !history.replaceState) return;
+  const q = new URLSearchParams();
+  q.set('src', srcUrl);
+  q.set('seed', ui.seed);
+  if (ui.passes !== 1) q.set('g', String(ui.passes));
+  if (ui.printMode !== 'end') q.set('m', ui.printMode);
+  if (bpmDetected && bpmSource === 'file') q.set('bpm', String(bpmDetected));
+  history.replaceState(null, '', `${location.pathname}?${q}`);
+}
+async function loadFromUrl(url, bpm) {
+  document.getElementById('dropprompt').textContent = `fetching ${url.split('/').pop()} …`;
+  let blob;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(r.status);
+    blob = await r.blob();
+  } catch (err) {
+    document.getElementById('dropprompt').textContent = `couldn't fetch "${url}" — drop a file instead`;
+    return;
+  }
+  const base = decodeURIComponent(url.split('/').pop() || 'source').replace(/\?.*$/, '');
+  const stem = base.replace(/\.[^.]+$/, '');
+  const ext = (base.match(/\.[^.]+$/) || [''])[0];
+  const name = bpm && !/bpm/i.test(stem) ? `${stem}_${bpm}bpm${ext}` : base;
+  srcUrl = url;
+  await loadFile(new File([blob], name, { type: blob.type }));
+  document.getElementById('share').hidden = false;
+  syncUrl();
+}
+document.getElementById('share').addEventListener('click', async (e) => {
+  syncUrl();
+  const btn = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText(location.href);
+    btn.textContent = 'copied';
+  } catch (_) {
+    btn.textContent = 'link in address bar';
+  }
+  setTimeout(() => { btn.textContent = 'share ↗'; }, 1600);
+});
+(() => {
+  const q = new URLSearchParams(location.search);
+  const src = q.get('src');
+  if (!src) return;
+  const seed = (q.get('seed') || '').trim();
+  if (seed) { ui.seed = seed; seedEl.value = seed; } // loadFile seeds the empty grid from ui.seed
+  const g = q.get('g');
+  if (g) { const b = document.querySelector(`#passes [data-p="${g}"]`); if (b) b.click(); }
+  const m = q.get('m');
+  if (m) { const b = document.querySelector(`#printmode [data-m="${m}"]`); if (b) b.click(); }
+  void loadFromUrl(src, parseFloat(q.get('bpm')) || 0);
+})();
 document.addEventListener('keydown', (e) => {
   if (e.target !== document.body) return;
   if (e.code === 'Space') { e.preventDefault(); void togglePlay(); return; }

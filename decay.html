@@ -857,6 +857,31 @@ document.addEventListener('drop', (e) => {
   if (f) void loadFile(f);
 });
 
+// ?src=<url>[&bpm=<n>] — load that file instead of waiting for a drop (same-origin
+// or CORS-enabled; the EP listening room points here). bpm rides in through the
+// filename so the printed wav's name carries it like a dropped file would.
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const src = q.get('src');
+  if (!src) return;
+  const bpm = parseFloat(q.get('bpm')) || 0;
+  document.getElementById('dropprompt').textContent = `fetching ${src.split('/').pop()} …`;
+  let blob;
+  try {
+    const r = await fetch(src);
+    if (!r.ok) throw new Error(r.status);
+    blob = await r.blob();
+  } catch (err) {
+    document.getElementById('dropprompt').textContent = `couldn't fetch "${src}" — drop a file instead`;
+    return;
+  }
+  const base = decodeURIComponent(src.split('/').pop() || 'source').replace(/\?.*$/, '');
+  const stem = base.replace(/\.[^.]+$/, '');
+  const ext = (base.match(/\.[^.]+$/) || [''])[0];
+  const name = bpm && !/bpm/i.test(stem) ? `${stem}_${bpm}bpm${ext}` : base;
+  await loadFile(new File([blob], name, { type: blob.type }));
+})();
+
 function segWire(id, attr, cb) {
   const seg = document.getElementById(id);
   seg.querySelectorAll('button[data-' + attr + ']').forEach((b) => {

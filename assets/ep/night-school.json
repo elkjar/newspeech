@@ -1,0 +1,47 @@
+{
+  "title": "night school",
+  "artist": "newspeech",
+  "kicker": "EP · three tracks",
+  "buy": { "label": "buy on subvert", "url": "" },
+  "streaming": { "date": "", "note": "streaming everywhere one month after release" },
+  "audioBase": "assets/ep/",
+  "visualizers": [
+    "1-streaks", "2-static", "8-rings", "3-invert", "4-blocks", "5-stars",
+    "6-grid", "7-ridges", "9-swarm", "16-network", "17-flare", "18-chevron"
+  ],
+  "tracks": [
+    {
+      "slug": "zeus-faber",
+      "title": "zeus faber",
+      "file": "zeus-faber.flac",
+      "duration": 238.18,
+      "bpm": 132,
+      "beat": false,
+      "page": "9-swarm",
+      "state": { "params": {} },
+      "source": "MIXES/20260911_ZEUS_2.wav (192k master → 48k)"
+    },
+    {
+      "slug": "piper-maru",
+      "title": "piper maru",
+      "file": "piper-maru.flac",
+      "duration": 332.41,
+      "bpm": 112,
+      "beat": false,
+      "page": "7-ridges",
+      "state": { "params": {} },
+      "source": "MIXES/20260916_PIPER_3.wav"
+    },
+    {
+      "slug": "black-eyes",
+      "title": "black eyes",
+      "file": "black-eyes.flac",
+      "duration": 300.46,
+      "bpm": 131,
+      "beat": false,
+      "page": "2-static",
+      "state": { "params": {} },
+      "source": "DEMOS/131_black-eyes-ALL-MUSIC.wav — placeholder until a mix exists"
+    }
+  ]
+}

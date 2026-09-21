@@ -45,3 +45,6 @@ assets/hero/hero-clean.*
 
 # netlify cli link state
 .netlify/
+
+# EP listening-room audio (assets/ep/*.flac) — hosting decision pending, see night-school.html
+assets/ep/*.flac
