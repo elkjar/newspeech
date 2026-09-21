@@ -77,9 +77,7 @@
     text-transform: uppercase;
     color: var(--ink);
     margin: 0 0 28px -0.04em;
-    user-select: none;
   }
-  h1 .c { display: inline-block; }
   .dek {
     font-size: 15px;
     line-height: 1.6;
@@ -386,7 +384,7 @@
 </section>
 
 <section class="col rule" id="newspeech">
-  <h2>who is asking</h2>
+  <h2>about newspeech</h2>
   <p>newspeech is chris elkjar's audio and video creative output: a band, a software sequencer, a set of destruction and loop-wear tools, a 24/7 generative broadcast programme, and some records made with them. the practice is built around the concept of unsynced systems intersecting and destruction, noise and wear as material.</p>
   <ul class="links">
     <li><a href="https://www.newspeechsound.com/">broadcast</a> — the studio's autonomous set programme: idents, interstitials, standby, a picture that follows the display.</li>
@@ -428,38 +426,6 @@ function fit(canvas) {
 
 const FONT = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-// ---------- title: the homepage hover treatment ----------
-// hover cycles every character through the zxx faces, desynced.
-const hero = document.querySelector("h1");
-const TITLE = hero.textContent.trim();
-hero.textContent = "";
-const charSpans = [...TITLE].map((ch) => {
-  const c = document.createElement("span");
-  c.className = "c";
-  c.textContent = ch;
-  hero.appendChild(c);
-  return c;
-});
-if (!REDUCED) {
-  const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
-  let timer = null;
-  hero.addEventListener("mouseenter", () => {
-    if (timer) return;
-    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
-    timer = setInterval(() => {
-      for (let i = 0; i < charSpans.length; i++) {
-        idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
-        charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
-      }
-    }, 80);
-  });
-  hero.addEventListener("mouseleave", () => {
-    clearInterval(timer);
-    timer = null;
-    for (const c of charSpans) c.style.fontFamily = "";
-  });
-}
 
 // ---------- figure: one part, twelve receptions ----------
 // a synthetic spectrum of one part, received twelve times: the studio
