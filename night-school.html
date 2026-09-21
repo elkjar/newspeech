@@ -155,8 +155,10 @@
   .win .msg.err { opacity: .55; }
   .win .stream { opacity: .45; font-size: 11px; }
 
-  #buy { position: absolute; right: var(--ns-gutter, 40px); top: 50%; transform: translateY(-50%); }
-  #buy .win-body { padding: 22px 28px 24px; gap: 12px; }
+  #side { position: absolute; right: var(--ns-gutter, 40px); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 16px; align-items: stretch; }
+  #buy .win-body, #share .win-body { padding: 22px 28px 24px; gap: 12px; }
+  #share .row { flex-wrap: wrap; justify-content: center; }
+  #share .win-body button { padding: 6px 12px; }
 
   /* the gate: an email for your copy, same door as the plugins */
   #gate-wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,5,5,.55); }
@@ -186,7 +188,7 @@
     #sleeve { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); top: auto; bottom: 64px; transform: none; width: auto; }
     #tracks li { grid-template-columns: 22px 1fr; }
     #tracks .meta { grid-column: 2; }
-    #buy { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); top: calc(28px + var(--ns-nav-h, 0px)); transform: none; }
+    #side { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); top: calc(28px + var(--ns-nav-h, 0px)); transform: none; }
   }
 </style>
 </head>
@@ -220,16 +222,30 @@
         <span>seed <span class="seed" id="ruin-seed"></span></span>
         <button class="reseed" id="ruin-reseed" title="another wreck at the same settings">⟳</button>
         <button id="ruin-keep" title="print the whole track through these settings and download it">download ↓</button>
-        <button id="ruin-share" title="copy a link — the room opens on this track with these exact settings">share</button>
         <span class="state" id="ruin-state"></span>
       </div>
     </div>
   </div>
-  <div id="buy" class="win">
-    <div class="win-bar"><span class="win-idx">//</span><span class="win-title">listen</span></div>
-    <div class="win-body">
-      <div class="row" id="buy-links"></div>
-      <span class="stream" id="buy-stream" hidden></span>
+  <div id="side">
+    <div id="buy" class="win">
+      <div class="win-bar"><span class="win-idx">//</span><span class="win-title">listen</span></div>
+      <div class="win-body">
+        <div class="row" id="buy-links"></div>
+        <span class="stream" id="buy-stream" hidden></span>
+      </div>
+    </div>
+    <div id="share" class="win">
+      <div class="win-bar"><span class="win-idx">//</span><span class="win-title">share</span></div>
+      <div class="win-body">
+        <div class="row">
+          <button type="button" id="share-native" hidden>share…</button>
+          <button type="button" id="share-copy">copy link</button>
+          <button type="button" id="share-x">x</button>
+          <button type="button" id="share-bsky">bluesky</button>
+          <button type="button" id="share-mail">email</button>
+        </div>
+        <span class="stream" id="share-what"></span>
+      </div>
     </div>
   </div>
   </div>
@@ -513,6 +529,7 @@
     stateEl.textContent = touched ? "ruined" : "clean";
     stateEl.classList.toggle("on", touched);
     keepBtn.disabled = !touched || printing;
+    shareWhat();
     if (!printing) keepBtn.textContent = touched ? `download ↓ ~${Math.round(takeSeconds() * SR * 6 / 1048576)} MB` : "download ↓";
   }
   function syncUrl() {
@@ -536,11 +553,27 @@
   K.verb.addEventListener("input", () => { knobs.verb = +K.verb.value; showKnobs(); if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed, true); syncUrl(); });
   K.verb.addEventListener("change", () => { if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed); });
   $("ruin-reseed").addEventListener("click", () => { knobs.seed = randomSeed(); showKnobs(); pushSet(); if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed); syncUrl(); });
-  $("ruin-share").addEventListener("click", async () => {
+  // ---- // share: the room's url, which carries the take when one is dialled in --
+  function shareText() {
+    const t = ep.tracks[cur < 0 ? 0 : cur];
+    const touched = knobs.ruin > 0 || knobs.speed !== 1 || knobs.verb > 0;
+    return touched ? `my ruin of ${t.title} — ${ep.title} by ${ep.artist}` : `${ep.title} — ${ep.artist}`;
+  }
+  function shareWhat() {
+    const touched = knobs.ruin > 0 || knobs.speed !== 1 || knobs.verb > 0;
+    $("share-what").textContent = touched ? "this link opens on your ruin, knobs and seed included" : "this link opens the ep clean";
+  }
+  const openShare = (u) => window.open(u, "_blank", "noopener");
+  if (navigator.share) $("share-native").hidden = false;
+  $("share-native").addEventListener("click", async () => { syncUrl(); try { await navigator.share({ title: ep.title, text: shareText(), url: location.href }); } catch (_) {} });
+  $("share-copy").addEventListener("click", async () => {
     syncUrl();
-    try { await navigator.clipboard.writeText(location.href); toast("link copied — it opens on this track with these settings"); }
+    try { await navigator.clipboard.writeText(location.href); toast("link copied"); }
     catch (_) { toast("link is in the address bar"); }
   });
+  $("share-x").addEventListener("click", () => { syncUrl(); openShare(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText())}&url=${encodeURIComponent(location.href)}`); });
+  $("share-bsky").addEventListener("click", () => { syncUrl(); openShare(`https://bsky.app/intent/compose?text=${encodeURIComponent(shareText() + " " + location.href)}`); });
+  $("share-mail").addEventListener("click", () => { syncUrl(); location.href = `mailto:?subject=${encodeURIComponent(shareText())}&body=${encodeURIComponent(location.href)}`; });
 
   // ---- reverb: a seeded impulse in a ConvolverNode --------------------------------
   // one knob: wet amount and tail together. decorrelated noise under an
