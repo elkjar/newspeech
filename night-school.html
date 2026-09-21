@@ -863,12 +863,15 @@
     loadFrame(ep.tracks[cur]); markCurrent();
   }
 
-  // ---- scores: inline each exported composition svg and loop the draw ------
-  // the svg recorder writes strokes in piece order, so revealing them in
-  // order along their own length is the arrangement unfolding. each figure
-  // draws on, holds, sweeps off and starts again; the three run out of phase,
-  // and pause while off screen (black eyes is 1600 strokes).
-  const CYCLE_MS = 11000, DRAW_MS = 2600, STROKE_MS = 700, HOLD_UNTIL_MS = 6400;
+  // ---- scores: inline each exported composition svg and animate it ----------
+  // two populations on two clocks. DOTS (the filled paths — every hit) are
+  // always present and breathe individually, so the figure never goes dark.
+  // LINES (the stroked paths — chords, polygons, sustain arcs, the guide
+  // circle) draw on in piece order, hold, sweep off and start again; the
+  // recorder writes them in arrangement order, so the sweep is the piece
+  // unfolding. the three figures run out of phase and pause off screen.
+  const CYCLE_MS = 12000, DRAW_MS = 3200, STROKE_MS = 800, HOLD_UNTIL_MS = 7600;
+  const DOT_MS = 7000; // one breath
   async function mountScore(t, host, phase) {
     const url = (ep.scoresBase || "assets/ep/scores/") + t.slug + ".svg";
     let text;
@@ -905,13 +908,13 @@
         { strokeDashoffset: -L, offset: 1 },
       ], { duration: CYCLE_MS, iterations: Infinity, delay: -phase, easing: "linear" }));
     });
-    const F = Math.max(1, fills.length);
+    // dots: each one breathes on its own phase (a hash of its index, so the
+    // pattern is fixed per figure), never below a third of its ink
     fills.forEach((el, i) => {
-      const d0 = ((i + 0.5) / F) * DRAW_MS, e0 = HOLD_UNTIL_MS + ((i + 0.5) / F) * DRAW_MS;
+      const h = ((i * 2654435761) >>> 0) / 4294967296;
       anims.push(el.animate([
-        { opacity: 0, offset: 0 }, { opacity: 0, offset: at(d0) }, { opacity: 1, offset: at(d0 + 300) },
-        { opacity: 1, offset: at(e0) }, { opacity: 0, offset: at(e0 + 300) }, { opacity: 0, offset: 1 },
-      ], { duration: CYCLE_MS, iterations: Infinity, delay: -phase }));
+        { opacity: 1, offset: 0 }, { opacity: 0.3, offset: 0.5 }, { opacity: 1, offset: 1 },
+      ], { duration: DOT_MS * (0.8 + 0.5 * h), iterations: Infinity, delay: -h * DOT_MS, easing: "ease-in-out" }));
     });
     // only spend the frames while the figure is on screen
     const io = new IntersectionObserver(([e]) => { anims.forEach((a) => (e.isIntersecting ? a.play() : a.pause())); host.classList.toggle("live", e.isIntersecting); }, { threshold: 0.05 });
