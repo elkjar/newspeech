@@ -59,7 +59,6 @@
     position: absolute; left: 28px; top: 50%; transform: translateY(-50%);
     max-width: min(560px, calc(100vw - 56px));
   }
-  .kicker { color: #666; letter-spacing: 0.18em; text-transform: lowercase; margin: 0 0 6px; }
   h1 {
     font-family: "zxx-sans", ui-monospace, monospace;
     font-weight: 400; font-size: clamp(34px, 6vw, 64px); line-height: 1;
@@ -145,7 +144,6 @@
 
 <div id="room">
   <div id="sleeve">
-    <p class="kicker" id="kicker"></p>
     <h1><span data-link id="title"></span></h1>
     <ol id="tracks"></ol>
   </div>
@@ -170,7 +168,6 @@
   let pageOverride = {}; // slug → page picked live with [ ] (not persisted — press c to copy)
 
   // ---- sleeve ------------------------------------------------------------------
-  $("kicker").textContent = `${ep.artist} · ${ep.kicker || "EP"}`;
   $("title").textContent = ep.title;
   const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const audioUrl = (t) => (ep.audioBase || "") + t.file;
