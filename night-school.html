@@ -872,7 +872,7 @@
   // unfolding. the three figures run out of phase and pause off screen.
   const CYCLE_MS = 12000, DRAW_MS = 3200, STROKE_MS = 800, HOLD_UNTIL_MS = 7600;
   const DOT_MS = 7000; // one breath
-  const INK_GAIN = 2.6; // the renderer's opacities are tuned for print; on a dark page the figure wants more ink
+  const INK_GAIN = 1.3; // the renderer's opacities are tuned for print; on a dark page the figure wants more ink
   async function mountScore(t, host, phase) {
     const url = (ep.scoresBase || "assets/ep/scores/") + t.slug + ".svg";
     let text;
