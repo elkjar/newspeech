@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Unlisted proposal page — not linked from anywhere on the site.
      Keep out of search indexes; the URL itself is the invite.
-     Words live in coverage-defa33-copy.md; this file is the layout. -->
+     Words live in coverage-defa33-copy.md; tools/coverage-reload.py loads them in. -->
 <meta name="robots" content="noindex, nofollow">
 <title>coverage</title>
 <meta property="og:title" content="NEWSPEECH // coverage">
@@ -50,42 +50,13 @@
   .col   { max-width: 720px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
   .wide  { max-width: 960px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
 
-  /* ---- hero: a receiver tuned to nothing ----
-     a full-frame field of static. the title sits in it and wears, one
-     pass at a time, the way the loop does. */
-  header.rx {
-    position: relative;
-    min-height: 100vh;
-    min-height: 100svh;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 26px var(--gutter) 22px;
-    background: #000;
-    border-bottom: 1px solid var(--hair);
-    overflow: hidden;
+  /* ---- lead: title, line, figure ----
+     the figure is the strongest thing on the page, so it leads. the
+     title and dek sit above it at the wide measure; the first section
+     heading lands directly under it. */
+  header.lead {
+    padding-top: 26px;
   }
-  #hero-noise {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0.28;
-    image-rendering: pixelated;
-    pointer-events: none;
-  }
-  header.rx::after {
-    /* corner falloff so the static reads as a tube, not a texture, and a
-       floor scrim so the dek stays legible over the grain */
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(180deg, rgba(0,0,0,0.55), transparent 18%, transparent 68%, rgba(0,0,0,0.82)),
-      radial-gradient(ellipse 80% 70% at 50% 50%, transparent 40%, rgba(0, 0, 0, 0.8) 100%);
-    pointer-events: none;
-  }
-  .osd, .hero-center, .hero-foot { position: relative; z-index: 1; }
   .osd {
     display: flex;
     justify-content: space-between;
@@ -95,68 +66,29 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--dim);
-  }
-  .hero-center {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 56px 0;
+    margin-bottom: 96px;
   }
   h1 {
     font-family: var(--mono);
-    font-size: clamp(30px, 7vw, 84px);
+    font-size: clamp(40px, 8.5vw, 104px);
     font-weight: 400;
-    line-height: 1.2;
-    letter-spacing: 0.22em;
+    line-height: 1;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
     color: var(--ink);
-    text-shadow: 0 0 26px rgba(255, 255, 255, 0.25);
-    margin: 0;
+    margin: 0 0 28px -0.04em;
     user-select: none;
   }
-  h1 .c { display: inline-block; min-width: 0.7em; text-align: center; }
-  h1 .c.n { color: var(--dim); text-shadow: none; }
-  .hero-gen {
-    font-size: 12px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--dim);
-    text-shadow: 0 0 8px #000, 0 0 2px #000;
-    font-variant-numeric: tabular-nums;
-    margin-top: 28px;
-  }
-  .hero-foot {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 24px;
-    flex-wrap: wrap;
-  }
+  h1 .c { display: inline-block; }
   .dek {
-    font-size: 13px;
-    color: var(--dim);
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--body);
     max-width: 56ch;
     margin: 0;
   }
-  .hero-right {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--faint);
-    white-space: nowrap;
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    h1 { animation: phosphor 9s ease-in-out infinite; }
-    @keyframes phosphor {
-      0%, 100% { opacity: 0.94; }
-      46% { opacity: 1; }
-      51% { opacity: 0.84; }
-      54% { opacity: 0.98; }
-    }
-  }
+  header.lead figure { margin: 64px 0 0; }
+  header.lead + section { margin-top: var(--fig); }   /* the first heading sits close under the figure */
 
   /* ---- vertical rhythm ---- */
   section { margin-top: var(--beat); padding: 0; }
@@ -371,55 +303,23 @@
 <div id="toc-scrim"></div>
 <button id="toc-btn" aria-controls="toc" aria-expanded="false">index</button>
 <nav id="toc" aria-label="sections">
-  <a href="#top"><span class="dot"></span><span class="lbl">top</span></a>
-  <a href="#premise"><span class="dot"></span><span class="lbl">premise</span></a>
-  <a href="#statement"><span class="dot"></span><span class="lbl">the statement</span></a>
-  <a href="#schedule"><span class="dot"></span><span class="lbl">the schedule</span></a>
-  <a href="#days"><span class="dot"></span><span class="lbl">the days</span></a>
-  <a href="#radio"><span class="dot"></span><span class="lbl">why radio</span></a>
-  <a href="#library"><span class="dot"></span><span class="lbl">the library</span></a>
-  <a href="#broadcast"><span class="dot"></span><span class="lbl">the broadcast</span></a>
-  <a href="#instrument"><span class="dot"></span><span class="lbl">the instrument</span></a>
-  <a href="#zero"><span class="dot"></span><span class="lbl">generation zero</span></a>
-  <a href="#lineage"><span class="dot"></span><span class="lbl">lineage</span></a>
-  <a href="#rig"><span class="dot"></span><span class="lbl">rig</span></a>
-  <a href="#outputs"><span class="dot"></span><span class="lbl">outputs</span></a>
-  <a href="#newspeech"><span class="dot"></span><span class="lbl">newspeech</span></a>
 </nav>
 
-<header class="rx" id="top">
-  <canvas id="hero-noise" aria-hidden="true"></canvas>
+<header class="lead wide" id="top">
   <div class="osd">
     <span>newspeech</span>
     <span>wave farm 2027 · transmission art residency</span>
   </div>
-  <div class="hero-center">
-    <h1 aria-label="coverage">coverage</h1>
-    <div class="hero-gen" id="hero-gen">gen 00 · 90.7 fm</div>
-  </div>
-  <div class="hero-foot">
-    <p class="dek">a composition taken apart, sent through the air one part at a time, caught across the coverage area, and put back together from what came back. a proposal for wave farm&#x27;s 2027 transmission art residency.</p>
-    <span class="hero-right">acra, ny · crestline, ca</span>
-  </div>
-</header>
-
-<section class="wide">
+  <h1 aria-label="coverage">coverage</h1>
+  <p class="dek">a composition taken apart, sent through the air one part at a time, caught across the coverage area, and put back together from what came back.</p>
   <figure>
     <canvas id="fig-wear" height="440"></canvas>
     <figcaption>one part, twelve receptions: the studio control at the top, then further out. distance raises the floor, the valley's reflections distort, a cheap receiver rolls off and leaks its pilot, terrain shadow mutes, and at the edge the neighbour on the next channel takes over and the hiss goes quiet again. a simulation of the kinds of damage, not a measurement — the real ones come off wgxc.</figcaption>
   </figure>
-</section>
+</header>
 
-<section class="col" id="premise">
+<section class="col" id="statement">
   <h2>built from what came back</h2>
-  <p>a composition is written before the residency and taken apart into its layers. during the residency each layer is sent out over wgxc 90.7-fm, a minute at a time, on a schedule, and caught off-air by a ring of listening posts across the coverage area: every burst, at every post. nothing is used unless it has been received. the finished piece can only be assembled from what came back through the air, and every day's broadcast is made from the day before's receptions, so the layers age as the week goes on.</p>
-  <p>to a listener, the first days sound like scattered fragments: a drum loop on the hour, a pad at noon, a sequence at two. day by day the fragments recombine, and by the end of the week the station is playing a composition that assembled itself on air.</p>
-  <p>what the air does to a layer depends on where the receiver stood. at the studio, the station's own processing does the wearing. on a ridge at the edge of the signal, the terrain does. the same drum loop caught at twelve posts is twelve different drum loops, and the composition is built by choosing among them.</p>
-  <p>it is audio only. there is no picture. the receiver is the screen.</p>
-</section>
-
-<section class="col rule" id="statement">
-  <h2>the statement</h2>
   <div class="statement">
   <p><em>coverage</em> is a composition that can only be assembled from what came back over the air. before the residency it is written in parts: a drum loop, a pad, a sequence, a melody. during the residency each part goes out on wgxc 90.7-fm in bursts of thirty to ninety seconds on a fixed schedule, and a ring of receivers left at listening posts across the coverage area, a ridge, a valley floor, the edge of the signal, catches every burst where it stands. every reception is kept.</p>
   <p>each day is built from the one before. day one sends the raw parts. day two sends combinations made only from day one's receptions, and so on, so that by the fifth day every layer has been through the air several times, from several places, and the station's processing and the terrain have written themselves into all of it. to listeners the first days sound like scattered fragments; day by day they cohere, until the station is playing a composition that assembled itself on air. the residency culminates in an evening transmission of the full piece, built entirely from received parts, heard in the art park on handheld radios and nowhere else.</p>
@@ -428,26 +328,25 @@
   <p class="note">the application text. ~245 words; wave farm's limit isn't published, expect to cut.</p>
 </section>
 
-<section class="col rule" id="schedule">
+<section class="col rule" id="week">
   <h2>a minute at a time, on the hour</h2>
   <p>the parts go out on a fixed interval, every hour or two, at the top of the hour on wgxc's schedule, each burst thirty to ninety seconds. a ring of listening posts catches all of them: pocket fm receivers on battery recorders, left for the week at set points across the coverage area. the studio, cabled, as the control. the art park. a ridge above the valley, a hollow behind it, the last place the signal still reads. and, if the station's listeners will have them, a few windowsills. every part is heard from every place, every day. staff and i make the rounds between bursts to swap cards and batteries, and carry one more receiver to wherever the day suggests. position, time and weather are logged with every reception.</p>
   <p>for the station's listeners, the first days are a minute of something on the hour: a drum loop, then a pad, then a sequence, each caught somewhere new. it will sound like sampling. by mid-week the bursts are combinations, and by the weekend the hour carries a piece of music. the schedule is the score, and the coherence arrives on air.</p>
-</section>
-
-<section class="col rule" id="days">
-  <h2>each day feeds the next</h2>
+  <h3>the days</h3>
   <div class="tbl-scroll">
     <table>
       <tbody>
+        <tr><td>before</td><td>the parts pass through the air at home first, in crestline, california, at 4,700 feet in the san bernardino mountains: a part 15 fm transmitter, legal without a licence at a couple of hundred feet, into a sampler whose only input is its radio. it proves the chain, sets the levels, and makes the work sample.</td></tr>
         <tr><td>day 1</td><td>the raw parts go out, one per burst, on rotation. every post catches every one. the studio control catches them clean.</td></tr>
         <tr><td>day 2</td><td>combinations built only from day one's receptions. the pad from the ridge and the drum loop from the hollow become one layer. the sequence from the valley floor goes out on its own again.</td></tr>
         <tr><td>days 3–5</td><td>variations. layers recombine, swap places, thin and thicken, always made from the previous day's receptions and never from the original files. by day five every part has been through the air several times from several places, and the bursts have started to sound like a piece.</td></tr>
-        <tr><td>days 6–8</td><td>the assembly. the full composition is built from the library: for each part, which day, which place, how much wear. it goes through the air at least once more.</td></tr>
+        <tr><td>days 6–8</td><td>the assembly. the full composition is built from the library: for each part, which day, which post, how much wear. it goes through the air at least once more.</td></tr>
         <tr><td>days 9–10</td><td>the evening transmission. then the documentation: the log of positions, the wear scores, the library catalogued.</td></tr>
       </tbody>
     </table>
   </div>
   <p>nothing that was not received is ever broadcast again. the original parts are heard exactly once, on day one.</p>
+  <p>the culminating event is a live evening transmission of the full composition on wgxc 90.7-fm and wavefarm.org/listen, from the acra studio, assembled entirely from received parts. no loudspeakers. the only way to hear it in the art park is through a receiver: the audience walks with handheld radios, and each hears a different piece, a different fade, a different neighbour bleeding in, depending on where they stand. the last pass through the air happens in their hands.</p>
 </section>
 
 <section class="col rule" id="radio">
@@ -456,35 +355,16 @@
   <p><strong>the wear is public.</strong> the parts are made on air, on a schedule, on a frequency anyone can tune to. everyone in range hears the piece being built, fragments first, and none of it can be rewound.</p>
   <p><strong>the wear is made of the place.</strong> the same part caught at every post on the same hour is a dozen different parts. the composition is assembled by choosing among places. terrain, weather and time of day are in the mix decisions.</p>
   <p><strong>a frequency carries one signal.</strong> there is a fixed deviation budget. when two received parts are combined and sent out again, the limiter fits both under the same ceiling, so the louder one pushes the other down through the transmitter itself. you cannot broadcast more. you can only broadcast instead. no other medium composes that way.</p>
+  <p>the lineage is alvin lucier's <em>i am sitting in a room</em>, a voice re-recorded through a room until only the room remains; william basinski's <em>the disintegration loops</em>, tape played until the oxide is gone; and wave farm's own free103point9 years, when the station was a microradio collective. <em>coverage</em> takes the structure of the first, the material of the second and the medium of the third, and adds one move: the piece is taken apart before it goes through the medium, so the listener can choose how much of the county each part keeps.</p>
 </section>
 
 <section class="col rule" id="library">
   <h2>every reception, kept</h2>
   <p>every burst at every post is kept and catalogued: which part, which day, which generation, which post, what time, what weather. it is a grid: parts by days by places. by the end of the week that is a few thousand short recordings, each one the same composition heard from a different place at a different age. the finished piece is one path through the grid. the library is the work as much as the transmission is.</p>
-</section>
-
-<section class="col rule" id="broadcast">
-  <h2>no loudspeakers</h2>
-  <p>the culminating event is a live evening transmission of the full composition on wgxc 90.7-fm and wavefarm.org/listen, from the acra studio, assembled entirely from received parts. the only way to hear it in the art park is through a receiver. the audience walks with handheld radios, and each hears a different piece: a different fade, a different neighbour bleeding in, depending on where they stand. the last pass through the air happens in their hands.</p>
-</section>
-
-<section class="col rule" id="instrument">
-  <h2>build your own</h2>
   <p>after the residency the library is published as an online instrument on newspeechsound.com. the composition is laid out part by part, and for each part the listener chooses a cell of the grid: which day, which post, and so how much wear. keep the melody clean and let the drums disintegrate. take everything from the ridge. use only day five. every version is the same piece and every sound in it has been through the air over the catskills. the tool is built on the studio's existing web instruments and is free.</p>
 </section>
 
-<section class="col rule" id="zero">
-  <h2>crestline first</h2>
-  <p>the parts pass through the air at home first, in crestline, california, at 4,700 feet in the san bernardino mountains: a part 15 fm transmitter, legal without a licence at a couple of hundred feet, into a sampler whose only input is its radio. the mountain gives real terrain shadowing within that range. it proves the chain, sets the levels, and produces the work sample: each part at the desk and each part from the far edge of the property, side by side, so the panel hears the mechanism rather than reads about it.</p>
-</section>
-
-<section class="col rule" id="lineage">
-  <h2>a room, a tape, a county</h2>
-  <p>alvin lucier, <em>i am sitting in a room</em>, 1969: a voice re-recorded through a room until only the room's resonances remain. william basinski, <em>the disintegration loops</em>, 2001: tape loops played until the oxide has gone. and wave farm's own history, which began as free103point9, a microradio collective, in 1997.</p>
-  <p><em>coverage</em> takes the structure of the first, the material of the second, and the medium of the third, and adds a fourth move: the piece is taken apart before it goes through the medium, so the listener can choose how much of the room, or the county, each part keeps.</p>
-</section>
-
-<section class="col rule" id="rig">
+<section class="col rule" id="practicals">
   <h2>a transmitter, a sampler with a radio, a laptop</h2>
   <div class="tbl-scroll">
     <table>
@@ -499,15 +379,11 @@
     </table>
   </div>
   <p>nothing sits between any receiver and the library. every artifact in every recording is defensible as the transmitter, the air, or the receiver.</p>
-</section>
-
-<section class="col rule" id="outputs">
-  <h2>what comes out</h2>
   <div class="tbl-scroll">
     <table>
       <tbody>
-        <tr><td>the transmission</td><td>the evening broadcast of the full composition on wgxc and the web stream, recorded off-air at the receivers.</td></tr>
-        <tr><td>the record</td><td>the assembled composition plus the day-by-day generations, released through newspeech. the sleeve carries the frequency, the dates, the receiver positions and the weather. offered to wave farm's transmission art archive.</td></tr>
+        <tr><td>the transmission</td><td>the evening broadcast of the full composition on wgxc and the web stream, recorded off-air at the posts.</td></tr>
+        <tr><td>the record</td><td>the assembled composition plus the day-by-day generations, released through newspeech. the sleeve carries the frequency, the dates, the posts and the weather. offered to wave farm's transmission art archive.</td></tr>
         <tr><td>the library</td><td>the whole grid, every burst at every post, catalogued and published with the instrument.</td></tr>
         <tr><td>the instrument</td><td>the build-your-own tool on newspeechsound.com, free, seeded from the library.</td></tr>
         <tr><td>the wear scores</td><td>each part rendered as a graphic score at every generation, side by side, so the erosion can be seen. the one place a visual layer belongs.</td></tr>
@@ -560,113 +436,32 @@ function fit(canvas) {
 const FONT = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// ---------- hero: receiver static ----------
-// a low-res noise field, redrawn at a lazy frame rate and scaled up
-// with pixelated rendering so the grain reads as a tube, not film.
-const noise = document.getElementById("hero-noise");
-const nctx = noise.getContext("2d");
-const CELL = 5; // css px per grain cell — buffer sized from the viewport so cells stay square
-let nbuf = null;
-function sizeNoise() {
-  const nw = Math.max(1, Math.round(noise.clientWidth / CELL));
-  const nh = Math.max(1, Math.round(noise.clientHeight / CELL));
-  if (noise.width !== nw || noise.height !== nh) {
-    noise.width = nw; noise.height = nh;
-    nbuf = nctx.createImageData(nw, nh);
-  }
-}
-function drawNoise() {
-  sizeNoise();
-  const d = nbuf.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const v = Math.random();
-    // mostly black; a sparse bright scatter and a dim grey bed
-    const s = v > 0.965 ? 200 + Math.random() * 55 : v > 0.6 ? 18 + Math.random() * 40 : 0;
-    d[i] = d[i + 1] = d[i + 2] = s;
-    d[i + 3] = 255;
-  }
-  nctx.putImageData(nbuf, 0, 0);
-}
-drawNoise();
-if (!REDUCED) setInterval(() => { if (!document.hidden) drawNoise(); }, 90);
-window.addEventListener("resize", drawNoise);
-
-// ---------- hero: the title wears, one pass at a time ----------
-// every PASS_MS is one trip through the air: one or two characters
-// drop to noise glyphs and stay there; the readout counts generations.
-// when nothing is left the loop holds, then re-seeds from gen 00.
-const NOISE_GLYPHS = "#*/\\_+=~<>.,:;|?!@$%^&-";
-const PASS_MS = 1700;
+// ---------- title: the homepage hover treatment ----------
+// hover cycles every character through the zxx faces, desynced.
 const hero = document.querySelector("h1");
-const heroGen = document.getElementById("hero-gen");
 const TITLE = hero.textContent.trim();
-let charSpans = [];
-function seedTitle() {
-  hero.textContent = "";
-  charSpans = [];
-  for (const ch of TITLE) {
-    const c = document.createElement("span");
-    c.className = "c";
-    c.textContent = ch;
-    c.dataset.original = ch;
-    hero.appendChild(c);
-    charSpans.push(c);
-  }
-}
-seedTitle();
-const genLabel = (g) => `gen ${String(g).padStart(2, "0")} · 90.7 fm`;
-
+hero.textContent = "";
+const charSpans = [...TITLE].map((ch) => {
+  const c = document.createElement("span");
+  c.className = "c";
+  c.textContent = ch;
+  hero.appendChild(c);
+  return c;
+});
 if (!REDUCED) {
-  let gen = 0;
-  let hold = 0;
-  let hovering = false;
-  setInterval(() => {
-    if (hovering || document.hidden) return;
-    const alive = charSpans.filter((c) => !c.classList.contains("n"));
-    if (alive.length === 0) {
-      if (hold++ < 2) {
-        for (const c of charSpans) c.textContent = NOISE_GLYPHS[(Math.random() * NOISE_GLYPHS.length) | 0];
-        return;
-      }
-      hold = 0;
-      gen = 0;
-      seedTitle();
-      heroGen.textContent = genLabel(gen);
-      return;
-    }
-    gen++;
-    // noise already in the loop stays alive
-    for (const c of charSpans) {
-      if (c.classList.contains("n")) c.textContent = NOISE_GLYPHS[(Math.random() * NOISE_GLYPHS.length) | 0];
-    }
-    const drops = 1 + (Math.random() < 0.35 ? 1 : 0);
-    for (let k = 0; k < drops && alive.length; k++) {
-      const i = (Math.random() * alive.length) | 0;
-      const c = alive.splice(i, 1)[0];
-      c.classList.add("n");
-      c.textContent = NOISE_GLYPHS[(Math.random() * NOISE_GLYPHS.length) | 0];
-    }
-    heroGen.textContent = genLabel(gen);
-  }, PASS_MS);
-
-  // hover: hold the current generation and cycle the zxx faces
-  // through whatever characters survive
   const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
   let timer = null;
   hero.addEventListener("mouseenter", () => {
-    hovering = true;
     if (timer) return;
     const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
     timer = setInterval(() => {
       for (let i = 0; i < charSpans.length; i++) {
-        if (charSpans[i].classList.contains("n")) continue;
         idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
         charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
       }
     }, 80);
   });
   hero.addEventListener("mouseleave", () => {
-    hovering = false;
     clearInterval(timer);
     timer = null;
     for (const c of charSpans) c.style.fontFamily = "";

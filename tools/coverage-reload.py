@@ -8,8 +8,8 @@ Copydoc grammar (see the ground rules at the top of the copydoc):
   - [text](url) ...          -> <ul class="links"> list
   any other line             -> <p>
 Inline: **bold** -> <strong>, *em* -> <em>, [t](u) -> <a>.
-Only the region between </header> and <footer>, the hero strings, the <title>/og
-and the #toc are rewritten; CSS + JS in the HTML are left alone.
+Only the region between </header> and <footer>, the lead strings (title, dek, figcaption),
+the <title>/og and the #toc are rewritten; CSS + JS in the HTML are left alone.
 """
 import re, html, sys, pathlib
 
@@ -18,11 +18,8 @@ MD = ROOT / "coverage-defa33-copy.md"
 HTML = ROOT / "coverage-defa33.html"
 
 SECTION_IDS = {
-    "premise": "premise", "the statement": "statement", "the parts": "parts",
-    "the schedule": "schedule", "the days": "days", "what the air does": "air",
-    "why radio": "radio", "the library": "library", "the broadcast": "broadcast",
-    "the instrument": "instrument", "generation zero": "zero", "lineage": "lineage",
-    "rig": "rig", "outputs": "outputs", "newspeech": "newspeech",
+    "the statement": "statement", "the week": "week", "why radio": "radio",
+    "the library": "library", "practicals": "practicals", "newspeech": "newspeech",
 }
 
 def inline(s):
@@ -79,8 +76,7 @@ def main():
     body, toc = [], ['  <a href="#top"><span class="dot"></span><span class="lbl">top</span></a>']
     cap = next((s for t, s in secs.items() if t.startswith("figure caption")), None)
     if cap:
-        body.append('<section class="wide">\n  <figure>\n    <canvas id="fig-wear" height="440"></canvas>\n'
-                    f'    <figcaption>{inline(cap["blocks"][0]["text"])}</figcaption>\n  </figure>\n</section>')
+        page = re.sub(r"(<figcaption>).*?(</figcaption>)", lambda m: m.group(1) + inline(cap["blocks"][0]["text"]) + m.group(2), page, count=1, flags=re.S)
     first = True
     for title, sec in secs.items():
         if title not in SECTION_IDS: continue
@@ -110,10 +106,8 @@ def main():
     page = re.sub(r"<title>.*?</title>", f"<title>{html.escape(t)}</title>", page)
     page = re.sub(r'(og:title" content=")[^"]*', lambda m: m.group(1) + "NEWSPEECH // " + html.escape(meta["title (h1)"]), page)
     page = re.sub(r'(og:description" content=")[^"]*', lambda m: m.group(1) + html.escape(meta["og description"]), page)
-    page = re.sub(r'<h1 aria-label="[^"]*">[^<]*</h1>', f'<h1 aria-label="{html.escape(meta["title (h1)"])}">{html.escape(meta["title (h1)"])}</h1>', page)
-    page = re.sub(r'(<div class="hero-gen" id="hero-gen">)[^<]*', lambda m: m.group(1) + html.escape(meta["readout (under the title)"]), page)
-    page = re.sub(r'(<p class="dek">)[^<]*', lambda m: m.group(1) + html.escape(meta["dek (bottom left)"]), page)
-    page = re.sub(r'(<span class="hero-right">)[^<]*', lambda m: m.group(1) + html.escape(meta["hero right"]), page)
+    page = re.sub(r'<h1 aria-label="[^"]*">(?:<span class="c">.</span>|[^<])*</h1>', f'<h1 aria-label="{html.escape(meta["title (h1)"])}">{html.escape(meta["title (h1)"])}</h1>', page)
+    page = re.sub(r'(<p class="dek">)[^<]*', lambda m: m.group(1) + html.escape(meta["dek (under the title)"]), page)
     page = re.sub(r'(<div class="osd">\n    <span>)[^<]*(</span>\n    <span>)[^<]*',
                   lambda m: m.group(1) + html.escape(meta["osd left (top of screen)"]) + m.group(2) + html.escape(meta["osd right"]), page)
     HTML.write_text(page)

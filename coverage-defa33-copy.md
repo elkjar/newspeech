@@ -1,7 +1,8 @@
 # copydoc — coverage (wave farm 2027)
 
 source of truth for the words on `coverage-defa33.html`. rewrite anything below in
-your own voice, then hand the file back and claude reloads it into the page.
+your own voice, then run `python3 tools/coverage-reload.py` (or hand the file back and
+claude runs it) to reload the words into the page.
 
 ground rules for the reload to stay mechanical:
 
@@ -22,38 +23,24 @@ ground rules for the reload to stay mechanical:
 
 ## meta
 
-the hero is a black field of receiver static. the title sits in it and wears: every few
-seconds is one pass through the air — characters drop to noise glyphs and don't come
-back, the readout counts the generation — until the word is gone, holds, and the loop
-re-seeds. hover holds the current generation and cycles the zxx faces.
+the lead is the figure: one part received twelve times, cleanest at the top. the title
+and dek sit above it, the statement heading directly below, so the page opens
+title → line → figure → line.
 
 - **page title:** coverage
 - **osd left (top of screen):** newspeech
 - **osd right:** wave farm 2027 · transmission art residency
 - **title (h1):** coverage
-- **readout (under the title):** gen 00 · 90.7 fm
-- **dek (bottom left):** a composition taken apart, sent through the air one part at a time, caught across the coverage area, and put back together from what came back. a proposal for wave farm's 2027 transmission art residency.
-- **hero right:** acra, ny · crestline, ca
+- **dek (under the title):** a composition taken apart, sent through the air one part at a time, caught across the coverage area, and put back together from what came back.
 - **og description:** a composition sent through the air one part at a time and rebuilt from what came back. proposal for wave farm 2027. private draft.
 
-## figure caption — twelve receptions (under the hero)
+## figure caption — twelve receptions (the lead)
 
 one part, twelve receptions: the studio control at the top, then further out. distance raises the floor, the valley's reflections distort, a cheap receiver rolls off and leaks its pilot, terrain shadow mutes, and at the edge the neighbour on the next channel takes over and the hiss goes quiet again. a simulation of the kinds of damage, not a measurement — the real ones come off wgxc.
 
-## premise
-
-- **h2:** built from what came back
-
-a composition is written before the residency and taken apart into its layers. during the residency each layer is sent out over wgxc 90.7-fm, a minute at a time, on a schedule, and caught off-air by a ring of listening posts across the coverage area: every burst, at every post. nothing is used unless it has been received. the finished piece can only be assembled from what came back through the air, and every day's broadcast is made from the day before's receptions, so the layers age as the week goes on.
-
-to a listener, the first days sound like scattered fragments: a drum loop on the hour, a pad at noon, a sequence at two. day by day the fragments recombine, and by the end of the week the station is playing a composition that assembled itself on air.
-
-what the air does to a layer depends on where the receiver stood. at the studio, the station's own processing does the wearing. on a ridge at the edge of the signal, the terrain does. the same drum loop caught at twelve posts is twelve different drum loops, and the composition is built by choosing among them.
-
-it is audio only. there is no picture. the receiver is the screen.
-
 ## the statement
 
+- **h2:** built from what came back
 - **note:** the application text. ~245 words; wave farm's limit isn't published, expect to cut.
 
 *coverage* is a composition that can only be assembled from what came back over the air. before the residency it is written in parts: a drum loop, a pad, a sequence, a melody. during the residency each part goes out on wgxc 90.7-fm in bursts of thirty to ninety seconds on a fixed schedule, and a ring of receivers left at listening posts across the coverage area, a ridge, a valley floor, the edge of the signal, catches every burst where it stands. every reception is kept.
@@ -62,8 +49,7 @@ each day is built from the one before. day one sends the raw parts. day two send
 
 the library of receptions is then published as an online instrument. listeners build their own version of the piece by choosing, part by part, which post's reception to use, and so which place and how much wear. keep the melody clean. let the drums go.
 
-
-## the schedule
+## the week
 
 - **h2:** a minute at a time, on the hour
 
@@ -71,20 +57,18 @@ the parts go out on a fixed interval, every hour or two, at the top of the hour 
 
 for the station's listeners, the first days are a minute of something on the hour: a drum loop, then a pad, then a sequence, each caught somewhere new. it will sound like sampling. by mid-week the bursts are combinations, and by the weekend the hour carries a piece of music. the schedule is the score, and the coherence arrives on air.
 
-## the days
+### the days table
 
-- **h2:** each day feeds the next
-
-### days table
-
+- before — the parts pass through the air at home first, in crestline, california, at 4,700 feet in the san bernardino mountains: a part 15 fm transmitter, legal without a licence at a couple of hundred feet, into a sampler whose only input is its radio. it proves the chain, sets the levels, and makes the work sample.
 - day 1 — the raw parts go out, one per burst, on rotation. every post catches every one. the studio control catches them clean.
 - day 2 — combinations built only from day one's receptions. the pad from the ridge and the drum loop from the hollow become one layer. the sequence from the valley floor goes out on its own again.
 - days 3–5 — variations. layers recombine, swap places, thin and thicken, always made from the previous day's receptions and never from the original files. by day five every part has been through the air several times from several places, and the bursts have started to sound like a piece.
-- days 6–8 — the assembly. the full composition is built from the library: for each part, which day, which place, how much wear. it goes through the air at least once more.
+- days 6–8 — the assembly. the full composition is built from the library: for each part, which day, which post, how much wear. it goes through the air at least once more.
 - days 9–10 — the evening transmission. then the documentation: the log of positions, the wear scores, the library catalogued.
 
 nothing that was not received is ever broadcast again. the original parts are heard exactly once, on day one.
 
+the culminating event is a live evening transmission of the full composition on wgxc 90.7-fm and wavefarm.org/listen, from the acra studio, assembled entirely from received parts. no loudspeakers. the only way to hear it in the art park is through a receiver: the audience walks with handheld radios, and each hears a different piece, a different fade, a different neighbour bleeding in, depending on where they stand. the last pass through the air happens in their hands.
 
 ## why radio
 
@@ -98,39 +82,17 @@ nothing that was not received is ever broadcast again. the original parts are he
 
 **a frequency carries one signal.** there is a fixed deviation budget. when two received parts are combined and sent out again, the limiter fits both under the same ceiling, so the louder one pushes the other down through the transmitter itself. you cannot broadcast more. you can only broadcast instead. no other medium composes that way.
 
+the lineage is alvin lucier's *i am sitting in a room*, a voice re-recorded through a room until only the room remains; william basinski's *the disintegration loops*, tape played until the oxide is gone; and wave farm's own free103point9 years, when the station was a microradio collective. *coverage* takes the structure of the first, the material of the second and the medium of the third, and adds one move: the piece is taken apart before it goes through the medium, so the listener can choose how much of the county each part keeps.
+
 ## the library
 
 - **h2:** every reception, kept
 
 every burst at every post is kept and catalogued: which part, which day, which generation, which post, what time, what weather. it is a grid: parts by days by places. by the end of the week that is a few thousand short recordings, each one the same composition heard from a different place at a different age. the finished piece is one path through the grid. the library is the work as much as the transmission is.
 
-## the broadcast
-
-- **h2:** no loudspeakers
-
-the culminating event is a live evening transmission of the full composition on wgxc 90.7-fm and wavefarm.org/listen, from the acra studio, assembled entirely from received parts. the only way to hear it in the art park is through a receiver. the audience walks with handheld radios, and each hears a different piece: a different fade, a different neighbour bleeding in, depending on where they stand. the last pass through the air happens in their hands.
-
-## the instrument
-
-- **h2:** build your own
-
 after the residency the library is published as an online instrument on newspeechsound.com. the composition is laid out part by part, and for each part the listener chooses a cell of the grid: which day, which post, and so how much wear. keep the melody clean and let the drums disintegrate. take everything from the ridge. use only day five. every version is the same piece and every sound in it has been through the air over the catskills. the tool is built on the studio's existing web instruments and is free.
 
-## generation zero
-
-- **h2:** crestline first
-
-the parts pass through the air at home first, in crestline, california, at 4,700 feet in the san bernardino mountains: a part 15 fm transmitter, legal without a licence at a couple of hundred feet, into a sampler whose only input is its radio. the mountain gives real terrain shadowing within that range. it proves the chain, sets the levels, and produces the work sample: each part at the desk and each part from the far edge of the property, side by side, so the panel hears the mechanism rather than reads about it.
-
-## lineage
-
-- **h2:** a room, a tape, a county
-
-alvin lucier, *i am sitting in a room*, 1969: a voice re-recorded through a room until only the room's resonances remain. william basinski, *the disintegration loops*, 2001: tape loops played until the oxide has gone. and wave farm's own history, which began as free103point9, a microradio collective, in 1997.
-
-*coverage* takes the structure of the first, the material of the second, and the medium of the third, and adds a fourth move: the piece is taken apart before it goes through the medium, so the listener can choose how much of the room, or the county, each part keeps.
-
-## rig
+## practicals
 
 - **h2:** a transmitter, a sampler with a radio, a laptop
 
@@ -145,14 +107,10 @@ alvin lucier, *i am sitting in a room*, 1969: a voice re-recorded through a room
 
 nothing sits between any receiver and the library. every artifact in every recording is defensible as the transmitter, the air, or the receiver.
 
-## outputs
-
-- **h2:** what comes out
-
 ### outputs table
 
-- the transmission — the evening broadcast of the full composition on wgxc and the web stream, recorded off-air at the receivers.
-- the record — the assembled composition plus the day-by-day generations, released through newspeech. the sleeve carries the frequency, the dates, the receiver positions and the weather. offered to wave farm's transmission art archive.
+- the transmission — the evening broadcast of the full composition on wgxc and the web stream, recorded off-air at the posts.
+- the record — the assembled composition plus the day-by-day generations, released through newspeech. the sleeve carries the frequency, the dates, the posts and the weather. offered to wave farm's transmission art archive.
 - the library — the whole grid, every burst at every post, catalogued and published with the instrument.
 - the instrument — the build-your-own tool on newspeechsound.com, free, seeded from the library.
 - the wear scores — each part rendered as a graphic score at every generation, side by side, so the erosion can be seen. the one place a visual layer belongs.
