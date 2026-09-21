@@ -66,12 +66,13 @@ class RuinProcessor extends AudioWorkletProcessor {
 
   decideCell(cell) {
     const a = this.amount, cf = this.cellFrames, s = this.seed;
-    // HOLES: probability and length both climb with amount; the top of the
-    // range is deliberately broken — most of the record is gone at 1.
-    const pHole = 0.015 + Math.pow(a, 1.5) * 0.7;
+    // HOLES: probability and length both climb with amount on steep curves,
+    // so the first two-thirds of the knob stays an edit and the collapse is
+    // packed into the last stretch — the top is still deliberately broken.
+    const pHole = 0.022 + Math.pow(a, 2.2) * 0.6; // floor: a hole every few seconds at any nonzero amount
     if (hash(s, cell, 1) < pHole) {
-      let lenFrac = 0.12 + Math.pow(hash(s, cell, 3), 0.7) * (0.2 + a * 0.8);
-      if (a > 0.7) lenFrac += (a - 0.7) * 8 * hash(s, cell, 8); // runs of cells
+      let lenFrac = 0.12 + Math.pow(hash(s, cell, 3), 0.7) * (0.15 + Math.pow(a, 1.5) * 0.7);
+      if (a > 0.85) lenFrac += (a - 0.85) * 10 * hash(s, cell, 8); // runs of cells
       const len = Math.round(cf * lenFrac);
       const room = Math.max(0, cf - Math.min(len, cf));
       const start = cell * cf + Math.round(hash(s, cell, 2) * room);
@@ -82,13 +83,13 @@ class RuinProcessor extends AudioWorkletProcessor {
     const block = Math.floor(cell / 4);
     if (block !== this.lastBlock) {
       this.lastBlock = block;
-      const pCrush = Math.pow(a, 1.2) * 0.75;
+      const pCrush = Math.pow(a, 1.8) * 0.7;
       this.crushOn = a > 0 && hash(s, block, 4) < pCrush;
       if (this.crushOn) {
-        const depth = Math.pow(hash(s, block, 5), 0.6) * a;      // 0..a
+        const depth = Math.pow(hash(s, block, 5), 0.6) * Math.pow(a, 1.4); // 0..a^1.4
         this.bits = clamp(Math.round(12 - depth * 10), 2, 12);
         this.div = 1 + Math.round(depth * 23 * hash(s, block, 6)); // 1..24
-        this.rot = a > 0.5 ? Math.pow((a - 0.5) * 2, 2) * 0.4 : 0;
+        this.rot = a > 0.6 ? Math.pow((a - 0.6) * 2.5, 2) * 0.4 : 0;
       }
     }
   }
