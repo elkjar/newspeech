@@ -34,6 +34,10 @@ re-seeds. hover holds the current generation and cycles the zxx faces.
 - **hero right:** acra, ny · crestline, ca
 - **og description:** a loop broadcast, received, and broadcast again until only the station remains. proposal for wave farm 2027. private draft.
 
+## figure caption — wear across generations (under the hero)
+
+twelve generations of a simulated channel: top end eroding, noise floor rising, the curve leaning. an illustration of the mechanism, not a measurement — the real numbers come off wgxc.
+
 ## premise
 
 - **h2:** what remains is the place
@@ -71,7 +75,6 @@ a live feedback path would howl in seconds; the air is only milliseconds long. t
 - the dial — at the fade, whatever is on the adjacent channel comes in. once it is in the loop it is in for good.
 - level — the gain applied between takes is the composition. under unity the loop dies. at unity it wears but persists. over unity it climbs to noise.
 
-- **figure caption:** twelve generations of a simulated channel: top end eroding, noise floor rising, the curve leaning. an illustration of the mechanism, not a measurement — the real numbers come off wgxc.
 
 ## why radio
 
@@ -173,18 +176,6 @@ newspeech is chris elkjar's studio: a sequencer, a set of destruction and loop-w
 - [drone](https://www.newspeechsound.com/drone.html), [glitch](https://www.newspeechsound.com/glitch.html), [slice](https://www.newspeechsound.com/slice.html) — the tool pages.
 - [news](https://www.newspeechsound.com/news.html) — the record of the work.
 
-## status
-
-- **h2:** where this stands
-
-### status table
-
-- the concept — settled. this page is the record of it.
-- the loop tool — not yet built. decay.html carries most of the code; the take/ride/commit surface and the receiver input are new.
-- the transmitter — a certified part 15 unit, on order.
-- the receiver — owned.
-- generation zero — pending the transmitter. the first two recordings are the work sample.
-- the application — due 1 december 2026, 11:59 pm est. finalists interview by zoom; decisions late february 2027.
 
 ## footer
 
