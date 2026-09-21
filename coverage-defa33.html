@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Unlisted proposal page — not linked from anywhere on the site.
+     Keep out of search indexes; the URL itself is the invite.
+     Words live in coverage-defa33-copy.md; this file is the layout. -->
+<meta name="robots" content="noindex, nofollow">
+<title>coverage</title>
+<meta property="og:title" content="NEWSPEECH // coverage">
+<meta property="og:description" content="a loop broadcast, received, and broadcast again until only the station remains. proposal for wave farm 2027. private draft.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/coverage-defa33.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<style>
+  @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-bold"; src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo"; src: url("fonts/zxx-camo.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed"; src: url("fonts/zxx-xed.woff2") format("woff2"); font-display: swap; }
+
+  :root {
+    --bg: #050505;
+    --ink: rgba(255, 255, 255, 0.92);
+    --body: rgba(255, 255, 255, 0.78);
+    --dim: rgba(255, 255, 255, 0.55);
+    --faint: rgba(255, 255, 255, 0.35);
+    --hair: rgba(255, 255, 255, 0.16);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --gutter: 24px;
+    --beat: 88px;  /* one vertical beat: every section joint is exactly this */
+    --fig: 44px;   /* half-beat: figure <-> text */
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--body);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+    overflow-x: hidden;
+  }
+
+  /* longhand centering only — `margin: 0 auto` would erase the section rhythm's margin-top */
+  .col   { max-width: 720px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
+  .wide  { max-width: 960px; margin-left: auto; margin-right: auto; padding: 0 var(--gutter); }
+
+  /* ---- hero: a receiver tuned to nothing ----
+     a full-frame field of static. the title sits in it and wears, one
+     pass at a time, the way the loop does. */
+  header.rx {
+    position: relative;
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 26px var(--gutter) 22px;
+    background: #000;
+    border-bottom: 1px solid var(--hair);
+    overflow: hidden;
+  }
+  #hero-noise {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.28;
+    image-rendering: pixelated;
+    pointer-events: none;
+  }
+  header.rx::after {
+    /* corner falloff so the static reads as a tube, not a texture, and a
+       floor scrim so the dek stays legible over the grain */
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0.55), transparent 18%, transparent 68%, rgba(0,0,0,0.82)),
+      radial-gradient(ellipse 80% 70% at 50% 50%, transparent 40%, rgba(0, 0, 0, 0.8) 100%);
+    pointer-events: none;
+  }
+  .osd, .hero-center, .hero-foot { position: relative; z-index: 1; }
+  .osd {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .hero-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 56px 0;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(30px, 7vw, 84px);
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink);
+    text-shadow: 0 0 26px rgba(255, 255, 255, 0.25);
+    margin: 0;
+    user-select: none;
+  }
+  h1 .c { display: inline-block; min-width: 0.7em; text-align: center; }
+  h1 .c.n { color: var(--dim); text-shadow: none; }
+  .hero-gen {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    text-shadow: 0 0 8px #000, 0 0 2px #000;
+    font-variant-numeric: tabular-nums;
+    margin-top: 28px;
+  }
+  .hero-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .dek {
+    font-size: 13px;
+    color: var(--dim);
+    max-width: 56ch;
+    margin: 0;
+  }
+  .hero-right {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    h1 { animation: phosphor 9s ease-in-out infinite; }
+    @keyframes phosphor {
+      0%, 100% { opacity: 0.94; }
+      46% { opacity: 1; }
+      51% { opacity: 0.84; }
+      54% { opacity: 0.98; }
+    }
+  }
+
+  /* ---- vertical rhythm ---- */
+  section { margin-top: var(--beat); padding: 0; }
+  section.rule { border-top: 1px solid var(--hair); padding-top: var(--beat); }
+  section > :last-child { margin-bottom: 0; }
+  h2 {
+    font-family: "zxx-sans", var(--mono);
+    font-size: 26px;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    margin: 0 0 24px;
+  }
+  h3 {
+    font-family: "zxx-sans", var(--mono);
+    font-size: 17px;
+    font-weight: 400;
+    color: var(--ink);
+    margin: 36px 0 6px;
+  }
+  p { margin: 0 0 14px; max-width: 72ch; }
+  p strong { color: var(--ink); font-weight: 400; }
+  em { font-style: italic; }
+  a { color: var(--body); text-decoration: underline; text-underline-offset: 3px; }
+  a:hover { color: var(--ink); }
+
+  /* ---- the statement: the text that goes in the form ---- */
+  .statement {
+    border: 1px solid var(--hair);
+    padding: 34px 36px 22px;
+    margin: 0 0 12px;
+  }
+  .statement p { font-size: 14px; line-height: 1.8; color: var(--ink); max-width: none; }
+  .statement p:last-child { margin-bottom: 0; }
+  .note {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+    margin: 10px 0 0;
+  }
+  @media (max-width: 700px) { .statement { padding: 24px 20px 14px; } }
+
+  /* ---- figures ---- */
+  figure { margin: var(--fig) 0; }
+  figure canvas { display: block; width: 100%; }
+  figcaption {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+    margin-top: 10px;
+    max-width: 80ch;
+  }
+  #tooltip {
+    position: fixed;
+    z-index: 10;
+    pointer-events: none;
+    background: rgba(5, 5, 5, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    padding: 6px 10px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    white-space: pre;
+    display: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- tables ---- */
+  table { width: 100%; border-collapse: collapse; margin: 22px 0 28px; font-size: 12px; }
+  td {
+    vertical-align: top;
+    border-bottom: 1px dotted rgba(255,255,255,0.10);
+    padding: 10px 18px 10px 0;
+    color: var(--body);
+  }
+  tr:first-child td { border-top: 1px dotted rgba(255,255,255,0.10); }
+  td:first-child { color: var(--ink); width: 168px; }
+  .tbl-scroll { overflow-x: auto; }
+  .tbl-scroll table { min-width: 520px; }
+
+  /* ---- link list ---- */
+  ul.links { list-style: none; margin: 22px 0 0; padding: 0; }
+  ul.links li {
+    border-top: 1px dotted rgba(255,255,255,0.10);
+    padding: 10px 0;
+    max-width: 72ch;
+  }
+  ul.links li:last-child { border-bottom: 1px dotted rgba(255,255,255,0.10); }
+
+  /* ---- floating index ---- */
+  #toc {
+    position: fixed;
+    z-index: 5;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  #toc a {
+    position: relative;
+    display: flex;
+    align-items: center;
+    color: var(--faint);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  #toc .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.28);
+    flex-shrink: 0;
+    transition: background 120ms ease, transform 120ms ease;
+  }
+  #toc-btn, #toc-scrim { display: none; }
+
+  @media (min-width: 1101px) {
+    #toc { left: 24px; top: 50%; transform: translateY(-50%); }
+    #toc a { padding: 6px 0; }
+    #toc a:hover .dot { background: rgba(255, 255, 255, 0.7); }
+    #toc a.on .dot { background: var(--ink); transform: scale(1.5); }
+    #toc .lbl {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translate(-4px, -50%);
+      background: var(--bg);
+      border: 1px solid var(--hair);
+      padding: 3px 9px;
+      color: var(--body);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    #toc a:hover .lbl { opacity: 1; transform: translate(0, -50%); }
+  }
+
+  @media (max-width: 1100px) {
+    #toc {
+      inset: 0 0 0 auto;
+      width: min(280px, 82vw);
+      background: #0a0a0a;
+      border-left: 1px solid var(--hair);
+      padding: 76px 28px;
+      font-size: 12px;
+      transform: translateX(100%);
+      transition: transform 220ms ease;
+      overflow-y: auto;
+    }
+    body.toc-open #toc { transform: translateX(0); }
+    #toc a { gap: 14px; padding: 8px 0; }
+    #toc a.on { color: var(--ink); }
+    #toc .dot { display: none; }
+    #toc-btn {
+      display: block;
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 6;
+      background: rgba(5, 5, 5, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      color: var(--dim);
+      font: inherit;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 9px 14px;
+      cursor: pointer;
+    }
+    #toc-btn:hover { color: var(--ink); border-color: rgba(255, 255, 255, 0.7); }
+    #toc-scrim {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      background: rgba(5, 5, 5, 0.65);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+    }
+    body.toc-open #toc-scrim { opacity: 1; pointer-events: auto; }
+  }
+
+  /* ---- footer ---- */
+  footer.col {
+    margin-top: var(--beat);
+    border-top: 1px solid var(--hair);
+    padding-top: 28px;
+    padding-bottom: 64px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+  }
+  footer a { color: var(--dim); }
+
+  /* mobile rhythm: same system, three-quarter time */
+  @media (max-width: 700px) {
+    :root { --gutter: 20px; --beat: 64px; --fig: 32px; }
+    .hero-center { padding: 40px 0; }
+    h1 { letter-spacing: 0.16em; }
+    td:first-child { width: 120px; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+</style>
+</head>
+<body>
+
+<div id="tooltip"></div>
+
+<div id="toc-scrim"></div>
+<button id="toc-btn" aria-controls="toc" aria-expanded="false">index</button>
+<nav id="toc" aria-label="sections">
+  <a href="#top"><span class="dot"></span><span class="lbl">top</span></a>
+  <a href="#premise"><span class="dot"></span><span class="lbl">premise</span></a>
+  <a href="#statement"><span class="dot"></span><span class="lbl">the statement</span></a>
+  <a href="#loop"><span class="dot"></span><span class="lbl">the loop</span></a>
+  <a href="#radio"><span class="dot"></span><span class="lbl">why radio</span></a>
+  <a href="#instrument"><span class="dot"></span><span class="lbl">the instrument</span></a>
+  <a href="#broadcast"><span class="dot"></span><span class="lbl">the broadcast</span></a>
+  <a href="#days"><span class="dot"></span><span class="lbl">ten days</span></a>
+  <a href="#zero"><span class="dot"></span><span class="lbl">generation zero</span></a>
+  <a href="#lineage"><span class="dot"></span><span class="lbl">lineage</span></a>
+  <a href="#rig"><span class="dot"></span><span class="lbl">rig</span></a>
+  <a href="#outputs"><span class="dot"></span><span class="lbl">outputs</span></a>
+  <a href="#newspeech"><span class="dot"></span><span class="lbl">newspeech</span></a>
+  <a href="#status"><span class="dot"></span><span class="lbl">status</span></a>
+</nav>
+
+<header class="rx" id="top">
+  <canvas id="hero-noise" aria-hidden="true"></canvas>
+  <div class="osd">
+    <span>newspeech</span>
+    <span>wave farm 2027 · transmission art residency</span>
+  </div>
+  <div class="hero-center">
+    <h1 aria-label="coverage">coverage</h1>
+    <div class="hero-gen" id="hero-gen">gen 00 · 90.7 fm</div>
+  </div>
+  <div class="hero-foot">
+    <p class="dek">a loop is broadcast, received off-air, and broadcast again until the music has worn away and only the station and the landscape it covers remain. a proposal for wave farm's 2027 transmission art residency.</p>
+    <span class="hero-right">acra, ny · crestline, ca</span>
+  </div>
+</header>
+
+<section class="col" id="premise">
+  <h2>what remains is the place</h2>
+  <p>a tape loop wears out because the tape passes over the head. this loop wears out because it passes through the air. it is transmitted, received off-air, and transmitted again, and every trip is one generation. the transmitter's modulation ceiling takes something, the path across the valley takes something, the receiver's front end takes something, and what comes back is what goes out next. nothing is processed between generations. the transmitter, the air, and the receiver are the only instruments of change.</p>
+  <p>run long enough, the music is gone. what's left is the station: its processing, its terrain, its weather that afternoon, the neighbour on the next channel bleeding in at the fade. lucier let a room replace a voice. this lets a coverage area replace a song.</p>
+  <p>it is audio only. there is no picture. the receiver is the screen.</p>
+</section>
+
+<section class="col rule" id="statement">
+  <h2>the statement</h2>
+  <div class="statement">
+    <p><em>coverage</em> is a loop broadcast, received off-air, and broadcast again. each pass through the air is one generation: the transmitter's modulation ceiling, the path across the valley, and the receiver's front end each take something, and what comes back becomes the next transmission. no processing is applied between generations. the transmitter, the air, and the receiver are the only instruments of change.</p>
+    <p>over the residency i would run the loop through wgxc 90.7-fm: from the acra studio to the tower, across the coverage area, back into a receiver at wave farm, and out again. new layers are played live over the loop and committed to it by ear, one at a time. under the deviation limit a new layer can only be broadcast instead of the old ones, never in addition, so each commit pushes the earlier layers further down. after enough generations the music is gone and what remains is a recording of the station and the landscape it covers.</p>
+    <p>the piece culminates in a live evening transmission with no loudspeakers. audiences in the art park listen on handheld radios, and each hears a different generation depending on where they stand. every sound released, on air or on record, has passed through the air at least once.</p>
+  </div>
+  <p class="note">the application text. ~190 words; wave farm's limit isn't published, expect to cut.</p>
+</section>
+
+<section class="col rule" id="loop">
+  <h2>the antenna is the tape head</h2>
+  <p>the loop is a fixed-length buffer on a laptop. it plays out through the transmitter. a receiver picks it up and the return is recorded. when a pass is allowed to <strong>take</strong>, the return replaces the buffer and the next pass goes out one generation older. between takes the loop plays unchanged, so it wears when i decide a pass counts, not on a clock.</p>
+  <p>a live feedback path would howl in seconds; the air is only milliseconds long. the buffer is what makes it a loop rather than a larsen tone, and it is the same structure basinski and lucier used: discrete passes, each one a complete trip through the medium.</p>
+
+  <h3>what compounds per pass</h3>
+  <div class="tbl-scroll">
+    <table>
+      <tbody>
+        <tr><td>top end</td><td>the transmitter stops at 12.5 khz, fm itself at 15, and the receiver rolls off below that. the ceilings stack. highs go first, like tape.</td></tr>
+        <tr><td>noise floor</td><td>every reception adds the path's hiss. it never leaves.</td></tr>
+        <tr><td>tilt</td><td>pre-emphasis at the transmitter and de-emphasis at the receiver never cancel exactly. the tone leans a little further each time.</td></tr>
+        <tr><td>the receiver's own reflexes</td><td>soft-mute, stereo blend and agc act on a weak signal and are re-recorded as part of it.</td></tr>
+        <tr><td>the dial</td><td>at the fade, whatever is on the adjacent channel comes in. once it is in the loop it is in for good.</td></tr>
+        <tr><td>level</td><td>the gain applied between takes is the composition. under unity the loop dies. at unity it wears but persists. over unity it climbs to noise.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure>
+    <canvas id="fig-wear" height="300"></canvas>
+    <figcaption>twelve generations of a simulated channel: top end eroding, noise floor rising, the curve leaning. an illustration of the mechanism, not a measurement — the real numbers come off wgxc.</figcaption>
+  </figure>
+</section>
+
+<section class="col rule" id="radio">
+  <h2>it can't be made anywhere else</h2>
+  <p><strong>it is a portrait of the station.</strong> at wave farm the loop runs through wgxc's own studio-to-transmitter link, its processor, its tower and its coverage area, and back into its studio. every generation re-inscribes the station's signal chain onto the material. a plugin could model a channel. it cannot be wgxc.</p>
+  <p><strong>the wear is public.</strong> a tape loop decays alone in a studio. this one decays on a frequency anyone can tune to. everyone in range hears the same generation at the same moment on their own radio, and none of it can be rewound.</p>
+  <p><strong>the wear is made of the place.</strong> terrain, weather, time of day and the rest of the dial all write into the loop. the same seed run in the san bernardino mountains and in the catskills gives two different pieces, because two different places composed them.</p>
+  <p><strong>a frequency carries one signal.</strong> there is a fixed deviation budget. adding a layer means the limiter fits everything under the same ceiling, so new material pushes old material down through the transmitter itself. you cannot broadcast more. you can only broadcast instead. no other medium composes that way.</p>
+</section>
+
+<section class="col rule" id="instrument">
+  <h2>three controls</h2>
+  <div class="tbl-scroll">
+    <table>
+      <tbody>
+        <tr><td>take</td><td>which passes are allowed to replace the buffer. a rate, or by hand.</td></tr>
+        <tr><td>ride</td><td>a live layer played over the loop and out through the same transmitter. listeners hear it. it is not in the buffer, so it is not yet aging.</td></tr>
+        <tr><td>commit</td><td>the current pass takes with the ride included. the layer is now in the loop and starts to wear with everything else. the next layer can ride on top.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>everything else is the air. every return is recorded whether or not it takes, so the whole stratigraphy exists afterwards: each layer at every age, every committed sum.</p>
+</section>
+
+<section class="col rule" id="broadcast">
+  <h2>no loudspeakers</h2>
+  <p>the culminating event is a live evening transmission on wgxc 90.7-fm and wavefarm.org/listen, two to three hours, from the acra studio. the only way to hear it in the art park is through a receiver. the audience walks with handheld radios and each hears a different piece: a different generation, a different fade, a different neighbour bleeding in, depending on where they stand.</p>
+  <p>over the evening i add five or six layers by ear and let the first ones disappear underneath. the listening is the performance. each commit is audible: the loop lurches as the new sum comes back through the air.</p>
+</section>
+
+<section class="col rule" id="days">
+  <h2>shape of the residency</h2>
+  <div class="tbl-scroll">
+    <table>
+      <tbody>
+        <tr><td>before</td><td>the loop tool, the seed, and generation zero are built and tested at home against a part 15 transmitter. nothing that can be done in advance is left for acra.</td></tr>
+        <tr><td>days 1–3</td><td>wire into wgxc's chain. place the receiver. calibrate what comes back against what was sent. this is the part that is impossible anywhere but here.</td></tr>
+        <tr><td>days 4–8</td><td>sessions. short transmissions at different times of day and in different weather, a handful of generations each. between sessions, listen and decide what commits.</td></tr>
+        <tr><td>days 9–10</td><td>the evening transmission, recorded off-air. documentation: receiver positions, generation counts, the wear scores.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>the ten days are working time with the transmitter, the library and the engineers. the broadcast is something that happens during the residency, not the residency itself.</p>
+</section>
+
+<section class="col rule" id="zero">
+  <h2>crestline first</h2>
+  <p>the seed is made at home in crestline, california, at 4,700 feet in the san bernardino mountains, and passed through the air there first: a part 15 fm transmitter, legal without a licence at a couple of hundred feet, into a sampler whose only input is its radio. the mountain gives real terrain shadowing within that range. by the time the loop reaches the catskills it already carries one landscape.</p>
+  <p>a signal that has crossed the country by being broadcast twice.</p>
+  <p>this is also the work sample. twenty generations at the desk and twenty from the far edge of the property, side by side, so the panel hears the mechanism rather than reads about it.</p>
+</section>
+
+<section class="col rule" id="lineage">
+  <h2>a room, a tape, a county</h2>
+  <p>alvin lucier, <em>i am sitting in a room</em>, 1969: a voice re-recorded through a room until only the room's resonances remain. william basinski, <em>the disintegration loops</em>, 2001: tape loops played until the oxide has gone. and wave farm's own history, which began as free103point9, a microradio collective, in 1997.</p>
+  <p><em>coverage</em> takes the structure of the first, the material of the second, and the medium of the third. the room becomes a county. the tape head becomes an antenna. the transmitter is the one the station already owns.</p>
+</section>
+
+<section class="col rule" id="rig">
+  <h2>a transmitter, a sampler with a radio, a laptop</h2>
+  <div class="tbl-scroll">
+    <table>
+      <tbody>
+        <tr><td>transmitter</td><td>at wave farm, wgxc 90.7-fm through the station's own chain. at home, a rolls hr70, fcc-certified under part 15.239.</td></tr>
+        <tr><td>receiver</td><td>a polyend tracker, first generation: fm radio in, line out. off-air and mono by design.</td></tr>
+        <tr><td>the loop</td><td>a browser page on the laptop: buffer, take, ride, commit. built on the studio's existing loop-wear tool.</td></tr>
+        <tr><td>limiter</td><td>in front of the transmitter, so nothing over-deviates. the only processing anywhere in the chain, and it sits before the air, not after.</td></tr>
+        <tr><td>ride layers</td><td>sequence, the studio's sequencer, or a small instrument. whatever is played live over the loop.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>nothing sits between receiver and buffer. every artifact in the recording is defensible as the transmitter, the air, or the receiver.</p>
+</section>
+
+<section class="col rule" id="outputs">
+  <h2>what comes out</h2>
+  <div class="tbl-scroll">
+    <table>
+      <tbody>
+        <tr><td>the transmission</td><td>the live evening broadcast on wgxc and the web stream, recorded off-air at the receivers.</td></tr>
+        <tr><td>the record</td><td>every session's returns, released through newspeech. tracks are generations. the sleeve carries the frequency, the dates, the receiver positions and the weather. offered to wave farm's transmission art archive.</td></tr>
+        <tr><td>the wear scores</td><td>the pattern rendered as a graphic score at every generation, side by side, so the erosion can be seen. the one place a visual layer belongs.</td></tr>
+        <tr><td>a long version</td><td>a multi-day run of the loop, seeded from the residency's last generation, proposed for standing wave radio after the residency.</td></tr>
+        <tr><td>the study</td><td>the simulated channel used for home testing, published as a public tool so anyone can hear how the mechanism works. labelled a study. the work is the one that went through the air.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="col rule" id="newspeech">
+  <h2>who is asking</h2>
+  <p>newspeech is chris elkjar's studio: a sequencer, a set of destruction and loop-wear tools, a 24/7 generative broadcast programme, and the records made with them. the practice runs on unsynced systems intersecting and on wear as material. the radio path is the wear source this piece has been missing.</p>
+  <ul class="links">
+    <li><a href="https://www.newspeechsound.com/">broadcast</a> — the studio's autonomous set programme: idents, interstitials, standby, a picture that follows the display.</li>
+    <li><a href="https://www.newspeechsound.com/decay.html">decay</a> — disintegration loops: a wear map applied to a loop on every pass. the loop tool for this piece starts here.</li>
+    <li><a href="https://www.newspeechsound.com/drone.html">drone</a>, <a href="https://www.newspeechsound.com/glitch.html">glitch</a>, <a href="https://www.newspeechsound.com/slice.html">slice</a> — the tool pages.</li>
+    <li><a href="https://www.newspeechsound.com/news.html">news</a> — the record of the work.</li>
+  </ul>
+</section>
+
+<section class="col rule" id="status">
+  <h2>where this stands</h2>
+  <div class="tbl-scroll">
+    <table>
+      <tbody>
+        <tr><td>the concept</td><td>settled. this page is the record of it.</td></tr>
+        <tr><td>the loop tool</td><td>not yet built. decay.html carries most of the code; the take/ride/commit surface and the receiver input are new.</td></tr>
+        <tr><td>the transmitter</td><td>a certified part 15 unit, on order.</td></tr>
+        <tr><td>the receiver</td><td>owned.</td></tr>
+        <tr><td>generation zero</td><td>pending the transmitter. the first two recordings are the work sample.</td></tr>
+        <tr><td>the application</td><td>due 1 december 2026, 11:59 pm est. finalists interview by zoom; decisions late february 2027.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer class="col">
+  newspeech · <a href="https://www.newspeechsound.com/">newspeechsound.com</a> · private draft — please don't circulate the link beyond its recipient
+</footer>
+
+<script>
+// ---------- shared canvas + tooltip plumbing ----------
+const tip = document.getElementById("tooltip");
+function showTip(x, y, text) {
+  tip.textContent = text;
+  tip.style.display = "block";
+  const pad = 14;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(x + pad, innerWidth - w - 8) + "px";
+  tip.style.top = (y - h - pad > 8 ? y - h - pad : y + pad) + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+function fit(canvas) {
+  const dpr = Math.max(1, devicePixelRatio || 1);
+  const cssW = canvas.clientWidth;
+  if (!canvas.dataset.h) canvas.dataset.h = canvas.getAttribute("height");
+  const cssH = +canvas.dataset.h;
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  canvas.style.height = cssH + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: cssW, h: cssH };
+}
+
+const FONT = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---------- hero: receiver static ----------
+// a low-res noise field, redrawn at a lazy frame rate and scaled up
+// with pixelated rendering so the grain reads as a tube, not film.
+const noise = document.getElementById("hero-noise");
+const nctx = noise.getContext("2d");
+const CELL = 5; // css px per grain cell — buffer sized from the viewport so cells stay square
+let nbuf = null;
+function sizeNoise() {
+  const nw = Math.max(1, Math.round(noise.clientWidth / CELL));
+  const nh = Math.max(1, Math.round(noise.clientHeight / CELL));
+  if (noise.width !== nw || noise.height !== nh) {
+    noise.width = nw; noise.height = nh;
+    nbuf = nctx.createImageData(nw, nh);
+  }
+}
+function drawNoise() {
+  sizeNoise();
+  const d = nbuf.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = Math.random();
+    // mostly black; a sparse bright scatter and a dim grey bed
+    const s = v > 0.965 ? 200 + Math.random() * 55 : v > 0.6 ? 18 + Math.random() * 40 : 0;
+    d[i] = d[i + 1] = d[i + 2] = s;
+    d[i + 3] = 255;
+  }
+  nctx.putImageData(nbuf, 0, 0);
+}
+drawNoise();
+if (!REDUCED) setInterval(() => { if (!document.hidden) drawNoise(); }, 90);
+window.addEventListener("resize", drawNoise);
+
+// ---------- hero: the title wears, one pass at a time ----------
+// every PASS_MS is one trip through the air: one or two characters
+// drop to noise glyphs and stay there; the readout counts generations.
+// when nothing is left the loop holds, then re-seeds from gen 00.
+const NOISE_GLYPHS = "#*/\\_+=~<>.,:;|?!@$%^&-";
+const PASS_MS = 1700;
+const hero = document.querySelector("h1");
+const heroGen = document.getElementById("hero-gen");
+const TITLE = hero.textContent.trim();
+let charSpans = [];
+function seedTitle() {
+  hero.textContent = "";
+  charSpans = [];
+  for (const ch of TITLE) {
+    const c = document.createElement("span");
+    c.className = "c";
+    c.textContent = ch;
+    c.dataset.original = ch;
+    hero.appendChild(c);
+    charSpans.push(c);
+  }
+}
+seedTitle();
+const genLabel = (g) => `gen ${String(g).padStart(2, "0")} · 90.7 fm`;
+
+if (!REDUCED) {
+  let gen = 0;
+  let hold = 0;
+  let hovering = false;
+  setInterval(() => {
+    if (hovering || document.hidden) return;
+    const alive = charSpans.filter((c) => !c.classList.contains("n"));
+    if (alive.length === 0) {
+      if (hold++ < 2) {
+        for (const c of charSpans) c.textContent = NOISE_GLYPHS[(Math.random() * NOISE_GLYPHS.length) | 0];
+        return;
+      }
+      hold = 0;
+      gen = 0;
+      seedTitle();
+      heroGen.textContent = genLabel(gen);
+      return;
+    }
+    gen++;
+    // noise already in the loop stays alive
+    for (const c of charSpans) {
+      if (c.classList.contains("n")) c.textContent = NOISE_GLYPHS[(Math.random() * NOISE_GLYPHS.length) | 0];
+    }
+    const drops = 1 + (Math.random() < 0.35 ? 1 : 0);
+    for (let k = 0; k < drops && alive.length; k++) {
+      const i = (Math.random() * alive.length) | 0;
+      const c = alive.splice(i, 1)[0];
+      c.classList.add("n");
+      c.textContent = NOISE_GLYPHS[(Math.random() * NOISE_GLYPHS.length) | 0];
+    }
+    heroGen.textContent = genLabel(gen);
+  }, PASS_MS);
+
+  // hover: hold the current generation and cycle the zxx faces
+  // through whatever characters survive
+  const LINK_FONT_CYCLE = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+  let timer = null;
+  hero.addEventListener("mouseenter", () => {
+    hovering = true;
+    if (timer) return;
+    const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
+    timer = setInterval(() => {
+      for (let i = 0; i < charSpans.length; i++) {
+        if (charSpans[i].classList.contains("n")) continue;
+        idx[i] = (idx[i] + 1) % LINK_FONT_CYCLE.length;
+        charSpans[i].style.fontFamily = `"${LINK_FONT_CYCLE[idx[i]]}", monospace`;
+      }
+    }, 80);
+  });
+  hero.addEventListener("mouseleave", () => {
+    hovering = false;
+    clearInterval(timer);
+    timer = null;
+    for (const c of charSpans) c.style.fontFamily = "";
+  });
+}
+
+// ---------- figure: wear across generations ----------
+// a synthetic spectrum pushed through a simulated fm path twelve
+// times. per pass: a compounding low-pass (transmitter + receiver
+// ceilings), a small tilt (pre/de-emphasis mismatch) and an added
+// noise floor. ridgeline plot, gen 00 at the top, reading down as time.
+const wear = document.getElementById("fig-wear");
+const GENS = 12;
+const F_MIN = 40, F_MAX = 20000;
+const NPTS = 220;
+function spectra() {
+  const fs = [];
+  for (let i = 0; i < NPTS; i++) fs.push(F_MIN * Math.pow(F_MAX / F_MIN, i / (NPTS - 1)));
+  // seed: a flat, bright bed with harmonic peaks on 110 hz and a
+  // second cluster of partials up around 4-8 khz so there is top end to lose
+  const seed = fs.map((f) => {
+    let v = 0.42;
+    for (let h = 1; h <= 12; h++) {
+      const fh = 110 * h;
+      v += (0.9 / Math.sqrt(h)) * Math.exp(-Math.pow((f - fh) / (fh * 0.04), 2));
+    }
+    for (const fh of [3900, 5200, 6800, 8600]) {
+      v += 0.5 * Math.exp(-Math.pow((f - fh) / (fh * 0.05), 2));
+    }
+    return v;
+  });
+  const out = [seed];
+  let cur = seed;
+  for (let g = 1; g < GENS; g++) {
+    cur = cur.map((v, i) => {
+      const f = fs[i];
+      const lp = 1 / Math.sqrt(1 + Math.pow(f / 9000, 4));    // ceiling, compounds every pass
+      const tilt = Math.pow(f / 1000, -0.035);                 // leans a little each pass
+      const hiss = 0.055 * (0.7 + 0.6 * Math.random());        // the path's noise, jittered so it reads as hiss
+      return v * lp * tilt + hiss;
+    });
+    out.push(cur);
+  }
+  return { fs, out };
+}
+const SPEC = spectra();
+const W_PAD_L = 24, W_PAD_R = 24, W_TOP = 22, W_BOT = 30;
+let ridgeY = [];
+function drawWear() {
+  const { ctx, w, h } = fit(wear);
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = FONT;
+  const plotW = w - W_PAD_L - W_PAD_R;
+  const xOf = (f) => W_PAD_L + (Math.log(f / F_MIN) / Math.log(F_MAX / F_MIN)) * plotW;
+  const step = (h - W_TOP - W_BOT) / (GENS - 1 + 1.6);
+  const amp = step * 2.2;
+  const vmax = Math.max(...SPEC.out[0]);
+  ridgeY = [];
+
+  // ceiling marker
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.setLineDash([2, 4]);
+  ctx.beginPath(); ctx.moveTo(xOf(12500), W_TOP - 6); ctx.lineTo(xOf(12500), h - W_BOT + 4); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillText("12.5k", xOf(12500) + 5, W_TOP + 2);
+
+  for (let g = 0; g < GENS; g++) {
+    const base = W_TOP + amp * 0.75 + g * step;
+    ridgeY.push(base);
+    const s = SPEC.out[g];
+    ctx.beginPath();
+    ctx.moveTo(xOf(SPEC.fs[0]), base);
+    for (let i = 0; i < NPTS; i++) ctx.lineTo(xOf(SPEC.fs[i]), base - (s[i] / vmax) * amp);
+    ctx.lineTo(xOf(SPEC.fs[NPTS - 1]), base);
+    ctx.closePath();
+    // occlude the ridge behind, then ink the line; older = dimmer
+    ctx.fillStyle = "#050505";
+    ctx.fill();
+    const a = 0.85 - (g / (GENS - 1)) * 0.5;
+    ctx.strokeStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+    ctx.beginPath();
+    for (let i = 0; i < NPTS; i++) {
+      const x = xOf(SPEC.fs[i]), y = base - (s[i] / vmax) * amp;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillText(String(g).padStart(2, "0"), 2, base + 3);
+  }
+
+  // frequency axis
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  for (const [f, lbl] of [[100, "100"], [1000, "1k"], [10000, "10k"]]) {
+    const x = xOf(f);
+    ctx.fillRect(x, h - W_BOT + 6, 1, 4);
+    ctx.fillText(lbl, x - ctx.measureText(lbl).width / 2, h - 8);
+  }
+}
+wear.addEventListener("mousemove", (e) => {
+  const r = wear.getBoundingClientRect();
+  const y = e.clientY - r.top;
+  let best = -1, bd = Infinity;
+  ridgeY.forEach((ry, g) => { const d = Math.abs(ry - 8 - y); if (d < bd) { bd = d; best = g; } });
+  if (best >= 0 && bd < 18) showTip(e.clientX, e.clientY, `gen ${String(best).padStart(2, "0")}  ·  ${best} pass${best === 1 ? "" : "es"} through the air`);
+  else hideTip();
+});
+wear.addEventListener("mouseleave", hideTip);
+
+let resizeRaf = 0;
+window.addEventListener("resize", () => {
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(drawWear);
+});
+drawWear();
+
+// ---------- floating index: active-section tracking + narrow-screen panel ----------
+const tocLinks = [...document.querySelectorAll("#toc a")];
+const tocById = new Map(tocLinks.map((a) => [a.getAttribute("href").slice(1), a]));
+const observed = [...document.querySelectorAll("header[id], section[id]")];
+const io = new IntersectionObserver((entries) => {
+  for (const en of entries) {
+    if (!en.isIntersecting) continue;
+    tocLinks.forEach((a) => a.classList.remove("on"));
+    const link = tocById.get(en.target.id);
+    if (link) link.classList.add("on");
+  }
+}, { rootMargin: "-20% 0px -70% 0px" });
+observed.forEach((el) => io.observe(el));
+
+const tocBtn = document.getElementById("toc-btn");
+const scrim = document.getElementById("toc-scrim");
+function setToc(open) {
+  document.body.classList.toggle("toc-open", open);
+  tocBtn.setAttribute("aria-expanded", String(open));
+}
+tocBtn.addEventListener("click", () => setToc(!document.body.classList.contains("toc-open")));
+scrim.addEventListener("click", () => setToc(false));
+tocLinks.forEach((a) => a.addEventListener("click", () => setToc(false)));
+</script>
+</body>
+</html>
