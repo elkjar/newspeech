@@ -131,7 +131,7 @@
   .win .win-body { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 30px 40px 34px; }
   .win .row { display: flex; align-items: center; gap: 12px; }
   .win .hp { display: none; }
-  .win .lbl { opacity: .55; }
+  .win .lbl { opacity: .55; text-align: center; max-width: 34ch; }
   .win input[type="email"] {
     background: transparent; border: 1px solid rgba(255,255,255,.45); color: #eee; font: inherit;
     letter-spacing: 0.04em; padding: 7px 12px; width: 260px; border-radius: 0; outline: none;
@@ -236,13 +236,12 @@
       <div class="win-bar"><span class="win-idx">//</span><span class="win-title">download</span><button type="button" class="win-close" id="gate-close" aria-label="close">×</button></div>
       <div class="win-body">
         <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-        <label class="lbl" for="gate-email" data-link data-no-hover>an email, and the copy is yours</label>
+        <label class="lbl" for="gate-email">let's trade. you get this mangled audio mess and we get to send you an email sometimes</label>
         <div class="row">
           <input id="gate-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
           <button type="submit" id="gate-go" data-link>download</button>
         </div>
         <span class="msg" id="gate-msg" hidden></span>
-        <span class="stream">releases + new tools, when they land · no spam</span>
       </div>
     </form>
   </div>
