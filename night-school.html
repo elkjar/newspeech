@@ -29,21 +29,22 @@
   @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); font-display: swap; }
 
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; overflow: hidden; }
-  body {
-    width: 100vw; height: 100vh;
-    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
-  }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body { font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace; overflow-x: hidden; }
+
+  /* the room is the hero: one viewport tall, the visualizer lives inside it
+     and scrolls away with it; the record keeps playing underneath the page */
+  #hero { position: relative; height: 100vh; min-height: 640px; overflow: hidden; }
 
   /* the visualizer: a real N-*.html page in a frame. the room hands its core.js
      the AnalyserNode so the page reacts to the EP exactly as it would to a mic. */
-  #viz { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; z-index: 0; background: #050505; }
+  #viz { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; z-index: 0; background: #050505; }
 
   /* scrim: the visualizers are dense and the sleeve has to read over them.
      a heavy fade on the left where the text lives, a light one along the
      bottom for the status line — the right half stays clear for the picture. */
   #scrim {
-    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
     background:
       linear-gradient(90deg, rgba(5,5,5,.94) 0%, rgba(5,5,5,.88) 32%, rgba(5,5,5,.55) 50%, rgba(5,5,5,0) 68%),
       radial-gradient(ellipse 520px 260px at 100% 0%, rgba(5,5,5,.9) 0%, rgba(5,5,5,.6) 55%, rgba(5,5,5,0) 100%),
@@ -52,7 +53,7 @@
 
   /* the room overlays the frame; only the controls take the pointer so the
      page underneath still gets mouse movement everywhere else */
-  #room { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+  #room { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
   #room > * { pointer-events: auto; }
   /* the column: the nav's 1280px / --ns-gutter box, so the player and the
      listen window share its edges at every viewport width */
@@ -167,7 +168,7 @@
   #share .win-body button { padding: 6px 12px; }
 
   /* the gate: an email for your copy, same door as the plugins */
-  #gate-wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,5,5,.55); }
+  #gate-wrap { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(5,5,5,.55); }
   #gate-wrap[hidden] { display: none; }
   #gate { width: min(440px, calc(100vw - 32px)); }
 
@@ -189,11 +190,28 @@
   #scrub.paused .thumb { opacity: .35; }
 
   #toast {
-    position: absolute; left: 50%; top: calc(28px + var(--ns-nav-h, 0px)); transform: translateX(-50%);
+    position: fixed; z-index: 21; left: 50%; top: calc(28px + var(--ns-nav-h, 0px)); transform: translateX(-50%);
     background: #050505; border: 1px solid #333; color: #ccc; padding: 6px 12px; opacity: 0;
     transition: opacity .2s; pointer-events: none; max-width: calc(100vw - 32px); text-align: center;
   }
   #toast.on { opacity: 1; }
+
+  /* ---- sections below the hero: the nav's column, tool-page type ---- */
+  .sec { max-width: 1280px; margin: 0 auto; padding: 72px var(--ns-gutter, 40px) 84px; border-top: 1px solid #1c1c1c; }
+  .sec h2 { font-weight: 400; font-size: 14px; letter-spacing: 0.2em; color: #eee; margin: 0 0 6px; }
+  .sec .lede { color: #777; margin: 0 0 40px; max-width: 60ch; }
+
+  /* scores: three composition figures, each drawing itself on hover */
+  #scores .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+  .score { display: block; color: inherit; text-decoration: none; cursor: default; }
+  .score .fig { position: relative; aspect-ratio: 1; border: 1px solid #1c1c1c; overflow: hidden; }
+  .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .55; transition: opacity .5s ease; }
+  .score:hover .fig svg, .score.drawing .fig svg { opacity: 1; }
+  .score .cap { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; color: #888; }
+  .score .cap .name { font-family: "zxx-sans", ui-monospace, monospace; font-size: 15px; letter-spacing: 0.06em; color: #ccc; }
+  .score .cap .meta { color: #555; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 900px) { #scores .grid { grid-template-columns: 1fr; gap: 28px; } }
 
   @media (max-width: 720px) {
     #scrim {
@@ -209,6 +227,7 @@
 </style>
 </head>
 <body>
+<section id="hero">
 <iframe id="viz" title="visualizer" allow="midi"></iframe>
 <div id="scrim"></div>
 
@@ -273,6 +292,15 @@
     </div>
   </div>
   </div>
+</div>
+</section>
+
+<section id="scores" class="sec">
+  <h2><span data-link>scores</span></h2>
+  <p class="lede">each track as one figure — every section of the arrangement drawn at the angle where it happens in the piece. hover to watch it draw.</p>
+  <div class="grid" id="score-grid"></div>
+</section>
+
   <div id="gate-wrap" hidden>
     <form id="gate" class="win" novalidate>
       <div class="win-bar"><span class="win-idx">//</span><span class="win-title">download</span><button type="button" class="win-close" id="gate-close" aria-label="close">×</button></div>
@@ -288,7 +316,6 @@
     </form>
   </div>
   <div id="toast"></div>
-</div>
 
 <script src="nav.js"></script>
 <script>
@@ -830,6 +857,61 @@
     knobs.verb = Math.max(0, Math.min(1, parseFloat(q.get("verb")) || 0));
     showKnobs();
     loadFrame(ep.tracks[cur]); markCurrent();
+  }
+
+  // ---- scores: inline each exported composition svg and animate the draw ----
+  // the svg recorder writes strokes in piece order, so revealing them in
+  // order along their own length is the arrangement unfolding. resting state
+  // is the finished figure at low ink; hover redraws it from nothing.
+  const DRAW_MS = 1700, STROKE_MS = 520;
+  async function mountScore(t, host) {
+    const url = (ep.scoresBase || "assets/ep/scores/") + t.slug + ".svg";
+    let text;
+    try { const r = await fetch(url); if (!r.ok) throw 0; text = await r.text(); } catch (_) { host.remove(); return; }
+    const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+    const svg = doc.documentElement;
+    svg.removeAttribute("width"); svg.removeAttribute("height");
+    svg.querySelectorAll("rect").forEach((r) => { if (r.getAttribute("x") === "0" && r.getAttribute("y") === "0") r.remove(); }); // the bg
+    host.querySelector(".fig").appendChild(svg);
+    const strokes = [...svg.querySelectorAll("path[stroke]")].filter((el) => el.getAttribute("stroke") !== "none");
+    const fills = [...svg.querySelectorAll('path[fill]:not([fill="none"]), rect')];
+    // measure once, in the DOM; set the dash to the path's own length so the
+    // offset can sweep it on
+    for (const el of strokes) {
+      let L = 0; try { L = el.getTotalLength(); } catch (_) {}
+      el.dataset.len = String(Math.max(1, L));
+      el.style.strokeDasharray = el.dataset.len;
+    }
+    let anims = [];
+    const N = Math.max(1, strokes.length);
+    function draw() {
+      anims.forEach((a) => a.cancel()); anims = [];
+      host.classList.add("drawing");
+      strokes.forEach((el, i) => {
+        const L = el.dataset.len;
+        const a = el.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: STROKE_MS, delay: (i / N) * DRAW_MS, easing: "cubic-bezier(.3,0,.2,1)", fill: "both" });
+        anims.push(a);
+      });
+      fills.forEach((el, i) => {
+        const a = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: ((i + 0.5) / Math.max(1, fills.length)) * DRAW_MS, fill: "both" });
+        anims.push(a);
+      });
+      const last = anims[anims.length - 1];
+      if (last) last.onfinish = () => host.classList.remove("drawing");
+    }
+    host.addEventListener("mouseenter", draw);
+    host.addEventListener("focus", draw);
+    host.addEventListener("touchstart", draw, { passive: true });
+  }
+  {
+    const grid = $("score-grid");
+    ep.tracks.forEach((t, i) => {
+      const host = document.createElement("a");
+      host.className = "score"; host.tabIndex = 0;
+      host.innerHTML = `<div class="fig"></div><div class="cap"><span class="name">${t.title}</span><span class="meta">${String(i + 1).padStart(2, "0")} · composition${t.bpm ? ` · ${t.bpm} bpm` : ""}</span></div>`;
+      grid.appendChild(host);
+      mountScore(t, host);
+    });
   }
 
   // ---- the text treatment: the ambient character scramble only. the hover
