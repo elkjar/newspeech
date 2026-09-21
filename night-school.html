@@ -78,14 +78,12 @@
   }
   #tracks li:last-child { border-bottom: 1px solid #1c1c1c; }
   #tracks li.current { color: #eee; }
-  #tracks li.current .num::before { content: "▶"; }
-  #tracks li.current.paused .num::before { content: "▮▮"; letter-spacing: -0.3em; }
-  #tracks li.current.loading .num::before { content: "…"; }
   #tracks .num { color: #555; background: none; border: 0; padding: 0; font: inherit; text-align: left; cursor: pointer; }
   #tracks .num:hover { color: #eee; }
   #tracks li.current .num { color: #eee; }
   #tracks .num::before { content: attr(data-n); }
   #tracks li:not(.current) .num:hover::before { content: "▶"; }
+  #tracks li.current.loading .num::before { content: "…"; }
   #tracks .title {
     font-family: "zxx-sans", ui-monospace, monospace; font-size: 18px; letter-spacing: 0.06em;
     cursor: pointer; background: none; border: 0; color: inherit; padding: 0; text-align: left;
@@ -171,15 +169,20 @@
   #gate { width: min(440px, calc(100vw - 32px)); }
 
 
-  /* scrubber: record time, draggable */
-  #scrub { display: grid; grid-template-columns: 26px 1fr auto; gap: 0 14px; align-items: center; padding: 12px 0 0; color: #555; font-variant-numeric: tabular-nums; }
+  /* transport: lives INSIDE the current track's row, under its name —
+     play/pause, the scrubber, and the times belong to that track */
+  #scrub { grid-column: 2 / -1; display: grid; grid-template-columns: auto 1fr auto; gap: 0 14px; align-items: center; padding: 6px 0 2px; color: #555; font-variant-numeric: tabular-nums; }
+  #scrub .pp { background: none; border: 1px solid #333; color: #eee; font: inherit; width: 30px; height: 22px; padding: 0; cursor: pointer; line-height: 1; }
+  #scrub .pp:hover { border-color: #888; }
+  #scrub .pp::before { content: "▶"; }
+  #scrub.paused .pp::before { content: "▮▮"; letter-spacing: -0.3em; margin-left: -0.3em; }
   #scrub .t { white-space: nowrap; }
   #scrub .bar { position: relative; height: 18px; cursor: pointer; touch-action: none; }
   #scrub .bar::before { content: ""; position: absolute; left: 0; right: 0; top: 8.5px; height: 1px; background: #333; }
   #scrub .buf { position: absolute; left: 0; top: 8.5px; height: 1px; width: 0; background: #555; }
   #scrub .fill { position: absolute; left: 0; top: 8.5px; height: 1px; width: 0; background: #ddd; }
   #scrub .thumb { position: absolute; top: 0; width: 10px; height: 18px; margin-left: -5px; background: #ddd; left: 0; }
-  #scrub.idle .thumb { opacity: .35; }
+  #scrub.paused .thumb { opacity: .35; }
 
   #toast {
     position: absolute; left: 50%; top: calc(28px + var(--ns-nav-h, 0px)); transform: translateX(-50%);
@@ -211,10 +214,10 @@
     <h1><span data-link>ruin this ep</span></h1>
     <p class="intro">not happy with our choices on the album? all good — ruin it, change the speed, add more reverb and make it your own.</p>
     <ol id="tracks"></ol>
-    <div id="scrub" class="idle">
-      <span class="t" id="t-now">0:00</span>
+    <div id="scrub" class="paused" hidden>
+      <button type="button" class="pp" id="pp" aria-label="play / pause"></button>
       <div class="bar" id="scrub-bar"><div class="buf"></div><div class="fill"></div><div class="thumb"></div></div>
-      <span class="t" id="t-len">–:––</span>
+      <span class="t"><span id="t-now">0:00</span> / <span id="t-len">–:––</span></span>
     </div>
     <div id="ruin">
       <span class="lbl">ruin</span>
@@ -457,7 +460,6 @@
       if (!scrubbing) { scrubFill.style.width = `${f * 100}%`; scrubThumb.style.left = `${f * 100}%`; }
       $("t-now").textContent = fmt((scrubbing ? scrubTo : posFrame) / SR);
       $("t-len").textContent = fmt(lenFrames / SR);
-      scrub.classList.toggle("idle", !playing);
     }
     requestAnimationFrame(tick);
   }
@@ -469,9 +471,10 @@
     list.querySelectorAll("li").forEach((li) => {
       const i = +li.dataset.i;
       li.classList.toggle("current", i === cur);
-      li.classList.toggle("paused", i === cur && !playing && loadingSlug !== ep.tracks[i].slug);
       li.classList.toggle("loading", i === cur && loadingSlug === ep.tracks[i].slug);
+      if (i === cur && scrub.parentElement !== li) { li.appendChild(scrub); scrub.hidden = false; }
     });
+    scrub.classList.toggle("paused", !playing);
   }
   async function play(i) {
     const t = ep.tracks[i];
@@ -512,6 +515,7 @@
     node.port.postMessage({ type: "play", on: playing });
     markCurrent();
   }
+  $("pp").addEventListener("click", (e) => { e.currentTarget.blur(); togglePlay(); });
   // scrubbing: press anywhere on the bar, drag, release to seek there
   const scrub = $("scrub"), scrubBar = $("scrub-bar"), scrubFill = scrub.querySelector(".fill"), scrubBuf = scrub.querySelector(".buf"), scrubThumb = scrub.querySelector(".thumb");
   let scrubbing = false, scrubTo = 0;
