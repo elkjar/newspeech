@@ -112,9 +112,11 @@ class RuinProcessor extends AudioWorkletProcessor {
     // HOLES: probability and length both climb with amount on steep curves,
     // so the first two-thirds of the knob stays an edit and the collapse is
     // packed into the last stretch — the top is still deliberately broken.
-    const pHole = 0.022 + Math.pow(a, 2.2) * 0.6; // floor: a hole every few seconds at any nonzero amount
+    // rate kept low on purpose: a hole is fatiguing, so it should read as an
+    // event — the floor lands one every ten-odd seconds at any nonzero amount
+    const pHole = 0.005 + Math.pow(a, 3) * 0.18;
     if (hash(s, cell, 1) < pHole) {
-      let lenFrac = 0.12 + Math.pow(hash(s, cell, 3), 0.7) * (0.15 + Math.pow(a, 1.5) * 0.7);
+      let lenFrac = 0.1 + Math.pow(hash(s, cell, 3), 0.7) * (0.12 + Math.pow(a, 1.5) * 0.6);
       if (a > 0.85) lenFrac += (a - 0.85) * 10 * hash(s, cell, 8); // runs of cells
       const len = Math.round(cf * lenFrac);
       const room = Math.max(0, cf - Math.min(len, cf));
