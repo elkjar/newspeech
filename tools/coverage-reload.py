@@ -79,7 +79,7 @@ def main():
     body, toc = [], ['  <a href="#top"><span class="dot"></span><span class="lbl">top</span></a>']
     cap = next((s for t, s in secs.items() if t.startswith("figure caption")), None)
     if cap:
-        body.append('<section class="wide">\n  <figure>\n    <canvas id="fig-wear" height="360"></canvas>\n'
+        body.append('<section class="wide">\n  <figure>\n    <canvas id="fig-wear" height="440"></canvas>\n'
                     f'    <figcaption>{inline(cap["blocks"][0]["text"])}</figcaption>\n  </figure>\n</section>')
     first = True
     for title, sec in secs.items():

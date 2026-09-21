@@ -374,10 +374,8 @@
   <a href="#top"><span class="dot"></span><span class="lbl">top</span></a>
   <a href="#premise"><span class="dot"></span><span class="lbl">premise</span></a>
   <a href="#statement"><span class="dot"></span><span class="lbl">the statement</span></a>
-  <a href="#parts"><span class="dot"></span><span class="lbl">the parts</span></a>
   <a href="#schedule"><span class="dot"></span><span class="lbl">the schedule</span></a>
   <a href="#days"><span class="dot"></span><span class="lbl">the days</span></a>
-  <a href="#air"><span class="dot"></span><span class="lbl">what the air does</span></a>
   <a href="#radio"><span class="dot"></span><span class="lbl">why radio</span></a>
   <a href="#library"><span class="dot"></span><span class="lbl">the library</span></a>
   <a href="#broadcast"><span class="dot"></span><span class="lbl">the broadcast</span></a>
@@ -407,8 +405,8 @@
 
 <section class="wide">
   <figure>
-    <canvas id="fig-wear" height="360"></canvas>
-    <figcaption>one part through twelve generations of a simulated channel: top end eroding, noise floor rising, the curve leaning. an illustration of the mechanism, not a measurement — the real numbers come off wgxc.</figcaption>
+    <canvas id="fig-wear" height="440"></canvas>
+    <figcaption>one part, twelve receptions: the studio control at the top, then further out. distance raises the floor, the valley's reflections distort, a cheap receiver rolls off and leaks its pilot, terrain shadow mutes, and at the edge the neighbour on the next channel takes over and the hiss goes quiet again. a simulation of the kinds of damage, not a measurement — the real ones come off wgxc.</figcaption>
   </figure>
 </section>
 
@@ -428,21 +426,6 @@
   <p>the library of receptions is then published as an online instrument. listeners build their own version of the piece by choosing, part by part, which reception to use, and so which places and how much wear. keep the melody clean. let the drums go.</p>
   </div>
   <p class="note">the application text. ~245 words; wave farm's limit isn't published, expect to cut.</p>
-</section>
-
-<section class="col rule" id="parts">
-  <h2>a composition in layers</h2>
-  <p>the piece exists before the residency, written in the studio's sequencer. it is split into short loops, one per layer, each thirty to ninety seconds, so a single burst carries a whole part and a receiver in the field can catch it entire. the parts below are placeholders for the real ones.</p>
-  <div class="tbl-scroll">
-    <table>
-      <tbody>
-        <tr><td>drum loop</td><td>the rhythmic floor. the layer most likely to be let go.</td></tr>
-        <tr><td>pad</td><td>sustained harmony. wears slowest and carries the noise floor best.</td></tr>
-        <tr><td>sequence</td><td>the moving line. the layer where the processor's compression is most audible.</td></tr>
-        <tr><td>melody</td><td>the part a listener holds onto. the one most people will keep clean.</td></tr>
-      </tbody>
-    </table>
-  </div>
 </section>
 
 <section class="col rule" id="schedule">
@@ -465,26 +448,6 @@
     </table>
   </div>
   <p>nothing that was not received is ever broadcast again. the original parts are heard exactly once, on day one.</p>
-</section>
-
-<section class="col rule" id="air">
-  <h2>two kinds of wear</h2>
-  <p><strong>the station's.</strong> wgxc runs 3,300 watts and wave farm sits inside its footprint, so a receiver at the studio hears a strong, quiet signal. what wears the part is the station's own chain: the broadcast processor's multiband compression and clipper, the 15 khz brickwall, the stereo generator, the receiver's de-emphasis. compounded over the week, that sounds like radio eating itself.</p>
-  <p><strong>the landscape's.</strong> hiss, fading, the neighbour on the next channel bleeding in. that wear only exists at the edge of the signal, miles from the studio, so the receiver goes out to get it.</p>
-  <h3>what compounds per pass</h3>
-  <div class="tbl-scroll">
-    <table>
-      <tbody>
-        <tr><td>the processor</td><td>the station's multiband compressor and clipper act on every pass. dynamics flatten, density builds, the clipping stacks.</td></tr>
-        <tr><td>top end</td><td>the transmitter stops at 15 khz and the receiver rolls off below that. the ceilings stack. highs go first, like tape.</td></tr>
-        <tr><td>noise floor</td><td>every reception adds the path's hiss. it never leaves.</td></tr>
-        <tr><td>tilt</td><td>pre-emphasis at the transmitter and de-emphasis at the receiver never cancel exactly. the tone leans a little further each time.</td></tr>
-        <tr><td>the receiver's own reflexes</td><td>soft-mute, stereo blend and agc act on a weak signal and are re-recorded as part of it.</td></tr>
-        <tr><td>the dial</td><td>at the fade, whatever is on the adjacent channel comes in. once it is in a layer it is in for good.</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <p>nothing is processed between receptions. the transmitter, the air, and the receiver are the only instruments of change. the only decisions are which reception to use and how loud.</p>
 </section>
 
 <section class="col rule" id="radio">
@@ -709,89 +672,121 @@ if (!REDUCED) {
   });
 }
 
-// ---------- figure: wear across generations ----------
-// a synthetic spectrum pushed through a simulated fm path twelve
-// times. per pass: a compounding low-pass (transmitter + receiver
-// ceilings), a small tilt (pre/de-emphasis mismatch) and an added
-// noise floor. ridgeline plot, gen 00 at the top, reading down as time.
+// ---------- figure: one part, twelve receptions ----------
+// a synthetic spectrum of one part, received twelve times: the studio
+// control first, then further out. each reception has its own damage —
+// distance raises the noise floor and mutes the receiver, terrain cuts
+// multipath notches, a cheap receiver rolls off and leaks its pilot,
+// and at the edge the neighbour on the next channel takes over.
+// ridgeline plot, cleanest at the top.
 const wear = document.getElementById("fig-wear");
-const GENS = 12;
 const F_MIN = 40, F_MAX = 20000;
-const NPTS = 220;
+const NPTS = 260;
+// [label, distance km, receiver quality 0-1, multipath distortion 0-1, (unused), capture by neighbour 0-1, mute 0-1, what]
+const RX = [
+  ["studio · cabled",        0.0, 1.00, 0.00,  0, 0.00, 0.00, "the control: only the station's chain"],
+  ["art park · 0.3 km",      0.3, 0.90, 0.05,  4, 0.00, 0.00, "clean, a little roll-off"],
+  ["route 23 · 2 km",        2.0, 0.85, 0.15,  6, 0.00, 0.00, "first multipath notches"],
+  ["catskill creek · 4 km",  4.0, 0.60, 0.20,  9, 0.00, 0.05, "cheap receiver: top end gone, pilot leaks"],
+  ["ridge · 6 km",           6.0, 0.80, 0.45, 12, 0.00, 0.00, "line of sight, but the valley reflects: distortion"],
+  ["hollow · 7 km",          7.0, 0.80, 0.30, 18, 0.05, 0.30, "terrain shadow: soft-mute cuts in"],
+  ["quarry · 9 km",          9.0, 0.55, 0.55, 25, 0.10, 0.20, "heavy multipath: bursts and grit"],
+  ["catskill · 11 km",      11.0, 0.75, 0.25, 15, 0.20, 0.10, "the neighbour starts to bleed"],
+  ["hudson · 16 km",        16.0, 0.70, 0.40, 30, 0.40, 0.35, "half signal, half neighbour"],
+  ["kaaterskill · 19 km",   19.0, 0.50, 0.70, 40, 0.30, 0.55, "mostly gone; torn by reflections"],
+  ["edge · 22 km",          22.0, 0.65, 0.35, 22, 0.80, 0.50, "captured: the next channel wins"],
+  ["past the edge · 28 km", 28.0, 0.60, 0.20, 10, 0.20, 0.95, "noise. the receiver has let go"],
+];
 function spectra() {
   const fs = [];
   for (let i = 0; i < NPTS; i++) fs.push(F_MIN * Math.pow(F_MAX / F_MIN, i / (NPTS - 1)));
-  // seed: a flat, bright bed with harmonic peaks on 110 hz and a
-  // second cluster of partials up around 4-8 khz so there is top end to lose
-  const seed = fs.map((f) => {
+  // the part: a bright bed, harmonics on 110 hz, partials up around 4-9k
+  const part = fs.map((f) => {
     let v = 0.42;
     for (let h = 1; h <= 12; h++) {
       const fh = 110 * h;
       v += (0.9 / Math.sqrt(h)) * Math.exp(-Math.pow((f - fh) / (fh * 0.04), 2));
     }
-    for (const fh of [3900, 5200, 6800, 8600]) {
-      v += 0.5 * Math.exp(-Math.pow((f - fh) / (fh * 0.05), 2));
-    }
+    for (const fh of [3900, 5200, 6800, 8600]) v += 0.5 * Math.exp(-Math.pow((f - fh) / (fh * 0.05), 2));
     return v;
   });
-  const out = [seed];
-  let cur = seed;
-  for (let g = 1; g < GENS; g++) {
-    cur = cur.map((v, i) => {
-      const f = fs[i];
-      const lp = 1 / Math.sqrt(1 + Math.pow(f / 9000, 4));    // ceiling, compounds every pass
-      const tilt = Math.pow(f / 1000, -0.035);                 // leans a little each pass
-      const hiss = 0.055 * (0.7 + 0.6 * Math.random());        // the path's noise, jittered so it reads as hiss
-      return v * lp * tilt + hiss;
+  // the neighbour on the next channel: a speech-and-music shape, formant bumps, rolled off at 5k
+  const neighbour = fs.map((f) => {
+    let v = 0.25 * Math.exp(-Math.pow(Math.log(f / 400) / 1.1, 2));
+    for (const fh of [180, 360, 540, 720, 1100, 2400]) v += 0.45 * Math.exp(-Math.pow((f - fh) / (fh * 0.07), 2));
+    return v / (1 + Math.pow(f / 5000, 6));
+  });
+  // multipath on fm: the reflections don't comb the audio, they distort it —
+  // the harmonic series grows upward and the floor turns to bursts
+  const distortion = fs.map((f) => {
+    let v = 0;
+    for (let h = 13; h <= 60; h++) v += (0.35 / Math.sqrt(h)) * Math.exp(-Math.pow((f - 110 * h) / (110 * h * 0.03), 2));
+    return v;
+  });
+  return RX.map(([label, km, q, mp, _tau, cap, mute]) => {
+    // hiss climbs hard with distance — but a neighbour strong enough to capture the receiver quiets it again
+    const floor = (0.03 + 0.55 * Math.pow(km / 28, 1.6)) * (1 - 0.75 * cap);
+    const cutoff = 15000 * (0.35 + 0.65 * q);                          // cheap receivers roll off early
+    return fs.map((f, i) => {
+      const lp = 1 / Math.sqrt(1 + Math.pow(f / cutoff, 6));
+      const blend = f > 200 ? 1 - 0.25 * (1 - q) : 1;                  // stereo blend thins the top
+      let v = part[i] * lp * blend * (1 - cap) * (1 - mute);
+      v += distortion[i] * mp * lp * (1 - cap) * (1 - mute);           // multipath distortion products
+      v += neighbour[i] * cap * (1 - mute * 0.6);
+      v += floor * (0.6 + 0.8 * Math.random()) * (1 + 2.5 * mp * Math.random()); // hiss, bursting under multipath
+      if (q < 0.65 && f > 18500 && f < 19500) v += 0.9 * (1 - q);      // 19 khz pilot leaking through
+      return v;
     });
-    out.push(cur);
-  }
-  return { fs, out };
+  }).map((s, i) => ({ s, meta: RX[i] })).reduce((acc, r) => (acc.out.push(r.s), acc.metas.push(r.meta), acc), { fs, out: [], metas: [] });
 }
 const SPEC = spectra();
+const GENS = SPEC.out.length;
 const W_PAD_L = 24, W_PAD_R = 24, W_TOP = 22, W_BOT = 30;
 let ridgeY = [];
 function drawWear() {
   const { ctx, w, h } = fit(wear);
   ctx.clearRect(0, 0, w, h);
   ctx.font = FONT;
-  const plotW = w - W_PAD_L - W_PAD_R;
-  const xOf = (f) => W_PAD_L + (Math.log(f / F_MIN) / Math.log(F_MAX / F_MIN)) * plotW;
-  const step = (h - W_TOP - W_BOT) / (GENS - 1 + 1.6);
-  const amp = step * 2.2;
+  const labelW = w > 640 ? 150 : 0;
+  const plotL = W_PAD_L + labelW;
+  const plotW = w - plotL - W_PAD_R;
+  const xOf = (f) => plotL + (Math.log(f / F_MIN) / Math.log(F_MAX / F_MIN)) * plotW;
+  const step = (h - W_TOP - W_BOT) / (GENS - 1 + 2.2);
+  const amp = step * 3.0;                 // tall enough that the ridges fight
   const vmax = Math.max(...SPEC.out[0]);
+  // labels sit at the clean trace's floor height, the same offset on every row, so they stay evenly spaced
+  const BED0 = [...SPEC.out[0]].sort((a, b) => a - b)[Math.floor(NPTS * 0.5)];
   ridgeY = [];
 
   // ceiling marker
   ctx.strokeStyle = "rgba(255,255,255,0.14)";
   ctx.setLineDash([2, 4]);
-  ctx.beginPath(); ctx.moveTo(xOf(12500), W_TOP - 6); ctx.lineTo(xOf(12500), h - W_BOT + 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(xOf(15000), W_TOP - 6); ctx.lineTo(xOf(15000), h - W_BOT + 4); ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = "rgba(255,255,255,0.35)";
-  ctx.fillText("12.5k", xOf(12500) + 5, W_TOP + 2);
+  ctx.fillText("15k", xOf(15000) + 5, W_TOP + 2);
 
   for (let g = 0; g < GENS; g++) {
-    const base = W_TOP + amp * 0.75 + g * step;
+    const base = W_TOP + amp * 0.7 + g * step;
     ridgeY.push(base);
     const s = SPEC.out[g];
     ctx.beginPath();
     ctx.moveTo(xOf(SPEC.fs[0]), base);
-    for (let i = 0; i < NPTS; i++) ctx.lineTo(xOf(SPEC.fs[i]), base - (s[i] / vmax) * amp);
+    for (let i = 0; i < NPTS; i++) ctx.lineTo(xOf(SPEC.fs[i]), base - Math.min(1.6, s[i] / vmax) * amp);
     ctx.lineTo(xOf(SPEC.fs[NPTS - 1]), base);
     ctx.closePath();
-    // occlude the ridge behind, then ink the line; older = dimmer
     ctx.fillStyle = "#050505";
     ctx.fill();
-    const a = 0.85 - (g / (GENS - 1)) * 0.5;
+    const a = 0.9 - (g / (GENS - 1)) * 0.5;
     ctx.strokeStyle = `rgba(255,255,255,${a.toFixed(2)})`;
     ctx.beginPath();
     for (let i = 0; i < NPTS; i++) {
-      const x = xOf(SPEC.fs[i]), y = base - (s[i] / vmax) * amp;
+      const x = xOf(SPEC.fs[i]), y = base - Math.min(1.6, s[i] / vmax) * amp;
       i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
     ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.fillText(String(g).padStart(2, "0"), 2, base + 3);
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.fillText(labelW ? SPEC.metas[g][0] : String(g).padStart(2, "0"), W_PAD_L - 20, base - (BED0 / vmax) * amp + 3);
   }
 
   // frequency axis
@@ -806,8 +801,8 @@ wear.addEventListener("mousemove", (e) => {
   const r = wear.getBoundingClientRect();
   const y = e.clientY - r.top;
   let best = -1, bd = Infinity;
-  ridgeY.forEach((ry, g) => { const d = Math.abs(ry - 8 - y); if (d < bd) { bd = d; best = g; } });
-  if (best >= 0 && bd < 18) showTip(e.clientX, e.clientY, `gen ${String(best).padStart(2, "0")}  ·  ${best} pass${best === 1 ? "" : "es"} through the air`);
+  ridgeY.forEach((ry, g) => { const d = Math.abs(ry - 26 - y); if (d < bd) { bd = d; best = g; } });
+  if (best >= 0 && bd < 22) showTip(e.clientX, e.clientY, `${SPEC.metas[best][0]}\n${SPEC.metas[best][7]}`);
   else hideTip();
 });
 wear.addEventListener("mouseleave", hideTip);

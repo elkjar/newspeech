@@ -13,8 +13,8 @@ ground rules for the reload to stay mechanical:
   og, statement).
 - the statement block is the text that goes into wave farm's form. their word limit
   isn't published — the draft runs ~245 words; expect to cut.
-- the parts table uses your example (drum loop / pad / sequence / melody) as placeholders.
-  name the composition and its real parts when you're ready.
+- the parts named in the statement (drum loop / pad / sequence / melody) are your example.
+  swap in the real composition's parts when you're ready.
 - facts about wave farm / wgxc / the fcc rules were checked 2026-09-20 against their
   site and the ecfr. if you change one, flag it.
 
@@ -36,9 +36,9 @@ re-seeds. hover holds the current generation and cycles the zxx faces.
 - **hero right:** acra, ny · crestline, ca
 - **og description:** a composition sent through the air one part at a time and rebuilt from what came back. proposal for wave farm 2027. private draft.
 
-## figure caption — wear across generations (under the hero)
+## figure caption — twelve receptions (under the hero)
 
-one part through twelve generations of a simulated channel: top end eroding, noise floor rising, the curve leaning. an illustration of the mechanism, not a measurement — the real numbers come off wgxc.
+one part, twelve receptions: the studio control at the top, then further out. distance raises the floor, the valley's reflections distort, a cheap receiver rolls off and leaks its pilot, terrain shadow mutes, and at the edge the neighbour on the next channel takes over and the hiss goes quiet again. a simulation of the kinds of damage, not a measurement — the real ones come off wgxc.
 
 ## premise
 
@@ -62,18 +62,6 @@ each day is built from the one before. day one sends the raw parts. day two send
 
 the library of receptions is then published as an online instrument. listeners build their own version of the piece by choosing, part by part, which reception to use, and so which places and how much wear. keep the melody clean. let the drums go.
 
-## the parts
-
-- **h2:** a composition in layers
-
-the piece exists before the residency, written in the studio's sequencer. it is split into short loops, one per layer, each thirty to ninety seconds, so a single burst carries a whole part and a receiver in the field can catch it entire. the parts below are placeholders for the real ones.
-
-### parts table
-
-- drum loop — the rhythmic floor. the layer most likely to be let go.
-- pad — sustained harmony. wears slowest and carries the noise floor best.
-- sequence — the moving line. the layer where the processor's compression is most audible.
-- melody — the part a listener holds onto. the one most people will keep clean.
 
 ## the schedule
 
@@ -97,24 +85,6 @@ for the station's listeners, the first days are a minute of something on the hou
 
 nothing that was not received is ever broadcast again. the original parts are heard exactly once, on day one.
 
-## what the air does
-
-- **h2:** two kinds of wear
-
-**the station's.** wgxc runs 3,300 watts and wave farm sits inside its footprint, so a receiver at the studio hears a strong, quiet signal. what wears the part is the station's own chain: the broadcast processor's multiband compression and clipper, the 15 khz brickwall, the stereo generator, the receiver's de-emphasis. compounded over the week, that sounds like radio eating itself.
-
-**the landscape's.** hiss, fading, the neighbour on the next channel bleeding in. that wear only exists at the edge of the signal, miles from the studio, so the receiver goes out to get it.
-
-### what compounds per pass table
-
-- the processor — the station's multiband compressor and clipper act on every pass. dynamics flatten, density builds, the clipping stacks.
-- top end — the transmitter stops at 15 khz and the receiver rolls off below that. the ceilings stack. highs go first, like tape.
-- noise floor — every reception adds the path's hiss. it never leaves.
-- tilt — pre-emphasis at the transmitter and de-emphasis at the receiver never cancel exactly. the tone leans a little further each time.
-- the receiver's own reflexes — soft-mute, stereo blend and agc act on a weak signal and are re-recorded as part of it.
-- the dial — at the fade, whatever is on the adjacent channel comes in. once it is in a layer it is in for good.
-
-nothing is processed between receptions. the transmitter, the air, and the receiver are the only instruments of change. the only decisions are which reception to use and how loud.
 
 ## why radio
 
