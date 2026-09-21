@@ -140,7 +140,7 @@
   .win input[type="email"]::placeholder { color: rgba(255,255,255,.3); }
   .win .win-body button, .win .win-body a.cta {
     background: transparent; border: 1px solid rgba(255,255,255,.7); color: #eee; font: inherit;
-    letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; text-decoration: none; display: inline-block;
+    letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; text-decoration: none; display: inline-block; white-space: nowrap;
   }
   .win .win-body button:hover, .win .win-body a.cta:hover { background: rgba(255,255,255,.08); }
   .win .win-body button:disabled { opacity: .4; cursor: default; }
@@ -239,7 +239,7 @@
         <label class="lbl" for="gate-email">let's trade. you get this mangled audio mess and we get to send you an email sometimes</label>
         <div class="row">
           <input id="gate-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
-          <button type="submit" id="gate-go" data-link>download</button>
+          <button type="submit" id="gate-go">download</button>
         </div>
         <span class="msg" id="gate-msg" hidden></span>
       </div>
