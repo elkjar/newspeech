@@ -32,7 +32,7 @@ title → line → figure → line.
 - **osd right:** wave farm 2027 · transmission art residency
 - **title (h1):** coverage
 - **dek (under the title):** a composition taken apart, sent over the air one part at a time, reassembled, cataloged and released.
-- **og description:** a composition sent through the air one part at a time and rebuilt from what came back. proposal for wave farm 2027. private draft.
+- **og description:** a composition taken apart, sent over the air one part at a time, reassembled, cataloged and released. proposal for wave farm 2027. private draft.
 
 ## figure caption — twelve receptions (the lead)
 
