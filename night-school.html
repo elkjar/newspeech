@@ -402,11 +402,11 @@
     if (quiet.haze != null && NS.setHaze) NS.setHaze(quiet.haze, false);
     if (quiet.grain != null && NS.setGrain) NS.setGrain(quiet.grain, false);
     if (quiet.dataPoints != null && NS.setDataPoints) NS.setDataPoints(quiet.dataPoints, false);
-    if (quiet.telemetry === false) {
-      const st = doc.createElement("style");
-      st.textContent = "#hud-overlay{display:none !important}";
-      doc.head.appendChild(st);
-    }
+    const st = doc.createElement("style");
+    // the visualizer pages hide the cursor (they're fullscreen instruments);
+    // the room is a page with controls, so the pointer stays
+    st.textContent = "html,body{cursor:auto !important}" + (quiet.telemetry === false ? "#hud-overlay{display:none !important}" : "");
+    doc.head.appendChild(st);
   }
 
   // keep the page fed: re-attach if it dropped the analyser (someone pressed a
