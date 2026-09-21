@@ -206,11 +206,15 @@
      figures, each drawing and erasing itself on a loop. */
   #scores { padding: 0; border-top: 1px solid #1c1c1c; }
   #scores .grid { display: flex; flex-direction: column; }
-  .score { display: block; width: 50vw; aspect-ratio: 1; color: inherit; text-decoration: none; cursor: default; }
+  .score { display: block; width: 50vw; color: inherit; text-decoration: none; cursor: default; }
   .score:nth-child(1) { align-self: flex-start; }
   .score:nth-child(2) { align-self: center; }
   .score:nth-child(3) { align-self: flex-end; }
-  .score .fig { position: relative; width: 100%; height: 100%; }
+  .score .fig { position: relative; width: 100%; aspect-ratio: 1; }
+  /* textbook caption: fig. 01 — zeus faber */
+  .score .cap { display: block; padding: 0 var(--ns-gutter, 40px) 28px; color: #666; font-size: 11px; letter-spacing: 0.12em; }
+  .score .cap .n { color: #999; }
+  .score .cap .t { font-family: "zxx-sans", ui-monospace, monospace; font-size: 12px; letter-spacing: 0.08em; color: #aaa; }
   .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 1; transform-origin: 50% 50%; animation: score-spin 140s linear infinite paused; }
   .score:nth-child(2) .fig svg { animation-direction: reverse; animation-duration: 180s; }
   .score:nth-child(3) .fig svg { animation-duration: 110s; }
@@ -931,7 +935,7 @@
       const host = document.createElement("a");
       host.className = "score"; host.tabIndex = 0;
       host.setAttribute("aria-label", `${t.title} — composition score`);
-      host.innerHTML = `<div class="fig"></div>`;
+      host.innerHTML = `<div class="fig"></div><span class="cap"><span class="n">fig. ${String(i + 1).padStart(2, "0")}</span> — <span class="t">${t.title}</span></span>`;
       grid.appendChild(host);
       mountScore(t, host, i * (CYCLE_MS / 3)); // out of phase by a third of the cycle
     });
