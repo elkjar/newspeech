@@ -109,6 +109,9 @@
   }
   #ruin input[type=range]::-moz-range-thumb { width: 10px; height: 18px; background: #ddd; border: 0; border-radius: 0; }
   #ruin .val { min-width: 11ch; text-align: right; color: #eee; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #ruin .reset { background: none; border: 0; color: #444; font: inherit; padding: 0 2px; cursor: pointer; line-height: 1; }
+  #ruin .reset:hover { color: #eee; }
+  #ruin .reset:disabled { color: #222; cursor: default; }
   #ruin .val small { color: #666; }
   #ruin .seedrow { grid-column: 2; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 11px; color: #555; margin-top: 4px; }
   #ruin .seed { color: #999; letter-spacing: 0.08em; }
@@ -218,16 +221,19 @@
       <div class="row">
         <input type="range" id="k-ruin" min="0" max="1" step="0.01" value="0" aria-label="ruin amount">
         <span class="val" id="v-ruin">0.00</span>
+        <button type="button" class="reset" id="r-ruin" title="back to clean" aria-label="reset">↺</button>
       </div>
       <span class="lbl">speed</span>
       <div class="row">
         <input type="range" id="k-speed" min="0" max="1" step="0.001" value="0.75" aria-label="speed">
         <span class="val" id="v-speed">1.00×</span>
+        <button type="button" class="reset" id="r-speed" title="back to 1×" aria-label="reset">↺</button>
       </div>
       <span class="lbl">reverb</span>
       <div class="row">
         <input type="range" id="k-verb" min="0" max="1" step="0.01" value="0" aria-label="reverb">
         <span class="val" id="v-verb">0.00</span>
+        <button type="button" class="reset" id="r-verb" title="back to dry" aria-label="reset">↺</button>
       </div>
       <div class="seedrow">
         <span>seed <span class="seed" id="ruin-seed"></span></span>
@@ -537,6 +543,7 @@
   const K = { ruin: $("k-ruin"), speed: $("k-speed"), verb: $("k-verb") };
   const V = { ruin: $("v-ruin"), speed: $("v-speed"), verb: $("v-verb") };
   const seedEl = $("ruin-seed"), stateEl = $("ruin-state"), keepBtn = $("ruin-keep");
+  const R = { ruin: $("r-ruin"), speed: $("r-speed"), verb: $("r-verb") };
 
   function pushSet() {
     const t = ep.tracks[cur < 0 ? 0 : cur];
@@ -553,6 +560,7 @@
     V.speed.innerHTML = `${knobs.speed.toFixed(2)}× <small>${fmt(takeSeconds())}</small>`;
     K.verb.value = String(knobs.verb); V.verb.textContent = knobs.verb.toFixed(2);
     seedEl.textContent = knobs.seed;
+    R.ruin.disabled = knobs.ruin === 0; R.speed.disabled = knobs.speed === 1; R.verb.disabled = knobs.verb === 0;
     const touched = knobs.ruin > 0 || knobs.speed !== 1 || knobs.verb > 0;
     stateEl.textContent = touched ? "ruined" : "clean";
     stateEl.classList.toggle("on", touched);
@@ -576,6 +584,10 @@
   K.ruin.addEventListener("input", () => { knobs.ruin = +K.ruin.value; showKnobs(); pushSet(); syncUrl(); });
   K.speed.addEventListener("input", () => { knobs.speed = +speedFromSlider(+K.speed.value).toFixed(3); showKnobs(); pushSet(); syncUrl(); });
   K.speed.addEventListener("dblclick", () => { knobs.speed = 1; showKnobs(); pushSet(); syncUrl(); });
+  // resets: each knob back to its rest position
+  R.ruin.addEventListener("click", () => { knobs.ruin = 0; showKnobs(); pushSet(); syncUrl(); });
+  R.speed.addEventListener("click", () => { knobs.speed = 1; showKnobs(); pushSet(); syncUrl(); });
+  R.verb.addEventListener("click", () => { knobs.verb = 0; showKnobs(); if (actx) applyVerb(actx, conv, dryGain, wetGain, 0, knobs.seed); syncUrl(); });
   // reverb: mix follows the knob live; the impulse (tail length) is rebuilt on
   // release, since swapping a convolver's buffer mid-drag stutters
   K.verb.addEventListener("input", () => { knobs.verb = +K.verb.value; showKnobs(); if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed, true); syncUrl(); });
