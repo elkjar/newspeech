@@ -154,7 +154,7 @@
   .win .msg.err { opacity: .55; }
   .win .stream { opacity: .45; font-size: 11px; }
 
-  #buy { position: absolute; right: var(--ns-gutter, 40px); top: calc(28px + var(--ns-nav-h, 0px)); }
+  #buy { position: absolute; right: var(--ns-gutter, 40px); top: 50%; transform: translateY(-50%); }
   #buy .win-body { padding: 22px 28px 24px; gap: 12px; }
 
   /* the gate: an email for your copy, same door as the plugins */
@@ -186,7 +186,7 @@
     h1 { margin-bottom: 14px; }
     #tracks li { grid-template-columns: 22px 1fr; }
     #tracks .meta { grid-column: 2; }
-    #buy { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); }
+    #buy { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); top: calc(28px + var(--ns-nav-h, 0px)); transform: none; }
   }
 </style>
 </head>
