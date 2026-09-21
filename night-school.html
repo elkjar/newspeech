@@ -81,9 +81,11 @@
   #tracks li.current .num::before { content: "▶"; }
   #tracks li.current.paused .num::before { content: "▮▮"; letter-spacing: -0.3em; }
   #tracks li.current.loading .num::before { content: "…"; }
-  #tracks .num { color: #555; }
+  #tracks .num { color: #555; background: none; border: 0; padding: 0; font: inherit; text-align: left; cursor: pointer; }
+  #tracks .num:hover { color: #eee; }
   #tracks li.current .num { color: #eee; }
   #tracks .num::before { content: attr(data-n); }
+  #tracks li:not(.current) .num:hover::before { content: "▶"; }
   #tracks .title {
     font-family: "zxx-sans", ui-monospace, monospace; font-size: 18px; letter-spacing: 0.06em;
     cursor: pointer; background: none; border: 0; color: inherit; padding: 0; text-align: left;
@@ -166,11 +168,15 @@
   #gate { width: min(440px, calc(100vw - 32px)); }
 
 
-  /* progress: the whole bottom edge is the scrubber */
-  #progress { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; cursor: pointer; }
-  #progress .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #1c1c1c; }
-  #progress .fill { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: #ddd; }
-  #progress .buf { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: #333; }
+  /* scrubber: record time, draggable */
+  #scrub { display: grid; grid-template-columns: 26px 1fr auto; gap: 0 14px; align-items: center; padding: 12px 0 0; color: #555; font-variant-numeric: tabular-nums; }
+  #scrub .t { white-space: nowrap; }
+  #scrub .bar { position: relative; height: 18px; cursor: pointer; touch-action: none; }
+  #scrub .bar::before { content: ""; position: absolute; left: 0; right: 0; top: 8.5px; height: 1px; background: #333; }
+  #scrub .buf { position: absolute; left: 0; top: 8.5px; height: 1px; width: 0; background: #555; }
+  #scrub .fill { position: absolute; left: 0; top: 8.5px; height: 1px; width: 0; background: #ddd; }
+  #scrub .thumb { position: absolute; top: 0; width: 10px; height: 18px; margin-left: -5px; background: #ddd; left: 0; }
+  #scrub.idle .thumb { opacity: .35; }
 
   #toast {
     position: absolute; left: 50%; top: calc(28px + var(--ns-nav-h, 0px)); transform: translateX(-50%);
@@ -202,6 +208,11 @@
     <h1><span data-link>ruin this ep</span></h1>
     <p class="intro">not happy with our choices on the album? all good — ruin it, change the speed, add more reverb and make it your own.</p>
     <ol id="tracks"></ol>
+    <div id="scrub" class="idle">
+      <span class="t" id="t-now">0:00</span>
+      <div class="bar" id="scrub-bar"><div class="buf"></div><div class="fill"></div><div class="thumb"></div></div>
+      <span class="t" id="t-len">–:––</span>
+    </div>
     <div id="ruin">
       <span class="lbl">ruin</span>
       <div class="row">
@@ -263,7 +274,6 @@
       </div>
     </form>
   </div>
-  <div id="progress"><div class="bar"></div><div class="buf"></div><div class="fill"></div></div>
   <div id="toast"></div>
 </div>
 
@@ -287,11 +297,11 @@
     const li = document.createElement("li");
     li.dataset.i = i;
     li.innerHTML = `
-      <span class="num" data-n="${String(i + 1).padStart(2, "0")}"></span>
+      <button class="num" data-n="${String(i + 1).padStart(2, "0")}" aria-label="play"></button>
       <button class="title" data-link>${t.title}</button>
       <span class="meta"><span class="dur">${t.duration ? fmt(t.duration) : ""}</span></span>
       ${t.note ? `<span class="note">${t.note}</span>` : ""}`;
-    li.querySelector(".title").addEventListener("click", (e) => { e.currentTarget.blur(); (i === cur ? togglePlay() : play(i)); });
+    li.querySelectorAll(".title, .num").forEach((b) => b.addEventListener("click", (e) => { e.currentTarget.blur(); (i === cur ? togglePlay() : play(i)); }));
     list.appendChild(li);
   });
   const durEl = (i) => list.querySelector(`li[data-i="${i}"] .dur`);
@@ -436,7 +446,13 @@
   function tick() {
     const NS = frameNS();
     if (NS && analyser && NS.audioActive && !NS.audioActive() && playing) attach();
-    if (lenFrames) $("progress").querySelector(".fill").style.width = `${(posFrame / lenFrames) * 100}%`;
+    if (lenFrames) {
+      const f = Math.min(1, posFrame / lenFrames);
+      if (!scrubbing) { scrubFill.style.width = `${f * 100}%`; scrubThumb.style.left = `${f * 100}%`; }
+      $("t-now").textContent = fmt((scrubbing ? scrubTo : posFrame) / SR);
+      $("t-len").textContent = fmt(lenFrames / SR);
+      scrub.classList.toggle("idle", !playing);
+    }
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
@@ -465,14 +481,14 @@
       const d = durEl(i);
       let buf;
       try {
-        buf = await loadTrack(t, (f) => { d.textContent = `${Math.round(f * 100)}%`; $("progress").querySelector(".buf").style.width = `${f * 100}%`; });
+        buf = await loadTrack(t, (f) => { d.textContent = `${Math.round(f * 100)}%`; scrubBuf.style.width = `${f * 100}%`; });
       } catch (err) {
         console.error(err); d.textContent = "failed"; loadingSlug = null; markCurrent(); toast(`couldn't load ${t.title}`); return;
       }
       if (cur !== i) return; // someone moved on while we were loading
       loadingSlug = null;
       d.textContent = fmt(buf.duration);
-      $("progress").querySelector(".buf").style.width = "100%";
+      scrubBuf.style.width = "100%";
       lenFrames = buf.length;
       { const l = buf.getChannelData(0).slice(), r = (buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0)).slice();
         node.port.postMessage({ type: "buffer", l, r, sr: buf.sampleRate }, [l.buffer, r.buffer]); }
@@ -490,12 +506,24 @@
     node.port.postMessage({ type: "play", on: playing });
     markCurrent();
   }
-  $("progress").addEventListener("click", (e) => {
-    if (!lenFrames || !node) return;
-    const r = e.currentTarget.getBoundingClientRect();
-    posFrame = ((e.clientX - r.left) / r.width) * lenFrames;
-    node.port.postMessage({ type: "seek", frame: posFrame });
+  // scrubbing: press anywhere on the bar, drag, release to seek there
+  const scrub = $("scrub"), scrubBar = $("scrub-bar"), scrubFill = scrub.querySelector(".fill"), scrubBuf = scrub.querySelector(".buf"), scrubThumb = scrub.querySelector(".thumb");
+  let scrubbing = false, scrubTo = 0;
+  const scrubFrac = (e) => { const r = scrubBar.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); };
+  function scrubShow(f) { scrubFill.style.width = `${f * 100}%`; scrubThumb.style.left = `${f * 100}%`; scrubTo = f * lenFrames; }
+  scrubBar.addEventListener("pointerdown", (e) => {
+    if (!lenFrames) return;
+    scrubbing = true; scrubBar.setPointerCapture(e.pointerId); scrubShow(scrubFrac(e));
   });
+  scrubBar.addEventListener("pointermove", (e) => { if (scrubbing) scrubShow(scrubFrac(e)); });
+  const scrubEnd = (e) => {
+    if (!scrubbing) return;
+    scrubbing = false; scrubShow(scrubFrac(e));
+    posFrame = scrubTo;
+    if (node) node.port.postMessage({ type: "seek", frame: posFrame });
+  };
+  scrubBar.addEventListener("pointerup", scrubEnd);
+  scrubBar.addEventListener("pointercancel", () => { scrubbing = false; });
 
   // ---- the ruin: three knobs + a seed are the whole take -------------------------
   // amount/speed/reverb/seed reproduce a take exactly: the worklet decides
