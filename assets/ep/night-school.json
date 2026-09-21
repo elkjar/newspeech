@@ -1,19 +1,40 @@
 {
   "title": "night school",
+  "cover": "assets/ep/cover.jpg",
+  "releaseDate": "mid october 2026",
   "artist": "newspeech",
   "buy": [
     {
       "label": "subvert",
-      "url": ""
+      "url": "",
+      "img": "assets/ep/subvert.png"
     },
     {
       "label": "bandcamp",
-      "url": ""
+      "url": "",
+      "icon": "bandcamp"
     }
   ],
   "streaming": {
     "date": "",
-    "note": "streaming everywhere one month after release"
+    "note": "streaming everywhere one month after release",
+    "services": [
+      {
+        "label": "apple music",
+        "url": "",
+        "icon": "applemusic"
+      },
+      {
+        "label": "youtube music",
+        "url": "",
+        "icon": "youtubemusic"
+      },
+      {
+        "label": "tidal",
+        "url": "",
+        "icon": "tidal"
+      }
+    ]
   },
   "audioBase": "assets/ep/",
   "quiet": {

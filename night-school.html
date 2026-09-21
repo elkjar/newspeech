@@ -13,15 +13,15 @@
 <meta property="og:url" content="https://www.newspeechsound.com/night-school.html">
 <meta property="og:site_name" content="NEWSPEECH">
 <meta property="og:locale" content="en_US">
-<meta property="og:image" content="https://www.newspeechsound.com/og-image.png">
+<meta property="og:image" content="https://www.newspeechsound.com/assets/ep/cover.jpg">
 <meta property="og:image:type" content="image/png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+<meta property="og:image:width" content="1400">
+<meta property="og:image:height" content="1400">
 <meta property="og:image:alt" content="NEWSPEECH // NIGHT SCHOOL">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // night school">
 <meta name="twitter:description" content="newspeech — night school. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
-<meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<meta name="twitter:image" content="https://www.newspeechsound.com/assets/ep/cover.jpg">
 <style>
   @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); font-display: swap; }
@@ -31,6 +31,25 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
   body { font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace; overflow-x: hidden; }
+
+  /* ---- album: cover + the facts, first thing on the page ---- */
+  #album { position: relative; z-index: 3; max-width: 1280px; margin: 0 auto; padding: calc(56px + var(--ns-nav-h, 0px)) var(--ns-gutter, 40px) 64px; display: grid; grid-template-columns: minmax(240px, 420px) 1fr; gap: 48px; align-items: end; }
+  #album .cover { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border: 1px solid #1c1c1c; background: #0a0a0a; }
+  #album .artist { color: #666; letter-spacing: 0.18em; margin: 0 0 6px; }
+  #album .name { font-family: "zxx-sans", ui-monospace, monospace; font-weight: 400; font-size: clamp(34px, 4.6vw, 56px); line-height: 1; letter-spacing: 0.04em; color: #eee; margin: 0 0 14px; }
+  #album .facts { color: #777; margin: 0 0 34px; }
+  #album .facts b { color: #ccc; font-weight: 400; }
+  #album .avail { display: grid; grid-template-columns: max-content 1fr; gap: 12px 28px; align-items: baseline; }
+  #album .avail dt { color: #555; letter-spacing: 0.12em; }
+  #album .avail dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  #album .svc { display: inline-flex; align-items: center; gap: 8px; color: #ccc; text-decoration: none; letter-spacing: 0.06em; white-space: nowrap; }
+  #album .svc svg { width: 16px; height: 16px; fill: currentColor; display: block; }
+  /* a bitmap mark used as a mask so it takes the text colour like the svgs */
+  #album .svc .img { width: 16px; height: 16px; display: block; background: currentColor; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+  #album a.svc:hover { color: #fff; }
+  #album .svc.pending { color: #555; pointer-events: none; }
+  #album .soon dd .svc { color: #666; }
+  @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; } #album .cover { max-width: 420px; } }
 
   /* the room is the hero: one viewport tall, the visualizer lives inside it
      and scrolls away with it; the record keeps playing underneath the page */
@@ -60,7 +79,7 @@
   #room {
     position: relative; z-index: 2; min-height: 100vh; pointer-events: none;
     display: flex; align-items: center;
-    padding: calc(48px + var(--ns-nav-h, 0px)) 0 56px;
+    padding: 48px 0 56px;
   }
   #col {
     width: 100%; max-width: 1280px; margin: 0 auto; padding: 0 var(--ns-gutter, 40px);
@@ -264,6 +283,20 @@
 </style>
 </head>
 <body>
+<section id="album">
+  <img class="cover" id="cover" alt="" width="1400" height="1400">
+  <div class="info">
+    <p class="artist" id="album-artist"></p>
+    <h1 class="name" id="album-name"></h1>
+    <p class="facts" id="album-facts"></p>
+    <dl class="avail">
+      <dt>available on</dt>
+      <dd id="avail-now"></dd>
+      <dt class="soon-dt">coming soon to</dt>
+      <dd id="avail-soon" class="soon"></dd>
+    </dl>
+  </div>
+</section>
 <section id="hero">
 <iframe id="viz" title="visualizer" allow="midi"></iframe>
 <div id="scrim"></div>
@@ -416,6 +449,38 @@
     list.appendChild(li);
   });
   const durEl = (i) => list.querySelector(`li[data-i="${i}"] .dur`);
+
+  // ---- album: cover + facts + where to get it -----------------------------------
+  const ICONS = {"bandcamp": "M0 18.75l7.437-13.5H24l-7.438 13.5H0z", "applemusic": "M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026-.747.043-1.49.123-2.193.4-1.336.53-2.3 1.452-2.865 2.78-.192.448-.292.925-.363 1.408-.056.392-.088.785-.1 1.18 0 .032-.007.062-.01.093v12.223c.01.14.017.283.027.424.05.815.154 1.624.497 2.373.65 1.42 1.738 2.353 3.234 2.801.42.127.856.187 1.293.228.555.053 1.11.06 1.667.06h11.03a12.5 12.5 0 001.57-.1c.822-.106 1.596-.35 2.295-.81a5.046 5.046 0 001.88-2.207c.186-.42.293-.87.37-1.324.113-.675.138-1.358.137-2.04-.002-3.8 0-7.595-.003-11.393zm-6.423 3.99v5.712c0 .417-.058.827-.244 1.206-.29.59-.76.962-1.388 1.14-.35.1-.706.157-1.07.173-.95.045-1.773-.6-1.943-1.536a1.88 1.88 0 011.038-2.022c.323-.16.67-.25 1.018-.324.378-.082.758-.153 1.134-.24.274-.063.457-.23.51-.516a.904.904 0 00.02-.193c0-1.815 0-3.63-.002-5.443a.725.725 0 00-.026-.185c-.04-.15-.15-.243-.304-.234-.16.01-.318.035-.475.066-.76.15-1.52.303-2.28.456l-2.325.47-1.374.278c-.016.003-.032.01-.048.013-.277.077-.377.203-.39.49-.002.042 0 .086 0 .13-.002 2.602 0 5.204-.003 7.805 0 .42-.047.836-.215 1.227-.278.64-.77 1.04-1.434 1.233-.35.1-.71.16-1.075.172-.96.036-1.755-.6-1.92-1.544-.14-.812.23-1.685 1.154-2.075.357-.15.73-.232 1.108-.31.287-.06.575-.116.86-.177.383-.083.583-.323.6-.714v-.15c0-2.96 0-5.922.002-8.882 0-.123.013-.25.042-.37.07-.285.273-.448.546-.518.255-.066.515-.112.774-.165.733-.15 1.466-.296 2.2-.444l2.27-.46c.67-.134 1.34-.27 2.01-.403.22-.043.442-.088.663-.106.31-.025.523.17.554.482.008.073.012.148.012.223.002 1.91.002 3.822 0 5.732z", "youtubemusic": "M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.332c-3.432 0-6.228 2.796-6.228 6.228S8.568 18.228 12 18.228s6.228-2.796 6.228-6.228S15.432 5.772 12 5.772zM9.684 15.54V8.46L15.816 12l-6.132 3.54z", "tidal": "M12.012 3.992L8.008 7.996 4.004 3.992 0 7.996 4.004 12l4.004-4.004L12.012 12l-4.004 4.004 4.004 4.004 4.004-4.004L12.012 12l4.004-4.004-4.004-4.004zM16.042 7.996l3.979-3.979L24 7.996l-3.979 3.979z"};
+  function serviceEl(svc, soon) {
+    const a = document.createElement(svc.url ? "a" : "span");
+    a.className = "svc" + (svc.url ? "" : " pending");
+    if (svc.url) { a.href = svc.url; a.target = "_blank"; a.rel = "noopener"; }
+    if (svc.icon && ICONS[svc.icon]) {
+      a.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[svc.icon]}"/></svg>`;
+    } else if (svc.img) {
+      const m = document.createElement("span"); m.className = "img"; m.style.setProperty("--m", `url("${svc.img}")`); m.setAttribute("aria-hidden", "true");
+      a.appendChild(m);
+    }
+    a.appendChild(document.createTextNode(svc.label || ""));
+    return a;
+  }
+  {
+    if (ep.cover) { $("cover").src = ep.cover; $("cover").alt = `${ep.title} — cover`; } else $("cover").remove();
+    $("album-artist").textContent = ep.artist || "";
+    $("album-name").textContent = ep.title || "";
+    const n = ep.tracks.length;
+    const total = ep.tracks.reduce((s, t) => s + (t.duration || 0), 0);
+    const parts = [`ep · <b>${n} tracks</b>`];
+    if (total) parts.push(fmt(total));
+    if (ep.releaseDate) parts.push(`<b>${ep.releaseDate}</b>`);
+    $("album-facts").innerHTML = parts.join(" · ");
+    const now = Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : [];
+    now.forEach((b) => $("avail-now").appendChild(serviceEl(b)));
+    const soon = (ep.streaming && ep.streaming.services) || [];
+    if (soon.length) soon.forEach((b) => $("avail-soon").appendChild(serviceEl(b, true)));
+    else { $("avail-soon").remove(); document.querySelector(".soon-dt").remove(); }
+  }
 
   // ---- buy / streaming ---------------------------------------------------------
   {
