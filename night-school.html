@@ -211,7 +211,11 @@
   .score:nth-child(2) { align-self: center; }
   .score:nth-child(3) { align-self: flex-end; }
   .score .fig { position: relative; width: 100%; height: 100%; }
-  .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .9; }
+  .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .9; transform-origin: 50% 50%; animation: score-spin 140s linear infinite paused; }
+  .score:nth-child(2) .fig svg { animation-direction: reverse; animation-duration: 180s; }
+  .score:nth-child(3) .fig svg { animation-duration: 110s; }
+  .score.live .fig svg { animation-play-state: running; }
+  @keyframes score-spin { to { transform: rotate(360deg); } }
 
   @media (max-width: 720px) { .score { width: 80vw; } }
 
@@ -910,7 +914,7 @@
       ], { duration: CYCLE_MS, iterations: Infinity, delay: -phase }));
     });
     // only spend the frames while the figure is on screen
-    const io = new IntersectionObserver(([e]) => { anims.forEach((a) => (e.isIntersecting ? a.play() : a.pause())); }, { threshold: 0.05 });
+    const io = new IntersectionObserver(([e]) => { anims.forEach((a) => (e.isIntersecting ? a.play() : a.pause())); host.classList.toggle("live", e.isIntersecting); }, { threshold: 0.05 });
     io.observe(host);
   }
   {
