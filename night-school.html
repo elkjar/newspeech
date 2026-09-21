@@ -223,6 +223,15 @@
 
   @media (max-width: 720px) { .score { width: 80vw; } }
 
+  /* credits: liner notes — a label column and the names */
+  #credits dl { display: grid; grid-template-columns: max-content 1fr; gap: 10px 40px; margin: 0; max-width: 720px; }
+  #credits dt { color: #555; letter-spacing: 0.12em; padding-top: 3px; }
+  #credits dd { margin: 0; color: #ccc; }
+  #credits dd .name { display: block; font-family: "zxx-sans", ui-monospace, monospace; font-size: 17px; letter-spacing: 0.06em; color: #eee; line-height: 1.5; }
+  #credits dd .note { display: block; color: #999; }
+  #credits .gap { grid-column: 1 / -1; height: 14px; }
+  @media (max-width: 720px) { #credits dl { grid-template-columns: 1fr; gap: 4px 0; } #credits dt { margin-top: 14px; } }
+
   @media (max-width: 720px) {
     #scrim {
       background:
@@ -307,6 +316,25 @@
 
 <section id="scores">
   <div class="grid" id="score-grid"></div>
+</section>
+
+<section id="credits" class="sec">
+  <h2><span data-link>credits</span></h2>
+  <dl>
+    <dt>newspeech is</dt>
+    <dd><span class="name">chris elkjar</span></dd>
+    <div class="gap"></div>
+    <dt>joined on this recording by</dt>
+    <dd>
+      <span class="name">paul solo</span>
+      <span class="name">steve lucarelli</span>
+    </dd>
+    <div class="gap"></div>
+    <dt>recorded at</dt>
+    <dd><span class="note">STANDARD Audio Recorders, Lake Arrowhead, CA.</span></dd>
+    <dt>mixed by</dt>
+    <dd><span class="note">paul solo</span></dd>
+  </dl>
 </section>
 
   <div id="gate-wrap" hidden>
