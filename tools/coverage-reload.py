@@ -54,12 +54,14 @@ def parse(md):
 
 def render_blocks(blocks, pcls=""):
     out = []
+    ntables = sum(1 for b in blocks if b["kind"] == "table")
     for b in blocks:
         if b["kind"] == "p":
             out.append(f"  <p{pcls}>{inline(b['text'])}</p>")
         elif b["kind"] == "table":
             name = re.sub(r"\s+table$", "", b["name"])
-            if len(name.split()) > 1:
+            # label a table when its name says something, or when the section holds several
+            if len(name.split()) > 1 or ntables > 1:
                 out.append(f"  <h3>{inline(name)}</h3>")
             rows = "\n".join(f"        <tr><td>{inline(l)}</td><td>{inline(t)}</td></tr>" for l, t in b["rows"])
             out.append("  <div class=\"tbl-scroll\">\n    <table>\n      <tbody>\n" + rows + "\n      </tbody>\n    </table>\n  </div>")
