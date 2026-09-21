@@ -46,5 +46,8 @@ assets/hero/hero-clean.*
 # netlify cli link state
 .netlify/
 
-# EP listening-room audio (assets/ep/*.flac) — hosting decision pending, see night-school.html
+# EP listening-room audio. The files here are MIX TESTS, kept out of git.
+# When the release masters exist: encode 24-bit/48k FLAC to the same three
+# filenames, delete this rule, commit once — they are served from the repo
+# and never updated (Chris, 2026-09-20).
 assets/ep/*.flac
