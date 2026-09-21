@@ -79,13 +79,15 @@ def main():
     cap = next((s for t, s in secs.items() if t.startswith("figure caption")), None)
     if cap:
         page = re.sub(r"(<figcaption>).*?(</figcaption>)", lambda m: m.group(1) + inline(cap["blocks"][0]["text"]) + m.group(2), page, count=1, flags=re.S)
-    first = True
+    first = True; prev = None
     for title, sec in secs.items():
         if title not in SECTION_IDS: continue
         sid = SECTION_IDS[title]
-        cls = "col" if first else "col rule"; first = False
-        h2 = sec["fields"].get("h2", title)
-        parts = [f'<section class="{cls}" id="{sid}">', f"  <h2>{inline(h2)}</h2>"]
+        cls = "col" if first or prev == "statement" else "col rule"   # no rule right under the statement box
+        first = False; prev = sid
+        h2 = sec["fields"].get("h2")
+        if h2 is None and sid != "statement": h2 = title      # the statement box carries no heading unless given one
+        parts = [f'<section class="{cls}" id="{sid}">'] + ([f"  <h2>{inline(h2)}</h2>"] if h2 else [])
         if sid == "statement":
             parts.append('  <div class="statement">')
             parts.append(render_blocks([b for b in sec["blocks"] if b["kind"] == "p"]))

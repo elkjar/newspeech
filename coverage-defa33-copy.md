@@ -105,7 +105,7 @@ after the residency the library is published as an online instrument on newspeec
 
 ## newspeech
 
-- **h2:** who is asking
+- **h2:** about newspeech
 
 newspeech is chris elkjar's audio and video creative output: a band, a software sequencer, a set of destruction and loop-wear tools, a 24/7 generative broadcast programme, and some records made with them. the practice is built around the concept of unsynced systems intersecting and destruction, noise and wear as material.
 
