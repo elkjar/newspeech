@@ -211,7 +211,7 @@
   .score:nth-child(2) { align-self: center; }
   .score:nth-child(3) { align-self: flex-end; }
   .score .fig { position: relative; width: 100%; height: 100%; }
-  .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: .9; transform-origin: 50% 50%; animation: score-spin 140s linear infinite paused; }
+  .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 1; transform-origin: 50% 50%; animation: score-spin 140s linear infinite paused; }
   .score:nth-child(2) .fig svg { animation-direction: reverse; animation-duration: 180s; }
   .score:nth-child(3) .fig svg { animation-duration: 110s; }
   .score.live .fig svg { animation-play-state: running; }
@@ -872,6 +872,7 @@
   // unfolding. the three figures run out of phase and pause off screen.
   const CYCLE_MS = 12000, DRAW_MS = 3200, STROKE_MS = 800, HOLD_UNTIL_MS = 7600;
   const DOT_MS = 7000; // one breath
+  const INK_GAIN = 2.6; // the renderer's opacities are tuned for print; on a dark page the figure wants more ink
   async function mountScore(t, host, phase) {
     const url = (ep.scoresBase || "assets/ep/scores/") + t.slug + ".svg";
     let text;
@@ -883,6 +884,10 @@
     host.querySelector(".fig").appendChild(svg);
     const strokes = [...svg.querySelectorAll("path[stroke]")].filter((el) => el.getAttribute("stroke") !== "none");
     const fills = [...svg.querySelectorAll('path[fill]:not([fill="none"]), rect')];
+    // brighten in place: scale every element's own opacity, capped at 1, so the
+    // relative weights the renderer chose (chords under, hits over) survive
+    for (const el of strokes) el.setAttribute("stroke-opacity", String(Math.min(1, (parseFloat(el.getAttribute("stroke-opacity")) || 1) * INK_GAIN)));
+    for (const el of fills) el.setAttribute("fill-opacity", String(Math.min(1, (parseFloat(el.getAttribute("fill-opacity")) || 1) * INK_GAIN)));
     // measure once, in the DOM; set the dash to the path's own length so the
     // offset can sweep it on
     for (const el of strokes) {
