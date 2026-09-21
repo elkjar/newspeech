@@ -12,9 +12,9 @@
 //                        [--out out/] [--width 1920 --height 1080] [--fps 30]
 //   → out/<slug>.timeline.json per track + one render command per track
 //
-// Tune in the browser: open night-school.html, pick a visualizer with [ ] and
-// tweak its params with [0], press [c] to copy {page,state} for the current
-// track, paste it into the JSON. Then run the printed commands.
+// Pairings live in the JSON (page per track, ep.default as the fallback);
+// per-track params go in state.params in the same shape. Then run the
+// printed commands.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
