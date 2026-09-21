@@ -39,6 +39,17 @@
      the AnalyserNode so the page reacts to the EP exactly as it would to a mic. */
   #viz { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; z-index: 0; background: #050505; }
 
+  /* scrim: the visualizers are dense and the sleeve has to read over them.
+     a heavy fade on the left where the text lives, a light one along the
+     bottom for the status line — the right half stays clear for the picture. */
+  #scrim {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(5,5,5,.94) 0%, rgba(5,5,5,.88) 32%, rgba(5,5,5,.55) 50%, rgba(5,5,5,0) 68%),
+      radial-gradient(ellipse 520px 260px at 100% 0%, rgba(5,5,5,.9) 0%, rgba(5,5,5,.6) 55%, rgba(5,5,5,0) 100%),
+      linear-gradient(0deg, rgba(5,5,5,.7) 0%, rgba(5,5,5,0) 14%);
+  }
+
   /* the room overlays the frame; only the controls take the pointer so the
      page underneath still gets mouse movement everywhere else */
   #room { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
@@ -113,6 +124,11 @@
   #toast.on { opacity: 1; }
 
   @media (max-width: 720px) {
+    #scrim {
+      background:
+        linear-gradient(0deg, rgba(5,5,5,.94) 0%, rgba(5,5,5,.9) 48%, rgba(5,5,5,.3) 70%, rgba(5,5,5,0) 100%),
+        linear-gradient(180deg, rgba(5,5,5,.8) 0%, rgba(5,5,5,0) 26%);
+    }
     #sleeve { left: 16px; right: 16px; top: auto; bottom: 64px; transform: none; max-width: none; }
     h1 { margin-bottom: 14px; }
     #tracks li { grid-template-columns: 22px 1fr; }
@@ -124,6 +140,7 @@
 </head>
 <body>
 <iframe id="viz" title="visualizer" allow="midi"></iframe>
+<div id="scrim"></div>
 <audio id="player" crossorigin="anonymous" preload="metadata"></audio>
 
 <div id="room">
