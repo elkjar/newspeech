@@ -63,10 +63,10 @@
     position: absolute; left: var(--ns-gutter, 40px); top: 50%; transform: translateY(-50%);
     width: min(560px, calc(100% - 2 * var(--ns-gutter, 40px)));
   }
+  /* the heading is an instruction, not a title — tool-page scale */
   h1 {
-    font-family: "zxx-sans", ui-monospace, monospace;
-    font-weight: 400; font-size: clamp(34px, 6vw, 64px); line-height: 1;
-    letter-spacing: 0.04em; color: #eee; margin: 0 0 22px; cursor: default;
+    font-weight: 400; font-size: 14px; line-height: 1.5;
+    letter-spacing: 0.2em; color: #eee; margin: 0 0 14px; cursor: default;
   }
   h1 [data-link] { display: inline-block; }
 
@@ -183,7 +183,6 @@
         linear-gradient(180deg, rgba(5,5,5,.8) 0%, rgba(5,5,5,0) 26%);
     }
     #sleeve { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); top: auto; bottom: 64px; transform: none; width: auto; }
-    h1 { margin-bottom: 14px; }
     #tracks li { grid-template-columns: 22px 1fr; }
     #tracks .meta { grid-column: 2; }
     #buy { left: var(--ns-gutter, 16px); right: var(--ns-gutter, 16px); top: calc(28px + var(--ns-nav-h, 0px)); transform: none; }
@@ -197,7 +196,7 @@
 <div id="room">
   <div id="col">
   <div id="sleeve">
-    <h1><span data-link id="title"></span></h1>
+    <h1><span data-link>ruin this ep</span></h1>
     <ol id="tracks"></ol>
     <div id="ruin">
       <span class="lbl">ruin</span>
@@ -263,7 +262,6 @@
   let cur = -1; // current track index
 
   // ---- sleeve ------------------------------------------------------------------
-  $("title").textContent = ep.title;
   const fmt = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? `${h}:${String(m).padStart(2, "0")}` : m) + ":" + String(x).padStart(2, "0"); };
   const audioUrl = (t) => (ep.audioBase || "") + t.file;
   const list = $("tracks");
