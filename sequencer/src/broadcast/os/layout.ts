@@ -30,8 +30,15 @@ export type Format = '16:9' | '4:3';
 // signal, 4:3 to clean. (A WebGL "tube" pass on the visual window alone was
 // built and pulled the same day — the looks are about the whole OS; the
 // signal overlay renders better.)
-export type Look = 'clean' | 'signal';
-export const LOOKS: Look[] = ['clean', 'signal'];
+// `stream` (2026-09-22): the signal treatment with every texture coarsened
+// to what a YouTube re-encode can hold — 6 px scanlines, 3 px grain and
+// static, flicker stepped at 8 Hz. Clean "loses a lot of visual interest"
+// on the stream (Chris); fine 1 px texture is what the encoder destroys
+// first, so the texture stays and gets heavier, not finer.
+export type Look = 'clean' | 'signal' | 'stream';
+export const LOOKS: Look[] = ['clean', 'signal', 'stream'];
+// Texture cell per look, in stage px: grain, static, scanline pitch.
+export const LOOK_CELL: Record<Look, number> = { clean: 1, signal: 1, stream: 3 };
 
 export const MENUBAR_H = 28;
 
@@ -74,7 +81,7 @@ export const FORMATS: Record<Format, FormatSpec> = {
     zoom: 1.5,
     menubarOnAir: true,
     backdrop: false,
-    look: 'signal',
+    look: 'stream',
     // v1 was window px (whatever screen it was saved on); v2 is stage px.
     lsKey: 'broadcast.layout.v2',
   },
@@ -279,7 +286,7 @@ function loadLook(format: Format): Look {
   const f = FORMATS[format];
   try {
     const v = localStorage.getItem(f.lsKey + '.look');
-    if (v === 'clean' || v === 'signal') return v;
+    if (v === 'clean' || v === 'signal' || v === 'stream') return v;
     if (v === 'tube') return 'signal'; // 0.1.8–0.1.12
     // The 09-08 signal on/off switch (16:9 only): off → clean.
     if (format === '16:9' && localStorage.getItem(LS_SIGNAL) === '0') return 'clean';

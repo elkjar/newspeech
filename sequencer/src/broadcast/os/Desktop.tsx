@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { isTauri, convertFileSrc } from '@tauri-apps/api/core';
 import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
 import { setSignalEnabled } from './signal';
-import { useLayout, useStage, FORMATS, LOOKS, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
+import { useLayout, useStage, FORMATS, LOOKS, LOOK_CELL, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { useDirector, frameFor, forceShot, resumeAuto, shotLabel, KEY_SHOTS, type Shot } from './director';
 import { TitleLayer } from './TitleLayer';
 import { OSWindow } from './Window';
@@ -257,7 +257,16 @@ export function Desktop() {
           moved (Chris 2026-09-09: signal "absolutely crushing the rendering
           framerate"). Off in the clean look. */}
       {look !== 'clean' && (
-        <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.07, backgroundImage: `url(${GRAIN_TILE})`, backgroundSize: '256px 256px' }} />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            opacity: look === 'stream' ? 0.1 : 0.07,
+            backgroundImage: `url(${GRAIN_TILE})`,
+            // stream: the same tile blown up to 3 px cells — grain an encoder keeps
+            backgroundSize: `${256 * LOOK_CELL[look]}px ${256 * LOOK_CELL[look]}px`,
+            imageRendering: 'pixelated',
+          }}
+        />
       )}
 
       {/* the visual: one layer, always mounted (see visualLayer) — full

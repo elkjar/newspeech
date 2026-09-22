@@ -16,17 +16,23 @@
 // WebGL CRT sim on the visual are later tiers of the same envelope.
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { installSignalHooks, sampleSignal, signalEnabled } from './signal';
-import { useStage } from './layout';
+import { useStage, useLayout, LOOK_CELL } from './layout';
 
 export const TRANSMISSION_ID = 'ns-transmission';
 
-const SCAN_PERIOD = 3; // stage px
+const SCAN_PERIOD = 3; // stage px (signal); the stream look uses SCAN_PERIOD * cell
 const TILE = 512; // static tile, css px
 const TILES = 5;
+// The stream look steps the flicker instead of rolling it per frame: a new
+// value this often. Per-frame flicker is the most expensive thing an encoder
+// can be asked for and reads as mush; stepped, it survives as flicker.
+const STREAM_FLICKER_MS = 125;
 
-function makeStaticTiles(ctx: CanvasRenderingContext2D, dpr: number): CanvasPattern[] {
+// `cell` = grain size in stage px (1 = signal, 3 = stream: 1 px static
+// averages to grey under an encoder, 3 px holds as texture).
+function makeStaticTiles(ctx: CanvasRenderingContext2D, dpr: number, cell: number): CanvasPattern[] {
   const out: CanvasPattern[] = [];
-  const px = Math.max(1, Math.round(dpr));
+  const px = Math.max(1, Math.round(dpr * cell));
   for (let n = 0; n < TILES; n++) {
     const c = document.createElement('canvas');
     c.width = TILE * px;
@@ -35,9 +41,10 @@ function makeStaticTiles(ctx: CanvasRenderingContext2D, dpr: number): CanvasPatt
     if (!g) continue;
     const img = g.createImageData(c.width, c.height);
     const d = img.data;
-    // Fill per css pixel, replicated px×px so the grain is 1 css px on retina.
-    for (let y = 0; y < TILE; y++) {
-      for (let x = 0; x < TILE; x++) {
+    // Fill per grain cell, replicated px×px so the grain is `cell` css px on retina.
+    const cells = Math.ceil(TILE / cell);
+    for (let y = 0; y < cells; y++) {
+      for (let x = 0; x < cells; x++) {
         const v = Math.random();
         const val = v < 0.5 ? 0 : Math.floor(Math.pow((v - 0.5) / 0.5, 1.6) * 230);
         for (let yy = 0; yy < px; yy++) {
@@ -65,6 +72,12 @@ const STATIC_MAX_PX = 1600;
 const STATIC_MIN_MS = 30;
 
 export function SignalOverlay() {
+  const look = useLayout((s) => s.look);
+  // Scanlines: 1 dark px in 3 (signal); the stream look is 2 in 6, heavier —
+  // a pitch the encoder's blocks can carry without turning to shimmer.
+  const scanPeriod = SCAN_PERIOD * LOOK_CELL[look];
+  const scanLine = LOOK_CELL[look] === 1 ? 1 : 2;
+  const scanAlpha = LOOK_CELL[look] === 1 ? 0.42 : 0.5;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scanRef = useRef<HTMLDivElement>(null);
   const vigRef = useRef<HTMLDivElement>(null);
@@ -84,6 +97,7 @@ export function SignalOverlay() {
     let W = useStage.getState().w;
     let H = useStage.getState().h;
     let dpr = 1;
+    let cell = LOOK_CELL[useLayout.getState().look];
     let tiles: CanvasPattern[] = [];
 
     // The canvas lives on the stage (stage px, scaled with everything else);
@@ -98,7 +112,7 @@ export function SignalOverlay() {
       const next = Math.min(3, (window.devicePixelRatio || 1) * useStage.getState().scale, STATIC_MAX_PX / Math.max(W, H));
       if (next !== dpr || !tiles.length) {
         dpr = next;
-        tiles = makeStaticTiles(ctx, dpr);
+        tiles = makeStaticTiles(ctx, dpr, cell);
       }
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
@@ -107,6 +121,14 @@ export function SignalOverlay() {
     };
     resize();
     const unsubStage = useStage.subscribe(resize);
+    // The look changes the grain cell: rebuild the tiles.
+    const unsubLook = useLayout.subscribe((s) => {
+      const c = LOOK_CELL[s.look];
+      if (c !== cell) {
+        cell = c;
+        tiles = makeStaticTiles(ctx, dpr, cell);
+      }
+    });
 
     // Static fill: a random tile at a random offset. `setTransform` moves the
     // pattern origin; the rect is drawn in the same shifted space.
@@ -139,6 +161,8 @@ export function SignalOverlay() {
     let last = performance.now();
     let canvasDirty = false;
     let lastStaticAt = 0;
+    let flRand = 1;
+    let lastFlAt = 0;
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
       const dt = Math.min(0.1, (now - last) / 1000);
@@ -194,7 +218,11 @@ export function SignalOverlay() {
       // dim is a touch deeper to carry the same weight).
       const weak = 1 - f.quality;
       const dim = Math.max(0, 1 - f.brightness) * 1.5 + weak * 0.05;
-      const fl = f.flicker * (0.35 + 0.65 * Math.random());
+      if (cell === 1 || now - lastFlAt >= STREAM_FLICKER_MS) {
+        flRand = 0.35 + 0.65 * Math.random();
+        lastFlAt = now;
+      }
+      const fl = f.flicker * flRand;
       opacity(veilRef.current, dim + fl);
 
       // Lock flash: the bright frame that settles.
@@ -209,6 +237,7 @@ export function SignalOverlay() {
     return () => {
       cancelAnimationFrame(raf);
       unsubStage();
+      unsubLook();
       uninstall();
     };
   }, []);
@@ -219,7 +248,7 @@ export function SignalOverlay() {
       <div ref={barRef} style={{ ...LAYER, bottom: 'auto', height: '20%', opacity: 0, willChange: 'transform, opacity', background: 'linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.16) 55%, rgba(0,0,0,0.22) 62%, rgba(0,0,0,0) 100%)' }} />
       <div ref={veilRef} style={{ ...LAYER, opacity: 0, background: '#000', willChange: 'opacity' }} />
       <div ref={flashRef} style={{ ...LAYER, opacity: 0, background: '#fff', willChange: 'opacity' }} />
-      <div ref={scanRef} style={{ ...LAYER, opacity: 0, willChange: 'opacity', background: `repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) ${SCAN_PERIOD - 1}px, rgba(0,0,0,0.42) ${SCAN_PERIOD - 1}px, rgba(0,0,0,0.42) ${SCAN_PERIOD}px)` }} />
+      <div ref={scanRef} style={{ ...LAYER, opacity: 0, willChange: 'opacity', background: `repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) ${scanPeriod - scanLine}px, rgba(0,0,0,${scanAlpha}) ${scanPeriod - scanLine}px, rgba(0,0,0,${scanAlpha}) ${scanPeriod}px)` }} />
       <div ref={vigRef} style={{ ...LAYER, opacity: 0, willChange: 'opacity', background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%)' }} />
     </div>
   );

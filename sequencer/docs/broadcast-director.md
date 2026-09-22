@@ -192,5 +192,21 @@ D4 is independent of D0–D3 and can land first if the stream date needs it.
 - Verified: `tsc -b` clean; all eight shots screenshotted on the demo page (headless Chromium);
   a 150 s auto soak with an ident and a gap hold (log in the session).
 - Not yet: D2's Poisson ambient cuts with no cause (holds alone drive the schedule for now), D3
-  title content beyond song / record / bank, D4 the stream look (waits for the screen recording),
-  grow/fall transitions (every cut is hard).
+  title content beyond song / record / bank, grow/fall transitions (every cut is hard).
+
+## Status — 2026-09-22, later (fixes + the stream look)
+
+- **Forced shots hand back.** Every key had paused auto, so stepping through the shots silently
+  switched the schedule off (Chris: "not seeing any automated changes"). A forced shot now holds its
+  normal length and the schedule continues; `a` alone pauses / resumes.
+- **One visualizer, always mounted.** Cuts remounted the Visualizer (window ↔ bleed) and reloaded
+  the clip each time (Chris: "plays the same video every time"; the Tauri "Couldn't find callback
+  id" warnings were the same remount). `Desktop.tsx` now positions one `VisualWindow` layer per
+  frame — full picture for bleed / inset / backdrop, inside the visual window's chrome otherwise
+  (the window body is `hollow`), parked hidden and still playing when the shot has no visual.
+- **The `stream` look** (D4, revised). Chris on `clean`: "really loses a lot of visual interest …
+  this all being heavy handed still works." So not clean-plus-events: the whole signal treatment,
+  every texture coarsened to what a re-encode holds — `LOOK_CELL` 3 stage px for grain (desktop
+  tile blown up, pixelated, 0.10) and static tiles, scanlines 2-in-6 at 0.5 (signal: 1-in-3 at
+  0.42), flicker stepped at 8 Hz instead of per frame. Bar, vignette, dim, flash, tears unchanged.
+  16:9 default; `windows ▾ → look → stream`. Numbers are a first guess until the ffmpeg pass.
