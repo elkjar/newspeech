@@ -11,7 +11,7 @@ const GLYPHS = '▓▒░█▄▀■□▪▫—·/\\|_╱╲=+*#%&$@01xzq';
 
 // Scramble: every character starts as noise and settles left-to-right over
 // `settleMs`; afterwards a Poisson trickle of single-character flips.
-function useScramble(text: string, settleMs = 1100): string {
+export function useScramble(text: string, settleMs = 1100): string {
   const [out, setOut] = useState(() => text.replace(/\S/g, () => GLYPHS[Math.floor(Math.random() * GLYPHS.length)]));
   useEffect(() => {
     let raf = 0;

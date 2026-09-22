@@ -2,10 +2,13 @@
 // resizable from the corner, raised on pointer-down, closable. Content is
 // whatever the window is about — the OS only frames it.
 import { useRef, type ReactNode } from 'react';
-import { useLayout, useStage, FORMATS, WINDOW_TITLES, type WindowId } from './layout';
+import { useLayout, useStage, FORMATS, WINDOW_TITLES, type WindowId, type WinRect } from './layout';
 
-export function OSWindow({ id, children, index }: { id: WindowId; children: ReactNode; index: number }) {
-  const rect = useLayout((s) => s.windows[id]);
+// `rect` overrides the layout's (a director shot — director.ts); `locked`
+// windows neither drag, resize nor close: the shot owns their geometry.
+export function OSWindow({ id, children, index, rect: rectOverride, locked = false }: { id: WindowId; children: ReactNode; index: number; rect?: WinRect; locked?: boolean }) {
+  const saved = useLayout((s) => s.windows[id]);
+  const rect = rectOverride ?? saved;
   const move = useLayout((s) => s.move);
   const resize = useLayout((s) => s.resize);
   const raise = useLayout((s) => s.raise);
@@ -23,7 +26,7 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
   if (!rect.open) return null;
 
   const onTitleDown = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if (locked || (e.target as HTMLElement).closest('button')) return;
     raise(id);
     drag.current = { dx: sx(e.clientX) - rect.x, dy: sy(e.clientY) - rect.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -36,6 +39,7 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
     drag.current = null;
   };
   const onGripDown = (e: React.PointerEvent) => {
+    if (locked) return;
     raise(id);
     size.current = { x0: sx(e.clientX), y0: sy(e.clientY), w0: rect.w, h0: rect.h };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -74,7 +78,7 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
           padding: '0 8px',
           borderBottom: '1px solid rgba(255,255,255,0.22)',
           background: 'rgba(255,255,255,0.04)',
-          cursor: 'grab',
+          cursor: locked ? 'default' : 'grab',
           touchAction: 'none',
         }}
         onPointerDown={onTitleDown}
@@ -85,9 +89,11 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
         <span className="text-[8px] tracking-[0.2em] opacity-40 tabular-nums">{String(index).padStart(2, '0')}</span>
         <span className="font-sans text-[10px] tracking-[0.18em] lowercase">{WINDOW_TITLES[id]}</span>
         <span className="ml-auto flex items-center gap-3 text-[10px] opacity-50">
-          <button className="hover:opacity-100 px-1" onClick={() => toggle(id)} title="close">
-            ×
-          </button>
+          {!locked && (
+            <button className="hover:opacity-100 px-1" onClick={() => toggle(id)} title="close">
+              ×
+            </button>
+          )}
         </span>
       </header>
       {/* Content zoom (4:3 defaults to 1.5 — CRT type). `zoom` scales layout,
@@ -101,6 +107,7 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
       >
         {children}
       </div>
+      {!locked && (
       <div
         className="absolute right-0 bottom-0"
         style={{ width: 14, height: 14, cursor: 'nwse-resize', touchAction: 'none' }}
@@ -113,6 +120,7 @@ export function OSWindow({ id, children, index }: { id: WindowId; children: Reac
           <path d="M13 6 L6 13 M13 10 L10 13" stroke="white" strokeWidth="1" />
         </svg>
       </div>
+      )}
     </section>
   );
 }

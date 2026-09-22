@@ -1,7 +1,7 @@
 # BROADCAST — the director layer
 
 Design, 2026-09-22. Companion to `broadcast-set.md` (the runner, the OS, the signal layer, records,
-the gap). Nothing here is built.
+the gap). D0 + D1 built the same day (status at the end).
 
 ## Ask
 
@@ -62,8 +62,8 @@ in stage px, both formats.
 | shot | picture | type |
 |---|---|---|
 | **home** | the saved arrangement, as designed | as saved (zoom per format) |
-| **close `<win>`** | one window fills the safe area, chrome kept, others closed | window zoom 2–3 (`ZOOM_MAX` is 3) — type gets big when the shot gets close, not everywhere |
-| **pair `<a> <b>`** | two windows split the safe area (ghost + visual, now + banks) | zoom 1.5–2 |
+| **close `<win>`** | one window fills the safe area, chrome kept, others closed | as saved — more of the same-size content (Chris: per-shot type sizes "awkward") |
+| **pair `<a> <b>`** | two windows split the safe area (ghost + visual, now + banks) | as saved |
 | **bleed** | the visual with no chrome, full picture, menubar off | — |
 | **inset** | the visual full-bleed, the desktop scaled to ~40% in a corner over it | as saved |
 | **title** | black, one line of text at ≥ 40 px stage: song title / seed / record id / bank name / a Ghost pick | huge |
@@ -133,8 +133,10 @@ Next to `clean` / `signal` — or a `stream` flag on `signal`:
 - signal *events* unchanged, but event static at 2–3 stage px grain (1 px static averages to grey
   under an encoder; 2 px holds as texture);
 - gap static ceiling as is — a full-frame texture reads as broken video however it lands;
-- `home` type: nothing under 12 px stage. Fewer windows in `home` rather than zoom, since the
-  director gives every window its own close shot.
+- type: one uniform step up for the whole picture, never per shot (Chris 2026-09-22: "fonts
+  changing size is going to be awkward, but … increase the size across the board in a uniform
+  way"). Done as the 16:9 content zoom default 1 → 1.5 (`layout.ts`, saved 1 migrates once); the
+  saved arrangement needs re-laying since every window now holds 2/3 of the content it did.
 
 Bitrate starvation during a full-frame static burst is correct behaviour for this piece. If it goes
 too far, lower `STATIC_MIN_MS` repaint rate during events.
@@ -168,3 +170,27 @@ D4 is independent of D0–D3 and can land first if the stream date needs it.
 - Whether `home` should be redesigned sparser once every window has its own shot.
 - Second MacBook: BROADCAST fullscreen on one, HDMI capture into OBS on the other. Screen share /
   NDI over the LAN adds a second compression stage before YouTube's.
+
+## Status — 2026-09-22 (D0 + D1 built, local commit, not pushed)
+
+- `os/director.ts` — `Shot`, `frameFor()` (rects per shot from the saved layout + safe area),
+  `useDirector` (`on` persisted at `broadcast.director.on`, default on; `auto`), the schedule
+  (holds per kind × density, downbeat quantise off `globalStep % 32`, entropy leans the pick,
+  never the same shot twice), the event cuts (song landed → title → home; bank swap landed;
+  record → title → bleed; ident pins home/bleed; gap stands down, home on return), `forceShot` /
+  `resumeAuto`, keys, `demoShot`.
+- `os/TitleLayer.tsx` — the title / black shot: zxx sans at up to 96 px stage (64 on 4:3), the
+  card scramble settling in, one small mono line under.
+- `Desktop.tsx` renders the frame: window rects from the shot (`OSWindow` `rect` + `locked`),
+  bleed = the `VisualWindow` full-bleed at full strength (the layout's backdrop mode is the same
+  layer at 0.55), inset = the window layer scaled 0.38 bottom-left, menubar off in bleed / inset /
+  title / black, `windows ▾ → director` (on, auto · current shot, the nine shots).
+- Keys on air (and in `?demo=1`): `1` home · `2` close ghost · `3` close visual · `4` close now ·
+  `5` pair ghost+visual · `6` bleed · `7` inset · `8` title · `9` black — each pauses auto;
+  `a` toggles auto (resume = home, then the schedule). Standby keeps its digits.
+- `window.__nsShot(kind, arg)` on the demo page; every cut logs `[director] <shot> — <reason>`.
+- Verified: `tsc -b` clean; all eight shots screenshotted on the demo page (headless Chromium);
+  a 150 s auto soak with an ident and a gap hold (log in the session).
+- Not yet: D2's Poisson ambient cuts with no cause (holds alone drive the schedule for now), D3
+  title content beyond song / record / bank, D4 the stream look (waits for the screen recording),
+  grow/fall transitions (every cut is hard).

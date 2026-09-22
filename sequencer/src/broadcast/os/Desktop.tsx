@@ -4,11 +4,11 @@
 // persists so the machine boots into the same face every time.
 import { useEffect, useState } from 'react';
 import { isTauri, convertFileSrc } from '@tauri-apps/api/core';
-import { Visualizer } from '../../stream/Visualizer';
-import { ReactiveVisual } from './ReactiveVisual';
 import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
 import { setSignalEnabled } from './signal';
 import { useLayout, useStage, FORMATS, LOOKS, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
+import { useDirector, frameFor, forceShot, resumeAuto, shotLabel, KEY_SHOTS, type Shot } from './director';
+import { TitleLayer } from './TitleLayer';
 import { OSWindow } from './Window';
 import { SetWindow } from './windows/SetWindow';
 import { NowWindow } from './windows/NowWindow';
@@ -147,6 +147,8 @@ export function Desktop() {
   const clamp = useLayout((s) => s.clamp);
   const look = useLayout((s) => s.look);
   const setLook = useLayout((s) => s.setLook);
+  const setDirectorOn = useDirector((s) => s.setOn);
+  const setDirectorAuto = useDirector((s) => s.setAuto);
   useEffect(() => clamp(), [clamp]);
   const fit = useStage();
   const clock = useClockText();
@@ -181,6 +183,17 @@ export function Desktop() {
   useEffect(() => {
     if (cardUp) raise('card');
   }, [cardUp, raise]);
+  // The director's shot (director.ts): the saved arrangement is `home`;
+  // any other shot is a transient frame over it. Home whenever the director
+  // is off, the gap owns the picture, or the layout is being arranged.
+  const dOn = useDirector((s) => s.on);
+  const dAuto = useDirector((s) => s.auto);
+  const dShot = useDirector((s) => s.shot);
+  const gapUp = useGap((g) => g.phase !== 'none');
+  const shot: Shot = !dOn || gapUp || arranging ? { kind: 'home' } : dShot;
+  const frame = frameFor(shot, windows, format);
+  const locked = shot.kind !== 'home';
+  const bleed = backdrop || frame.bleed;
 
   return (
     <div data-tauri-drag-region className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
@@ -225,11 +238,12 @@ export function Desktop() {
         <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.07, backgroundImage: `url(${GRAIN_TILE})`, backgroundSize: '256px 256px' }} />
       )}
 
-      {backdrop && isTauri() && !hidden.has('backdrop') && (
-        <div className="absolute inset-0" style={{ opacity: 0.55 }}>
-          <ReactiveVisual>
-            <Visualizer />
-          </ReactiveVisual>
+      {/* the visual full-bleed: the layout's backdrop mode (dimmed, under the
+          windows) or a director bleed/inset shot (full strength). One
+          Visualizer at a time — the visual window is not rendered meanwhile. */}
+      {bleed && !hidden.has('backdrop') && (
+        <div className="absolute inset-0" style={{ opacity: frame.bleed ? 1 : 0.55 }}>
+          <VisualWindow />
         </div>
       )}
 
@@ -243,7 +257,7 @@ export function Desktop() {
           background: 'rgba(5,5,5,0.85)',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
           zIndex: 10000,
-          visibility: hidden.has('menubar') || !menubarUp ? 'hidden' : 'visible',
+          visibility: hidden.has('menubar') || !menubarUp || (!frame.menubar && !arranging) ? 'hidden' : 'visible',
         }}
       >
         <span className="font-sans text-[12px] tracking-[0.22em] normal-case">NEWSPEECH // BROADCAST</span>
@@ -268,6 +282,34 @@ export function Desktop() {
                   >
                     <span className="w-3">{windows[id].open ? '■' : '□'}</span>
                     {WINDOW_TITLES[id]}
+                  </button>
+                ))}
+                <div className="my-1" style={{ borderTop: '1px solid rgba(255,255,255,0.14)' }} />
+                <div className="px-3 leading-[18px] text-[8px] tracking-[0.18em] uppercase text-white/35">director</div>
+                <button
+                  className="flex items-center gap-2 px-3 leading-[22px] text-left hover:bg-white/10"
+                  style={{ color: dOn ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}
+                  onClick={() => setDirectorOn(!dOn)}
+                >
+                  <span className="w-3">{dOn ? '■' : '□'}</span>
+                  on
+                </button>
+                <button
+                  className="flex items-center gap-2 px-3 leading-[22px] text-left hover:bg-white/10"
+                  style={{ color: dAuto ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)' }}
+                  onClick={() => (dAuto ? setDirectorAuto(false) : resumeAuto())}
+                >
+                  <span className="w-3">{dAuto ? '●' : '○'}</span>
+                  auto · {shotLabel(dShot)}
+                </button>
+                {KEY_SHOTS.map(([key, make, label]) => (
+                  <button
+                    key={key}
+                    className="flex items-center gap-2 px-3 leading-[20px] text-left hover:bg-white/10 text-white/60"
+                    onClick={() => forceShot(make())}
+                  >
+                    <span className="w-3 tabular-nums opacity-50">{key}</span>
+                    {label}
                   </button>
                 ))}
                 <div className="my-1" style={{ borderTop: '1px solid rgba(255,255,255,0.14)' }} />
@@ -314,18 +356,31 @@ export function Desktop() {
         </div>
       )}
 
-      {/* windows */}
+      {/* windows — at the shot's rects (director.ts); the inset shot scales
+          the whole set of them down over the bleed */}
+      <div
+        className="absolute"
+        style={
+          frame.inset
+            ? { left: frame.inset.x, top: frame.inset.y, width: spec.w, height: spec.h, transform: `scale(${frame.inset.scale})`, transformOrigin: '0 0', zIndex: 5000 }
+            : { inset: 0 }
+        }
+      >
       {WINDOW_ORDER.map((id, i) => {
-        if (id === 'visual' && backdrop) return null;
+        if (id === 'visual' && bleed) return null;
         if (id === 'card' && !cardUp) return null;
         if (hidden.has(id)) return null;
+        const r = frame.rects[id];
+        if (!r) return null;
         const C = CONTENT[id];
         return (
-          <OSWindow key={id} id={id} index={i + 1}>
+          <OSWindow key={id} id={id} index={i + 1} rect={locked ? r : undefined} locked={locked}>
             <C />
           </OSWindow>
         );
       })}
+      </div>
+      {(frame.title || frame.black) && <TitleLayer title={frame.title} />}
       </div>
       {!arranging && look !== 'clean' && <SignalOverlay />}
       <NextPanel />

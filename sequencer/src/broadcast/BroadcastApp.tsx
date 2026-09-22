@@ -41,6 +41,7 @@ import { startGapPhase } from './gap';
 import { Desktop } from './os/Desktop';
 import { useLayout } from './os/layout';
 import { installStreamState } from './os/streamState';
+import { installDirector, directorKey } from './os/director';
 import { seedDemo } from './os/demo';
 
 const NATIVE = isTauri();
@@ -289,6 +290,9 @@ export function BroadcastApp() {
   }, []);
 
   useEffect(() => (NATIVE ? installStreamState() : undefined), []);
+  // The director cuts the picture between shots (os/director.ts) — on in the
+  // demo too, so the shots can be seen without the engine.
+  useEffect(() => installDirector(), []);
 
   useDropTarget((paths) => void addToSet(paths));
 
@@ -318,6 +322,12 @@ export function BroadcastApp() {
           await w.setFullscreen(!full);
           console.info(`[window] fullscreen=${!full}`);
         });
+        return;
+      }
+      // Director: digits force a shot, `a` resumes the automatic cuts. On
+      // air (or in the demo) only — standby's fields take digits.
+      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && (DEMO || useStationBoot.getState().phase === 'onair') && directorKey(e.key)) {
+        e.preventDefault();
         return;
       }
       if (e.code === 'Escape' && useStationBoot.getState().phase === 'standby') {
