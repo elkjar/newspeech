@@ -11,6 +11,17 @@ import { emitStreamEvent, subscribeStreamEvents } from './streamEvents';
 //
 // Hotkeys: `n` next, `p` previous, `r` rescan folder.
 
+// The folder comes back sorted; a fresh order per load so no launch opens
+// on the same clip and walks the same alphabet (2026-09-21).
+function shuffled<T>(list: T[]): T[] {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 const VIDEO_EXT = /\.(mp4|mov|webm)$/i;
 const IMAGE_EXT = /\.(jpe?g|png)$/i;
 
@@ -41,7 +52,7 @@ export function Pool() {
         ]);
         if (cancelled) return;
         setDir(dirPath);
-        setFiles(list);
+        setFiles(shuffled(list));
         setStatus(list.length === 0 ? { kind: 'empty', dir: dirPath } : { kind: 'ready' });
       } catch (e) {
         if (!cancelled) {
@@ -122,7 +133,7 @@ export function Pool() {
       } else if (e.key === 'r') {
         void invoke<string[]>('pool_list_visuals')
           .then((list) => {
-            setFiles(list);
+            setFiles(shuffled(list));
             setIndex(0);
             setStatus(list.length === 0 ? { kind: 'empty', dir } : { kind: 'ready' });
           })
