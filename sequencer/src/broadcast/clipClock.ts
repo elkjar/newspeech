@@ -15,7 +15,7 @@ import { advancePool } from '../stream/poolControl';
 
 // Seconds a clip may hold, [min, max] with jitter.
 export const RECORD_CLIP_SECS: [number, number] = [18, 40];
-export const MAX_CLIP_SECS: [number, number] = [40, 70];
+export const MAX_CLIP_SECS: [number, number] = [20, 30];
 // Longest wait for a bar boundary before advancing anyway.
 const BAR_WAIT_CAP_MS = 8000;
 const STEPS_PER_BAR = 32;
