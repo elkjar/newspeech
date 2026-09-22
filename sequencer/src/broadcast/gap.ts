@@ -274,6 +274,17 @@ async function runSignOff(): Promise<void> {
   useBroadcast.setState({ status: 'ended' });
 }
 
+// End transmission now (Cmd/Ctrl+E on air): the same sign-off the song
+// limit runs, at the operator's word — the OS collapses, one interstitial,
+// the end panel, then space takes the station back to standby. Ignored when
+// a gap already owns the picture or nothing is running.
+export function signOffNow(): boolean {
+  if (useGap.getState().phase !== 'none') return false;
+  if (useBroadcast.getState().status !== 'running') return false;
+  void runSignOff();
+  return true;
+}
+
 function shouldSignOff(): boolean {
   const g = useGap.getState();
   if (g.songLimit === null || g.phase !== 'none') return false;

@@ -31,7 +31,7 @@ import { presetNativeDeviceName, setSafetyLimiter } from '../audio/nativeEngine'
 import { setConfiguredUserSamplesDir } from '../instruments/userSamplesDir';
 import { togglePlayback, panicKill } from '../audio/transport';
 import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
-import { installGapConductor, scanInterstitials, useGap } from './gap';
+import { installGapConductor, scanInterstitials, signOffNow, useGap } from './gap';
 import { installCards, scanCards } from './cards';
 import { installGround, scanGround } from './ground';
 import { installRecordClock } from './recordClock';
@@ -305,6 +305,14 @@ export function BroadcastApp() {
         return;
       }
       const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement | null)?.tagName ?? '');
+      // Cmd/Ctrl+E — end transmission: sign off now (Chris 2026-09-22: "is
+      // there a way to exit a stream during a broadcast?"). A modifier so a
+      // stray key on air can't do it.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'e' || e.key === 'E') && !e.altKey) {
+        e.preventDefault();
+        if (signOffNow()) console.info('[broadcast] end transmission (Cmd+E)');
+        return;
+      }
       // d — hop the window to the next display (Rust re-fits it there: the
       // 4:3 picture on a CRT, 16:9 elsewhere). The frameless window has no
       // title bar and standby hides the menubar, so this is how it travels.

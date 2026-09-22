@@ -134,7 +134,12 @@ function pickIndex(): number | null {
   const pool: number[] = [];
   for (let i = 0; i < n; i++) if (!exclude.has(i)) pool.push(i);
   const from = pool.length ? pool : [...Array(n).keys()].filter((i) => i !== s.current);
-  return from[Math.floor(Math.random() * from.length)] ?? null;
+  const idx = from[Math.floor(Math.random() * from.length)] ?? null;
+  // Diagnostic (Chris 2026-09-22: "not sure how random the song selection
+  // actually is — I seem to get the same ones each time"): the pool the
+  // pick was drawn from, so a run of repeats can be read against it.
+  console.info(`[broadcast] pick ${idx === null ? '—' : s.entries[idx]?.name} from ${from.length} of ${n} (excluding ${[...exclude].map((i) => s.entries[i]?.name).join(', ') || 'none'})`);
+  return idx;
 }
 
 // Parse the next pick into a free performance slot. Unreadable files are
