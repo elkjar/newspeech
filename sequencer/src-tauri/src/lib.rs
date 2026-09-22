@@ -159,6 +159,17 @@ fn pool_list_visuals() -> Result<Vec<String>, String> {
       Err(_) => continue,
     };
     let path = entry.path();
+    // `_`-prefixed entries are the folder's own bookkeeping (`_originals/`,
+    // `_pool-manifest.tsv`, `_historic-sheet-N.png` contact sheets, helper
+    // scripts) — never pool material. Same for dotfiles (2026-09-22).
+    let hidden = path
+      .file_name()
+      .and_then(|n| n.to_str())
+      .map(|n| n.starts_with('_') || n.starts_with('.'))
+      .unwrap_or(true);
+    if hidden || path.is_dir() {
+      continue;
+    }
     let ext = path
       .extension()
       .and_then(|e| e.to_str())

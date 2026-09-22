@@ -65,8 +65,10 @@ export interface Frame {
 const CLOSE_MARGIN: Record<Format, number> = { '16:9': 24, '4:3': 0 };
 const INSET_SCALE = 0.38;
 
-export const CLOSE_CANDIDATES: WindowId[] = ['ghost', 'visual', 'now', 'banks'];
-const CLOSE_WEIGHT: Record<WindowId, number> = { ghost: 0.4, visual: 0.25, now: 0.2, banks: 0.15, set: 0, shape: 0, sys: 0, card: 0 };
+// `banks` full-frame is not a picture (Chris, 2026-09-22) — it stays in
+// pairs and home, never a close.
+export const CLOSE_CANDIDATES: WindowId[] = ['ghost', 'visual', 'now'];
+const CLOSE_WEIGHT: Record<WindowId, number> = { ghost: 0.45, visual: 0.3, now: 0.25, banks: 0, set: 0, shape: 0, sys: 0, card: 0 };
 const PAIRS: Array<[WindowId, WindowId]> = [
   ['ghost', 'visual'],
   ['now', 'banks'],
