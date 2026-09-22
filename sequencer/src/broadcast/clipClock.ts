@@ -13,9 +13,11 @@ import { useSequencerStore } from '../state/store';
 import { subscribeStreamEvents } from '../stream/streamEvents';
 import { advancePool } from '../stream/poolControl';
 
-// Seconds a clip may hold, [min, max] with jitter.
-export const RECORD_CLIP_SECS: [number, number] = [18, 40];
+// Seconds a clip may hold, [min, max] with jitter. One range for songs and
+// records since 2026-09-22 (Chris: "20 - 30 seconds max"); the record
+// clock's old 18–40 s would have outlasted the song maximum.
 export const MAX_CLIP_SECS: [number, number] = [20, 30];
+export const RECORD_CLIP_SECS: [number, number] = MAX_CLIP_SECS;
 // Longest wait for a bar boundary before advancing anyway.
 const BAR_WAIT_CAP_MS = 8000;
 const STEPS_PER_BAR = 32;
