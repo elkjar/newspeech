@@ -34,7 +34,7 @@ import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
 import { installGapConductor, scanInterstitials, signOffNow, useGap } from './gap';
 import { installCards, scanCards } from './cards';
 import { installGround, scanGround } from './ground';
-import { installRecordClock } from './recordClock';
+import { installClipClock } from './clipClock';
 import { installStationBoot, stationGo, cancelAutoGo, useStationBoot } from './boot';
 import { mergeLaunchArgs, rememberLaunchArgs, requestStandbyOnce, useSettings } from './settings';
 import { startGapPhase } from './gap';
@@ -151,7 +151,7 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
   useEffect(() => installGapConductor(), []);
   useEffect(() => installCards(() => useBroadcast.getState().setPaths), []);
   useEffect(() => installGround(), []);
-  useEffect(() => installRecordClock(), []);
+  useEffect(() => installClipClock(), []);
   useEffect(() => {
     let last = '';
     const scan = () => {

@@ -81,7 +81,7 @@ or `bleed` while up. Keys: 1 home · 2 close visual · 3 pair · 4 3-up · 5 4-u
 ### Triggers (what cuts)
 
 All read from what already flows: the 10 Hz `state` snapshot, `StreamEvent`s, `useGap`, `useBroadcast`
-station, `recordClock`, `cards`.
+station, `clipClock`, `cards`.
 
 | signal | cut |
 |---|---|
@@ -89,7 +89,7 @@ station, `recordClock`, `cards`.
 | bank swap (`pendingBank` count-in lands) | a cut. Which shot depends on density (below) |
 | fill / Ghost `ghost` event with high weight | `close ghost` for 1–2 bars, then back |
 | `mutate` / `param` / `lfo` bursts | `close banks` or `close shape`, short |
-| record starts | `title` (record id, seed) → `bleed`; `recordClock` turns the clip; every clip change is a cut between `bleed` / `inset` / `close visual` |
+| record starts | `title` (record id, seed) → `bleed`; `clipClock` turns the clip (and holds every clip to `MAX_CLIP_SECS` under a song); every clip change is a cut between `bleed` / `inset` / `close visual` |
 | card shown (`showCard`) | force `home` or `bleed` until `hideCard` |
 | gap `hold` / `swap` / `reboot` / `boot` | director stands down; the gap owns the picture (windows fall away, static ceiling) |
 | gap `off` (sign-off) | `black` → `title` (sign-off card) → `black` |
@@ -97,7 +97,7 @@ station, `recordClock`, `cards`.
 
 ### Holds (how long)
 
-Per-shot `[min, max]` seconds; the actual hold is drawn like `RECORD_CLIP_SECS`, bar-quantised where
+Per-shot `[min, max]` seconds; the actual hold is drawn like `clipClock`'s ranges, bar-quantised where
 a tempo is running so cuts land on downbeats.
 
 | shot | hold |
