@@ -14,6 +14,11 @@ function useClock(): number {
   return Date.now();
 }
 
+function fmtClock(secs: number): string {
+  const s = Math.max(0, Math.floor(secs));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
 export function fmtUptime(startedAt: number | null, now: number): string {
   if (startedAt === null) return '--:--:--';
   const s = Math.floor((now - startedAt) / 1000);
@@ -35,7 +40,11 @@ export function NowWindow() {
   const b = useBroadcast();
   const now = useClock();
   const key = `${NOTE_NAMES[((rootNote % 12) + 12) % 12]} ${scale}`;
-  const title = b.status === 'running' ? songTitle ?? 'untitled' : '—';
+  // A record (finished audio in the set) has no bpm/key/bars — the transport
+  // is stopped and Ghost idle while it plays. Show the file and its clock.
+  const rec = b.record;
+  const title = b.status === 'running' ? (rec ? rec.name : songTitle ?? 'untitled') : '—';
+  const recElapsed = rec ? (performance.now() - rec.startedAt) / 1000 : 0;
 
   return (
     <div className="h-full flex flex-col px-4 py-3 font-mono">
@@ -49,11 +58,23 @@ export function NowWindow() {
         {title}
       </div>
       <div className="mt-auto grid grid-cols-4 gap-x-4 gap-y-2 text-[10px] text-white/75 tabular-nums">
-        <Cell k="bpm" v={String(Math.round(bpm))} />
-        <Cell k="key" v={key} />
-        <Cell k="shape" v={shape} />
-        <Cell k="bar" v={String(bars + 1).padStart(3, '0')} />
-        <Cell k="transport" v={playing ? 'running' : 'stopped'} />
+        {rec ? (
+          <>
+            <Cell k="source" v="record" />
+            <Cell k="time" v={fmtClock(recElapsed)} />
+            <Cell k="length" v={fmtClock(rec.durationSecs)} />
+            <Cell k="left" v={fmtClock(rec.durationSecs - recElapsed)} />
+            <Cell k="transport" v="record" />
+          </>
+        ) : (
+          <>
+            <Cell k="bpm" v={String(Math.round(bpm))} />
+            <Cell k="key" v={key} />
+            <Cell k="shape" v={shape} />
+            <Cell k="bar" v={String(bars + 1).padStart(3, '0')} />
+            <Cell k="transport" v={playing ? 'running' : 'stopped'} />
+          </>
+        )}
         <Cell k="uptime" v={fmtUptime(b.startedAt, now)} />
         <Cell k="played" v={String(b.played)} />
         <Cell k="next" v={b.next !== null && b.entries[b.next] ? b.entries[b.next].name : '—'} />

@@ -19,7 +19,7 @@ import { useSequencerStore } from '../state/store';
 import { setSongEndInterceptor } from '../ghost/ghost';
 import { loadSample, triggerSample } from '../audio/nativeEngine';
 import { togglePlayback } from '../audio/transport';
-import { useBroadcast } from './setlist';
+import { useBroadcast, AUDIO_SLOT, startStagedRecord, setRecordEndHandler } from './setlist';
 import { dirOf } from '../state/persist';
 
 // `boot` = station initializing at launch (boot.ts) — same collapse as a
@@ -234,9 +234,15 @@ async function runGap(nextSlot: number, short: boolean): Promise<void> {
       useGap.setState({ phase: 'none', progress: 0 });
       return;
     }
-    if (st.performance.songs[nextSlot]) st.loadSong(nextSlot);
-    else console.warn('[gap] staged slot emptied during the gap; restarting current');
-    if (!useSequencerStore.getState().playing) await togglePlayback();
+    if (nextSlot === AUDIO_SLOT) {
+      // The staged item is a record: no slot to load, no transport — the
+      // file fires and its own end comes back through the record handler.
+      if (!(await startStagedRecord())) console.warn('[gap] staged record vanished during the gap; nothing to play');
+    } else {
+      if (st.performance.songs[nextSlot]) st.loadSong(nextSlot);
+      else console.warn('[gap] staged slot emptied during the gap; restarting current');
+      if (!useSequencerStore.getState().playing) await togglePlayback();
+    }
     const rebootSecs = short ? SWAP_REBOOT_SECS : REBOOT_SECS;
     useGap.setState({ phase: 'reboot', progress: 0, startedAt: performance.now(), duration: rebootSecs * 1000 });
     if (!short) armClock(false);
@@ -275,27 +281,35 @@ function shouldSignOff(): boolean {
   return b.status === 'running' && b.played + 1 >= g.songLimit;
 }
 
+// A song (Ghost) or a record (setlist timer) has reached its end with
+// `nextSlot` staged. Every end is a gap: sign-off when the song limit is
+// reached, the full interstitial when the station clock says so, the short
+// swap gap otherwise.
+function onItemEnd(nextSlot: number): void {
+  // While a gap is running (the tick or two before the transport stops,
+  // and the reboot) the end stays ours — Ghost must not swap under us.
+  const phase = useGap.getState().phase;
+  if (phase === 'hold' || phase === 'swap' || phase === 'off') return;
+  if (shouldSignOff()) {
+    void runSignOff();
+    return;
+  }
+  void runGap(nextSlot, !shouldGap());
+}
+
 let installed = false;
 export function installGapConductor(): () => void {
   if (installed) return () => {};
   installed = true;
   setSongEndInterceptor((_store, nextSlot) => {
-    // While a gap is running (the tick or two before the transport stops,
-    // and the reboot) the end stays ours — Ghost must not swap under us.
-    const phase = useGap.getState().phase;
-    if (phase === 'hold' || phase === 'swap' || phase === 'off') return true;
-    if (shouldSignOff()) {
-      void runSignOff();
-      return true;
-    }
-    // Every song end is a gap: the full interstitial when the station clock
-    // says so, the short swap gap otherwise.
-    void runGap(nextSlot, !shouldGap());
+    onItemEnd(nextSlot);
     return true;
   });
+  setRecordEndHandler(onItemEnd);
   return () => {
     installed = false;
     setSongEndInterceptor(null);
+    setRecordEndHandler(null);
     if (ticker !== null) window.clearInterval(ticker);
     ticker = null;
   };
@@ -326,6 +340,7 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     installed = false;
     setSongEndInterceptor(null);
+    setRecordEndHandler(null);
     if (ticker !== null) window.clearInterval(ticker);
     ticker = null;
   });

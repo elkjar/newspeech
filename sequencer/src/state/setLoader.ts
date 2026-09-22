@@ -13,14 +13,30 @@ import {
   type SeqGlobalFx,
 } from './persist';
 
+// `seq` = a sequenced song Ghost plays live; `audio` = a finished record
+// (wav/aif) BROADCAST plays through the engine as a one-shot — the mixes of
+// a release, ruined prints, anything mastered. Same setlist, same picks,
+// same gaps and cards between.
+export type SetEntryKind = 'seq' | 'audio';
+
 export interface SetEntry {
   path: string;
   name: string;
+  kind: SetEntryKind;
 }
 
-// Expand dropped / launch paths (folders, .seq files, .seqset files) into an
-// ordered list of .seq entries. A .seqset contributes its referenced songs in
-// slot order (absolute path first, then relative to the set's folder).
+const AUDIO_RE = /\.(wav|aif|aiff)$/i;
+export function setEntryKind(path: string): SetEntryKind {
+  return AUDIO_RE.test(path) ? 'audio' : 'seq';
+}
+function audioNameFromFilename(path: string): string {
+  const base = path.split(/[/\\]/).pop() ?? path;
+  return base.replace(AUDIO_RE, '');
+}
+
+// Expand dropped / launch paths (folders, .seq / audio files, .seqset files)
+// into an ordered list of entries. A .seqset contributes its referenced songs
+// in slot order (absolute path first, then relative to the set's folder).
 // Folders are walked by the Rust side (a few levels deep), sorted.
 export async function expandSetPaths(paths: string[]): Promise<SetEntry[]> {
   const out: SetEntry[] = [];
@@ -28,7 +44,8 @@ export async function expandSetPaths(paths: string[]): Promise<SetEntry[]> {
   const push = (path: string, name?: string) => {
     if (seen.has(path)) return;
     seen.add(path);
-    out.push({ path, name: name ?? songNameFromFilename(path) });
+    const kind = setEntryKind(path);
+    out.push({ path, name: name ?? (kind === 'audio' ? audioNameFromFilename(path) : songNameFromFilename(path)), kind });
   };
   const plain: string[] = [];
   for (const p of paths) {
@@ -74,6 +91,7 @@ export async function readSongFile(entry: SetEntry): Promise<Song | null> {
 // saturation) — a Song snapshot doesn't carry those, so the set conductor
 // applies them itself at the swap.
 export async function readSeqEntry(entry: SetEntry): Promise<{ song: Song; fx: SeqGlobalFx | null } | null> {
+  if (entry.kind === 'audio') return null;
   let text: string;
   try {
     text = await invoke<string>('read_text_file', { path: entry.path });

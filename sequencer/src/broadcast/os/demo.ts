@@ -29,7 +29,7 @@ export function seedDemo(): void {
     ],
   });
   useBroadcast.setState({
-    entries: NAMES.map((n) => ({ path: `/Users/demo/Desktop/BROADCAST-TEST/${n}.seq`, name: n })),
+    entries: NAMES.map((n) => ({ path: `/Users/demo/Desktop/BROADCAST-TEST/${n}.seq`, name: n, kind: 'seq' as const })),
     current: 6,
     next: 11,
     nextSlot: 1,

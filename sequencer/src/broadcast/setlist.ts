@@ -5,6 +5,17 @@
 // swap (fadeTextures + swapSongImmediate) exactly as it does for a set in
 // Sequence — this module only decides and pre-loads.
 //
+// RECORDS (2026-09-21): a set entry may also be a finished audio file (the
+// mixes of a release, ruined prints). A record has no performance slot: it
+// is decoded ahead of its turn, then played as one tagged texture voice
+// through the engine's master (reset to defaults so the previous song's
+// tape/glitch/saturation don't colour it). While it plays the transport is
+// stopped and Ghost is idle; a timer at the record's end hands to the gap
+// conductor exactly the way Ghost hands a song's end over (setRecordEnd-
+// Handler ← gap.ts). Ghost sees a staged record as slot AUDIO_SLOT (any
+// non-null value ends the song); gap.ts starts the record instead of
+// loading a slot.
+//
 // Pick modes: `random` (default — uniform over the setlist minus the last
 // few played, so nothing comes back too soon and everything gets heard) or
 // `sequence` (folder order, wrapping). Drop a song in twice to weight it.
@@ -17,6 +28,35 @@ import { applyNoiseSettings } from '../audio/noise';
 import { bootLog, stationBootGate } from './boot';
 import { samplePlayer } from '../audio/samplePlayer';
 import { togglePlayback } from '../audio/transport';
+import { loadSample, triggerSample, releaseNote } from '../audio/nativeEngine';
+import { DEFAULT_MASTER_PARAMS } from '../audio/master';
+import { DEFAULT_TAPE_PARAMS } from '../audio/tape';
+import { DEFAULT_GLITCH_PARAMS } from '../audio/glitch';
+import { DEFAULT_REVERB_PARAMS } from '../audio/reverb';
+import { DEFAULT_DELAY_PARAMS } from '../audio/delay';
+import { DEFAULT_SATURATION_PARAMS } from '../audio/saturation';
+
+// Sentinel "slot" a staged record reports to Ghost. Never indexes
+// performance.songs — gap.ts checks for it before loading.
+export const AUDIO_SLOT = -1;
+// Voice tag for the playing record so it can be released alone (set reload,
+// standby re-pick) without touching interstitials or anything else.
+const RECORD_NOTE_ID = 0x5245434f; // 'RECO'
+// The gap starts this long before the file's end so the static rises under
+// the last moment rather than after a hard stop.
+const RECORD_END_LEAD_SECS = 0.8;
+
+export interface StagedAudio {
+  path: string;
+  durationSecs: number;
+}
+export interface PlayingRecord {
+  index: number;
+  name: string;
+  path: string;
+  startedAt: number; // performance.now()
+  durationSecs: number;
+}
 
 export type PickMode = 'random' | 'sequence';
 export type BroadcastStatus = 'idle' | 'loading' | 'running' | 'error' | 'ended';
@@ -26,8 +66,12 @@ export interface BroadcastState {
   // Indices into `entries`.
   current: number | null;
   next: number | null;
-  // Performance slot holding the pre-loaded next song.
+  // Performance slot holding the pre-loaded next song — or AUDIO_SLOT when
+  // the next pick is a record (decoded, waiting in `nextAudio`).
   nextSlot: number | null;
+  nextAudio: StagedAudio | null;
+  // The record currently sounding (transport stopped), or null.
+  record: PlayingRecord | null;
   recent: number[];
   mode: PickMode;
   // Dev only (`--song-bars N`): force every song to N bars. null = Ghost
@@ -56,6 +100,8 @@ export const useBroadcast = create<BroadcastState>((set) => ({
   current: null,
   next: null,
   nextSlot: null,
+  nextAudio: null,
+  record: null,
   recent: [],
   mode: 'random',
   devSongBars: null,
@@ -144,6 +190,143 @@ async function preloadVoices(voices: string[]): Promise<void> {
   }
 }
 
+// Remove an unreadable entry, keeping the indices around it consistent.
+function dropEntry(idx: number): void {
+  useBroadcast.setState((s) => {
+    const entries = s.entries.filter((_, i) => i !== idx);
+    const fix = (i: number | null) => (i === null ? null : i > idx ? i - 1 : i);
+    return {
+      entries,
+      current: fix(s.current),
+      recent: s.recent.filter((i) => i !== idx).map((i) => (i > idx ? i - 1 : i)),
+    };
+  });
+}
+
+// Decode a record ahead of its turn (the registry keeps it by path, so the
+// trigger later is instant). Null when the engine can't read the file.
+async function stageAudio(entry: SetEntry): Promise<StagedAudio | null> {
+  try {
+    const info = await loadSample(entry.path);
+    if (!(info.durationSecs > 0)) return null;
+    return { path: entry.path, durationSecs: info.durationSecs };
+  } catch (err) {
+    console.warn('[broadcast] record decode failed:', entry.path, err);
+    return null;
+  }
+}
+
+// A record plays through the engine's defaults — the master at unity with
+// the comp/dist/gate off, tape/glitch/saturation off — not through whatever
+// the previous .seq left on the master. Reverb/delay are per-voice sends and
+// the record's voice has none, so their params don't matter; defaults anyway.
+function recordFx(): SeqGlobalFx {
+  return {
+    master: DEFAULT_MASTER_PARAMS,
+    tape: DEFAULT_TAPE_PARAMS,
+    glitch: DEFAULT_GLITCH_PARAMS,
+    reverb: DEFAULT_REVERB_PARAMS,
+    delay: DEFAULT_DELAY_PARAMS,
+    saturation: DEFAULT_SATURATION_PARAMS,
+    noise: {},
+  };
+}
+
+// gap.ts installs this: a record's end is a song end — the same choice of
+// swap gap / interstitial / sign-off, then whatever is staged.
+type RecordEndHandler = (nextSlot: number) => void;
+let recordEndHandler: RecordEndHandler | null = null;
+export function setRecordEndHandler(fn: RecordEndHandler | null): void {
+  recordEndHandler = fn;
+}
+
+let recordTimer: number | null = null;
+let recordGen = 0;
+
+function clearRecordTimer(): void {
+  if (recordTimer !== null) {
+    window.clearTimeout(recordTimer);
+    recordTimer = null;
+  }
+}
+
+// Fire the staged record as the current item. Called at a gap's end
+// (gap.ts) and for a set whose first pick is a record.
+async function playRecord(index: number, audio: StagedAudio): Promise<void> {
+  const entry = useBroadcast.getState().entries[index];
+  if (!entry) return;
+  const gen = ++recordGen;
+  clearRecordTimer();
+  applyGlobalFx(recordFx());
+  try {
+    await triggerSample(audio.path, { gain: 1, isTexture: true, noteId: RECORD_NOTE_ID });
+  } catch (err) {
+    console.warn('[broadcast] record trigger failed:', audio.path, err);
+  }
+  if (gen !== recordGen) return;
+  const startedAt = performance.now();
+  useBroadcast.setState((s) => ({
+    current: index,
+    next: null,
+    nextSlot: null,
+    nextAudio: null,
+    record: { index, name: entry.name, path: audio.path, startedAt, durationSecs: audio.durationSecs },
+    recent: s.current === null ? s.recent : [...s.recent, s.current].slice(-16),
+    played: s.played + 1,
+  }));
+  console.info(`[broadcast] now playing: ${entry.name} (record, ${audio.durationSecs.toFixed(1)} s) at ${new Date().toISOString()}`);
+  const wait = Math.max(0, (audio.durationSecs - RECORD_END_LEAD_SECS) * 1000);
+  recordTimer = window.setTimeout(() => {
+    recordTimer = null;
+    if (gen !== recordGen) return;
+    void endRecord(gen);
+  }, wait);
+  void prepareNext();
+}
+
+// The record is about to run out: hand its end to the gap conductor once a
+// next pick is staged (it normally is — staging starts as the record starts;
+// a slow decode just delays the gap a little, the file's tail plays on).
+async function endRecord(gen: number): Promise<void> {
+  for (let tries = 0; tries < 600; tries++) {
+    if (gen !== recordGen) return;
+    const b = useBroadcast.getState();
+    if (b.status !== 'running') return;
+    if (b.nextSlot !== null) {
+      useBroadcast.setState({ record: null });
+      if (recordEndHandler) recordEndHandler(b.nextSlot);
+      else console.warn('[broadcast] record ended with no gap conductor installed');
+      return;
+    }
+    if (tries === 0) console.warn('[broadcast] record ending but nothing staged yet — waiting');
+    if (!preparing) void prepareNext();
+    await new Promise((r) => window.setTimeout(r, 250));
+  }
+}
+
+// Start the staged record (nextSlot === AUDIO_SLOT). False when nothing is
+// staged — the caller decides what to do with the silence.
+export async function startStagedRecord(): Promise<boolean> {
+  const b = useBroadcast.getState();
+  if (b.next === null || !b.nextAudio) return false;
+  await playRecord(b.next, b.nextAudio);
+  return true;
+}
+
+// Release the sounding record (set reload, standby re-pick, sign-off) and
+// forget its end.
+export async function stopRecord(fadeSecs = 1.0): Promise<void> {
+  recordGen++;
+  clearRecordTimer();
+  if (!useBroadcast.getState().record) return;
+  useBroadcast.setState({ record: null });
+  try {
+    await releaseNote(RECORD_NOTE_ID, fadeSecs);
+  } catch (err) {
+    console.warn('[broadcast] record release failed:', err);
+  }
+}
+
 let preparing = false;
 let preparingPromise: Promise<void> | null = null;
 async function prepareNext(): Promise<void> {
@@ -169,18 +352,21 @@ async function prepareNextInner(): Promise<void> {
       return;
     }
     const entry = useBroadcast.getState().entries[idx];
+    if (entry.kind === 'audio') {
+      const staged = await stageAudio(entry);
+      if (staged) {
+        useBroadcast.setState({ next: idx, nextSlot: AUDIO_SLOT, nextAudio: staged });
+        console.info(`[broadcast] staged next: ${entry.name} (record, ${staged.durationSecs.toFixed(1)} s)`);
+        return;
+      }
+      console.warn('[broadcast] dropping from set (undecodable record):', entry.path);
+      dropEntry(idx);
+      continue;
+    }
     const read = await readSetSong(entry);
     if (!read) {
       console.warn('[broadcast] dropping from set:', entry.path);
-      useBroadcast.setState((s) => {
-        const entries = s.entries.filter((_, i) => i !== idx);
-        const fix = (i: number | null) => (i === null ? null : i > idx ? i - 1 : i);
-        return {
-          entries,
-          current: fix(s.current),
-          recent: s.recent.filter((i) => i !== idx).map((i) => (i > idx ? i - 1 : i)),
-        };
-      });
+      dropEntry(idx);
       continue;
     }
     const slot = seq.importSong(read.song, entry.path);
@@ -189,7 +375,7 @@ async function prepareNextInner(): Promise<void> {
       useBroadcast.setState({ next: null, nextSlot: null });
       return;
     }
-    useBroadcast.setState((s) => ({ next: idx, nextSlot: slot, slotFx: { ...s.slotFx, [slot]: read.fx } }));
+    useBroadcast.setState((s) => ({ next: idx, nextSlot: slot, nextAudio: null, slotFx: { ...s.slotFx, [slot]: read.fx } }));
     console.info(`[broadcast] staged next: ${entry.name} → slot ${slot} (${read.voices.length} voices)`);
     // Ahead of the swap — a whole song early.
     void preloadVoices(read.voices);
@@ -205,7 +391,7 @@ function installConductor(): void {
   setNextSongProvider((store) => {
     const b = useBroadcast.getState();
     if (b.status !== 'running') return null;
-    if (b.nextSlot !== null && !store.performance.songs[b.nextSlot]) {
+    if (b.nextSlot !== null && b.nextSlot !== AUDIO_SLOT && !store.performance.songs[b.nextSlot]) {
       // The staged slot was emptied under us (a set reload raced a staging
       // — 2026-09-08: ns_2306 "stuck forever", the swap into an empty slot
       // was a silent no-op). Drop it and re-stage; this bar plays on.
@@ -241,6 +427,7 @@ function installConductor(): void {
       current: s.next,
       next: null,
       nextSlot: null,
+      nextAudio: null,
       recent: s.current === null ? s.recent : [...s.recent, s.current].slice(-16),
       played: s.played + 1,
     }));
@@ -265,6 +452,8 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
   // and the conductor keeps pointing at the hole.
   if (preparingPromise) await preparingPromise;
   if (gen !== loadGen) return;
+  // A sounding record would otherwise play on under the new set.
+  await stopRecord(0.5);
   let entries: SetEntry[];
   try {
     entries = await expandSetPaths(paths);
@@ -273,7 +462,7 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
     return;
   }
   if (entries.length === 0) {
-    useBroadcast.setState({ status: 'error', error: 'no .seq files found' });
+    useBroadcast.setState({ status: 'error', error: 'no .seq or audio files found' });
     return;
   }
   if (gen !== loadGen) return;
@@ -286,6 +475,8 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
     current: null,
     next: null,
     nextSlot: null,
+    nextAudio: null,
+    record: null,
     recent: [],
     played: 0,
     startedAt: null,
@@ -296,7 +487,8 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
   // immediately), then stage the next.
   let first: number | null = null;
   let read: Awaited<ReturnType<typeof readSetSong>> = null;
-  for (let attempt = 0; attempt < 16 && read === null; attempt++) {
+  let firstAudio: StagedAudio | null = null;
+  for (let attempt = 0; attempt < 16 && read === null && firstAudio === null; attempt++) {
     const want = useBroadcast.getState().firstPick;
     if (attempt === 0 && want) {
       const w = want.toLowerCase();
@@ -311,18 +503,36 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
       first = pickIndex();
     }
     if (first === null) break;
-    read = await readSetSong(useBroadcast.getState().entries[first]);
-    if (!read) {
+    const candidate = useBroadcast.getState().entries[first];
+    if (candidate.kind === 'audio') firstAudio = await stageAudio(candidate);
+    else read = await readSetSong(candidate);
+    if (!read && !firstAudio) {
       const drop = first;
       useBroadcast.setState((s) => ({ entries: s.entries.filter((_, i) => i !== drop) }));
     }
   }
-  if (first === null || !read) {
+  if (first === null || (!read && !firstAudio)) {
     useBroadcast.setState({ status: 'error', error: 'no playable songs in set (all midi-only or unreadable)' });
     return;
   }
   if (gen !== loadGen) return;
   const firstEntry = useBroadcast.getState().entries[first];
+  if (firstAudio) {
+    // A record opens the set: nothing to load into a slot — the boot gate,
+    // then the record fires and stages what follows.
+    useBroadcast.setState({ current: first, status: 'running', startedAt: Date.now() });
+    console.info(`[broadcast] set loaded: ${useBroadcast.getState().entries.length} item(s); first: ${firstEntry.name} (record)`);
+    bootLog(`set: ${useBroadcast.getState().entries.length} items · ${paths.map((p) => p.split('/').filter(Boolean).pop()).join(', ')}`);
+    bootLog(`mode: ${useBroadcast.getState().mode} · ghost: on`);
+    bootLog(`first: ${firstEntry.name} (record, ${firstAudio.durationSecs.toFixed(0)} s)`);
+    useSequencerStore.getState().setSceneGraphEnabled(true);
+    await stationBootGate();
+    if (gen !== loadGen) return;
+    bootLog('record: start');
+    await playRecord(first, firstAudio);
+    return;
+  }
+  if (!read) return;
   const slot = useSequencerStore.getState().importSong(read.song, firstEntry.path);
   if (slot === null) {
     useBroadcast.setState({ status: 'error', error: 'no free slot' });
@@ -332,7 +542,7 @@ export async function loadAndStartSet(paths: string[]): Promise<void> {
   applyGlobalFx(read.fx);
   useBroadcast.setState((s) => ({ current: first, status: 'running', startedAt: Date.now(), slotFx: { ...s.slotFx, [slot]: read.fx } }));
   console.info(`[broadcast] set loaded: ${useBroadcast.getState().entries.length} song(s); first: ${firstEntry.name} (slot ${slot})`);
-  bootLog(`set: ${useBroadcast.getState().entries.length} songs · ${paths.map((p) => p.split('/').filter(Boolean).pop()).join(', ')}`);
+  bootLog(`set: ${useBroadcast.getState().entries.length} items · ${paths.map((p) => p.split('/').filter(Boolean).pop()).join(', ')}`);
   bootLog(`mode: ${useBroadcast.getState().mode} · ghost: on`);
   bootLog(`loading ${read.voices.length} voices for ${firstEntry.name}`);
   await preloadVoices(read.voices);
@@ -373,5 +583,6 @@ if (import.meta.hot) {
     unsubscribe = null;
     setNextSongProvider(null);
     setSongLengthProvider(null);
+    clearRecordTimer();
   });
 }

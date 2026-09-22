@@ -406,6 +406,56 @@ Kept: the **clean / signal** looks per format (16:9 → signal, 4:3 → clean; a
 as signal), the framerate fixes (grain tile, overlay canvas cap + 30 fps), the 4:3 picture, the
 window-travel keys. If the looks grow levels, they grow on the signal overlay — the whole OS.
 
+## Records in the set — BUILT 2026-09-21 (v0.2.0)
+
+**Why.** NIGHT SCHOOL's streaming-day broadcast is 24 hours of ruined
+editions of the record, and release day wants the finished mixes between
+Ghost's live .seq versions. Chris (2026-09-21): build this into BROADCAST
+rather than a browser radio mode — interstitials, station cards (plugin /
+Sequence notices) and the video pool are already here.
+
+**What a set can hold now.** `.seq` songs as before, plus finished audio
+files — `.wav` / `.aif` / `.aiff` (what the engine decodes; no FLAC). Same
+folder, same picks (random / sequence, recent-window), same gaps, same cards.
+Mixed sets are the point: the record, then the machine's version of it.
+Folders named `INTERSTITIALS` / `CARDS` inside a set folder are skipped so a
+station root dropped whole doesn't turn its idents into records.
+
+**How a record plays** (`setlist.ts`, `gap.ts`).
+- Staged like a song: `prepareNext` decodes it (`loadSample`) a whole item
+  ahead; Ghost sees `nextSlot = AUDIO_SLOT (-1)` — any non-null value ends
+  the current song at its natural end, exactly as a slot would.
+- At the gap's end, `runGap` starts the staged record instead of loading a
+  slot: one tagged texture voice (`RECORD_NOTE_ID`) through the master,
+  transport stopped, Ghost idle. The master chain is reset to defaults first
+  (`recordFx`) so the previous .seq's tape/glitch/saturation don't colour it.
+- Its end is a timer (`durationSecs − 0.8 s`) into the same `onItemEnd` the
+  Ghost interceptor uses → sign-off / interstitial / swap gap, then whatever
+  is staged. If nothing is staged yet it waits (250 ms polls) — the tail
+  plays on.
+- Set reload / standby re-pick releases the record (`stopRecord` →
+  `releaseNote`) so it can't play on under the new set.
+- A record may open the set (`--first <name>` works on records too): boot
+  gate, then the record fires and stages what follows.
+- `now` window shows the record's name, time / length / left, transport
+  `record`. The Ghost windows keep the last song's state (stopped) while a
+  record plays — acceptable for now; a record-mode face is open.
+
+**Verified 2026-09-21** in the dev app on a 3-item set (two 15–18 s cuts of
+the EP mixes + zeus-faber.seq, 10 s interstitials, `--gap-every 2`): record
+opens the set → swap gap → record → swap gap → .seq (Ghost) → full
+interstitial → record. Every transition in the log, no errors.
+
+**Next: the ruin voice.** Port `ruin-worklet.js` (site repo) to a Rust record
+voice: Hermite varispeed, per-16th-cell HOLES + per-4-cell CRUSH, decisions
+from `hash(seed, cell, k)` — port the hash and `decideCell` literally so a
+seed printed on the stream reproduces the same holes/crush on the album page
+(decision parity; reverb goes to the existing bus, not sample parity). Then a
+sidecar per file/folder {bpm, amount | range, speed | range, reverb,
+seed | "roll"}, seeds rolled per pass, seed + `night-school.html?…&seed=`
+shown in `now` and on an auto-card. Until then, ruined prints from the album
+page go into the set as ordinary records.
+
 ## Standalone app — BUILT 2026-09-08 (v0.1.0 in /Applications)
 
 `bash scripts/release-broadcast.sh <version> [--install] [--no-notarize]` → universal

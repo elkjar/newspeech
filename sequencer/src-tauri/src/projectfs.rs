@@ -118,11 +118,33 @@ pub fn reveal_in_finder(path: String) -> Result<(), String> {
     }
 }
 
-// Expand a list of dropped / launch-arg paths into the `.seq` files they
-// contain. Directories are walked (a few levels deep — a set folder may
-// group songs in subfolders), `.seq` files pass through, everything else is
-// ignored. Sorted + deduped so a folder always yields the same order.
-// Shared by BROADCAST's set loader; harmless in Sequence.
+// Expand a list of dropped / launch-arg paths into the set files they
+// contain: `.seq` songs and, since 2026-09-21, audio records (`.wav` /
+// `.aif` / `.aiff` — what the engine decodes) that BROADCAST plays as
+// finished tracks between the sequenced ones. Directories are walked (a few
+// levels deep — a set folder may group songs in subfolders); folders named
+// INTERSTITIALS / CARDS are skipped so a station folder dropped whole doesn't
+// turn its idents into records. Sorted + deduped so a folder always yields
+// the same order. Shared by BROADCAST's set loader; harmless in Sequence.
+fn is_set_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| {
+            e.eq_ignore_ascii_case("seq")
+                || e.eq_ignore_ascii_case("wav")
+                || e.eq_ignore_ascii_case("aif")
+                || e.eq_ignore_ascii_case("aiff")
+        })
+        .unwrap_or(false)
+}
+
+fn is_station_folder(path: &std::path::Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.eq_ignore_ascii_case("interstitials") || n.eq_ignore_ascii_case("cards"))
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 pub fn list_seq_files(paths: Vec<String>) -> Result<Vec<String>, String> {
     fn walk(dir: &std::path::Path, depth: u32, out: &mut Vec<String>) {
@@ -130,17 +152,17 @@ pub fn list_seq_files(paths: Vec<String>) -> Result<Vec<String>, String> {
         for entry in rd.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                if depth > 0 {
+                if depth > 0 && !is_station_folder(&path) {
                     walk(&path, depth - 1, out);
                 }
                 continue;
             }
-            let is_seq = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("seq"))
+            let hidden = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with('.'))
                 .unwrap_or(false);
-            if is_seq {
+            if !hidden && is_set_file(&path) {
                 if let Some(s) = path.to_str() {
                     out.push(s.to_string());
                 }
@@ -152,15 +174,8 @@ pub fn list_seq_files(paths: Vec<String>) -> Result<Vec<String>, String> {
         let path = std::path::Path::new(&p);
         if path.is_dir() {
             walk(path, 3, &mut out);
-        } else if path.is_file() {
-            let is_seq = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("seq"))
-                .unwrap_or(false);
-            if is_seq {
-                out.push(p);
-            }
+        } else if path.is_file() && is_set_file(path) {
+            out.push(p);
         }
     }
     out.sort();
