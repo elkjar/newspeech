@@ -47,7 +47,7 @@ export function EndPanel() {
           <span className="font-sans text-[10px] tracking-[0.18em] lowercase">station</span>
           <span className="ml-auto text-[8px] tracking-[0.16em] uppercase text-white/45">signed off</span>
         </div>
-        <div className="flex flex-col px-5 pt-5" style={{ height: 15 * 18 + 14 }}>
+        <div className="flex flex-col px-5 pt-5" style={{ height: 14 * 18 + 14 }}>
           <div className="text-[8px] tracking-[0.18em] uppercase text-white/45">NEWSPEECH // BROADCAST</div>
           <div className="font-sans mt-1" style={{ fontSize: 34, lineHeight: '40px', letterSpacing: '0.02em' }}>
             end of transmission
@@ -57,7 +57,6 @@ export function EndPanel() {
               <FactRow key={k} k={k} v={v} />
             ))}
           </div>
-          <div className="mt-auto mb-3 text-[8px] tracking-[0.18em] uppercase text-white/45">space · back to standby</div>
         </div>
         <div className="h-[2px] bg-white/10" />
       </div>
