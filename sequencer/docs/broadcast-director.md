@@ -62,16 +62,21 @@ in stage px, both formats.
 | shot | picture | type |
 |---|---|---|
 | **home** | the saved arrangement, as designed | as saved (zoom per format) |
-| **close `<win>`** | one window fills the safe area, chrome kept, others closed | as saved — more of the same-size content (Chris: per-shot type sizes "awkward") |
-| **pair `<a> <b>`** | two windows split the safe area (ghost + visual, now + banks) | as saved |
+| **close `visual`** | the visual fills the safe area, chrome kept, others closed. Only the visual — no other window goes full-frame (Chris 2026-09-22) | as saved — more of the same-size content (Chris: per-shot type sizes "awkward") |
+| **pair** | the visual and one partner split the safe area, visual on either side | as saved |
+| **split 3 / 4 / 5** | 3-up: visual big on one side, two partners stacked on the other (2+1 / 1+2). 4-up: quadrants with the visual in any one, or visual big + three stacked (3+1 / 1+3). 5-up: visual big + four partners in a 2×2 grid | as saved |
 | **bleed** | the visual with no chrome, full picture, menubar off | — |
 | **inset** | the visual full-bleed, the desktop scaled to ~40% in a corner over it | as saved |
 | **title** | black, one line of text at ≥ 40 px stage: song title / seed / record id / bank name / a Ghost pick | huge |
 | **black** | nothing (sign-off, the beat before a title) | — |
 
-Close-shot candidates: `ghost` (the log becomes narration), `visual`, `now`, `banks`. `set`, `shape`,
-`sys` are close-worthy only as a `pair` partner. `card` is never a shot — the ident stays a
-lower-third and forces `home` or `bleed` while up.
+Every multi-up has the visual in it. Partners are the windows that move on their own — `ghost`,
+`sys`, `audio` (the engine scope) — for pairs and 3-ups; the 4-up and 5-up also draw `shape` and
+`banks` at lower weight (Chris 2026-09-22: "the rest of the visualizers are nice as a group but
+don't give much independently"). Under a record the scope and sys outweigh the idle ghost. `now`
+and `set` stay home-only. `card` is never a shot — the ident stays a lower-third and forces `home`
+or `bleed` while up. Keys: 1 home · 2 close visual · 3 pair · 4 3-up · 5 4-up · 6 5-up · 7 bleed ·
+8 inset · 9 title · 0 black · `a` auto.
 
 ### Triggers (what cuts)
 

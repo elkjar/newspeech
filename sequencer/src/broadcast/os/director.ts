@@ -22,10 +22,16 @@ import { useStationBoot } from '../boot';
 import { forceSignalEvent } from './signal';
 import { useLayout, FORMATS, type Format, type WindowId, type WinRect } from './layout';
 
+// Every multi-up has the visual in it (Chris 2026-09-22: "the 2 up should
+// always have one side be the visual … 3 and 4 up with the same rule").
+// `split`: 3-up = visual big on `big` side + two stacked; 4-up = quadrants
+// (`big` null, visual in quadrant `slot`) or visual big + three stacked;
+// 5-up = visual big + four in a 2×2 grid.
 export type Shot =
   | { kind: 'home' }
   | { kind: 'close'; win: WindowId }
   | { kind: 'pair'; a: WindowId; b: WindowId }
+  | { kind: 'split'; others: WindowId[]; big: 'left' | 'right' | null; slot: number }
   | { kind: 'bleed' }
   | { kind: 'inset' }
   | { kind: 'title'; text: string; sub: string | null }
@@ -39,6 +45,8 @@ export function shotLabel(s: Shot): string {
       return `close ${s.win}`;
     case 'pair':
       return `pair ${s.a}+${s.b}`;
+    case 'split':
+      return `${s.others.length + 1}-up ${s.big === null ? 'quad' : s.big === 'left' ? 'big-left' : 'big-right'} visual+${s.others.join('+')}`;
     case 'title':
       return `title "${s.text}"`;
     default:
@@ -65,18 +73,20 @@ export interface Frame {
 const CLOSE_MARGIN: Record<Format, number> = { '16:9': 24, '4:3': 0 };
 const INSET_SCALE = 0.38;
 
-// `banks` full-frame is not a picture (Chris, 2026-09-22) — it stays in
-// pairs and home, never a close.
-export const CLOSE_CANDIDATES: WindowId[] = ['ghost', 'visual', 'now'];
-const CLOSE_WEIGHT: Record<WindowId, number> = { ghost: 0.45, visual: 0.3, now: 0.25, banks: 0, set: 0, shape: 0, sys: 0, audio: 0, card: 0 };
-const PAIRS: Array<[WindowId, WindowId]> = [
-  ['ghost', 'visual'],
-  ['now', 'banks'],
-  ['ghost', 'now'],
-  ['visual', 'banks'],
-  ['set', 'visual'],
-  ['visual', 'audio'],
-];
+// Only the visual goes full-frame (Chris 2026-09-22). Its partners in a
+// pair / 3-up are the windows that move on their own — ghost, sys, audio
+// ("the rest … are nice as a group but don't give much independently").
+// The 4-up and 5-up also draw shape and banks, at lower weight ("adding in
+// the other dialog windows for shape and banks could also work on the 4
+// up, or a 5 up"). Weights: ambient vs under a record (Ghost idle, the
+// scope is the movement).
+const PARTNERS_PRIMARY: WindowId[] = ['ghost', 'sys', 'audio'];
+const PARTNERS_WIDE: WindowId[] = ['ghost', 'sys', 'audio', 'shape', 'banks'];
+const PARTNER_WEIGHT: Record<'ambient' | 'record', Record<WindowId, number>> = {
+  ambient: { ghost: 0.5, sys: 0.2, audio: 0.3, shape: 0.12, banks: 0.12, visual: 0, now: 0, set: 0, card: 0 },
+  record: { ghost: 0.15, sys: 0.35, audio: 0.5, shape: 0.08, banks: 0.06, visual: 0, now: 0, set: 0, card: 0 },
+};
+const GUTTER = 12;
 
 export function frameFor(shot: Shot, windows: Record<WindowId, WinRect>, format: Format): Frame {
   const { safe } = FORMATS[format];
@@ -100,10 +110,50 @@ export function frameFor(shot: Shot, windows: Record<WindowId, WinRect>, format:
     }
     case 'pair': {
       const rects = none();
-      const gutter = 12;
-      const w = Math.floor((full.w - gutter) / 2);
+      const w = Math.floor((full.w - GUTTER) / 2);
       rects[shot.a] = { ...full, w, z: 1 };
-      rects[shot.b] = { ...full, x: full.x + w + gutter, w: full.w - w - gutter, z: 2 };
+      rects[shot.b] = { ...full, x: full.x + w + GUTTER, w: full.w - w - GUTTER, z: 2 };
+      return { rects, bleed: false, inset: null, menubar: true, title: null, black: false };
+    }
+    case 'split': {
+      const rects = none();
+      const halfW = Math.floor((full.w - GUTTER) / 2);
+      const left: WinRect = { ...full, w: halfW };
+      const right: WinRect = { ...full, x: full.x + halfW + GUTTER, w: full.w - halfW - GUTTER };
+      // n windows stacked in a column.
+      const stack = (col: WinRect, n: number): WinRect[] => {
+        const h = Math.floor((col.h - GUTTER * (n - 1)) / n);
+        return Array.from({ length: n }, (_, i) => ({ ...col, y: col.y + i * (h + GUTTER), h: i === n - 1 ? col.h - i * (h + GUTTER) : h }));
+      };
+      // 2×2 grid of a column, row-major: TL TR BL BR.
+      const grid = (col: WinRect): WinRect[] => {
+        const w = Math.floor((col.w - GUTTER) / 2);
+        const l = stack({ ...col, w }, 2);
+        const r = stack({ ...col, x: col.x + w + GUTTER, w: col.w - w - GUTTER }, 2);
+        return [l[0], r[0], l[1], r[1]];
+      };
+      let z = 1;
+      if (shot.big === null) {
+        // Quadrants: visual in `slot`, others fill the rest in order.
+        const order = grid(full);
+        const slot = Math.max(0, Math.min(3, shot.slot));
+        rects.visual = { ...order[slot], z: z++ };
+        let k = 0;
+        for (let i = 0; i < 4; i++) {
+          if (i === slot) continue;
+          const id = shot.others[k++];
+          if (id) rects[id] = { ...order[i], z: z++ };
+        }
+      } else {
+        const bigCol = shot.big === 'left' ? left : right;
+        const smallCol = shot.big === 'left' ? right : left;
+        rects.visual = { ...bigCol, z: z++ };
+        // Two or three partners stack; four make a 2×2 grid (the 5-up).
+        const cells = shot.others.length >= 4 ? grid(smallCol) : stack(smallCol, shot.others.length);
+        shot.others.forEach((id, i) => {
+          rects[id] = { ...cells[i], z: z++ };
+        });
+      }
       return { rects, bleed: false, inset: null, menubar: true, title: null, black: false };
     }
     case 'bleed':
@@ -196,6 +246,7 @@ const HOLD: Record<ShotKind, [number, number]> = {
   home: [30, 120],
   close: [8, 40],
   pair: [20, 60],
+  split: [20, 60],
   bleed: [15, 90],
   inset: [20, 60],
   title: [2.5, 5],
@@ -249,51 +300,106 @@ function openWindows(): Set<WindowId> {
 }
 
 function pickClose(): Shot {
-  const open = openWindows();
-  const items = CLOSE_CANDIDATES.filter((id) => open.has(id)).map((id) => [id, CLOSE_WEIGHT[id]] as [WindowId, number]);
-  if (items.length === 0) return HOME;
-  return { kind: 'close', win: pick(items) };
+  return openWindows().has('visual') ? { kind: 'close', win: 'visual' } : HOME;
 }
 
-function pickPair(): Shot {
+// `n` distinct partners for the visual, weighted, from the open ones.
+// `wide` admits shape and banks (4-up and up).
+function pickPartners(n: number, mode: 'ambient' | 'record', wide = false): WindowId[] {
   const open = openWindows();
-  const items = PAIRS.filter(([a, b]) => open.has(a) && open.has(b)).map((p) => [p, 1] as [[WindowId, WindowId], number]);
-  if (items.length === 0) return pickClose();
-  const [a, b] = pick(items);
-  return { kind: 'pair', a, b };
+  let pool = (wide ? PARTNERS_WIDE : PARTNERS_PRIMARY).filter((id) => open.has(id)).map((id) => [id, PARTNER_WEIGHT[mode][id]] as [WindowId, number]);
+  const out: WindowId[] = [];
+  while (out.length < n && pool.length > 0) {
+    const id = pick(pool);
+    out.push(id);
+    pool = pool.filter(([p]) => p !== id);
+  }
+  return out;
+}
+
+// Visual on a random side with one partner.
+function pickPair(mode: 'ambient' | 'record'): Shot {
+  if (!openWindows().has('visual')) return HOME;
+  const [p] = pickPartners(1, mode);
+  if (!p) return pickClose();
+  return Math.random() < 0.5 ? { kind: 'pair', a: 'visual', b: p } : { kind: 'pair', a: p, b: 'visual' };
+}
+
+// 3-up (2+1 / 1+2), 4-up (quadrants / 3+1 / 1+3) or 5-up (1+4 grid), the
+// visual always in. Falls back to fewer windows when not enough partners
+// are open.
+function pickSplit(n: 3 | 4 | 5, mode: 'ambient' | 'record'): Shot {
+  if (!openWindows().has('visual')) return HOME;
+  const others = pickPartners(n - 1, mode, n >= 4);
+  if (others.length < 2) return pickPair(mode);
+  const side = (): 'left' | 'right' => (Math.random() < 0.5 ? 'left' : 'right');
+  if (others.length === 2) return { kind: 'split', others, big: side(), slot: 0 };
+  if (others.length >= 4) return { kind: 'split', others: others.slice(0, 4), big: side(), slot: 0 };
+  if (Math.random() < 0.5) return { kind: 'split', others, big: null, slot: Math.floor(Math.random() * 4) };
+  return { kind: 'split', others, big: side(), slot: 0 };
 }
 
 // The next shot from the ambient schedule. Entropy leans the choice: calm
-// banks wide, chaos close. Under a record the visual is the subject, and
-// the audio scope (the only other thing moving) shares the frame with it,
-// or takes it — a full-frame waveform, now and then.
-// Pairs weigh more since 2026-09-22 (Chris: "the split screen with a
-// dialog + visualizer is strong").
+// banks wide (more windows), chaos close (fewer). Under a record the
+// visual is the subject and the scope (the only other thing moving) is
+// its usual partner. Split screens weigh heavily since 2026-09-22 (Chris:
+// "the split screen with a dialog + visualizer is strong").
 function pickNext(from: Shot): Shot {
   const rec = useBroadcast.getState().record;
-  let next: Shot;
+  const mode = rec ? 'record' : 'ambient';
+  type K = 'home' | 'close' | 'pair' | 'split3' | 'split4' | 'split5' | 'bleed' | 'inset';
+  let k: K;
   if (rec) {
-    const audio = openWindows().has('audio');
-    next = pick<Shot>([
-      [{ kind: 'bleed' }, 0.33],
-      [{ kind: 'pair', a: 'visual', b: 'audio' }, audio ? 0.26 : 0],
-      [{ kind: 'inset' }, 0.13],
-      [{ kind: 'close', win: 'visual' }, 0.1],
-      [{ kind: 'close', win: 'audio' }, audio ? 0.08 : 0],
-      [HOME, 0.1],
+    k = pick<K>([
+      ['bleed', 0.25],
+      ['pair', 0.23],
+      ['split3', 0.12],
+      ['split4', 0.07],
+      ['split5', 0.04],
+      ['inset', 0.09],
+      ['close', 0.1],
+      ['home', 0.1],
     ]);
   } else {
     const e = activeEntropy();
     const lean = (e - 0.5) * 0.5; // -0.25 .. +0.25
-    next = pick<Shot>([
-      [HOME, 0.3 - lean],
-      [{ kind: 'close', win: 'ghost' }, 0.3 + lean], // resolved below
-      [{ kind: 'pair', a: 'ghost', b: 'visual' }, 0.22 + lean * 0.5],
-      [{ kind: 'bleed' }, 0.13],
-      [{ kind: 'inset' }, 0.05],
+    k = pick<K>([
+      ['home', 0.18 - lean * 0.6],
+      ['close', 0.12 + lean * 0.6],
+      ['pair', 0.24 + lean * 0.4],
+      ['split3', 0.14 - lean * 0.2],
+      ['split4', 0.09 - lean * 0.2],
+      ['split5', 0.05 - lean * 0.1],
+      ['bleed', 0.13],
+      ['inset', 0.05],
     ]);
-    if (next.kind === 'close') next = pickClose();
-    else if (next.kind === 'pair') next = pickPair();
+  }
+  let next: Shot;
+  switch (k) {
+    case 'home':
+      next = HOME;
+      break;
+    case 'close':
+      next = pickClose();
+      break;
+    case 'pair':
+      next = pickPair(mode);
+      break;
+    case 'split3':
+      next = pickSplit(3, mode);
+      break;
+    case 'split4':
+      next = pickSplit(4, mode);
+      break;
+    case 'split5':
+      next = pickSplit(5, mode);
+      break;
+    case 'bleed':
+      next = { kind: 'bleed' };
+      break;
+    case 'inset':
+      next = { kind: 'inset' };
+      break;
   }
   // Never the same shot twice in a row.
   if (shotLabel(next) === shotLabel(from)) return from.kind === 'home' ? pickClose() : HOME;
@@ -465,14 +571,15 @@ export function installDirector(): () => void {
 // the key was taken.
 export const KEY_SHOTS: Array<[string, () => Shot, string]> = [
   ['1', () => HOME, 'home'],
-  ['2', () => ({ kind: 'close', win: 'ghost' }), 'close ghost'],
-  ['3', () => ({ kind: 'close', win: 'visual' }), 'close visual'],
-  ['4', () => ({ kind: 'close', win: 'now' }), 'close now'],
-  ['5', () => ({ kind: 'pair', a: 'ghost', b: 'visual' }), 'pair ghost+visual'],
-  ['6', () => ({ kind: 'bleed' }), 'bleed'],
-  ['7', () => ({ kind: 'inset' }), 'inset'],
-  ['8', () => titleShot(), 'title'],
-  ['9', () => ({ kind: 'black' }), 'black'],
+  ['2', () => ({ kind: 'close', win: 'visual' }), 'close visual'],
+  ['3', () => pickPair('ambient'), 'pair'],
+  ['4', () => pickSplit(3, 'ambient'), '3-up'],
+  ['5', () => pickSplit(4, 'ambient'), '4-up'],
+  ['6', () => pickSplit(5, 'ambient'), '5-up'],
+  ['7', () => ({ kind: 'bleed' }), 'bleed'],
+  ['8', () => ({ kind: 'inset' }), 'inset'],
+  ['9', () => titleShot(), 'title'],
+  ['0', () => ({ kind: 'black' }), 'black'],
 ];
 export function directorKey(key: string): boolean {
   if (!useDirector.getState().on) return false;
@@ -493,10 +600,13 @@ export function directorKey(key: string): boolean {
 export function demoShot(kind: ShotKind, arg?: string): void {
   switch (kind) {
     case 'close':
-      forceShot({ kind, win: (arg as WindowId) ?? 'ghost' });
+      forceShot({ kind, win: (arg as WindowId) ?? 'visual' });
       break;
     case 'pair':
-      forceShot({ kind, a: 'ghost', b: (arg as WindowId) ?? 'visual' });
+      forceShot({ kind, a: 'visual', b: (arg as WindowId) ?? 'ghost' });
+      break;
+    case 'split':
+      forceShot(pickSplit(arg === '3' ? 3 : arg === '5' ? 5 : 4, 'ambient'));
       break;
     case 'title':
       forceShot(titleShot(arg));
