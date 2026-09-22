@@ -508,6 +508,10 @@ pub fn spawn_level_emitter(app_handle: tauri::AppHandle) {
       if let Err(e) = app_handle.emit("audio:limiter", audio::safety_limiter_gr_db()) {
         log::warn!("[audio:limiter emit] {}", e);
       }
+      // Waveform + bands for the sys window's scope (BROADCAST only).
+      if let Err(e) = app_handle.emit("audio:scope", audio::scope_frame()) {
+        log::warn!("[audio:scope emit] {}", e);
+      }
     }
   });
 }

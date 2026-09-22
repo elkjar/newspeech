@@ -75,6 +75,7 @@ const PAIRS: Array<[WindowId, WindowId]> = [
   ['ghost', 'now'],
   ['visual', 'banks'],
   ['set', 'visual'],
+  ['visual', 'sys'],
 ];
 
 export function frameFor(shot: Shot, windows: Record<WindowId, WinRect>, format: Format): Frame {
@@ -263,24 +264,29 @@ function pickPair(): Shot {
 }
 
 // The next shot from the ambient schedule. Entropy leans the choice: calm
-// banks wide, chaos close. Under a record the visual is the subject.
+// banks wide, chaos close. Under a record the visual is the subject, and
+// the sys scope (the only other thing moving) shares the frame with it.
+// Pairs weigh more since 2026-09-22 (Chris: "the split screen with a
+// dialog + visualizer is strong").
 function pickNext(from: Shot): Shot {
   const rec = useBroadcast.getState().record;
   let next: Shot;
   if (rec) {
+    const sys = openWindows().has('sys');
     next = pick<Shot>([
-      [{ kind: 'bleed' }, 0.45],
-      [{ kind: 'inset' }, 0.25],
-      [{ kind: 'close', win: 'visual' }, 0.2],
+      [{ kind: 'bleed' }, 0.35],
+      [{ kind: 'pair', a: 'visual', b: 'sys' }, sys ? 0.28 : 0],
+      [{ kind: 'inset' }, 0.15],
+      [{ kind: 'close', win: 'visual' }, 0.12],
       [HOME, 0.1],
     ]);
   } else {
     const e = activeEntropy();
     const lean = (e - 0.5) * 0.5; // -0.25 .. +0.25
     next = pick<Shot>([
-      [HOME, 0.38 - lean],
+      [HOME, 0.3 - lean],
       [{ kind: 'close', win: 'ghost' }, 0.3 + lean], // resolved below
-      [{ kind: 'pair', a: 'ghost', b: 'visual' }, 0.14 + lean * 0.5],
+      [{ kind: 'pair', a: 'ghost', b: 'visual' }, 0.22 + lean * 0.5],
       [{ kind: 'bleed' }, 0.13],
       [{ kind: 'inset' }, 0.05],
     ]);

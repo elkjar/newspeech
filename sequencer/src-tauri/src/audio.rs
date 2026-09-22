@@ -49,6 +49,86 @@ pub fn audio_output_level() -> f32 {
   f32::from_bits(AUDIO_OUTPUT_LEVEL.load(Ordering::Relaxed))
 }
 
+// --- output scope tap (BROADCAST `sys` window, 2026-09-22) ---
+//
+// A record plays with the transport stopped and Ghost idle, so nothing on
+// the desktop moves but the visual (Chris: "the visualizer block is still
+// carrying most of the weight"). The callback writes a mono mix of every
+// output frame — same post-master point as the peak — into this ring; the
+// lib.rs emitter reduces the newest SCOPE_WINDOW frames to a waveform +
+// log bands at ~30 Hz (`audio:scope`). One atomic per sample, no lock;
+// only written while the safety limiter is on (BROADCAST), so Sequence
+// pays nothing. Reads may straddle a write — a torn frame at 30 Hz is
+// invisible.
+pub const SCOPE_RING: usize = 4096;
+pub const SCOPE_WINDOW: usize = 2048;
+pub const SCOPE_WAVE_POINTS: usize = 128;
+pub const SCOPE_BANDS: usize = 24;
+static SCOPE_BUF: [AtomicU32; SCOPE_RING] = [const { AtomicU32::new(0) }; SCOPE_RING];
+static SCOPE_HEAD: AtomicUsize = AtomicUsize::new(0);
+static SCOPE_SR: AtomicU32 = AtomicU32::new(48_000);
+
+#[derive(serde::Serialize, Clone)]
+pub struct ScopeFrame {
+  // SCOPE_WAVE_POINTS signed samples, the loudest of each bucket.
+  pub wave: Vec<f32>,
+  // SCOPE_BANDS linear magnitudes (~0..1), log-spaced 40 Hz → 14 kHz.
+  pub bands: Vec<f32>,
+}
+
+// The newest SCOPE_WINDOW frames, oldest first, reduced for the picture.
+pub fn scope_frame() -> ScopeFrame {
+  let head = SCOPE_HEAD.load(Ordering::Acquire);
+  let start = head.wrapping_sub(SCOPE_WINDOW);
+  let mut x = [0f32; SCOPE_WINDOW];
+  for (i, v) in x.iter_mut().enumerate() {
+    *v = f32::from_bits(SCOPE_BUF[start.wrapping_add(i) % SCOPE_RING].load(Ordering::Relaxed));
+  }
+
+  let per = SCOPE_WINDOW / SCOPE_WAVE_POINTS;
+  let wave = (0..SCOPE_WAVE_POINTS)
+    .map(|b| {
+      let mut best = 0f32;
+      for &v in &x[b * per..(b + 1) * per] {
+        if v.abs() > best.abs() {
+          best = v;
+        }
+      }
+      best
+    })
+    .collect();
+
+  // Goertzel per band over a Hann window: 24 × 2048 mults, trivial at 30 Hz.
+  let sr = SCOPE_SR.load(Ordering::Relaxed).max(8_000) as f32;
+  let n = SCOPE_WINDOW as f32;
+  let mut win = [0f32; SCOPE_WINDOW];
+  for (i, w) in win.iter_mut().enumerate() {
+    let h = 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / n).cos();
+    *w = x[i] * h;
+  }
+  let (f_lo, f_hi) = (40f32, 14_000f32);
+  let bands = (0..SCOPE_BANDS)
+    .map(|b| {
+      let t = b as f32 / (SCOPE_BANDS - 1) as f32;
+      let f = f_lo * (f_hi / f_lo).powf(t);
+      let k = (f / sr * n).round();
+      let w = std::f32::consts::TAU * k / n;
+      let coeff = 2.0 * w.cos();
+      let (mut s1, mut s2) = (0f32, 0f32);
+      for &v in win.iter() {
+        let s0 = v + coeff * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+      }
+      let power = s1 * s1 + s2 * s2 - coeff * s1 * s2;
+      // Hann halves the coherent gain; 2/N brings a full-scale sine to ~1.
+      (power.max(0.0).sqrt() * 4.0 / n).min(2.0)
+    })
+    .collect();
+
+  ScopeFrame { wave, bands }
+}
+
 // --- engine sample clock ---
 //
 // Monotonic frame counter for the open cpal stream — the app's master
@@ -9215,6 +9295,19 @@ fn build_stream(
           }
         }
         AUDIO_OUTPUT_LEVEL.store(peak.to_bits(), Ordering::Relaxed);
+
+        // Scope tap (BROADCAST only — see SCOPE_BUF): mono mix per frame.
+        if safety_limiter_enabled() && n_ch > 0 {
+          SCOPE_SR.store(sample_rate, Ordering::Relaxed);
+          let inv = 1.0 / n_ch as f32;
+          let mut head = SCOPE_HEAD.load(Ordering::Relaxed);
+          for frame in buf.chunks_exact(n_ch) {
+            let m: f32 = frame.iter().sum::<f32>() * inv;
+            SCOPE_BUF[head % SCOPE_RING].store(m.to_bits(), Ordering::Relaxed);
+            head = head.wrapping_add(1);
+          }
+          SCOPE_HEAD.store(head, Ordering::Release);
+        }
 
         // Advance the engine clock LAST so ENGINE_FRAMES == this block's
         // start frame for the entire callback body above. Current stream

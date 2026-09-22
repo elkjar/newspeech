@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useSequencerStore } from '../../../state/store';
 import { useBroadcast } from '../../setlist';
 import { fmtUptime } from './NowWindow';
+import { Scope } from '../Scope';
 
 interface RawStatus {
   channels: number;
@@ -11,6 +12,8 @@ interface RawStatus {
 }
 
 // Machine telemetry — a box that runs for days should show its own health.
+// The engine scope draws underneath (Scope.tsx): waveform + bands, so the
+// window moves whatever the set is doing — records included.
 export function SysWindow() {
   const [status, setStatus] = useState<RawStatus | null>(null);
   const [level, setLevel] = useState(0);
@@ -70,7 +73,11 @@ export function SysWindow() {
   const db = level > 0 ? (20 * Math.log10(level)).toFixed(1) : '-inf';
 
   return (
-    <div className="h-full grid grid-cols-2 gap-x-6 px-4 py-3 font-mono text-[9px] text-white/70">
+    <div className="relative h-full">
+      <div className="absolute inset-0 px-2 pt-6 pb-2">
+        <Scope />
+      </div>
+      <div className="relative h-full grid grid-cols-2 gap-x-6 px-4 py-3 content-start font-mono text-[9px] text-white/70 pointer-events-none [text-shadow:0_0_3px_#000,0_0_3px_#000]">
       <div className="flex flex-col gap-1.5">
         <Row k="audio" v={status ? `${status.channels} ch · ${(status.sample_rate / 1000).toFixed(1)} kHz` : isTauri() ? 'device closed' : 'browser'} hot={!status && isTauri()} />
         <Row k="engine" v={bootDone ? (playing ? 'running' : 'idle') : 'booting'} />
@@ -95,6 +102,7 @@ export function SysWindow() {
           </div>
           <span className="w-12 text-right tabular-nums">{lim > 0.05 ? `-${lim.toFixed(1)}` : '0.0'}</span>
         </div>
+      </div>
       </div>
     </div>
   );
