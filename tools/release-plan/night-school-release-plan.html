@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>night school — release plan</title>
+<style>
+  @font-face { font-family: "zxx-sans"; src: url("../../fonts/zxx-sans.woff2") format("woff2"); }
+
+  /* Everything scales from html font-size. render.mjs finds the largest
+     value that still fits one Letter page, so the content fills the sheet. */
+  @page { size: letter; margin: 0; }
+  * { box-sizing: border-box; }
+  html { font-size: 11px; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #111; }
+  body {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 1rem; line-height: 1.45; letter-spacing: 0.01em;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page {
+    width: 8.5in; height: 11in; overflow: hidden;
+    padding: 0.55in 0.6in 0.45in;
+    display: flex; flex-direction: column;
+  }
+  .zx { font-family: "zxx-sans", ui-monospace, monospace; }
+  p { margin: 0 0 0.9em; }
+  b { font-weight: 700; }
+  .k { font-size: 0.85rem; letter-spacing: 0.22em; color: #666; margin: 0 0 0.6em; }
+  em { font-style: normal; border-bottom: 1px solid #bbb; }
+
+  header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid #111; padding-bottom: 1.2rem; }
+  header h1 { margin: 0; font-weight: 400; font-size: 3.7rem; line-height: 1; letter-spacing: 0.04em; }
+  header .sub { margin: 0.7rem 0 0; font-size: 1.15rem; letter-spacing: 0.22em; color: #555; }
+  header .meta { text-align: right; font-size: 0.95rem; line-height: 1.6; color: #555; letter-spacing: 0.04em; }
+  header .meta b { color: #111; font-weight: 400; }
+
+  .top { display: grid; grid-template-columns: 17rem 1fr; gap: 0 2.6rem; margin-top: 1.6rem; }
+  .cover { width: 17rem; height: 17rem; display: block; filter: grayscale(1); }
+  .facts { margin-top: 1rem; font-size: 0.92rem; line-height: 1.6; color: #555; }
+  .facts b { color: #111; font-weight: 400; }
+  .intro { font-size: 1.08rem; line-height: 1.5; }
+  .intro p:first-child { font-size: 1.22rem; }
+
+  .beats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 2.2rem; margin-top: 1.8rem; padding-top: 1.5rem; border-top: 1px solid #111; }
+  .beat h2 { margin: 0 0 0.8rem; font-weight: 400; font-size: 1.6rem; letter-spacing: 0.05em; line-height: 1.1; }
+  .beat p { color: #222; }
+
+  .band { display: grid; grid-template-columns: 1fr 1fr; gap: 0 2.2rem; margin-top: 1rem; padding-top: 1.5rem; border-top: 1px solid #111; }
+  .band p { color: #333; }
+
+  footer { display: flex; justify-content: space-between; margin-top: auto; padding-top: 0.8rem; border-top: 1px solid #ccc; font-size: 0.85rem; color: #888; letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div>
+    <h1 class="zx">night school</h1>
+    <p class="sub zx">debut ep + remix</p>
+  </div>
+  <div class="meta">
+    <b>newspeech</b>
+  </div>
+</header>
+
+<section class="top">
+  <div>
+    <img class="cover" src="../../assets/ep/cover.jpg" alt="">
+    <div class="facts">
+      <b>release day</b> — direct: subvert + bandcamp<br>
+      <b>one month later</b> — streaming, plus a second record<br>
+    </div>
+  </div>
+  <div class="intro">
+    <p><b>NIGHT SCHOOL</b> is the debut newspeech EP: tracks built from a bespoke software sequencer, accompanied by live instruments, and finished through self authored destruction tools.</p>
+    <p>newspeech is <b>Chris Elkjar</b>'s audio and video output, born out of experimentation during his decade plus spent playing guitar, bass and misc other things in <b>THE ARMED</b>.</p>
+    <p><b>newspeech</b> is a band, a software sequencer, a set of destruction and loop-wear tools, a 24/7 generative broadcast programme, and records made with some combination of all of them. The practice is built around unsynced systems intersecting, with destruction, noise and wear as core materials. </p>
+    <p><i>all of these tools, plugins and software are freely available for anyone to use, create with, extend or enhance. Everything lives at newspeechsound.com.</i></p>
+  </div>
+</section>
+
+<section class="beats">
+
+  <div class="beat">
+    <p class="k">RELEASE DAY</p>
+    <h2 class="zx">release</h2>
+    <p><b>NIGHT SCHOOL</b> goes on sale directly through Subvert, the artist-owned marketplace, and Bandcamp. No streaming yet: for one month the only ways to hear it are through these platforms or newspeechsound.com</p>
+    <p><b>RUIN</b> - The album page is the listening experience: the record against its own live visuals, with the ruin control alongside. Ruined copies are shared as links that play back identically for anyone who opens them. album not to your taste? no worries, make it yours. </p>
+    <p><b>BROADCAST</b> — the studio's autonomous set programme — streams the album's sequencer sessions live, varying the three songs continuously so no two passes are the same.</p>
+  </div>
+
+  <div class="beat">
+    <p class="k">THE MONTH BETWEEN</p>
+    <h2 class="zx">software + tools</h2>
+    <p>The record was created out of the process of building <b>SEQUENCE</b> a software sequencer allowing users to create harmonically aware complex sequences through a simple UI. This tool is the core of the newspeech sound and ships with access to the sample library created for this record.</p>
+    <p>During the production of the record a series of <b>browser based audio tools</b> were created to help craft the sound of the album, these 5 tools are available free to use on newspeechsound.com</p>
+    <p>In addition a series of <b>PLUGINS</b> also arrived out of these sessions - taking the core ideas of the sequencer and browser tools and bringing them into your favorite DAW.</p>
+  </div>
+
+  <div class="beat">
+    <p class="k">ONE MONTH LATER</p>
+    <h2 class="zx">streaming</h2>
+    <p><b>NIGHT SCHOOL</b> opens on streaming services — everywhere except Spotify. (fuck 'em)</p>
+    <p>Additionally, out of the month of destruction takes a companion album <b>NIGHT SCHOOL[RUINED]</b> is released across all platforms. This slowed, mangled and reverbed out bliss edition also lives on youtube.</p>
+    <p>On streaming release day <b>BROADCAST</b> also streams 24 hours of ruined editions of the songs.</p>
+  </div>
+
+</section>
+
+
+
+<footer>
+  <span>newspeech · night school · release plan</span>
+  <span>newspeechsound.com · private — for the recipient only</span>
+</footer>
+
+</div>
+</body>
+</html>
