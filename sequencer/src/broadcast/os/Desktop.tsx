@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { isTauri, convertFileSrc } from '@tauri-apps/api/core';
 import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
 import { setSignalEnabled } from './signal';
-import { useLayout, useStage, FORMATS, LOOKS, LOOK_CELL, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
+import { useLayout, useStage, FORMATS, LOOKS, MENUBAR_H, WINDOW_ORDER, WINDOW_TITLES, type WindowId } from './layout';
 import { useDirector, frameFor, forceShot, resumeAuto, shotLabel, KEY_SHOTS, type Shot } from './director';
 import { TitleLayer } from './TitleLayer';
 import { OSWindow } from './Window';
@@ -256,17 +256,13 @@ export function Desktop() {
           replaces was re-rasterised by WebKit whenever the layers above it
           moved (Chris 2026-09-09: signal "absolutely crushing the rendering
           framerate"). Off in the clean look. */}
+      {/* The resting grain stays 1 px in every look: blown up to the stream
+          look's 3 px cell it read as blocky glitch in the empty corners
+          (Chris 2026-09-22). Coarse suits the scanlines and the static
+          events, not a grain that is meant to be felt rather than seen; on
+          the stream this one fades out in the encoder, which is fine. */}
       {look !== 'clean' && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            opacity: look === 'stream' ? 0.1 : 0.07,
-            backgroundImage: `url(${GRAIN_TILE})`,
-            // stream: the same tile blown up to 3 px cells — grain an encoder keeps
-            backgroundSize: `${256 * LOOK_CELL[look]}px ${256 * LOOK_CELL[look]}px`,
-            imageRendering: 'pixelated',
-          }}
-        />
+        <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.07, backgroundImage: `url(${GRAIN_TILE})`, backgroundSize: '256px 256px' }} />
       )}
 
       {/* the visual: one layer, always mounted (see visualLayer) — full
