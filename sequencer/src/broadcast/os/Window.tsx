@@ -6,7 +6,9 @@ import { useLayout, useStage, FORMATS, WINDOW_TITLES, type WindowId, type WinRec
 
 // `rect` overrides the layout's (a director shot — director.ts); `locked`
 // windows neither drag, resize nor close: the shot owns their geometry.
-export function OSWindow({ id, children, index, rect: rectOverride, locked = false }: { id: WindowId; children: ReactNode; index: number; rect?: WinRect; locked?: boolean }) {
+// `hollow`: no body fill — the desktop paints something of its own through
+// the frame (the visual layer, which sits at this window's z under it).
+export function OSWindow({ id, children, index, rect: rectOverride, locked = false, hollow = false }: { id: WindowId; children: ReactNode; index: number; rect?: WinRect; locked?: boolean; hollow?: boolean }) {
   const saved = useLayout((s) => s.windows[id]);
   const rect = rectOverride ?? saved;
   const move = useLayout((s) => s.move);
@@ -62,7 +64,7 @@ export function OSWindow({ id, children, index, rect: rectOverride, locked = fal
         width: rect.w,
         height: rect.h,
         zIndex: rect.z,
-        background: 'rgba(5,5,5,0.94)',
+        background: hollow ? 'transparent' : 'rgba(5,5,5,0.94)',
         border: '1px solid rgba(255,255,255,0.28)',
         boxShadow: '0 0 0 1px rgba(0,0,0,0.9), 0 18px 40px rgba(0,0,0,0.55)',
       }}
@@ -77,7 +79,8 @@ export function OSWindow({ id, children, index, rect: rectOverride, locked = fal
           height: 22,
           padding: '0 8px',
           borderBottom: '1px solid rgba(255,255,255,0.22)',
-          background: 'rgba(255,255,255,0.04)',
+          // A hollow body has no fill under the header: give the header its own.
+          background: hollow ? 'rgba(12,12,12,0.96)' : 'rgba(255,255,255,0.04)',
           cursor: locked ? 'default' : 'grab',
           touchAction: 'none',
         }}

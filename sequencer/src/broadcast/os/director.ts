@@ -143,8 +143,10 @@ function loadOn(): boolean {
 interface DirectorState {
   // Director on: shots run from the schedule. Off: the picture is `home`.
   on: boolean;
-  // Auto: the schedule cuts. A forced shot (key / menu) pauses auto until
-  // `a` resumes it, so a shot can be studied.
+  // Auto: the schedule cuts. `a` pauses / resumes it. A forced shot (key /
+  // menu) does NOT pause — it takes the picture for its normal hold and the
+  // schedule continues from it (Chris 2026-09-22: no automated cuts seen
+  // after stepping through the keys — every key had paused auto).
   auto: boolean;
   shot: Shot;
   since: number; // performance.now()
@@ -306,10 +308,9 @@ function cut(shot: Shot, reason: string, opts: { tear?: boolean; then?: Shot | n
   console.info(`[director] ${shotLabel(shot)} — ${reason}`);
 }
 
-// A cut asked for by a key or the menu: takes the picture and pauses auto so
-// the shot can be looked at. `a` resumes.
+// A cut asked for by a key or the menu: takes the picture now, holds its
+// normal length, then the schedule carries on (when auto is on).
 export function forceShot(shot: Shot): void {
-  useDirector.getState().setAuto(false);
   cut(shot, 'forced');
 }
 
@@ -450,8 +451,8 @@ export function installDirector(): () => void {
   return installed;
 }
 
-// Keys: digits force a shot (and pause auto), `a` resumes auto. Returns
-// true when the key was taken.
+// Keys: digits force a shot, `a` pauses / resumes auto. Returns true when
+// the key was taken.
 export const KEY_SHOTS: Array<[string, () => Shot, string]> = [
   ['1', () => HOME, 'home'],
   ['2', () => ({ kind: 'close', win: 'ghost' }), 'close ghost'],
@@ -466,8 +467,10 @@ export const KEY_SHOTS: Array<[string, () => Shot, string]> = [
 export function directorKey(key: string): boolean {
   if (!useDirector.getState().on) return false;
   if (key === 'a') {
-    if (useDirector.getState().auto) useDirector.getState().setAuto(false);
-    else resumeAuto();
+    if (useDirector.getState().auto) {
+      useDirector.getState().setAuto(false);
+      console.info('[director] auto paused');
+    } else resumeAuto();
     return true;
   }
   const k = KEY_SHOTS.find(([kk]) => kk === key);

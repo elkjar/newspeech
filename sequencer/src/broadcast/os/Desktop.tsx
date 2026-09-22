@@ -69,16 +69,25 @@ function GroundLayer({ url, fade }: { url: string; fade: boolean }) {
   );
 }
 
+// The visual window's body is empty: the one Visualizer is a separate layer
+// (VisualLayer below) placed over the window's content area, so a director
+// cut never remounts it — the clip keeps playing through every shot.
 const CONTENT: Record<WindowId, () => JSX.Element | null> = {
   set: SetWindow,
   now: NowWindow,
   banks: BanksWindow,
   shape: ShapeWindow,
   ghost: GhostWindow,
-  visual: VisualWindow,
+  visual: () => null,
   sys: SysWindow,
   card: CardWindow,
 };
+
+// Window chrome: the header is 22 px, zoomed at half the content rate.
+const WINDOW_HEADER_H = 22;
+function headerHeight(zoom: number): number {
+  return WINDOW_HEADER_H * (zoom !== 1 ? 1 + (zoom - 1) / 2 : 1);
+}
 
 // The collapse and the reboot. During an interstitial hold the windows fall
 // away one by one (then the menubar, then the visual); on reboot they come
@@ -194,6 +203,19 @@ export function Desktop() {
   const frame = frameFor(shot, windows, format);
   const locked = shot.kind !== 'home';
   const bleed = backdrop || frame.bleed;
+  // Where the one Visualizer sits this frame: the full picture (bleed, or
+  // the layout's backdrop mode), or inside the visual window's frame. It is
+  // never unmounted — hidden (still playing) when no shot shows it, so a cut
+  // back to it resumes the same clip mid-stream instead of reloading. This
+  // is also what the listener-teardown warnings on every cut were.
+  const zoom = useLayout((s) => s.zoom);
+  const visualRect = frame.rects.visual;
+  const visualLayer: { x: number; y: number; w: number; h: number; z: number; opacity: number } | null =
+    bleed && !hidden.has('backdrop')
+      ? { x: 0, y: 0, w: spec.w, h: spec.h, z: 0, opacity: frame.bleed ? 1 : 0.55 }
+      : visualRect && visualRect.open && !hidden.has('visual') && !frame.black
+        ? { x: visualRect.x + 1, y: visualRect.y + 1 + headerHeight(zoom), w: visualRect.w - 2, h: visualRect.h - 2 - headerHeight(zoom), z: visualRect.z, opacity: 1 }
+        : null;
 
   return (
     <div data-tauri-drag-region className="fixed inset-0 overflow-hidden" style={{ background: '#050505' }}>
@@ -238,14 +260,18 @@ export function Desktop() {
         <div className="absolute inset-0 pointer-events-none" style={{ opacity: 0.07, backgroundImage: `url(${GRAIN_TILE})`, backgroundSize: '256px 256px' }} />
       )}
 
-      {/* the visual full-bleed: the layout's backdrop mode (dimmed, under the
-          windows) or a director bleed/inset shot (full strength). One
-          Visualizer at a time — the visual window is not rendered meanwhile. */}
-      {bleed && !hidden.has('backdrop') && (
-        <div className="absolute inset-0" style={{ opacity: frame.bleed ? 1 : 0.55 }}>
-          <VisualWindow />
-        </div>
-      )}
+      {/* the visual: one layer, always mounted (see visualLayer) — full
+          bleed, or framed by the visual window's chrome, or parked hidden */}
+      <div
+        className="absolute overflow-hidden pointer-events-none"
+        style={
+          visualLayer
+            ? { left: visualLayer.x, top: visualLayer.y, width: visualLayer.w, height: visualLayer.h, zIndex: visualLayer.z, opacity: visualLayer.opacity }
+            : { left: 0, top: 0, width: 2, height: 2, opacity: 0, visibility: 'hidden' }
+        }
+      >
+        <VisualWindow />
+      </div>
 
       {/* menubar — wordmark, what's playing, clock. Window management lives
           behind one item so the bar stays quiet on a stream. */}
@@ -374,7 +400,7 @@ export function Desktop() {
         if (!r) return null;
         const C = CONTENT[id];
         return (
-          <OSWindow key={id} id={id} index={i + 1} rect={locked ? r : undefined} locked={locked}>
+          <OSWindow key={id} id={id} index={i + 1} rect={locked ? r : undefined} locked={locked} hollow={id === 'visual'}>
             <C />
           </OSWindow>
         );
