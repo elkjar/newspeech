@@ -16,6 +16,7 @@ import { create } from 'zustand';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore } from '../state/store';
 import { useGap, startGapPhase, pickInterstitial, REBOOT_SECS } from './gap';
+import { useBroadcast } from './setlist';
 import { useCards } from './cards';
 import { loadSample, triggerSample } from '../audio/nativeEngine';
 
@@ -166,6 +167,15 @@ interface BootArgs {
 }
 
 let installed = false;
+// The moment the station is audible: log it, leave the boot phase, reboot
+// the OS window by window. Idempotent — only fires out of the boot phase.
+function goOnAir(): void {
+  if (useGap.getState().phase !== 'boot') return;
+  bootLog('on air');
+  useStationBoot.setState({ phase: 'onair' });
+  startGapPhase('reboot', REBOOT_SECS);
+}
+
 export function installStationBoot(args: BootArgs): () => void {
   if (installed) return () => {};
   installed = true;
@@ -212,14 +222,18 @@ export function installStationBoot(args: BootArgs): () => void {
       }
     }
     // First downbeat → on air → reboot the OS.
-    if (s.playing && useGap.getState().phase === 'boot') {
-      bootLog('on air');
-      useStationBoot.setState({ phase: 'onair' });
-      startGapPhase('reboot', REBOOT_SECS);
-    }
+    if (s.playing) goOnAir();
   };
   onStore(useSequencerStore.getState());
   unsubs.push(useSequencerStore.subscribe(onStore));
+  // A record opening the set never starts the transport — its first sample
+  // is the downbeat. (2026-09-21: a 10-minute record first left the station
+  // on the init screen until the first gap.)
+  unsubs.push(
+    useBroadcast.subscribe((b) => {
+      if (b.record) goOnAir();
+    }),
+  );
 
   // Sibling folders as they're scanned (log each count once it's known).
   let lastFiles = -1;
