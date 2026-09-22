@@ -34,6 +34,7 @@ import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
 import { installGapConductor, scanInterstitials, useGap } from './gap';
 import { installCards, scanCards } from './cards';
 import { installGround, scanGround } from './ground';
+import { installRecordClock } from './recordClock';
 import { installStationBoot, stationGo, cancelAutoGo, useStationBoot } from './boot';
 import { mergeLaunchArgs, rememberLaunchArgs, useSettings } from './settings';
 import { startGapPhase } from './gap';
@@ -148,6 +149,7 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
   useEffect(() => installGapConductor(), []);
   useEffect(() => installCards(() => useBroadcast.getState().setPaths), []);
   useEffect(() => installGround(), []);
+  useEffect(() => installRecordClock(), []);
   useEffect(() => {
     let last = '';
     const scan = () => {

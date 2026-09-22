@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke, convertFileSrc, isTauri } from '@tauri-apps/api/core';
 import { emitStreamEvent, subscribeStreamEvents } from './streamEvents';
+import { usePoolControl } from './poolControl';
 
 // Pool source — cycles through video + image files dropped into
 // `~/Documents/newspeech-visuals/`. Files load via Tauri's asset
@@ -97,6 +98,19 @@ export function Pool() {
       cancelled = true;
       unsub?.();
     };
+  }, [files.length]);
+
+  // External advance (poolControl.ts — BROADCAST's record clock). Baseline
+  // on mount; every later tick is one step.
+  const lastTickRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (files.length === 0) return;
+    lastTickRef.current = usePoolControl.getState().tick;
+    return usePoolControl.subscribe((s) => {
+      if (lastTickRef.current === s.tick) return;
+      lastTickRef.current = s.tick;
+      setIndex((i) => (i + 1) % files.length);
+    });
   }, [files.length]);
 
   // Emit a visual-change event whenever the active index changes — both
