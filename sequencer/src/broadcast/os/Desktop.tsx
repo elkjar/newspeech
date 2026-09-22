@@ -3,7 +3,7 @@
 // and grain, invented chrome. Windows drag/resize/raise/close; the layout
 // persists so the machine boots into the same face every time.
 import { useEffect, useState } from 'react';
-import { isTauri } from '@tauri-apps/api/core';
+import { isTauri, convertFileSrc } from '@tauri-apps/api/core';
 import { Visualizer } from '../../stream/Visualizer';
 import { ReactiveVisual } from './ReactiveVisual';
 import { SignalOverlay, TRANSMISSION_ID } from './SignalOverlay';
@@ -22,6 +22,7 @@ import { NextPanel } from './NextPanel';
 import { BootPanel } from './BootPanel';
 import { EndPanel } from './EndPanel';
 import { useGap } from '../gap';
+import { useGround, GROUND_FADE_SECS } from '../ground';
 import { useCards } from '../cards';
 import { useStationBoot } from '../boot';
 import desktopBg from './assets/desktop-bg.png';
@@ -43,6 +44,30 @@ const GRAIN_TILE: string = (() => {
   ctx.putImageData(img, 0, 0);
   return c.toDataURL('image/png');
 })();
+
+// One ground image, fading in over the previous one on mount when there is
+// a previous one (a fresh pick), painted at once otherwise (boot).
+function GroundLayer({ url, fade }: { url: string; fade: boolean }) {
+  const [on, setOn] = useState(!fade);
+  useEffect(() => {
+    if (!fade) return;
+    const id = requestAnimationFrame(() => setOn(true));
+    return () => cancelAnimationFrame(id);
+  }, [fade]);
+  return (
+    <div
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        backgroundImage: `url(${url})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        filter: 'grayscale(1)',
+        opacity: on ? 1 : 0,
+        transition: fade ? `opacity ${GROUND_FADE_SECS}s ease-in-out` : undefined,
+      }}
+    />
+  );
+}
 
 const CONTENT: Record<WindowId, () => JSX.Element | null> = {
   set: SetWindow,
@@ -133,6 +158,12 @@ export function Desktop() {
   // arranging so the windows read plainly (Chris 2026-09-08).
   const station = useStationBoot((s) => s.phase);
   const arranging = useLayout((s) => s.arranging) && station === 'standby';
+  // The ground: a still from BACKGROUNDS/ beside the set, re-picked on every
+  // song / record load and crossfaded (ground.ts); the built-in image when
+  // the folder is empty or absent.
+  const groundCurrent = useGround((s) => s.current);
+  const groundPrevious = useGround((s) => s.previous);
+  const groundUrl = (f: string | null) => (f ? (isTauri() ? convertFileSrc(f) : f) : desktopBg);
   // 16:9 or 4:3 — follows the window (layout.ts). The 4:3 picture has no
   // menubar on air (the wordmark would be 9% of a CRT's height) and a
   // title-safe area the windows keep to; both are drawn while arranging.
@@ -174,10 +205,16 @@ export function Desktop() {
       {/* ground: Chris's desktop-bg (a glitched light streak on dark), full
           bleed, with a breath of grain over it so the windows sit in it */}
       {!arranging && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ backgroundImage: `url(${desktopBg})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'grayscale(1)' }}
-        />
+        <>
+          {groundPrevious && (
+            <div
+              key={`prev-${groundPrevious}`}
+              className="absolute inset-0 pointer-events-none"
+              style={{ backgroundImage: `url(${groundUrl(groundPrevious)})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'grayscale(1)' }}
+            />
+          )}
+          <GroundLayer key={groundCurrent ?? 'builtin'} url={groundUrl(groundCurrent)} fade={!!groundPrevious} />
+        </>
       )}
       {/* grain: a noise tile rendered ONCE (grainTile) and repeated as a
           background — the live SVG feTurbulence filter + mix-blend-mode it

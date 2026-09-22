@@ -31,7 +31,8 @@
       "assetProtocol": {
         "enable": true,
         "scope": [
-          "$HOME/Documents/newspeech-visuals/**"
+          "$HOME/Documents/newspeech-visuals/**",
+          "$HOME/**"
         ]
       }
     }

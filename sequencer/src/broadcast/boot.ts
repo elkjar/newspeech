@@ -18,6 +18,7 @@ import { useSequencerStore } from '../state/store';
 import { useGap, startGapPhase, pickInterstitial, REBOOT_SECS } from './gap';
 import { useBroadcast } from './setlist';
 import { useCards } from './cards';
+import { useGround } from './ground';
 import { loadSample, triggerSample } from '../audio/nativeEngine';
 
 export interface BootLine {
@@ -241,6 +242,13 @@ export function installStationBoot(args: BootArgs): () => void {
     useGap.subscribe((g) => {
       if (g.files.length !== lastFiles && (g.files.length > 0 || lastFiles > 0)) bootLog(`interstitials: ${g.files.length}`);
       lastFiles = g.files.length;
+    }),
+  );
+  let lastGround = -1;
+  unsubs.push(
+    useGround.subscribe((g) => {
+      if (g.files.length !== lastGround && (g.files.length > 0 || lastGround > 0)) bootLog(`backgrounds: ${g.files.length}`);
+      lastGround = g.files.length;
     }),
   );
   let lastCards = -1;

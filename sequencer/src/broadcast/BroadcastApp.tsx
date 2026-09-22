@@ -33,6 +33,7 @@ import { togglePlayback, panicKill } from '../audio/transport';
 import { useBroadcast, loadAndStartSet, addToSet } from './setlist';
 import { installGapConductor, scanInterstitials, useGap } from './gap';
 import { installCards, scanCards } from './cards';
+import { installGround, scanGround } from './ground';
 import { installStationBoot, stationGo, cancelAutoGo, useStationBoot } from './boot';
 import { mergeLaunchArgs, rememberLaunchArgs, useSettings } from './settings';
 import { startGapPhase } from './gap';
@@ -146,6 +147,7 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
   // set's paths change (launch, drops).
   useEffect(() => installGapConductor(), []);
   useEffect(() => installCards(() => useBroadcast.getState().setPaths), []);
+  useEffect(() => installGround(), []);
   useEffect(() => {
     let last = '';
     const scan = () => {
@@ -156,6 +158,7 @@ function BroadcastEngine({ args }: { args: LaunchArgs }) {
       last = key;
       void scanInterstitials(paths, st.interstitialsDir);
       void scanCards(paths, st.cardsDir);
+      void scanGround(paths);
     };
     scan();
     const a = useBroadcast.subscribe(scan);
