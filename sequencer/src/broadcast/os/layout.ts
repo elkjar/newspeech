@@ -79,10 +79,14 @@ export const FORMATS: Record<Format, FormatSpec> = {
     // Chris: "fonts changing size is going to be awkward") and the encoder
     // question is answered by the stream look's texture, not by type. A
     // zoom saved at 1.25 / 1.5 that day migrates back once.
+    // Look: `signal` (2026-09-22, after the 1.5/3/6 Mbps re-encode test —
+    // Chris: "default to the signal look, the low res one is fine and it'll
+    // read the same as everything else on the internet"). `stream` stays
+    // in the menu; a look saved as stream that day migrates back once.
     zoom: 1,
     menubarOnAir: true,
     backdrop: false,
-    look: 'stream',
+    look: 'signal',
     // v1 was window px (whatever screen it was saved on); v2 is stage px.
     lsKey: 'broadcast.layout.v2',
   },
@@ -272,6 +276,7 @@ export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 3;
 export const ZOOM_STEP = 0.25;
 const ZOOM_MIGRATED = 'broadcast.layout.zoom.v4';
+const LOOK_MIGRATED = 'broadcast.layout.look.v2';
 function loadZoom(format: Format): number {
   const f = FORMATS[format];
   try {
@@ -292,6 +297,13 @@ function loadLook(format: Format): Look {
   const f = FORMATS[format];
   try {
     const v = localStorage.getItem(f.lsKey + '.look');
+    // `stream` was the 16:9 default for one day (09-22); a saved stream
+    // migrates to signal once — picking stream again afterwards sticks.
+    if (format === '16:9' && v === 'stream' && localStorage.getItem(LOOK_MIGRATED) === null) {
+      localStorage.setItem(LOOK_MIGRATED, '1');
+      localStorage.setItem(f.lsKey + '.look', 'signal');
+      return 'signal';
+    }
     if (v === 'clean' || v === 'signal' || v === 'stream') return v;
     if (v === 'tube') return 'signal'; // 0.1.8–0.1.12
     // The 09-08 signal on/off switch (16:9 only): off → clean.
