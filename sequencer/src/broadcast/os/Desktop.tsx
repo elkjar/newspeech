@@ -17,6 +17,7 @@ import { ShapeWindow } from './windows/ShapeWindow';
 import { GhostWindow } from './windows/GhostWindow';
 import { VisualWindow } from './windows/VisualWindow';
 import { SysWindow } from './windows/SysWindow';
+import { AudioWindow } from './windows/AudioWindow';
 import { CardWindow } from './windows/CardWindow';
 import { NextPanel } from './NextPanel';
 import { BootPanel } from './BootPanel';
@@ -80,6 +81,7 @@ const CONTENT: Record<WindowId, () => JSX.Element | null> = {
   ghost: GhostWindow,
   visual: () => null,
   sys: SysWindow,
+  audio: AudioWindow,
   card: CardWindow,
 };
 
@@ -94,7 +96,7 @@ function headerHeight(zoom: number): number {
 // back one by one over REBOOT_SECS. Order is rolled fresh per gap. Only the
 // hidden-set changes cause a render — not the 20 Hz progress.
 type Falls = 'menubar' | 'backdrop' | WindowId;
-const FALLERS: Falls[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys', 'card', 'menubar', 'backdrop'];
+const FALLERS: Falls[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys', 'audio', 'card', 'menubar', 'backdrop'];
 function rollOrder(): Record<Falls, { fall: number; rise: number }> {
   const out = {} as Record<Falls, { fall: number; rise: number }>;
   for (const id of FALLERS) {

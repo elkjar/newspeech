@@ -121,7 +121,7 @@ export function fitStage(W = window.innerWidth, H = window.innerHeight): StageFi
 }
 export const useStage = create<StageFit>(() => fitStage());
 
-export type WindowId = 'set' | 'ghost' | 'banks' | 'shape' | 'now' | 'visual' | 'sys' | 'card';
+export type WindowId = 'set' | 'ghost' | 'banks' | 'shape' | 'now' | 'visual' | 'sys' | 'audio' | 'card';
 
 export interface WinRect {
   x: number;
@@ -140,10 +140,11 @@ export const WINDOW_TITLES: Record<WindowId, string> = {
   now: 'now playing',
   visual: 'visual',
   sys: 'sys',
+  audio: 'audio',
   card: 'ident',
 };
 
-export const WINDOW_ORDER: WindowId[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys', 'card'];
+export const WINDOW_ORDER: WindowId[] = ['ghost', 'visual', 'set', 'now', 'banks', 'shape', 'sys', 'audio', 'card'];
 
 // Chris's arrangement, laid out by hand on the 1512×850 stage (2026-09-08)
 // under the 28px menubar.
@@ -155,6 +156,9 @@ const DEFAULT_169: Record<WindowId, WinRect> = {
   sys: { x: 391, y: 681, w: 483, h: 105, open: true, z: 5 },
   banks: { x: 1131, y: 654, w: 332, h: 137, open: true, z: 6 },
   shape: { x: 1286, y: 643, w: 200, h: 124, open: true, z: 7 },
+  // The engine scope (2026-09-22), in the gap under the visual between set
+  // and banks.
+  audio: { x: 884, y: 610, w: 236, h: 190, open: true, z: 9 },
   // The ident: shows only while a card is up (cards.ts), lower-left of the
   // visual like a lower-third. `open` false = idents off.
   card: { x: 566, y: 430, w: 400, h: 146, open: true, z: 8 },
@@ -172,6 +176,7 @@ const DEFAULT_43: Record<WindowId, WinRect> = {
   set: { x: 396, y: 252, w: 324, h: 136, open: false, z: 5 },
   shape: { x: 396, y: 252, w: 324, h: 136, open: false, z: 6 },
   sys: { x: 396, y: 400, w: 324, h: 60, open: false, z: 7 },
+  audio: { x: 396, y: 400, w: 324, h: 140, open: false, z: 9 },
   card: { x: 396, y: 400, w: 324, h: 140, open: true, z: 8 },
 };
 

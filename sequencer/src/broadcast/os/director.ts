@@ -68,14 +68,14 @@ const INSET_SCALE = 0.38;
 // `banks` full-frame is not a picture (Chris, 2026-09-22) — it stays in
 // pairs and home, never a close.
 export const CLOSE_CANDIDATES: WindowId[] = ['ghost', 'visual', 'now'];
-const CLOSE_WEIGHT: Record<WindowId, number> = { ghost: 0.45, visual: 0.3, now: 0.25, banks: 0, set: 0, shape: 0, sys: 0, card: 0 };
+const CLOSE_WEIGHT: Record<WindowId, number> = { ghost: 0.45, visual: 0.3, now: 0.25, banks: 0, set: 0, shape: 0, sys: 0, audio: 0, card: 0 };
 const PAIRS: Array<[WindowId, WindowId]> = [
   ['ghost', 'visual'],
   ['now', 'banks'],
   ['ghost', 'now'],
   ['visual', 'banks'],
   ['set', 'visual'],
-  ['visual', 'sys'],
+  ['visual', 'audio'],
 ];
 
 export function frameFor(shot: Shot, windows: Record<WindowId, WinRect>, format: Format): Frame {
@@ -265,19 +265,21 @@ function pickPair(): Shot {
 
 // The next shot from the ambient schedule. Entropy leans the choice: calm
 // banks wide, chaos close. Under a record the visual is the subject, and
-// the sys scope (the only other thing moving) shares the frame with it.
+// the audio scope (the only other thing moving) shares the frame with it,
+// or takes it — a full-frame waveform, now and then.
 // Pairs weigh more since 2026-09-22 (Chris: "the split screen with a
 // dialog + visualizer is strong").
 function pickNext(from: Shot): Shot {
   const rec = useBroadcast.getState().record;
   let next: Shot;
   if (rec) {
-    const sys = openWindows().has('sys');
+    const audio = openWindows().has('audio');
     next = pick<Shot>([
-      [{ kind: 'bleed' }, 0.35],
-      [{ kind: 'pair', a: 'visual', b: 'sys' }, sys ? 0.28 : 0],
-      [{ kind: 'inset' }, 0.15],
-      [{ kind: 'close', win: 'visual' }, 0.12],
+      [{ kind: 'bleed' }, 0.33],
+      [{ kind: 'pair', a: 'visual', b: 'audio' }, audio ? 0.26 : 0],
+      [{ kind: 'inset' }, 0.13],
+      [{ kind: 'close', win: 'visual' }, 0.1],
+      [{ kind: 'close', win: 'audio' }, audio ? 0.08 : 0],
       [HOME, 0.1],
     ]);
   } else {

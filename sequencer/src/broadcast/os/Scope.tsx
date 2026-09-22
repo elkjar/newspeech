@@ -1,6 +1,6 @@
-// Engine scope — the output waveform and 24 log bands, drawn under the sys
-// telemetry so the window moves with the sound even when nothing on the
-// desktop is sequencing (a record: transport stopped, Ghost idle — Chris
+// Engine scope — the output waveform and 24 log bands, the `audio` window's
+// content, so something on the desktop moves with the sound even when
+// nothing is sequencing (a record: transport stopped, Ghost idle — Chris
 // 2026-09-22: "the visualizer block is still carrying most of the weight").
 // Fed by `audio:scope` (lib.rs emitter, ~30 Hz, BROADCAST only); draws on
 // the event, no rAF loop, monochrome like everything else on the desktop.
