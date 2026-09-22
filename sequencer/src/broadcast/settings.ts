@@ -99,9 +99,37 @@ function flagsPatch(args: LaunchFlags): Partial<BroadcastSettings> {
   return patch;
 }
 
+// A restart from the end of transmission lands in standby whatever the
+// remembered autostart says (Chris 2026-09-22: "once the transmission ends
+// I'd think you could go back to the start"). One-shot: set before the
+// relaunch, consumed by the next boot. The remembered setting is untouched,
+// so power-loss recovery still goes straight on air.
+const LS_STANDBY_ONCE = 'broadcast.standby.once';
+export function requestStandbyOnce(): void {
+  try {
+    localStorage.setItem(LS_STANDBY_ONCE, '1');
+  } catch {
+    // ignore
+  }
+}
+function takeStandbyOnce(): boolean {
+  try {
+    const v = localStorage.getItem(LS_STANDBY_ONCE) === '1';
+    if (v) localStorage.removeItem(LS_STANDBY_ONCE);
+    return v;
+  } catch {
+    return false;
+  }
+}
+const standbyOnce = takeStandbyOnce();
+
 // Launch flags laid over the remembered settings — pure (safe during render).
 export function mergeLaunchArgs(args: LaunchFlags): BroadcastSettings {
   const s = useSettings.getState();
+  if (standbyOnce) return { ...mergeLaunchArgs0(args, s), autostart: false };
+  return mergeLaunchArgs0(args, s);
+}
+function mergeLaunchArgs0(args: LaunchFlags, s: BroadcastSettings): BroadcastSettings {
   return {
     setPaths: s.setPaths,
     interstitialsDir: s.interstitialsDir,

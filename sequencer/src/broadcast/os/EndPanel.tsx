@@ -57,7 +57,7 @@ export function EndPanel() {
               <FactRow key={k} k={k} v={v} />
             ))}
           </div>
-          <div className="mt-auto mb-3 text-[8px] tracking-[0.18em] uppercase text-white/45">space · restart the station</div>
+          <div className="mt-auto mb-3 text-[8px] tracking-[0.18em] uppercase text-white/45">space · back to standby</div>
         </div>
         <div className="h-[2px] bg-white/10" />
       </div>

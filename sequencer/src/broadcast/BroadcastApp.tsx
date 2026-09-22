@@ -36,7 +36,7 @@ import { installCards, scanCards } from './cards';
 import { installGround, scanGround } from './ground';
 import { installRecordClock } from './recordClock';
 import { installStationBoot, stationGo, cancelAutoGo, useStationBoot } from './boot';
-import { mergeLaunchArgs, rememberLaunchArgs, useSettings } from './settings';
+import { mergeLaunchArgs, rememberLaunchArgs, requestStandbyOnce, useSettings } from './settings';
 import { startGapPhase } from './gap';
 import { Desktop } from './os/Desktop';
 import { useLayout } from './os/layout';
@@ -331,13 +331,15 @@ export function BroadcastApp() {
         e.preventDefault();
         return;
       }
-      // End of transmission: space / enter restart the station (the app
-      // relaunches with its remembered setup; a remembered autostart goes
-      // straight back on air). The sign-off was a dead end before (Chris
-      // 2026-09-22: "no way to restart the app from that point").
+      // End of transmission: space / enter take the station back to the
+      // start — a relaunch into standby, whatever autostart is remembered
+      // (settings.ts requestStandbyOnce). The sign-off was a dead end
+      // before (Chris 2026-09-22: "no way to restart the app from that point
+      // … once the transmission ends I'd think you could go back to the start").
       if ((e.code === 'Space' || e.code === 'Enter') && useGap.getState().phase === 'off') {
         e.preventDefault();
-        console.info('[broadcast] restart from sign-off');
+        console.info('[broadcast] restart from sign-off → standby');
+        requestStandbyOnce();
         if (NATIVE) void relaunch().catch((err) => console.warn('[broadcast] relaunch failed:', err));
         else window.location.reload();
         return;
