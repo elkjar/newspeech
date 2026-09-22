@@ -41,10 +41,13 @@ function makeStaticTiles(ctx: CanvasRenderingContext2D, dpr: number, cell: numbe
     if (!g) continue;
     const img = g.createImageData(c.width, c.height);
     const d = img.data;
-    // Fill per grain cell, replicated px×px so the grain is `cell` css px on retina.
-    const cells = Math.ceil(TILE / cell);
-    for (let y = 0; y < cells; y++) {
-      for (let x = 0; x < cells; x++) {
+    // Fill per grain cell, replicated px×px so the grain is `cell` css px on
+    // retina. TILE cells across: the canvas is TILE*px device px, so every
+    // cell must be filled or the pattern has transparent holes (the stream
+    // look's static showed as scattered blocks on 09-22 when this loop ran
+    // TILE/cell — a third of the tile).
+    for (let y = 0; y < TILE; y++) {
+      for (let x = 0; x < TILE; x++) {
         const v = Math.random();
         const val = v < 0.5 ? 0 : Math.floor(Math.pow((v - 0.5) / 0.5, 1.6) * 230);
         for (let yy = 0; yy < px; yy++) {

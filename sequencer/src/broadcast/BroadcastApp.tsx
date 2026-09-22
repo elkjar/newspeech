@@ -42,6 +42,7 @@ import { Desktop } from './os/Desktop';
 import { useLayout } from './os/layout';
 import { installStreamState } from './os/streamState';
 import { installDirector, directorKey } from './os/director';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { seedDemo } from './os/demo';
 
 const NATIVE = isTauri();
@@ -328,6 +329,17 @@ export function BroadcastApp() {
       // air (or in the demo) only — standby's fields take digits.
       if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && (DEMO || useStationBoot.getState().phase === 'onair') && directorKey(e.key)) {
         e.preventDefault();
+        return;
+      }
+      // End of transmission: space / enter restart the station (the app
+      // relaunches with its remembered setup; a remembered autostart goes
+      // straight back on air). The sign-off was a dead end before (Chris
+      // 2026-09-22: "no way to restart the app from that point").
+      if ((e.code === 'Space' || e.code === 'Enter') && useGap.getState().phase === 'off') {
+        e.preventDefault();
+        console.info('[broadcast] restart from sign-off');
+        if (NATIVE) void relaunch().catch((err) => console.warn('[broadcast] relaunch failed:', err));
+        else window.location.reload();
         return;
       }
       if (e.code === 'Escape' && useStationBoot.getState().phase === 'standby') {

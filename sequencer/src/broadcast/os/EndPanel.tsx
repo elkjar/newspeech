@@ -11,6 +11,7 @@ import { fmtUptime } from './windows/NowWindow';
 export function EndPanel() {
   const phase = useGap((s) => s.phase);
   const count = useGap((s) => s.count);
+  const songLimit = useGap((s) => s.songLimit);
   const signedOffAt = useGap((s) => s.signedOffAt);
   const b = useBroadcast();
   const cardsShown = useCards((s) => s.count);
@@ -27,6 +28,7 @@ export function EndPanel() {
     ['interstitials', String(count)],
     ['idents', String(cardsShown)],
     ['last', b.current !== null && b.entries[b.current] ? b.entries[b.current].name : '—'],
+    ['limit', songLimit !== null ? `${songLimit} songs, then sign off (standby → songs)` : '—'],
   ];
   return (
     <div className="fixed inset-0 pointer-events-none flex items-center justify-center" style={{ zIndex: 20001 }}>
@@ -45,7 +47,7 @@ export function EndPanel() {
           <span className="font-sans text-[10px] tracking-[0.18em] lowercase">station</span>
           <span className="ml-auto text-[8px] tracking-[0.16em] uppercase text-white/45">signed off</span>
         </div>
-        <div className="flex flex-col px-5 pt-5" style={{ height: 14 * 18 + 14 }}>
+        <div className="flex flex-col px-5 pt-5" style={{ height: 15 * 18 + 14 }}>
           <div className="text-[8px] tracking-[0.18em] uppercase text-white/45">NEWSPEECH // BROADCAST</div>
           <div className="font-sans mt-1" style={{ fontSize: 34, lineHeight: '40px', letterSpacing: '0.02em' }}>
             end of transmission
@@ -55,6 +57,7 @@ export function EndPanel() {
               <FactRow key={k} k={k} v={v} />
             ))}
           </div>
+          <div className="mt-auto mb-3 text-[8px] tracking-[0.18em] uppercase text-white/45">space · restart the station</div>
         </div>
         <div className="h-[2px] bg-white/10" />
       </div>

@@ -74,11 +74,12 @@ export const FORMATS: Record<Format, FormatSpec> = {
     w: 1512,
     h: 850,
     safe: { x: 0, y: MENUBAR_H, w: 1512, h: 850 - MENUBAR_H },
-    // 1.5 from 2026-09-22: type up uniformly for the stream (8 px labels
+    // 1.25 from 2026-09-22: type up uniformly for the stream (8 px labels
     // were ~6 px caps at 1080 — under what a re-encode carries). One step
     // for the whole picture, never per shot (Chris: "fonts changing size
-    // is going to be awkward"). A saved zoom of 1 from before migrates.
-    zoom: 1.5,
+    // is going to be awkward"); 1.5 was tried first and read "horsey".
+    // A saved zoom of 1 (or the 1.5 from earlier that day) migrates once.
+    zoom: 1.25,
     menubarOnAir: true,
     backdrop: false,
     look: 'stream',
@@ -265,13 +266,13 @@ function loadBackdrop(format: Format): boolean {
 export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 3;
 export const ZOOM_STEP = 0.25;
-const ZOOM_MIGRATED = 'broadcast.layout.zoom.v2';
+const ZOOM_MIGRATED = 'broadcast.layout.zoom.v3';
 function loadZoom(format: Format): number {
   const f = FORMATS[format];
   try {
     const v = Number(localStorage.getItem(f.lsKey + '.zoom'));
-    // 16:9 saved at the old default of 1 → the new default, once.
-    if (format === '16:9' && v === 1 && localStorage.getItem(ZOOM_MIGRATED) === null) {
+    // 16:9 saved at an old default (1, or 09-22's 1.5) → the new default, once.
+    if (format === '16:9' && (v === 1 || v === 1.5) && localStorage.getItem(ZOOM_MIGRATED) === null) {
       localStorage.setItem(ZOOM_MIGRATED, '1');
       localStorage.setItem(f.lsKey + '.zoom', String(f.zoom));
       return f.zoom;
