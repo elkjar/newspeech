@@ -63,17 +63,20 @@ in stage px, both formats.
 |---|---|---|
 | **home** | the saved arrangement, as designed | as saved (zoom per format) |
 | **close `visual`** | the visual fills the safe area, chrome kept, others closed. Only the visual — no other window goes full-frame (Chris 2026-09-22) | as saved — more of the same-size content (Chris: per-shot type sizes "awkward") |
-| **pair** | the visual and one partner split the safe area, visual on either side | as saved |
-| **split 3 / 4 / 5** | 3-up: visual big on one side, two partners stacked on the other (2+1 / 1+2). 4-up: quadrants with the visual in any one, or visual big + three stacked (3+1 / 1+3). 5-up: visual big + four partners in a 2×2 grid | as saved |
+| **pair** | the visual and one big partner (ghost / audio) split the safe area, visual on either side | as saved |
+| **split 3 / 4 / 5** | visual big on one side, partners in the other column: big partners (ghost, audio) fill it, small ones (sys, banks, shape, now) pack at their home size along its bottom against the visual. No big partner → the column narrows to the widest small window and the visual widens. Quadrants when visual + ghost + audio are all in: the small windows pack into the fourth cell toward the picture's centre | as saved |
 | **bleed** | the visual with no chrome, full picture, menubar off | — |
 | **title** | black, one line of text at ≥ 40 px stage: song title / seed / record id / bank name / a Ghost pick | huge |
 | **black** | nothing (sign-off, the beat before a title) | — |
 
-Every multi-up has the visual in it. Partners are the windows that move on their own — `ghost`,
-`sys`, `audio` (the engine scope) — for pairs and 3-ups; the 4-up and 5-up also draw `shape` and
-`banks` at lower weight (Chris 2026-09-22: "the rest of the visualizers are nice as a group but
-don't give much independently"). Under a record the scope and sys outweigh the idle ghost. `now`
-and `set` stay home-only. `card` is never a shot — the ident stays a lower-third and forces `home`
+Every multi-up has the visual in it. Partners: `ghost` and `audio` (the engine scope) are **big** —
+they take any cell. `sys`, `banks`, `shape` and `now` are **small** — they hold their home
+(saved-layout) size in every shot, so arranging home also sizes them on every cut (Chris
+2026-09-22, after the first YouTube test: sys at a half screen "looks pretty awkward … keep a few of
+these pretty small. sys / banks / shape / now playing especially"). With big partners in the column
+the small ones take at most 55% of its height; what doesn't fit sits the shot out. Under a record
+the scope and sys outweigh the idle ghost. `set` stays home-only. `card` is never a shot — the
+ident stays a lower-third and forces `home`
 or `bleed` while up. Keys: 1 home · 2 close visual · 3 pair · 4 3-up · 5 4-up · 6 5-up · 7 bleed ·
 8 title · 9 black · `a` auto. (The `inset` shot — desktop scaled ~40% in a corner over the bleed — was cut 2026-09-22: Chris, "it feels like it's breaking out of the OS vibe.")
 

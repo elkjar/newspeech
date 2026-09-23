@@ -69,20 +69,79 @@ export interface Frame {
 
 const CLOSE_MARGIN: Record<Format, number> = { '16:9': 24, '4:3': 0 };
 
-// Only the visual goes full-frame (Chris 2026-09-22). Its partners in a
-// pair / 3-up are the windows that move on their own — ghost, sys, audio
-// ("the rest … are nice as a group but don't give much independently").
-// The 4-up and 5-up also draw shape and banks, at lower weight ("adding in
-// the other dialog windows for shape and banks could also work on the 4
-// up, or a 5 up"). Weights: ambient vs under a record (Ghost idle, the
-// scope is the movement).
-const PARTNERS_PRIMARY: WindowId[] = ['ghost', 'sys', 'audio'];
-const PARTNERS_WIDE: WindowId[] = ['ghost', 'sys', 'audio', 'shape', 'banks'];
+// Only the visual goes full-frame (Chris 2026-09-22). Its partners are the
+// windows that move on their own — ghost and audio (the scope) — plus the
+// status windows sys / banks / shape / now at lower weight.
+//
+// BIG vs SMALL (Chris 2026-09-22, after the first YouTube test: sys scaled
+// to a half screen "looks pretty awkward … keep a few of these pretty
+// small. sys / banks / shape / now playing especially"). Big windows take
+// whatever cell a shot hands them; small ones hold their HOME size (the
+// saved arrangement's w/h) in every shot and pack at the bottom of the
+// partner column, so arranging home also sizes them on every cut. A pair
+// is the visual + a big window only.
+export const SMALL_WINDOWS = new Set<WindowId>(['sys', 'banks', 'shape', 'now']);
+const PARTNERS_PAIR: WindowId[] = ['ghost', 'audio'];
+const PARTNERS_SPLIT: WindowId[] = ['ghost', 'audio', 'sys', 'banks', 'shape', 'now'];
+// Weights: ambient vs under a record (Ghost idle, the scope is the
+// movement).
 const PARTNER_WEIGHT: Record<'ambient' | 'record', Record<WindowId, number>> = {
-  ambient: { ghost: 0.5, sys: 0.2, audio: 0.3, shape: 0.12, banks: 0.12, visual: 0, now: 0, set: 0, card: 0 },
-  record: { ghost: 0.15, sys: 0.35, audio: 0.5, shape: 0.08, banks: 0.06, visual: 0, now: 0, set: 0, card: 0 },
+  ambient: { ghost: 0.5, sys: 0.2, audio: 0.3, shape: 0.14, banks: 0.14, now: 0.12, visual: 0, set: 0, card: 0 },
+  record: { ghost: 0.15, sys: 0.35, audio: 0.5, shape: 0.08, banks: 0.06, now: 0.15, visual: 0, set: 0, card: 0 },
 };
 const GUTTER = 12;
+// With big windows in the column, small ones may take at most this share
+// of its height; whatever does not fit is left out of the shot.
+const SHELF_MAX = 0.55;
+// A column of small windows only is at least this wide.
+const STRIP_MIN_W = 160;
+
+// Small windows at their home size, packed into rows inside `area`: rows
+// stack from the `v` edge, each row starts at the `h` edge, windows in a
+// row align to the `v` edge. Stops at `maxH`.
+function packSmall(
+  ids: WindowId[],
+  windows: Record<WindowId, WinRect>,
+  area: WinRect,
+  h: 'left' | 'right',
+  v: 'top' | 'bottom',
+  maxH: number,
+): { placed: Array<[WindowId, WinRect]>; used: number } {
+  const rows: Array<{ items: Array<[WindowId, number, number]>; w: number; h: number }> = [];
+  let used = 0;
+  for (const id of ids) {
+    const w = Math.min(windows[id].w, area.w);
+    const ht = Math.min(windows[id].h, area.h);
+    const row = rows[rows.length - 1];
+    if (row && row.w + GUTTER + w <= area.w) {
+      const grown = Math.max(row.h, ht);
+      if (used - row.h + grown > maxH) continue;
+      used += grown - row.h;
+      row.items.push([id, w, ht]);
+      row.w += GUTTER + w;
+      row.h = grown;
+      continue;
+    }
+    const add = (rows.length ? GUTTER : 0) + ht;
+    if (used + add > maxH) continue;
+    used += add;
+    rows.push({ items: [[id, w, ht]], w, h: ht });
+  }
+  const placed: Array<[WindowId, WinRect]> = [];
+  let off = 0;
+  for (const row of rows) {
+    const rowY = v === 'top' ? area.y + off : area.y + area.h - off - row.h;
+    let x = h === 'left' ? area.x : area.x + area.w;
+    for (const [id, w, ht] of row.items) {
+      const rx = h === 'left' ? x : x - w;
+      const ry = v === 'top' ? rowY : rowY + row.h - ht;
+      placed.push([id, { x: rx, y: ry, w, h: ht, open: true, z: 1 }]);
+      x = h === 'left' ? x + w + GUTTER : x - w - GUTTER;
+    }
+    off += row.h + GUTTER;
+  }
+  return { placed, used };
+}
 
 export function frameFor(shot: Shot, windows: Record<WindowId, WinRect>, format: Format): Frame {
   const { safe } = FORMATS[format];
@@ -114,41 +173,52 @@ export function frameFor(shot: Shot, windows: Record<WindowId, WinRect>, format:
     case 'split': {
       const rects = none();
       const halfW = Math.floor((full.w - GUTTER) / 2);
-      const left: WinRect = { ...full, w: halfW };
-      const right: WinRect = { ...full, x: full.x + halfW + GUTTER, w: full.w - halfW - GUTTER };
       // n windows stacked in a column.
       const stack = (col: WinRect, n: number): WinRect[] => {
+        if (n <= 0) return [];
         const h = Math.floor((col.h - GUTTER * (n - 1)) / n);
         return Array.from({ length: n }, (_, i) => ({ ...col, y: col.y + i * (h + GUTTER), h: i === n - 1 ? col.h - i * (h + GUTTER) : h }));
       };
-      // 2×2 grid of a column, row-major: TL TR BL BR.
-      const grid = (col: WinRect): WinRect[] => {
-        const w = Math.floor((col.w - GUTTER) / 2);
-        const l = stack({ ...col, w }, 2);
-        const r = stack({ ...col, x: col.x + w + GUTTER, w: col.w - w - GUTTER }, 2);
-        return [l[0], r[0], l[1], r[1]];
-      };
+      const bigs = shot.others.filter((id) => !SMALL_WINDOWS.has(id));
+      const smalls = shot.others.filter((id) => SMALL_WINDOWS.has(id));
       let z = 1;
       if (shot.big === null) {
-        // Quadrants: visual in `slot`, others fill the rest in order.
-        const order = grid(full);
+        // Quadrants (TL TR BL BR): the visual in `slot`, the big partners in
+        // the next cells, the small ones packed at home size into the last
+        // cell against the picture's centre.
+        const w = Math.floor((full.w - GUTTER) / 2);
+        const cols = [stack({ ...full, w }, 2), stack({ ...full, x: full.x + w + GUTTER, w: full.w - w - GUTTER }, 2)];
+        const cells = [cols[0][0], cols[1][0], cols[0][1], cols[1][1]];
         const slot = Math.max(0, Math.min(3, shot.slot));
-        rects.visual = { ...order[slot], z: z++ };
-        let k = 0;
-        for (let i = 0; i < 4; i++) {
-          if (i === slot) continue;
-          const id = shot.others[k++];
-          if (id) rects[id] = { ...order[i], z: z++ };
+        rects.visual = { ...cells[slot], z: z++ };
+        const free = [0, 1, 2, 3].filter((i) => i !== slot);
+        bigs.forEach((id, k) => {
+          if (free[k] !== undefined) rects[id] = { ...cells[free[k]], z: z++ };
+        });
+        const last = free[bigs.length];
+        if (last !== undefined) {
+          const shelf = packSmall(smalls, windows, cells[last], last % 2 === 0 ? 'right' : 'left', last < 2 ? 'bottom' : 'top', cells[last].h);
+          for (const [id, r] of shelf.placed) rects[id] = { ...r, z: z++ };
         }
       } else {
-        const bigCol = shot.big === 'left' ? left : right;
-        const smallCol = shot.big === 'left' ? right : left;
-        rects.visual = { ...bigCol, z: z++ };
-        // Two or three partners stack; four make a 2×2 grid (the 5-up).
-        const cells = shot.others.length >= 4 ? grid(smallCol) : stack(smallCol, shot.others.length);
-        shot.others.forEach((id, i) => {
-          rects[id] = { ...cells[i], z: z++ };
+        // The visual big on one side; the partner column on the other. With
+        // no big partner the column narrows to the widest small window and
+        // the visual takes the rest.
+        const colW = bigs.length
+          ? full.w - halfW - GUTTER
+          : Math.max(STRIP_MIN_W, Math.min(halfW, Math.max(...smalls.map((id) => windows[id].w))));
+        const visW = full.w - colW - GUTTER;
+        const visLeft = shot.big === 'left';
+        rects.visual = { ...full, x: visLeft ? full.x : full.x + colW + GUTTER, w: visW, z: z++ };
+        const col: WinRect = { ...full, x: visLeft ? full.x + visW + GUTTER : full.x, w: colW };
+        // Small windows sit against the visual (the gutter stays even) at
+        // the bottom, as on home.
+        const shelf = packSmall(smalls, windows, col, visLeft ? 'left' : 'right', 'bottom', bigs.length ? col.h * SHELF_MAX : col.h);
+        const bigArea: WinRect = { ...col, h: col.h - (shelf.placed.length ? shelf.used + GUTTER : 0) };
+        stack(bigArea, bigs.length).forEach((r, i) => {
+          rects[bigs[i]] = { ...r, z: z++ };
         });
+        for (const [id, r] of shelf.placed) rects[id] = { ...r, z: z++ };
       }
       return { rects, bleed: false, menubar: true, title: null, black: false };
     }
@@ -289,10 +359,9 @@ function pickClose(): Shot {
 }
 
 // `n` distinct partners for the visual, weighted, from the open ones.
-// `wide` admits shape and banks (4-up and up).
-function pickPartners(n: number, mode: 'ambient' | 'record', wide = false): WindowId[] {
+function pickPartners(n: number, mode: 'ambient' | 'record', from: WindowId[]): WindowId[] {
   const open = openWindows();
-  let pool = (wide ? PARTNERS_WIDE : PARTNERS_PRIMARY).filter((id) => open.has(id)).map((id) => [id, PARTNER_WEIGHT[mode][id]] as [WindowId, number]);
+  let pool = from.filter((id) => open.has(id)).map((id) => [id, PARTNER_WEIGHT[mode][id]] as [WindowId, number]);
   const out: WindowId[] = [];
   while (out.length < n && pool.length > 0) {
     const id = pick(pool);
@@ -302,26 +371,28 @@ function pickPartners(n: number, mode: 'ambient' | 'record', wide = false): Wind
   return out;
 }
 
-// Visual on a random side with one partner.
+// Visual on a random side with one big partner.
 function pickPair(mode: 'ambient' | 'record'): Shot {
   if (!openWindows().has('visual')) return HOME;
-  const [p] = pickPartners(1, mode);
+  const [p] = pickPartners(1, mode, PARTNERS_PAIR);
   if (!p) return pickClose();
   return Math.random() < 0.5 ? { kind: 'pair', a: 'visual', b: p } : { kind: 'pair', a: p, b: 'visual' };
 }
 
-// 3-up (2+1 / 1+2), 4-up (quadrants / 3+1 / 1+3) or 5-up (1+4 grid), the
-// visual always in. Falls back to fewer windows when not enough partners
-// are open.
+// 3-, 4- or 5-up, the visual always in: visual big on either side with the
+// partners in the other column (small ones at home size, see SMALL_WINDOWS),
+// or — when visual, ghost and audio are all in and there are small windows
+// for the fourth cell — quadrants. Falls back to a pair when fewer than two
+// partners are open.
 function pickSplit(n: 3 | 4 | 5, mode: 'ambient' | 'record'): Shot {
   if (!openWindows().has('visual')) return HOME;
-  const others = pickPartners(n - 1, mode, n >= 4);
+  const others = pickPartners(n - 1, mode, PARTNERS_SPLIT);
   if (others.length < 2) return pickPair(mode);
-  const side = (): 'left' | 'right' => (Math.random() < 0.5 ? 'left' : 'right');
-  if (others.length === 2) return { kind: 'split', others, big: side(), slot: 0 };
-  if (others.length >= 4) return { kind: 'split', others: others.slice(0, 4), big: side(), slot: 0 };
-  if (Math.random() < 0.5) return { kind: 'split', others, big: null, slot: Math.floor(Math.random() * 4) };
-  return { kind: 'split', others, big: side(), slot: 0 };
+  const bigs = others.filter((id) => !SMALL_WINDOWS.has(id)).length;
+  if (bigs === 2 && others.length >= 3 && Math.random() < 0.5) {
+    return { kind: 'split', others, big: null, slot: Math.floor(Math.random() * 4) };
+  }
+  return { kind: 'split', others, big: Math.random() < 0.5 ? 'left' : 'right', slot: 0 };
 }
 
 // The next shot from the ambient schedule. Entropy leans the choice: calm
