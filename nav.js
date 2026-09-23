@@ -50,6 +50,7 @@
   const ICON_CARET = `<svg class="ns-caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;
   const ICON_IG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" stroke="none"/></svg>`;
   const ICON_YT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z" fill="currentColor" stroke="none"/></svg>`;
+  const ICON_DC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M7.4 6.1Q12 5 16.6 6.1Q20.2 10.4 20.5 16.4Q18.6 17.9 16.1 18.6L15.1 16.9Q12 17.7 8.9 16.9L7.9 18.6Q5.4 17.9 3.5 16.4Q3.8 10.4 7.4 6.1Z"/><ellipse cx="9.2" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/><ellipse cx="14.8" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/></svg>`;
   const PAGES =
     `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
     `<a href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}" data-ns-link>sequence</a>` +
@@ -60,7 +61,8 @@
     `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
     `<a href="${ROOT}live.html"${here("live.html")} data-ns-link>code</a>` +
     `<a class="ns-icon" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
-    `<a class="ns-icon" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>`;
+    `<a class="ns-icon" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
+    `<a class="ns-icon" href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>`;
 
   // burger breakpoint: the ~380px wordmark + six links + socials wrap below this
   const BREAK = 1100;
@@ -459,6 +461,7 @@
     `<div class="ov-icons">` +
     `<a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
+    `<a href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>` +
     `</div>` +
     `</div>` +
     `<div class="ov-pane ov-pane-tools" id="ns-ov-tools" aria-hidden="true">` +
