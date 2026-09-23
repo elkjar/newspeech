@@ -216,6 +216,9 @@
 // round-trip per pack.
 // =========================================================================
 
+// URL base the manifest's leaf urls share (matches the build script)
+const SAMPLE_BASE = "sequencer/samples";
+
 // flat lookup by path: "drums/blck_noir/kick/KICK-1.wav" → leaf node
 const NODE_BY_PATH = new Map();
 function indexNodes(nodes, parentPath) {

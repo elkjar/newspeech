@@ -20,7 +20,7 @@ const OUT = path.join(ROOT, "samples-manifest.json");
 const SAMPLE_BASE = "sequencer/samples";
 
 // fixed presentation order; any new category directories append after these
-const CATEGORY_ORDER = ["drums", "bass", "instruments", "pads"];
+const CATEGORY_ORDER = ["drums", "breaks", "bass", "instruments", "pads"];
 
 const byName = (a, b) => a.toLowerCase().localeCompare(b.toLowerCase());
 
