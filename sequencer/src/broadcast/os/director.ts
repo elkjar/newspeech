@@ -33,7 +33,6 @@ export type Shot =
   | { kind: 'pair'; a: WindowId; b: WindowId }
   | { kind: 'split'; others: WindowId[]; big: 'left' | 'right' | null; slot: number }
   | { kind: 'bleed' }
-  | { kind: 'inset' }
   | { kind: 'title'; text: string; sub: string | null }
   | { kind: 'black' };
 
@@ -63,15 +62,12 @@ export interface Frame {
   // The visual runs full-bleed behind everything (the window itself is
   // not rendered — one Visualizer mounted at a time).
   bleed: boolean;
-  // The whole desktop scaled down over the bleed: scale + stage offset.
-  inset: { scale: number; x: number; y: number } | null;
   menubar: boolean;
   title: { text: string; sub: string | null } | null;
   black: boolean;
 }
 
 const CLOSE_MARGIN: Record<Format, number> = { '16:9': 24, '4:3': 0 };
-const INSET_SCALE = 0.38;
 
 // Only the visual goes full-frame (Chris 2026-09-22). Its partners in a
 // pair / 3-up are the windows that move on their own — ghost, sys, audio
@@ -102,18 +98,18 @@ export function frameFor(shot: Shot, windows: Record<WindowId, WinRect>, format:
   const full: WinRect = { x: safe.x + m, y: safe.y + m, w: safe.w - 2 * m, h: safe.h - 2 * m, open: true, z: 1 };
   switch (shot.kind) {
     case 'home':
-      return { rects: { ...windows }, bleed: false, inset: null, menubar: true, title: null, black: false };
+      return { rects: { ...windows }, bleed: false, menubar: true, title: null, black: false };
     case 'close': {
       const rects = none();
       rects[shot.win] = full;
-      return { rects, bleed: false, inset: null, menubar: true, title: null, black: false };
+      return { rects, bleed: false, menubar: true, title: null, black: false };
     }
     case 'pair': {
       const rects = none();
       const w = Math.floor((full.w - GUTTER) / 2);
       rects[shot.a] = { ...full, w, z: 1 };
       rects[shot.b] = { ...full, x: full.x + w + GUTTER, w: full.w - w - GUTTER, z: 2 };
-      return { rects, bleed: false, inset: null, menubar: true, title: null, black: false };
+      return { rects, bleed: false, menubar: true, title: null, black: false };
     }
     case 'split': {
       const rects = none();
@@ -154,29 +150,19 @@ export function frameFor(shot: Shot, windows: Record<WindowId, WinRect>, format:
           rects[id] = { ...cells[i], z: z++ };
         });
       }
-      return { rects, bleed: false, inset: null, menubar: true, title: null, black: false };
+      return { rects, bleed: false, menubar: true, title: null, black: false };
     }
     case 'bleed':
-      return { rects: none(), bleed: true, inset: null, menubar: false, title: null, black: false };
-    case 'inset': {
-      // The desktop, small, bottom-left of the safe area over the bleed.
-      // Its own visual window would be a second Visualizer — not in this shot.
-      const rects = { ...windows, visual: null } as Record<WindowId, WinRect | null>;
-      const f = FORMATS[format];
-      const s = INSET_SCALE;
-      const x = safe.x + m;
-      const y = safe.y + safe.h - m - f.h * s;
-      return { rects, bleed: true, inset: { scale: s, x, y }, menubar: false, title: null, black: false };
-    }
+      return { rects: none(), bleed: true, menubar: false, title: null, black: false };
     case 'title': {
       const rects = none();
       rects.card = null;
-      return { rects, bleed: false, inset: null, menubar: false, title: { text: shot.text, sub: shot.sub }, black: true };
+      return { rects, bleed: false, menubar: false, title: { text: shot.text, sub: shot.sub }, black: true };
     }
     case 'black': {
       const rects = none();
       rects.card = null;
-      return { rects, bleed: false, inset: null, menubar: false, title: null, black: true };
+      return { rects, bleed: false, menubar: false, title: null, black: true };
     }
   }
 }
@@ -248,7 +234,6 @@ const HOLD: Record<ShotKind, [number, number]> = {
   pair: [20, 60],
   split: [20, 60],
   bleed: [15, 90],
-  inset: [20, 60],
   title: [2.5, 5],
   black: [1.2, 2],
 };
@@ -347,16 +332,15 @@ function pickSplit(n: 3 | 4 | 5, mode: 'ambient' | 'record'): Shot {
 function pickNext(from: Shot): Shot {
   const rec = useBroadcast.getState().record;
   const mode = rec ? 'record' : 'ambient';
-  type K = 'home' | 'close' | 'pair' | 'split3' | 'split4' | 'split5' | 'bleed' | 'inset';
+  type K = 'home' | 'close' | 'pair' | 'split3' | 'split4' | 'split5' | 'bleed';
   let k: K;
   if (rec) {
     k = pick<K>([
-      ['bleed', 0.25],
+      ['bleed', 0.34],
       ['pair', 0.23],
       ['split3', 0.12],
       ['split4', 0.07],
       ['split5', 0.04],
-      ['inset', 0.09],
       ['close', 0.1],
       ['home', 0.1],
     ]);
@@ -370,8 +354,7 @@ function pickNext(from: Shot): Shot {
       ['split3', 0.14 - lean * 0.2],
       ['split4', 0.09 - lean * 0.2],
       ['split5', 0.05 - lean * 0.1],
-      ['bleed', 0.13],
-      ['inset', 0.05],
+      ['bleed', 0.18],
     ]);
   }
   let next: Shot;
@@ -396,9 +379,6 @@ function pickNext(from: Shot): Shot {
       break;
     case 'bleed':
       next = { kind: 'bleed' };
-      break;
-    case 'inset':
-      next = { kind: 'inset' };
       break;
   }
   // Never the same shot twice in a row.
@@ -519,7 +499,7 @@ function onCard(up: boolean): void {
   const d = useDirector.getState();
   if (!up || !d.on || !d.auto) return;
   // The ident is a lower-third: it needs a desktop or the bleed under it.
-  if (d.shot.kind !== 'home' && d.shot.kind !== 'bleed') cut(d.shot.kind === 'inset' ? { kind: 'bleed' } : HOME, 'ident up');
+  if (d.shot.kind !== 'home' && d.shot.kind !== 'bleed') cut(HOME, 'ident up');
 }
 
 function onGap(phase: string): void {
@@ -577,9 +557,8 @@ export const KEY_SHOTS: Array<[string, () => Shot, string]> = [
   ['5', () => pickSplit(4, 'ambient'), '4-up'],
   ['6', () => pickSplit(5, 'ambient'), '5-up'],
   ['7', () => ({ kind: 'bleed' }), 'bleed'],
-  ['8', () => ({ kind: 'inset' }), 'inset'],
-  ['9', () => titleShot(), 'title'],
-  ['0', () => ({ kind: 'black' }), 'black'],
+  ['8', () => titleShot(), 'title'],
+  ['9', () => ({ kind: 'black' }), 'black'],
 ];
 export function directorKey(key: string): boolean {
   if (!useDirector.getState().on) return false;

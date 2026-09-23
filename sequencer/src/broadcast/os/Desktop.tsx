@@ -389,16 +389,8 @@ export function Desktop() {
         </div>
       )}
 
-      {/* windows — at the shot's rects (director.ts); the inset shot scales
-          the whole set of them down over the bleed */}
-      <div
-        className="absolute"
-        style={
-          frame.inset
-            ? { left: frame.inset.x, top: frame.inset.y, width: spec.w, height: spec.h, transform: `scale(${frame.inset.scale})`, transformOrigin: '0 0', zIndex: 5000 }
-            : { inset: 0 }
-        }
-      >
+      {/* windows — at the shot's rects (director.ts) */}
+      <div className="absolute" style={{ inset: 0 }}>
       {WINDOW_ORDER.map((id, i) => {
         if (id === 'visual' && bleed) return null;
         if (id === 'card' && !cardUp) return null;
