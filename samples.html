@@ -105,6 +105,17 @@
     letter-spacing: 0;
   }
 
+  /* provenance note on a pack row (PACK_NOTES) — trails the file count,
+     truncates before it can push the zip link off the row */
+  .row.dir .note {
+    margin-left: 14px;
+    opacity: 0.4;
+    letter-spacing: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   /* a chevron in the prefix indicates open/closed for dirs */
   .row.dir .marker { display: inline-block; width: 1ch; opacity: 0.6; }
 
@@ -193,6 +204,8 @@
     body { font-size: 12px; }
     #tree { font-size: 12px; line-height: 22px; }
     .row .meta { display: none; }
+    /* no room on a phone row; the file previews' license line carries it */
+    .row.dir .note { display: none; }
     .preview .controls { flex-wrap: wrap; gap: 14px; }
     .preview .dl { margin-left: 0; }
   }
@@ -218,6 +231,11 @@
 
 // URL base the manifest's leaf urls share (matches the build script)
 const SAMPLE_BASE = "sequencer/samples";
+
+// provenance notes shown on a pack row, keyed by cat/pack path
+const PACK_NOTES = {
+  "breaks/classics": "assumed public domain at this point",
+};
 
 // flat lookup by path: "drums/blck_noir/kick/KICK-1.wav" → leaf node
 const NODE_BY_PATH = new Map();
@@ -309,6 +327,7 @@ function renderNode(node, parentLast, isLast, parentPath) {
     dir.innerHTML =
       `<span class="prefix">${prefix}<span class="marker">▸</span> </span>` +
       `<span class="name" data-count="${fileCount} ${fileCount === 1 ? 'file' : 'files'}">${node.name}/</span>` +
+      (PACK_NOTES[path] ? `<span class="note">· ${PACK_NOTES[path]}</span>` : "") +
       packDl;
     tree.appendChild(dir);
 
@@ -346,7 +365,7 @@ function renderNode(node, parentLast, isLast, parentPath) {
         <span class="time">00:00 / --:--</span>
         <a class="dl" href="${node.url}" download>↓ download · wav</a>
       </div>
-      <div class="license">creative commons · attribution-sharealike 4.0</div>
+      <div class="license">${PACK_NOTES[path.split("/").slice(0, 2).join("/")] ?? "creative commons · attribution-sharealike 4.0"}</div>
     `;
     tree.appendChild(prev);
   }
