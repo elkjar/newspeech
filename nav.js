@@ -60,9 +60,11 @@
     `<a href="${ROOT}samples.html"${here("samples.html")} data-ns-link>samples</a>` +
     `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
     `<a href="${ROOT}live.html"${here("live.html")} data-ns-link>code</a>` +
+    `<span class="ns-socials">` +
     `<a class="ns-icon" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a class="ns-icon" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
-    `<a class="ns-icon" href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>`;
+    `<a class="ns-icon" href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>` +
+    `</span>`;
 
   // burger breakpoint: the ~380px wordmark + six links + socials wrap below this
   const BREAK = 1100;
@@ -125,6 +127,8 @@
     align-items: center;
     gap: 28px;
   }
+  /* socials sit as one cluster — half the page-link gap */
+  .ns-socials { display: flex; align-items: center; gap: 14px; }
   .ns-icon { opacity: 0.5; transition: opacity 120ms ease; }
   .ns-icon:hover { opacity: 1; }
   .ns-icon svg { width: 17px; height: 17px; display: block; }
