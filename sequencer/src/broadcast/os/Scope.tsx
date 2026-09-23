@@ -9,6 +9,7 @@
 import { useEffect, useRef } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { useStage, useLayout } from './layout';
 
 interface ScopeFrame {
   wave: number[];
@@ -31,16 +32,29 @@ export function Scope({ className = '' }: { className?: string }) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let w = 0;
-    let h = 0;
-    let dpr = 1;
+    // Size from LAYOUT px (clientWidth/Height), never the bounding rect:
+    // the stage is a CSS transform and a window can remount mid-animation
+    // after a gap, so the rect lied and the canvas came back oversized
+    // and soft (Chris 2026-09-22: "gets larger and blurry occasionally
+    // when it loads back into the main view"). Backing store = layout ×
+    // dpr × stage scale × content zoom; checked on every frame so a
+    // missed resize can never stick.
+    let w = 1;
+    let h = 1;
+    let k = 1;
     const fit = () => {
-      const r = canvas.getBoundingClientRect();
-      dpr = Math.min(2, window.devicePixelRatio || 1);
-      w = Math.max(1, Math.round(r.width));
-      h = Math.max(1, Math.round(r.height));
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+      const dpr = window.devicePixelRatio || 1;
+      const stage = useStage.getState().scale || 1;
+      const zoom = useLayout.getState().zoom || 1;
+      k = Math.min(3, dpr * stage * zoom);
+      w = Math.max(1, canvas.clientWidth);
+      h = Math.max(1, canvas.clientHeight);
+      const bw = Math.round(w * k);
+      const bh = Math.round(h * k);
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw;
+        canvas.height = bh;
+      }
     };
     fit();
 
@@ -50,7 +64,8 @@ export function Scope({ className = '' }: { className?: string }) {
 
     const draw = (f: ScopeFrame) => {
       last = f;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      fit();
+      ctx.setTransform(k, 0, 0, k, 0, 0);
       ctx.clearRect(0, 0, w, h);
       const n = f.bands.length;
       // Bands: a bar row along the bottom, up to 45% of the height, with a
@@ -92,13 +107,15 @@ export function Scope({ className = '' }: { className?: string }) {
 
     const idle = () => draw({ wave: new Array<number>(128).fill(0), bands: new Array<number>(24).fill(0) });
     idle();
-    // A cut resizes the window (close, pair): refit and redraw the last frame.
-    const ro = new ResizeObserver(() => {
-      fit();
+    // A cut resizes the window (close, pair, split) and a window resize
+    // rescales the stage: refit and redraw the last frame.
+    const redraw = () => {
       if (last) draw(last);
       else idle();
-    });
+    };
+    const ro = new ResizeObserver(redraw);
     ro.observe(canvas);
+    const unStage = useStage.subscribe(redraw);
 
     if (!isTauri()) {
       // Browser demo: a slow synthetic signal so the window is not dead.
@@ -112,6 +129,7 @@ export function Scope({ className = '' }: { className?: string }) {
       return () => {
         window.clearInterval(id);
         ro.disconnect();
+        unStage();
       };
     }
 
@@ -122,6 +140,7 @@ export function Scope({ className = '' }: { className?: string }) {
     return () => {
       un?.();
       ro.disconnect();
+      unStage();
     };
   }, []);
 
