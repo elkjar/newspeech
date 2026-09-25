@@ -5,7 +5,6 @@ Static site for audio/video experimentation. Plain HTML/CSS/JS — no build step
 ## Site shape
 
 - `index.html` — home / landing.
-- `live.html` — embedded Strudel REPL (live-coding music) with a custom audio analyser tap, save/load of `.strudel` files, custom transport controls.
 - `visualizers.html` — index linking to numbered visualizer pages.
 - `N-name.html` — individual visualizers (`1-streaks.html`, `2-static.html`, …), each a fullscreen `<canvas id="bg">`.
 - `core.js` — shared visualizer infrastructure (mouse/audio/timing inputs, params panel, visual helpers). Loaded by every `N-*.html` before its inline script.
@@ -74,7 +73,7 @@ Separate `canvas#bg-grid` at `z-index:0` behind `canvas#bg` (z-index 1); body bg
 
 ## External libraries
 
-CDN via unpkg, no local vendoring, no build step. `live.html` loads Strudel via `<script src="https://unpkg.com/@strudel/repl@latest">`. Visualizer pages load only `core.js` from this repo. Pin versions over `@latest` when stability matters.
+CDN via unpkg, no local vendoring, no build step. Visualizer pages load only `core.js` from this repo. Pin versions over `@latest` when stability matters.
 
 ## Fonts
 

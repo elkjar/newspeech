@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a0a0a">
 <title>NEWSPEECH // audio/video experimentation</title>
-<meta name="description" content="newspeech — audio/video experimentation. live code, a generative sequencer, visualizers, samples.">
+<meta name="description" content="newspeech — audio/video experimentation. browser tools, a generative sequencer, visualizers, samples.">
 <meta property="og:title" content="NEWSPEECH // audio/video experimentation">
-<meta property="og:description" content="newspeech — audio/video experimentation. live code, a generative sequencer, visualizers, samples.">
+<meta property="og:description" content="newspeech — audio/video experimentation. browser tools, a generative sequencer, visualizers, samples.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.newspeechsound.com/">
 <meta property="og:site_name" content="NEWSPEECH">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="NEWSPEECH">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="NEWSPEECH // audio/video experimentation">
-<meta name="twitter:description" content="newspeech — audio/video experimentation. live code, a generative sequencer, visualizers, samples.">
+<meta name="twitter:description" content="newspeech — audio/video experimentation. browser tools, a generative sequencer, visualizers, samples.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
@@ -584,17 +584,6 @@ fetch("news-latest.html")
     <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
     <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
     <a class="cta" href="visualizers.html" data-link>browse the index</a>
-  </div>
-</section>
-
-<section class="vignette viz-right" id="v-code">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>code</h2>
-    <p>live-coded music in the browser. a strudel repl — the tidalcycles pattern language in javascript — wired into the newspeech engine with custom transport and save/load.</p>
-    <p>write a pattern, evaluate it mid-flight, keep the .strudel file when it turns into something.</p>
-    <a class="cta" href="live.html" data-link>open the repl</a>
-    <div class="aux">built on <a href="https://strudel.cc" target="_blank" rel="noopener noreferrer">strudel</a> / <a href="https://tidalcycles.org" target="_blank" rel="noopener noreferrer">tidalcycles</a></div>
   </div>
 </section>
 
@@ -1483,79 +1472,6 @@ function registerViz(sectionId, draw) {
   vizSections.push(v);
 }
 
-// ---- 01 code: strudel lines drifting upward, REPL evaluation flashes,
-// transient char corruption (rebuilt from source each frame, so it heals) ----
-const CODE_POOL = [
-  's("bd*2 [~ sd] hh*4").bank("tr909")',
-  'note("c2 eb2 g2 bb2").s("sawtooth").lpf(sine.range(200, 2000))',
-  '$: s("hh*8").gain(saw.slow(4))',
-  'n("0 [2 4] <3 5> 7").scale("c:minor").s("piano")',
-  's("bd sd").sometimesBy(.3, x => x.speed(2))',
-  'stack(s("bd*4"), s("~ cp"), note("c1*2").s("sine"))',
-  '$: n(run(8)).scale("c:dorian").s("sawtooth").cutoff(800)',
-  's("jvbass*4").every(4, rev).shape(.4)',
-  'note("<c2 f1>").s("supersaw").slow(2).room(.6)',
-  's("hh*16").degradeBy(.4).pan(rand)',
-  'n("0 .. 7").off(1/8, x => x.add(12)).s("triangle")',
-  's("breaks165").fit().chop(16).rev()',
-];
-function drawCodeViz(v, t, dt) {
-  const { ctx: c, w, h, state } = v;
-  if (!state.lines) {
-    state.lines = [];
-    const n = Math.max(8, Math.floor(h / 60));
-    for (let i = 0; i < n; i++) {
-      state.lines.push({
-        txt: CODE_POOL[(Math.random() * CODE_POOL.length) | 0],
-        x: w * (0.08 + Math.random() * 0.3),
-        y: (i + Math.random()) * (h / n),
-        speed: 6 + Math.random() * 16,
-        alpha: 0.16 + Math.random() * 0.30,
-        flash: 0,
-      });
-    }
-  }
-  const env = intensity();
-  c.clearRect(0, 0, w, h);
-  c.font = "13px ui-monospace, SFMono-Regular, Menlo, monospace";
-  c.textBaseline = "middle";
-  c.textAlign = "left";
-  for (const L of state.lines) {
-    L.y -= L.speed * (0.4 + 0.9 * env) * dt;
-    if (L.y < -16) {
-      L.y = h + 16;
-      L.txt = CODE_POOL[(Math.random() * CODE_POOL.length) | 0];
-      L.x = w * (0.08 + Math.random() * 0.3);
-      L.alpha = 0.16 + Math.random() * 0.30;
-    }
-    if (Math.random() < dt * (0.05 + 0.20 * env)) L.flash = 1;
-    L.flash *= Math.pow(0.002, dt);
-
-    let txt = L.txt;
-    if (Math.random() < 0.03 + 0.05 * env) {
-      const chars = [...txt];
-      const hits = 1 + ((Math.random() * 3) | 0);
-      for (let k = 0; k < hits; k++) {
-        chars[(Math.random() * chars.length) | 0] =
-          SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
-      }
-      txt = chars.join("");
-    }
-
-    if (L.flash > 0.04) {
-      // evaluation: inverted block behind the line, like the REPL highlight
-      const tw = c.measureText(txt).width;
-      c.fillStyle = `rgba(255, 255, 255, ${(L.flash * 0.92).toFixed(3)})`;
-      c.fillRect(L.x - 6, L.y - 10, tw + 12, 20);
-    }
-    const textA = L.alpha + (1 - L.alpha) * L.flash;
-    c.fillStyle = L.flash > 0.5
-      ? "rgba(5, 5, 5, 0.95)"
-      : `rgba(255, 255, 255, ${textA.toFixed(3)})`;
-    c.fillText(txt, L.x, L.y);
-  }
-}
-
 // ---- 02 sequence: 16×8 step grid, sweeping playhead, cells mutating ----
 function drawSeqViz(v, t, dt) {
   const { ctx: c, w, h, state } = v;
@@ -2363,7 +2279,6 @@ registerViz("v-drone", drawDroneViz);
 registerViz("v-glitch", drawGlitchViz);
 registerViz("v-samples", drawSamplesViz);
 registerViz("v-visuals", drawVisualsViz);
-registerViz("v-code", drawCodeViz);
 
 // ---- link hover: cycle each char through the zxx variants ----
 // bold is intentionally excluded — its glyph metrics differ enough from the

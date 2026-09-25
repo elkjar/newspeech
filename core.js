@@ -488,7 +488,7 @@
   }
 
   // analyser → smoothed overall + 3-band levels + per-band onset detection.
-  // mirrors the live.html analyser tap so existing tuning carries over.
+  // mirrors the analyser tap the retired live.html used, so its tuning carries over.
   function tickAudio(dtMs) {
     if (!_audioActive || !_analyser) return;
     _analyser.getByteFrequencyData(_fftBuf);
@@ -532,7 +532,7 @@
 
   function gain(v) { return Math.min(1, v * _audioGain); }
 
-  // ---- external audio bridge (used by live.html so its Strudel-tapped
+  // ---- external audio bridge (built for the retired live.html, so its Strudel-tapped
   // analyser drives core.js telemetry widgets without core.js opening its
   // own getUserMedia mic). when set, audioLevel/bandLevel/onset short-
   // circuit to the externally-supplied values and ignore _audioActive.

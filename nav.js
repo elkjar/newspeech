@@ -59,7 +59,6 @@
     `<span data-ns-link>tools</span>${ICON_CARET}</button></div>` +
     `<a href="${ROOT}samples.html"${here("samples.html")} data-ns-link>samples</a>` +
     `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
-    `<a href="${ROOT}live.html"${here("live.html")} data-ns-link>code</a>` +
     `<span class="ns-socials">` +
     `<a class="ns-icon" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a class="ns-icon" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
@@ -460,7 +459,6 @@
     `<button class="ov-link ov-tools-btn${IN_TOOLS ? " current" : ""}" aria-expanded="false" aria-controls="ns-ov-tools">tools${ICON_CARET}</button>` +
     `<a class="ov-link${cur("samples.html")}" href="${ROOT}samples.html">samples</a>` +
     `<a class="ov-link${cur("visualizers.html")}" href="${ROOT}visualizers.html">visuals</a>` +
-    `<a class="ov-link${cur("live.html")}" href="${ROOT}live.html">code</a>` +
     `</div>` +
     `<div class="ov-icons">` +
     `<a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +

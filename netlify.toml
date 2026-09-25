@@ -44,3 +44,9 @@
   to = "https://github.com/elkjar/newspeech/releases/download/glitch-v1.0.0/Glitch-1.0.0.zip"
   status = 302
 # dl:glitch end
+
+# live.html (the strudel repl) retired 2026-09-25 — old links land home
+[[redirects]]
+  from = "/live.html"
+  to = "/"
+  status = 301

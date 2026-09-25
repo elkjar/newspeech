@@ -4,8 +4,7 @@ shopt -s nullglob
 
 # The web sequencer build is decommissioned (2026-07-02) — Sequence is
 # native-only. The sample packs are still published at sequencer/samples/
-# because samples.html and live.html load their manifests + WAVs from
-# that path.
+# because samples.html loads its manifests + WAVs from that path.
 rm -rf _site
 mkdir -p _site
 
