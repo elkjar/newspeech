@@ -207,6 +207,7 @@
 </head>
 <body>
 <script src="nav.js"></script>
+<script src="gate.js"></script>
 <script src="grain.js"></script>
 
 <h1>// GLITCH</h1>
@@ -1339,6 +1340,7 @@ async function renderWav() {
     const loopTag = trimmed ? `-loop${(loopS / sr).toFixed(2)}+${loopDur.toFixed(2)}` : '';
     a.download = `glitch-${fileName}${loopTag}-g${ui.passes}${ui.printMode === 'arc' ? '-arc' : ''}-${ui.seed}.wav`;
     a.click();
+    if (window.NewspeechGate) NewspeechGate.afterExport('glitch');
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   } finally {
     rendering = false;

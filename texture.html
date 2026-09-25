@@ -197,6 +197,7 @@
 </head>
 <body>
 <script src="nav.js"></script>
+<script src="gate.js"></script>
 <script src="grain.js"></script>
 
 <h1>// TEXTURE</h1>
@@ -733,6 +734,7 @@ async function renderWav() {
     a.href = URL.createObjectURL(blob);
     a.download = `texture-${fileName}-${secs}s.wav`;
     a.click();
+    if (window.NewspeechGate) NewspeechGate.afterExport('texture');
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   } finally {
     rendering = false;

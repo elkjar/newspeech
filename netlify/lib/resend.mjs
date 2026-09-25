@@ -14,16 +14,19 @@
 //                                 then backfilled from the <plugin> property
 //              Night School       kept a ruined copy of the EP — USED IF PRESENT,
 //                                 never created (same cap)
-//   properties source             first touch: "homepage" | "plugins" | "night-school"
+//   properties source             first touch: "homepage" | "plugins" | "night-school" | "tools"
 //              <plugin>           version string of the build they downloaded
 //              night-school       slug of the last track they printed a ruin of
+//              tool               browser tool whose export nudge they signed up
+//                                 from (tools source) — General segment only
 //
 // Segments + properties are created on demand and cached for the life of the
 // function instance, so the only config is RESEND_API_KEY.
 
 const API = "https://api.resend.com";
 export const PLUGINS = ["vibe", "saturate", "slice", "glitch"];
-export const SOURCES = ["homepage", "plugins", "night-school"];
+export const SOURCES = ["homepage", "plugins", "night-school", "tools"];
+export const TOOLS = ["texture", "slice", "decay", "drone", "glitch", "samples"];
 export const TRACK_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
@@ -95,16 +98,19 @@ export function client(key) {
 
   // Upsert one contact and file it into its segments. `plugin`/`version` are
   // optional (homepage subscribe passes neither); `track` is the EP listening
-  // room's gate (night-school source).
-  const subscribe = async ({ email, source, plugin, version, track }) => {
+  // room's gate (night-school source); `tool` is the browser tools' export
+  // nudge (tools source).
+  const subscribe = async ({ email, source, plugin, version, track, tool }) => {
     if (!normalizeEmail(email)) throw new Error("bad email");
     if (!SOURCES.includes(source)) throw new Error("bad source");
     if (plugin && !PLUGINS.includes(plugin)) throw new Error("bad plugin");
     if (track && !TRACK_RE.test(track)) throw new Error("bad track");
+    if (tool && !TOOLS.includes(tool)) throw new Error("bad tool");
 
     const props = {};
     if (plugin) props[plugin] = String(version || "1");
     if (track) props["night-school"] = track;
+    if (tool) props.tool = tool;
     await ensureProperty("source");
     for (const k of Object.keys(props)) await ensureProperty(k);
 

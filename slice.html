@@ -234,6 +234,7 @@
 </head>
 <body>
 <script src="nav.js"></script>
+<script src="gate.js"></script>
 <script src="grain.js"></script>
 
 <h1>// SLICE</h1>
@@ -1076,6 +1077,7 @@ async function renderWav() {
     // tempo rides the filename (texture convention) so a re-drop re-clocks
     a.download = `slice-${Math.round(bpm())}bpm_${slug}-${Math.round(rendered.duration)}s.wav`;
     a.click();
+    if (window.NewspeechGate) NewspeechGate.afterExport('slice');
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   } finally {
     rendering = false;

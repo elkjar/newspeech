@@ -98,6 +98,7 @@
 </head>
 <body>
 <script src="nav.js"></script>
+<script src="gate.js"></script>
 <script src="grain.js"></script>
 
 <h1>// DRONE</h1>
@@ -650,6 +651,7 @@ async function exportKit() {
       await new Promise((r) => setTimeout(r, 250)); // space the downloads out
     }
     info.textContent = `${kit} · 9 notes down — allow multiple downloads if the browser asks`;
+    if (window.NewspeechGate) NewspeechGate.afterExport('drone');
   } finally {
     exporting = false;
     btn.disabled = false;

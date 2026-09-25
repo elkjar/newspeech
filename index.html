@@ -2535,6 +2535,7 @@ subForm.addEventListener("submit", async (e) => {
       }),
     });
     if (!res.ok) throw new Error(String(res.status));
+    try { localStorage.setItem("newspeech.email", emailInput.value.trim()); } catch (_) {}
     subBody.innerHTML = '<span class="sub-msg">signal received — you\'re on the list</span>';
     // hold the confirmation 4s, fade the dialog out, then drop it from the page
     setTimeout(() => {
