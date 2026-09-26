@@ -15,7 +15,7 @@ node tools/build-samples-manifest.mjs
 node tools/build-news.mjs
 
 cp *.html *.js *.svg *.png *.txt _site/
-cp samples-manifest.json _site/
+cp samples-manifest.json shop.json _site/
 if [ -d news ]; then
   cp -r news _site/news
   cp feed.xml _site/
