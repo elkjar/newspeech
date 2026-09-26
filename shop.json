@@ -1,5 +1,5 @@
 {
-  "_readme": "the shop catalog — shop.html renders it, netlify/functions/checkout.mjs prices from it (the browser never sends a price). amounts are cents. shipping per order = region.first + region.additional × (total units − 1); a product's units default to 1 (heavier things, e.g. vinyl, count more). draft products only render off the production host (or with ?drafts) and only sell against a Stripe TEST key. soldOut: true for the whole product, or a list of options. images: paths under assets/shop/.",
+  "_readme": "the shop catalog — shop.html renders the shelf from it, tools/build-shop.mjs generates shop/<id>.html per product, and netlify/functions/checkout.mjs prices from it (the browser never sends a price). amounts are cents. shipping per order = region.first + region.additional × (total units − 1); units default to 1 (heavier things, e.g. vinyl, count more). per product: images (list; the first is the card + share image, paths under assets/shop/), color: true keeps photos in colour (default greyscale), audio: [{title, src}] preview clips, longer copy in products/<id>.md (markdown, tools/md.mjs) or a description string. draft products only render off the production host (or with ?drafts) and only sell against a Stripe TEST key. soldOut: true for the whole product, or a list of options.",
   "currency": "usd",
   "shipping": {
     "us": {
@@ -25,11 +25,11 @@
       "name": "wordmark tee",
       "price": 3000,
       "blurb": "placeholder — black tee, white wordmark, screen printed.",
-      "image": "",
       "options": ["S", "M", "L", "XL", "XXL"],
       "soldOut": [],
       "draft": true,
-      "units": 1
+      "units": 1,
+      "images": ["assets/shop/_placeholder/tee-front.jpg", "assets/shop/_placeholder/tee-back.jpg", "assets/shop/_placeholder/tee-detail.jpg"]
     },
     {
       "id": "night-school-tape",
@@ -37,11 +37,21 @@
       "name": "NIGHT SCHOOL — cassette",
       "price": 1200,
       "blurb": "placeholder — three tracks, chrome tape, with a download.",
-      "image": "",
       "options": [],
       "soldOut": false,
       "draft": true,
-      "units": 1
+      "units": 1,
+      "images": ["assets/shop/_placeholder/tape-front.jpg"],
+      "audio": [
+        {
+          "title": "placeholder tone a",
+          "src": "assets/shop/_placeholder/preview-a.mp3"
+        },
+        {
+          "title": "placeholder tone b",
+          "src": "assets/shop/_placeholder/preview-b.mp3"
+        }
+      ]
     }
   ]
 }
