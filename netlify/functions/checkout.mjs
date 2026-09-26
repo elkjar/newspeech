@@ -97,6 +97,15 @@ export default async (req) => {
     // the webhook reads the answer before adding anyone to the list
     consent_collection: { promotions: "auto" },
     automatic_tax: process.env.STRIPE_TAX === "on" ? { enabled: true } : undefined,
+    // Stripe's own page, dressed in the site's palette — the logo/icon come
+    // from Stripe's branding settings (upload once per mode)
+    branding_settings: {
+      display_name: "NEWSPEECH",
+      background_color: "#050505",
+      button_color: "#ffffff",
+      border_style: "rectangular",
+      font_family: "inconsolata",
+    },
     metadata: { product: list[0].product.id, items: summary },
     success_url: `${base}/shop.html?order={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}/shop.html`,
