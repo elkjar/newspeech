@@ -1,0 +1,37 @@
+{
+  "_readme": "the shop catalog — shop.html renders it, netlify/functions/checkout.mjs prices from it (the browser never sends a price). amounts are cents. draft products only render off the production host (or with ?drafts) and only sell against a Stripe TEST key. soldOut: true for the whole product, or a list of options. images: paths under assets/shop/.",
+  "currency": "usd",
+  "shipping": {
+    "us": { "label": "us", "name": "US shipping", "amount": 600, "countries": ["US"] },
+    "world": {
+      "label": "elsewhere",
+      "name": "international shipping",
+      "amount": 1800,
+      "countries": ["CA", "MX", "GB", "IE", "FR", "DE", "NL", "BE", "LU", "ES", "PT", "IT", "AT", "CH", "DK", "SE", "NO", "FI", "IS", "PL", "CZ", "AU", "NZ", "JP"]
+    }
+  },
+  "products": [
+    {
+      "id": "tee-wordmark",
+      "kind": "shirt",
+      "name": "wordmark tee",
+      "price": 3000,
+      "blurb": "placeholder — black tee, white wordmark, screen printed.",
+      "image": "",
+      "options": ["S", "M", "L", "XL", "XXL"],
+      "soldOut": [],
+      "draft": true
+    },
+    {
+      "id": "night-school-tape",
+      "kind": "music",
+      "name": "NIGHT SCHOOL — cassette",
+      "price": 1200,
+      "blurb": "placeholder — three tracks, chrome tape, with a download.",
+      "image": "",
+      "options": [],
+      "soldOut": false,
+      "draft": true
+    }
+  ]
+}

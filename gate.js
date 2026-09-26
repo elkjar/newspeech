@@ -12,7 +12,8 @@
 // usage: <script src="gate.js"></script>, then after the page's download
 // fires: window.NewspeechGate && NewspeechGate.afterExport("texture").
 // posts to /api/subscribe with source "tools" + the tool name; locally that
-// needs `netlify dev` for the function.
+// needs `netlify dev` for the function. NewspeechGate.show({ label, source })
+// opens the same window on demand with other copy (the shop's empty state).
 (function () {
   "use strict";
   if (window.NewspeechGate) return; // idempotent
@@ -69,14 +70,18 @@
   #ns-nudge .skip:hover { opacity: .8; }
   `;
 
+  const EXPORT_LABEL = "your file's on its way. new tools + releases land in the inbox first — leave an email and we'll send one sometimes";
+
   let el = null;
   let tool = "";
+  let source = "tools";
+  let asked = false; // opened on request (show(opts)) — dismissing it doesn't snooze the export nudge
 
   function snooze() { set(SNOOZE_KEY, String(Date.now() + SNOOZE_MS)); }
 
   function close(snoozeIt) {
     if (!el) return;
-    if (snoozeIt) snooze();
+    if (snoozeIt && !asked) snooze();
     const node = el;
     el = null;
     node.classList.remove("in");
@@ -90,8 +95,11 @@
     close(true);
   }
 
-  function show() {
+  function show(opts) {
     if (el) return;
+    const label = (opts && opts.label) || EXPORT_LABEL;
+    asked = !!opts;
+    if (opts && opts.source) { source = opts.source; tool = ""; }
     if (!document.getElementById("ns-nudge-css")) {
       const s = document.createElement("style");
       s.id = "ns-nudge-css";
@@ -105,13 +113,14 @@
       <div class="bar"><span class="idx">//</span><span class="title">subscribe</span><button type="button" class="x" aria-label="close">×</button></div>
       <div class="body">
         <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-        <label class="lbl" for="ns-nudge-email">your file's on its way. new tools + releases land in the inbox first — leave an email and we'll send one sometimes</label>
+        <label class="lbl" for="ns-nudge-email"></label>
         <div class="row">
           <input id="ns-nudge-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
           <button type="submit" class="go">join list</button>
         </div>
         <div class="foot"><span class="msg" hidden></span><button type="button" class="skip">no thanks</button></div>
       </div>`;
+    el.querySelector(".lbl").textContent = label;
     document.body.appendChild(el);
     requestAnimationFrame(() => el && el.classList.add("in"));
 
@@ -141,7 +150,7 @@
         const res = await fetch("/api/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, source: "tools", tool, "bot-field": form.querySelector('[name="bot-field"]').value }),
+          body: JSON.stringify({ email, source, tool: tool || undefined, "bot-field": form.querySelector('[name="bot-field"]').value }),
         });
         if (!res.ok) throw new Error(String(res.status));
         set(EMAIL_KEY, email);
@@ -158,6 +167,7 @@
   // call right after a tool's download fires
   function afterExport(name) {
     tool = String(name || "");
+    source = "tools";
     const n = (parseInt(get(COUNT_KEY), 10) || 0) + 1;
     set(COUNT_KEY, String(n));
     if (get(EMAIL_KEY)) return;
@@ -166,5 +176,7 @@
     setTimeout(show, DELAY_MS);
   }
 
-  window.NewspeechGate = { afterExport, show };
+  const known = () => !!get(EMAIL_KEY);
+
+  window.NewspeechGate = { afterExport, show, known };
 })();
