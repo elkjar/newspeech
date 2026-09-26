@@ -51,6 +51,14 @@ export async function stripe(key, method, path, body) {
   return json;
 }
 
+// one parcel per order: the region's first-unit price, plus `additional` for
+// every unit after it (a product's `units` default to 1). shop.html mirrors
+// this for display — keep the two in step.
+export function shippingFor(region, lines) {
+  const units = lines.reduce((n, l) => n + (l.product.units || 1) * l.qty, 0);
+  return units ? region.first + region.additional * (units - 1) : 0;
+}
+
 // Stripe-Signature: t=<unix>,v1=<hex hmac-sha256 of "<t>.<raw body>">[,v1=…]
 export function verifySignature(rawBody, header, secret, toleranceS = 300) {
   if (!header || !secret) return false;
