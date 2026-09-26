@@ -12,7 +12,8 @@ import catalog from "../../shop.json" with { type: "json" };
 
 export { catalog };
 
-export const isTestKey = (key) => String(key || "").startsWith("sk_test_");
+// secret (sk_) or restricted (rk_) key, test mode
+export const isTestKey = (key) => /^(sk|rk)_test_/.test(String(key || ""));
 
 export function findProduct(id) {
   return catalog.products.find((p) => p.id === id) || null;
