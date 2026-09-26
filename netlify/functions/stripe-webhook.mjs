@@ -18,8 +18,16 @@ let resend = null;
 export default async (req) => {
   if (req.method !== "POST") return new Response("post only", { status: 405 });
 
+  // a misconfigured secret answers 500 (Stripe retries, and its delivery log
+  // shows why) — only a real signature mismatch is the sender's fault
+  const secret = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+  if (!secret.startsWith("whsec_")) {
+    console.error("stripe-webhook: STRIPE_WEBHOOK_SECRET missing or not a whsec_ signing secret");
+    return new Response("webhook secret misconfigured — expected the endpoint's whsec_ signing secret", { status: 500 });
+  }
+
   const raw = await req.text();
-  if (!verifySignature(raw, req.headers.get("stripe-signature"), process.env.STRIPE_WEBHOOK_SECRET)) {
+  if (!verifySignature(raw, req.headers.get("stripe-signature"), secret)) {
     return new Response("bad signature", { status: 400 });
   }
 

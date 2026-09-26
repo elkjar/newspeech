@@ -32,7 +32,7 @@ export default async (req) => {
   let fields = {};
   try { fields = await req.json(); } catch (_) { return json(400, { ok: false, error: "unreadable body" }); }
 
-  const key = process.env.STRIPE_SECRET_KEY;
+  const key = (process.env.STRIPE_SECRET_KEY || "").trim();
   if (!key) {
     console.error("checkout: STRIPE_SECRET_KEY missing");
     return json(503, { ok: false, error: "not configured" });
