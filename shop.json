@@ -41,7 +41,7 @@
       "soldOut": false,
       "draft": true,
       "units": 1,
-      "images": ["assets/shop/_placeholder/tape-front.jpg"],
+      "images": ["assets/shop/_placeholder/tape-front.jpg", "assets/shop/_placeholder/tape-shell.jpg"],
       "link": {
         "label": "listen to the EP",
         "href": "night-school.html"
