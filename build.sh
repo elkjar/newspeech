@@ -14,8 +14,12 @@ node tools/build-samples-manifest.mjs
 # generate the news section (posts/*.md → news/, news.html, feed.xml)
 node tools/build-news.mjs
 
-cp *.html *.js *.svg *.png *.txt _site/
+# generate the product pages (shop.json → shop/<id>.html)
+node tools/build-shop.mjs
+
+cp *.html *.js *.css *.svg *.png *.txt _site/
 cp samples-manifest.json shop.json _site/
+cp -r shop _site/shop
 if [ -d news ]; then
   cp -r news _site/news
   cp feed.xml _site/

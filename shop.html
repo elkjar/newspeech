@@ -25,38 +25,14 @@
 <meta name="twitter:title" content="NEWSPEECH // shop">
 <meta name="twitter:description" content="newspeech — shirts and physical music.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
+<link rel="stylesheet" href="shop.css">
 <style>
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
-  body {
-    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
-    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
-    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
-    max-width: 1060px;
-    margin: 0 auto;
-  }
-  h1 { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0 0 4px; }
-  .sub { color: #666; margin: 0 0 20px; }
-
-  button {
-    background: transparent; border: 1px solid #444; color: #ccc; font: inherit;
-    padding: 6px 14px; cursor: pointer; letter-spacing: 0.1em; border-radius: 0;
-  }
-  button:hover { border-color: #999; color: #fff; }
-  button:disabled { opacity: 0.3; cursor: default; }
-  button.on { background: #ddd; color: #050505; border-color: #ddd; }
-
-  .seg { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
-  .seg button { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.12em; }
-  .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
-  .seg button.out { text-decoration: line-through; }
-  .seg .seglabel { color: #666; padding: 0 6px 0 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; min-width: 64px; }
-  .seg .hint { color: #555; padding-left: 6px; }
-
   #shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
   .item { border: 1px solid #1c1c1c; display: flex; flex-direction: column; min-width: 0; }
-  .pic { aspect-ratio: 1; background: #0a0a0a; border-bottom: 1px solid #1c1c1c; position: relative; overflow: hidden; }
-  .pic img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1); }
+  .pic { aspect-ratio: 1; background: #0a0a0a; border-bottom: 1px solid #1c1c1c; position: relative; overflow: hidden; display: block; }
+  .pic img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1); transition: opacity .2s; }
+  .pic.color img { filter: none; }
+  a.pic:hover img { opacity: .85; }
   /* no photo yet: the name, big, in the noise cut */
   .pic .ph {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px;
@@ -67,60 +43,18 @@
     position: absolute; top: 10px; left: 10px; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
     color: #050505; background: #ddd; padding: 1px 6px;
   }
+  .pic .more { position: absolute; bottom: 10px; right: 10px; font-size: 10px; letter-spacing: 0.14em; color: #999; background: rgba(5,5,5,.8); padding: 1px 6px; }
   .body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
   .head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
   .head h2 { font-size: 11px; font-weight: 400; letter-spacing: 0.25em; color: #eee; margin: 0; text-transform: uppercase; }
+  .head h2 a { color: inherit; text-decoration: none; }
+  .head h2 a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
   .head .price { color: #999; font-variant-numeric: tabular-nums; }
   .blurb { color: #777; margin: 0; }
   .buyrow { display: flex; align-items: center; gap: 12px; margin-top: auto; padding-top: 6px; flex-wrap: wrap; }
   .buyrow .msg { color: #666; }
-  .buyrow .msg.err { color: #999; }
-
-  /* empty shelf + the post-checkout note */
-  .note { border: 1px solid #1c1c1c; padding: 28px 24px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
-  .note .big { font-family: "zxx-sans", ui-monospace, monospace; font-size: 20px; letter-spacing: 0.06em; color: #eee; text-transform: lowercase; }
-  .note p { margin: 0; color: #777; max-width: 60ch; }
-  [hidden] { display: none !important; }
-
-  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-  #cart-open { font-variant-numeric: tabular-nums; }
-  #cart-open.has { border-color: #ddd; color: #fff; }
-
-  /* ---- the cart: a window docked right, over a light dim ---- */
-  #cart-wrap { position: fixed; inset: 0; z-index: 30; background: rgba(5,5,5,.55); }
-  #cart {
-    position: absolute; right: 16px; top: calc(16px + var(--ns-nav-h, 0px)); bottom: 16px;
-    width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column;
-    border: 1px solid rgba(255,255,255,.28); background: #050505;
-    box-shadow: 0 0 0 1px rgba(0,0,0,.9), 0 18px 40px rgba(0,0,0,.55);
-  }
-  #cart .bar {
-    display: flex; align-items: center; gap: 8px; height: 22px; padding: 0 8px; flex: 0 0 auto;
-    border-bottom: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.04); user-select: none;
-  }
-  #cart .bar .idx { font-size: 10px; letter-spacing: 0.2em; opacity: .4; }
-  #cart .bar .title { font-family: "zxx-sans", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.18em; color: #eee; }
-  #cart .bar .x { margin-left: auto; border: 0; padding: 0 2px; opacity: .5; line-height: 1; }
-  #cart .bar .x:hover { opacity: 1; }
-  #cart .lines { flex: 1 1 auto; overflow-y: auto; padding: 6px 16px; }
-  #cart .none { color: #666; padding: 18px 0; }
-  .line { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #161616; }
-  .line .nm { color: #ddd; letter-spacing: 0.06em; min-width: 0; }
-  .line .nm small { color: #777; font-size: 11px; letter-spacing: 0.1em; }
-  .line .amt { color: #999; font-variant-numeric: tabular-nums; text-align: right; }
-  .line .rm { border: 0; padding: 0 2px; color: #555; }
-  .line .rm:hover { color: #ddd; }
-  .line .qty { grid-column: 1 / -1; display: flex; gap: 4px; align-items: center; }
-  .line .qty button { padding: 0 7px; font-size: 11px; border-color: #2a2a2a; color: #888; }
-  .line .qty span { min-width: 22px; text-align: center; color: #ccc; font-variant-numeric: tabular-nums; }
-  .line.bad .nm { color: #999; text-decoration: line-through; }
-  .line .why { grid-column: 1 / -1; color: #999; font-size: 11px; }
-  #cart .foot { flex: 0 0 auto; border-top: 1px solid rgba(255,255,255,.14); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
-  #cart .foot .shipnote { color: #666; font-size: 11px; }
-  .sum { display: flex; justify-content: space-between; color: #888; font-variant-numeric: tabular-nums; }
-  .sum.total { color: #eee; letter-spacing: 0.06em; }
-  #checkout { align-self: stretch; padding: 10px 14px; border-color: #ddd; color: #fff; }
-  #checkout-msg { color: #999; min-height: 18px; }
+  .buyrow .details { color: #777; margin-left: auto; text-decoration: none; letter-spacing: 0.1em; }
+  .buyrow .details:hover { color: #fff; }
 
   @media (max-width: 720px) { #shelf { grid-template-columns: 1fr; } }
 </style>
@@ -151,97 +85,41 @@
 
 <div id="shelf"></div>
 
-<div id="cart-wrap" hidden>
-  <aside id="cart" aria-label="cart">
-    <div class="bar"><span class="idx">//</span><span class="title">cart</span><button class="x" id="cart-close" aria-label="close">×</button></div>
-    <div class="lines" id="cart-lines"></div>
-    <div class="foot">
-      <div class="seg" id="cart-region"><span class="seglabel">ship to</span></div>
-      <span class="shipnote" id="cart-shipnote" hidden></span>
-      <div class="sum"><span>items</span><span id="cart-sub"></span></div>
-      <div class="sum"><span id="cart-shipname">shipping</span><span id="cart-ship"></span></div>
-      <div class="sum total"><span>total</span><span id="cart-total"></span></div>
-      <button id="checkout">CHECKOUT</button>
-      <span id="checkout-msg"></span>
-    </div>
-  </aside>
-</div>
-
+<script src="shop.js"></script>
 <script>
-// ---- the shop: renders shop.json; add to cart → the cart (this browser's
-// localStorage) → POST /api/checkout → Stripe's hosted checkout → back here
-// with ?order=<session id>. prices + shipping live in shop.json and the
-// function prices from it — the totals here are display only.
-// drafts render off the production host (previews, local) or with ?drafts.
+// ---- the shelf: one card per product from shop.json. the card links to the
+// product page (shop/<id>.html, tools/build-shop.mjs) and keeps a quick add;
+// the cart + checkout live in shop.js.
 (() => {
+  const S = window.NewspeechShop;
   const $ = (id) => document.getElementById(id);
   const q = new URLSearchParams(location.search);
-  const PROD = /^(www\.)?newspeechsound\.com$/.test(location.hostname);
-  const SHOW_DRAFTS = !PROD || q.has("drafts");
-  const CART_KEY = "newspeech.cart";
-  const REGION_KEY = "newspeech.cartRegion";
-  const MAX_QTY = 10; // matches netlify/functions/checkout.mjs
-
-  const get = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
-  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
-  const money = (c) => "$" + (c % 100 ? (c / 100).toFixed(2) : String(c / 100));
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
-  let cat = null;
-  let byId = new Map();
-  let cart = []; // [{ id, option, qty }]
-  let region = get(REGION_KEY) || "us";
-  let bad = null; // { product, option, why } from the last failed checkout
-
-  function soldOut(p, opt) {
-    if (p.soldOut === true) return true;
-    return Array.isArray(p.soldOut) && opt ? p.soldOut.includes(opt) : false;
+  if (q.has("order")) {
+    $("thanks").hidden = false;
+    history.replaceState(null, "", location.pathname + (q.has("drafts") ? "?drafts" : ""));
   }
 
-  // mirrors shippingFor() in netlify/lib/stripe.mjs
-  function shippingFor(r, lines) {
-    const units = lines.reduce((n, l) => n + (l.p.units || 1) * l.qty, 0);
-    return units ? r.first + r.additional * (units - 1) : 0;
-  }
-
-  // ---- cart state --------------------------------------------------------
-  function loadCart() {
-    let raw = [];
-    try { raw = JSON.parse(get(CART_KEY) || "[]"); } catch (_) {}
-    // drop anything the catalog no longer sells (or this host doesn't show)
-    cart = (Array.isArray(raw) ? raw : []).filter((l) => {
-      const p = byId.get(l && l.id);
-      if (!p || !Number.isInteger(l.qty) || l.qty < 1) return false;
-      const opts = p.options || [];
-      return opts.length ? opts.includes(l.option) : !l.option;
-    }).map((l) => ({ id: l.id, option: l.option || "", qty: Math.min(MAX_QTY, l.qty) }));
-    if (!cat.shipping[region]) region = Object.keys(cat.shipping)[0];
-  }
-  function saveCart() { set(CART_KEY, JSON.stringify(cart)); }
-  const count = () => cart.reduce((n, l) => n + l.qty, 0);
-
-  function add(id, option) {
-    const l = cart.find((x) => x.id === id && x.option === option);
-    if (l) l.qty = Math.min(MAX_QTY, l.qty + 1);
-    else cart.push({ id, option, qty: 1 });
-    bad = null;
-    saveCart();
-    renderCart();
-  }
-
-  // ---- shelf -------------------------------------------------------------
   function card(p) {
     const item = el("article", "item");
-    const pic = el("div", "pic");
-    if (p.image) { const img = el("img"); img.src = p.image; img.alt = p.name; img.loading = "lazy"; pic.appendChild(img); }
+    const imgs = S.images(p);
+    const pic = el("a", "pic" + (p.color ? " color" : ""));
+    pic.href = S.url(p);
+    pic.setAttribute("aria-label", p.name);
+    if (imgs.length) { const img = el("img"); img.src = S.asset(imgs[0]); img.alt = p.name; img.loading = "lazy"; pic.appendChild(img); }
     else pic.appendChild(el("div", "ph", p.name));
     if (p.draft) pic.appendChild(el("span", "tag", "draft"));
-    else if (soldOut(p)) pic.appendChild(el("span", "tag", "sold out"));
+    else if (S.soldOut(p)) pic.appendChild(el("span", "tag", "sold out"));
+    if (imgs.length > 1) pic.appendChild(el("span", "more", "+" + (imgs.length - 1)));
     item.appendChild(pic);
 
     const body = el("div", "body");
     const head = el("div", "head");
-    head.append(el("h2", null, p.name), el("span", "price", money(p.price)));
+    const h2 = el("h2"), link = el("a", null, p.name);
+    link.href = S.url(p);
+    h2.appendChild(link);
+    head.append(h2, el("span", "price", S.money(p.price)));
     body.appendChild(head);
     if (p.blurb) body.appendChild(el("p", "blurb", p.blurb));
 
@@ -250,7 +128,7 @@
     const btn = el("button", "buy", "ADD TO CART");
     const msg = el("span", "msg");
     const refresh = () => {
-      const out = soldOut(p) || soldOut(p, option);
+      const out = S.soldOut(p) || S.soldOut(p, option);
       btn.disabled = out || (opts.length && !option);
       btn.textContent = out ? "SOLD OUT" : "ADD TO CART";
     };
@@ -259,7 +137,7 @@
       const seg = el("div", "seg");
       seg.appendChild(el("span", "seglabel", p.kind === "shirt" ? "size" : "option"));
       for (const o of opts) {
-        const b = el("button", soldOut(p, o) ? "out" : null, o);
+        const b = el("button", S.soldOut(p, o) ? "out" : null, o);
         b.addEventListener("click", () => {
           option = o;
           seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
@@ -273,109 +151,21 @@
 
     let flash = 0;
     btn.addEventListener("click", () => {
-      add(p.id, option);
-      msg.textContent = "added — " + count() + " in the cart";
+      msg.textContent = "added — " + S.add(p.id, option) + " in the cart";
       clearTimeout(flash);
       flash = setTimeout(() => { msg.textContent = ""; }, 2400);
     });
 
     const row = el("div", "buyrow");
-    row.append(btn, msg);
+    const more = el("a", "details", "details →");
+    more.href = S.url(p);
+    row.append(btn, msg, more);
     body.appendChild(row);
     item.appendChild(body);
     refresh();
     return item;
   }
 
-  // ---- cart window -------------------------------------------------------
-  function openCart() { $("cart-wrap").hidden = false; renderCart(); }
-  function closeCart() { $("cart-wrap").hidden = true; }
-  $("cart-open").addEventListener("click", openCart);
-  $("cart-close").addEventListener("click", closeCart);
-  $("cart-wrap").addEventListener("click", (e) => { if (e.target === $("cart-wrap")) closeCart(); });
-  window.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("cart-wrap").hidden) closeCart(); });
-
-  function renderCart() {
-    const n = count();
-    const openBtn = $("cart-open");
-    openBtn.hidden = !n && $("cart-wrap").hidden;
-    openBtn.textContent = "CART " + n;
-    openBtn.classList.toggle("has", n > 0);
-    if ($("cart-wrap").hidden) return;
-
-    const box = $("cart-lines");
-    box.textContent = "";
-    const lines = cart.map((l) => ({ ...l, p: byId.get(l.id) }));
-    if (!lines.length) box.appendChild(el("div", "none", "the cart's empty."));
-    for (const l of lines) {
-      const isBad = bad && bad.product === l.id && (!bad.option || bad.option === l.option);
-      const row = el("div", "line" + (isBad ? " bad" : ""));
-      const nm = el("div", "nm", l.p.name);
-      if (l.option) { nm.append(" "); nm.appendChild(el("small", null, l.option)); }
-      const rm = el("button", "rm", "×");
-      rm.setAttribute("aria-label", "remove");
-      rm.addEventListener("click", () => { cart = cart.filter((x) => !(x.id === l.id && x.option === l.option)); bad = null; saveCart(); renderCart(); });
-      row.append(nm, el("span", "amt", money(l.p.price * l.qty)), rm);
-      const qty = el("div", "qty");
-      const minus = el("button", null, "−"), plus = el("button", null, "+");
-      const step = (d) => {
-        const c = cart.find((y) => y.id === l.id && y.option === l.option);
-        c.qty = Math.max(1, Math.min(MAX_QTY, c.qty + d));
-        saveCart(); renderCart();
-      };
-      minus.addEventListener("click", () => step(-1));
-      plus.addEventListener("click", () => step(1));
-      minus.disabled = l.qty <= 1; plus.disabled = l.qty >= MAX_QTY;
-      qty.append(minus, el("span", null, String(l.qty)), plus);
-      row.appendChild(qty);
-      if (isBad) row.appendChild(el("span", "why", bad.why));
-      box.appendChild(row);
-    }
-
-    const segBox = $("cart-region");
-    segBox.querySelectorAll("button").forEach((b) => b.remove());
-    for (const [key, r] of Object.entries(cat.shipping)) {
-      const b = el("button", key === region ? "on" : null, r.label);
-      b.addEventListener("click", () => { region = key; set(REGION_KEY, key); renderCart(); });
-      segBox.appendChild(b);
-    }
-    const r = cat.shipping[region];
-    $("cart-shipnote").hidden = !r.note;
-    $("cart-shipnote").textContent = r.note || "";
-    const sub = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
-    const ship = shippingFor(r, lines);
-    $("cart-sub").textContent = money(sub);
-    $("cart-shipname").textContent = r.name;
-    $("cart-ship").textContent = lines.length ? money(ship) : "—";
-    $("cart-total").textContent = money(sub + ship);
-    $("checkout").disabled = !lines.length;
-  }
-
-  $("checkout").addEventListener("click", async () => {
-    const btn = $("checkout"), msg = $("checkout-msg");
-    btn.disabled = true;
-    msg.textContent = "opening checkout…";
-    try {
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ region, items: cart.map((l) => ({ product: l.id, option: l.option, qty: l.qty })) }),
-      });
-      const r = await res.json().catch(() => ({}));
-      if (res.ok && r.url) { location.href = r.url; return; }
-      if (r.product) {
-        bad = { product: r.product, option: r.option, why: r.error === "sold out" ? "just sold out — remove it to check out" : "can't sell this one right now — remove it to check out" };
-        msg.textContent = "";
-      } else {
-        msg.textContent = r.error === "not configured" ? "checkout isn't wired up yet" : "transmission failed — try again";
-      }
-    } catch (_) {
-      msg.textContent = "transmission failed — try again";
-    }
-    renderCart();
-  });
-
-  // ---- boot --------------------------------------------------------------
   function empty() {
     $("empty").hidden = false;
     const join = $("empty-join");
@@ -390,26 +180,11 @@
     }));
   }
 
-  fetch("shop.json", { cache: "no-store" })
-    .then((r) => r.json())
-    .then((c) => {
-      cat = c;
-      const list = cat.products.filter((p) => SHOW_DRAFTS || !p.draft);
-      byId = new Map(list.map((p) => [p.id, p]));
-      if (q.has("order")) {
-        // back from Stripe: the order's in, the cart's done
-        set(CART_KEY, "[]");
-        $("thanks").hidden = false;
-        history.replaceState(null, "", location.pathname + (q.has("drafts") ? "?drafts" : ""));
-      }
-      loadCart();
-      saveCart();
-      renderCart();
-      if (!list.length) return empty();
-      const shelf = $("shelf");
-      for (const p of list) shelf.appendChild(card(p));
-    })
-    .catch(() => empty());
+  S.ready.then(({ list }) => {
+    if (!list.length) return empty();
+    const shelf = $("shelf");
+    for (const p of list) shelf.appendChild(card(p));
+  }).catch(empty);
 })();
 </script>
 </body>
