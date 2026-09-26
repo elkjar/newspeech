@@ -102,7 +102,7 @@ export default async (req) => {
     branding_settings: {
       display_name: "NEWSPEECH",
       background_color: "#050505",
-      button_color: "#ffffff",
+      button_color: "#050505", // the form side stays white — a black button reads there
       border_style: "rectangular",
       font_family: "inconsolata",
     },
