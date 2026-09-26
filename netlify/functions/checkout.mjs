@@ -69,6 +69,10 @@ export default async (req) => {
 
   const session = {
     mode: "payment",
+    // Managed Payments (Stripe as merchant of record) is on by default for new
+    // accounts but is digital-only — it refuses shipping. Physical goods sell
+    // as us. (Worth revisiting for the digital pay-what-you-want phase.)
+    managed_payments: { enabled: false },
     // quantities are fixed here — shipping was priced from them
     line_items: list.map((l) => ({
       quantity: l.qty,
