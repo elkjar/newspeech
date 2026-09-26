@@ -9,8 +9,11 @@
 //
 // per product, beyond what the shelf reads:
 //   images        list of photos, first one is the card + share image
-//   color         true → photos in colour (default: greyscale, like the site)
+//   (photo 1 is the black-and-white cover — card, share image, first slide;
+//   every photo after it shows in colour)
 //   audio         [{ title, src }] preview clips for music
+//   link          { label, href } a button to a related page (the EP's
+//                 listening room for a tape) — href is site-root relative
 //   longer copy   products/<id>.md if it exists (the site's markdown subset,
 //                 tools/md.mjs), else a `description` string in shop.json
 //
@@ -52,8 +55,8 @@ const PAGE_CSS = `
   .pdp { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: start; }
   .gallery { min-width: 0; }
   .main { aspect-ratio: 1; background: #0a0a0a; border: 1px solid #1c1c1c; position: relative; overflow: hidden; cursor: pointer; }
-  .main img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1); }
-  .color .main img, .color .thumbs img { filter: none; }
+  .main img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .main img.mono, .thumbs img.mono { filter: grayscale(1); } /* photo 1 is the b+w cover */
   .main .ph {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 32px;
     font-family: "zxx-noise", ui-monospace, monospace; font-size: 48px; line-height: 1.05; text-align: center;
@@ -63,7 +66,7 @@ const PAGE_CSS = `
   .thumbs { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
   .thumbs button { padding: 0; width: 72px; height: 72px; border: 1px solid #1c1c1c; background: #0a0a0a; overflow: hidden; }
   .thumbs button.on { border-color: #ddd; }
-  .thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; filter: grayscale(1); opacity: .7; }
+  .thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .7; }
   .thumbs button.on img, .thumbs button:hover img { opacity: 1; }
 
   .info { position: sticky; top: calc(24px + var(--ns-nav-h, 0px)); display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -75,6 +78,8 @@ const PAGE_CSS = `
   .buyrow .buy { padding: 10px 20px; border-color: #ddd; color: #fff; }
   .buyrow .msg { color: #666; }
   .gone { color: #999; }
+  .related { align-self: flex-start; color: #ccc; text-decoration: none; border: 1px solid #444; padding: 8px 14px; letter-spacing: 0.1em; }
+  .related:hover { border-color: #999; color: #fff; }
 
   .tracks { border-top: 1px solid #1c1c1c; padding-top: 12px; display: flex; flex-direction: column; gap: 2px; }
   .tracks .lbl { color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 6px; }
@@ -164,13 +169,13 @@ ${p.draft ? '<meta name="robots" content="noindex, nofollow">\n' : ""}<title>${e
   <button id="cart-open" hidden>CART 0</button>
 </div>
 
-<main class="pdp${p.color ? " color" : ""}" data-id="${attr(p.id)}">
+<main class="pdp" data-id="${attr(p.id)}">
   <div class="gallery">
     <div class="main" id="main">${imgs.length
-      ? `<img id="main-img" src="${attr(rel(imgs[0]))}" alt="${attr(p.name)}">${imgs.length > 1 ? `<span class="count" id="count">1 / ${imgs.length}</span>` : ""}`
+      ? `<img id="main-img" class="mono" src="${attr(rel(imgs[0]))}" alt="${attr(p.name)}">${imgs.length > 1 ? `<span class="count" id="count">1 / ${imgs.length}</span>` : ""}`
       : `<div class="ph">${esc(p.name)}</div>`}</div>${imgs.length > 1 ? `
     <div class="thumbs" id="thumbs">${imgs.map((src, i) => `
-      <button class="${i === 0 ? "on" : ""}" data-i="${i}" aria-label="photo ${i + 1}"><img src="${attr(rel(src))}" alt="" loading="lazy"></button>`).join("")}
+      <button class="${i === 0 ? "on" : ""}" data-i="${i}" aria-label="photo ${i + 1}"><img${i === 0 ? ' class="mono"' : ""} src="${attr(rel(src))}" alt="" loading="lazy"></button>`).join("")}
     </div>` : ""}
   </div>
 
@@ -180,7 +185,8 @@ ${p.draft ? '<meta name="robots" content="noindex, nofollow">\n' : ""}<title>${e
     ${p.blurb ? `<p class="blurb">${esc(p.blurb)}</p>` : ""}
     ${opts.length ? `<div class="seg" id="opts"><span class="seglabel">${p.kind === "shirt" ? "size" : "option"}</span>${opts.map((o) => `<button data-o="${attr(o)}">${esc(o)}</button>`).join("")}</div>` : ""}
     <div class="buyrow"><button class="buy" id="buy" disabled>ADD TO CART</button><span class="msg" id="msg"></span></div>
-    <p class="gone" id="gone" hidden>not on the shelf right now.</p>${audio.length ? `
+    <p class="gone" id="gone" hidden>not on the shelf right now.</p>${p.link && p.link.href ? `
+    <a class="related" href="${attr(rel(p.link.href))}">${esc(p.link.label || "more")} →</a>` : ""}${audio.length ? `
     <div class="tracks" id="tracks"><span class="lbl">listen</span>${audio.map((a, i) => `
       <button class="track" data-i="${i}" data-src="${attr(rel(a.src))}"><span class="ic">▶</span><span>${esc(a.title)}</span><span class="t">0:00</span><span class="bar"><i></i></span></button>`).join("")}
     </div>` : ""}${(() => { const c = copyFor(p); return c ? `
@@ -208,6 +214,7 @@ ${c}
     if (!thumbs.length) return;
     cur = (i + thumbs.length) % thumbs.length;
     $("main-img").src = thumbs[cur].querySelector("img").getAttribute("src");
+    $("main-img").classList.toggle("mono", cur === 0);
     $("count").textContent = (cur + 1) + " / " + thumbs.length;
     thumbs.forEach((b, j) => b.classList.toggle("on", j === cur));
   }
