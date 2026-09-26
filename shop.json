@@ -1,13 +1,21 @@
 {
-  "_readme": "the shop catalog — shop.html renders it, netlify/functions/checkout.mjs prices from it (the browser never sends a price). amounts are cents. draft products only render off the production host (or with ?drafts) and only sell against a Stripe TEST key. soldOut: true for the whole product, or a list of options. images: paths under assets/shop/.",
+  "_readme": "the shop catalog — shop.html renders it, netlify/functions/checkout.mjs prices from it (the browser never sends a price). amounts are cents. shipping per order = region.first + region.additional × (total units − 1); a product's units default to 1 (heavier things, e.g. vinyl, count more). draft products only render off the production host (or with ?drafts) and only sell against a Stripe TEST key. soldOut: true for the whole product, or a list of options. images: paths under assets/shop/.",
   "currency": "usd",
   "shipping": {
-    "us": { "label": "us", "name": "US shipping", "amount": 600, "countries": ["US"] },
+    "us": {
+      "label": "us",
+      "name": "US shipping",
+      "first": 600,
+      "additional": 200,
+      "countries": ["US", "PR"]
+    },
     "world": {
       "label": "elsewhere",
       "name": "international shipping",
-      "amount": 1800,
-      "countries": ["CA", "MX", "GB", "IE", "FR", "DE", "NL", "BE", "LU", "ES", "PT", "IT", "AT", "CH", "DK", "SE", "NO", "FI", "IS", "PL", "CZ", "AU", "NZ", "JP"]
+      "first": 1800,
+      "additional": 400,
+      "note": "outside the us your country may charge import tax or a handling fee on delivery",
+      "countries": ["AD", "AE", "AG", "AI", "AL", "AM", "AO", "AR", "AT", "AU", "AW", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BM", "BN", "BO", "BR", "BS", "BT", "BW", "BZ", "CA", "CD", "CF", "CG", "CH", "CI", "CL", "CM", "CN", "CO", "CR", "CV", "CW", "CY", "CZ", "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE", "EG", "ER", "ES", "ET", "FI", "FJ", "FK", "FO", "FR", "GA", "GB", "GD", "GE", "GF", "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GT", "GU", "GW", "GY", "HK", "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IM", "IN", "IQ", "IS", "IT", "JE", "JM", "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN", "KR", "KW", "KY", "KZ", "LA", "LB", "LC", "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME", "MG", "MK", "ML", "MM", "MN", "MO", "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA", "NC", "NE", "NG", "NI", "NL", "NO", "NP", "NR", "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PT", "PY", "QA", "RE", "RO", "RS", "RW", "SA", "SB", "SC", "SE", "SG", "SI", "SK", "SL", "SM", "SN", "SO", "SR", "ST", "SV", "SX", "SZ", "TC", "TD", "TG", "TH", "TJ", "TL", "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UY", "UZ", "VA", "VC", "VE", "VG", "VN", "VU", "WS", "YE", "ZA", "ZM", "ZW"]
     }
   },
   "products": [
@@ -20,7 +28,8 @@
       "image": "",
       "options": ["S", "M", "L", "XL", "XXL"],
       "soldOut": [],
-      "draft": true
+      "draft": true,
+      "units": 1
     },
     {
       "id": "night-school-tape",
@@ -31,7 +40,8 @@
       "image": "",
       "options": [],
       "soldOut": false,
-      "draft": true
+      "draft": true,
+      "units": 1
     }
   ]
 }
