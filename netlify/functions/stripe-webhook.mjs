@@ -33,24 +33,26 @@ export default async (req) => {
 
   let event;
   try { event = JSON.parse(raw); } catch (_) { return new Response("bad body", { status: 400 }); }
-  if (event.type !== "checkout.session.completed") return new Response("ignored", { status: 200 });
+  if (event.type !== "checkout.session.completed") return new Response(`ignored: ${event.type}`, { status: 200 });
 
   const s = event.data.object;
   const email = normalizeEmail(s.customer_details?.email);
   const product = s.metadata?.product || "";
   // null = Stripe didn't ask (locale doesn't require it) — a buyer, file them
+  // the reply says what happened — it shows in Stripe's event-delivery log
   if (!email || s.consent?.promotions === "opt_out") {
-    console.log(`stripe-webhook: ${product} — not filed (${email ? "opted out" : "no email"})`);
-    return new Response("ok", { status: 200 });
+    const why = email ? "buyer opted out" : "no email on the session";
+    console.log(`stripe-webhook: ${product} — not filed (${why})`);
+    return new Response(`not filed: ${why}`, { status: 200 });
   }
 
   try {
     resend ||= client(process.env.RESEND_API_KEY);
     const r = await resend.subscribe({ email, source: "shop", shop: product });
     console.log(`stripe-webhook: ${r.created ? "new" : "known"} shop ${product}`);
-    return new Response("ok", { status: 200 });
+    return new Response(`filed: ${r.created ? "new" : "existing"} contact, segments ${r.segments.join("+") || "none"}, consent ${s.consent?.promotions ?? "not asked"}`, { status: 200 });
   } catch (e) {
     console.error("stripe-webhook:", e.message);
-    return new Response("upstream", { status: 500 });
+    return new Response(`resend failed: ${e.message.slice(0, 200)}`, { status: 500 });
   }
 };
