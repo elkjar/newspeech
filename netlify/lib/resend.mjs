@@ -14,7 +14,11 @@
 //                                 then backfilled from the <plugin> property
 //              Night School       kept a ruined copy of the EP — USED IF PRESENT,
 //                                 never created (same cap)
-//   properties source             first touch: "homepage" | "plugins" | "night-school" | "tools" | "shop"
+//              Sequence Waitlist  joined the sequence app waitlist — USED IF PRESENT,
+//                                 never created (same cap); backfill from `waitlist`
+//   properties source             first touch: "homepage" | "plugins" | "night-school" | "tools" | "shop" | "sequence"
+//              waitlist           "sequence" — set on every waitlist signup, known
+//                                 contacts included (source is first touch only)
 //              <plugin>           version string of the build they downloaded
 //              night-school       slug of the last track they printed a ruin of
 //              tool               browser tool whose export nudge they signed up
@@ -27,8 +31,8 @@
 
 const API = "https://api.resend.com";
 export const PLUGINS = ["vibe", "saturate", "slice", "glitch"];
-export const SOURCES = ["homepage", "plugins", "night-school", "tools", "shop"];
-export const TOOLS = ["texture", "slice", "decay", "drone", "glitch", "samples"];
+export const SOURCES = ["homepage", "plugins", "night-school", "tools", "shop", "sequence"];
+export const TOOLS = ["texture", "slice", "decay", "drone", "glitch", "stretch", "samples"];
 export const TRACK_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
@@ -101,7 +105,8 @@ export function client(key) {
   // Upsert one contact and file it into its segments. `plugin`/`version` are
   // optional (homepage subscribe passes neither); `track` is the EP listening
   // room's gate (night-school source); `tool` is the browser tools' export
-  // nudge (tools source); `shop` is the product a buyer took (shop source).
+  // nudge (tools source); `shop` is the product a buyer took (shop source);
+  // the sequence source is the app waitlist (homepage vignette).
   const subscribe = async ({ email, source, plugin, version, track, tool, shop }) => {
     if (!normalizeEmail(email)) throw new Error("bad email");
     if (!SOURCES.includes(source)) throw new Error("bad source");
@@ -115,6 +120,7 @@ export function client(key) {
     if (track) props["night-school"] = track;
     if (tool) props.tool = tool;
     if (shop) props.shop = shop;
+    if (source === "sequence") props.waitlist = "sequence";
     await ensureProperty("source");
     for (const k of Object.keys(props)) await ensureProperty(k);
 
@@ -136,6 +142,7 @@ export function client(key) {
     const wanted = [["General", false]];
     if (plugin) wanted.push(["Plugins", false], [`plugin-${plugin}`, true]);
     if (source === "night-school") wanted.push(["Night School", true]);
+    if (source === "sequence") wanted.push(["Sequence Waitlist", true]);
     const filed = [];
     for (const [name, optional] of wanted) {
       const id = await ensureSegment(name, optional);

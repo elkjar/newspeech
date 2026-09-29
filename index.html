@@ -400,6 +400,33 @@
     cursor: pointer;
   }
   .copy .cta span { vertical-align: top; height: 18px; line-height: 18px; } /* same baseline lock as #subscribe */
+  /* the sequence waitlist: the plugins-page gate row — email + cta, one height */
+  #v-sequence { height: 82svh; min-height: 620px; }
+  .copy .waitlist { margin-top: 26px; }
+  .copy .waitlist .hp { display: none; }
+  .copy .wl-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+  .copy .wl-row input[type="email"] {
+    flex: 1 1 180px;
+    min-width: 0;
+    max-width: 260px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.04em;
+    padding: 16px 14px;
+    border-radius: 0;
+    outline: none;
+  }
+  .copy .wl-row input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
+  .copy .wl-row input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
+  .copy .wl-row .cta { margin-top: 0; background: none; font-family: inherit; }
+  .copy .wl-row .cta:hover { background: rgba(255, 255, 255, 0.08); }
+  .copy .wl-row .cta:disabled { opacity: 0.4; cursor: default; }
+  .copy .wl-msg { display: block; font-size: 12px; letter-spacing: 0.06em; opacity: 0.85; margin-top: 4px; }
+  .copy .wl-msg.err { opacity: 0.55; margin-top: 12px; }
   .copy .aux {
     margin-top: 20px;
     font-size: 11px;
@@ -556,6 +583,17 @@
       justify-content: flex-end;
       padding: 120px var(--ns-gutter, 28px) 52px;
     }
+    /* stacked, the copy + waitlist need the full screen under the grid */
+    #v-sequence { height: 100svh; min-height: 0; }
+    /* one row even on a phone — the copy's height is what keeps it off the grid */
+    .copy .wl-row { flex-wrap: nowrap; }
+    .copy .wl-row input[type="email"] {
+      flex: 1 1 0;
+      max-width: none;
+      font-size: 16px; /* <16px zooms iOS Safari on focus */
+      padding: 15px 12px;
+    }
+    .copy .wl-row .cta { flex: none; padding: 16px 16px; }
   }
 </style>
 </head>
@@ -626,6 +664,13 @@ fetch("news-latest.html")
     <span class="badge">coming soon</span>
     <p>a step sequencer with a chord-relative harmonic engine. set a root and a scale, author chords by degree — the rest of the band harmonizes against whatever played last.</p>
     <p>built to play itself, mostly: mutation dials on every row, five global macros, sixteen banks. arriving as a native macos app.</p>
+    <form class="waitlist" novalidate>
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <div class="wl-row">
+        <input type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email" aria-label="email">
+        <button type="submit" class="cta" data-link>join the waitlist</button>
+      </div>
+    </form>
   </div>
 </section>
 
@@ -1767,6 +1812,41 @@ subForm.addEventListener("submit", async (e) => {
     subBody.appendChild(msg);
   }
 });
+
+// ---- sequence waitlist: same door, source "sequence" (sets waitlist=sequence
+// on the contact). a known email (any newspeech form) is prefilled. ----
+{
+  const wl = document.querySelector("#v-sequence .waitlist");
+  const input = wl.querySelector('input[type="email"]');
+  try { input.value = localStorage.getItem("newspeech.email") || ""; } catch (_) {}
+  wl.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    wl.querySelector(".wl-msg")?.remove();
+    if (!input.checkValidity()) { input.focus(); return; }
+    const btn = wl.querySelector("button");
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: input.value.trim(),
+          source: "sequence",
+          "bot-field": wl.querySelector('[name="bot-field"]').value,
+        }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      try { localStorage.setItem("newspeech.email", input.value.trim()); } catch (_) {}
+      wl.innerHTML = '<span class="wl-msg">signal received — you\'re on the waitlist</span>';
+    } catch (err) {
+      btn.disabled = false;
+      const msg = document.createElement("span");
+      msg.className = "wl-msg err";
+      msg.textContent = "transmission failed — try again";
+      wl.appendChild(msg);
+    }
+  });
+}
 </script>
 </body>
 </html>

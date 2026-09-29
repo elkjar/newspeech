@@ -1,11 +1,11 @@
 // POST /api/subscribe — the one door for both the homepage mailing-list box
 // and the plugin download gates. Body (JSON or urlencoded):
 //   email       required
-//   source      "homepage" | "plugins" | "night-school" | "tools"
+//   source      "homepage" | "plugins" | "night-school" | "tools" | "sequence" (app waitlist)
 //   plugin      vibe | saturate | slice | glitch   (plugins source only)
 //   version     build the visitor is downloading, e.g. "1.0.0"
 //   track       EP track slug whose ruin they kept (night-school source only)
-//   tool        texture | slice | decay | drone | glitch | samples   (tools source only)
+//   tool        texture | slice | decay | drone | glitch | stretch | samples   (tools source only)
 //   bot-field   honeypot — any value → pretend success, store nothing
 // Replaces the Netlify Forms capture (100 submissions/month cap) with Resend
 // contacts + segments; see ../lib/resend.mjs for the data model.
