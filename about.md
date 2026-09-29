@@ -49,4 +49,4 @@ so the work is starting to lean into it. the next record, *a hurricane in 4 cent
 
 it isn't about us. the instruments here are built to wear, to decay, to keep playing after we stop touching them — music that continues in our absence. the work worth learning from is planned on hundred-year timelines, repairing land for a time after us. we'd like to lend what we make to that kind of work, and do our part to **secure as many tomorrows as possible**.
 
-this page is part of the record too. every band behind the text is one year of global surface temperature, 1850 to 2025, from NOAA — the further down you read, the warmer it gets, and the page wears with it.
+this page is part of the record too. every band behind the text is one year of global surface temperature, from NOAA — the further down you read, the warmer it gets, and the page wears with it.

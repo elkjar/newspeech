@@ -4,9 +4,9 @@
 //
 // the layout is the climate record: the page background is the NOAA warming
 // stripes, one band per year, 1850 at the top of the page and 2025 at the
-// bottom. scrolling advances a year readout (year, co₂, anomaly) and the page
-// wears as the record warms — heading scrambles, chroma flicker, grain and
-// stripe tears all scale with the anomaly at the reading line. disorder
+// bottom — no years or readouts on screen, the record is only felt. the page
+// wears as it warms — heading scrambles, chroma flicker, grain and stripe
+// tears all scale with the anomaly at the reading line. disorder
 // follows the climate (the hurricane proposal's rule). the body copy stays
 // readable at every depth; prefers-reduced-motion drops the wear entirely.
 import fs from "node:fs";
@@ -67,20 +67,6 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   /* grain: a fixed noise layer whose opacity follows the anomaly */
   #grain { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0; background-size: 256px 256px; mix-blend-mode: screen; }
 
-  /* the year: a huge dim numeral behind the text, the readout bright over it */
-  #osd { position: fixed; left: var(--col-pad); bottom: 28px; z-index: 1; pointer-events: none; transition: opacity 0.3s ease; }
-  #osd .yr {
-    font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: clamp(110px, 21vw, 320px);
-    line-height: 0.8;
-    letter-spacing: -0.02em;
-    color: rgba(255, 255, 255, 0.07);
-    margin-left: -0.04em;
-    font-variant-numeric: tabular-nums;
-  }
-  #osd .rd { margin-top: 14px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); }
-  #osd.gone { opacity: 0; }
-
   .wrap { position: relative; z-index: 3; padding: 0 var(--col-pad); }
   .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 28px; }
 
@@ -95,7 +81,6 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
     user-select: none;
   }
   .hero .dek { max-width: 46ch; font-size: 15px; line-height: 1.75; color: rgba(255, 255, 255, 0.88); margin: 0; }
-  .hero .hint { margin-top: 48px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.4); }
 
   /* sections: staggered across the column, a long gap between each so the
      years spread out under them */
@@ -134,18 +119,11 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   /* the end of the record */
   .end { padding: 18vh 0 22vh; }
   .end .in { grid-column: 1 / 13; }
-  .end .big { font-family: "zxx-sans", ui-monospace, monospace; font-size: clamp(54px, 9.35vw, 143px); line-height: 0.95; }
-  .end .rd { margin-top: 18px; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.7); }
-  .end .src { margin-top: 28px; max-width: 64ch; font-size: 11px; line-height: 1.7; color: rgba(255, 255, 255, 0.4); }
+  .end .src { margin: 0; max-width: 64ch; font-size: 11px; line-height: 1.7; color: rgba(255, 255, 255, 0.4); }
 
   @media (max-width: 900px) {
     .s .in, .s.p-right .in, .s.p-wide .in { grid-column: 1 / 13; }
     .s { padding: 16vh 0; }
-    /* phones: no giant numeral over the copy — the readout alone, on a plate */
-    #osd { left: 12px; bottom: 12px; background: rgba(5, 5, 5, 0.85); border: 1px solid rgba(255, 255, 255, 0.14); padding: 6px 10px; }
-    #osd .yr { display: none; }
-    #osd .rd { margin: 0; }
-    #osd .rd::before { content: attr(data-year) " · "; color: #fff; }
   }
 </style>
 </head>
@@ -159,7 +137,6 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   <header class="hero">
     <h1 data-wear>${esc(fm.title || "about")}</h1>
     <p class="dek">${esc(fm.dek || "")}</p>
-    <div class="hint">↓ 1850 — 2025</div>
   </header>
 ${sections.map((s, i) => `  <section class="s ${PLACES[i % PLACES.length]}">
     <div class="grid"><div class="in">
@@ -169,42 +146,27 @@ ${sections.map((s, i) => `  <section class="s ${PLACES[i % PLACES.length]}">
   </section>`).join("\n")}
   <div class="end">
     <div class="grid"><div class="in">
-      <div class="big" data-wear>2025</div>
-      <div class="rd" id="end-rd"></div>
-      <p class="src">the stripes: NOAA NCEI global land + ocean surface temperature, annual anomaly against the 1901–2000 mean, 1850–2025. co₂: law dome ice core to 1958, mauna loa from 1959. one band per year, brightness = anomaly.</p>
+      <p class="src">the stripes: NOAA NCEI global land + ocean surface temperature, one band per year, brightness = the annual anomaly against the 20th-century mean.</p>
     </div></div>
   </div>
 </div>
 </main>
 
-<div id="osd" aria-hidden="true"><div class="yr">1850</div><div class="rd"></div></div>
 <div id="grain" aria-hidden="true"></div>
 
 <script>
-const CLIMATE = ${JSON.stringify({ temps: climate.temps, co2: climate.co2 })};
+const CLIMATE = ${JSON.stringify({ temps: climate.temps })};
 (() => {
   "use strict";
   const T = CLIMATE.temps;                 // [[year, anomaly °C]] 1850–2025
   const Y0 = T[0][0], N = T.length;
   const aMin = Math.min(...T.map((t) => t[1])), aMax = Math.max(...T.map((t) => t[1]));
   const norm = (a) => (a - aMin) / (aMax - aMin); // 0 = coolest year … 1 = warmest
-  const C = CLIMATE.co2;
-  function co2At(y) {                      // the ice-core years are sparse — interpolate
-    let i = C.findIndex((c) => c[0] >= y);
-    if (i <= 0) return C[Math.max(0, i)][1];
-    const [y0, v0] = C[i - 1], [y1, v1] = C[i];
-    return v0 + (v1 - v0) * (y - y0) / (y1 - y0);
-  }
-  const fmtA = (a) => (a >= 0 ? "+" : "−") + Math.abs(a).toFixed(2) + " °C";
-  const readout = (i) => T[i][0] + " · co₂ " + co2At(T[i][0]).toFixed(1) + " ppm · " + fmtA(T[i][1]);
 
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const main = document.querySelector("main");
   const cv = document.getElementById("record");
   const ctx = cv.getContext("2d");
-  const osd = document.getElementById("osd");
-  const yrEl = osd.querySelector(".yr"), rdEl = osd.querySelector(".rd");
-  document.getElementById("end-rd").textContent = readout(N - 1);
 
   // ---- the stripes ----
   let tears = []; // {i, dx} — bands knocked sideways for a moment
@@ -229,19 +191,15 @@ const CLIMATE = ${JSON.stringify({ temps: climate.temps, co2: climate.co2 })};
   }
   new ResizeObserver(draw).observe(cv);
 
-  // ---- the reading line: the year under the middle of the screen ----
+  // ---- the reading line: the year under the middle of the screen drives the wear ----
   let cur = 0;
   function sync() {
     const r = main.getBoundingClientRect();
     const f = (window.innerHeight * 0.5 - r.top) / r.height;
     cur = Math.max(0, Math.min(N - 1, Math.floor(f * N)));
-    yrEl.textContent = T[cur][0];
-    rdEl.textContent = "co₂ " + co2At(T[cur][0]).toFixed(1) + " ppm · " + fmtA(T[cur][1]);
-    rdEl.dataset.year = T[cur][0];
-    // out of the way once the end block (or the footer) is on screen
-    const end = document.querySelector(".end").getBoundingClientRect();
-    osd.classList.toggle("gone", end.top < window.innerHeight);
-    if (!reduce) document.getElementById("grain").style.opacity = String(0.02 + 0.16 * wear() * wear());
+    // grain belongs to the record — it thins out as the page gives way to the footer
+    const onScreen = Math.max(0, Math.min(1, r.bottom / window.innerHeight));
+    if (!reduce) document.getElementById("grain").style.opacity = String((0.02 + 0.16 * wear() * wear()) * onScreen);
   }
   const wear = () => norm(T[cur][1]);
   window.addEventListener("scroll", sync, { passive: true });
