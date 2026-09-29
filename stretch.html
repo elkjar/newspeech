@@ -1,0 +1,1125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<meta name="robots" content="noindex">
+<title>NEWSPEECH // stretch</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — sampler timestretch. Akai-style block splicing pushed past where it holds together, through a 12- or 8-bit converter.">
+<meta property="og:title" content="NEWSPEECH // stretch">
+<meta property="og:description" content="newspeech — sampler timestretch, pushed until it breaks.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/stretch.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="NEWSPEECH // stretch">
+<meta name="twitter:description" content="newspeech — sampler timestretch, pushed until it breaks.">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0 0 4px; }
+  .sub { color: #666; margin: 0 0 20px; }
+
+  /* the source: drop zone + the loop editor — drag across the wave to set
+     the region the stretch reads */
+  #dropwave {
+    position: relative;
+    height: 340px;
+    background: #0a0a0a;
+    border: 1px dashed #333;
+    margin-bottom: 14px;
+    transition: border-color 0.15s;
+  }
+  #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
+  #dropwave.drag { border-color: #777; }
+  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #dropwave.loaded #wave { cursor: crosshair; height: calc(100% - 22px); }
+  /* the whole file, always: the loop lit, the zoomed view bracketed — drag to pan */
+  #overview {
+    position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 22px;
+    display: none; border-top: 1px solid #1c1c1c; cursor: grab; touch-action: none;
+  }
+  #dropwave.loaded #overview { display: block; }
+  #dropprompt {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #666; cursor: pointer; text-align: center; padding: 0 12px;
+  }
+  #dropwave.drag #dropprompt { color: #ddd; }
+  #dropwave.loaded #dropprompt { display: none; }
+  .droptip { color: #444; }
+  #fileinfo {
+    position: absolute; top: 8px; left: 10px;
+    color: #888; cursor: pointer; display: none;
+    background: rgba(5,5,5,0.6); padding: 1px 6px;
+  }
+  #fileinfo:hover { color: #ddd; }
+  #dropwave.loaded #fileinfo { display: block; }
+  #fileinfo .fname { color: #ddd; }
+  #stretchinfo {
+    position: absolute; top: 8px; right: 10px;
+    color: #888; display: none;
+    background: rgba(5,5,5,0.6); padding: 1px 6px;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  #dropwave.loaded #stretchinfo { display: block; }
+  #stretchinfo em { font-style: normal; color: #ddd; }
+  #fileinput { display: none; }
+
+  /* transport */
+  #transport { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+  button {
+    font: inherit; background: none; color: #ccc;
+    border: 1px solid #444; padding: 8px 22px;
+    cursor: pointer; letter-spacing: 0.15em;
+  }
+  button:hover { border-color: #999; color: #fff; }
+  button:disabled { opacity: 0.3; cursor: default; }
+  button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .hint { color: #555; }
+
+  /* unit groups — bordered boxes sized to their contents, flowing in rows */
+  #units { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; max-width: 100%; min-width: 0; }
+  .group h2 { font-size: 11px; font-weight: 400; letter-spacing: 0.25em; color: #999; margin: 0 0 12px; }
+
+  .krow { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .kdivider { align-self: stretch; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px; }
+  .kcol {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    width: 58px; user-select: none; -webkit-user-select: none;
+    transition: opacity 0.15s;
+  }
+  .kcol.dim { opacity: 0.3; }
+  .kcol svg { cursor: ns-resize; touch-action: none; display: block; }
+  .kcol svg:hover .kring { stroke-opacity: 0.22; }
+  .kcol .klabel {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+    color: rgba(255,255,255,0.7); text-align: center;
+  }
+  .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+
+  .krow .minibtn, .seg .minibtn { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; }
+  .krow .minibtn { align-self: center; margin-top: -14px; }
+  .krow .minibtn:hover, .seg .minibtn:hover { border-color: #999; color: #fff; }
+
+  .seg { display: flex; gap: 4px; margin: 8px 0 0; flex-wrap: wrap; align-items: center; }
+  .seg.top { margin: 0 0 12px; }
+  .seg button { padding: 3px 8px; font-size: 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.12em; }
+  .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .seg .seglabel {
+    color: #666; padding: 0 6px 0 0;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+    min-width: 36px;
+  }
+
+  #export { margin-top: 20px; border: 1px solid #1c1c1c; padding: 14px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #renderinfo { color: #666; }
+
+  @media (max-width: 720px) {
+    .group { width: 100%; }
+    /* fileinfo wraps at phone widths — the readout moves to the bottom edge,
+       just above the splice strip */
+    #stretchinfo { top: auto; bottom: 30px; left: 10px; right: auto; }
+  }
+</style>
+</head>
+<body>
+<script src="nav.js"></script>
+<script src="gate.js"></script>
+<script src="grain.js"></script>
+
+<h1>// STRETCH</h1>
+<p class="sub">sampler timestretch — the old Akai trick of splicing blocks in and out to change length without changing pitch, pushed past where it holds together. then out through a 12- or 8-bit converter.</p>
+
+<div id="dropwave">
+  <canvas id="wave"></canvas>
+  <canvas id="overview" title="the whole file — drag to move the zoomed view, double-click to see all of it"></canvas>
+  <div id="dropprompt">drop an audio file here, or click to browse — then drag across the wave to set a loop<br><span class="droptip">(or just press play — a demo break is included)</span></div>
+  <div id="fileinfo"></div>
+  <div id="stretchinfo"></div>
+</div>
+<input type="file" id="fileinput" accept="audio/*">
+
+<div id="transport">
+  <button id="play">PLAY</button>
+  <button id="top" title="back to the start of the loop — what a render prints">FROM TOP</button>
+  <div class="seg" id="viewseg" style="margin:0">
+    <span class="seglabel">view</span>
+    <button class="minibtn" id="fitloop" title="zoom to the loop [z]">FIT LOOP</button>
+    <button class="minibtn" id="viewall" title="the whole file [z again]">ALL</button>
+  </div>
+  <span class="hint">[space] play/stop &nbsp;·&nbsp; drag the wave to loop a region — edges trim, inside slides, double-click for all of it · scroll or pinch to zoom, shift-scroll to pan</span>
+</div>
+
+<div id="units">
+
+  <div class="group" id="g-stretch">
+    <h2>STRETCH</h2>
+    <div class="krow" id="stretch-knobs"></div>
+  </div>
+
+  <div class="group" id="g-splice">
+    <h2>SPLICE</h2>
+    <div class="seg top" id="mode">
+      <span class="seglabel">type</span>
+      <button data-m="0" class="on" title="blocks splice at fixed intervals, blind to the signal — the splice rate becomes a pitch of its own">CYCLIC</button>
+      <button data-m="1" title="each splice searches for the best-matching place to land — smoother, until it isn't">INTELL</button>
+    </div>
+    <div class="krow" id="splice-knobs"></div>
+  </div>
+
+  <div class="group" id="g-converter">
+    <h2>CONVERTER</h2>
+    <div class="seg top" id="bits">
+      <span class="seglabel">bits</span>
+      <button data-b="16">16</button>
+      <button data-b="12" class="on">12</button>
+      <button data-b="8">8</button>
+    </div>
+    <div class="seg top" id="rate">
+      <span class="seglabel">rate</span>
+      <button data-r="0">FULL</button>
+      <button data-r="30000" class="on">30K</button>
+      <button data-r="15000">15K</button>
+      <button data-r="8000">8K</button>
+    </div>
+    <div class="krow" id="converter-knobs"></div>
+  </div>
+
+</div>
+
+<div id="export">
+  <button id="render">RENDER WAV</button>
+  <span id="renderinfo"></span>
+</div>
+
+<script>
+// stretch.html — sampler timestretch. A region of the file is the loop;
+// stretch-worklet.js overlap-adds fixed-length blocks (the CYCLE) read from
+// a stretched timeline, so length changes while pitch doesn't — and the
+// joins are the sound. CYCLIC splices blind (the jungle warble); INTELL
+// searches for a matching place to land. PITCH resamples inside the
+// blocks. The CONVERTER (rate, then bits, no filter, no dither) is the
+// machine's output stage. Render prints one stretched pass of the loop.
+
+// --- UI state — knobs in 0..1 knob space, mapped at read -----------------------
+const ui = {
+  stretchKnob: Math.log(30) / Math.log(500), // 300%
+  pitchKnob: 0.5,                             // 0 st
+  cycleKnob: Math.log(20) / Math.log(500),    // 20ms
+  xfdKnob: 0.3,
+  qualityKnob: 0.5,
+  levelKnob: 1 / 1.5,
+  mode: 0,
+  bits: 12,
+  rate: 30000,
+};
+
+const stretchF = () => 0.1 * Math.pow(500, ui.stretchKnob); // 10% .. 5000%
+const pitchSt = () => Math.round(ui.pitchKnob * 48) - 24;
+const cycleMs = () => Math.pow(500, ui.cycleKnob);          // 1 .. 500ms
+const fmtPct = (k) => Math.round(ui[k] * 100) + '';
+
+function cycleSamples() {
+  const sr = actx ? actx.sampleRate : 48000;
+  return Math.max(16, Math.round((cycleMs() / 1000) * sr));
+}
+
+function workletParams() {
+  return {
+    s: stretchF(),
+    cycle: cycleSamples(),
+    xfd: ui.xfdKnob,
+    mode: ui.mode,
+    quality: ui.qualityKnob,
+    pitch: pitchSt(),
+    bits: ui.bits,
+    rate: ui.rate,
+    level: ui.levelKnob * 1.5,
+  };
+}
+
+function fmtStretch() {
+  const pct = stretchF() * 100;
+  return (pct < 100 ? pct.toFixed(0) : Math.round(pct)) + '%';
+}
+function fmtCycle() {
+  const ms = cycleMs();
+  return ms < 10 ? ms.toFixed(1) + 'ms' : Math.round(ms) + 'ms';
+}
+
+// --- knobs (the house Knob: ring, 270° arc, tick, vertical drag) ---------------
+const SVGNS = 'http://www.w3.org/2000/svg';
+const KNOB_SIZE = 40;
+const knobs = {};
+
+const KNOB_SPECS = [
+  { group: 'stretch-knobs', k: 'stretchKnob', label: 'stretch', fmt: fmtStretch,
+    title: 'new length as a percentage — the Akai range was 25–2000%; this goes further, and past ~10% either way the joins start to show' },
+  { group: 'stretch-knobs', k: 'pitchKnob', label: 'pitch', steps: 48,
+    fmt: () => { const st = pitchSt(); return (st > 0 ? '+' : '') + st + 'st'; },
+    title: 'resample inside every block — pitch moves, length stays put (stretch-then-resample, the other half of the trick)' },
+
+  { group: 'splice-knobs', k: 'cycleKnob', label: 'cycle', fmt: fmtCycle,
+    title: 'block length — the splice rate is roughly 1 / (cycle − crossfade), and in CYCLIC that rate becomes a buzz of its own' },
+  { group: 'splice-knobs', auto: true },
+  { group: 'splice-knobs', k: 'xfdKnob', label: 'xfd', fmt: () => fmtPct('xfdKnob'),
+    title: 'crossfade over each join — 0 is hard splices (clicks and all), the top blends half of every block' },
+  { group: 'splice-knobs', k: 'qualityKnob', label: 'quality', fmt: () => fmtPct('qualityKnob'),
+    title: 'INTELL only — how hard each splice looks for a matching place to land; low quality makes fewer, worse decisions' },
+
+  { group: 'converter-knobs', k: 'levelKnob', label: 'level', fmt: () => Math.round(ui.levelKnob * 150) + '',
+    title: 'into the converter — past 100 it clips before the bits truncate' },
+];
+
+function buildKnob(spec) {
+  const col = document.createElement('div');
+  col.className = 'kcol';
+  col.dataset.kn = spec.k;
+  const s = KNOB_SIZE;
+  const cx = s / 2, cy = s / 2;
+  const ringR = s * 0.36;
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('width', s);
+  svg.setAttribute('height', s);
+  svg.setAttribute('viewBox', `0 0 ${s} ${s}`);
+  if (spec.title) {
+    const t = document.createElementNS(SVGNS, 'title');
+    t.textContent = spec.title;
+    svg.appendChild(t);
+  }
+  const ring = document.createElementNS(SVGNS, 'circle');
+  ring.setAttribute('cx', cx); ring.setAttribute('cy', cy); ring.setAttribute('r', ringR);
+  ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', 'white');
+  ring.setAttribute('stroke-opacity', '0.12'); ring.setAttribute('stroke-width', '1');
+  ring.setAttribute('class', 'kring');
+  const arc = document.createElementNS(SVGNS, 'path');
+  arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', 'white');
+  arc.setAttribute('stroke-opacity', '0.7'); arc.setAttribute('stroke-width', '1.75');
+  arc.setAttribute('stroke-linecap', 'round');
+  const tick = document.createElementNS(SVGNS, 'line');
+  tick.setAttribute('stroke', 'white'); tick.setAttribute('stroke-opacity', '0.9');
+  tick.setAttribute('stroke-width', '1.75'); tick.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(ring); svg.appendChild(arc); svg.appendChild(tick);
+
+  const label = document.createElement('span');
+  label.className = 'klabel';
+  label.textContent = spec.label;
+  const val = document.createElement('span');
+  val.className = 'kval';
+  col.appendChild(svg); col.appendChild(label); col.appendChild(val);
+
+  function draw() {
+    const v = Math.min(1, Math.max(0, ui[spec.k]));
+    const angleDeg = -135 + 270 * v;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const tickInner = s * 0.17;
+    tick.setAttribute('x1', cx + tickInner * Math.sin(angleRad));
+    tick.setAttribute('y1', cy - tickInner * Math.cos(angleRad));
+    tick.setAttribute('x2', cx + ringR * Math.sin(angleRad));
+    tick.setAttribute('y2', cy - ringR * Math.cos(angleRad));
+    if (v > 0) {
+      const startRad = (-135 * Math.PI) / 180;
+      const largeArc = Math.abs(angleDeg + 135) > 180 ? 1 : 0;
+      arc.setAttribute('d',
+        `M ${cx + ringR * Math.sin(startRad)} ${cy - ringR * Math.cos(startRad)} ` +
+        `A ${ringR} ${ringR} 0 ${largeArc} 1 ` +
+        `${cx + ringR * Math.sin(angleRad)} ${cy - ringR * Math.cos(angleRad)}`);
+      arc.setAttribute('visibility', 'visible');
+    } else {
+      arc.setAttribute('visibility', 'hidden');
+    }
+    val.textContent = spec.fmt();
+  }
+
+  function setValue(next) {
+    let v = Math.min(1, Math.max(0, next));
+    if (spec.steps) v = Math.round(v * spec.steps) / spec.steps;
+    if (v === ui[spec.k]) return;
+    ui[spec.k] = v;
+    draw();
+    onKnobChange(spec.k);
+  }
+
+  svg.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startVal = ui[spec.k];
+    const onMove = (ev) => setValue(startVal + (startY - ev.clientY) / 100);
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const d = spec.steps ? 1 / spec.steps : 0.05;
+    setValue(ui[spec.k] + (e.deltaY > 0 ? -d : d));
+  }, { passive: false });
+
+  knobs[spec.k] = { draw, setValue, col };
+  draw();
+  return col;
+}
+
+for (const spec of KNOB_SPECS) {
+  const parent = document.getElementById(spec.group);
+  if (spec.divider) {
+    const d = document.createElement('div');
+    d.className = 'kdivider';
+    parent.appendChild(d);
+  } else if (spec.auto) {
+    const b = document.createElement('button');
+    b.className = 'minibtn';
+    b.id = 'auto';
+    b.textContent = 'AUTO';
+    b.title = 'find a cycle from the source’s own period — press again for the next candidate';
+    parent.appendChild(b);
+  } else {
+    parent.appendChild(buildKnob(spec));
+  }
+}
+
+function onKnobChange() {
+  pushParams();
+  updateInfo();
+  updateRenderInfo();
+}
+
+function syncModeDim() {
+  knobs.qualityKnob.col.classList.toggle('dim', ui.mode !== 1);
+}
+
+// --- audio plumbing --------------------------------------------------------------
+let actx = null;
+let node = null;
+let fileL = null, fileR = null;
+// the loop: frames into the file. The worklet only ever hears the slice.
+let loopS = 0, loopE = 0;
+let loopL = null, loopR = null;
+const loopLen = () => loopE - loopS;
+const loopDur = () => (actx ? loopLen() / actx.sampleRate : 0);
+const loopIsFull = () => !!fileL && loopS === 0 && loopE === fileL.length;
+let fileName = '';
+let fileDur = 0;
+let fileBpm = 0;
+let isDemo = false;
+let playing = false;
+let rpF = -1;     // read position, 0..1 of the source
+let outPos = 0;   // output samples since the top
+
+async function ensureAudio() {
+  if (actx) return;
+  actx = new AudioContext();
+  try {
+    await actx.audioWorklet.addModule('stretch-worklet.js');
+  } catch (err) {
+    // most likely file:// — worklet modules only load over http(s). Fail
+    // loudly and leave actx null so a retry after fixing the serve works.
+    void actx.close();
+    actx = null;
+    document.querySelector('#transport .hint').textContent =
+      "audio engine failed to load — this page needs to be served over http(s), it can't run from file://";
+    throw err;
+  }
+  node = new AudioWorkletNode(actx, 'stretch', { numberOfInputs: 0, outputChannelCount: [2] });
+  node.connect(actx.destination);
+  node.port.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'viz') {
+      rpF = m.rp;
+      outPos = m.out;
+      updateInfo();
+    }
+  };
+  pushParams();
+}
+
+function pushParams() {
+  if (node) node.port.postMessage({ type: 'params', p: workletParams() });
+}
+
+function fromTop() {
+  if (!node) return;
+  node.port.postMessage({ type: 'reset' });
+  outPos = 0;
+}
+
+// --- demo break: drums + a minor chord, so PLAY works before any file ----------
+// transients show the flams, the chord shows the warble
+function makeDemoLoop() {
+  const sr = actx.sampleRate;
+  const bpm = 120;
+  const step = (60 / bpm / 4) * sr; // 16th
+  const n = Math.round(step * 32);  // 2 bars
+  fileL = new Float32Array(n);
+  fileR = new Float32Array(n);
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 * 2 - 1; };
+  const add = (at, len, fn) => {
+    const i0 = Math.round(at);
+    for (let i = 0; i < len && i0 + i < n; i++) {
+      const v = fn(i / sr);
+      fileL[i0 + i] += v;
+      fileR[i0 + i] += v;
+    }
+  };
+  const kicks = [0, 10, 16, 19, 26];
+  const snares = [4, 12, 20, 28, 30];
+  for (const k of kicks) {
+    add(k * step, sr * 0.35, (t) => Math.sin(2 * Math.PI * (48 * t + 90 * (1 - Math.exp(-t * 28)) / 28)) * Math.exp(-t * 9) * 0.7);
+  }
+  for (const s of snares) {
+    let lp = 0;
+    add(s * step, sr * 0.22, (t) => {
+      lp += (rnd() - lp) * 0.5;
+      return (lp * 0.55 + Math.sin(2 * Math.PI * 190 * t) * 0.25) * Math.exp(-t * 16);
+    });
+  }
+  for (let h = 0; h < 32; h += 2) {
+    let prev = 0;
+    add(h * step, sr * 0.05, (t) => {
+      const x = rnd();
+      const hp = x - prev;
+      prev = x;
+      return hp * 0.12 * Math.exp(-t * 70);
+    });
+  }
+  // A minor pad, lowpassed saws, slightly detuned per side
+  const notes = [110, 130.8, 164.8, 220];
+  let lpL = 0, lpR = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    let l = 0, r = 0;
+    for (const f of notes) {
+      l += ((t * f) % 1) * 2 - 1;
+      r += ((t * f * 1.004) % 1) * 2 - 1;
+    }
+    lpL += (l - lpL) * 0.04;
+    lpR += (r - lpR) * 0.04;
+    const env = 0.6 + 0.4 * Math.sin(2 * Math.PI * 0.25 * t);
+    fileL[i] += lpL * 0.06 * env;
+    fileR[i] += lpR * 0.06 * env;
+  }
+  fileName = 'demo break';
+  fileDur = n / sr;
+  fileBpm = bpm;
+  isDemo = true;
+  onSourceLoaded(`<span class="fname">demo break</span> · ${fileDur.toFixed(2)}s · 120bpm · drop a file to replace`);
+}
+
+async function loadFile(file) {
+  await ensureAudio();
+  const bytes = await file.arrayBuffer();
+  let buf;
+  try {
+    buf = await actx.decodeAudioData(bytes);
+  } catch (err) {
+    document.getElementById('dropprompt').textContent =
+      `couldn't decode "${file.name}" — try a wav/mp3/m4a`;
+    return;
+  }
+  fileL = buf.getChannelData(0);
+  fileR = buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0);
+  fileName = file.name.replace(/\.[^.]+$/, '');
+  fileDur = buf.duration;
+  isDemo = false;
+  // a XXXbpm filename carries through — the render's name gets the new tempo
+  const bm = file.name.match(/(\d{2,3}(?:\.\d+)?)\s*bpm/i);
+  fileBpm = bm ? Math.min(300, Math.max(20, parseFloat(bm[1]))) : 0;
+  onSourceLoaded(`<span class="fname">${file.name}</span> · ${fileDur.toFixed(2)}s · replace`);
+}
+
+function onSourceLoaded(infoHtml) {
+  document.getElementById('dropwave').classList.add('loaded');
+  document.getElementById('fileinfo').innerHTML = infoHtml;
+  viewS = 0;
+  viewE = fileL.length;
+  buildPeaks();
+  buildOverviewPeaks();
+  setLoop(0, fileL.length, false);
+  commitLoop();
+}
+
+// --- loop geometry ------------------------------------------------------------
+// Points snap to the nearest zero crossing so the seam doesn't click — within
+// 5ms, or a few pixels when zoomed in, so the snap never jumps out of view. A
+// drag only moves the view; the worklet hears it on commitLoop() at
+// pointer-up, which restarts the stretch from the loop's start.
+const MIN_LOOP = 256;
+function snapZero(i) {
+  const n = fileL.length;
+  const pxFrames = viewLen() / Math.max(1, wave.getBoundingClientRect().width);
+  const win = Math.max(1, Math.round(Math.min(actx.sampleRate * 0.005, pxFrames * 4)));
+  i = Math.max(0, Math.min(n, Math.round(i)));
+  if (i === 0 || i === n) return i;
+  const sgn = (k) => (fileL[k] + fileR[k]) >= 0;
+  for (let d = 0; d <= win; d++) {
+    if (i + d < n && sgn(i + d) !== sgn(i + d - 1)) return i + d;
+    if (i - d > 0 && sgn(i - d) !== sgn(i - d - 1)) return i - d;
+  }
+  return i;
+}
+
+function setLoop(s, e, snap = true) {
+  if (!fileL) return;
+  const n = fileL.length;
+  if (snap) { s = snapZero(s); e = snapZero(e); }
+  s = Math.max(0, Math.min(n, Math.round(s)));
+  e = Math.max(0, Math.min(n, Math.round(e)));
+  if (e < s) [s, e] = [e, s];
+  if (e - s < MIN_LOOP) { e = Math.min(n, s + MIN_LOOP); s = Math.max(0, e - MIN_LOOP); }
+  loopS = s;
+  loopE = e;
+  updateInfo();
+  updateRenderInfo();
+}
+
+function commitLoop() {
+  if (!fileL || !node) return;
+  loopL = fileL.slice(loopS, loopE);
+  loopR = fileR.slice(loopS, loopE);
+  autoCands = null;
+  node.port.postMessage({ type: 'buffer', l: loopL, r: loopR });
+  pushParams();
+  outPos = 0;
+  updateInfo();
+  updateRenderInfo();
+}
+
+// --- the view: which stretch of the file the wave shows -------------------------
+let viewS = 0, viewE = 0;
+let viewFitted = false; // the view is FIT LOOP's — z backs out to the whole file
+const MIN_VIEW = 64; // frames — deep enough to see single samples
+const viewLen = () => Math.max(1, viewE - viewS);
+const viewIsAll = () => !!fileL && viewS === 0 && viewE === fileL.length;
+
+function setView(s, e) {
+  if (!fileL) return;
+  const n = fileL.length;
+  let len = Math.max(MIN_VIEW, Math.min(n, e - s));
+  s = Math.max(0, Math.min(n - len, s));
+  viewS = Math.round(s);
+  viewE = Math.round(s + len);
+  if (viewE > n) { viewE = n; viewS = Math.max(0, n - Math.round(len)); }
+  viewFitted = false;
+  buildPeaks();
+}
+function fitLoop() {
+  const pad = loopLen() * 0.06;
+  setView(loopS - pad, loopE + pad);
+  viewFitted = true;
+}
+function viewAll() { if (fileL) setView(0, fileL.length); }
+
+// wave: edge → trim · inside → slide · outside, or anywhere on the full file →
+// new selection · double-click → the whole file · wheel/pinch → zoom around the
+// pointer · shift-wheel or a sideways swipe → pan
+(function wireLoopEdit() {
+  const GRAB = 7;
+  const cv = document.getElementById('wave'); // `wave` is declared further down
+  const ov = document.getElementById('overview');
+  let drag = null;
+  const framesAt = (e) => {
+    const r = cv.getBoundingClientRect();
+    return viewS + ((e.clientX - r.left) / r.width) * viewLen();
+  };
+  const edges = () => {
+    const r = cv.getBoundingClientRect();
+    const k = r.width / viewLen();
+    return { r, x0: (loopS - viewS) * k, x1: (loopE - viewS) * k };
+  };
+  function modeAt(e) {
+    const { r, x0, x1 } = edges();
+    const px = e.clientX - r.left;
+    if (loopIsFull()) return 'new';
+    if (Math.abs(px - x0) <= GRAB && Math.abs(px - x1) <= GRAB) return px < (x0 + x1) / 2 ? 'start' : 'end';
+    if (Math.abs(px - x0) <= GRAB) return 'start';
+    if (Math.abs(px - x1) <= GRAB) return 'end';
+    if (px > x0 && px < x1) return 'move';
+    return 'new';
+  }
+  cv.addEventListener('pointerdown', (e) => {
+    if (!fileL || e.button !== 0) return;
+    drag = { mode: modeAt(e), anchor: framesAt(e), x: e.clientX, s0: loopS, e0: loopE, moved: false };
+    cv.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!fileL) return;
+    if (!drag) {
+      const m = modeAt(e);
+      cv.style.cursor = m === 'start' || m === 'end' ? 'ew-resize' : m === 'move' ? 'grab' : 'crosshair';
+      return;
+    }
+    if (!drag.moved && Math.abs(e.clientX - drag.x) < 3) return; // a click isn't a drag
+    drag.moved = true;
+    const f = framesAt(e);
+    const delta = f - drag.anchor;
+    const n = fileL.length;
+    if (drag.mode === 'start') setLoop(drag.s0 + delta, drag.e0);
+    else if (drag.mode === 'end') setLoop(drag.s0, drag.e0 + delta);
+    else if (drag.mode === 'move') {
+      const len = drag.e0 - drag.s0;
+      const s = snapZero(Math.max(0, Math.min(n - len, drag.s0 + delta)));
+      // slide keeps the length exactly — don't re-snap the end away from it
+      setLoop(s, Math.min(n, s + len), false);
+    } else setLoop(drag.anchor, f);
+  });
+  const end = () => {
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    if (moved) commitLoop();
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('dblclick', () => {
+    if (!fileL || loopIsFull()) return;
+    setLoop(0, fileL.length, false);
+    commitLoop();
+  });
+
+  cv.addEventListener('wheel', (e) => {
+    if (!fileL) return;
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const sideways = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    if (sideways) {
+      const d = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
+      setView(viewS + (d / r.width) * viewLen(), viewE + (d / r.width) * viewLen());
+      return;
+    }
+    // trackpad pinch arrives as ctrl+wheel with small deltas
+    const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0025));
+    const frac = (e.clientX - r.left) / r.width;
+    const at = viewS + frac * viewLen();
+    const len = viewLen() * factor;
+    setView(at - frac * len, at + (1 - frac) * len);
+  }, { passive: false });
+
+  // overview: grab the view and move it; click jumps it there
+  let odrag = null;
+  const ovFrames = (e) => {
+    const r = ov.getBoundingClientRect();
+    return ((e.clientX - r.left) / r.width) * fileL.length;
+  };
+  ov.addEventListener('pointerdown', (e) => {
+    if (!fileL || e.button !== 0) return;
+    const f = ovFrames(e);
+    const len = viewLen();
+    // grabbing outside the bracket centres the view on the pointer first
+    if (f < viewS || f > viewE) setView(f - len / 2, f + len / 2);
+    odrag = { anchor: f, s0: viewS };
+    ov.setPointerCapture(e.pointerId);
+    ov.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  ov.addEventListener('pointermove', (e) => {
+    if (!odrag) return;
+    const s = odrag.s0 + (ovFrames(e) - odrag.anchor);
+    setView(s, s + viewLen());
+  });
+  const oend = () => { odrag = null; ov.style.cursor = 'grab'; };
+  ov.addEventListener('pointerup', oend);
+  ov.addEventListener('pointercancel', oend);
+  ov.addEventListener('dblclick', viewAll);
+})();
+
+async function togglePlay() {
+  await ensureAudio();
+  await actx.resume();
+  if (!fileL) makeDemoLoop();
+  playing = !playing;
+  node.port.postMessage({ type: 'play', on: playing });
+  const b = document.getElementById('play');
+  b.textContent = playing ? 'STOP' : 'PLAY';
+  b.classList.toggle('on', playing);
+}
+
+// --- AUTO: cycle candidates from the source's own period -------------------------
+// Autocorrelate a chunk from the middle of the file for a period in 2–25ms,
+// then offer its multiples between 5 and 200ms, starting nearest 20ms.
+// Each press steps to the next candidate, like the S2000's F1.
+let autoCands = null;
+let autoIdx = 0;
+
+function findPeriodMs() {
+  const sr = actx.sampleRate;
+  const N = Math.min(loopL.length, 8192);
+  const start = Math.max(0, Math.floor(loopL.length / 2 - N / 2));
+  const x = new Float32Array(N);
+  for (let i = 0; i < N; i++) x[i] = loopL[start + i] + loopR[start + i];
+  const minLag = Math.floor(sr * 0.002), maxLag = Math.min(N >> 1, Math.floor(sr * 0.025));
+  let e0 = 0;
+  for (let i = 0; i < N - maxLag; i++) e0 += x[i] * x[i];
+  let best = 0, bestLag = 0;
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let d = 0;
+    for (let i = 0; i < N - maxLag; i++) d += x[i] * x[i + lag];
+    const nd = d / (e0 + 1e-9);
+    if (nd > best) { best = nd; bestLag = lag; }
+  }
+  return best > 0.3 ? (bestLag / sr) * 1000 : 0;
+}
+
+function autoCycle() {
+  if (!loopL || !actx) return;
+  if (!autoCands) {
+    const T = findPeriodMs();
+    autoCands = [];
+    if (T > 0) {
+      for (let k = 1; k * T <= 200; k++) if (k * T >= 5) autoCands.push(k * T);
+    }
+    if (!autoCands.length) autoCands = [5, 10, 20, 40, 80, 160];
+    let bi = 0;
+    autoCands.forEach((ms, i) => { if (Math.abs(ms - 20) < Math.abs(autoCands[bi] - 20)) bi = i; });
+    autoIdx = bi;
+  } else {
+    autoIdx = (autoIdx + 1) % autoCands.length;
+  }
+  knobs.cycleKnob.setValue(Math.log(autoCands[autoIdx]) / Math.log(500));
+}
+
+// --- readout ------------------------------------------------------------------------
+function updateInfo() {
+  const el = document.getElementById('stretchinfo');
+  const sr = actx ? actx.sampleRate : 48000;
+  const L = cycleSamples();
+  const hop = Math.max(1, L - Math.round(ui.xfdKnob * L * 0.5));
+  const rate = sr / hop;
+  const passLen = fileL ? loopLen() * stretchF() : 0;
+  const prog = passLen > 0 ? Math.round(((outPos % passLen) / passLen) * 100) : 0;
+  const conv = `${ui.bits}-bit${ui.rate ? ' ' + ui.rate / 1000 + 'k' : ''}`;
+  const loop = fileL && !loopIsFull() ? `loop <em>${loopDur().toFixed(2)}s</em> · ` : '';
+  el.innerHTML = `${loop}<em>${fmtStretch()}</em> · splices <em>${rate < 10 ? rate.toFixed(1) : Math.round(rate)}/s</em> · ${conv} · pass <em>${prog}%</em>`;
+}
+
+// --- waveform + loop region ------------------------------------------------------------
+const wave = document.getElementById('wave');
+const overview = document.getElementById('overview');
+let peaks = null;     // min/max per column over the view — null when zoomed to samples
+let ovPeaks = null;   // the whole file, for the overview strip
+const COLS = 768;
+
+function sizeCanvas(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const r = c.getBoundingClientRect();
+  c.width = Math.max(1, Math.round(r.width * dpr));
+  c.height = Math.max(1, Math.round(r.height * dpr));
+}
+
+function minMax(s, e, cols) {
+  const out = new Float32Array(cols * 2);
+  const per = (e - s) / cols;
+  for (let c = 0; c < cols; c++) {
+    const i0 = Math.floor(s + c * per);
+    const i1 = Math.max(i0 + 1, Math.floor(s + (c + 1) * per));
+    const step = Math.max(1, ((i1 - i0) / 48) | 0);
+    let mn = 0, mx = 0;
+    for (let i = i0; i < i1; i += step) {
+      const v = 0.5 * (fileL[i] + fileR[i]);
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    out[c * 2] = mn;
+    out[c * 2 + 1] = mx;
+  }
+  return out;
+}
+
+// fewer frames than columns → draw the samples themselves instead of peaks
+function buildPeaks() {
+  sizeCanvas(wave);
+  if (!fileL) { peaks = null; return; }
+  peaks = viewLen() >= COLS * 2 ? minMax(viewS, viewE, COLS) : null;
+}
+function buildOverviewPeaks() {
+  sizeCanvas(overview);
+  ovPeaks = fileL ? minMax(0, fileL.length, 384) : null;
+}
+
+// The view of the file sits still; the loop is lit and bracketed, the rest
+// dimmed. The playhead is where the stretched timeline is reading the source.
+function drawWave() {
+  const ctx = wave.getContext('2d');
+  const W = wave.width, H = wave.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!fileL) return;
+  const dpr = window.devicePixelRatio || 1;
+  const mid = H / 2;
+  const k = W / viewLen();
+  const x0 = (loopS - viewS) * k, x1 = (loopE - viewS) * k;
+  const full = loopIsFull();
+  if (peaks) {
+    const wc = W / COLS + 0.5;
+    for (let c = 0; c < COLS; c++) {
+      const x = (c / COLS) * W;
+      const inside = full || (x + wc * 0.5 >= x0 && x + wc * 0.5 <= x1);
+      ctx.fillStyle = inside ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.1)';
+      const y0 = mid - peaks[c * 2 + 1] * mid * 0.85;
+      const y1 = mid - peaks[c * 2] * mid * 0.85;
+      ctx.fillRect(x, y0, wc, Math.max(1, y1 - y0));
+    }
+  } else {
+    // sample level: the line through every frame, dots once they spread out
+    const i0 = Math.max(0, Math.floor(viewS) - 1), i1 = Math.min(fileL.length, Math.ceil(viewE) + 1);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath();
+    for (let i = i0; i < i1; i++) {
+      const x = (i - viewS) * k, y = mid - 0.5 * (fileL[i] + fileR[i]) * mid * 0.85;
+      if (i === i0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    if (k >= 6 * dpr) {
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      const d = 2 * dpr;
+      for (let i = i0; i < i1; i++) {
+        ctx.fillRect((i - viewS) * k - d / 2, mid - 0.5 * (fileL[i] + fileR[i]) * mid * 0.85 - d / 2, d, d);
+      }
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(0, mid, W, 1); // zero line — where the loop points snap
+  }
+  if (!full) {
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
+    // edges dimmer than the playhead — the playhead is the one bright line
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    const hw = Math.max(1, dpr);
+    ctx.fillRect(Math.round(x0), 0, hw, H);
+    ctx.fillRect(Math.round(x1) - hw, 0, hw, H);
+  }
+  if (playing && rpF >= 0) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect((loopS + rpF * loopLen() - viewS) * k, 0, Math.max(1, dpr), H);
+  }
+}
+
+function drawOverview() {
+  const ctx = overview.getContext('2d');
+  const W = overview.width, H = overview.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!ovPeaks || !fileL) return;
+  const dpr = window.devicePixelRatio || 1;
+  const n = fileL.length, cols = ovPeaks.length / 2, mid = H / 2;
+  const lx0 = (loopS / n) * W, lx1 = (loopE / n) * W;
+  const wc = W / cols + 0.5;
+  for (let c = 0; c < cols; c++) {
+    const x = (c / cols) * W;
+    const inside = x + wc * 0.5 >= lx0 && x + wc * 0.5 <= lx1;
+    ctx.fillStyle = inside ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.13)';
+    const y0 = mid - ovPeaks[c * 2 + 1] * mid * 0.9, y1 = mid - ovPeaks[c * 2] * mid * 0.9;
+    ctx.fillRect(x, y0, wc, Math.max(1, y1 - y0));
+  }
+  // the zoomed view, bracketed — only once there is a zoom to show
+  if (!viewIsAll()) {
+    const vx0 = (viewS / n) * W, vx1 = Math.max(vx0 + 2 * dpr, (viewE / n) * W);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(vx0, 0, vx1 - vx0, H);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.strokeRect(vx0 + 0.5 * dpr, 0.5 * dpr, vx1 - vx0 - dpr, H - dpr);
+  }
+  if (playing && rpF >= 0) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(((loopS + rpF * loopLen()) / n) * W, 0, Math.max(1, dpr), H);
+  }
+}
+
+function frame() {
+  drawWave();
+  drawOverview();
+  requestAnimationFrame(frame);
+}
+
+// --- render → 16-bit WAV --------------------------------------------------------------
+const RENDER_CAP_SECS = 1500; // 25 minutes
+
+function renderSecs() {
+  return Math.min(RENDER_CAP_SECS, loopDur() * stretchF());
+}
+
+function updateRenderInfo() {
+  const info = document.getElementById('renderinfo');
+  if (!fileL) { info.textContent = 'load a file (or press play) first'; return; }
+  const secs = renderSecs();
+  const capped = loopDur() * stretchF() > RENDER_CAP_SECS ? ' (capped)' : '';
+  const mb = (secs * (actx ? actx.sampleRate : 48000) * 4) / 1e6;
+  const len = secs >= 60 ? `${Math.floor(secs / 60)}m${String(Math.round(secs % 60)).padStart(2, '0')}s` : `${secs.toFixed(1)}s`;
+  info.textContent = `prints one stretched pass of the loop${capped} · ${len} · ~${Math.max(1, Math.round(mb))}MB 16-bit`;
+}
+
+let rendering = false;
+async function renderWav() {
+  if (!fileL || rendering) return;
+  rendering = true;
+  const btn = document.getElementById('render');
+  btn.textContent = 'RENDERING···';
+  btn.disabled = true;
+  try {
+    const sr = actx.sampleRate;
+    const total = Math.max(1, Math.ceil(renderSecs() * sr));
+    const oc = new OfflineAudioContext(2, total, sr);
+    await oc.audioWorklet.addModule('stretch-worklet.js');
+    const n = new AudioWorkletNode(oc, 'stretch', { numberOfInputs: 0, outputChannelCount: [2] });
+    n.connect(oc.destination);
+    const ready = new Promise((res) => {
+      n.port.onmessage = (e) => { if (e.data.type === 'pong') res(); };
+    });
+    n.port.postMessage({ type: 'buffer', l: loopL, r: loopR });
+    n.port.postMessage({ type: 'params', p: workletParams() });
+    n.port.postMessage({ type: 'play', on: true });
+    // port messages deliver in order — the pong means play landed, so the
+    // offline context can't outrun it and print silence
+    n.port.postMessage({ type: 'ping' });
+    await ready;
+    const rendered = await oc.startRendering();
+    const blob = encodeWav16(rendered);
+    const slug = (isDemo ? 'demo' : fileName).replace(/\d{2,3}(?:\.\d+)?\s*bpm/ig, '')
+      .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || 'source';
+    // the stretched file's tempo — drops straight into Sequence at the right bpm
+    const bpmOut = fileBpm ? fileBpm / stretchF() : 0;
+    const bpmTag = bpmOut >= 1 ? `-${Math.round(bpmOut * 10) / 10}bpm` : '';
+    const st = pitchSt();
+    const tags = [
+      `${Math.round(stretchF() * 100)}pct`,
+      `${ui.mode ? 'int' : 'cyc'}${Math.round(cycleMs())}ms`,
+      st ? `${st > 0 ? 'up' : 'dn'}${Math.abs(st)}` : '',
+      `${ui.bits}b${ui.rate ? ui.rate / 1000 + 'k' : ''}`,
+    ].filter(Boolean).join('-');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `stretch${bpmTag}_${slug}-${tags}.wav`;
+    a.click();
+    if (window.NewspeechGate) NewspeechGate.afterExport('stretch');
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } finally {
+    rendering = false;
+    btn.textContent = 'RENDER WAV';
+    btn.disabled = false;
+  }
+}
+
+// 16-bit PCM stereo. No dither when the converter already truncated to 12 or
+// 8 bits — those steps are the point; TPDF only on the 16-bit setting.
+function encodeWav16(buf) {
+  const nCh = 2;
+  const n = buf.length;
+  const sr = buf.sampleRate;
+  const dataBytes = n * nCh * 2;
+  const ab = new ArrayBuffer(44 + dataBytes);
+  const dv = new DataView(ab);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF');
+  dv.setUint32(4, 36 + dataBytes, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); // PCM
+  dv.setUint16(22, nCh, true);
+  dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * nCh * 2, true);
+  dv.setUint16(32, nCh * 2, true);
+  dv.setUint16(34, 16, true);
+  str(36, 'data');
+  dv.setUint32(40, dataBytes, true);
+  const l = buf.getChannelData(0);
+  const r = buf.numberOfChannels > 1 ? buf.getChannelData(1) : l;
+  const dith = ui.bits >= 16;
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    const d = dith ? (Math.random() + Math.random() - 1) / 32768 : 0;
+    // ×32768 so 12/8-bit steps land exactly on the 16-bit grid
+    const a = Math.max(-32768, Math.min(32767, Math.round((l[i] + d) * 32768)));
+    const b = Math.max(-32768, Math.min(32767, Math.round((r[i] + d) * 32768)));
+    dv.setInt16(off, a, true);
+    dv.setInt16(off + 2, b, true);
+    off += 4;
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+// --- wiring --------------------------------------------------------------------------
+const dropwave = document.getElementById('dropwave');
+const fileinput = document.getElementById('fileinput');
+document.getElementById('dropprompt').addEventListener('click', () => fileinput.click());
+document.getElementById('fileinfo').addEventListener('click', () => fileinput.click());
+fileinput.addEventListener('change', () => {
+  if (fileinput.files[0]) void loadFile(fileinput.files[0]);
+});
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropwave.classList.add('drag');
+});
+document.addEventListener('dragleave', () => dropwave.classList.remove('drag'));
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropwave.classList.remove('drag');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) void loadFile(f);
+});
+
+function segWire(id, attr, cb) {
+  const seg = document.getElementById(id);
+  seg.querySelectorAll('button[data-' + attr + ']').forEach((b) => {
+    b.addEventListener('click', () => {
+      seg.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      cb(b.dataset[attr]);
+    });
+  });
+}
+segWire('mode', 'm', (v) => { ui.mode = parseInt(v, 10); syncModeDim(); onKnobChange(); });
+segWire('bits', 'b', (v) => { ui.bits = parseInt(v, 10); onKnobChange(); });
+segWire('rate', 'r', (v) => { ui.rate = parseInt(v, 10); onKnobChange(); });
+
+document.getElementById('auto').addEventListener('click', autoCycle);
+document.getElementById('play').addEventListener('click', () => void togglePlay());
+document.getElementById('top').addEventListener('click', fromTop);
+document.getElementById('render').addEventListener('click', () => void renderWav());
+document.getElementById('fitloop').addEventListener('click', fitLoop);
+document.getElementById('viewall').addEventListener('click', viewAll);
+document.addEventListener('keydown', (e) => {
+  if (e.target !== document.body) return;
+  if (e.code === 'Space') {
+    e.preventDefault();
+    void togglePlay();
+  } else if (e.key === 'z' && fileL) {
+    // z: to the loop, and again back out to the whole file
+    if (viewFitted || loopIsFull()) viewAll(); else fitLoop();
+  }
+});
+
+window.addEventListener('resize', () => { buildPeaks(); buildOverviewPeaks(); });
+sizeCanvas(wave);
+syncModeDim();
+updateInfo();
+updateRenderInfo();
+requestAnimationFrame(frame);
+
+// Debug/test hook
+window.stretch = {
+  ui,
+  setKnob(k, v) { if (knobs[k]) knobs[k].setValue(v); else { ui[k] = v; pushParams(); } },
+  params: workletParams,
+  state: () => ({ playing, rp: rpF, out: outPos, loopS, loopE, viewS, viewE }),
+  render: renderWav,
+};
+</script>
+</body>
+</html>
