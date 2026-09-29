@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  #label {
+    position: absolute;
+    left: 127px;
+    top: 315px;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    white-space: nowrap;
+    font-size: 30px;
+    color: #fff;
+    letter-spacing: 0.04em;
+    font-family: "zxx-sans", monospace;
+  }
+  canvas { position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<div id="label">new×speech× | ×stretch×</div>
+<script>
+// og-stretch comp — same anatomy as og-decay/og-slice: vertical zxx label
+// left, the instrument graphic right. stretch's graphic is its own window:
+// a loop of a drum-ish source actually run through the cyclic stretch at
+// 300% (every hit comes back as a flam of repeated blocks), bar heights
+// stepped like a coarse converter, the overview strip underneath with the
+// loop lit, and the playhead.
+const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
+const label = document.getElementById('label');
+label.innerHTML = [...label.textContent]
+  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
+  .join('');
+
+const c = document.getElementById('c').getContext('2d');
+const X0 = 250, X1 = 1130, Y = 290;
+const laneW = X1 - X0;
+const AMP = 150;
+
+// seeded rng so the comp regenerates the same image
+let s = 20260928;
+const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+
+// the source: a break-ish file — hits (decaying noise) over a low bed
+const N = 16000;
+const src = new Float32Array(N);
+const hits = [300, 1500, 2600, 4100, 5200, 5800, 7100, 8300, 9400, 10700, 12100, 13000, 14600];
+for (const h of hits) {
+  const amp = 0.55 + 0.45 * rnd();
+  const dec = 90 + rnd() * 260;
+  for (let i = 0; i < 1100 && h + i < N; i++) src[h + i] += (rnd() * 2 - 1) * amp * Math.exp(-i / dec);
+}
+for (let i = 0; i < N; i++) src[i] += Math.sin(i * 0.05) * 0.05;
+
+// the loop and the stretch: cyclic overlap-add, blind splices, 300%
+const LS = 4000, LE = 8000, LEN = LE - LS;
+const S = 3, L = 520, XF = 40, H = L - XF;
+const OUT = LEN * S;
+const out = new Float32Array(OUT);
+for (let t0 = 0; t0 < OUT; t0 += H) {
+  const at = Math.floor(t0 / S);
+  for (let a = 0; a < L && t0 + a < OUT; a++) {
+    let w = 1;
+    if (a < XF) w = 0.5 - 0.5 * Math.cos((Math.PI * a) / XF);
+    else if (a >= L - XF) w = 0.5 - 0.5 * Math.cos((Math.PI * (L - a)) / XF);
+    out[t0 + a] += src[LS + ((at + a) % LEN)] * w;
+  }
+}
+
+// the stretched loop fills the lane; heights stepped like a coarse converter
+const COLS = 220;
+const cw = laneW / COLS + 0.5;
+const STEP = AMP / 9;
+const per = OUT / COLS;
+for (let k = 0; k < COLS; k++) {
+  let mx = 0;
+  for (let i = Math.floor(k * per); i < Math.floor((k + 1) * per); i++) mx = Math.max(mx, Math.abs(out[i]));
+  const h = Math.max(1.5, Math.round((mx * AMP) / STEP) * STEP);
+  c.fillStyle = 'rgba(255,255,255,0.78)';
+  c.fillRect(X0 + (k / COLS) * laneW, Y - h, cw, h * 2);
+}
+
+// overview strip: the whole source, the loop lit and bracketed
+const OY = Y + AMP + 52, OH = 34;
+const OCOLS = 220, ocw = laneW / OCOLS + 0.5, oper = N / OCOLS;
+const lx0 = X0 + (LS / N) * laneW, lx1 = X0 + (LE / N) * laneW;
+for (let k = 0; k < OCOLS; k++) {
+  let mx = 0;
+  for (let i = Math.floor(k * oper); i < Math.floor((k + 1) * oper); i++) mx = Math.max(mx, Math.abs(src[i]));
+  const x = X0 + (k / OCOLS) * laneW;
+  const inside = x + ocw / 2 >= lx0 && x + ocw / 2 <= lx1;
+  const h = Math.max(1, mx * OH * 0.45);
+  c.fillStyle = inside ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.14)';
+  c.fillRect(x, OY + OH / 2 - h, ocw, h * 2);
+}
+c.fillStyle = 'rgba(255,255,255,0.06)';
+c.fillRect(lx0, OY, lx1 - lx0, OH);
+c.fillStyle = 'rgba(255,255,255,0.45)';
+c.fillRect(lx0, OY, 1.5, OH);
+c.fillRect(lx1 - 1.5, OY, 1.5, OH);
+
+// playhead — the one bright line — a third of the way through the pass
+const P = 0.36;
+c.fillStyle = '#fff';
+c.fillRect(X0 + P * laneW, Y - AMP - 12, 2, AMP * 2 + 24);
+c.fillRect(lx0 + P * (lx1 - lx0), OY, 1.5, OH);
+
+// readout caption, top-right of the lane — the tool's own register
+c.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace';
+c.textAlign = 'right';
+c.fillStyle = 'rgba(255,255,255,0.4)';
+c.fillText('loop 1.00s · 300% · splices 59/s · 12-bit 30k', X1, Y - AMP - 34);
+</script>
+</body>
+</html>
