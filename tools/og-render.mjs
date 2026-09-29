@@ -7,8 +7,10 @@
 //   og-<tool>-comp.html        bespoke comps → og-<tool>.png
 //   og-viz-comp.html?viz=…     tool-viz miniatures, bare → og-<name>.png
 //   assets/hero/hero.mp4       one frame of the hero video (HERO_T s — picked
-//                              for having no on-screen text) → og-image.jpg,
-//                              the site default: home, news, shop, start…
+//                              for having no on-screen text of its own) under
+//                              the ascii wordmark (assets/ns-text.svg) →
+//                              og-image.jpg, the site default: home, news,
+//                              shop, start… — the one share image with a mark
 //   N-*.html                   each visualizer, captured live after a few
 //                              seconds with the panel + HUD hidden; the
 //                              source-driven ones get hero-clean.mp4 as their
@@ -18,7 +20,8 @@
 //
 // playwright comes from tools/reel-render's install (npm i there first).
 import { createServer } from "node:http";
-import { readFile, readdir, mkdir } from "node:fs/promises";
+import { readFile, readdir, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { chromium } from "./reel-render/node_modules/playwright/index.mjs";
@@ -51,7 +54,7 @@ for (const t of ["decay", "drone", "glitch", "slice", "stretch", "plugins"]) {
 for (const v of ["texture", "samples", "visuals", "sequence", "tools"]) {
   jobs.push({ name: `viz:${v}`, url: `og-viz-comp.html?viz=${v}`, out: `og-${v}.png`, wait: 3500 });
 }
-jobs.push({ name: "hero", ffmpeg: true, out: "og-image.jpg" });
+jobs.push({ name: "hero", hero: true, out: "og-image.jpg", wait: 300 });
 const vizPages = (await readdir(ROOT)).filter((f) => /^\d+-[a-z]+\.html$/.test(f)).sort((a, b) => parseInt(a) - parseInt(b));
 for (const f of vizPages) {
   const sourced = (await readFile(join(ROOT, f), "utf8")).includes("__loadSourceUrl");
@@ -67,12 +70,19 @@ const todo = filters.length ? jobs.filter((j) => filters.some((f) => j.name.incl
 await mkdir(join(ROOT, "assets/og"), { recursive: true });
 const browser = await chromium.launch();
 for (const j of todo) {
-  if (j.ffmpeg) {
-    // scale to cover 1200×630, center-crop
+  if (j.hero) {
+    // the frame: scaled to cover 1200×630, center-cropped; the page lays the
+    // wordmark over it (a light wash keeps the white mark off the highlights)
+    const dir = await mkdtemp(join(tmpdir(), "og-hero-"));
+    const frame = join(dir, "frame.png");
     execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-ss", String(HERO_T), "-i", join(ROOT, "assets/hero/hero.mp4"),
-      "-frames:v", "1", "-q:v", "3", "-pix_fmt", "yuvj420p", "-vf", `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`, join(ROOT, j.out)]);
-    console.log(`${j.name.padEnd(28)} → ${j.out}`);
-    continue;
+      "-frames:v", "1", "-vf", `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`, frame]);
+    const b64 = (await readFile(frame)).toString("base64");
+    await rm(dir, { recursive: true });
+    j.html = `<body style="margin:0;width:${W}px;height:${H}px;position:relative;overflow:hidden;background:#000">` +
+      `<img src="data:image/png;base64,${b64}" style="position:absolute;inset:0;width:100%;height:100%">` +
+      `<div style="position:absolute;inset:0;background:rgba(0,0,0,0.38)"></div>` +
+      `<img src="${BASE}assets/ns-text.svg" style="position:absolute;left:50%;top:50%;width:${Math.round(W * 0.62)}px;transform:translate(-50%,-50%)">`;
   }
   const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
   const errs = [];
