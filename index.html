@@ -23,6 +23,8 @@
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-image.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
+  /* the last section ends on its own rule — the footer adds none */
+  :root { --ns-foot-gap: 0px; --ns-foot-rule: 0; }
   @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); font-display: swap; }
@@ -229,6 +231,7 @@
     animation: sub-dock-in 0.24s ease both;
   }
   @keyframes sub-dock-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  #subscribe.docked.foot-in { opacity: 0 !important; pointer-events: none; transition: opacity 0.2s ease; }
   #subscribe.docked .win-bar { cursor: pointer; padding-right: 10px; }
   #subscribe.docked .win-bar:hover { background: rgba(255, 255, 255, 0.08); }
   #subscribe.docked .win-body { display: none; }
@@ -1752,7 +1755,14 @@ function syncSub() {
     subForm.classList.remove("open");
     if (dock) { subForm.style.opacity = ""; subForm.classList.remove("gone"); }
   }
-  if (subDocked) return;
+  if (subDocked) {
+    // the footer has its own list box — the docked window steps aside for it
+    const foot = document.getElementById("ns-foot");
+    const footIn = !!foot && foot.getBoundingClientRect().top < window.innerHeight;
+    if (footIn) subForm.classList.remove("open");
+    subForm.classList.toggle("foot-in", footIn);
+    return;
+  }
   // fully faded by the time its top would meet the bar's bottom edge
   const fullAt = Math.max(1, subRestTop - navH - 12);
   const t = Math.min(1, Math.max(0, window.scrollY / fullAt));

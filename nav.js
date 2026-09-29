@@ -490,4 +490,9 @@
 
   // pages can flash the wordmark (the homepage's click-punch uses this)
   window.NSNav = { chroma };
+
+  // the site footer rides along with the nav (footer.js)
+  const foot = document.createElement("script");
+  foot.src = ROOT + "footer.js";
+  document.head.appendChild(foot);
 })();

@@ -16,7 +16,7 @@
 //                                 never created (same cap)
 //              Sequence Waitlist  joined the sequence app waitlist — USED IF PRESENT,
 //                                 never created (same cap); backfill from `waitlist`
-//   properties source             first touch: "homepage" | "plugins" | "night-school" | "tools" | "shop" | "sequence"
+//   properties source             first touch: "homepage" | "plugins" | "night-school" | "tools" | "shop" | "sequence" | "footer"
 //              waitlist           "sequence" — set on every waitlist signup, known
 //                                 contacts included (source is first touch only)
 //              <plugin>           version string of the build they downloaded
@@ -31,7 +31,7 @@
 
 const API = "https://api.resend.com";
 export const PLUGINS = ["vibe", "saturate", "slice", "glitch"];
-export const SOURCES = ["homepage", "plugins", "night-school", "tools", "shop", "sequence"];
+export const SOURCES = ["homepage", "plugins", "night-school", "tools", "shop", "sequence", "footer"];
 export const TOOLS = ["texture", "slice", "decay", "drone", "glitch", "stretch", "samples"];
 export const TRACK_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
