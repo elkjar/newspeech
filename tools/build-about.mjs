@@ -113,8 +113,8 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
     pointer-events: none;
   }
   /* built-in damage (about.js): rotted characters, and ones nearly gone */
-  .ch.rot { opacity: 0.3; }
-  .ch.gone { opacity: 0.04; }
+  .ch.rot { opacity: 0.45; }
+  .ch.gone { opacity: 0.2; }
   .s .copy > * { transform-origin: left center; }
   .s h2 span { transition: none; }
   /* a section tear: a clipped clone of the block on a solid ground */

@@ -10,7 +10,9 @@
 //     is wrecked.
 //   - live, by the reading line (the year under the middle of the screen):
 //     heading scrambles, section tears (strips of a section jump sideways),
-//     chroma flicker, page jolts, stripe tears + flash bands, grain.
+//     chroma flicker, page jolts, stripe tears + flash bands, grain. the live
+//     layer runs full while you scroll and eases to ~an eighth once you stop
+//     to read — the page breaks as you move through it, holds when you don't.
 // prefers-reduced-motion keeps the stripes and drops all of it.
 (() => {
   "use strict";
@@ -89,12 +91,21 @@
   // reader who scrolls quickly waiting on a wait drawn from the cool top)
   const hazards = [];
   function poisson(rateFn, fire) { hazards.push({ rateFn, fire }); }
+  // scroll activity: 1 while moving, easing to 0 over ~1.5 s once still
+  let moving = 0, lastY = window.scrollY;
+  window.addEventListener("scroll", () => {
+    moving = Math.min(1, moving + Math.abs(window.scrollY - lastY) / 120);
+    lastY = window.scrollY;
+  }, { passive: true });
+  const live = () => 0.12 + 0.88 * moving;
   let lastTick = performance.now();
   setInterval(() => {
     const now = performance.now(), dt = Math.min(0.25, (now - lastTick) / 1000);
     lastTick = now;
+    moving = Math.max(0, moving - dt / 1.5);
     if (document.hidden) return;
-    for (const h of hazards) if (Math.random() < 1 - Math.exp(-h.rateFn() * dt)) h.fire();
+    const m = live();
+    for (const h of hazards) if (Math.random() < 1 - Math.exp(-h.rateFn() * m * dt)) h.fire();
   }, 40);
   const FONTS = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
   const GLYPHS = "#*/\\_+=~<>.,:;|?!@$%^&-";
@@ -131,20 +142,18 @@
       const k = Math.pow(d, 1.1); // quiet at the top, wrecked at the bottom
       // paragraphs slip sideways, alternating, more the lower they sit
       [...sec.querySelectorAll(".copy > *")].forEach((p, j) => {
-        const dx = (j % 2 ? 1 : -1) * k * rand(24, 96);
-        p.style.transform = `translate(${dx.toFixed(1)}px, ${(k * rand(-10, 10)).toFixed(1)}px) rotate(${(k * rand(-1.8, 1.8)).toFixed(2)}deg)`;
+        const dx = (j % 2 ? 1 : -1) * k * rand(14, 52);
+        p.style.transform = `translateX(${dx.toFixed(1)}px)`;
       });
       // the heading's letters drift off the line
       for (const s of sec.querySelectorAll("h2 [data-o]")) {
         s.style.transform = `translate(${(k * rand(-14, 14)).toFixed(1)}px, ${(k * rand(-30, 30)).toFixed(1)}px) rotate(${(k * rand(-18, 18)).toFixed(1)}deg)`;
       }
-      // a share of the characters rot to ghosts, some all the way out, and a
-      // few are left permanently wrong
+      // a share of the characters rot to ghosts — still there, still readable
       for (const s of sec._chars) {
-        if (s._t === undefined) { s._t = Math.random(); s._orig = s.textContent; }
-        s.classList.toggle("rot", s._t < k * 0.38);
-        s.classList.toggle("gone", s._t < k * 0.14);
-        s.textContent = s._t < k * 0.03 ? GLYPHS[(s._t * 1e6 | 0) % GLYPHS.length] : s._orig;
+        if (s._t === undefined) s._t = Math.random();
+        s.classList.toggle("rot", s._t < k * 0.12);
+        s.classList.toggle("gone", s._t < k * 0.025);
       }
     }
   }
@@ -192,10 +201,10 @@
     }
     return best && best.sec;
   }
-  poisson(() => 0.2 + 22 * Math.pow(wear(), 1.6), () => {
+  poisson(() => 0.2 + 10 * Math.pow(wear(), 1.6), () => {
     const sec = nearest(); if (!sec) return;
     const ch = sec._chars;
-    const n = 1 + ((Math.random() * (3 + 60 * wear())) | 0);
+    const n = 1 + ((Math.random() * (2 + 10 * wear())) | 0);
     const hit = Array.from({ length: n }, () => ch[(Math.random() * ch.length) | 0]);
     for (const s of hit) { s._o = s._o || s.textContent; s.textContent = GLYPHS[(Math.random() * GLYPHS.length) | 0]; }
     setTimeout(() => { for (const s of hit) s.textContent = s._o; }, 60 + Math.random() * 140);
@@ -204,7 +213,7 @@
   // section tears: strips of the nearest section jump sideways — clones of
   // the block, each clipped to a horizontal strip, on a solid ground so the
   // strip reads as torn out and put back wrong
-  poisson(() => 0.08 + 9 * Math.pow(Math.max(0, wear() - 0.1), 1.3), () => {
+  poisson(() => 0.06 + 5 * Math.pow(Math.max(0, wear() - 0.1), 1.3), () => {
     const sec = nearest(); if (!sec) return;
     const inner = sec.querySelector(".in");
     const h = inner.offsetHeight;
@@ -221,7 +230,7 @@
       inner.parentNode.appendChild(c);
       made.push(c);
     }
-    setTimeout(() => made.forEach((c) => c.remove()), 90 + Math.random() * 320);
+    setTimeout(() => made.forEach((c) => c.remove()), 70 + Math.random() * 180);
   });
 
   // chroma: the nearest section fringes; when it's hot, the whole page does
