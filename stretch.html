@@ -42,7 +42,13 @@
   #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
   #dropwave.drag { border-color: #777; }
   #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  #dropwave.loaded #wave { cursor: crosshair; }
+  #dropwave.loaded #wave { cursor: crosshair; height: calc(100% - 22px); }
+  /* the whole file, always: the loop lit, the zoomed view bracketed — drag to pan */
+  #overview {
+    position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 22px;
+    display: none; border-top: 1px solid #1c1c1c; cursor: grab; touch-action: none;
+  }
+  #dropwave.loaded #overview { display: block; }
   #dropprompt {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -124,7 +130,7 @@
     .group { width: 100%; }
     /* fileinfo wraps at phone widths — the readout moves to the bottom edge,
        just above the splice strip */
-    #stretchinfo { top: auto; bottom: 14px; left: 10px; right: auto; }
+    #stretchinfo { top: auto; bottom: 30px; left: 10px; right: auto; }
   }
 </style>
 </head>
@@ -138,6 +144,7 @@
 
 <div id="dropwave">
   <canvas id="wave"></canvas>
+  <canvas id="overview" title="the whole file — drag to move the zoomed view, double-click to see all of it"></canvas>
   <div id="dropprompt">drop an audio file here, or click to browse — then drag across the wave to set a loop<br><span class="droptip">(or just press play — a demo break is included)</span></div>
   <div id="fileinfo"></div>
   <div id="stretchinfo"></div>
@@ -146,8 +153,13 @@
 
 <div id="transport">
   <button id="play">PLAY</button>
-  <button id="top" title="back to the start of the source — what a render prints">FROM TOP</button>
-  <span class="hint">[space] play/stop &nbsp;·&nbsp; drag the wave to loop a region — edges trim, inside slides, double-click for all of it</span>
+  <button id="top" title="back to the start of the loop — what a render prints">FROM TOP</button>
+  <div class="seg" id="viewseg" style="margin:0">
+    <span class="seglabel">view</span>
+    <button class="minibtn" id="fitloop" title="zoom to the loop [z]">FIT LOOP</button>
+    <button class="minibtn" id="viewall" title="the whole file [z again]">ALL</button>
+  </div>
+  <span class="hint">[space] play/stop &nbsp;·&nbsp; drag the wave to loop a region — edges trim, inside slides, double-click for all of it · scroll or pinch to zoom, shift-scroll to pan</span>
 </div>
 
 <div id="units">
@@ -534,18 +546,24 @@ async function loadFile(file) {
 function onSourceLoaded(infoHtml) {
   document.getElementById('dropwave').classList.add('loaded');
   document.getElementById('fileinfo').innerHTML = infoHtml;
+  viewS = 0;
+  viewE = fileL.length;
   buildPeaks();
+  buildOverviewPeaks();
   setLoop(0, fileL.length, false);
   commitLoop();
 }
 
 // --- loop geometry ------------------------------------------------------------
-// Points snap to the nearest zero crossing so the seam doesn't click. A drag
-// only moves the view; the worklet hears it on commitLoop() at pointer-up,
-// which restarts the stretch from the loop's start.
-const MIN_LOOP = 2048;
+// Points snap to the nearest zero crossing so the seam doesn't click — within
+// 5ms, or a few pixels when zoomed in, so the snap never jumps out of view. A
+// drag only moves the view; the worklet hears it on commitLoop() at
+// pointer-up, which restarts the stretch from the loop's start.
+const MIN_LOOP = 256;
 function snapZero(i) {
-  const n = fileL.length, win = Math.round(actx.sampleRate * 0.005);
+  const n = fileL.length;
+  const pxFrames = viewLen() / Math.max(1, wave.getBoundingClientRect().width);
+  const win = Math.max(1, Math.round(Math.min(actx.sampleRate * 0.005, pxFrames * 4)));
   i = Math.max(0, Math.min(n, Math.round(i)));
   if (i === 0 || i === n) return i;
   const sgn = (k) => (fileL[k] + fileR[k]) >= 0;
@@ -582,19 +600,47 @@ function commitLoop() {
   updateRenderInfo();
 }
 
-// edge → trim · inside → slide · outside, or anywhere on the full file → new
-// selection · double-click → the whole file
+// --- the view: which stretch of the file the wave shows -------------------------
+let viewS = 0, viewE = 0;
+let viewFitted = false; // the view is FIT LOOP's — z backs out to the whole file
+const MIN_VIEW = 64; // frames — deep enough to see single samples
+const viewLen = () => Math.max(1, viewE - viewS);
+const viewIsAll = () => !!fileL && viewS === 0 && viewE === fileL.length;
+
+function setView(s, e) {
+  if (!fileL) return;
+  const n = fileL.length;
+  let len = Math.max(MIN_VIEW, Math.min(n, e - s));
+  s = Math.max(0, Math.min(n - len, s));
+  viewS = Math.round(s);
+  viewE = Math.round(s + len);
+  if (viewE > n) { viewE = n; viewS = Math.max(0, n - Math.round(len)); }
+  viewFitted = false;
+  buildPeaks();
+}
+function fitLoop() {
+  const pad = loopLen() * 0.06;
+  setView(loopS - pad, loopE + pad);
+  viewFitted = true;
+}
+function viewAll() { if (fileL) setView(0, fileL.length); }
+
+// wave: edge → trim · inside → slide · outside, or anywhere on the full file →
+// new selection · double-click → the whole file · wheel/pinch → zoom around the
+// pointer · shift-wheel or a sideways swipe → pan
 (function wireLoopEdit() {
   const GRAB = 7;
   const cv = document.getElementById('wave'); // `wave` is declared further down
+  const ov = document.getElementById('overview');
   let drag = null;
   const framesAt = (e) => {
     const r = cv.getBoundingClientRect();
-    return ((e.clientX - r.left) / r.width) * fileL.length;
+    return viewS + ((e.clientX - r.left) / r.width) * viewLen();
   };
   const edges = () => {
     const r = cv.getBoundingClientRect();
-    return { r, x0: (loopS / fileL.length) * r.width, x1: (loopE / fileL.length) * r.width };
+    const k = r.width / viewLen();
+    return { r, x0: (loopS - viewS) * k, x1: (loopE - viewS) * k };
   };
   function modeAt(e) {
     const { r, x0, x1 } = edges();
@@ -608,8 +654,7 @@ function commitLoop() {
   }
   cv.addEventListener('pointerdown', (e) => {
     if (!fileL || e.button !== 0) return;
-    const f = framesAt(e);
-    drag = { mode: modeAt(e), anchor: f, s0: loopS, e0: loopE, moved: false };
+    drag = { mode: modeAt(e), anchor: framesAt(e), x: e.clientX, s0: loopS, e0: loopE, moved: false };
     cv.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
@@ -620,10 +665,10 @@ function commitLoop() {
       cv.style.cursor = m === 'start' || m === 'end' ? 'ew-resize' : m === 'move' ? 'grab' : 'crosshair';
       return;
     }
+    if (!drag.moved && Math.abs(e.clientX - drag.x) < 3) return; // a click isn't a drag
+    drag.moved = true;
     const f = framesAt(e);
     const delta = f - drag.anchor;
-    if (!drag.moved && Math.abs(delta) < fileL.length * 0.002) return; // a click isn't a drag
-    drag.moved = true;
     const n = fileL.length;
     if (drag.mode === 'start') setLoop(drag.s0 + delta, drag.e0);
     else if (drag.mode === 'end') setLoop(drag.s0, drag.e0 + delta);
@@ -647,6 +692,51 @@ function commitLoop() {
     setLoop(0, fileL.length, false);
     commitLoop();
   });
+
+  cv.addEventListener('wheel', (e) => {
+    if (!fileL) return;
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const sideways = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    if (sideways) {
+      const d = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
+      setView(viewS + (d / r.width) * viewLen(), viewE + (d / r.width) * viewLen());
+      return;
+    }
+    // trackpad pinch arrives as ctrl+wheel with small deltas
+    const factor = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0025));
+    const frac = (e.clientX - r.left) / r.width;
+    const at = viewS + frac * viewLen();
+    const len = viewLen() * factor;
+    setView(at - frac * len, at + (1 - frac) * len);
+  }, { passive: false });
+
+  // overview: grab the view and move it; click jumps it there
+  let odrag = null;
+  const ovFrames = (e) => {
+    const r = ov.getBoundingClientRect();
+    return ((e.clientX - r.left) / r.width) * fileL.length;
+  };
+  ov.addEventListener('pointerdown', (e) => {
+    if (!fileL || e.button !== 0) return;
+    const f = ovFrames(e);
+    const len = viewLen();
+    // grabbing outside the bracket centres the view on the pointer first
+    if (f < viewS || f > viewE) setView(f - len / 2, f + len / 2);
+    odrag = { anchor: f, s0: viewS };
+    ov.setPointerCapture(e.pointerId);
+    ov.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  ov.addEventListener('pointermove', (e) => {
+    if (!odrag) return;
+    const s = odrag.s0 + (ovFrames(e) - odrag.anchor);
+    setView(s, s + viewLen());
+  });
+  const oend = () => { odrag = null; ov.style.cursor = 'grab'; };
+  ov.addEventListener('pointerup', oend);
+  ov.addEventListener('pointercancel', oend);
+  ov.addEventListener('dblclick', viewAll);
 })();
 
 async function togglePlay() {
@@ -720,7 +810,9 @@ function updateInfo() {
 
 // --- waveform + loop region ------------------------------------------------------------
 const wave = document.getElementById('wave');
-let peaks = null;
+const overview = document.getElementById('overview');
+let peaks = null;     // min/max per column over the view — null when zoomed to samples
+let ovPeaks = null;   // the whole file, for the overview strip
 const COLS = 768;
 
 function sizeCanvas(c) {
@@ -730,47 +822,78 @@ function sizeCanvas(c) {
   c.height = Math.max(1, Math.round(r.height * dpr));
 }
 
-function buildPeaks() {
-  sizeCanvas(wave);
-  if (!fileL) { peaks = null; return; }
-  peaks = new Float32Array(COLS * 2);
-  const per = fileL.length / COLS;
-  for (let c = 0; c < COLS; c++) {
-    const i0 = Math.floor(c * per);
-    const i1 = Math.max(i0 + 1, Math.floor((c + 1) * per));
+function minMax(s, e, cols) {
+  const out = new Float32Array(cols * 2);
+  const per = (e - s) / cols;
+  for (let c = 0; c < cols; c++) {
+    const i0 = Math.floor(s + c * per);
+    const i1 = Math.max(i0 + 1, Math.floor(s + (c + 1) * per));
     const step = Math.max(1, ((i1 - i0) / 48) | 0);
     let mn = 0, mx = 0;
     for (let i = i0; i < i1; i += step) {
-      const s = 0.5 * (fileL[i] + fileR[i]);
-      if (s < mn) mn = s;
-      if (s > mx) mx = s;
+      const v = 0.5 * (fileL[i] + fileR[i]);
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
     }
-    peaks[c * 2] = mn;
-    peaks[c * 2 + 1] = mx;
+    out[c * 2] = mn;
+    out[c * 2 + 1] = mx;
   }
+  return out;
 }
 
-// The whole file sits still; the loop is lit and bracketed, the rest dimmed.
-// The playhead is where the stretched timeline is reading the source.
+// fewer frames than columns → draw the samples themselves instead of peaks
+function buildPeaks() {
+  sizeCanvas(wave);
+  if (!fileL) { peaks = null; return; }
+  peaks = viewLen() >= COLS * 2 ? minMax(viewS, viewE, COLS) : null;
+}
+function buildOverviewPeaks() {
+  sizeCanvas(overview);
+  ovPeaks = fileL ? minMax(0, fileL.length, 384) : null;
+}
+
+// The view of the file sits still; the loop is lit and bracketed, the rest
+// dimmed. The playhead is where the stretched timeline is reading the source.
 function drawWave() {
   const ctx = wave.getContext('2d');
   const W = wave.width, H = wave.height;
   ctx.clearRect(0, 0, W, H);
-  if (!peaks) return;
+  if (!fileL) return;
   const dpr = window.devicePixelRatio || 1;
   const mid = H / 2;
-  const wc = W / COLS + 0.5;
-  const n = fileL.length;
-  const x0 = (loopS / n) * W, x1 = (loopE / n) * W;
+  const k = W / viewLen();
+  const x0 = (loopS - viewS) * k, x1 = (loopE - viewS) * k;
   const full = loopIsFull();
-  for (let c = 0; c < COLS; c++) {
-    const x = (c / COLS) * W;
-    const inside = full || (x + wc * 0.5 >= x0 && x + wc * 0.5 <= x1);
-    ctx.fillStyle = inside ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.1)';
-    const mn = peaks[c * 2], mx = peaks[c * 2 + 1];
-    const y0 = mid - mx * mid * 0.85;
-    const y1 = mid - mn * mid * 0.85;
-    ctx.fillRect(x, y0, wc, Math.max(1, y1 - y0));
+  if (peaks) {
+    const wc = W / COLS + 0.5;
+    for (let c = 0; c < COLS; c++) {
+      const x = (c / COLS) * W;
+      const inside = full || (x + wc * 0.5 >= x0 && x + wc * 0.5 <= x1);
+      ctx.fillStyle = inside ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.1)';
+      const y0 = mid - peaks[c * 2 + 1] * mid * 0.85;
+      const y1 = mid - peaks[c * 2] * mid * 0.85;
+      ctx.fillRect(x, y0, wc, Math.max(1, y1 - y0));
+    }
+  } else {
+    // sample level: the line through every frame, dots once they spread out
+    const i0 = Math.max(0, Math.floor(viewS) - 1), i1 = Math.min(fileL.length, Math.ceil(viewE) + 1);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath();
+    for (let i = i0; i < i1; i++) {
+      const x = (i - viewS) * k, y = mid - 0.5 * (fileL[i] + fileR[i]) * mid * 0.85;
+      if (i === i0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    if (k >= 6 * dpr) {
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      const d = 2 * dpr;
+      for (let i = i0; i < i1; i++) {
+        ctx.fillRect((i - viewS) * k - d / 2, mid - 0.5 * (fileL[i] + fileR[i]) * mid * 0.85 - d / 2, d, d);
+      }
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(0, mid, W, 1); // zero line — where the loop points snap
   }
   if (!full) {
     ctx.fillStyle = 'rgba(255,255,255,0.05)';
@@ -783,12 +906,44 @@ function drawWave() {
   }
   if (playing && rpF >= 0) {
     ctx.fillStyle = '#fff';
-    ctx.fillRect(x0 + rpF * (x1 - x0), 0, Math.max(1, dpr), H);
+    ctx.fillRect((loopS + rpF * loopLen() - viewS) * k, 0, Math.max(1, dpr), H);
+  }
+}
+
+function drawOverview() {
+  const ctx = overview.getContext('2d');
+  const W = overview.width, H = overview.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!ovPeaks || !fileL) return;
+  const dpr = window.devicePixelRatio || 1;
+  const n = fileL.length, cols = ovPeaks.length / 2, mid = H / 2;
+  const lx0 = (loopS / n) * W, lx1 = (loopE / n) * W;
+  const wc = W / cols + 0.5;
+  for (let c = 0; c < cols; c++) {
+    const x = (c / cols) * W;
+    const inside = x + wc * 0.5 >= lx0 && x + wc * 0.5 <= lx1;
+    ctx.fillStyle = inside ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.13)';
+    const y0 = mid - ovPeaks[c * 2 + 1] * mid * 0.9, y1 = mid - ovPeaks[c * 2] * mid * 0.9;
+    ctx.fillRect(x, y0, wc, Math.max(1, y1 - y0));
+  }
+  // the zoomed view, bracketed — only once there is a zoom to show
+  if (!viewIsAll()) {
+    const vx0 = (viewS / n) * W, vx1 = Math.max(vx0 + 2 * dpr, (viewE / n) * W);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(vx0, 0, vx1 - vx0, H);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.strokeRect(vx0 + 0.5 * dpr, 0.5 * dpr, vx1 - vx0 - dpr, H - dpr);
+  }
+  if (playing && rpF >= 0) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(((loopS + rpF * loopLen()) / n) * W, 0, Math.max(1, dpr), H);
   }
 }
 
 function frame() {
   drawWave();
+  drawOverview();
   requestAnimationFrame(frame);
 }
 
@@ -937,14 +1092,20 @@ document.getElementById('auto').addEventListener('click', autoCycle);
 document.getElementById('play').addEventListener('click', () => void togglePlay());
 document.getElementById('top').addEventListener('click', fromTop);
 document.getElementById('render').addEventListener('click', () => void renderWav());
+document.getElementById('fitloop').addEventListener('click', fitLoop);
+document.getElementById('viewall').addEventListener('click', viewAll);
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && e.target === document.body) {
+  if (e.target !== document.body) return;
+  if (e.code === 'Space') {
     e.preventDefault();
     void togglePlay();
+  } else if (e.key === 'z' && fileL) {
+    // z: to the loop, and again back out to the whole file
+    if (viewFitted || loopIsFull()) viewAll(); else fitLoop();
   }
 });
 
-window.addEventListener('resize', () => buildPeaks());
+window.addEventListener('resize', () => { buildPeaks(); buildOverviewPeaks(); });
 sizeCanvas(wave);
 syncModeDim();
 updateInfo();
@@ -956,7 +1117,7 @@ window.stretch = {
   ui,
   setKnob(k, v) { if (knobs[k]) knobs[k].setValue(v); else { ui[k] = v; pushParams(); } },
   params: workletParams,
-  state: () => ({ playing, rp: rpF, out: outPos, loopS, loopE }),
+  state: () => ({ playing, rp: rpF, out: outPos, loopS, loopE, viewS, viewE }),
   render: renderWav,
 };
 </script>
