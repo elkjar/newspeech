@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
 <title>NEWSPEECH // tools</title>
-<meta name="description" content="free audio tools that run in the browser — texture, slice, decay, drone, glitch + stretch. drop in a sound, wreck it, print a wav.">
+<meta name="description" content="free audio tools that run in the browser — texture, slice, decay, drone, glitch + stretch — plus the newspeech sample library and audio-reactive visualizers.">
 <meta property="og:title" content="NEWSPEECH // tools">
 <meta property="og:description" content="free audio tools that run in the browser — texture, slice, decay, drone, glitch + stretch.">
 <meta property="og:type" content="website">
@@ -48,19 +48,23 @@
   }
   .cta:hover { background: rgba(255, 255, 255, 0.08); }
 
+  /* the site column: the nav's 1280 container with --ns-gutter inside it.
+     as padding, so full-bleed backgrounds stay full-bleed */
+  :root { --col-pad: max(var(--ns-gutter, 40px), calc((100% - 1280px) / 2 + var(--ns-gutter, 40px))); }
+
   /* ---- hero ---- */
   #hero {
     min-height: 80svh;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: calc(96px + var(--ns-nav-h, 0px)) 72px 72px;
+    padding: calc(96px + var(--ns-nav-h, 0px)) var(--col-pad) 72px;
     border-bottom: 1px solid var(--rule);
     position: relative;
   }
   #hero h1 {
     font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: clamp(64px, 11vw, 168px);
+    font-size: clamp(54px, 9.35vw, 143px);
     line-height: 0.95;
     letter-spacing: 0.01em;
     font-weight: normal;
@@ -73,7 +77,7 @@
   #hero .jump { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
   #hero .specs {
     position: absolute;
-    right: 72px;
+    right: var(--col-pad);
     bottom: 32px;
     display: flex;
     gap: 28px;
@@ -87,9 +91,9 @@
   .tool { border-bottom: 1px solid var(--rule); }
   .tool.lift { background: var(--panel); }
   .tool .inner {
-    max-width: 1360px;
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 96px 72px;
+    padding: 96px var(--ns-gutter, 40px);
     display: grid;
     grid-template-columns: minmax(300px, 5fr) 7fr;
     gap: 72px;
@@ -115,9 +119,8 @@
   .tool .shot canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
   @media (max-width: 1000px) {
-    #hero { padding-left: 28px; padding-right: 28px; }
     #hero .specs { position: static; margin-top: 40px; flex-wrap: wrap; gap: 14px 24px; }
-    .tool .inner { grid-template-columns: 1fr; gap: 40px; padding: 64px 28px; }
+    .tool .inner { grid-template-columns: 1fr; gap: 40px; padding: 64px var(--ns-gutter, 40px); }
     .tool .inner .shot { order: 1; }
     .tool .inner .copy { order: 2; }
   }
@@ -140,6 +143,8 @@
     <a class="cta" href="#drone">drone ↓</a>
     <a class="cta" href="#glitch">glitch ↓</a>
     <a class="cta" href="#stretch">stretch ↓</a>
+    <a class="cta" href="#samples">samples ↓</a>
+    <a class="cta" href="#visuals">visuals ↓</a>
   </div>
   <div class="specs" aria-label="specs">
     <span>in the browser</span><span>nothing to install</span><span>files stay local</span><span>wav out</span>
@@ -210,6 +215,29 @@
     <a class="cta" href="stretch.html">open stretch</a>
   </div>
   <div class="shot"><canvas class="viz" data-viz="stretch"></canvas></div>
+  </div>
+</section>
+
+<section class="tool lift" id="samples">
+  <div class="inner">
+  <div class="copy">
+    <h2>samples</h2>
+    <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
+    <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
+    <a class="cta" href="samples.html">open the library</a>
+  </div>
+  <div class="shot"><canvas class="viz" data-viz="samples"></canvas></div>
+  </div>
+</section>
+<section class="tool" id="visuals">
+  <div class="inner">
+  <div class="copy">
+    <h2>visuals</h2>
+    <p>twenty-six audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
+    <p>twelve self-contained signal fields plus fourteen that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
+    <a class="cta" href="visualizers.html">browse the visuals</a>
+  </div>
+  <div class="shot"><canvas class="viz" data-viz="visuals"></canvas></div>
   </div>
 </section>
 

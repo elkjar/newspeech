@@ -83,19 +83,23 @@
   .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
   code { font-family: inherit; font-size: 11px; color: rgba(255, 255, 255, 0.8); }
 
+  /* the site column: the nav's 1280 container with --ns-gutter inside it.
+     as padding, so full-bleed backgrounds stay full-bleed */
+  :root { --col-pad: max(var(--ns-gutter, 40px), calc((100% - 1280px) / 2 + var(--ns-gutter, 40px))); }
+
   /* ---- hero ---- */
   #hero {
     min-height: 80svh;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: calc(96px + var(--ns-nav-h, 0px)) 72px 72px;
+    padding: calc(96px + var(--ns-nav-h, 0px)) var(--col-pad) 72px;
     border-bottom: 1px solid var(--rule);
     position: relative;
   }
   #hero h1 {
     font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: clamp(64px, 11vw, 168px);
+    font-size: clamp(54px, 9.35vw, 143px);
     line-height: 0.95;
     letter-spacing: 0.01em;
     font-weight: normal;
@@ -108,7 +112,7 @@
   #hero .jump { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
   #hero .specs {
     position: absolute;
-    right: 72px;
+    right: var(--col-pad);
     bottom: 32px;
     display: flex;
     gap: 28px;
@@ -122,9 +126,9 @@
   .plugin { border-bottom: 1px solid var(--rule); }
   .plugin.lift { background: var(--panel); }
   .plugin .inner {
-    max-width: 1360px;
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 96px 72px;
+    padding: 96px var(--ns-gutter, 40px);
     display: grid;
     grid-template-columns: minmax(300px, 5fr) 7fr;
     gap: 72px;
@@ -157,18 +161,17 @@
   .plugin .shot img { display: block; width: 100%; height: auto; }
 
   /* ---- notes ---- */
-  #notes { padding: 56px 72px 96px; }
-  #notes .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; max-width: 1200px; }
+  #notes { padding: 56px var(--col-pad) 96px; }
+  #notes .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; }
   #notes h4 { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: normal; opacity: 0.55; margin: 0 0 14px; }
   #notes p { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
 
   @media (max-width: 1000px) {
-    #hero { padding-left: 28px; padding-right: 28px; }
     #hero .specs { position: static; margin-top: 40px; flex-wrap: wrap; gap: 14px 24px; }
-    .plugin .inner { grid-template-columns: 1fr; gap: 40px; padding: 64px 28px; }
+    .plugin .inner { grid-template-columns: 1fr; gap: 40px; padding: 64px var(--ns-gutter, 40px); }
     .plugin .inner .shot { order: 1; }
     .plugin .inner .copy { order: 2; }
-    #notes { padding: 48px 28px 80px; }
+    #notes { padding-top: 48px; padding-bottom: 80px; }
     #notes .grid { grid-template-columns: 1fr; gap: 28px; }
     /* gate: input and button each take the full column */
     .gate-row input[type="email"], .gate-row .cta { flex: 1 1 100%; max-width: none; width: 100%; justify-content: center; }

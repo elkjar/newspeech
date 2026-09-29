@@ -31,10 +31,10 @@
 
   // wordmark | links — links drive straight into the pages; sequence is the
   // one exception (no standalone page yet — it anchors to its homepage
-  // vignette). "tools" is the index of the browser tools (tools.html) and
-  // stays lit on every tool page. socials are icons (no data-ns-link — the
+  // vignette). "tools" is the index (tools.html) of the browser tools, the
+  // sample library and the visualizers, and stays lit on every one of them. socials are icons (no data-ns-link — the
   // text treatment skips them).
-  const TOOL_PAGES = ["tools.html", "texture.html", "slice.html", "decay.html", "drone.html", "glitch.html", "stretch.html"];
+  const TOOL_PAGES = ["tools.html", "texture.html", "slice.html", "decay.html", "drone.html", "glitch.html", "stretch.html", "samples.html", "visualizers.html"];
   const IN_TOOLS = TOOL_PAGES.includes(PAGE);
   const ICON_IG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" stroke="none"/></svg>`;
   const ICON_YT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z" fill="currentColor" stroke="none"/></svg>`;
@@ -44,15 +44,13 @@
     `<a href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}" data-ns-link>sequence</a>` +
     `<a href="${ROOT}tools.html"${IN_TOOLS ? " class=\"current\"" : ""} data-ns-link>tools</a>` +
     `<a href="${ROOT}plugins.html"${here("plugins.html")} data-ns-link>plugins</a>` +
-    `<a href="${ROOT}samples.html"${here("samples.html")} data-ns-link>samples</a>` +
-    `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
     `<span class="ns-socials">` +
     `<a class="ns-icon" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a class="ns-icon" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
     `<a class="ns-icon" href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>` +
     `</span>`;
 
-  // burger breakpoint: the ~380px wordmark + six links + socials wrap below this
+  // burger breakpoint: the ~380px wordmark + the links + socials wrap below this
   const BREAK = 1100;
 
   const css = `
@@ -263,8 +261,6 @@
     `<a class="ov-link" href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}">sequence</a>` +
     `<a class="ov-link${IN_TOOLS ? " current" : ""}" href="${ROOT}tools.html">tools</a>` +
     `<a class="ov-link${cur("plugins.html")}" href="${ROOT}plugins.html">plugins</a>` +
-    `<a class="ov-link${cur("samples.html")}" href="${ROOT}samples.html">samples</a>` +
-    `<a class="ov-link${cur("visualizers.html")}" href="${ROOT}visualizers.html">visuals</a>` +
     `</div>` +
     `<div class="ov-icons">` +
     `<a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
