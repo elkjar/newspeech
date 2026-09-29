@@ -61,11 +61,15 @@
     padding: 56px var(--ns-gutter, 40px) 28px;
   }
   #ns-foot a { color: inherit; text-decoration: none; }
+  /* desktop: the brand takes the slack on the left; the four link columns
+     hug their content as one cluster against the right edge */
   #ns-foot .nf-top {
     display: grid;
-    grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
-    gap: 40px;
+    grid-template-columns: minmax(0, 1fr) repeat(4, minmax(110px, max-content));
+    column-gap: 56px;
+    row-gap: 40px;
   }
+  #ns-foot .nf-brand { padding-right: 24px; }
   #ns-foot .nf-mark img { display: block; height: 22px; width: auto; max-width: 100%; }
   #ns-foot .nf-tag { margin: 14px 0 0; color: rgba(255, 255, 255, 0.45); }
   #ns-foot form { margin-top: 36px; max-width: 360px; }
@@ -128,9 +132,13 @@
   #ns-foot .nf-base a { border-bottom: 1px solid rgba(255, 255, 255, 0.2); }
   #ns-foot .nf-base a:hover { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.7); }
   #ns-foot .nf-top-link { margin-left: auto; border-bottom: 0 !important; }
-  @media (max-width: 900px) {
+  /* narrower: the brand gets its own row, the four columns sit under it */
+  @media (max-width: 1100px) {
+    #ns-foot .nf-top { grid-template-columns: repeat(4, minmax(110px, max-content)); }
+    #ns-foot .nf-brand { grid-column: 1 / -1; padding-right: 0; }
+  }
+  @media (max-width: 640px) {
     #ns-foot .nf-top { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 24px; }
-    #ns-foot .nf-brand { grid-column: 1 / -1; }
     #ns-foot .nf-row input { font-size: 16px; } /* <16px zooms iOS Safari on focus */
   }`;
 
