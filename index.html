@@ -1663,7 +1663,11 @@ async function setupLinks() {
     // can no longer flex regardless of which variant a slot is rendering.
     // headings skip the lock: nothing reflows around them, and padding every
     // slot to the widest variant reads as huge letter-spacing at display sizes.
-    if (!link.matches("h2")) {
+    // measuring needs layout: a link that isn't rendered yet (the subscribe
+    // window loads docked + collapsed when the page opens scrolled down)
+    // measures every char as 0 and would lock at zero width — the chars stack.
+    // so lock once it's actually on the page, whenever that is.
+    const lock = () => {
       for (const s of charSpans) {
         let maxW = s.getBoundingClientRect().width;
         for (const fam of LINK_FONT_CYCLE) {
@@ -1673,6 +1677,17 @@ async function setupLinks() {
         }
         s.style.fontFamily = "";
         s.style.width = `${(Math.ceil(maxW * 10) / 10).toFixed(1)}px`;
+      }
+    };
+    if (!link.matches("h2")) {
+      if (link.getClientRects().length) lock();
+      else {
+        const ro = new ResizeObserver(() => {
+          if (!link.getClientRects().length) return;
+          ro.disconnect();
+          lock();
+        });
+        ro.observe(link);
       }
     }
 
