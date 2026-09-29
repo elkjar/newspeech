@@ -5,8 +5,7 @@
 // the layout is the climate record: the page background is the NOAA warming
 // stripes, one band per year, 1850 at the top of the page and 2025 at the
 // bottom — no years or readouts on screen, the record is only felt. the page
-// wears as it warms — heading scrambles, chroma flicker, grain and stripe
-// tears all scale with the anomaly at the reading line. disorder
+// breaks as it warms: see about.js (the stripes + all the wear). disorder
 // follows the climate (the hurricane proposal's rule). the body copy stays
 // readable at every depth; prefers-reduced-motion drops the wear entirely.
 import fs from "node:fs";
@@ -68,7 +67,7 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   #grain { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0; background-size: 256px 256px; mix-blend-mode: screen; }
 
   .wrap { position: relative; z-index: 3; padding: 0 var(--col-pad); }
-  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 28px; }
+  .grid { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 28px; }
 
   .hero { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding: calc(80px + var(--ns-nav-h, 0px)) 0 120px; }
   .hero h1 {
@@ -113,11 +112,20 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
     z-index: -1;
     pointer-events: none;
   }
+  /* built-in damage (about.js): rotted characters, and ones nearly gone */
+  .ch.rot { opacity: 0.3; }
+  .ch.gone { opacity: 0.04; }
+  .s .copy > * { transform-origin: left center; }
+  .s h2 span { transition: none; }
+  /* a section tear: a clipped clone of the block on a solid ground */
+  .tear { background: #050505; z-index: 4; pointer-events: none; }
+  .tear::before { display: none; }
+  .wrap { will-change: transform; }
   .chroma { filter: drop-shadow(-1.5px 0 0 rgba(0, 255, 255, 0.8)) drop-shadow(1.5px 0 0 rgba(255, 0, 255, 0.8)); }
   [data-wear] span { display: inline-block; }
 
   /* the end of the record */
-  .end { padding: 18vh 0 22vh; }
+  .end { padding: 4vh 0 8vh; }
   .end .in { grid-column: 1 / 13; }
   .end .src { margin: 0; max-width: 64ch; font-size: 11px; line-height: 1.7; color: rgba(255, 255, 255, 0.4); }
 
@@ -154,133 +162,8 @@ ${sections.map((s, i) => `  <section class="s ${PLACES[i % PLACES.length]}">
 
 <div id="grain" aria-hidden="true"></div>
 
-<script>
-const CLIMATE = ${JSON.stringify({ temps: climate.temps })};
-(() => {
-  "use strict";
-  const T = CLIMATE.temps;                 // [[year, anomaly °C]] 1850–2025
-  const Y0 = T[0][0], N = T.length;
-  const aMin = Math.min(...T.map((t) => t[1])), aMax = Math.max(...T.map((t) => t[1]));
-  const norm = (a) => (a - aMin) / (aMax - aMin); // 0 = coolest year … 1 = warmest
-
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const main = document.querySelector("main");
-  const cv = document.getElementById("record");
-  const ctx = cv.getContext("2d");
-
-  // ---- the stripes ----
-  let tears = []; // {i, dx} — bands knocked sideways for a moment
-  function draw() {
-    const w = cv.clientWidth, h = cv.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
-      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    const bh = h / N;
-    for (let i = 0; i < N; i++) {
-      const v = norm(T[i][1]);
-      // mono: near-black for the coolest years up to a mid grey for the warmest,
-      // linear so the mid-century climb reads before the last few decades
-      const l = Math.round(6 + v * 60);
-      ctx.fillStyle = "rgb(" + l + "," + l + "," + l + ")";
-      const t = tears.find((x) => x.i === i);
-      ctx.fillRect(t ? t.dx : 0, Math.floor(i * bh), w, Math.ceil(bh) + 1);
-      if (t) { ctx.fillStyle = "#050505"; ctx.fillRect(t.dx < 0 ? w + t.dx : 0, Math.floor(i * bh), Math.abs(t.dx), Math.ceil(bh) + 1); }
-    }
-  }
-  new ResizeObserver(draw).observe(cv);
-
-  // ---- the reading line: the year under the middle of the screen drives the wear ----
-  let cur = 0;
-  function sync() {
-    const r = main.getBoundingClientRect();
-    const f = (window.innerHeight * 0.5 - r.top) / r.height;
-    cur = Math.max(0, Math.min(N - 1, Math.floor(f * N)));
-    // grain belongs to the record — it thins out as the page gives way to the footer
-    const onScreen = Math.max(0, Math.min(1, r.bottom / window.innerHeight));
-    if (!reduce) document.getElementById("grain").style.opacity = String((0.02 + 0.16 * wear() * wear()) * onScreen);
-  }
-  const wear = () => norm(T[cur][1]);
-  window.addEventListener("scroll", sync, { passive: true });
-  window.addEventListener("resize", sync);
-  sync();
-
-  if (reduce) return;
-
-  // ---- wear: everything below scales with the anomaly at the reading line ----
-  function poisson(rateFn, fire) {
-    (function step() {
-      const r = Math.max(0.02, rateFn());
-      setTimeout(() => { fire(); step(); }, -Math.log(1 - Math.random()) / r * 1000);
-    })();
-  }
-
-  // headings: per-char font swaps + scrambles, faster as it warms
-  const FONTS = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
-  const GLYPHS = "#*/\\\\_+=~<>.,:;|?!@$%^&-";
-  for (const el of document.querySelectorAll("[data-wear]")) {
-    const txt = el.textContent;
-    el.textContent = "";
-    const spans = [...txt].map((ch) => {
-      const s = document.createElement("span");
-      s.textContent = ch === " " ? "\\u00a0" : ch;
-      s.dataset.o = s.textContent;
-      el.appendChild(s);
-      return s;
-    });
-    const live = spans.filter((s) => s.dataset.o.trim());
-    poisson(() => 0.08 + 3.2 * wear() * wear(), () => {
-      const n = 1 + Math.floor(wear() * wear() * live.length * 0.6);
-      const hit = [...live].sort(() => Math.random() - 0.5).slice(0, n);
-      for (const s of hit) {
-        if (Math.random() < 0.5) s.style.fontFamily = '"' + FONTS[(Math.random() * FONTS.length) | 0] + '", monospace';
-        else s.textContent = GLYPHS[(Math.random() * GLYPHS.length) | 0];
-      }
-      setTimeout(() => { for (const s of hit) { s.textContent = s.dataset.o; s.style.fontFamily = ""; } }, 70 + Math.random() * 180);
-    });
-  }
-
-  // body copy: a chroma flicker on the section nearest the reading line
-  const copies = [...document.querySelectorAll(".s .copy")];
-  poisson(() => 0.01 + 1.4 * Math.pow(wear(), 3), () => {
-    const mid = window.innerHeight / 2;
-    const c = copies.reduce((best, el) => {
-      const r = el.getBoundingClientRect(); const d = Math.abs((r.top + r.bottom) / 2 - mid);
-      return !best || d < best.d ? { el, d } : best;
-    }, null);
-    if (!c) return;
-    c.el.classList.add("chroma");
-    setTimeout(() => c.el.classList.remove("chroma"), 60 + Math.random() * 90);
-  });
-
-  // stripe tears near the reading line, only once it's warm
-  poisson(() => 0.02 + 5 * Math.pow(Math.max(0, wear() - 0.45), 2), () => {
-    const k = 1 + ((Math.random() * 4) | 0);
-    tears = Array.from({ length: k }, () => ({
-      i: Math.max(0, Math.min(N - 1, cur + ((Math.random() * 16) | 0) - 8)),
-      dx: (Math.random() < 0.5 ? -1 : 1) * (20 + Math.random() * 160 * wear()),
-    }));
-    draw();
-    setTimeout(() => { tears = []; draw(); }, 80 + Math.random() * 160);
-  });
-
-  // grain: four pre-made noise tiles, cycled
-  const tiles = Array.from({ length: 4 }, () => {
-    const c = document.createElement("canvas"); c.width = c.height = 256;
-    const g = c.getContext("2d"), img = g.createImageData(256, 256);
-    for (let p = 0; p < img.data.length; p += 4) {
-      const v = Math.random() < 0.5 ? 0 : (Math.random() * 255) | 0;
-      img.data[p] = img.data[p + 1] = img.data[p + 2] = v; img.data[p + 3] = 255;
-    }
-    g.putImageData(img, 0, 0);
-    return "url(" + c.toDataURL() + ")";
-  });
-  const grain = document.getElementById("grain");
-  let gi = 0;
-  setInterval(() => { grain.style.backgroundImage = tiles[gi++ % tiles.length]; }, 90);
-})();
-</script>
+<script>window.CLIMATE = ${JSON.stringify({ temps: climate.temps })};</script>
+<script src="about.js"></script>
 </body>
 </html>
 `;
