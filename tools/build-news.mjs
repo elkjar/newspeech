@@ -205,7 +205,7 @@ ${SHARED_CSS}
     flex: 1;
     min-width: 0;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.45);
     color: #fff;
     font: inherit;
     letter-spacing: 0.04em;
@@ -217,7 +217,7 @@ ${SHARED_CSS}
   #subscribe input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
   #subscribe button {
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.7);
     color: #fff;
     font: inherit;
     letter-spacing: 0.04em;
@@ -229,6 +229,9 @@ ${SHARED_CSS}
   #subscribe button:disabled { opacity: 0.4; cursor: default; }
   #subscribe .sub-msg { color: #ddd; letter-spacing: 0.06em; }
   #subscribe .sub-msg.err { color: #888; }
+  @media (max-width: 640px) {
+    #subscribe input[type="email"] { font-size: 16px; } /* <16px zooms iOS Safari on focus */
+  }
   @media (max-width: 480px) {
     #subscribe .sub-row { flex-direction: column; }
   }`;

@@ -58,24 +58,25 @@
      share one row and one height. */
   .gate { margin-top: 26px; }
   .gate .hp { display: none; }
-  .gate-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+  .gate-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
   .gate-row input[type="email"] {
     flex: 1 1 200px;
     min-width: 0;
     max-width: 300px;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 0;
     color: var(--fg);
     font: inherit;
-    font-size: 13px;
+    font-size: 12px; /* the site's sign-up spec — 34px tall, see index.html */
     line-height: 18px;
     letter-spacing: 0.04em;
-    padding: 16px 14px;
+    padding: 7px 12px;
     outline: none;
   }
   .gate-row input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
   .gate-row input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
-  .gate-row .cta { margin-top: 0; cursor: pointer; background: none; font-family: inherit; }
+  .gate-row .cta { margin-top: 0; cursor: pointer; background: none; font-family: inherit; font-size: 12px; padding: 7px 16px; }
   .gate-row .cta:disabled { opacity: 0.4; cursor: default; }
   .gate-msg { display: block; margin-top: 12px; font-size: 11px; letter-spacing: 0.06em; opacity: 0.6; }
   .gate-msg.err { opacity: 0.8; }
@@ -177,6 +178,7 @@
     #notes .grid { grid-template-columns: 1fr; gap: 28px; }
     /* gate: input and button each take the full column */
     .gate-row input[type="email"], .gate-row .cta { flex: 1 1 100%; max-width: none; width: 100%; justify-content: center; }
+    .gate-row input[type="email"] { font-size: 16px; } /* <16px zooms iOS Safari on focus */
   }
 </style>
 </head>

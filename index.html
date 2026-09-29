@@ -403,29 +403,31 @@
     cursor: pointer;
   }
   .copy .cta span { vertical-align: top; height: 18px; line-height: 18px; } /* same baseline lock as #subscribe */
-  /* the sequence waitlist: the plugins-page gate row — email + cta, one height */
+  /* the sequence waitlist — the site's one sign-up spec (the subscribe window
+     above is the reference): 12px/18px type, field 7×12 at white/45, button
+     7×16 at white/70 → 34px tall everywhere */
   #v-sequence { height: 82svh; min-height: 620px; }
   .copy .waitlist { margin-top: 26px; }
   .copy .waitlist .hp { display: none; }
-  .copy .wl-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+  .copy .wl-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
   .copy .wl-row input[type="email"] {
     flex: 1 1 180px;
     min-width: 0;
     max-width: 260px;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.45);
     color: var(--fg);
     font: inherit;
-    font-size: 13px;
+    font-size: 12px;
     line-height: 18px;
     letter-spacing: 0.04em;
-    padding: 16px 14px;
+    padding: 7px 12px;
     border-radius: 0;
     outline: none;
   }
   .copy .wl-row input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
   .copy .wl-row input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
-  .copy .wl-row .cta { margin-top: 0; background: none; font-family: inherit; }
+  .copy .wl-row .cta { margin-top: 0; background: none; font-family: inherit; font-size: 12px; padding: 7px 16px; }
   .copy .wl-row .cta:hover { background: rgba(255, 255, 255, 0.08); }
   .copy .wl-row .cta:disabled { opacity: 0.4; cursor: default; }
   .copy .wl-msg { display: block; font-size: 12px; letter-spacing: 0.06em; opacity: 0.85; margin-top: 4px; }
@@ -566,6 +568,7 @@
     #subscribe input[type="email"] {
       width: min(70vw, 280px);
       font-size: 16px; /* <16px makes iOS Safari zoom the page on focus */
+      line-height: 18px;
     }
     #scroll-hint { bottom: 20px; }
   }
@@ -593,10 +596,9 @@
     .copy .wl-row input[type="email"] {
       flex: 1 1 0;
       max-width: none;
-      font-size: 16px; /* <16px zooms iOS Safari on focus */
-      padding: 15px 12px;
+      font-size: 16px; /* <16px zooms iOS Safari on focus — line-height holds the 34px */
     }
-    .copy .wl-row .cta { flex: none; padding: 16px 16px; }
+    .copy .wl-row .cta { flex: none; }
   }
 </style>
 </head>
