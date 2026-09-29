@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<style>
+  /* share-image comp for the pages whose picture is a tool-viz miniature:
+     og-viz-comp.html?viz=<name> → one miniature at 1200×630, no type.
+     ?viz=tools → the tools index as a 4×2 wall of them. rendered by
+     tools/og-render.mjs. */
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  .one { position: absolute; inset: 40px 110px; }
+  .one canvas, .cell canvas { width: 100%; height: 100%; display: block; }
+  .wall { position: absolute; inset: 64px 70px; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, 1fr); gap: 26px; }
+  .cell { border: 1px solid rgba(255, 255, 255, 0.16); }
+</style>
+</head>
+<body>
+<script src="tool-viz.js"></script>
+<script>
+const viz = new URLSearchParams(location.search).get("viz") || "texture";
+if (viz === "tools") {
+  const wall = document.createElement("div");
+  wall.className = "wall";
+  for (const name of ["texture", "slice", "decay", "drone", "glitch", "stretch", "samples", "visuals"]) {
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.innerHTML = "<canvas></canvas>";
+    wall.appendChild(cell);
+    document.body.appendChild(wall);
+    NSToolViz.register(cell.firstChild, name, { bare: true });
+  }
+} else {
+  const one = document.createElement("div");
+  one.className = "one";
+  one.innerHTML = "<canvas></canvas>";
+  document.body.appendChild(one);
+  NSToolViz.register(one.firstChild, viz, { bare: true });
+}
+</script>
+</body>
+</html>

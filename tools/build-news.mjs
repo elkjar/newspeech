@@ -236,7 +236,7 @@ ${SHARED_CSS}
 function postPage(post) {
   const { meta, html, slug } = post;
   const url = `${SITE}/news/${slug}.html`;
-  const ogImage = meta.image ? new URL(meta.image, `${SITE}/news/`).href : `${SITE}/og-image.png`;
+  const ogImage = meta.image ? new URL(meta.image, `${SITE}/news/`).href : `${SITE}/og-image.jpg`;
   // `image_in_post: false` keeps the image for the index card and share
   // preview but leaves it off the article (e.g. when a video embed opens the
   // post with the same frame).
@@ -368,7 +368,7 @@ function indexPage(posts) {
   return `<!doctype html>
 <html lang="en">
 <head>
-${headBlock({ title: "news", description: "newspeech — news, releases, and process notes.", url: `${SITE}/news.html`, ogImage: `${SITE}/og-image.png`, rootPrefix: "" })}
+${headBlock({ title: "news", description: "newspeech — news, releases, and process notes.", url: `${SITE}/news.html`, ogImage: `${SITE}/og-image.jpg`, rootPrefix: "" })}
 <style>${INDEX_CSS}
 </style>
 </head>

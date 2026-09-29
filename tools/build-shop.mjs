@@ -110,7 +110,7 @@ function page(p) {
   const title = `NEWSPEECH // ${p.name}`;
   const desc = p.blurb || `${p.name} — ${money(p.price)}`;
   const url = `${SITE}/shop/${p.id}.html`;
-  const og = imgs.length ? abs(imgs[0]) : `${SITE}/og-image.png`;
+  const og = imgs.length ? abs(imgs[0]) : `${SITE}/og-image.jpg`;
   const soldOutAll = p.soldOut === true;
   const ld = {
     "@context": "https://schema.org",
