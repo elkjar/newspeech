@@ -9,38 +9,25 @@
   @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
   @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
   html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
-  #label {
-    position: absolute;
-    left: 127px;
-    top: 315px;
-    transform: translate(-50%, -50%) rotate(-90deg);
-    white-space: nowrap;
-    font-size: 30px;
-    color: #fff;
-    letter-spacing: 0.04em;
-    font-family: "zxx-sans", monospace;
-  }
   canvas { position: absolute; inset: 0; }
 </style>
 </head>
 <body>
 <canvas id="c" width="1200" height="630"></canvas>
-<div id="label">new×speech× | ×plugins×</div>
 <script>
+// share images carry no type (2026-09-29) — the graphic is the whole image.
+// canvas text is switched off here, so readouts/labels drawn below vanish.
+CanvasRenderingContext2D.prototype.fillText = function () {};
 // og-plugins comp — same anatomy as og-slice / og-drone: vertical zxx label
 // left, the instrument graphic right. The graphic is the plugin UI kit
-// itself: two section boxes (VIBE, SATURATE) with the heading riding the
-// top border, a row of ring/arc/tick knobs in each, labels below — the
-// exact construction of vst/common. One knob per box is mid-turn and lit.
-const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
-const label = document.getElementById('label');
-label.innerHTML = [...label.textContent]
-  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
-  .join('');
-
+// itself: one section box per plugin, 2×2 (VIBE, SATURATE / SLICE, GLITCH),
+// heading riding the top border, three cells of real controls from each
+// editor (ring/arc/tick knobs, dot toggles, segmented buttons), labels
+// below — the construction of vst/common. One knob per box is lit.
 const c = document.getElementById('c').getContext('2d');
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 const X0 = 250, X1 = 1130;
+c.translate(600 - (X0 + X1) / 2, 0); // was pushed right for the vertical label
 
 // knob: Knob.tsx geometry — ring r=0.36·size (white/12), arc from -135° (white/70,
 // 1.75px), tick from 0.17·size to the ring (white/90). Scaled ×1.6 for OG.
@@ -60,6 +47,19 @@ function knob(cx, cy, size, v, lit) {
   c.lineTo(cx + r * Math.sin(a), cy - r * Math.cos(a));
   c.stroke();
 }
+// segmented buttons: abutting bordered cells, the selected one inverted
+function seg(cx, cy, names, sel) {
+  const bw = 44, bh = 32, x0 = cx - (names.length * bw) / 2;
+  c.font = `13px ${MONO}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  names.forEach((n, i) => {
+    const x = x0 + i * bw;
+    if (i === sel) { c.fillStyle = '#fff'; c.fillRect(x, cy - bh / 2, bw, bh); }
+    c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 1.5;
+    c.strokeRect(x + 0.5, cy - bh / 2 + 0.5, bw, bh);
+    c.fillStyle = i === sel ? '#000' : 'rgba(255,255,255,0.6)';
+    c.fillText(n.toUpperCase(), x + bw / 2 + 0.5, cy + 1);
+  });
+}
 function dot(cx, cy, size, on) {
   const r = size * 0.18;
   c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2);
@@ -73,15 +73,19 @@ function section(x, y, w, h, title, controls) {
   c.strokeRect(x + 0.5, y + 0.5, w, h);
   c.font = `500 15px ${MONO}`; c.textAlign = 'left'; c.textBaseline = 'middle';
   const t = title.toUpperCase(); const tw = c.measureText(t).width + t.length * 1.5 + 12;
-  c.fillStyle = '#000'; c.fillRect(x + 22 - 8, y - 12, tw + 16, 24);
   c.fillStyle = 'rgba(255,255,255,0.4)';
   letterSpaced(t, x + 22, y + 1, 0.1, false, 15);
-  const cellW = 128, size = 70;
-  const startX = x + 24 + (w - 48 - (controls.length * cellW)) / 2;
+  // a control takes `span` cells (segments take two)
+  const cellW = 120, size = 70;
+  const cells = controls.reduce((n, k) => n + (k.span || 1), 0);
+  let cellX = x + (w - cells * cellW) / 2;
   const ky = y + 30 + size / 2 + 6;
-  controls.forEach((k, i) => {
-    const cx = startX + i * cellW + cellW / 2;
-    if (k.dot !== undefined) dot(cx, ky, size, k.dot); else knob(cx, ky, size, k.v, k.lit);
+  controls.forEach((k) => {
+    const cx = cellX + ((k.span || 1) * cellW) / 2;
+    cellX += (k.span || 1) * cellW;
+    if (k.seg) seg(cx, ky, k.seg, k.sel);
+    else if (k.dot !== undefined) dot(cx, ky, size, k.dot);
+    else knob(cx, ky, size, k.v, k.lit);
     c.font = `14px ${MONO}`; c.fillStyle = `rgba(255,255,255,${k.lit ? 0.95 : 0.7})`;
     c.textAlign = 'center'; c.textBaseline = 'alphabetic';
     letterSpaced(k.l.toUpperCase(), cx, ky + size / 2 + 30, 0.12, true, 14);
@@ -96,20 +100,25 @@ function letterSpaced(text, x, y, em, center, fs) {
   c.textAlign = prevAlign;
 }
 
-const W = X1 - X0;
-section(X0, 118, W, 172, 'vibe', [
-  { l: 'position', v: 0.28 }, { l: 'length', v: 0.55 }, { l: 'hold', dot: false },
+const GAP = 24, W = (X1 - X0 - GAP) / 2, H = 172;
+const COL2 = X0 + W + GAP, ROW1 = 104, ROW2 = 322;
+section(X0, ROW1, W, H, 'vibe', [
   { l: 'grain rate', v: 0.62, lit: true }, { l: 'grain mix', v: 0.71 }, { l: 'mix', v: 0.53 },
 ]);
-section(X0, 336, W, 172, 'saturate', [
-  { l: 'enable', dot: true }, { l: 'threshold', v: 0.64 }, { l: 'chance', v: 0.9, lit: true },
-  { l: 'window', v: 0.5 }, { l: 'tilt', v: 0.4 }, { l: 'drive', v: 0.86 },
+section(COL2, ROW1, W, H, 'saturate', [
+  { l: 'enable', dot: true }, { l: 'chance', v: 0.9, lit: true }, { l: 'drive', v: 0.86 },
+]);
+section(X0, ROW2, W, H, 'slice', [
+  { l: 'mode', seg: ['morse', 'bits', 'data'], sel: 0, span: 2 }, { l: 'scramble', v: 0.44, lit: true },
+]);
+section(COL2, ROW2, W, H, 'glitch', [
+  { l: 'bars', seg: ['1', '2', '4', '8'], sel: 2, span: 2 }, { l: 'mutate', v: 0.68, lit: true },
 ]);
 
 // caption, bottom-right — the datafield's register
 c.font = `16px ${MONO}`; c.textAlign = 'right'; c.textBaseline = 'alphabetic';
 c.fillStyle = 'rgba(255,255,255,0.4)';
-c.fillText('vibe 1.0.0 · saturate 1.0.0 · au + vst3 · macos · free for everything', X1, 560);
+c.fillText('vibe · saturate · slice · glitch · au + vst3 · macos · free for everything', X1, 564);
 </script>
 </body>
 </html>

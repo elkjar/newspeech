@@ -9,36 +9,22 @@
   @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
   @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
   html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
-  #label {
-    position: absolute;
-    left: 127px;
-    top: 315px;
-    transform: translate(-50%, -50%) rotate(-90deg);
-    white-space: nowrap;
-    font-size: 30px;
-    color: #fff;
-    letter-spacing: 0.04em;
-    font-family: "zxx-sans", monospace;
-  }
   canvas { position: absolute; inset: 0; }
 </style>
 </head>
 <body>
 <canvas id="c" width="1200" height="630"></canvas>
-<div id="label">new×speech× | ×glitch×</div>
 <script>
+// share images carry no type (2026-09-29) — the graphic is the whole image.
+// canvas text is switched off here, so readouts/labels drawn below vanish.
+CanvasRenderingContext2D.prototype.fillText = function () {};
 // og-glitch comp — same anatomy as the og-sequence family: vertical zxx label
 // left, the instrument graphic right. glitch's graphic is its lane timeline
 // mid-pass: six stages, blocks drawn in cells, the authored pattern ghosted
 // under the live mutated one, playhead lighting the block it's inside.
-const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
-const label = document.getElementById('label');
-label.innerHTML = [...label.textContent]
-  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
-  .join('');
-
 const c = document.getElementById('c').getContext('2d');
 const X0 = 340, X1 = 1120, TOP = 150, ROWH = 56, CELLS = 64;
+c.translate(600 - (X0 + X1) / 2, 0); // was pushed right for the vertical label
 const LANES = ['crush', 'noise', 'drive', 'chop', 'glitch', 'feedback'];
 // authored blocks (what was drawn) and the live pass (mutated) — fixed so the
 // image is deterministic; chosen to read as a real mid-session pattern

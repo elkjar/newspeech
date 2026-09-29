@@ -17,7 +17,7 @@ node tools/build-news.mjs
 # generate the product pages (shop.json → shop/<id>.html)
 node tools/build-shop.mjs
 
-cp *.html *.js *.css *.svg *.png *.txt _site/
+cp *.html *.js *.css *.svg *.png *.jpg *.txt _site/
 cp samples-manifest.json shop.json _site/
 cp -r shop _site/shop
 if [ -d news ]; then

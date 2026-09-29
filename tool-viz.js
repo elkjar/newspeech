@@ -3,11 +3,12 @@
 // samples, visuals and sequence. the homepage cards + sequence vignette and
 // the tools index draw from here.
 //
-// usage: NSToolViz.register(canvas, name, { observe?, vignette? }).
+// usage: NSToolViz.register(canvas, name, { observe?, vignette?, bare? }).
 // the canvas is sized from its css box (ResizeObserver) and only renders
 // while `observe` (default: the canvas) is on-screen. `vignette: true` =
 // the canvas sits under a full-screen vignette whose copy covers the lower
-// half on narrow screens — the sequence grid biases up there.
+// half on narrow screens — the sequence grid biases up there. `bare: true`
+// draws no text (og-viz-comp.html, the share images).
 (function () {
   "use strict";
 
@@ -166,7 +167,8 @@
         if (px < T.x || px > T.x + T.w || py < T.y || py > T.y + T.h) continue;
         const ch = ".,+*oO#"[Math.min(6, ((1 - p.z) * 7) | 0)];
         c.fillStyle = `rgba(255, 255, 255, ${Math.min(1, 1.1 - p.z).toFixed(3)})`;
-        c.fillText(ch, px, py);
+        // the glyphs are the picture, not a label — they draw even when bare
+        CanvasRenderingContext2D.prototype.fillText.call(c, ch, px, py);
       }
     },
     swarm(c, T, t, dt, env) {
@@ -946,6 +948,8 @@
   const views = [];
   function register(cv, name, opts = {}) {
     const vctx = cv.getContext("2d");
+    // bare: no type at all (the share images) — every readout/label is skipped
+    if (opts.bare) vctx.fillText = () => {};
     const v = { draw: DRAW[name], ctx: vctx, w: 0, h: 0, visible: false, state: {}, vignette: !!opts.vignette };
     function fit() {
       const r = cv.getBoundingClientRect();

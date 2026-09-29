@@ -9,34 +9,19 @@
   @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); }
   @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); }
   html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
-  #label {
-    position: absolute;
-    left: 127px;
-    top: 315px;
-    transform: translate(-50%, -50%) rotate(-90deg);
-    white-space: nowrap;
-    font-size: 30px;
-    color: #fff;
-    letter-spacing: 0.04em;
-    font-family: "zxx-sans", monospace;
-  }
   canvas { position: absolute; inset: 0; }
 </style>
 </head>
 <body>
 <canvas id="c" width="1200" height="630"></canvas>
-<div id="label">new×speech× | ×slice×</div>
 <script>
+// share images carry no type (2026-09-29) — the graphic is the whole image.
+// canvas text is switched off here, so readouts/labels drawn below vanish.
+CanvasRenderingContext2D.prototype.fillText = function () {};
 // og-slice comp — same anatomy as og-sequence: vertical zxx label left,
 // the instrument graphic right. slice's graphic is its pattern strip:
 // NEWSPEECH as morse blocks over a beat grid, playhead mid-message, the
 // message above with one letter already corrupted.
-const FONTS = ['zxx-sans', 'zxx-sans', 'zxx-noise', 'zxx-camo', 'zxx-xed', 'zxx-bold'];
-const label = document.getElementById('label');
-label.innerHTML = [...label.textContent]
-  .map((ch) => `<span style="font-family:'${FONTS[(Math.random() * FONTS.length) | 0]}',monospace">${ch}</span>`)
-  .join('');
-
 const M = { N: '-.', E: '.', W: '.--', S: '...', P: '.--.', C: '-.-.', H: '....', K: '-.-' };
 const msg = 'NEWSPEECH';
 const badIndex = 5; // the second E, struck through → K
@@ -63,6 +48,7 @@ u += 4;
 
 const c = document.getElementById('c').getContext('2d');
 const X0 = 250, X1 = 1130, Y = 340;
+c.translate(600 - (X0 + X1) / 2, 0); // was pushed right for the vertical label
 const uW = (X1 - X0) / u;
 const laneDah = 150, laneDit = 82;
 
@@ -95,9 +81,7 @@ for (let ci = 0; ci < shown.length; ci++) {
   const bad = ci === badIndex;
   c.fillStyle = bad ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.5)';
   c.fillText(shown[ci], x, Y - 200);
-  if (bad) {
-    c.fillRect(x - 12, Y - 209, 24, 2);
-  }
+  // (the scrambled letter's underline went with the letters)
 }
 
 // clock caption, bottom-right of the lane
