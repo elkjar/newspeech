@@ -44,7 +44,6 @@ class StretchProcessor extends AudioWorkletProcessor {
     };
     this.resetState();
     this.vizCount = 0;
-    this.splices = [];
 
     this.port.onmessage = (e) => {
       const m = e.data;
@@ -143,7 +142,6 @@ class StretchProcessor extends AudioWorkletProcessor {
     src = this.wrap(src);
     this.grains.push({ src, age: 0, L, X, r });
     this.nextIn = H;
-    this.splices.push(src / this.len);
   }
 
   process(_, outputs) {
@@ -209,12 +207,11 @@ class StretchProcessor extends AudioWorkletProcessor {
       if (OR !== OL) OR[i] = r;
     }
 
-    // ~30Hz: playhead + the block starts since the last report
+    // ~30Hz: playhead
     this.vizCount += OL.length;
     if (this.vizCount >= sr / 30) {
       this.vizCount = 0;
-      this.port.postMessage({ type: 'viz', rp: this.rp / this.len, out: this.outPos, splices: this.splices });
-      this.splices = [];
+      this.port.postMessage({ type: 'viz', rp: this.rp / this.len, out: this.outPos });
     }
     return true;
   }

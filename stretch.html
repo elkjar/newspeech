@@ -29,8 +29,8 @@
   h1 { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0 0 4px; }
   .sub { color: #666; margin: 0 0 20px; }
 
-  /* the source: drop zone + the splice map — every block the stretch
-     reads lands here as a bracket, so the jumping is visible */
+  /* the source: drop zone + the loop editor — drag across the wave to set
+     the region the stretch reads */
   #dropwave {
     position: relative;
     height: 340px;
@@ -41,7 +41,8 @@
   }
   #dropwave.loaded { border-style: solid; border-color: #1c1c1c; }
   #dropwave.drag { border-color: #777; }
-  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #dropwave.loaded #wave { cursor: crosshair; }
   #dropprompt {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -137,7 +138,7 @@
 
 <div id="dropwave">
   <canvas id="wave"></canvas>
-  <div id="dropprompt">drop an audio file here, or click to browse — the whole file is the loop<br><span class="droptip">(or just press play — a demo break is included)</span></div>
+  <div id="dropprompt">drop an audio file here, or click to browse — then drag across the wave to set a loop<br><span class="droptip">(or just press play — a demo break is included)</span></div>
   <div id="fileinfo"></div>
   <div id="stretchinfo"></div>
 </div>
@@ -146,7 +147,7 @@
 <div id="transport">
   <button id="play">PLAY</button>
   <button id="top" title="back to the start of the source — what a render prints">FROM TOP</button>
-  <span class="hint">[space] play/stop &nbsp;·&nbsp; everything is live — twist while it plays</span>
+  <span class="hint">[space] play/stop &nbsp;·&nbsp; drag the wave to loop a region — edges trim, inside slides, double-click for all of it</span>
 </div>
 
 <div id="units">
@@ -192,13 +193,13 @@
 </div>
 
 <script>
-// stretch.html — sampler timestretch. The whole file is the source loop;
+// stretch.html — sampler timestretch. A region of the file is the loop;
 // stretch-worklet.js overlap-adds fixed-length blocks (the CYCLE) read from
 // a stretched timeline, so length changes while pitch doesn't — and the
 // joins are the sound. CYCLIC splices blind (the jungle warble); INTELL
 // searches for a matching place to land. PITCH resamples inside the
 // blocks. The CONVERTER (rate, then bits, no filter, no dither) is the
-// machine's output stage. Render prints one stretched pass from the top.
+// machine's output stage. Render prints one stretched pass of the loop.
 
 // --- UI state — knobs in 0..1 knob space, mapped at read -----------------------
 const ui = {
@@ -394,6 +395,12 @@ function syncModeDim() {
 let actx = null;
 let node = null;
 let fileL = null, fileR = null;
+// the loop: frames into the file. The worklet only ever hears the slice.
+let loopS = 0, loopE = 0;
+let loopL = null, loopR = null;
+const loopLen = () => loopE - loopS;
+const loopDur = () => (actx ? loopLen() / actx.sampleRate : 0);
+const loopIsFull = () => !!fileL && loopS === 0 && loopE === fileL.length;
 let fileName = '';
 let fileDur = 0;
 let fileBpm = 0;
@@ -401,7 +408,6 @@ let isDemo = false;
 let playing = false;
 let rpF = -1;     // read position, 0..1 of the source
 let outPos = 0;   // output samples since the top
-const splices = []; // { pos, born } — recent block starts, for the splice map
 
 async function ensureAudio() {
   if (actx) return;
@@ -424,9 +430,6 @@ async function ensureAudio() {
     if (m.type === 'viz') {
       rpF = m.rp;
       outPos = m.out;
-      const now = performance.now();
-      for (const p of m.splices) splices.push({ pos: p, born: now });
-      if (splices.length > 600) splices.splice(0, splices.length - 600);
       updateInfo();
     }
   };
@@ -441,7 +444,6 @@ function fromTop() {
   if (!node) return;
   node.port.postMessage({ type: 'reset' });
   outPos = 0;
-  splices.length = 0;
 }
 
 // --- demo break: drums + a minor chord, so PLAY works before any file ----------
@@ -532,15 +534,120 @@ async function loadFile(file) {
 function onSourceLoaded(infoHtml) {
   document.getElementById('dropwave').classList.add('loaded');
   document.getElementById('fileinfo').innerHTML = infoHtml;
-  autoCands = null;
   buildPeaks();
-  node.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
-  pushParams();
-  outPos = 0;
-  splices.length = 0;
+  setLoop(0, fileL.length, false);
+  commitLoop();
+}
+
+// --- loop geometry ------------------------------------------------------------
+// Points snap to the nearest zero crossing so the seam doesn't click. A drag
+// only moves the view; the worklet hears it on commitLoop() at pointer-up,
+// which restarts the stretch from the loop's start.
+const MIN_LOOP = 2048;
+function snapZero(i) {
+  const n = fileL.length, win = Math.round(actx.sampleRate * 0.005);
+  i = Math.max(0, Math.min(n, Math.round(i)));
+  if (i === 0 || i === n) return i;
+  const sgn = (k) => (fileL[k] + fileR[k]) >= 0;
+  for (let d = 0; d <= win; d++) {
+    if (i + d < n && sgn(i + d) !== sgn(i + d - 1)) return i + d;
+    if (i - d > 0 && sgn(i - d) !== sgn(i - d - 1)) return i - d;
+  }
+  return i;
+}
+
+function setLoop(s, e, snap = true) {
+  if (!fileL) return;
+  const n = fileL.length;
+  if (snap) { s = snapZero(s); e = snapZero(e); }
+  s = Math.max(0, Math.min(n, Math.round(s)));
+  e = Math.max(0, Math.min(n, Math.round(e)));
+  if (e < s) [s, e] = [e, s];
+  if (e - s < MIN_LOOP) { e = Math.min(n, s + MIN_LOOP); s = Math.max(0, e - MIN_LOOP); }
+  loopS = s;
+  loopE = e;
   updateInfo();
   updateRenderInfo();
 }
+
+function commitLoop() {
+  if (!fileL || !node) return;
+  loopL = fileL.slice(loopS, loopE);
+  loopR = fileR.slice(loopS, loopE);
+  autoCands = null;
+  node.port.postMessage({ type: 'buffer', l: loopL, r: loopR });
+  pushParams();
+  outPos = 0;
+  updateInfo();
+  updateRenderInfo();
+}
+
+// edge → trim · inside → slide · outside, or anywhere on the full file → new
+// selection · double-click → the whole file
+(function wireLoopEdit() {
+  const GRAB = 7;
+  const cv = document.getElementById('wave'); // `wave` is declared further down
+  let drag = null;
+  const framesAt = (e) => {
+    const r = cv.getBoundingClientRect();
+    return ((e.clientX - r.left) / r.width) * fileL.length;
+  };
+  const edges = () => {
+    const r = cv.getBoundingClientRect();
+    return { r, x0: (loopS / fileL.length) * r.width, x1: (loopE / fileL.length) * r.width };
+  };
+  function modeAt(e) {
+    const { r, x0, x1 } = edges();
+    const px = e.clientX - r.left;
+    if (loopIsFull()) return 'new';
+    if (Math.abs(px - x0) <= GRAB && Math.abs(px - x1) <= GRAB) return px < (x0 + x1) / 2 ? 'start' : 'end';
+    if (Math.abs(px - x0) <= GRAB) return 'start';
+    if (Math.abs(px - x1) <= GRAB) return 'end';
+    if (px > x0 && px < x1) return 'move';
+    return 'new';
+  }
+  cv.addEventListener('pointerdown', (e) => {
+    if (!fileL || e.button !== 0) return;
+    const f = framesAt(e);
+    drag = { mode: modeAt(e), anchor: f, s0: loopS, e0: loopE, moved: false };
+    cv.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!fileL) return;
+    if (!drag) {
+      const m = modeAt(e);
+      cv.style.cursor = m === 'start' || m === 'end' ? 'ew-resize' : m === 'move' ? 'grab' : 'crosshair';
+      return;
+    }
+    const f = framesAt(e);
+    const delta = f - drag.anchor;
+    if (!drag.moved && Math.abs(delta) < fileL.length * 0.002) return; // a click isn't a drag
+    drag.moved = true;
+    const n = fileL.length;
+    if (drag.mode === 'start') setLoop(drag.s0 + delta, drag.e0);
+    else if (drag.mode === 'end') setLoop(drag.s0, drag.e0 + delta);
+    else if (drag.mode === 'move') {
+      const len = drag.e0 - drag.s0;
+      const s = snapZero(Math.max(0, Math.min(n - len, drag.s0 + delta)));
+      // slide keeps the length exactly — don't re-snap the end away from it
+      setLoop(s, Math.min(n, s + len), false);
+    } else setLoop(drag.anchor, f);
+  });
+  const end = () => {
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    if (moved) commitLoop();
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('dblclick', () => {
+    if (!fileL || loopIsFull()) return;
+    setLoop(0, fileL.length, false);
+    commitLoop();
+  });
+})();
 
 async function togglePlay() {
   await ensureAudio();
@@ -562,10 +669,10 @@ let autoIdx = 0;
 
 function findPeriodMs() {
   const sr = actx.sampleRate;
-  const N = Math.min(fileL.length, 8192);
-  const start = Math.max(0, Math.floor(fileL.length / 2 - N / 2));
+  const N = Math.min(loopL.length, 8192);
+  const start = Math.max(0, Math.floor(loopL.length / 2 - N / 2));
   const x = new Float32Array(N);
-  for (let i = 0; i < N; i++) x[i] = fileL[start + i] + fileR[start + i];
+  for (let i = 0; i < N; i++) x[i] = loopL[start + i] + loopR[start + i];
   const minLag = Math.floor(sr * 0.002), maxLag = Math.min(N >> 1, Math.floor(sr * 0.025));
   let e0 = 0;
   for (let i = 0; i < N - maxLag; i++) e0 += x[i] * x[i];
@@ -580,7 +687,7 @@ function findPeriodMs() {
 }
 
 function autoCycle() {
-  if (!fileL || !actx) return;
+  if (!loopL || !actx) return;
   if (!autoCands) {
     const T = findPeriodMs();
     autoCands = [];
@@ -604,13 +711,14 @@ function updateInfo() {
   const L = cycleSamples();
   const hop = Math.max(1, L - Math.round(ui.xfdKnob * L * 0.5));
   const rate = sr / hop;
-  const passLen = fileL ? fileL.length * stretchF() : 0;
+  const passLen = fileL ? loopLen() * stretchF() : 0;
   const prog = passLen > 0 ? Math.round(((outPos % passLen) / passLen) * 100) : 0;
   const conv = `${ui.bits}-bit${ui.rate ? ' ' + ui.rate / 1000 + 'k' : ''}`;
-  el.innerHTML = `<em>${fmtStretch()}</em> · splices <em>${rate < 10 ? rate.toFixed(1) : Math.round(rate)}/s</em> · ${conv} · pass <em>${prog}%</em>`;
+  const loop = fileL && !loopIsFull() ? `loop <em>${loopDur().toFixed(2)}s</em> · ` : '';
+  el.innerHTML = `${loop}<em>${fmtStretch()}</em> · splices <em>${rate < 10 ? rate.toFixed(1) : Math.round(rate)}/s</em> · ${conv} · pass <em>${prog}%</em>`;
 }
 
-// --- waveform + splice map ------------------------------------------------------------
+// --- waveform + loop region ------------------------------------------------------------
 const wave = document.getElementById('wave');
 let peaks = null;
 const COLS = 768;
@@ -642,11 +750,8 @@ function buildPeaks() {
   }
 }
 
-// The source sits still; every block the stretch reads lands on it as a
-// bracket that fades. Stretched out, brackets pile up and overlap (the
-// repeats); squashed, they leave gaps (the skips). The strip along the
-// bottom is the same blocks at full width — the splice map.
-const SPLICE_LIFE = 900; // ms
+// The whole file sits still; the loop is lit and bracketed, the rest dimmed.
+// The playhead is where the stretched timeline is reading the source.
 function drawWave() {
   const ctx = wave.getContext('2d');
   const W = wave.width, H = wave.height;
@@ -655,33 +760,30 @@ function drawWave() {
   const dpr = window.devicePixelRatio || 1;
   const mid = H / 2;
   const wc = W / COLS + 0.5;
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  const n = fileL.length;
+  const x0 = (loopS / n) * W, x1 = (loopE / n) * W;
+  const full = loopIsFull();
   for (let c = 0; c < COLS; c++) {
+    const x = (c / COLS) * W;
+    const inside = full || (x + wc * 0.5 >= x0 && x + wc * 0.5 <= x1);
+    ctx.fillStyle = inside ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.1)';
     const mn = peaks[c * 2], mx = peaks[c * 2 + 1];
     const y0 = mid - mx * mid * 0.85;
     const y1 = mid - mn * mid * 0.85;
-    ctx.fillRect((c / COLS) * W, y0, wc, Math.max(1, y1 - y0));
+    ctx.fillRect(x, y0, wc, Math.max(1, y1 - y0));
   }
-  const now = performance.now();
-  while (splices.length && now - splices[0].born > SPLICE_LIFE) splices.shift();
-  const r = Math.pow(2, pitchSt() / 12);
-  const blockW = fileL ? Math.max(dpr, ((cycleSamples() * r) / fileL.length) * W) : dpr;
-  const strip = 6 * dpr;
-  for (const s of splices) {
-    const age = (now - s.born) / SPLICE_LIFE;
-    const a = (1 - age) * (1 - age);
-    const x = s.pos * W;
-    // the join: a tick through the waveform
-    ctx.fillStyle = `rgba(255,255,255,${(a * 0.55).toFixed(3)})`;
-    ctx.fillRect(x, mid - H * 0.42, Math.max(1, dpr), H * 0.84);
-    // the block it reads: a bracket in the strip
-    ctx.fillStyle = `rgba(255,255,255,${(a * 0.35).toFixed(3)})`;
-    ctx.fillRect(x, H - strip, blockW, strip);
-    if (x + blockW > W) ctx.fillRect(0, H - strip, x + blockW - W, strip); // wraps the seam
+  if (!full) {
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(x0, 0, Math.max(1, x1 - x0), H);
+    // edges dimmer than the playhead — the playhead is the one bright line
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    const hw = Math.max(1, dpr);
+    ctx.fillRect(Math.round(x0), 0, hw, H);
+    ctx.fillRect(Math.round(x1) - hw, 0, hw, H);
   }
   if (playing && rpF >= 0) {
     ctx.fillStyle = '#fff';
-    ctx.fillRect(rpF * W, 0, Math.max(1, dpr), H);
+    ctx.fillRect(x0 + rpF * (x1 - x0), 0, Math.max(1, dpr), H);
   }
 }
 
@@ -694,17 +796,17 @@ function frame() {
 const RENDER_CAP_SECS = 1500; // 25 minutes
 
 function renderSecs() {
-  return Math.min(RENDER_CAP_SECS, fileDur * stretchF());
+  return Math.min(RENDER_CAP_SECS, loopDur() * stretchF());
 }
 
 function updateRenderInfo() {
   const info = document.getElementById('renderinfo');
   if (!fileL) { info.textContent = 'load a file (or press play) first'; return; }
   const secs = renderSecs();
-  const capped = fileDur * stretchF() > RENDER_CAP_SECS ? ' (capped)' : '';
+  const capped = loopDur() * stretchF() > RENDER_CAP_SECS ? ' (capped)' : '';
   const mb = (secs * (actx ? actx.sampleRate : 48000) * 4) / 1e6;
   const len = secs >= 60 ? `${Math.floor(secs / 60)}m${String(Math.round(secs % 60)).padStart(2, '0')}s` : `${secs.toFixed(1)}s`;
-  info.textContent = `prints one stretched pass from the top${capped} · ${len} · ~${Math.max(1, Math.round(mb))}MB 16-bit`;
+  info.textContent = `prints one stretched pass of the loop${capped} · ${len} · ~${Math.max(1, Math.round(mb))}MB 16-bit`;
 }
 
 let rendering = false;
@@ -724,7 +826,7 @@ async function renderWav() {
     const ready = new Promise((res) => {
       n.port.onmessage = (e) => { if (e.data.type === 'pong') res(); };
     });
-    n.port.postMessage({ type: 'buffer', l: fileL, r: fileR });
+    n.port.postMessage({ type: 'buffer', l: loopL, r: loopR });
     n.port.postMessage({ type: 'params', p: workletParams() });
     n.port.postMessage({ type: 'play', on: true });
     // port messages deliver in order — the pong means play landed, so the
@@ -854,7 +956,7 @@ window.stretch = {
   ui,
   setKnob(k, v) { if (knobs[k]) knobs[k].setValue(v); else { ui[k] = v; pushParams(); } },
   params: workletParams,
-  state: () => ({ playing, rp: rpF, out: outPos, splices: splices.length }),
+  state: () => ({ playing, rp: rpF, out: outPos, loopS, loopE }),
   render: renderWav,
 };
 </script>
