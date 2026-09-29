@@ -45,6 +45,13 @@
   status = 302
 # dl:glitch end
 
+# the plugins page launched from its unlisted hash url 2026-09-29 — the
+# invite links already out there land on the public page
+[[redirects]]
+  from = "/plugins-886ad9.html"
+  to = "/plugins.html"
+  status = 301
+
 # live.html (the strudel repl) retired 2026-09-25 — old links land home
 [[redirects]]
   from = "/live.html"

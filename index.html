@@ -35,7 +35,6 @@
   }
 
   * { box-sizing: border-box; }
-  html { scroll-snap-type: y mandatory; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow-x: hidden; }
 
   /* halve the core.js grain here — over the news block and vignette copy the
@@ -49,7 +48,6 @@
     height: 100vh;
     height: 100svh;
     overflow: hidden;
-    scroll-snap-align: start;
   }
 
   /* nav bar is fixed above; subscribe dialog centers (margin:auto) over the
@@ -67,7 +65,6 @@
      desktop: the newest post leads on the left (image, text under), the
      next four stack as rows on the right. narrow: lead card, then rows. ---- */
   #home-news {
-    scroll-snap-align: start;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 13px;
@@ -307,114 +304,133 @@
     pointer-events: none;
   }
 
-  /* ---- feature vignettes ---- */
-  /* same construction as the hero: viz canvas confined to one side, a solid
-     panel (the copy) hard-masks the other — alternating sides per section. */
-  /* 1px separator after every feature vignette + alternating background:
-     viz-left sections (02/04/06) lift to --panel; the copy mask follows it. */
-  .vignette.viz-right, .vignette.viz-left {
+  /* ---- home blocks: plugins + tools. same column as the news block (1280
+     container, --ns-gutter inside it). a kicker + one-line lede, then a grid
+     of cards — a framed picture, the name, one line of what it is. ---- */
+  .home-block {
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-  }
-  .vignette.viz-left {
-    --panel: #0a0a0a;
-    background: var(--panel);
-  }
-  /* the copy locks to the site column (nav + news block: a 1280 container
-     with --ns-gutter inside it) — its text edge lands on the same x as the
-     nav links and the news rows. the panel is 38% of the column's text width;
-     the viz takes the remainder and bleeds from the panel's inner edge to the
-     viewport edge on its side. */
-  .vignette {
-    --col: min(1280px, 100vw);
-    --col-x: calc((100vw - var(--col)) / 2 + var(--ns-gutter, 40px)); /* column text edge */
-    --col-w: calc(var(--col) - 2 * var(--ns-gutter, 40px));            /* column text width */
-    --copy-w: calc(var(--col-w) * 0.38);
-  }
-  .vignette .viz {
-    position: absolute;
-    top: 0;
-    height: 100%;
-    z-index: 0;
-    pointer-events: none;
-  }
-  /* canvas is a replaced element — left+right won't size it, so width is explicit */
-  .vignette .viz { width: calc(100% - var(--col-x) - var(--copy-w)); }
-  .vignette.viz-right .viz { right: 0; }
-  .vignette.viz-left  .viz { left: 0; }
-
-  .vignette .copy {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: var(--copy-w);
-    z-index: 1;
-    background: var(--panel, var(--bg));
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 72px 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
-  .vignette.viz-right .copy { left: var(--col-x); padding-right: 64px; }
-  .vignette.viz-left  .copy { right: var(--col-x); padding-left: 64px; }
-
-  .copy h2 {
-    font-family: "zxx-sans", ui-monospace, monospace;
-    /* sized against the copy panel (38% of the column text width, 456px max):
-       "sequence" (8 chars) must fit inside it minus padding at every viewport */
-    font-size: clamp(38px, 4.2vw, 72px);
-    line-height: 1;
-    letter-spacing: 0.01em;
-    font-weight: normal;
+  #home-tools { background: #0a0a0a; }
+  .home-block .hb-inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 56px var(--ns-gutter, 20px) 64px;
+  }
+  .home-block .hb-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px 32px;
     margin: 0 0 28px;
+  }
+  .home-block .hb-kicker {
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    color: #eee;
+    margin: 0;
+  }
+  .home-block .hb-lede {
+    font-size: 12px;
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+    color: #666;
+    margin: 0;
+  }
+  .plug-grid, .tool-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 40px 28px;
+  }
+  .tool-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .home-block .card {
+    display: flex;
+    flex-direction: column;
+    color: inherit;
+    text-decoration: none;
+    min-width: 0;
+  }
+  .home-block .card .shot {
+    display: block;
+    position: relative;
+    aspect-ratio: 16 / 10;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: #050505;
+    margin-bottom: 18px;
+    overflow: hidden;
+    transition: border-color 120ms ease;
+  }
+  .home-block a.card:hover .shot, .home-block a.card:focus-visible .shot { border-color: rgba(255, 255, 255, 0.55); }
+  .home-block a.card:focus-visible { outline: none; }
+  .home-block .card .shot canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  /* editor screenshots carry their own frame line (cropped to it for the
+     plugins page) — no second border around them, no inset. they letterbox
+     top-left in a 3:2 box so the names line up across the row. */
+  #home-plugins .card .shot { aspect-ratio: 3 / 2; border: 0; background: none; }
+  .home-block .card .shot img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: left top;
+    opacity: 0.85;
+    transition: opacity 120ms ease;
+  }
+  .home-block a.card:hover .shot img { opacity: 1; }
+  .home-block .c-t {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: 26px;
+    line-height: 28px; /* fixed so font swaps can't shift the box */
+    letter-spacing: 0.01em;
+    margin-bottom: 10px;
     user-select: none;
   }
-  .copy h2 span { display: inline-block; }
-  .copy .badge {
+  .home-block .c-t span { vertical-align: top; }
+  .home-block .c-d {
+    font-size: 12px;
+    line-height: 1.65;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.6);
+    max-width: 46ch;
+    transition: color 120ms ease;
+  }
+  .home-block a.card:hover .c-d { color: rgba(255, 255, 255, 0.85); }
+  .home-block .badge {
     display: inline-block;
-    width: fit-content;
-    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    line-height: 1;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     border: 1px solid rgba(255, 255, 255, 0.45);
-    padding: 6px 10px;
-    margin: 0 0 26px;
+    padding: 5px 8px;
+    margin-left: 14px;
+    vertical-align: 5px !important;
     opacity: 0.85;
   }
-  .copy p {
-    font-size: 13px;
-    line-height: 1.7;
-    letter-spacing: 0.02em;
-    color: rgba(255, 255, 255, 0.78);
-    max-width: 44ch;
-    margin: 0 0 14px;
-  }
-  .copy .cta {
-    display: inline-flex;
-    width: fit-content;
-    margin-top: 26px;
-    padding: 16px 22px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    color: var(--fg);
+  .home-block .hb-more {
+    display: inline-block;
+    margin-top: 32px;
+    font-size: 12px;
+    color: #666;
     text-decoration: none;
-    font-size: 13px;
-    line-height: 18px;
-    letter-spacing: 0.04em;
-    cursor: pointer;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
   }
-  .copy .cta span { vertical-align: top; height: 18px; line-height: 18px; } /* same baseline lock as #subscribe */
-  .copy .aux {
-    margin-top: 20px;
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    opacity: 0.5;
+  .home-block .hb-more:hover { color: #ddd; border-bottom-color: rgba(255, 255, 255, 0.7); }
+  @media (max-width: 1100px) {
+    .plug-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  .copy .aux a {
-    color: inherit;
-    text-decoration: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  @media (max-width: 640px) {
+    .plug-grid, .tool-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
   }
-  .copy .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
 
   /* mobile */
   @media (max-width: 640px) {
@@ -428,23 +444,6 @@
     #scroll-hint { bottom: 20px; }
   }
 
-  /* stacked vignettes: viz full-bleed behind, copy bottom-anchored over a
-     gradient so the hard side-mask construction relaxes into a fade.
-     the side-by-side layout gets cramped below ~1164 — stack from there. */
-  @media (max-width: 1164px) {
-    /* selectors carry the side class so they out-specify the side rules above */
-    .vignette.viz-right .viz, .vignette.viz-left .viz { width: 100%; left: 0; right: 0; }
-    .vignette.viz-right .copy, .vignette.viz-left .copy {
-      left: 0;
-      right: 0;
-      top: auto;
-      bottom: 0;
-      width: 100%;
-      background: linear-gradient(rgba(5, 5, 5, 0) 0%, rgba(5, 5, 5, 0.9) 30%, var(--panel, var(--bg)) 65%);
-      justify-content: flex-end;
-      padding: 120px var(--ns-gutter, 28px) 52px;
-    }
-  }
 </style>
 </head>
 <body>
@@ -507,83 +506,97 @@ fetch("news-latest.html")
   .catch(() => {}); // no snippet → section stays hidden
 </script>
 
-<section class="vignette viz-right" id="v-sequence">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>sequence</h2>
-    <span class="badge">coming soon</span>
-    <p>a step sequencer with a chord-relative harmonic engine. set a root and a scale, author chords by degree — the rest of the band harmonizes against whatever played last.</p>
-    <p>built to play itself, mostly: mutation dials on every row, five global macros, sixteen banks. arriving as a native macos app.</p>
+<!-- plugins: the four free au/vst3 effects. cards jump to their section on
+     plugins.html; the editor screenshots are the plugins page's own. -->
+<section class="home-block" id="home-plugins" aria-label="plugins">
+  <div class="hb-inner">
+    <div class="hb-head">
+      <h2 class="hb-kicker">// PLUGINS</h2>
+      <p class="hb-lede">four free audio effects for macos — au + vst3, apple silicon + intel. free for everything, commercial or not.</p>
+    </div>
+    <div class="plug-grid">
+      <a class="card" href="plugins.html#vibe">
+        <span class="shot"><img src="assets/plugins/vibe.png" alt="the vibe plugin ui" loading="lazy"></span>
+        <span class="c-t" data-link>vibe</span>
+        <span class="c-d">tape loop, tempo-synced repeat, big plate. put it on your master bus, probably.</span>
+      </a>
+      <a class="card" href="plugins.html#saturate">
+        <span class="shot"><img src="assets/plugins/saturate.png" alt="the saturate plugin ui" loading="lazy"></span>
+        <span class="c-t" data-link>saturate</span>
+        <span class="c-d">drive into a squelching filter, with a micro-loop that grabs slices on threshold.</span>
+      </a>
+      <a class="card" href="plugins.html#slice">
+        <span class="shot"><img src="assets/plugins/slice.png" alt="the slice plugin ui" loading="lazy"></span>
+        <span class="c-t" data-link>slice</span>
+        <span class="c-d">hide messages in music — morse, bits, or any numbers you paste, as rhythm.</span>
+      </a>
+      <a class="card" href="plugins.html#glitch">
+        <span class="shot"><img src="assets/plugins/glitch.png" alt="the glitch plugin ui" loading="lazy"></span>
+        <span class="c-t" data-link>glitch</span>
+        <span class="c-d">audio destruction masquerading as a step sequencer.</span>
+      </a>
+    </div>
+    <a class="hb-more" href="plugins.html">download the plugins →</a>
   </div>
 </section>
 
-<section class="vignette viz-left" id="v-texture">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>texture</h2>
-    <p>a loop mangler in the browser — drop any audio file, select the slice you want, pull it apart: vari-speed tape, a granular cloud, a self-oscillating noise filter.</p>
-    <p>print the result as a longer texture wav — one full pass at whatever speed you've bent it to.</p>
-    <a class="cta" href="texture.html" data-link>open the tool</a>
-  </div>
-</section>
-
-<section class="vignette viz-right" id="v-slice">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>slice</h2>
-    <p>a pattern slicer — type a message and it plays as morse rhythm, locked to a clock you set. run the internal tone, or drop a loop and let the phrase gate, chop, or scan it.</p>
-    <p>a mangle stage flips, ratchets, and drops symbols — or scrambles the message itself pass by pass until it erodes into noise. feed it a dataset and the numbers play instead.</p>
-    <a class="cta" href="slice.html" data-link>open the tool</a>
-  </div>
-</section>
-
-<section class="vignette viz-left" id="v-decay">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>decay</h2>
-    <p>disintegration loops — drop a loop and let the tape rot. wear lands where it already hurts, pass after pass: dropouts, stutters, muffled patches, until the loop plays itself to silence.</p>
-    <p>nothing is immediate; everything accumulates. print the whole collapse as one wav — a handful of passes, or the full run to silence.</p>
-    <a class="cta" href="decay.html" data-link>open the tool</a>
-  </div>
-</section>
-
-<section class="vignette viz-right" id="v-drone">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>drone</h2>
-    <p>a breathing drone instrument — one tone, six harmonics, each swelling on its own slow clock, never twice the same balance. twist the spectrum, the width, the breath; reroll the seed for a new performance of the same tone.</p>
-    <p>when it's right, export the kit: nine note-named single-tone wavs, seamless loops — built for sequence's pad instruments, ready for any sampler.</p>
-    <a class="cta" href="drone.html" data-link>open the tool</a>
-  </div>
-</section>
-
-<section class="vignette viz-left" id="v-glitch">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>glitch</h2>
-    <p>audio destruction — drop a wav, get a worse wav. six stages in a fixed order: crush, noise, drive, chop, glitch, feedback. draw blocks into the lanes to say where each one hits; every block carries its own settings.</p>
-    <p>every pass mutates what you drew. loop a region, lock the grid to the file's bpm, reseed for a random set. print the last pass, or the whole arc, as one wav.</p>
-    <a class="cta" href="glitch.html" data-link>open the tool</a>
-  </div>
-</section>
-
-<section class="vignette viz-right" id="v-samples">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>sample</h2>
-    <p>the newspeech sample library — kits recorded from the rack, sliced and note-named for hardware and software samplers.</p>
-    <p>audition every hit in the browser, pull single files or zip whole packs. free under cc by-sa 4.0.</p>
-    <a class="cta" href="samples.html" data-link>open the library</a>
-  </div>
-</section>
-
-<section class="vignette viz-left" id="v-visuals">
-  <canvas class="viz"></canvas>
-  <div class="copy">
-    <h2 data-link>visual</h2>
-    <p>eighteen audio-reactive visualizers, all plain 2d canvas. mic-driven intensity, tap tempo, midi-mappable params, haze and grain over everything.</p>
-    <p>twelve self-contained signal fields plus six that eat a live video source — edges, slitscan, pixelsort, blockshuffle.</p>
-    <a class="cta" href="visualizers.html" data-link>browse the index</a>
+<!-- tools: every browser tool, the library and the visualizers in one grid.
+     each card's canvas is a live miniature of the tool (draw fns below);
+     they only render while on-screen. -->
+<section class="home-block" id="home-tools" aria-label="tools">
+  <div class="hb-inner">
+    <div class="hb-head">
+      <h2 class="hb-kicker">// TOOLS</h2>
+      <p class="hb-lede">instruments that run in the browser — nothing to install. drop in a sound, wreck it, print a wav.</p>
+    </div>
+    <div class="tool-grid">
+      <a class="card" id="v-texture" href="texture.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>texture</span>
+        <span class="c-d">a loop mangler — vari-speed tape, a granular cloud, a self-oscillating noise filter.</span>
+      </a>
+      <a class="card" id="v-slice" href="slice.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>slice</span>
+        <span class="c-d">a pattern slicer — messages and data as tempo-locked rhythm.</span>
+      </a>
+      <a class="card" id="v-decay" href="decay.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>decay</span>
+        <span class="c-d">disintegration loops — let the tape rot until it plays itself to silence.</span>
+      </a>
+      <a class="card" id="v-drone" href="drone.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>drone</span>
+        <span class="c-d">a breathing drone — six harmonics on their own slow clocks. export the kit.</span>
+      </a>
+      <a class="card" id="v-glitch" href="glitch.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>glitch</span>
+        <span class="c-d">audio destruction — draw where each stage hits; every pass mutates.</span>
+      </a>
+      <a class="card" id="v-stretch" href="stretch.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>stretch</span>
+        <span class="c-d">sampler timestretch — akai block splicing, pushed until it breaks, out through a 12- or 8-bit converter.</span>
+      </a>
+      <a class="card" id="v-samples" href="samples.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>samples</span>
+        <span class="c-d">the sample library — kits recorded from the rack, note-named for any sampler. free under cc by-sa.</span>
+      </a>
+      <a class="card" id="v-visuals" href="visualizers.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>visuals</span>
+        <span class="c-d">audio-reactive visualizers, all plain 2d canvas — mic, tap tempo, midi-mappable.</span>
+      </a>
+      <!-- no page yet — the nav's "sequence" link anchors here -->
+      <div class="card soon" id="v-sequence">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t">sequence<span class="badge">coming soon</span></span>
+        <span class="c-d">a step sequencer with a chord-relative harmonic engine, built to play itself. a native macos app.</span>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1427,9 +1440,10 @@ poisson(
   }
 );
 
-// ================= feature vignettes =================
-// each section below the hero owns a canvas + draw function. they share the
-// page intensity envelope and only render while their section is on-screen.
+// ================= tool cards =================
+// each card in the tools grid owns a canvas + draw function — a live
+// miniature of the tool. they share the page intensity envelope and only
+// render while their card is on-screen.
 
 const heroSection = document.getElementById("hero");
 let heroVisible = true;
@@ -1449,13 +1463,14 @@ poisson(
 );
 
 const vizSections = [];
-function registerViz(sectionId, draw) {
-  const section = document.getElementById(sectionId);
-  const cv = section.querySelector("canvas.viz");
+function registerViz(cardId, draw) {
+  const card = document.getElementById(cardId);
+  const cv = card.querySelector("canvas.viz");
   const vctx = cv.getContext("2d");
   const v = { draw, ctx: vctx, w: 0, h: 0, visible: false, state: {} };
   function fit() {
     const r = cv.getBoundingClientRect();
+    if (Math.round(r.width) === Math.round(v.w) && Math.round(r.height) === Math.round(v.h)) return;
     v.w = r.width;
     v.h = r.height;
     cv.width = Math.max(1, Math.floor(r.width * dpr));
@@ -1463,12 +1478,13 @@ function registerViz(sectionId, draw) {
     vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     v.state = {}; // layout-dependent state rebuilds lazily on next draw
   }
-  window.addEventListener("resize", fit);
+  // the grid reflows at its breakpoints without a window resize of note
+  new ResizeObserver(fit).observe(cv);
   fit();
   new IntersectionObserver(
     (entries) => { v.visible = entries[0].isIntersecting; },
     { threshold: 0.02 }
-  ).observe(section);
+  ).observe(card);
   vizSections.push(v);
 }
 
@@ -1506,12 +1522,10 @@ function drawSeqViz(v, t, dt) {
   state.pulse *= Math.pow(0.001, dt);
 
   c.clearRect(0, 0, w, h);
-  // narrow canvases have the copy panel over their lower half — bias up
-  const mobile = w < 720;
-  const cs = Math.min((w * (mobile ? 0.86 : 0.72)) / COLS, (h * 0.62) / ROWS);
+  const cs = Math.min((w * 0.84) / COLS, (h * 0.62) / ROWS);
   const gap = cs * 0.18;
   const gw = COLS * cs, gh = ROWS * cs;
-  const gx = (w - gw) / 2, gy = (mobile ? h * 0.26 : h / 2) - gh / 2;
+  const gx = (w - gw) / 2, gy = h / 2 - gh / 2 + 6; // +6: room for the readout
 
   c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
   c.textBaseline = "alphabetic";
@@ -1663,15 +1677,12 @@ function drawVisualsViz(v, t, dt) {
   const { ctx: c, w, h, state } = v;
   if (!state.tiles) {
     const kinds = ["streaks", "grid", "rings", "stars", "swarm", "chevron"];
-    // narrow canvases have the copy panel over their lower half — pack the
-    // tile wall 3-wide into the top region instead of centering it
-    const mobile = w < 720;
-    const cols = (w >= h || mobile) ? 3 : 2;
+    const cols = w >= h ? 3 : 2;
     const rows = Math.ceil(kinds.length / cols);
-    const tw = (w * (mobile ? 0.92 : 0.86)) / cols;
-    const th = (mobile ? h * 0.40 : h * 0.72) / rows;
+    const tw = (w * 0.9) / cols;
+    const th = (h * 0.84) / rows;
     const ox = (w - tw * cols) / 2;
-    const oy = mobile ? h * 0.07 : (h - th * rows) / 2;
+    const oy = (h - th * rows) / 2;
     state.tiles = kinds.map((kind, i) => ({
       kind,
       x: ox + (i % cols) * tw + TILE_GAP / 2,
@@ -1750,9 +1761,8 @@ function drawSamplesViz(v, t, dt) {
   }
 
   c.clearRect(0, 0, w, h);
-  // narrow canvases have the copy panel over their lower half — bias up
-  const midY = w < 720 ? h * 0.27 : h / 2;
-  const amp = h * (w < 720 ? 0.14 : 0.22);
+  const midY = h / 2 + 8; // +8: the slice labels ride above
+  const amp = h * 0.22;
   const px = (i) => x0 + (i / N) * (x1 - x0);
 
   for (let i = 0; i < N; i++) {
@@ -1767,12 +1777,15 @@ function drawSamplesViz(v, t, dt) {
   c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
+  let labelEnd = -Infinity;
   for (let si = 0; si < state.slices.length; si++) {
     const s = state.slices[si];
     const x = px(s.i);
     c.fillStyle = `rgba(255, 255, 255, ${(0.3 + 0.7 * s.flash).toFixed(3)})`;
     c.fillRect(x, midY - amp - 26, 1, amp * 2 + 40);
-    if (w < 640 && si % 2) continue; // thin labels out on narrow canvases
+    // thin the labels out wherever one would run into the last one drawn
+    if (x + 5 < labelEnd + 12) continue;
+    labelEnd = x + 5 + c.measureText(s.label).width;
     c.fillStyle = `rgba(255, 255, 255, ${(0.35 + 0.6 * s.flash).toFixed(3)})`;
     c.fillText(s.label, x + 5, midY - amp - 30);
   }
@@ -1831,9 +1844,8 @@ function drawTextureViz(v, t, dt) {
   }
 
   c.clearRect(0, 0, w, h);
-  const mobile = w < 720;
-  const midY = mobile ? h * 0.27 : h / 2;
-  const amp = h * (mobile ? 0.15 : 0.24);
+  const midY = h / 2 - 6; // -6: the selection readout sits under
+  const amp = h * 0.22;
   const N = state.wave.length;
   const px = (f) => x0 + f * (x1 - x0);
 
@@ -1884,10 +1896,10 @@ function drawTextureViz(v, t, dt) {
   c.textBaseline = "alphabetic";
   c.fillStyle = "rgba(255, 255, 255, 0.4)";
   const secs = (f) => (f * state.dur).toFixed(3);
-  c.fillText(
-    `${secs(state.selA)}s – ${secs(state.selB)}s · ${secs(state.selB - state.selA)}s · ${state.dir < 0 ? "−" : "+"}1x`,
-    px(state.selA), midY + amp + 34,
-  );
+  const readout = `${secs(state.selA)}s – ${secs(state.selB)}s · ${secs(state.selB - state.selA)}s · ${state.dir < 0 ? "−" : "+"}1x`;
+  // follows the selection but never runs off the card's right edge
+  const rx = Math.min(px(state.selA), w - c.measureText(readout).width - 10);
+  c.fillText(readout, Math.max(10, rx), midY + amp + 34);
 }
 
 // ---- 03 slice: NEWSPEECH as a morse lane over a beat grid — playhead
@@ -1944,11 +1956,10 @@ function drawSliceViz(v, t, dt) {
   const { evs, span, total } = state.pat;
 
   c.clearRect(0, 0, w, h);
-  const mobile = w < 720;
-  const laneW = w * (mobile ? 0.9 : 0.72);
+  const laneW = w * 0.88;
   const lx = (w - laneW) / 2;
-  const ly = mobile ? h * 0.30 : h / 2;
-  const dahH = Math.min(110, h * (mobile ? 0.14 : 0.20));
+  const ly = h / 2 + 18; // the letters + readout ride above the lane
+  const dahH = Math.min(110, h * 0.18);
   const ditH = dahH * 0.55;
   const uW = laneW / total;
 
@@ -1966,7 +1977,7 @@ function drawSliceViz(v, t, dt) {
   }
 
   // the message, letters over their own morse; corrupted letters struck
-  c.font = `${mobile ? 13 : 16}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  c.font = `13px ui-monospace, SFMono-Regular, Menlo, monospace`;
   c.textAlign = "center";
   let litCi = -1;
   for (const ev of evs) {
@@ -2047,11 +2058,10 @@ function drawDecayViz(v, t, dt) {
   }
 
   c.clearRect(0, 0, w, h);
-  const mobile = w < 720;
-  const laneW = w * (mobile ? 0.9 : 0.72);
+  const laneW = w * 0.88;
   const lx = (w - laneW) / 2;
-  const ly = mobile ? h * 0.32 : h / 2;
-  const amp = Math.min(120, h * (mobile ? 0.15 : 0.22));
+  const ly = h / 2 + 8;
+  const amp = Math.min(120, h * 0.24);
   const cw = laneW / COLS + 0.5;
 
   let health = 0;
@@ -2122,11 +2132,10 @@ function drawDroneViz(v, t, dt) {
   if (state.age > 24) state.reseed(); // a new performance of the same chord
   const env = intensity();
   c.clearRect(0, 0, w, h);
-  const mobile = w < 720;
-  const laneW = w * (mobile ? 0.82 : 0.6);
+  const laneW = w * 0.8;
   const lx = (w - laneW) / 2;
-  const baseY = mobile ? h * 0.52 : h * 0.68;
-  const maxH = Math.min(260, h * (mobile ? 0.34 : 0.5));
+  const baseY = h * 0.84;
+  const maxH = Math.min(260, h * 0.58);
   const n = DRONE_AMPS.length;
   const bw = laneW / (n * 2);
 
@@ -2227,12 +2236,12 @@ function drawGlitchViz(v, t, dt) {
   }
 
   c.clearRect(0, 0, w, h);
-  const mobile = w < 720;
-  const laneW = w * (mobile ? 0.88 : 0.7);
-  const lx = (w - laneW) / 2;
+  // lane labels hang left of the lanes — shift the block right to fit them
+  const laneW = w * 0.78 - 40;
+  const lx = (w - laneW) / 2 + 20;
   const rows = GLITCH_LANES.length;
-  const rowH = Math.min(34, (h * (mobile ? 0.42 : 0.6)) / rows);
-  const top = (mobile ? h * 0.34 : h / 2) - (rowH * rows) / 2;
+  const rowH = Math.min(34, (h * 0.66) / rows);
+  const top = h / 2 + 8 - (rowH * rows) / 2;
   const cw = laneW / CELLS;
   const headCell = state.pos * CELLS;
 
@@ -2271,12 +2280,120 @@ function drawGlitchViz(v, t, dt) {
   c.fillRect(lx + state.pos * laneW, top - 4, 1.5, rowH * rows + 4);
 }
 
+// ---- stretch: a drum-ish loop actually run through the cyclic stretch (the
+// og-stretch comp, animated) — every hit comes back as a flam of repeated
+// blocks, bar heights stepped like the coarse converter. the playhead sweeps
+// the stretched pass; each wrap re-rolls the ratio, the bit depth and where
+// the loop sits in the file (the overview strip underneath) ----
+const STRETCH_RATIOS = [1.5, 2, 3, 4];
+function stretchPass(state) {
+  const src = state.src, N = src.length;
+  const LEN = 2000;
+  const LS = Math.floor(Math.random() * (N - LEN));
+  const S = STRETCH_RATIOS[(Math.random() * STRETCH_RATIOS.length) | 0];
+  const L = 260, XF = 20, H = L - XF;
+  const OUT = Math.floor(LEN * S);
+  const out = new Float32Array(OUT);
+  for (let t0 = 0; t0 < OUT; t0 += H) {
+    const at = Math.floor(t0 / S);
+    for (let a = 0; a < L && t0 + a < OUT; a++) {
+      let w = 1;
+      if (a < XF) w = 0.5 - 0.5 * Math.cos((Math.PI * a) / XF);
+      else if (a >= L - XF) w = 0.5 - 0.5 * Math.cos((Math.PI * (L - a)) / XF);
+      out[t0 + a] += src[LS + ((at + a) % LEN)] * w;
+    }
+  }
+  state.ls = LS / N;
+  state.le = (LS + LEN) / N;
+  state.ratio = S;
+  state.bits = Math.random() < 0.6 ? 12 : 8;
+  state.rate = ["30k", "15k", "8k"][(Math.random() * 3) | 0];
+  state.out = out;
+  state.pos = 0;
+}
+function drawStretchViz(v, t, dt) {
+  const { ctx: c, w, h, state } = v;
+  const laneW = w * 0.86;
+  const lx = (w - laneW) / 2;
+  if (!state.src) {
+    const N = 8000;
+    const src = new Float32Array(N);
+    for (let hIdx = 150; hIdx < N; hIdx += 280 + ((Math.random() * 5) | 0) * 140) {
+      const amp = 0.55 + 0.45 * Math.random();
+      const dec = 45 + Math.random() * 130;
+      for (let i = 0; i < 550 && hIdx + i < N; i++) src[hIdx + i] += (Math.random() * 2 - 1) * amp * Math.exp(-i / dec);
+    }
+    for (let i = 0; i < N; i++) src[i] += Math.sin(i * 0.05) * 0.05;
+    state.src = src;
+    // the overview is fixed — only the loop bracket moves
+    const OC = Math.max(60, Math.floor(laneW / 3)), op = N / OC;
+    state.over = new Float32Array(OC);
+    for (let k = 0; k < OC; k++) {
+      let mx = 0;
+      for (let i = Math.floor(k * op); i < Math.floor((k + 1) * op); i++) mx = Math.max(mx, Math.abs(src[i]));
+      state.over[k] = mx;
+    }
+    stretchPass(state);
+  }
+  const env = intensity();
+  // one pass of the stretched loop takes ~2.4s per 100% at env 0.5
+  state.pos += dt / (1.2 * state.ratio) * (0.6 + 0.8 * env);
+  if (state.pos >= 1) stretchPass(state);
+
+  c.clearRect(0, 0, w, h);
+  const amp = h * 0.2;
+  const midY = h * 0.44;
+
+  c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+  c.fillStyle = "rgba(255, 255, 255, 0.35)";
+  c.fillText(`${Math.round(state.ratio * 100)}% · ${state.bits}-bit ${state.rate}`, lx, midY - amp - 14);
+
+  // the stretched pass — stepped like a coarse converter, lit behind the head
+  const out = state.out, OUT = out.length;
+  const COLS = Math.max(60, Math.floor(laneW / 2.5));
+  const cw = laneW / COLS + 0.5;
+  const STEP = amp / (state.bits === 12 ? 9 : 4);
+  const per = OUT / COLS;
+  for (let k = 0; k < COLS; k++) {
+    let mx = 0;
+    for (let i = Math.floor(k * per); i < Math.floor((k + 1) * per); i++) mx = Math.max(mx, Math.abs(out[i]));
+    const bh = Math.max(1, Math.round((mx * amp) / STEP) * STEP);
+    c.fillStyle = k / COLS < state.pos ? "rgba(255, 255, 255, 0.72)" : "rgba(255, 255, 255, 0.22)";
+    c.fillRect(lx + (k / COLS) * laneW, midY - bh, cw, bh * 2);
+  }
+
+  // overview strip: the whole file, the loop lit and bracketed
+  const OY = midY + amp + 22, OH = Math.max(14, h * 0.1);
+  const OC = state.over.length, ocw = laneW / OC + 0.5;
+  const bx0 = lx + state.ls * laneW, bx1 = lx + state.le * laneW;
+  for (let k = 0; k < OC; k++) {
+    const x = lx + (k / OC) * laneW;
+    const inside = x + ocw / 2 >= bx0 && x + ocw / 2 <= bx1;
+    const bh = Math.max(1, state.over[k] * OH * 0.45);
+    c.fillStyle = inside ? "rgba(255, 255, 255, 0.45)" : "rgba(255, 255, 255, 0.14)";
+    c.fillRect(x, OY + OH / 2 - bh, ocw, bh * 2);
+  }
+  c.fillStyle = "rgba(255, 255, 255, 0.06)";
+  c.fillRect(bx0, OY, bx1 - bx0, OH);
+  c.fillStyle = "rgba(255, 255, 255, 0.45)";
+  c.fillRect(bx0, OY, 1, OH);
+  c.fillRect(bx1 - 1, OY, 1, OH);
+
+  // playhead — the one bright line, on the pass and on the loop
+  c.fillStyle = "#fff";
+  c.fillRect(lx + state.pos * laneW, midY - amp - 6, 1.5, amp * 2 + 12);
+  c.fillRect(bx0 + state.pos * (bx1 - bx0), OY, 1, OH);
+}
+
 registerViz("v-sequence", drawSeqViz);
 registerViz("v-texture", drawTextureViz);
 registerViz("v-slice", drawSliceViz);
 registerViz("v-decay", drawDecayViz);
 registerViz("v-drone", drawDroneViz);
 registerViz("v-glitch", drawGlitchViz);
+registerViz("v-stretch", drawStretchViz);
 registerViz("v-samples", drawSamplesViz);
 registerViz("v-visuals", drawVisualsViz);
 
@@ -2333,8 +2450,9 @@ async function setupLinks() {
     // data-no-hover: keep the ambient scramble but skip the font-cycle hover
     // (subscribe label — it's copy, not a control)
     const hover = !link.hasAttribute("data-no-hover");
+    const hoverEl = link.closest(".card") || link; // a card title cycles on the whole card
     let timer = null;
-    if (hover) link.addEventListener("mouseenter", () => {
+    if (hover) hoverEl.addEventListener("mouseenter", () => {
       if (timer) return;
       timer = setInterval(() => {
         for (let i = 0; i < charSpans.length; i++) {
@@ -2343,7 +2461,7 @@ async function setupLinks() {
         }
       }, LINK_CYCLE_MS);
     });
-    if (hover) link.addEventListener("mouseleave", () => {
+    if (hover) hoverEl.addEventListener("mouseleave", () => {
       clearInterval(timer);
       timer = null;
       for (const s of charSpans) s.style.fontFamily = "";

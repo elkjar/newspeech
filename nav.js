@@ -31,9 +31,9 @@
 
   // wordmark | links — links drive straight into the pages; sequence is the
   // one exception (no standalone page yet — it anchors to its homepage
-  // vignette). the five browser tools collapse under a "tools" trigger that
+  // vignette). the six browser tools collapse under a "tools" trigger that
   // opens the mega panel below the bar (desktop) — one bar slot instead of
-  // five. socials are icons (no data-ns-link — the text treatment skips them).
+  // six. socials are icons (no data-ns-link — the text treatment skips them).
   const TOOLS = [
     { page: "texture.html", name: "texture",
       dek: "a loop mangler — vari-speed tape, a granular cloud, a noise filter." },
@@ -45,6 +45,8 @@
       dek: "a breathing drone — six harmonics on their own slow clocks. export the kit." },
     { page: "glitch.html",  name: "glitch",
       dek: "audio destruction — draw where each stage hits; every pass mutates." },
+    { page: "stretch.html", name: "stretch",
+      dek: "sampler timestretch — akai block splicing, pushed until it breaks." },
   ];
   const IN_TOOLS = TOOLS.some((t) => t.page === PAGE);
   const ICON_CARET = `<svg class="ns-caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;
@@ -57,6 +59,7 @@
     `<div id="ns-tools"${IN_TOOLS ? " class=\"current\"" : ""}>` +
     `<button id="ns-tools-btn" aria-expanded="false" aria-controls="ns-mega" aria-haspopup="true">` +
     `<span data-ns-link>tools</span>${ICON_CARET}</button></div>` +
+    `<a href="${ROOT}plugins.html"${here("plugins.html")} data-ns-link>plugins</a>` +
     `<a href="${ROOT}samples.html"${here("samples.html")} data-ns-link>samples</a>` +
     `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
     `<span class="ns-socials">` +
@@ -330,7 +333,7 @@
   }
   #ns-mega .mega-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
   #ns-mega .mega-card {
     display: block;
@@ -457,6 +460,7 @@
     `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link" href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}">sequence</a>` +
     `<button class="ov-link ov-tools-btn${IN_TOOLS ? " current" : ""}" aria-expanded="false" aria-controls="ns-ov-tools">tools${ICON_CARET}</button>` +
+    `<a class="ov-link${cur("plugins.html")}" href="${ROOT}plugins.html">plugins</a>` +
     `<a class="ov-link${cur("samples.html")}" href="${ROOT}samples.html">samples</a>` +
     `<a class="ov-link${cur("visualizers.html")}" href="${ROOT}visualizers.html">visuals</a>` +
     `</div>` +
