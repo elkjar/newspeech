@@ -31,41 +31,26 @@
 
   // wordmark | links — links drive straight into the pages; sequence is the
   // one exception (no standalone page yet — it anchors to its homepage
-  // vignette). the five browser tools collapse under a "tools" trigger that
-  // opens the mega panel below the bar (desktop) — one bar slot instead of
-  // five. socials are icons (no data-ns-link — the text treatment skips them).
-  const TOOLS = [
-    { page: "texture.html", name: "texture",
-      dek: "a loop mangler — vari-speed tape, a granular cloud, a noise filter." },
-    { page: "slice.html",   name: "slice",
-      dek: "a pattern slicer — messages and data as tempo-locked rhythm." },
-    { page: "decay.html",   name: "decay",
-      dek: "disintegration loops — let the tape rot until it plays itself to silence." },
-    { page: "drone.html",   name: "drone",
-      dek: "a breathing drone — six harmonics on their own slow clocks. export the kit." },
-    { page: "glitch.html",  name: "glitch",
-      dek: "audio destruction — draw where each stage hits; every pass mutates." },
-  ];
-  const IN_TOOLS = TOOLS.some((t) => t.page === PAGE);
-  const ICON_CARET = `<svg class="ns-caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;
+  // vignette). "tools" is the index (tools.html) of the browser tools, the
+  // sample library and the visualizers, and stays lit on every one of them. socials are icons (no data-ns-link — the
+  // text treatment skips them).
+  const TOOL_PAGES = ["tools.html", "texture.html", "slice.html", "decay.html", "drone.html", "glitch.html", "stretch.html", "samples.html", "visualizers.html"];
+  const IN_TOOLS = TOOL_PAGES.includes(PAGE);
   const ICON_IG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" stroke="none"/></svg>`;
   const ICON_YT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z" fill="currentColor" stroke="none"/></svg>`;
   const ICON_DC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M7.4 6.1Q12 5 16.6 6.1Q20.2 10.4 20.5 16.4Q18.6 17.9 16.1 18.6L15.1 16.9Q12 17.7 8.9 16.9L7.9 18.6Q5.4 17.9 3.5 16.4Q3.8 10.4 7.4 6.1Z"/><ellipse cx="9.2" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/><ellipse cx="14.8" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/></svg>`;
   const PAGES =
     `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
     `<a href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}" data-ns-link>sequence</a>` +
-    `<div id="ns-tools"${IN_TOOLS ? " class=\"current\"" : ""}>` +
-    `<button id="ns-tools-btn" aria-expanded="false" aria-controls="ns-mega" aria-haspopup="true">` +
-    `<span data-ns-link>tools</span>${ICON_CARET}</button></div>` +
-    `<a href="${ROOT}samples.html"${here("samples.html")} data-ns-link>samples</a>` +
-    `<a href="${ROOT}visualizers.html"${here("visualizers.html")} data-ns-link>visuals</a>` +
+    `<a href="${ROOT}tools.html"${IN_TOOLS ? " class=\"current\"" : ""} data-ns-link>tools</a>` +
+    `<a href="${ROOT}plugins.html"${here("plugins.html")} data-ns-link>plugins</a>` +
     `<span class="ns-socials">` +
     `<a class="ns-icon" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a class="ns-icon" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
     `<a class="ns-icon" href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>` +
     `</span>`;
 
-  // burger breakpoint: the ~380px wordmark + six links + socials wrap below this
+  // burger breakpoint: the ~380px wordmark + the links + socials wrap below this
   const BREAK = 1100;
 
   const css = `
@@ -91,9 +76,7 @@
   #ns-top.nav-hidden { transform: translateY(-100%); }
   /* glass: over a page's [data-ns-glass] element (the homepage hero video) the
      bar drops its fill + rule and floats on a soft top scrim; it turns solid
-     again as soon as that element scrolls out from under it, or while the
-     tools panel is open (a solid panel hanging off a see-through bar reads
-     wrong). */
+     again as soon as that element scrolls out from under it. */
   #ns-top.ns-glass {
     background: linear-gradient(rgba(5, 5, 5, 0.55), rgba(5, 5, 5, 0));
     /* the gradient must span the BORDER box: sized to the padding box it
@@ -106,7 +89,6 @@
   /* glass sits on moving video, so the resting links go to true white for
      contrast (they rest at 0.5 over the solid bar). */
   #ns-top.ns-glass #ns-links a[data-ns-link],
-  #ns-top.ns-glass #ns-tools-btn,
   #ns-top.ns-glass .ns-icon { opacity: 1; }
   #ns-top { transition: transform 0.28s ease, background 0.28s ease, border-color 0.28s ease; }
   #ns-links {
@@ -153,9 +135,7 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   #ns-overlay.open { display: block; }
-  /* two panes: main menu + tools. the tools pane parks off-screen right and
-     slides in, pushing the main menu out to the left (same 0.28s ease as
-     the bar's check-up). each pane scrolls on its own. */
+  /* one pane: the link list + socials; scrolls if it doesn't fit */
   #ns-overlay .ov-pane {
     position: absolute;
     inset: 0;
@@ -164,11 +144,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    transition: transform 0.28s ease;
   }
-  #ns-overlay .ov-pane-tools { transform: translateX(100%); }
-  #ns-overlay.tools .ov-pane-main { transform: translateX(-100%); }
-  #ns-overlay.tools .ov-pane-tools { transform: translateX(0); }
   /* margin:auto centers the list when it fits, scrolls when it doesn't */
   #ns-overlay .ov-list {
     margin: auto 0;
@@ -189,67 +165,6 @@
     opacity: 0.5;
   }
   #ns-overlay .ov-link.current { opacity: 1; }
-  /* tools row → slides the tools pane in (the mobile mega) */
-  #ns-overlay .ov-tools-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: none;
-    border: 0;
-    font-family: inherit;
-    cursor: pointer;
-  }
-  /* carets point the way the panes travel: → into tools, ← back to menu */
-  #ns-overlay .ov-tools-btn .ns-caret { width: 12px; height: 12px; transform: rotate(-90deg); }
-  #ns-overlay .ov-back {
-    align-self: flex-start;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #050505;
-    border: 0;
-    color: #fff;
-    font-family: inherit;
-    font-size: 13px;
-    letter-spacing: 0.08em;
-    padding: 22px 20px;
-    cursor: pointer;
-    opacity: 0.6;
-  }
-  #ns-overlay .ov-back .ns-caret { width: 12px; height: 12px; transform: rotate(90deg); }
-  #ns-overlay .ov-tiles {
-    margin: auto 0;
-    width: 100%;
-    max-width: 420px;
-    padding: 8px 20px 44px;
-    border-top: 1px solid rgba(255, 255, 255, 0.18);
-  }
-  #ns-overlay .ov-tile {
-    display: block;
-    padding: 18px 4px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-    color: #fff;
-    text-decoration: none;
-    text-align: left;
-    opacity: 0.7;
-  }
-  #ns-overlay .ov-tile.current, #ns-overlay .ov-tile:active { opacity: 1; }
-  #ns-overlay .ovt-t {
-    font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: 26px;
-    line-height: 28px;
-    letter-spacing: 0.01em;
-  }
-  #ns-overlay .ovt-d {
-    margin-top: 8px;
-    font-size: 12px;
-    line-height: 1.6;
-    letter-spacing: 0.02em;
-    color: rgba(255, 255, 255, 0.65);
-  }
   #ns-overlay .ov-close {
     position: absolute;
     z-index: 2;
@@ -289,75 +204,6 @@
   #ns-links a span { display: inline-block; }
   #ns-links a.current { opacity: 1; }
 
-  /* ---- tools trigger + mega panel (desktop) ---- */
-  #ns-tools { display: inline-flex; align-items: center; }
-  #ns-tools-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: none;
-    border: 0;
-    padding: 0;
-    margin: 0;
-    color: #fff;
-    font: inherit;
-    letter-spacing: inherit;
-    line-height: inherit;
-    cursor: pointer;
-    opacity: 0.5;
-    transition: opacity 120ms ease;
-  }
-  #ns-tools-btn:hover, #ns-tools.open #ns-tools-btn, #ns-tools.current #ns-tools-btn { opacity: 1; }
-  #ns-tools-btn span { display: inline-block; }
-  .ns-caret { width: 10px; height: 10px; display: block; transition: transform 120ms ease; }
-  #ns-tools.open .ns-caret { transform: rotate(180deg); }
-  #ns-mega {
-    /* absolute: the bar's offsetHeight feeds --ns-nav-h, so the panel must
-       not grow it — it hangs below the 1px rule and covers page content */
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: #050505;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  #ns-mega[hidden] { display: none; }
-  #ns-mega .mega-in {
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 28px var(--ns-gutter) 32px;
-  }
-  #ns-mega .mega-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-  #ns-mega .mega-card {
-    display: block;
-    color: #fff;
-    text-decoration: none;
-    padding: 4px 18px 8px 0;
-    border-left: 1px solid rgba(255, 255, 255, 0.18);
-    padding-left: 18px;
-    opacity: 0.6;
-    transition: opacity 120ms ease;
-  }
-  #ns-mega .mega-card:first-child { border-left: 0; padding-left: 0; }
-  #ns-mega .mega-card:hover, #ns-mega .mega-card:focus-visible, #ns-mega .mega-card.current { opacity: 1; outline: none; }
-  #ns-mega .mc-t {
-    font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: 26px;
-    line-height: 28px; /* fixed so font swaps can't shift the box */
-    letter-spacing: 0.01em;
-    margin-bottom: 10px;
-  }
-  #ns-mega .mc-t span { display: inline-block; text-align: center; vertical-align: top; }
-  #ns-mega .mc-d {
-    font-size: 12px;
-    line-height: 1.65;
-    letter-spacing: 0.02em;
-    color: rgba(255, 255, 255, 0.72);
-  }
   /* the wordmark: assets/ns-text.svg (ascii-art NEWSPEECH, ~13:1). sized by
      height; the grid column takes its width. */
   #ns-stage {
@@ -398,51 +244,8 @@
     `<nav id="ns-links">` +
     `<a id="ns-stage" href="${ROOT}index.html" aria-label="newspeech"><img src="${ROOT}assets/ns-text.svg" alt="" draggable="false"></a>` +
     `<div id="ns-pages">${PAGES}</div>` +
-    `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>` +
-    `<div id="ns-mega" hidden><div class="mega-in">` +
-    `<div class="mega-grid">` +
-    TOOLS.map((t) =>
-      `<a class="mega-card${PAGE === t.page ? " current" : ""}" href="${ROOT}${t.page}">` +
-      `<div class="mc-t" data-ns-link>${t.name}</div>` +
-      `<div class="mc-d">${t.dek}</div></a>`
-    ).join("") +
-    `</div></div></div>`;
+    `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>`;
   document.body.insertBefore(root, document.body.firstChild);
-
-  // ---- mega panel open/close: hover-intent on desktop, click/keys anywhere ----
-  const toolsWrap = document.getElementById("ns-tools");
-  const toolsBtn = document.getElementById("ns-tools-btn");
-  const mega = document.getElementById("ns-mega");
-  let megaOpen = false;
-  let closeTimer = null;
-  function setMegaOpen(open) {
-    if (open === megaOpen) return;
-    megaOpen = open;
-    clearTimeout(closeTimer);
-    closeTimer = null;
-    mega.hidden = !open;
-    toolsWrap.classList.toggle("open", open);
-    syncGlass();
-    toolsBtn.setAttribute("aria-expanded", String(open));
-    if (open) lockLinkWidths(); // card titles measure 0 while hidden — lock on first reveal
-  }
-  function scheduleClose() {
-    clearTimeout(closeTimer);
-    closeTimer = setTimeout(() => setMegaOpen(false), 160);
-  }
-  const hoverMq = window.matchMedia("(hover: hover)");
-  for (const el of [toolsWrap, mega]) {
-    el.addEventListener("mouseenter", () => { if (hoverMq.matches) { clearTimeout(closeTimer); setMegaOpen(true); } });
-    el.addEventListener("mouseleave", () => { if (hoverMq.matches) scheduleClose(); });
-  }
-  toolsBtn.addEventListener("click", () => setMegaOpen(!megaOpen));
-  document.addEventListener("click", (e) => {
-    if (megaOpen && !root.contains(e.target)) setMegaOpen(false);
-  });
-  root.addEventListener("focusout", (e) => {
-    if (megaOpen && !root.contains(e.relatedTarget)) setMegaOpen(false);
-  });
-  window.addEventListener("keydown", (e) => { if (e.key === "Escape") setMegaOpen(false); });
 
   // ---- mobile takeover: links centered, socials at the bottom ----
   // plain links (no data-ns-link): the scramble treatment locks char widths
@@ -456,41 +259,20 @@
     `<div class="ov-list">` +
     `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link" href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}">sequence</a>` +
-    `<button class="ov-link ov-tools-btn${IN_TOOLS ? " current" : ""}" aria-expanded="false" aria-controls="ns-ov-tools">tools${ICON_CARET}</button>` +
-    `<a class="ov-link${cur("samples.html")}" href="${ROOT}samples.html">samples</a>` +
-    `<a class="ov-link${cur("visualizers.html")}" href="${ROOT}visualizers.html">visuals</a>` +
+    `<a class="ov-link${IN_TOOLS ? " current" : ""}" href="${ROOT}tools.html">tools</a>` +
+    `<a class="ov-link${cur("plugins.html")}" href="${ROOT}plugins.html">plugins</a>` +
     `</div>` +
     `<div class="ov-icons">` +
     `<a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
     `<a href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>` +
     `</div>` +
-    `</div>` +
-    `<div class="ov-pane ov-pane-tools" id="ns-ov-tools" aria-hidden="true">` +
-    `<button class="ov-back">${ICON_CARET}menu</button>` +
-    `<div class="ov-tiles">` +
-    TOOLS.map((t) =>
-      `<a class="ov-tile${cur(t.page)}" href="${ROOT}${t.page}">` +
-      `<div class="ovt-t">${t.name}</div><div class="ovt-d">${t.dek}</div></a>`
-    ).join("") +
-    `</div></div>`;
+    `</div>`;
   document.body.appendChild(overlay);
 
   const burger = document.getElementById("ns-burger");
-  const ovToolsBtn = overlay.querySelector(".ov-tools-btn");
-  const ovToolsPane = overlay.querySelector(".ov-pane-tools");
-  function setOvToolsOpen(open) {
-    overlay.classList.toggle("tools", open);
-    ovToolsBtn.setAttribute("aria-expanded", String(open));
-    ovToolsPane.setAttribute("aria-hidden", String(!open));
-    if (open) ovToolsPane.scrollTop = 0;
-  }
-  ovToolsBtn.addEventListener("click", () => setOvToolsOpen(true));
-  overlay.querySelector(".ov-back").addEventListener("click", () => setOvToolsOpen(false));
   function setMenuOpen(open) {
     overlay.classList.toggle("open", open);
-    // reset to the main pane while hidden — no slide plays on the next open
-    if (!open) setOvToolsOpen(false);
     burger.setAttribute("aria-expanded", String(open));
     // lock page scroll behind the takeover (scroll-snap lives on <html>)
     document.documentElement.style.overflow = open ? "hidden" : "";
@@ -509,7 +291,7 @@
     if (!glassEl) glassEl = document.querySelector("[data-ns-glass]");
     if (!glassEl) return;
     const r = glassEl.getBoundingClientRect();
-    root.classList.toggle("ns-glass", !megaOpen && r.bottom > root.offsetHeight);
+    root.classList.toggle("ns-glass", r.bottom > root.offsetHeight);
   }
   window.addEventListener("scroll", syncGlass, { passive: true });
   window.addEventListener("resize", syncGlass);
@@ -534,7 +316,6 @@
     if (Math.abs(delta) < 6) return;
     if (y < 80) root.classList.remove("nav-hidden");
     else root.classList.toggle("nav-hidden", delta > 0);
-    if (delta > 0 && y >= 80) setMegaOpen(false);
     lastScrollTop = y;
   }, { passive: true });
 
@@ -621,7 +402,7 @@
   // the burger breakpoint #ns-pages is display:none and every char measures
   // 0 — locking then would freeze the links at zero width. so lock lazily,
   // per group, whenever a group is actually rendered (desktop row on first
-  // desktop layout; mega-card titles on first panel open).
+  // desktop layout).
   const deskMq = window.matchMedia(`(min-width: ${BREAK + 1}px)`);
   const lockables = []; // { spans, locked }
   function lockLinkWidths() {
@@ -666,8 +447,7 @@
 
       const idx = charSpans.map(() => (Math.random() * LINK_FONT_CYCLE.length) | 0);
       let timer = null;
-      const hoverEl = link.closest(".mega-card") || link.closest("#ns-tools-btn") || link;
-      hoverEl.addEventListener("mouseenter", () => {
+      link.addEventListener("mouseenter", () => {
         if (timer) return;
         timer = setInterval(() => {
           for (let i = 0; i < charSpans.length; i++) {
@@ -676,7 +456,7 @@
           }
         }, LINK_CYCLE_MS);
       });
-      hoverEl.addEventListener("mouseleave", () => {
+      link.addEventListener("mouseleave", () => {
         clearInterval(timer);
         timer = null;
         for (const s of charSpans) s.style.fontFamily = "";
@@ -704,10 +484,15 @@
         }
       );
     });
-    lockLinkWidths(); // hidden groups skip; the mq listener + panel open retry
+    lockLinkWidths(); // hidden groups skip; the mq listener retries
   }
   setupLinks();
 
   // pages can flash the wordmark (the homepage's click-punch uses this)
   window.NSNav = { chroma };
+
+  // the site footer rides along with the nav (footer.js)
+  const foot = document.createElement("script");
+  foot.src = ROOT + "footer.js";
+  document.head.appendChild(foot);
 })();
