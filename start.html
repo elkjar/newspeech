@@ -209,9 +209,8 @@
     border: 1px solid rgba(255, 255, 255, 0.45);
     color: var(--fg);
     font: inherit;
-    font-size: 16px; /* <16px makes iOS Safari zoom the page on focus */
     letter-spacing: 0.04em;
-    padding: 9px 12px;
+    padding: 7px 12px;
     border-radius: 0;
     outline: none;
   }
@@ -223,11 +222,13 @@
     color: var(--fg);
     font: inherit;
     letter-spacing: 0.04em;
-    padding: 9px 16px;
+    padding: 7px 16px;
     cursor: pointer;
   }
   #subscribe button:hover { background: rgba(255, 255, 255, 0.08); }
   #subscribe button:disabled { opacity: 0.4; cursor: default; }
+  /* <16px makes iOS Safari zoom the page on focus; the 18px line keeps 34px */
+  @media (max-width: 640px) { #subscribe input[type="email"] { font-size: 16px; } }
   #subscribe .sub-msg { opacity: 0.85; letter-spacing: 0.06em; }
   #subscribe .sub-msg.err { opacity: 0.55; }
   #subscribe.fade-out { opacity: 0; transition: opacity 0.7s ease; }

@@ -79,12 +79,13 @@
     flex: 1 1 0;
     min-width: 0;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.45);
     border-radius: 0;
     color: #fff;
     font: inherit;
+    line-height: 18px; /* the site's sign-up spec — 34px tall, see index.html */
     letter-spacing: 0.04em;
-    padding: 9px 12px;
+    padding: 7px 12px;
     outline: none;
   }
   #ns-foot .nf-row input:focus { border-color: rgba(255, 255, 255, 0.9); }
@@ -95,8 +96,9 @@
     border: 1px solid rgba(255, 255, 255, 0.7);
     color: #fff;
     font: inherit;
+    line-height: 18px;
     letter-spacing: 0.04em;
-    padding: 9px 16px;
+    padding: 7px 16px;
     cursor: pointer;
   }
   #ns-foot .nf-row button:hover { background: rgba(255, 255, 255, 0.08); }

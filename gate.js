@@ -55,11 +55,12 @@
     flex: 1 1 auto; min-width: 0; background: transparent; border: 1px solid rgba(255,255,255,.45); color: #eee;
     font: inherit; letter-spacing: 0.04em; padding: 7px 12px; border-radius: 0; outline: none;
   }
+  @media (max-width: 640px) { #ns-nudge input[type="email"] { font-size: 16px; } } /* <16px zooms iOS Safari on focus */
   #ns-nudge input[type="email"]:focus { border-color: rgba(255,255,255,.9); }
   #ns-nudge input[type="email"]::placeholder { color: rgba(255,255,255,.3); }
   #ns-nudge .go {
     flex: 0 0 auto; background: transparent; border: 1px solid rgba(255,255,255,.7); color: #eee; font: inherit;
-    letter-spacing: 0.04em; padding: 7px 14px; cursor: pointer; white-space: nowrap; border-radius: 0;
+    letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; white-space: nowrap; border-radius: 0;
   }
   #ns-nudge .go:hover { background: rgba(255,255,255,.08); }
   #ns-nudge .go:disabled { opacity: .4; cursor: default; }
