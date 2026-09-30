@@ -42,7 +42,7 @@ export const TRANSPORTS = ["nrpn", "roland", "yamaha"];
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "nrpn") return nrpnDriver(schema, midi, getChannel);
-  if (schema.transport === "roland") return rolandDriver(schema, midi, getChannel);
+  if (schema.transport === "roland") return rolandDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "yamaha") return yamahaDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
@@ -138,7 +138,7 @@ function nrpnDriver(schema, midi, getChannel) {
 // bits {shift,width} (several params share a byte) · "d110pcm" (PCM bank bit
 // + wave number over 2 bytes). A live mirror of every block keeps shared
 // bytes and unmodelled bytes intact whatever gets sent.
-function rolandDriver(schema, midi, getChannel) {
+function rolandDriver(schema, midi, getChannel, prefs) {
   const R = schema.roland;
   const mfr = R.manufacturerId, model = R.modelId, dev = R.defaultDeviceId ?? 16;
   const AB = R.addressBytes ?? 4, SB = R.sizeBytes ?? AB;
@@ -157,7 +157,9 @@ function rolandDriver(schema, midi, getChannel) {
   const contextBlocks = blocks.filter((b) => !patchBlocks.includes(b));
 
   const width = (p) => (p.encoding === "d110pcm" || p.encoding === "nibbleLE" ? 2 : p.size || 1);
+  const twos = (p, raw) => { const bits = 4 * (p.size || 1); return raw >= 1 << (bits - 1) ? raw - (1 << bits) : raw; };
   function read(p, data, off = p.offset) {
+    if (p.encoding === "twos") return twos(p, data.slice(off, off + (p.size || 1)).reduce((n, b) => (n << 4) | (b & 15), 0));
     if (p.encoding === "nibbleLE") return (data[off] & 15) | ((data[off + 1] & 15) << 4); // U-110: low nibble first
     if (p.encoding === "d110pcm") return ((data[off] >> 1) & 1) * 128 + data[off + 1];
     if (p.bits) return (data[off] >> p.bits.shift) & ((1 << p.bits.width) - 1);
@@ -166,6 +168,7 @@ function rolandDriver(schema, midi, getChannel) {
   }
   function write(p, v, data) {
     const o = p.offset;
+    if (p.encoding === "twos") { const n = p.size || 1, w = v & ((1 << (4 * n)) - 1); for (let i = 0; i < n; i++) data[o + i] = (w >> (4 * (n - 1 - i))) & 15; return; }
     if (p.encoding === "nibbleLE") { data[o] = v & 15; data[o + 1] = (v >> 4) & 15; return; }
     if (p.encoding === "d110pcm") { data[o] = (data[o] & 1) | (((v >> 7) & 1) << 1); data[o + 1] = v & 127; return; }
     if (p.bits) { const m = ((1 << p.bits.width) - 1) << p.bits.shift; data[o] = (data[o] & ~m) | ((v << p.bits.shift) & m); return; }
@@ -210,6 +213,19 @@ function rolandDriver(schema, midi, getChannel) {
   }
 
   let bankCache = null;
+  queueMicrotask(() => { try { const sl = JSON.parse(prefs?.get("slot") || "null"); if (sl) moveTo(sl.bi, sl.prog); } catch {} });
+  // S-330: no edit buffer. A bank with select.type "slot" moves its block to the
+  // chosen memory slot (nothing is sent); edits then land on that tone directly.
+  const moveTo = (bi, prog) => {
+    const bk = bank(bi), sel = bk?.select, mem = R.userMemory?.[bk?.memory];
+    if (sel?.type !== "slot" || !mem) return false;
+    const b = blockOf.get(sel.block);
+    b.at = toInt(mem.base) + prog * mem.stride;
+    delete mirror[b.name]; readOnce.delete(b.name);
+    prefs?.set("slot", JSON.stringify({ bi, prog }));
+    return true;
+  };
+  const readOnce = new Set(); // blocks read from the unit this session (see requireReadBeforeWrite)
   const mirror = {}; // block name → current bytes on the synth, as best we know
   const bytesOf = (b) => (mirror[b.name] ??= new Array(b.size).fill(0));
   const withValues = (b, values) => {
@@ -230,6 +246,16 @@ function rolandDriver(schema, midi, getChannel) {
   const needDump = (bi) => { if (!bank(bi)?.dump) throw new Error(`${bank(bi)?.label ?? "that bank"} can't be read over MIDI`); };
   const nameFrom = (data) => String.fromCharCode(...data.slice(0, 10).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
 
+  // a param the unit needs kept equal to others (S-330 loopLength = end - loop)
+  const DL = R.derivedLoop, byKeyR = new Map(schema.params.map((p) => [p.key, p]));
+  function fixDerived(b, data) {
+    if (!DL) return null;
+    const L = byKeyR.get(DL.length), E = byKeyR.get(DL.end), P = byKeyR.get(DL.loop);
+    if (!L || L.block !== b.name) return null;
+    write(L, Math.max(0, read(E, data) - read(P, data)), data);
+    return L;
+  }
+
   // packages: several params the synth only accepts together (D-110 partial reserve)
   const pkgFor = (p) => Object.values(R.packages || {}).find((k) => k.block === p.block && p.offset >= k.offset && p.offset < k.offset + k.size);
 
@@ -237,6 +263,10 @@ function rolandDriver(schema, midi, getChannel) {
     sendParam(p, v) {
       const b = blockOf.get(p.block), data = bytesOf(b);
       write(p, v, data);
+      if (DL && (p.key === DL.end || p.key === DL.loop)) {
+        const L = fixDerived(b, data);
+        if (L) { dt1(b.at + p.offset, data.slice(p.offset, p.offset + width(p))); return dt1(b.at + L.offset, data.slice(L.offset, L.offset + width(L))); }
+      }
       if (p.live) return dt1(toInt(p.live), [v & 127]);
       if (p.display === "ascii" && R.liveName) {
         const first = Math.min(...paramsOf.get(b.name).filter((q) => q.display === "ascii").map((q) => q.offset));
@@ -246,11 +276,17 @@ function rolandDriver(schema, midi, getChannel) {
       const [o, n] = pk ? [pk.offset, pk.size] : [p.offset, width(p)];
       dt1(b.at + o, data.slice(o, o + n));
     },
-    sendPatch(values) { for (const b of patchBlocks) { mirror[b.name] = withValues(b, values); dt1(b.at, mirror[b.name]); } },
+    sendPatch(values) {
+      for (const b of patchBlocks) {
+        // never write a whole block we haven't read — the S-330's tones hold wave pointers
+        if (R.requireReadBeforeWrite && !readOnce.has(b.name)) throw new Error("read the tone from the unit first (get)");
+        mirror[b.name] = withValues(b, values); fixDerived(b, mirror[b.name]); dt1(b.at, mirror[b.name]);
+      }
+    },
 
     async requestPatch() {
       const values = {}, syx = [];
-      for (const b of patchBlocks) { const r = await rq1(b.at, b.size); mirror[b.name] = r.data; valuesFrom(b, r.data, values); syx.push(...r.raw); }
+      for (const b of patchBlocks) { const r = await rq1(b.at, b.size); mirror[b.name] = r.data; readOnce.add(b.name); valuesFrom(b, r.data, values); syx.push(...r.raw); }
       // context (part setup, system): shown and editable, never sent as part of a patch
       for (const b of contextBlocks) { try { const r = await rq1(b.at, b.size); mirror[b.name] = r.data; valuesFrom(b, r.data, values); } catch {} }
       return { values, syx };
@@ -278,6 +314,7 @@ function rolandDriver(schema, midi, getChannel) {
     },
 
     programChange(bi, prog) {
+      if (moveTo(bi, prog)) return; // S-330: just retarget, nothing sent
       const sel = bank(bi).select;
       if (sel?.type === "dt1") dt1(toInt(sel.address), sel.data.map((x) => (x === "prog" ? prog : x)));
       else selectProgram(midi, getChannel(), bank(bi), prog + (sel?.offset || 0));
@@ -319,7 +356,11 @@ function rolandDriver(schema, midi, getChannel) {
     writeProgram(bi, prog, values) {
       if (!bank(bi)?.write) throw new Error(`${bank(bi)?.label ?? "that bank"} is read-only`);
       const sent = {};
-      for (const s of slotBlocks(bi, prog)) { if (!s.b) continue; sent[s.b.name] = withValues(s.b, values); dt1(s.at, sent[s.b.name]); }
+      for (const s of slotBlocks(bi, prog)) {
+        if (!s.b) continue;
+        if (R.requireReadBeforeWrite && !readOnce.has(s.b.name)) throw new Error("read the tone from the unit first (get)");
+        sent[s.b.name] = withValues(s.b, values); fixDerived(s.b, sent[s.b.name]); dt1(s.at, sent[s.b.name]);
+      }
       return sent;
     },
 
