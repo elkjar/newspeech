@@ -391,7 +391,6 @@ function yamahaDriver(schema, midi, getChannel, prefs) {
 
   let mirror = new Array(IMG).fill(0);
   let enable = 0x0f; // element enable bits: sendable, not readable
-  let pcWorks = false; // learned on the first program change of each connection
   const nameOf = (data) => String.fromCharCode(...data.slice(1, 11).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
 
   return {
@@ -416,24 +415,27 @@ function yamahaDriver(schema, midi, getChannel, prefs) {
       return { values, syx: dump.raw };
     },
 
-    // program change first. The first time per connection, check it landed: the
-    // edit buffer should now match what's stored in that slot. If it does, program
-    // changes are all we send from then on (a voice dump would make the TG55 show
-    // "Bulk received" and hide the program it just selected). If not — Program
-    // Change off / wrong channel — load the slot into the edit buffer as a dump.
-    async programChange(bi, prog) {
-      const b = bank(bi), sel = b.select, ch = getChannel();
+    // program change only. The TG55's edit buffer does NOT follow program changes
+    // (it keeps the last voice edited or dumped in), so after selecting a program
+    // the editor reads the voice from its memory slot instead — see adoptSlot.
+    programChange(bi, prog) {
+      const sel = bank(bi).select, ch = getChannel();
       midi.send([0xc0 | ch, sel.prefix & 127]);
       midi.send([0xc0 | ch, (prog + (sel.offset || 0)) & 127]);
-      if (pcWorks || !b.dump || b.sysex?.type !== "VC" || b.drumSlots?.includes(prog)) return;
-      await sleep(250);
-      const [now, slot] = [await fetchDumpFindingDevice("VC", 0x7f, 0), await fetchDump("VC", b.sysex.memoryType, prog)];
-      if (now.data.length === slot.data.length && now.data.every((x, i) => x === slot.data[i])) { pcWorks = true; return; }
-      const img = toImage(slot.data, mirror);
-      if (!img) return;
+    },
+
+    // the voice now playing, read from its slot (read-only — no "Bulk received");
+    // it becomes the mirror, so knob edits land on the voice that's sounding
+    async adoptSlot(bi, prog) {
+      const b = bank(bi);
+      if (!b.dump || b.sysex?.type !== "VC" || b.drumSlots?.includes(prog)) return null;
+      const dump = await fetchDumpFindingDevice("VC", b.sysex.memoryType, prog);
+      const img = toImage(dump.data, mirror);
+      if (!img) return null;
       mirror = img;
-      midi.send(dumpMsg(img, 0x7f, 0));
-      await sleep(midi.drainMs() + 150);
+      const values = valuesOf(img);
+      for (const p of schema.params) if (p.bits) values[p.key] = (enable >> p.bits.shift) & 1;
+      return { values };
     },
 
     async requestProgram(bi, prog) {

@@ -769,10 +769,17 @@ function goProgram(bank, prog) {
     status("left unsaved edits behind — undo brings them back", true);
   prog = Math.min(prog, (banks()[bank]?.count ?? 128) - 1);
   setCurrent(bank, prog);
-  // some drivers load the slot themselves (TG-55) — wait for that, then read the new sound in
   Promise.resolve(driver.programChange(bank, prog))
     .catch((e) => status(e.message, true))
-    .then(() => setTimeout(getFromSynth, midi.drainMs() + 150));
+    .then(() => setTimeout(async () => {
+      // synths whose edit buffer doesn't follow program changes (TG-55): read the
+      // selected voice from its memory slot; everything else: read the edit buffer
+      const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
+      if (!got) return getFromSynth();
+      const before = snapshot();
+      saved = { ...got.values }; applyAll(got.values, { send: false }); commitUndo(before);
+      status(`${slotName(bank, prog)}${nameString() ? ` — “${nameString()}”` : ""}`);
+    }, midi.drainMs() + 150));
 }
 
 // ◂ ▸ walk straight through the banks: last program of one → first of the next
