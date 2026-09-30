@@ -391,6 +391,7 @@ function yamahaDriver(schema, midi, getChannel, prefs) {
 
   let mirror = new Array(IMG).fill(0);
   let enable = 0x0f; // element enable bits: sendable, not readable
+  let pcWorks = false; // learned on the first program change of each connection
   const nameOf = (data) => String.fromCharCode(...data.slice(1, 11).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
 
   return {
@@ -415,17 +416,20 @@ function yamahaDriver(schema, midi, getChannel, prefs) {
       return { values, syx: dump.raw };
     },
 
-    // program change (works when the TG55's Program Change mode is 'direct'), and
-    // for readable voice banks also load the slot straight into the edit buffer —
-    // that's what sounds while editing, and it works whatever the PC settings are
+    // program change first. The first time per connection, check it landed: the
+    // edit buffer should now match what's stored in that slot. If it does, program
+    // changes are all we send from then on (a voice dump would make the TG55 show
+    // "Bulk received" and hide the program it just selected). If not — Program
+    // Change off / wrong channel — load the slot into the edit buffer as a dump.
     async programChange(bi, prog) {
       const b = bank(bi), sel = b.select, ch = getChannel();
       midi.send([0xc0 | ch, sel.prefix & 127]);
       midi.send([0xc0 | ch, (prog + (sel.offset || 0)) & 127]);
-      if (!b.dump || b.sysex?.type !== "VC" || b.drumSlots?.includes(prog)) return;
-      await sleep(120);
-      const dump = await fetchDumpFindingDevice("VC", b.sysex.memoryType, prog);
-      const img = toImage(dump.data, mirror);
+      if (pcWorks || !b.dump || b.sysex?.type !== "VC" || b.drumSlots?.includes(prog)) return;
+      await sleep(250);
+      const [now, slot] = [await fetchDumpFindingDevice("VC", 0x7f, 0), await fetchDump("VC", b.sysex.memoryType, prog)];
+      if (now.data.length === slot.data.length && now.data.every((x, i) => x === slot.data[i])) { pcWorks = true; return; }
+      const img = toImage(slot.data, mirror);
       if (!img) return;
       mirror = img;
       midi.send(dumpMsg(img, 0x7f, 0));
