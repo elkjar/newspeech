@@ -394,6 +394,7 @@ async function boot() {
   devices = await (await fetch("/api/devices")).json();
   $("#in").onchange = $("#out").onchange = usePorts;
   $("#back").onclick = disconnect;
+  $("#recheck").onclick = () => renderRack();
   $("#connect-go").onclick = () => runConnect();
   $("#connect-retry").onclick = () => runConnect();
   $("#connect-skip").onclick = () => { skipNames = true; };
@@ -563,19 +564,45 @@ async function renderRack() {
       const { backups } = await (await fetch(`/api/backups/${d.id}`)).json();
       if (backups[0]) last = "backed up " + new Date(backups[0].at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     } catch {}
-    const ready = !!(outName && inName);
-    return h("fieldset", { class: `grp rackcard${ready ? " ready" : ""}` }, h("legend", {}, d.name),
+    const state = h("span", { class: "rstate" }, outName && inName ? "checking…" : "ports not set");
+    const go = h("button", { class: "btn", onclick: (e) => { e.stopPropagation(); startConnect(d.id); } }, "connect");
+    const card = h("fieldset", { class: "grp rackcard", onclick: () => card.classList.contains("online") && startConnect(d.id) },
+      h("legend", {}, h("span", { class: "rdot" }), d.name),
       await art(d.id),
-      h("div", { class: "cells" },
-        h("div", { class: "rinfo" },
-          ready ? h("b", {}, outName) : "ports not set", h("br"),
-          `ch ${lsGet(`${d.id}.ch`, "") || "—"} · ${d.transport}`, h("br"), last),
-        h("div", { class: "cell btncell" }, h("button", { class: "btn", onclick: () => startConnect(d.id) }, "connect"), h("span", { class: "clabel" }, "\u00a0"))));
+      h("div", { class: "rinfo" }, state, h("br"),
+        outName ? `${outName} · ch ${lsGet(`${d.id}.ch`, "") || "—"}` : `ch ${lsGet(`${d.id}.ch`, "") || "—"}`, h("br"), last),
+      h("div", { class: "rgo" }, go));
+    return { d, card, state, ready: !!(outName && inName), ports };
   }));
-  $("#rackcards").replaceChildren(...cards);
+  $("#rackcards").replaceChildren(...cards.map((c) => c.card));
+  probeRack(cards);
+}
+
+// ask each synth on its saved ports whether it's there — one at a time, so
+// synths sharing a port (JV / D-110 / TG-55 on 8) don't talk over each other
+let probing = 0;
+async function probeRack(cards) {
+  const run = ++probing;
+  for (const c of cards) {
+    if (run !== probing || view !== "rack") return;
+    if (!c.ready) { c.card.classList.add("offline"); continue; }
+    let ok = false;
+    try {
+      const sch = await (await fetch(`/devices/${c.d.id}.json`)).json();
+      midi.gapMs = sch.gapMs ?? 2;
+      midi.usePorts(c.d.id, c.ports.in, c.ports.out);
+      const ch = () => Number(lsGet(`${c.d.id}.ch`, String(sch.defaultChannel ?? 1))) - 1;
+      const drv = makeDriver(sch, midi, ch, { get: (k) => lsGet(`${c.d.id}.${k}`, null), set: (k, v) => lsSet(`${c.d.id}.${k}`, v) });
+      ok = await drv.probe?.().catch(() => false);
+    } catch { ok = false; }
+    if (run !== probing) return;
+    c.card.classList.toggle("online", !!ok); c.card.classList.toggle("offline", !ok);
+    c.state.textContent = ok ? "connected" : "not answering";
+  }
 }
 
 async function startConnect(id, { auto = true } = {}) {
+  probing++; // stop any rack checks in flight
   await selectDevice(id);
   setView("connect");
   $("#connect-title").textContent = `connect · ${schema.name}`;
@@ -648,6 +675,7 @@ async function runConnect() {
 }
 
 function disconnect() {
+  probing++;
   scanningNames = false; skipNames = true;
   noteOff();
   closeSetup();

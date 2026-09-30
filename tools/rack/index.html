@@ -29,16 +29,26 @@
   #face { display: flex; flex-direction: column; gap: 18px; }
 
   /* views: rack → connect → edit */
+  body.state-connect #recheck, body.state-edit #recheck,
   body.state-rack #panel, body.state-rack #face, body.state-rack #tele, body.state-rack #back, body.state-rack #libtoggle,
   body.state-connect #panel, body.state-connect #face, body.state-connect #libtoggle,
   body.state-edit #rackview, body.state-edit #connectview,
   body.state-connect #rackview, body.state-rack #connectview { display: none !important; }
   #synthname { color: #fff; letter-spacing: .22em; }
   #rackcards { gap: 18px 22px; }
-  .rackcard { min-width: 260px; width: 340px; }
+  .rackcard { min-width: 260px; width: 340px; display: flex; flex-direction: column; }
+  .rackcard .rdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid #555; margin-right: 8px; vertical-align: 1px; }
+  .rackcard.online { cursor: pointer; }
+  .rackcard.online:hover { border-color: #666; }
+  .rackcard.online .rdot { background: #3ddc6f; border-color: #3ddc6f; box-shadow: 0 0 6px rgba(61,220,111,.6); }
+  .rackcard.online legend { color: #eee; }
+  .rackcard.online .art { color: #e0e0e0; }
+  .rackcard.online .rgo { display: none; }
+  .rackcard .rstate { color: #bbb; }
+  .rackcard.online .rstate { color: #3ddc6f; }
+  .rackcard .rgo { margin-top: 12px; }
   .art { color: #9a9a9a; margin: 4px 0 14px; }
   .art svg { display: block; width: 100%; height: auto; max-height: 110px; }
-  .rackcard.ready .art { color: #d0d0d0; }
   #connect-art { max-width: 520px; color: #d0d0d0; }
   #connect-art svg { max-height: 160px; }
   .rackcard .rinfo { text-transform: none; letter-spacing: .04em; color: #8a8a8a; line-height: 1.8; min-width: 150px; }
@@ -207,6 +217,7 @@
 <div id="brand">
   <h1>NEW SPEECH &nbsp;|&nbsp; EDIT</h1>
   <button class="btn" id="back" title="disconnect and go back to the rack">← rack</button>
+  <button class="btn" id="recheck" title="ask every synth whether it's connected">↻ check again</button>
   <span id="synthname"></span>
   <div id="status">starting…</div>
   <button class="btn" id="libtoggle" title="l — backups, program names, synth setup">setup</button>

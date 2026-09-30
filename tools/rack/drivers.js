@@ -75,6 +75,13 @@ function nrpnDriver(schema, midi, getChannel) {
       }
     },
 
+    // quick "are you there?" for the rack screen
+    async probe() {
+      const reply = midi.waitSysex(isFrom(sx.cmd.editBufferDump), 900);
+      midi.send([...hdr, sx.cmd.requestEditBuffer, 0xf7]);
+      await reply; return true;
+    },
+
     async requestPatch() {
       if (sx.cmd?.requestEditBuffer == null) throw new Error("this device can't send its edit buffer");
       const reply = midi.waitSysex(isFrom(sx.cmd.editBufferDump));
@@ -231,6 +238,8 @@ function rolandDriver(schema, midi, getChannel) {
       for (const b of contextBlocks) { try { const r = await rq1(b.at, b.size); mirror[b.name] = r.data; valuesFrom(b, r.data, values); } catch {} }
       return { values, syx };
     },
+
+    async probe() { await this.requestName(); return true; },
 
     // just the name bytes of a stored slot (JV user patch, D-110 tone) — quick name lists
     async requestSlotName(bi, prog) {
@@ -393,6 +402,8 @@ function yamahaDriver(schema, midi, getChannel, prefs) {
       midi.send([0xf0, 0x43, 0x10 | n, 0x35, p.pcGroup, sub, p.pcHigh || 0, p.pcParam, (wire >> 7) & 127, wire & 127, 0xf7]);
     },
     sendPatch(values) { mirror = imageWith(values); midi.send(dumpMsg(mirror, 0x7f, 0)); },
+
+    async probe() { await fetchDump("VC", 0x7f, 0, 900); return true; },
 
     async requestPatch() {
       const dump = await fetchDumpFindingDevice("VC", 0x7f, 0);
