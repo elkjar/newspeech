@@ -565,7 +565,9 @@ let devices = [], view = "rack";
 const artCache = new Map();
 async function art(id) {
   if (!artCache.has(id)) artCache.set(id, fetch(`/devices/${id}.svg`).then((r) => (r.ok ? r.text() : "")).catch(() => ""));
-  const el = h("div", { class: "art" }); el.innerHTML = await artCache.get(id); return el;
+  const el = h("div", { class: "art" }); el.innerHTML = await artCache.get(id);
+  const svg = el.querySelector("svg"); if (svg) { const hi = svg.cloneNode(true); hi.classList.add("hi"); el.append(hi); } // for the checking sweep
+  return el;
 }
 function setView(v) { view = v; document.body.className = `state-${v}`; }
 
@@ -693,8 +695,11 @@ async function runConnect() {
       return;
     }
     // 2 — program names: readable banks every time, ROM banks once ever
+    // readable banks: when missing or > 72 h old. ROM banks: once — and a skipped
+    // or stopped scan isn't retried for 72 h either (↻ in the dropdown forces one)
+    const romTriedAge = (bi) => Date.now() - Number(lsGet(`${schema.id}.romTried.${bi}`, "0"));
     const todo = navBanks().filter((b) => b.dump ? namesAge(b.bi) > NAMES_STALE_MS
-      : (b.select || b.msb != null || b.lsb != null) && lsGet(`${schema.id}.romScanned.${b.bi}`, "") !== "1");
+      : (b.select || b.msb != null || b.lsb != null) && lsGet(`${schema.id}.romScanned.${b.bi}`, "") !== "1" && romTriedAge(b.bi) > NAMES_STALE_MS);
     const total = todo.reduce((t, b) => t + b.count, 0);
     if (total) {
       const haveNames = Object.keys(names()).length > 0;
@@ -703,14 +708,20 @@ async function runConnect() {
       const s2 = step(`reading program names — ${todo.map((b) => b.label).join(", ")}` + (rom.length ? " (ROM banks are read once: the synth steps through them, then comes back)" : ""));
       const back = { ...cur };
       let done = 0;
+      const finished = new Set();
       try {
         for (const b of todo) {
           const ok = await readNames(b.bi, (n) => progress(done + n, total, `${b.label} · ${n} / ${b.count}`));
           done += b.count;
           if (!ok) break;
+          finished.add(b.bi);
         }
         s2.ok(skipNames ? "program names — skipped, using the saved ones" : `program names — ${done} read`);
       } catch (e) { s2.err(`program names stopped: ${e.message} — carrying on with what's saved`); }
+      // whatever was skipped or stopped waits 72 h before the next automatic try
+      for (const b of todo) if (!finished.has(b.bi)) {
+        if (b.dump) namesStamp(b.bi); else lsSet(`${schema.id}.romTried.${b.bi}`, String(Date.now()));
+      }
       scanningNames = false; $("#connect-skip").hidden = true;
       if (rom.length) { driver.programChange(back.bank, back.prog); await new Promise((r) => setTimeout(r, midi.drainMs() + 150));
         try { const { values: v } = await driver.requestPatch(); saved = { ...v }; applyAll(v, { send: false }); } catch {} }
