@@ -564,12 +564,12 @@ async function renderRack() {
       const { backups } = await (await fetch(`/api/backups/${d.id}`)).json();
       if (backups[0]) last = "backed up " + new Date(backups[0].at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     } catch {}
-    const state = h("span", { class: "rstate" }, outName && inName ? "checking…" : "ports not set");
+    const state = h("div", { class: "rstate" }, outName && inName ? "checking…" : "ports not set");
     const go = h("button", { class: "btn", onclick: (e) => { e.stopPropagation(); startConnect(d.id); } }, "connect");
     const card = h("fieldset", { class: "grp rackcard", onclick: () => card.classList.contains("online") && startConnect(d.id) },
       h("legend", {}, h("span", { class: "rdot" }), d.name),
       await art(d.id),
-      h("div", { class: "rinfo" }, state, h("br"),
+      h("div", { class: "rinfo" }, state,
         outName ? `${outName} · ch ${lsGet(`${d.id}.ch`, "") || "—"}` : `ch ${lsGet(`${d.id}.ch`, "") || "—"}`, h("br"), last),
       h("div", { class: "rgo" }, go));
     return { d, card, state, ready: !!(outName && inName), ports };
@@ -597,7 +597,7 @@ async function probeRack(cards) {
     } catch { ok = false; }
     if (run !== probing) return;
     c.card.classList.toggle("online", !!ok); c.card.classList.toggle("offline", !ok);
-    c.state.textContent = ok ? "connected" : "not answering";
+    c.state.hidden = true; // the dot says it; "ports not set" stays when there's nothing to try
   }
 }
 
