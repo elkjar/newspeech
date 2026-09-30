@@ -37,13 +37,14 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq"];
 
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "nrpn") return nrpnDriver(schema, midi, getChannel);
   if (schema.transport === "roland") return rolandDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "yamaha") return yamahaDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "ensoniq") return ensoniqDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
 
@@ -540,5 +541,153 @@ function yamahaDriver(schema, midi, getChannel, prefs) {
     },
 
     decode() { return []; }, // the TG55 doesn't transmit front-panel edits
+  };
+}
+
+// Ensoniq ESQ-1. F0 0F 02 0n <type> … F7, n = the unit's base channel; a program
+// is 102 bytes sent as nybbles, low first; no checksums, no addresses. The unit
+// takes a program dump only on a Program Select page and then sits on WRITE
+// PROGRAM, so sending means: press INTERNAL, dump, press EXIT (virtual keypad,
+// type 0E). Live edits: page button, then CC98/CC99 select + CC6 data — only
+// while that parameter's page is on screen. It crashes under dense MIDI, so
+// everything is paced (gapMs 30) and whole patches are never sent as NRPNs.
+function ensoniqDriver(schema, midi, getChannel, prefs) {
+  const E = schema.ensoniq, T = E.messageTypes, K = E.keypad.downCodes, UP = E.keypad.upOffset;
+  const hdr = () => [0xf0, 0x0f, 0x02, getChannel() & 15];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const bank = (bi) => schema.programs.banks[bi];
+  const N = E.programBytes; // 102
+  const pack = (bytes) => bytes.flatMap((b) => [b & 15, (b >> 4) & 15]);
+  const unpack = (d, from) => { const out = []; for (let i = from; i + 1 < d.length - 1; i += 2) out.push((d[i] & 15) | ((d[i + 1] & 15) << 4)); return out; };
+  const isType = (t) => (d) => d[0] === 0xf0 && d[1] === 0x0f && d[2] === 0x02 && d[4] === t;
+  const keypad = (...codes) => midi.send([...hdr(), T.virtualKeypad, ...codes.flatMap((c) => [c, c + UP]), 0xf7]);
+
+  const mask = (w) => (1 << w) - 1;
+  function read(p, img) {
+    const o = p.offset;
+    if (p.encoding === "fields") return p.fields.reduce((v, f) => v | (((img[f.offset] >> f.shift) & mask(f.width)) << f.at), 0);
+    if (p.encoding === "splitMode") { const S = (img[98] >> 7) & 1, D = (img[96] >> 7) & 1; return S ? (D ? 2 : 1) : 0; }
+    if (p.encoding === "pitchOct") return Math.floor((img[o] & 0x7f) / 12) - 3;
+    if (p.encoding === "pitchSemi") return (img[o] & 0x7f) % 12;
+    if (!p.bits) return img[o];
+    const raw = (img[o] >> p.bits.shift) & mask(p.bits.width);
+    return p.encoding === "signed" && raw >= 1 << (p.bits.width - 1) ? raw - (1 << p.bits.width) : raw;
+  }
+  function write(p, v, img) {
+    const o = p.offset;
+    if (p.encoding === "fields") { for (const f of p.fields) img[f.offset] = (img[f.offset] & ~(mask(f.width) << f.shift)) | (((v >> f.at) & mask(f.width)) << f.shift); return; }
+    if (p.encoding === "splitMode") { img[98] = (img[98] & 0x7f) | (v > 0 ? 0x80 : 0); if (v > 0) img[96] = (img[96] & 0x7f) | (v === 2 ? 0x80 : 0); return; }
+    if (p.encoding === "pitchOct" || p.encoding === "pitchSemi") {
+      const pitch = img[o] & 0x7f, oct = Math.floor(pitch / 12) - 3, semi = pitch % 12;
+      const next = p.encoding === "pitchOct" ? (v + 3) * 12 + semi : (oct + 3) * 12 + v;
+      img[o] = (img[o] & 0x80) | Math.max(0, Math.min(96, next)); return;
+    }
+    if (!p.bits) { img[o] = v & 255; return; }
+    const m = mask(p.bits.width) << p.bits.shift;
+    img[o] = (img[o] & ~m) | (((v & mask(p.bits.width)) << p.bits.shift) & m);
+  }
+  const valuesOf = (img) => Object.fromEntries(schema.params.map((p) => [p.key, read(p, img)]));
+  const nameOf = (img) => String.fromCharCode(...img.slice(0, 6).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
+  let mirror = new Array(N).fill(0), haveMirror = false;
+  const withValues = (values, base = mirror) => { const img = [...base]; for (const p of schema.params) if (values[p.key] != null) write(p, values[p.key], img); return img; };
+
+  async function fetchEdit(timeout = 1000) {
+    const reply = midi.waitSysex(isType(T.singleProgramDump), timeout);
+    midi.send([...hdr(), T.currentProgramDumpRequest, 0xf7]);
+    const d = await reply;
+    return { img: unpack(d, 5).slice(0, N), raw: [...d] };
+  }
+  // all 40 internal programs (~2.6 s on the wire); cached briefly so a name scan or
+  // store's read-first/read-back is one request, and kept for the bank write
+  let bankCache = null, lastBank = null;
+  async function fetchBank() {
+    if (bankCache && Date.now() - bankCache.at < 5000) return bankCache;
+    const reply = midi.waitSysex(isType(T.allProgramDump), 6000);
+    midi.send([...hdr(), T.allProgramDumpRequest, 0xf7]);
+    const d = await reply, all = unpack(d, 5);
+    bankCache = { at: Date.now(), raw: [...d], slots: Array.from({ length: 40 }, (_, i) => all.slice(i * N, (i + 1) * N)) };
+    lastBank = bankCache;
+    await sleep(300);
+    return bankCache;
+  }
+
+  // send the mirror into the edit buffer: INTERNAL (program-select page) → dump → EXIT
+  let sending = null;
+  async function pushEdit(img) {
+    keypad(K.INTERNAL); await sleep(150);
+    midi.send([...hdr(), T.singleProgramDump, ...pack(img), 0xf7]); await sleep(250);
+    keypad(K["SOFTKEY 5"]); await sleep(300);
+    page = null;
+  }
+  // at most one whole-program send per ~400 ms, trailing edge
+  let dumpTimer = null;
+  const queueDump = () => { clearTimeout(dumpTimer); dumpTimer = setTimeout(() => { sending = pushEdit([...mirror]); }, 400); };
+
+  let page = null, lastNrpn = null;
+  const liveMode = () => prefs?.get("live") || "nrpn";
+
+  return {
+    async probe() { await fetchEdit(900); return true; },
+
+    async requestPatch() {
+      const { img, raw } = await fetchEdit();
+      mirror = img; haveMirror = true;
+      return { values: valuesOf(img), syx: raw };
+    },
+
+    sendPatch(values) {
+      if (!haveMirror) throw new Error("read the program from the ESQ-1 first (get)");
+      mirror = withValues(values); clearTimeout(dumpTimer); sending = pushEdit([...mirror]);
+    },
+
+    async sendParam(p, v) {
+      write(p, v, mirror);
+      if (p.liveEdit !== "nrpn" || p.nrpn == null || liveMode() !== "nrpn") return haveMirror && queueDump();
+      if (p.page && page !== p.page) { keypad(p.page); page = p.page; lastNrpn = null; await sleep(60); }
+      const ch = getChannel();
+      if (lastNrpn !== p.nrpn) { midi.cc(ch, 98, p.nrpn & 127); midi.cc(ch, 99, p.nrpn >> 7); lastNrpn = p.nrpn; }
+      const n = p.max - p.min + 1, i = v - p.min;
+      midi.cc(ch, 6, Math.max(0, Math.min(127, Math.round(((i + 0.5) * 128) / n - 0.5))));
+    },
+
+    programChange(bi, prog) { midi.send([0xc0 | getChannel(), (prog + (bank(bi).select?.offset || 0)) & 127]); page = null; },
+
+    async requestProgram(bi, prog) {
+      if (!bank(bi)?.dump) throw new Error(`${bank(bi)?.label ?? "that bank"} can't be read over MIDI`);
+      const b = await fetchBank(), img = b.slots[prog];
+      // the raw all-program dump rides on slot 0 so a backup is one restorable message
+      return { values: valuesOf(img), data: img, syx: prog === 0 ? b.raw : [], name: nameOf(img) || undefined };
+    },
+    async requestSlotName(bi, prog) { return nameOf((await fetchBank()).slots[prog]); },
+    forgetBank() { bankCache = null; },
+
+    // safest store (manual-documented, no keypad chords): read-modify-write the whole bank
+    async writeProgram(bi, prog, values) {
+      if (!bank(bi)?.write) throw new Error(`${bank(bi)?.label ?? "that bank"} is read-only`);
+      if (!haveMirror) throw new Error("read the program from the ESQ-1 first (get)");
+      const b = lastBank || (await fetchBank());
+      const slots = b.slots.map((x) => [...x]);
+      slots[prog] = withValues(values);
+      keypad(K.INTERNAL); await sleep(150);
+      midi.send([...hdr(), T.allProgramDump, ...pack(slots.flat()), 0xf7]);
+      await sleep(midi.drainMs() + 3000);
+      bankCache = null; page = null;
+      return slots[prog];
+    },
+
+    sameProgram(a, b) { return !!a && !!b && schema.params.every((p) => read(p, a) === read(p, b)); },
+
+    // front-panel moves: CC98/99 select + CC6 data; an unsolicited program dump
+    decode(ev) {
+      if (ev.type === "sysex" && isType(T.singleProgramDump)(ev.data)) {
+        mirror = unpack(ev.data, 5).slice(0, N); haveMirror = true;
+        return schema.params.map((p) => ({ param: p, value: read(p, mirror) }));
+      }
+      if (ev.type !== "nrpn" || ev.ch !== getChannel()) return [];
+      const p = schema.params.find((q) => q.nrpn === ev.param); if (!p) return [];
+      const n = p.max - p.min + 1, v = p.min + Math.min(n - 1, Math.floor(((ev.value >> 7) * n) / 128));
+      write(p, v, mirror);
+      return [{ param: p, value: v }];
+    },
   };
 }

@@ -947,7 +947,7 @@ async function doStore() {
     if (!r.ok) throw new Error("backup failed: " + (await r.text()));
 
     $("#st-msg").textContent = `writing ${where}…`;
-    const sent = driver.writeProgram(bank, prog, values);
+    const sent = await driver.writeProgram(bank, prog, values);
     driver.forgetBank?.();
     await new Promise((res) => setTimeout(res, midi.drainMs() + 400));
     const back = await driver.requestProgram(bank, prog);
