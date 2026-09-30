@@ -354,7 +354,6 @@ function fillPorts() {
   fillSel($("#out"), midi.outputs(), want.out);
   usePorts();
   if (!midi.inputs().length && !midi.outputs().length) status("no MIDI ports — is the interface plugged in?", true);
-  else if (!$("#out").value) { openSetup(); status("pick this synth's MIDI in + out in setup", true); }
 }
 
 async function selectDevice(id) {
@@ -371,14 +370,13 @@ async function selectDevice(id) {
   $("#ch").value = channel() + 1;
   $("#pname").hidden = !nameParams().length;
   $("#pname").maxLength = nameParams().length || 16;
-  document.querySelectorAll("#devices button").forEach((b) => b.classList.toggle("on", b.dataset.id === id));
+  $("#synthname").textContent = schema.name;
   fillPorts();
   renderProgramControls();
   renderFaceplate();
   renderName();
   refreshBackups();
   $("#setup-steps").replaceChildren(...(schema.setup || []).map((s) => h("li", {}, s)));
-  status(`${schema.params.length} params · get reads the synth's current sound`);
 }
 
 async function boot() {
@@ -393,9 +391,13 @@ async function boot() {
     for (const { param, value } of driver.decode(ev)) setValue(param, value, { send: false, from: "synth" });
   });
 
-  const devices = await (await fetch("/api/devices")).json();
-  $("#devices").replaceChildren(...devices.map((d) => h("button", { "data-id": d.id, onclick: () => selectDevice(d.id) }, d.name)));
+  devices = await (await fetch("/api/devices")).json();
   $("#in").onchange = $("#out").onchange = usePorts;
+  $("#back").onclick = disconnect;
+  $("#connect-go").onclick = () => runConnect();
+  $("#connect-retry").onclick = () => runConnect();
+  $("#connect-skip").onclick = () => { skipNames = true; };
+  $("#reconnect").onclick = () => { closeSetup(); startConnect(schema.id, { auto: false }); };
   $("#ch").onchange = (e) => { lsSet(`${schema.id}.ch`, e.target.value); telemetry(); };
   const mk = createKnob({ label: "amount", fmt: (p, v) => v + "%", onBegin() {}, onEnd() {},
     onChange: (v) => { mutAmt = v; lsSet("mutate", v); }, onHover: (p, v) => showLast(p, v) });
@@ -413,7 +415,11 @@ async function boot() {
   $("#random").onclick = () => randomize(schema.params);
   $("#prev").onclick = () => stepProgram(-1);
   $("#next").onclick = () => stepProgram(1);
-  $("#prognum").onclick = openSetup;
+  $("#progpick").onchange = (e) => {
+    const v = Number(e.target.value);
+    if (v < 0) { e.target.value = cur.prog; return readBankNames(cur.bank); }
+    goProgram(cur.bank, v);
+  };
   $("#setup-close").onclick = closeSetup;
   $("#setup").onclick = (e) => { if (e.target === $("#setup")) closeSetup(); };
   $("#backup").onclick = createBackup;
@@ -425,10 +431,8 @@ async function boot() {
   $("#pname").oninput = (e) => setName(e.target.value);
 
 
-  const want = lsGet("device", devices[0]?.id);
-  const first = devices.some((d) => d.id === want) ? want : devices[0]?.id;
-  if (first) await selectDevice(first);
-  if (midiErr) status("Web MIDI unavailable (" + midiErr.message + ") — use Chrome and allow MIDI + SysEx. Library still works.", true);
+  await renderRack();
+  status(midiErr ? "Web MIDI unavailable (" + midiErr.message + ") — use Chrome and allow MIDI + SysEx" : "pick a synth", !!midiErr);
 }
 
 // ---------- programs on the synth ----------
@@ -438,7 +442,7 @@ const pad3 = (n) => String(n + 1).padStart(3, "0");
 const slotKey = (b, p) => `${b}-${p}`;
 const banks = () => schema.programs?.banks || [];
 // banks you can play/step through (patch/timbre memories on the D-110 are backup-only)
-const navBanks = () => banks().map((b, bi) => ({ ...b, bi })).filter((b) => !b.backupOnly);
+const navBanks = () => banks().map((b, bi) => ({ ...b, bi })).filter((b) => !b.backupOnly && lsGet(`${schema.id}.absent.${b.bi}`, "") !== "1");
 const bankName = (bi) => { const l = banks()[bi]?.label ?? String(bi + 1); return /^\d+$/.test(l) ? `bank ${l}` : l; };
 const slotName = (bi, p) => `${bankName(bi)} · ${pad3(p)}`;
 function names() { try { return JSON.parse(lsGet(`${schema.id}.names`, "{}")); } catch { return {}; } }
@@ -468,9 +472,187 @@ function setCurrent(bank, prog) {
 function showCurrent() {
   document.querySelectorAll("#banks button").forEach((b) => b.classList.toggle("on", Number(b.dataset.b) === cur.bank));
   const pick = $("#banks select"); if (pick) pick.value = cur.bank;
-  $("#prognum").textContent = pad3(cur.prog);
-  $("#prognum").title = names()[slotKey(cur.bank, cur.prog)] || "open the program list";
+  renderProgPick();
   document.querySelectorAll("#programs button").forEach((b) => b.classList.toggle("on", b.dataset.k === slotKey(cur.bank, cur.prog)));
+}
+
+// the program dropdown: every slot in the current bank, by name where known
+let pickBank = null;
+function renderProgPick() {
+  const sel = $("#progpick"), b = banks()[cur.bank]; if (!sel || !b) return;
+  const known = names();
+  const label = (p) => `${pad3(p)} ${known[slotKey(cur.bank, p)] ?? "—"}`;
+  if (pickBank !== cur.bank || sel.options.length !== b.count + 1) {
+    sel.replaceChildren(...Array.from({ length: b.count }, (_, p) => new Option(label(p), p)),
+      new Option(scanningNames ? "reading names…" : "↻ read names from synth", -1));
+    pickBank = cur.bank;
+  } else for (let p = 0; p < b.count; p++) sel.options[p].textContent = label(p);
+  sel.value = cur.prog;
+  sel.title = known[slotKey(cur.bank, cur.prog)] || "programs in this bank";
+}
+
+// names for one bank. Readable banks come straight from memory (no sound
+// change; Roland reads just the name bytes); ROM banks are stepped through —
+// select each slot, read the edit buffer's name — and never change, so that
+// scan runs once and is kept. A bank whose every slot reads the same name
+// isn't really there (JV expansion slot with no board) and gets hidden.
+let scanningNames = false, skipNames = false;
+async function readNames(bi, onEach = () => {}) {
+  const b = banks()[bi], known = names(), direct = b.dump;
+  const got = [];
+  for (let p = 0; p < b.count; p++) {
+    if (!scanningNames || skipNames) return false;
+    let name;
+    if (direct) {
+      if (driver.requestSlotName) name = await driver.requestSlotName(bi, p);
+      else { const r = await driver.requestProgram(bi, p); name = r.name ?? nameParams().map((q) => String.fromCharCode(r.values[q.key] ?? 32)).join("").trim(); }
+    } else {
+      await driver.programChange(bi, p);
+      await new Promise((r) => setTimeout(r, midi.drainMs() + 120));
+      if (driver.requestName) name = await driver.requestName();
+      else { const { values: v } = await driver.requestPatch(); name = nameParams().map((q) => String.fromCharCode(v[q.key] ?? 32)).join("").trim(); }
+    }
+    got.push(name);
+    known[slotKey(bi, p)] = name || "(unnamed)";
+    if (p % 8 === 7) lsSet(`${schema.id}.names`, JSON.stringify(known));
+    onEach(p + 1);
+  }
+  lsSet(`${schema.id}.names`, JSON.stringify(known));
+  if (!direct) {
+    lsSet(`${schema.id}.romScanned.${bi}`, "1");
+    if (b.count > 8 && got.every((x) => x === got[0])) lsSet(`${schema.id}.absent.${bi}`, "1");
+  }
+  return true;
+}
+
+// the "↻ read names" entry in the program dropdown: just this bank
+async function readBankNames(bi) {
+  if (scanningNames) { scanningNames = false; return; }
+  const b = banks()[bi]; if (!b) return;
+  if (!b.dump && JSON.stringify(saved) !== JSON.stringify(values) &&
+      !confirm(`Reading ${b.label} names steps the synth through every slot — your unsaved edit will be replaced. Carry on?`)) return;
+  const back = { ...cur };
+  scanningNames = true; skipNames = false; pickBank = null; renderProgPick();
+  try { await readNames(bi, (n) => { if (n % 8 === 0) status(`reading ${b.label} names… ${n}/${b.count}`); }); }
+  catch (e) { status(`stopped reading names: ${e.message}`, true); }
+  scanningNames = false; pickBank = null;
+  if (!b.dump) goProgram(back.bank, back.prog);
+  renderProgramList(); renderProgPick();
+  status(`read ${b.label} names`);
+}
+
+// ---------- rack → connect → edit ----------
+let devices = [], view = "rack";
+// line drawing of each unit (devices/<id>.svg), inlined so it takes the page colour
+const artCache = new Map();
+async function art(id) {
+  if (!artCache.has(id)) artCache.set(id, fetch(`/devices/${id}.svg`).then((r) => (r.ok ? r.text() : "")).catch(() => ""));
+  const el = h("div", { class: "art" }); el.innerHTML = await artCache.get(id); return el;
+}
+function setView(v) { view = v; document.body.className = `state-${v}`; }
+
+async function renderRack() {
+  setView("rack");
+  $("#synthname").textContent = "";
+  const cards = await Promise.all(devices.map(async (d) => {
+    const ports = midi.access ? midi.savedPorts(d.id) : {};
+    const outName = midi.access && midi.access.outputs.get(ports.out)?.name;
+    const inName = midi.access && midi.access.inputs.get(ports.in)?.name;
+    let last = "no backup yet";
+    try {
+      const { backups } = await (await fetch(`/api/backups/${d.id}`)).json();
+      if (backups[0]) last = "backed up " + new Date(backups[0].at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    } catch {}
+    const ready = !!(outName && inName);
+    return h("fieldset", { class: `grp rackcard${ready ? " ready" : ""}` }, h("legend", {}, d.name),
+      await art(d.id),
+      h("div", { class: "cells" },
+        h("div", { class: "rinfo" },
+          ready ? h("b", {}, outName) : "ports not set", h("br"),
+          `ch ${lsGet(`${d.id}.ch`, "") || "—"} · ${d.transport}`, h("br"), last),
+        h("div", { class: "cell btncell" }, h("button", { class: "btn", onclick: () => startConnect(d.id) }, "connect"), h("span", { class: "clabel" }, "\u00a0"))));
+  }));
+  $("#rackcards").replaceChildren(...cards);
+}
+
+async function startConnect(id, { auto = true } = {}) {
+  await selectDevice(id);
+  setView("connect");
+  $("#connect-title").textContent = `connect · ${schema.name}`;
+  $("#connect-art").replaceWith(Object.assign(await art(id), { id: "connect-art" }));
+  $("#csteps").replaceChildren(); $("#ctrouble").hidden = true; $("#connect-retry").hidden = true; $("#connect-skip").hidden = true;
+  $("#cprogress").classList.add("idle");
+  $("#ctrouble-steps").replaceChildren(...(schema.setup || []).map((x) => h("li", {}, x)));
+  const ready = $("#in").value && $("#out").value;
+  status(ready ? "connecting…" : "pick the synth's MIDI in + out and its channel, then connect");
+  if (ready && auto) runConnect();
+}
+
+function step(text) {
+  const li = h("li", { class: "run" }, text); $("#csteps").append(li);
+  return { ok: (t) => { li.className = "ok"; if (t) li.textContent = t; }, err: (t) => { li.className = "err"; if (t) li.textContent = t; } };
+}
+function progress(done, total, label) {
+  const bar = $("#cprogress"); bar.classList.toggle("idle", !total);
+  bar.querySelector(".pfill").style.width = total ? (done / total) * 100 + "%" : "0";
+  bar.querySelector(".plabel").textContent = label || "";
+}
+
+let connecting = false;
+async function runConnect() {
+  if (connecting) return; connecting = true;
+  $("#csteps").replaceChildren(); $("#ctrouble").hidden = true; $("#connect-retry").hidden = true; progress(0, 0);
+  try {
+    if (!$("#out").value || !$("#in").value) { status("pick both MIDI ports first", true); return; }
+    usePorts(); lsSet(`${schema.id}.ch`, $("#ch").value);
+    // 1 — is it there?
+    const s1 = step(`talking to the ${schema.name}…`);
+    try {
+      const { values: v } = await driver.requestPatch();
+      saved = { ...v }; applyAll(v, { send: false });
+      s1.ok(`${schema.name} is answering${nameParams().length ? ` — “${nameString()}” in the edit buffer` : ""}`);
+    } catch (e) {
+      s1.err(`no answer from the ${schema.name} (${e.message})`);
+      $("#ctrouble").hidden = false; $("#connect-retry").hidden = false;
+      status("check the cables and the synth's settings, then retry", true);
+      return;
+    }
+    // 2 — program names: readable banks every time, ROM banks once ever
+    const todo = navBanks().filter((b) => b.dump || (b.select || b.msb != null || b.lsb != null) && lsGet(`${schema.id}.romScanned.${b.bi}`, "") !== "1");
+    const total = todo.reduce((t, b) => t + b.count, 0);
+    if (total) {
+      const haveNames = Object.keys(names()).length > 0;
+      $("#connect-skip").hidden = !haveNames; skipNames = false; scanningNames = true;
+      const rom = todo.filter((b) => !b.dump);
+      const s2 = step(`reading program names — ${todo.map((b) => b.label).join(", ")}` + (rom.length ? " (ROM banks are read once: the synth steps through them, then comes back)" : ""));
+      const back = { ...cur };
+      let done = 0;
+      try {
+        for (const b of todo) {
+          const ok = await readNames(b.bi, (n) => progress(done + n, total, `${b.label} · ${n} / ${b.count}`));
+          done += b.count;
+          if (!ok) break;
+        }
+        s2.ok(skipNames ? "program names — skipped, using the saved ones" : `program names — ${done} read`);
+      } catch (e) { s2.err(`program names stopped: ${e.message} — carrying on with what's saved`); }
+      scanningNames = false; $("#connect-skip").hidden = true;
+      if (rom.length) { driver.programChange(back.bank, back.prog); await new Promise((r) => setTimeout(r, midi.drainMs() + 150));
+        try { const { values: v } = await driver.requestPatch(); saved = { ...v }; applyAll(v, { send: false }); } catch {} }
+    }
+    progress(0, 0);
+    // 3 — in
+    pickBank = null; renderProgramControls(); renderName();
+    setView("edit");
+    status(`connected · ${nameString() ? `“${nameString()}”` : schema.name}`);
+  } finally { connecting = false; }
+}
+
+function disconnect() {
+  scanningNames = false; skipNames = true;
+  noteOff();
+  closeSetup();
+  renderRack();
+  status("pick a synth");
 }
 
 function goProgram(bank, prog) {
@@ -660,6 +842,7 @@ function telemetry() {
   const port = midi.output?.name || "no output";
   $("#tele-dev").textContent = `[NS-EDIT] ${schema.name} · ${schema.params.length} params`;
   $("#tele-port").firstChild.textContent = `${port} · ch ${channel() + 1} · ${schema.transport}`;
+  $("#conninfo").textContent = `${midi.input?.name || "no input"} → ${port} · ch ${channel() + 1}`;
 }
 
 function barcode() {
@@ -679,6 +862,7 @@ function toggleCompare() {
 // computer keyboard plays notes (a–k row, z/x octave); space holds; l = setup
 addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#setup").hidden) { e.preventDefault(); return closeSetup(); }
+  if (view !== "edit") return;
   if (e.target.matches("input[type=text], input:not([type]), select") || e.metaKey || e.ctrlKey) {
     if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
     return;

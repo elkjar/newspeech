@@ -27,6 +27,37 @@
 
   /* ── groups ───────────────────────────────────────────────────────── */
   #face { display: flex; flex-direction: column; gap: 18px; }
+
+  /* views: rack → connect → edit */
+  body.state-rack #panel, body.state-rack #face, body.state-rack #tele, body.state-rack #back, body.state-rack #libtoggle,
+  body.state-connect #panel, body.state-connect #face, body.state-connect #libtoggle,
+  body.state-edit #rackview, body.state-edit #connectview,
+  body.state-connect #rackview, body.state-rack #connectview { display: none !important; }
+  #synthname { color: #fff; letter-spacing: .22em; }
+  #rackcards { gap: 18px 22px; }
+  .rackcard { min-width: 260px; width: 340px; }
+  .art { color: #9a9a9a; margin: 4px 0 14px; }
+  .art svg { display: block; width: 100%; height: auto; max-height: 110px; }
+  .rackcard.ready .art { color: #d0d0d0; }
+  #connect-art { max-width: 520px; color: #d0d0d0; }
+  #connect-art svg { max-height: 160px; }
+  .rackcard .rinfo { text-transform: none; letter-spacing: .04em; color: #8a8a8a; line-height: 1.8; min-width: 150px; }
+  .rackcard .rinfo b { color: #ddd; font-weight: 400; }
+  .rackcard.ready legend { color: #ddd; }
+  #connectgrp { max-width: 760px; }
+  #csteps { list-style: none; margin: 16px 0 10px; padding: 0; text-transform: none; letter-spacing: .04em; line-height: 2; color: #777; }
+  #csteps li::before { content: "○ "; }
+  #csteps li.run { color: #ddd; } #csteps li.run::before { content: "◌ "; }
+  #csteps li.ok { color: #aaa; } #csteps li.ok::before { content: "● "; }
+  #csteps li.err { color: #fff; } #csteps li.err::before { content: "! "; }
+  .progressbar { position: relative; height: 26px; border: 1px solid var(--line); overflow: hidden; margin-bottom: 12px; }
+  .progressbar .pfill { position: absolute; inset: 0 auto 0 0; width: 0; background: #ddd; transition: width .2s linear;
+    background-image: repeating-linear-gradient(-45deg, #ddd 0 8px, #bbb 8px 16px); background-size: 22.6px 22.6px; animation: crawl .6s linear infinite; }
+  .progressbar .plabel { position: relative; display: block; line-height: 24px; text-align: center; font-size: 10px; letter-spacing: .2em; mix-blend-mode: difference; color: #fff; }
+  .progressbar.idle { visibility: hidden; }
+  .cactions { display: flex; gap: 8px; }
+  #ctrouble { margin-top: 14px; }
+  #ctrouble-steps { margin: 8px 0 0; padding-left: 18px; color: #999; text-transform: none; letter-spacing: .03em; line-height: 1.7; }
   /* one bar across the top that stays put while the faceplate scrolls */
   #panel { position: sticky; top: 0; z-index: 3; background: var(--bg); padding: 8px 0 10px; margin: -8px 0 12px; }
   #bar { width: 100%; --cell: 60px; }
@@ -118,7 +149,8 @@
   #st-go { border-color: #888; }
   #st-go:disabled { opacity: .3; cursor: default; }
   select.bankpick { width: 128px; padding: 6px 8px; }
-  #prognum { min-width: 46px; font-variant-numeric: tabular-nums; color: #fff; }
+  #progpick { width: 176px; margin: 0 -1px; font-variant-numeric: tabular-nums; color: #fff; padding: 6px 9px; }
+  .progrow .seg button#prev, .progrow .seg button#next { padding: 6px 8px; }
   #programs { list-style: none; margin: 0; padding: 0; max-height: 260px; columns: 2; column-gap: 24px; overflow: auto; text-transform: none; letter-spacing: .06em; }
   #programs .bankhead { color: var(--legend); letter-spacing: .22em; text-transform: uppercase; font-size: 10px; margin: 10px 0 4px; }
   #programs button { background: none; border: none; padding: 2px 0; text-align: left; width: 100%; color: #bbb; cursor: pointer; text-transform: none; }
@@ -171,12 +203,44 @@
   @media (max-width: 700px) { body { padding: 18px 14px; } .lcdcell { width: 100%; } }
 </style>
 </head>
-<body>
+<body class="state-rack">
 <div id="brand">
   <h1>NEW SPEECH &nbsp;|&nbsp; EDIT</h1>
-  <div class="seg" id="devices"></div>
+  <button class="btn" id="back" title="disconnect and go back to the rack">← rack</button>
+  <span id="synthname"></span>
   <div id="status">starting…</div>
-  <button class="btn" id="libtoggle" title="l — midi ports, backups, program names" >setup</button>
+  <button class="btn" id="libtoggle" title="l — backups, program names, synth setup">setup</button>
+</div>
+
+<!-- the rack: one panel per synth; nothing else shows until one is connected -->
+<div id="rackview">
+  <div class="frow" id="rackcards"></div>
+</div>
+
+<!-- connecting: ports → talk to the synth → read program names → faceplate -->
+<div id="connectview">
+  <fieldset class="grp" id="connectgrp"><legend id="connect-title">connect</legend>
+    <div id="connect-art" class="art"></div>
+    <div class="cells">
+      <label class="cell portcell"><select class="box" id="in"></select><span class="clabel">midi in</span></label>
+      <label class="cell portcell"><select class="box" id="out"></select><span class="clabel">midi out</span></label>
+      <label class="cell chcell"><select class="box" id="ch">
+        <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option>
+        <option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option><option>16</option>
+      </select><span class="clabel">ch</span></label>
+      <div class="cell btncell"><button class="btn" id="connect-go">connect</button><span class="clabel">&nbsp;</span></div>
+    </div>
+    <ol id="csteps"></ol>
+    <div class="progressbar" id="cprogress"><span class="pfill"></span><span class="plabel"></span></div>
+    <div class="cactions">
+      <button class="btn" id="connect-skip" hidden>skip — use saved names</button>
+      <button class="btn" id="connect-retry" hidden>retry</button>
+    </div>
+    <div id="ctrouble" hidden>
+      <div class="msec-label">if it isn't answering</div>
+      <ol id="ctrouble-steps"></ol>
+    </div>
+  </fieldset>
 </div>
 
 <div id="panel">
@@ -188,7 +252,7 @@
         </div>
       </div>
       <div class="cell btncell"><div class="seg"><button id="get" title="read the synth's current sound">get</button><button id="send" title="push this whole patch to the synth">send</button></div><span class="clabel">synth</span></div>
-      <div class="cell btncell" id="progcell"><div class="progrow"><div id="banks"></div><div class="seg"><button id="prev" title="previous program  [">◂</button><button id="prognum" title="open the program list">—</button><button id="next" title="next program  ]">▸</button></div></div><span class="clabel">bank · program</span></div>
+      <div class="cell btncell" id="progcell"><div class="progrow"><div id="banks"></div><div class="seg"><button id="prev" title="previous program  [">◂</button><select class="box" id="progpick" title="programs in this bank"></select><button id="next" title="next program  ]">▸</button></div></div><span class="clabel">bank · program</span></div>
       <div class="cell btncell" id="storecell"><button class="btn" id="store" title="write this sound into a memory slot on the synth">store</button><span class="clabel">to slot</span></div>
       <div class="bardiv"></div>
       <div class="cell dotcell"><button class="dot" id="hold" title="space"></button><span class="clabel">hold</span></div>
@@ -228,15 +292,8 @@
     </div>
     <div class="modal-body">
       <section class="msec">
-        <div class="msec-label">midi</div>
-        <div class="cells">
-          <label class="cell portcell"><select class="box" id="in"></select><span class="clabel">in</span></label>
-          <label class="cell portcell"><select class="box" id="out"></select><span class="clabel">out</span></label>
-          <label class="cell chcell"><select class="box" id="ch">
-            <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option>
-            <option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option><option>16</option>
-          </select><span class="clabel">ch</span></label>
-        </div>
+        <div class="msec-label">connection</div>
+        <div class="mrow"><span class="mnote" id="conninfo">—</span><button class="btn mini-btn" id="reconnect">change ports / reconnect</button></div>
       </section>
       <section class="msec">
         <div class="msec-label">backups</div>

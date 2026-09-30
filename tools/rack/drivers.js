@@ -232,6 +232,26 @@ function rolandDriver(schema, midi, getChannel) {
       return { values, syx };
     },
 
+    // just the name bytes of a stored slot (JV user patch, D-110 tone) — quick name lists
+    async requestSlotName(bi, prog) {
+      needDump(bi);
+      const s = slotBlocks(bi, prog)[0];
+      const ps = s.b ? paramsOf.get(s.b.name).filter((p) => p.display === "ascii") : [];
+      if (!ps.length) return (await this.requestProgram(bi, prog)).name || "";
+      const r = await rq1(s.at, Math.max(...ps.map((p) => p.offset)) + 1);
+      return ps.map((p) => String.fromCharCode(r.data[p.offset] || 32)).join("").trim();
+    },
+
+    // just the name bytes of the edit buffer — quick, for scanning ROM banks by selecting each slot
+    async requestName() {
+      const b = patchBlocks[0];
+      const ps = paramsOf.get(b.name).filter((p) => p.display === "ascii");
+      if (!ps.length) return "";
+      const len = Math.max(...ps.map((p) => p.offset)) + 1;
+      const r = await rq1(b.at, len);
+      return ps.map((p) => String.fromCharCode(r.data[p.offset] || 32)).join("").trim();
+    },
+
     programChange(bi, prog) {
       const sel = bank(bi).select;
       if (sel?.type === "dt1") dt1(toInt(sel.address), sel.data.map((x) => (x === "prog" ? prog : x)));
