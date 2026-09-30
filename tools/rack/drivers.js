@@ -36,6 +36,9 @@ function selectProgram(midi, ch, bank, prog) {
   midi.send([0xc0 | ch, prog & 127]);
 }
 
+// which schema transports have a driver yet (the rack shows others as "driver coming")
+export const TRANSPORTS = ["nrpn", "roland", "yamaha"];
+
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "nrpn") return nrpnDriver(schema, midi, getChannel);

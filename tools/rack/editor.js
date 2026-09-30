@@ -1,5 +1,5 @@
 import { Midi } from "./midi.js";
-import { makeDriver } from "./drivers.js";
+import { makeDriver, TRANSPORTS } from "./drivers.js";
 import { createKnob } from "./knob.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -391,7 +391,8 @@ async function boot() {
     for (const { param, value } of driver.decode(ev)) setValue(param, value, { send: false, from: "synth" });
   });
 
-  devices = await (await fetch("/api/devices")).json();
+  // skip files that don't parse yet (a device being written right now)
+  devices = (await (await fetch("/api/devices")).json()).filter((d) => !d.error);
   $("#in").onchange = $("#out").onchange = usePorts;
   $("#back").onclick = disconnect;
   $("#recheck").onclick = () => renderRack({ force: true });
@@ -589,15 +590,16 @@ async function renderRack({ force = false } = {}) {
       const { backups } = await (await fetch(`/api/backups/${d.id}`)).json();
       if (backups[0]) last = "backed up " + new Date(backups[0].at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     } catch {}
-    const state = h("div", { class: "rstate" }, outName && inName ? h("span", { class: "dots" }, "checking") : "ports not set");
+    const supported = TRANSPORTS.includes(d.transport);
+    const state = h("div", { class: "rstate" }, !supported ? "driver coming" : outName && inName ? h("span", { class: "dots" }, "checking") : "ports not set");
     const go = h("button", { class: "btn", onclick: (e) => { e.stopPropagation(); startConnect(d.id); } }, "connect");
-    const card = h("fieldset", { class: `grp rackcard${outName && inName ? " waiting" : ""}`, draggable: "true", "data-id": d.id, onclick: () => card.classList.contains("online") && startConnect(d.id) },
+    const card = h("fieldset", { class: `grp rackcard${!supported ? " pending" : outName && inName ? " waiting" : ""}`, draggable: "true", "data-id": d.id, onclick: () => card.classList.contains("online") && startConnect(d.id) },
       h("legend", {}, h("span", { class: "rdot" }), d.name),
       await art(d.id),
       h("div", { class: "rinfo" }, state,
         outName ? `${outName} · ch ${lsGet(`${d.id}.ch`, "") || "—"}` : `ch ${lsGet(`${d.id}.ch`, "") || "—"}`, h("br"), last),
       h("div", { class: "rgo" }, go));
-    return { d, card, state, ready: !!(outName && inName), ports };
+    return { d, card, state, ready: supported && !!(outName && inName), ports, supported };
   }));
   $("#rackcards").replaceChildren(...cards.map((c) => c.card));
   cards.forEach((c) => dragCard(c.card));
@@ -639,6 +641,7 @@ let probing = 0;
 async function probeRack(cards, { force = false } = {}) {
   const run = ++probing;
   const cache = probeCache();
+  cards = cards.filter((c) => c.supported);
   const fresh = (c) => !force && cache[c.d.id] && Date.now() - cache[c.d.id].at < PROBE_FRESH_MS;
   for (const c of cards) if (c.ready && fresh(c)) showProbe(c, cache[c.d.id].ok);
   const all = cards;
