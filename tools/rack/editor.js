@@ -364,7 +364,7 @@ async function selectDevice(id) {
   layout = lr.ok ? await lr.json() : autoLayout();
   lsSet("device", id);
   midi.gapMs = schema.gapMs ?? 2;
-  driver = makeDriver(schema, midi, channel);
+  driver = makeDriver(schema, midi, channel, { get: (k) => lsGet(`${schema.id}.${k}`, null), set: (k, v) => lsSet(`${schema.id}.${k}`, v) });
   // until GET reads the synth: bipolar params sit at centre, the rest at min
   values = Object.fromEntries(schema.params.map((p) => [p.key, p.default ?? (p.display === "bipolar" ? clamp(p, -(p.valueOffset || 0)) : p.min)]));
   saved = {}; undo = []; redo = [];
@@ -451,7 +451,8 @@ function renderProgramControls() {
   try { cur = JSON.parse(lsGet(`${schema.id}.prog`, "")) || cur; } catch { cur = { bank: 0, prog: 0 }; }
   if (!bs.some((b) => b.bi === cur.bank)) cur = { bank: bs[0].bi, prog: 0 };
   // a few banks → buttons (Mopho 1/2/3); many → a dropdown (JV user/presets/cards/exp)
-  $("#banks").replaceChildren(bs.length <= 3
+  // short names (Mopho 1/2/3) → buttons; long or many (JV, TG-55) → a dropdown
+  $("#banks").replaceChildren(bs.length <= 3 && bs.every((b) => b.label.length <= 3)
     ? h("div", { class: "seg" }, bs.map((b) => h("button", { "data-b": b.bi, onclick: () => goProgram(b.bi, cur.prog) }, b.label)))
     : h("select", { class: "box bankpick", onchange: (e) => goProgram(Number(e.target.value), cur.prog) }, bs.map((b) => new Option(b.label, b.bi))));
   showCurrent();
@@ -510,6 +511,7 @@ function renderProgramList() {
   if (!Object.keys(known).length) { ul.append(h("li", { class: "dim" }, "create a backup to read the slot names")); return; }
   banks().forEach((b, bi) => {
     if (!b.dump || b.backupOnly) return;
+    if (!Array.from({ length: b.count }, (_, p) => known[slotKey(bi, p)]).some(Boolean)) return;
     ul.append(h("li", { class: "bankhead" }, bankName(bi)));
     for (let p = 0; p < b.count; p++) {
       const k = slotKey(bi, p);
@@ -525,7 +527,7 @@ function renderProgramList() {
 // .syx + a name index in Dropbox; the names also fill the program list
 async function createBackup() {
   if (scanning) { scanning = false; return; }
-  const readable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => b.dump);
+  const readable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => b.dump && b.write);
   if (!readable.length) return status("this synth can't send its programs over MIDI", true);
   scanning = true;
   const btn = $("#backup"), fillEl = btn.querySelector(".pfill"), label = btn.querySelector(".plabel");

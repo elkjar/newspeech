@@ -1,0 +1,1329 @@
+{
+  "comment": "Same plugin-panel pattern as the mopho/jv1080/d110 layouts. Rows follow the AWM2 signal path: voice common (element mode 1/2/4, volume, bend, output, element enable, controller routing) -> element level/pan/limits -> wave + pitch -> pitch EG -> filters 1 & 2 (series; filter 1 may be LPF/HPF, filter 2 LPF only) + their EGs and key scaling -> amp EG + level scaling -> LFO -> voice effect. All element groups share one select var {e} (select.shared = 'element', 'all' writes all four elements); in 1- or 2-element mode elements 3-4 (or 2-4) are not in the voice and edits to them go nowhere. Envelopes are Yamaha rate/level (rates 0-63, pitch/filter levels -64..+63, amp levels 0-63), so they are plain knobs in time order, not DADSR env cells. Amp EG in 'hold' mode turns r1 into a hold time. Effect params 1-3 mean different things per effect type (tg55.json effectTypes). Element enable toggles are live mutes, not stored in the voice. The voice name is edited in the name field (name1-10 are the ascii params).",
+  "rows": [
+    {
+      "id": "voice",
+      "groups": [
+        {
+          "title": "voice",
+          "controls": [
+            {
+              "k": "mode",
+              "label": "elements",
+              "as": "seg",
+              "labels": [
+                "1",
+                "2",
+                "4"
+              ]
+            },
+            {
+              "k": "voiceVolume",
+              "label": "volume"
+            },
+            {
+              "k": "pbRange",
+              "label": "bend"
+            },
+            {
+              "k": "atPbRange",
+              "label": "at bend"
+            },
+            {
+              "k": "randomPitch",
+              "label": "random"
+            },
+            {
+              "k": "outputSelect",
+              "label": "output",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "elements",
+          "controls": [
+            {
+              "k": "e1On",
+              "label": "e1",
+              "as": "toggle"
+            },
+            {
+              "k": "e2On",
+              "label": "e2",
+              "as": "toggle"
+            },
+            {
+              "k": "e3On",
+              "label": "e3",
+              "as": "toggle"
+            },
+            {
+              "k": "e4On",
+              "label": "e4",
+              "as": "toggle"
+            }
+          ]
+        },
+        {
+          "title": "control",
+          "controls": [
+            {
+              "k": "pmDevice",
+              "label": "pm src",
+              "as": "pick"
+            },
+            {
+              "k": "pmRange",
+              "label": "pm amt"
+            },
+            {
+              "k": "amDevice",
+              "label": "am src",
+              "as": "pick"
+            },
+            {
+              "k": "amRange",
+              "label": "am amt"
+            },
+            {
+              "k": "fmDevice",
+              "label": "fm src",
+              "as": "pick"
+            },
+            {
+              "k": "fmRange",
+              "label": "fm amt"
+            },
+            {
+              "k": "coDevice",
+              "label": "cut src",
+              "as": "pick"
+            },
+            {
+              "k": "coRange",
+              "label": "cut amt"
+            }
+          ]
+        },
+        {
+          "title": "bias / vol",
+          "controls": [
+            {
+              "k": "egbDevice",
+              "label": "eg bias src",
+              "as": "pick"
+            },
+            {
+              "k": "egbRange",
+              "label": "eg bias"
+            },
+            {
+              "k": "volDevice",
+              "label": "vol src",
+              "as": "pick"
+            },
+            {
+              "k": "volLimitLow",
+              "label": "vol min"
+            },
+            {
+              "k": "cardIdMsb",
+              "label": "card id hi"
+            },
+            {
+              "k": "cardIdLsb",
+              "label": "card id lo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "element",
+      "groups": [
+        {
+          "title": "element",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}Volume",
+              "label": "level"
+            },
+            {
+              "k": "e{e}Detune",
+              "label": "detune"
+            },
+            {
+              "k": "e{e}NoteShift",
+              "label": "shift"
+            },
+            {
+              "k": "e{e}Pan",
+              "label": "pan"
+            },
+            {
+              "k": "e{e}FxBalance",
+              "label": "fx bal"
+            }
+          ]
+        },
+        {
+          "title": "limits",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}NoteLo",
+              "label": "key lo",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}NoteHi",
+              "label": "key hi",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}VelLo",
+              "label": "vel lo"
+            },
+            {
+              "k": "e{e}VelHi",
+              "label": "vel hi"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wave",
+      "groups": [
+        {
+          "title": "wave",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}WaveSource",
+              "label": "source",
+              "as": "seg",
+              "labels": [
+                "pre",
+                "card"
+              ]
+            },
+            {
+              "k": "e{e}Wave",
+              "label": "wave",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}FreqMode",
+              "label": "freq",
+              "as": "seg",
+              "labels": [
+                "norm",
+                "fixed"
+              ]
+            },
+            {
+              "k": "e{e}FixedNote",
+              "label": "fixed note",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}Fine",
+              "label": "fine"
+            },
+            {
+              "k": "e{e}PitchModSens",
+              "label": "pm sens"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pitch",
+      "groups": [
+        {
+          "title": "pitch eg",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}PegRange",
+              "label": "range",
+              "as": "seg",
+              "labels": [
+                "2oct",
+                "1oct",
+                "1/2"
+              ]
+            },
+            {
+              "k": "e{e}PegR1",
+              "label": "r1"
+            },
+            {
+              "k": "e{e}PegR2",
+              "label": "r2"
+            },
+            {
+              "k": "e{e}PegR3",
+              "label": "r3"
+            },
+            {
+              "k": "e{e}PegRR",
+              "label": "rr"
+            },
+            {
+              "k": "e{e}PegRateScale",
+              "label": "rate scl"
+            },
+            {
+              "k": "e{e}PegVelSw",
+              "label": "vel",
+              "as": "toggle"
+            }
+          ]
+        },
+        {
+          "title": "pitch eg levels",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}PegL0",
+              "label": "l0"
+            },
+            {
+              "k": "e{e}PegL1",
+              "label": "l1"
+            },
+            {
+              "k": "e{e}PegL2",
+              "label": "l2"
+            },
+            {
+              "k": "e{e}PegL3",
+              "label": "l3"
+            },
+            {
+              "k": "e{e}PegRL",
+              "label": "rl"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "filter",
+      "groups": [
+        {
+          "title": "filter",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}F1Type",
+              "label": "f1 type",
+              "as": "seg",
+              "labels": [
+                "thru",
+                "lpf",
+                "hpf"
+              ]
+            },
+            {
+              "k": "e{e}F1Cutoff",
+              "label": "f1 cutoff"
+            },
+            {
+              "k": "e{e}F1Mode",
+              "label": "f1 mode",
+              "as": "seg",
+              "labels": [
+                "eg",
+                "lfo",
+                "egva"
+              ]
+            },
+            {
+              "k": "e{e}F2Type",
+              "label": "f2 type",
+              "as": "seg",
+              "labels": [
+                "thru",
+                "lpf"
+              ]
+            },
+            {
+              "k": "e{e}F2Cutoff",
+              "label": "f2 cutoff"
+            },
+            {
+              "k": "e{e}F2Mode",
+              "label": "f2 mode",
+              "as": "seg",
+              "labels": [
+                "eg",
+                "lfo",
+                "egva"
+              ]
+            },
+            {
+              "k": "e{e}Reso",
+              "label": "reso"
+            },
+            {
+              "k": "e{e}FilterVelSens",
+              "label": "vel sens"
+            },
+            {
+              "k": "e{e}CutoffModSens",
+              "label": "mod sens"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "filter-eg",
+      "groups": [
+        {
+          "title": "filter 1 eg",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}F1R1",
+              "label": "r1"
+            },
+            {
+              "k": "e{e}F1R2",
+              "label": "r2"
+            },
+            {
+              "k": "e{e}F1R3",
+              "label": "r3"
+            },
+            {
+              "k": "e{e}F1R4",
+              "label": "r4"
+            },
+            {
+              "k": "e{e}F1RR1",
+              "label": "rr1"
+            },
+            {
+              "k": "e{e}F1RR2",
+              "label": "rr2"
+            },
+            {
+              "k": "e{e}F1RateScale",
+              "label": "rate scl"
+            }
+          ]
+        },
+        {
+          "title": "filter 2 eg",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}F2R1",
+              "label": "r1"
+            },
+            {
+              "k": "e{e}F2R2",
+              "label": "r2"
+            },
+            {
+              "k": "e{e}F2R3",
+              "label": "r3"
+            },
+            {
+              "k": "e{e}F2R4",
+              "label": "r4"
+            },
+            {
+              "k": "e{e}F2RR1",
+              "label": "rr1"
+            },
+            {
+              "k": "e{e}F2RR2",
+              "label": "rr2"
+            },
+            {
+              "k": "e{e}F2RateScale",
+              "label": "rate scl"
+            }
+          ]
+        },
+        {
+          "title": "filter 1 eg levels",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}F1L0",
+              "label": "l0"
+            },
+            {
+              "k": "e{e}F1L1",
+              "label": "l1"
+            },
+            {
+              "k": "e{e}F1L2",
+              "label": "l2"
+            },
+            {
+              "k": "e{e}F1L3",
+              "label": "l3"
+            },
+            {
+              "k": "e{e}F1L4",
+              "label": "l4"
+            },
+            {
+              "k": "e{e}F1RL1",
+              "label": "rl1"
+            },
+            {
+              "k": "e{e}F1RL2",
+              "label": "rl2"
+            }
+          ]
+        },
+        {
+          "title": "filter 2 eg levels",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}F2L0",
+              "label": "l0"
+            },
+            {
+              "k": "e{e}F2L1",
+              "label": "l1"
+            },
+            {
+              "k": "e{e}F2L2",
+              "label": "l2"
+            },
+            {
+              "k": "e{e}F2L3",
+              "label": "l3"
+            },
+            {
+              "k": "e{e}F2L4",
+              "label": "l4"
+            },
+            {
+              "k": "e{e}F2RL1",
+              "label": "rl1"
+            },
+            {
+              "k": "e{e}F2RL2",
+              "label": "rl2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "filter-scale",
+      "groups": [
+        {
+          "title": "filter 1 key scaling",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}F1Bp1",
+              "label": "bp1",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}F1Bp2",
+              "label": "bp2",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}F1Bp3",
+              "label": "bp3",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}F1Bp4",
+              "label": "bp4",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}F1Ofs1",
+              "label": "ofs1"
+            },
+            {
+              "k": "e{e}F1Ofs2",
+              "label": "ofs2"
+            },
+            {
+              "k": "e{e}F1Ofs3",
+              "label": "ofs3"
+            },
+            {
+              "k": "e{e}F1Ofs4",
+              "label": "ofs4"
+            }
+          ]
+        },
+        {
+          "title": "filter 2 key scaling",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}F2Bp1",
+              "label": "bp1",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}F2Bp2",
+              "label": "bp2",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}F2Bp3",
+              "label": "bp3",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}F2Bp4",
+              "label": "bp4",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}F2Ofs1",
+              "label": "ofs1"
+            },
+            {
+              "k": "e{e}F2Ofs2",
+              "label": "ofs2"
+            },
+            {
+              "k": "e{e}F2Ofs3",
+              "label": "ofs3"
+            },
+            {
+              "k": "e{e}F2Ofs4",
+              "label": "ofs4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "amp",
+      "groups": [
+        {
+          "title": "amp eg",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}AegMode",
+              "label": "mode",
+              "as": "seg",
+              "labels": [
+                "norm",
+                "hold"
+              ]
+            },
+            {
+              "k": "e{e}AegR1",
+              "label": "r1"
+            },
+            {
+              "k": "e{e}AegR2",
+              "label": "r2"
+            },
+            {
+              "k": "e{e}AegL2",
+              "label": "l2"
+            },
+            {
+              "k": "e{e}AegR3",
+              "label": "r3"
+            },
+            {
+              "k": "e{e}AegL3",
+              "label": "l3"
+            },
+            {
+              "k": "e{e}AegR4",
+              "label": "r4"
+            },
+            {
+              "k": "e{e}AegRR",
+              "label": "rr"
+            },
+            {
+              "k": "e{e}AegRateScale",
+              "label": "rate scl"
+            }
+          ]
+        },
+        {
+          "title": "amp sens",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}AmpVelSens",
+              "label": "vel sens"
+            },
+            {
+              "k": "e{e}RateVelSw",
+              "label": "rate vel",
+              "as": "toggle"
+            },
+            {
+              "k": "e{e}AmpModSens",
+              "label": "am sens"
+            }
+          ]
+        },
+        {
+          "title": "level scaling",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}LvlBp1",
+              "label": "bp1",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}LvlBp2",
+              "label": "bp2",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}LvlBp3",
+              "label": "bp3",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}LvlBp4",
+              "label": "bp4",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}LvlOfs1",
+              "label": "ofs1"
+            },
+            {
+              "k": "e{e}LvlOfs2",
+              "label": "ofs2"
+            },
+            {
+              "k": "e{e}LvlOfs3",
+              "label": "ofs3"
+            },
+            {
+              "k": "e{e}LvlOfs4",
+              "label": "ofs4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lfo",
+      "groups": [
+        {
+          "title": "lfo",
+          "select": {
+            "label": "element",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "e": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "element"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "e{e}LfoWave",
+              "label": "wave",
+              "as": "pick"
+            },
+            {
+              "k": "e{e}LfoSpeed",
+              "label": "speed"
+            },
+            {
+              "k": "e{e}LfoDelay",
+              "label": "delay"
+            },
+            {
+              "k": "e{e}LfoPhase",
+              "label": "phase"
+            },
+            {
+              "k": "e{e}LfoPmd",
+              "label": "pitch"
+            },
+            {
+              "k": "e{e}LfoAmd",
+              "label": "amp"
+            },
+            {
+              "k": "e{e}LfoFmd",
+              "label": "filter"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "effect",
+      "groups": [
+        {
+          "title": "effect",
+          "controls": [
+            {
+              "k": "fxType",
+              "label": "type",
+              "as": "pick"
+            },
+            {
+              "k": "fxLevel",
+              "label": "level"
+            },
+            {
+              "k": "fxParam1",
+              "label": "param 1"
+            },
+            {
+              "k": "fxParam2",
+              "label": "param 2"
+            },
+            {
+              "k": "fxParam3",
+              "label": "param 3"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

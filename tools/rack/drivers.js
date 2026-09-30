@@ -36,9 +36,11 @@ function selectProgram(midi, ch, bank, prog) {
   midi.send([0xc0 | ch, prog & 127]);
 }
 
-export function makeDriver(schema, midi, getChannel) {
+// prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
+export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "nrpn") return nrpnDriver(schema, midi, getChannel);
   if (schema.transport === "roland") return rolandDriver(schema, midi, getChannel);
+  if (schema.transport === "yamaha") return yamahaDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
 
@@ -277,5 +279,141 @@ function rolandDriver(schema, midi, getChannel) {
       }
       return out;
     },
+  };
+}
+
+// Yamaha SY/TG55 (AWM2). Param change F0 43 1n 35 G S H P V1 V2 F7; voice
+// dumps F0 43 0n 7A bc bc 'LM  8103VC' +14×00 memType memNum data sum F7,
+// data = 37 common bytes + 9×N element bytes + 112×N element blocks for
+// N = 1/2/4 elements. Params index a canonical 4-element image (dumpOffset),
+// so a 1- or 2-element voice keeps the other elements' bytes in the mirror.
+function yamahaDriver(schema, midi, getChannel, prefs) {
+  const Y = schema.yamaha;
+  let n = Number(prefs?.get("dev") ?? (Y.defaultDeviceNumber ?? 1) - 1);
+  const ascii = (str) => [...str].map((c) => c.charCodeAt(0));
+  const ELEMENTS = { 5: 1, 6: 2, 7: 4 };
+  const IMG = 37 + 9 * 4 + 112 * 4; // 521
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const bank = (bi) => schema.programs.banks[bi];
+
+  const request = (type, memType, memNum, dev = n) =>
+    midi.send([0xf0, 0x43, 0x20 | dev, 0x7a, ...ascii("LM  8103" + type), ...new Array(14).fill(0), memType, memNum, 0xf7]);
+  // a dump of `type`, checksum-verified; replies are labelled 7F/00 so match on type only
+  const parse = (d) => { // F0 43 0n 7A bcHi bcLo <bc bytes from 'L'> sum F7
+    if (d[0] !== 0xf0 || d[1] !== 0x43 || d[2] >> 4 !== 0 || d[3] !== 0x7a) return null;
+    const bc = (d[4] << 7) | d[5], body = [...d.slice(6, 6 + bc)];
+    if (body.length !== bc || (body.reduce((t, x) => t + x, 0) + d[6 + bc]) % 128) return null;
+    return { dev: d[2] & 15, type: String.fromCharCode(body[8], body[9]), memType: body[24], memNum: body[25], data: body.slice(26), raw: [...d] };
+  };
+  async function fetchDump(type, memType, memNum, timeout = 1500) {
+    const reply = midi.waitSysex((d) => parse(d)?.type === type, timeout);
+    request(type, memType, memNum);
+    const dump = parse(await reply);
+    await sleep(120); // Yamaha: > 100 ms between dumps either way
+    return dump;
+  }
+  // no reply on our device #? sweep 1–16 once and keep the one that answers
+  async function fetchDumpFindingDevice(type, memType, memNum) {
+    try { return await fetchDump(type, memType, memNum); } catch (e) {
+      for (let d = 0; d < 16; d++) {
+        if (d === n) continue;
+        const reply = midi.waitSysex((x) => parse(x)?.type === type, 400);
+        request(type, memType, memNum, d);
+        try { const dump = parse(await reply); n = dump.dev; prefs?.set("dev", n); await sleep(120); return dump; } catch {}
+      }
+      throw new Error("no reply on any device number — check Device# isn't off and Bulk/voice mode");
+    }
+  }
+
+  // dump data ⇄ canonical 4-element image
+  const toImage = (data, base) => {
+    const N = ELEMENTS[data[0]]; if (!N) return null; // drum set (mode 10): not a voice
+    const img = base ? [...base] : new Array(IMG).fill(0);
+    for (let i = 0; i < 37; i++) img[i] = data[i];
+    for (let e = 0; e < N; e++) {
+      for (let i = 0; i < 9; i++) img[37 + 9 * e + i] = data[37 + 9 * e + i];
+      for (let i = 0; i < 112; i++) img[73 + 112 * e + i] = data[37 + 9 * N + 112 * e + i];
+    }
+    return img;
+  };
+  const toData = (img) => {
+    const N = ELEMENTS[img[0]] || 4, out = img.slice(0, 37);
+    for (let e = 0; e < N; e++) out.push(...img.slice(37 + 9 * e, 46 + 9 * e));
+    for (let e = 0; e < N; e++) out.push(...img.slice(73 + 112 * e, 185 + 112 * e));
+    return out;
+  };
+  const dumpMsg = (img, memType, memNum) => {
+    const body = [...ascii("LM  8103VC"), ...new Array(14).fill(0), memType, memNum, ...toData(img)];
+    const sum = (128 - (body.reduce((t, x) => t + x, 0) % 128)) % 128;
+    return [0xf0, 0x43, n, 0x7a, (body.length >> 7) & 127, body.length & 127, ...body, sum, 0xf7];
+  };
+
+  const signBit = (p) => 1 << p.signBit;
+  const toWire = (p, v) => p.encoding === "signMag" ? (v < 0 ? signBit(p) | -v : v) : v;
+  const fromWire = (p, w) => p.encoding === "signMag" ? (w & signBit(p) ? -(w & (signBit(p) - 1)) : w) : w;
+  const inImage = (p) => p.dumpOffset != null;
+  const read = (p, img) => fromWire(p, (p.size || 1) > 1 ? (img[p.dumpOffset] << 7) | img[p.dumpOffset + 1] : img[p.dumpOffset]);
+  const write = (p, v, img) => {
+    const w = toWire(p, v);
+    if ((p.size || 1) > 1) { img[p.dumpOffset] = (w >> 7) & 127; img[p.dumpOffset + 1] = w & 127; } else img[p.dumpOffset] = w & 127;
+  };
+  const valuesOf = (img) => Object.fromEntries(schema.params.filter(inImage).map((p) => [p.key, read(p, img)]));
+  const imageWith = (values) => { const img = [...mirror]; for (const p of schema.params) if (inImage(p) && values[p.key] != null) write(p, values[p.key], img); return img; };
+
+  let mirror = new Array(IMG).fill(0);
+  let enable = 0x0f; // element enable bits: sendable, not readable
+  const nameOf = (data) => String.fromCharCode(...data.slice(1, 11).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
+
+  return {
+    sendParam(p, v) {
+      let wire;
+      if (p.bits) { enable = (enable & ~(1 << p.bits.shift)) | ((v & 1) << p.bits.shift); wire = enable; }
+      else { if (inImage(p)) write(p, v, mirror); wire = toWire(p, v); }
+      const sub = p.element == null ? p.pcSub : p.pcSub | (p.element << 4);
+      midi.send([0xf0, 0x43, 0x10 | n, 0x35, p.pcGroup, sub, p.pcHigh || 0, p.pcParam, (wire >> 7) & 127, wire & 127, 0xf7]);
+    },
+    sendPatch(values) { mirror = imageWith(values); midi.send(dumpMsg(mirror, 0x7f, 0)); },
+
+    async requestPatch() {
+      const dump = await fetchDumpFindingDevice("VC", 0x7f, 0);
+      const img = toImage(dump.data, mirror);
+      if (!img) throw new Error("the edit buffer holds a drum set — pick a voice");
+      mirror = img;
+      const values = valuesOf(img);
+      for (const p of schema.params) if (p.bits) values[p.key] = (enable >> p.bits.shift) & 1;
+      return { values, syx: dump.raw };
+    },
+
+    programChange(bi, prog) {
+      const sel = bank(bi).select, ch = getChannel();
+      midi.send([0xc0 | ch, sel.prefix & 127]);
+      midi.send([0xc0 | ch, (prog + (sel.offset || 0)) & 127]);
+    },
+
+    async requestProgram(bi, prog) {
+      const b = bank(bi);
+      if (!b.dump) throw new Error(`${b.label} can't be read over MIDI`);
+      const dump = await fetchDumpFindingDevice(b.sysex.type, b.sysex.memoryType, prog);
+      const name = b.sysex.type === "VC" ? nameOf(dump.data) : String.fromCharCode(...dump.data.slice(0, 10).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
+      const img = b.sysex.type === "VC" ? toImage(dump.data) : null; // drum sets + multis: raw only
+      return { values: img ? valuesOf(img) : {}, data: img, syx: dump.raw, name: name || undefined };
+    },
+
+    writeProgram(bi, prog, values) {
+      const b = bank(bi);
+      if (!b.write || b.sysex.type !== "VC" || b.drumSlots?.includes(prog)) throw new Error(`can't store a voice in ${b.label} ${prog + 1}`);
+      const img = imageWith(values);
+      midi.send(dumpMsg(img, b.sysex.memoryType, prog));
+      return img;
+    },
+
+    // common + the elements the voice actually uses
+    sameProgram(a, b) {
+      if (!a || !b) return false;
+      const N = ELEMENTS[a[0]] || 4;
+      return schema.params.filter((p) => inImage(p) && (p.element == null || p.element < N)).every((p) => read(p, a) === read(p, b));
+    },
+
+    decode() { return []; }, // the TG55 doesn't transmit front-panel edits
   };
 }
