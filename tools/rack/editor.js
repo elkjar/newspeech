@@ -35,7 +35,8 @@ let cur = { bank: 0, prog: 0 }, scanning = false;
 const registry = new Map(); // key → Set<{ update(v), flash?(), changed?(on) }>
 const register = (key, ctl) => { (registry.get(key) || registry.set(key, new Set()).get(key)).add(ctl); return () => registry.get(key)?.delete(ctl); };
 
-const channel = () => Number(lsGet(`${schema.id}.ch`, "1")) - 1;
+// per-synth MIDI channel; a schema can set its factory default (D-110 part 1 = ch 2)
+const channel = () => Number(lsGet(`${schema.id}.ch`, String(schema.defaultChannel ?? 1))) - 1;
 const status = (msg, err = false) => { const s = $("#status"); s.textContent = msg; s.classList.toggle("err", err); };
 
 // ---------- formatting ----------
