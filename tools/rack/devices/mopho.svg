@@ -1,17 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="1" y="6" width="198" height="92" rx="5"/>
-  <line x1="1" y1="20" x2="199" y2="20"/>
-  <rect x="14" y="32" width="34" height="16" rx="1"/><path d="M19 36v8m6-8v8m6-8v8"/>
-  <circle cx="34" cy="72" r="14"/><line x1="34" y1="72" x2="39.6" y2="62.3"/>
-  <circle cx="76" cy="44" r="8"/><line x1="76" y1="44" x2="70.5" y2="40.8"/>
-  <circle cx="102" cy="44" r="8"/><line x1="102" y1="44" x2="99.3" y2="38.2"/>
-  <circle cx="128" cy="44" r="8"/><line x1="128" y1="44" x2="129.1" y2="37.7"/>
-  <circle cx="154" cy="44" r="8"/><line x1="154" y1="44" x2="158.5" y2="39.5"/>
-  <rect x="66" y="70" width="14" height="6" rx="1"/>
-  <rect x="92" y="70" width="14" height="6" rx="1"/>
-  <rect x="118" y="70" width="14" height="6" rx="1"/>
-  <rect x="144" y="70" width="14" height="6" rx="1"/>
-  <rect x="160" y="64" width="28" height="20" rx="2"/><path d="M166 74h16"/>
-  <circle cx="186" cy="13" r="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 100" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="1" y="4" width="218" height="94" rx="5"/>
+  <rect x="84.0" y="18" width="52" height="18" rx="1"/><path d="M91.0 23v8m7-8v8m7-8v8"/>
+  <circle cx="26.875" cy="66" r="9"/><line x1="26.875" y1="66" x2="20.6" y2="69.6"/>
+  <circle cx="50.625" cy="66" r="9"/><line x1="50.625" y1="66" x2="43.4" y2="65.7"/>
+  <circle cx="74.375" cy="66" r="9"/><line x1="74.375" y1="66" x2="68.4" y2="62.0"/>
+  <circle cx="98.125" cy="66" r="9"/><line x1="98.125" y1="66" x2="95.2" y2="59.4"/>
+  <circle cx="121.875" cy="66" r="9"/><line x1="121.875" y1="66" x2="122.9" y2="58.9"/>
+  <circle cx="145.625" cy="66" r="9"/><line x1="145.625" y1="66" x2="150.3" y2="60.5"/>
+  <circle cx="169.375" cy="66" r="9"/><line x1="169.375" y1="66" x2="176.2" y2="63.8"/>
+  <circle cx="193.125" cy="66" r="9"/><line x1="193.125" y1="66" x2="200.1" y2="67.7"/>
 
 </svg>
