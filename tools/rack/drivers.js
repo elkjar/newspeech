@@ -37,7 +37,7 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax"];
 
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
@@ -45,6 +45,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "roland") return rolandDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "yamaha") return yamahaDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "ensoniq") return ensoniqDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "emax") return emaxDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
 
@@ -689,5 +690,157 @@ function ensoniqDriver(schema, midi, getChannel, prefs) {
       write(p, v, mirror);
       return [{ param: p, value: v }];
     },
+  };
+}
+
+// E-mu Emax I (Rev 3). F0 18 02 <cmd> … F7 — no channel, no device ID, no bulk
+// dump: every parameter is read and written one at a time, one message in
+// flight, and each change is answered with READY (F0 18 02 38 F7). No edit
+// buffer: the current preset is edited in RAM (save to disk on the panel).
+// Voices are addressed by KEY: the edit target is editLo..editHi (local params).
+// Voice assignments (key ranges) are read-only here — the Emax doesn't
+// range-check them and a bad write clobbers neighbouring voices.
+function emaxDriver(schema, midi, getChannel, prefs) {
+  const H = [0xf0, 0x18, 0x02];
+  const P = (m) => schema.params.filter((p) => p.msg === m);
+  const bank = (bi) => schema.programs.banks[bi];
+  const byKey = new Map(schema.params.map((p) => [p.key, p]));
+  let edit = { lo: Number(prefs?.get("editLo") ?? byKey.get("editLo")?.default ?? 39), hi: Number(prefs?.get("editHi") ?? byKey.get("editHi")?.default ?? 39) };
+  let q = Promise.resolve(), first = true;
+  const serial = (fn) => (q = q.then(fn, fn));
+  const isCmd = (cmd, pred) => (d) => d[0] === 0xf0 && d[1] === 0x18 && d[2] === 0x02 && d[3] === cmd && (!pred || pred(d));
+  const ask = (bytes, cmd, pred, t = 300) => serial(async () => {
+    const r = midi.waitSysex(isCmd(cmd, pred), first ? 1000 : t); first = false;
+    midi.send([...H, ...bytes, 0xf7]); return [...(await r)];
+  });
+  const change = (bytes, t = 500) => serial(async () => {
+    const r = midi.waitSysex(isCmd(0x38), t).catch(() => null);
+    midi.send([...H, ...bytes, 0xf7]); await r;
+  });
+  const b3 = (a, i) => a[i] | (a[i + 1] << 7) | (a[i + 2] << 14);
+  const to3 = (v) => [v & 127, (v >> 7) & 127, (v >> 14) & 31];
+  // #33 reply body after key, level: rate(1) length(3) susStart(3) susEnd(3) relStart(3) relEnd(3) flags(1)
+  const SF = { rate: [0, 1], length: [1, 3], susStart: [4, 3], susEnd: [7, 3], relStart: [10, 3], relEnd: [13, 3], flags: [16, 1] };
+  const bitOf = (p, raw) => (p.bit != null ? (raw >> p.bit) & 1 : p.bits ? (raw >> p.bits.shift) & ((1 << p.bits.width) - 1) : raw);
+  const setBit = (p, raw, v) => {
+    if (p.bit != null) return (raw & ~(1 << p.bit)) | ((v & 1) << p.bit);
+    if (p.bits) { const m = ((1 << p.bits.width) - 1) << p.bits.shift; return (raw & ~m) | ((v << p.bits.shift) & m); }
+    return v;
+  };
+
+  const m = { misc: null, maps: [null, null], sample: [null, null], xfade: null, preset: {}, voice: [{}, {}] };
+  let current = 0, haveRead = false, last = {};
+
+  const presetNums = (p) => (p.parts ? p.parts.map((x) => x.num) : [p.num]);
+  const presetValue = (p, byNum) => p.parts ? p.parts.reduce((v, x) => v | ((byNum[x.num] ?? 0) << x.at), 0) : byNum[p.num];
+  async function readPresetParams(pp) {
+    const byNum = {};
+    const nums = [...new Set(P("preset").flatMap(presetNums))];
+    for (const n of nums) byNum[n] = (await ask([0x01, pp, n], 0x31, (d) => d[5] === n))[6];
+    return byNum;
+  }
+  const valuesFromPreset = (byNum, into = {}) => { for (const p of P("preset")) into[p.key] = presetValue(p, byNum); return into; };
+
+  async function readAll() {
+    const values = {};
+    const mi = await ask([0x02], 0x32); m.misc = mi.slice(4, mi.length - 1); current = m.misc[0];
+    for (const p of P("misc")) values[p.key] = p.field === "tune" ? m.misc[1] : bitOf(p, m.misc[2]);
+    for (const L of [0, 1]) { const d = await ask([0x05 + L], 0x35 + L); m.maps[L] = d.slice(4, 4 + 88); }
+    values.editLo = edit.lo; values.editHi = edit.hi;
+    for (const L of [0, 1]) {
+      const vn = m.maps[L][edit.lo];
+      const mp = P("map").find((p) => p.level === L); if (mp) values[mp.key] = vn;
+      // the run of keys around the edit key that play the same voice
+      let lo = edit.lo, hi = edit.lo;
+      while (lo > 0 && m.maps[L][lo - 1] === vn) lo--; while (hi < 87 && m.maps[L][hi + 1] === vn) hi++;
+      for (const p of P("assign").filter((p) => p.level === L)) values[p.key] = /Lo/.test(p.key) ? lo : hi;
+      if (vn === 0x7f) { m.sample[L] = null; continue; } // no voice on this layer
+      for (const p of P("voice").filter((p) => p.level === L)) {
+        const v = (await ask([0x00, edit.lo, L, p.num], 0x30, (d) => d[4] === edit.lo && d[5] === L && d[6] === p.num))[7];
+        m.voice[L][p.num] = v; values[p.key] = v;
+      }
+      const sd = await ask([0x03, edit.lo, L], 0x33, (d) => d[4] === edit.lo && d[5] === L);
+      m.sample[L] = sd.slice(6, sd.length - 1);
+      for (const p of P("sample").filter((p) => p.level === L)) {
+        const [o, n] = SF[p.field]; const raw = n === 3 ? b3(m.sample[L], o) : m.sample[L][o];
+        values[p.key] = p.field === "flags" ? bitOf(p, raw) : raw;
+      }
+    }
+    const xf = await ask([0x04, edit.lo], 0x34, (d) => d[4] === edit.lo);
+    m.xfade = xf.slice(5, xf.length - 1);
+    for (const p of P("xfade")) values[p.key] = p.field === "mode" ? m.xfade[0] & 7 : p.field === "dir" ? (m.xfade[0] >> 3) & 1 : p.field === "posStart" ? m.xfade[1] : m.xfade[2];
+    m.preset = await readPresetParams(0x7f);
+    valuesFromPreset(m.preset, values);
+    haveRead = true; last = { ...values };
+    return values;
+  }
+
+  async function send(p, v) {
+    if (p.readOnly || p.msg === "map" || p.msg === "assign") return;
+    if (p.msg === "local") { edit[p.key === "editLo" ? "lo" : "hi"] = v; if (edit.hi < edit.lo) edit.hi = edit.lo; prefs?.set("editLo", edit.lo); prefs?.set("editHi", edit.hi); return; }
+    if (p.msg === "voice") { m.voice[p.level][p.num] = v; return change([0x1a, edit.lo, Math.max(edit.lo, edit.hi), p.level, p.num, v & 127]); }
+    if (p.msg === "preset") {
+      if (p.parts) { for (const x of p.parts) { const pv = (v >> x.at) & ((1 << x.width) - 1); m.preset[x.num] = pv; await change([0x1b, 0x7f, x.num, pv]); } return; }
+      m.preset[p.num] = v; return change([0x1b, 0x7f, p.num, v & 127]);
+    }
+    if (p.msg === "sample") {
+      const sm = m.sample[p.level]; if (!sm) return;
+      const [o, n] = SF[p.field];
+      if (n === 3) to3(v).forEach((b, i) => { sm[o + i] = b; }); else sm[o] = p.field === "flags" ? setBit(p, sm[o], v) : v & 127;
+      return change([0x1c, edit.lo, p.level, sm[0], ...sm.slice(4, 16), sm[16]]);
+    }
+    if (p.msg === "xfade" && m.xfade) {
+      if (p.field === "mode") m.xfade[0] = (m.xfade[0] & ~7) | (v & 7); else if (p.field === "dir") m.xfade[0] = (m.xfade[0] & ~8) | ((v & 1) << 3); else return;
+      return change([0x14, edit.lo, Math.max(edit.lo, edit.hi), (m.xfade[0] >> 3) & 1, m.xfade[0] & 7]);
+    }
+    if (p.msg === "misc" && m.misc) {
+      if (p.field === "tune") m.misc[1] = v & 31; else m.misc[2] = setBit(p, m.misc[2], v);
+      return change([0x22, m.misc[1], m.misc[2]]);
+    }
+  }
+
+  return {
+    async probe() { await ask([0x08], 0x38, null, 1000); return true; },
+    async requestPatch() { const values = await readAll(); return { values, syx: [] }; },
+    sendParam(p, v) { last[p.key] = v; send(p, v); },
+    async sendPatch(values) {
+      if (!haveRead) throw new Error("read the Emax first (get)");
+      for (const p of schema.params) if (values[p.key] != null && values[p.key] !== last[p.key]) { last[p.key] = values[p.key]; await send(p, values[p.key]); }
+    },
+    async programChange(bi, prog) { await change([0x1e, prog & 127]); current = prog; },
+
+    // preset-level params of any preset, without selecting it
+    async requestProgram(bi, prog) {
+      const n0 = (await ask([0x01, prog, 0], 0x31, (d) => d[5] === 0))[6];
+      if (!n0) return { values: {}, data: {}, syx: [], name: "(empty)" };
+      const byNum = await readPresetParams(prog), values = valuesFromPreset(byNum);
+      const name = P("preset").filter((p) => p.display === "ascii").map((p) => String.fromCharCode(values[p.key] || 32)).join("").trim();
+      // a restorable record: the preset-level writes (voices/samples live only on disk)
+      const syx = Object.entries(byNum).flatMap(([n, v]) => [...H, 0x1b, prog, Number(n), v, 0xf7]);
+      return { values, data: byNum, syx, name: name || undefined };
+    },
+    async requestSlotName(bi, prog) {
+      const names = P("preset").filter((p) => p.display === "ascii");
+      let s = "";
+      for (const p of names) { const c = (await ask([0x01, prog, p.num], 0x31, (d) => d[5] === p.num))[6]; if (!c && p === names[0]) return "(empty)"; s += String.fromCharCode(c || 32); }
+      return s.trim();
+    },
+
+    // RAM only: the current preset is edited in place; another slot gets a copy of
+    // the current preset (Execute Copy Preset) with the preset-level values applied
+    async writeProgram(bi, prog, values) {
+      if (!haveRead) throw new Error("read the Emax first (get)");
+      if (prog === current) { await this.sendPatch(values); return { ...m.preset }; }
+      await change([0x17, current, prog]);
+      const out = await readPresetParams(prog);
+      for (const p of P("preset")) {
+        const v = values[p.key]; if (v == null) continue;
+        if (p.parts) for (const x of p.parts) { const pv = (v >> x.at) & ((1 << x.width) - 1); if (out[x.num] !== pv) { out[x.num] = pv; await change([0x1b, prog, x.num, pv]); } }
+        else if (out[p.num] !== v) { out[p.num] = v; await change([0x1b, prog, p.num, v & 127]); }
+      }
+      return out;
+    },
+    sameProgram(a, b) { return !!a && !!b && P("preset").every((p) => presetNums(p).every((n) => a[n] === b[n])); },
+    decode() { return []; }, // the Emax doesn't transmit panel edits (program changes are followed by the editor)
   };
 }

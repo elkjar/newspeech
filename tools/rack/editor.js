@@ -85,7 +85,10 @@ function setValue(p, v, { send = true, from = "ui" } = {}) {
   if (isName(p)) renderName();
   if (from !== "load" && !isName(p)) showLast(p, v);
   if (send) { pending.set(p.key, p); schedule(); }
+  // driver-state params (Emax edit key) retarget the editor: read what's there now
+  if (send && p.msg === "local") { clearTimeout(rereadTimer); rereadTimer = setTimeout(getFromSynth, 400); }
 }
+let rereadTimer = null;
 
 let raf = 0;
 function schedule() {
