@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>edit</title>
+<style>
+  /* the plugin-panel pattern (vibe / slice / glitch / saturate): bordered
+     groups with the title set into the border, one control per fixed-width
+     cell, uppercase letter-spaced label under every control */
+  :root {
+    --bg: #050505; --panel: #0a0a0a;
+    --line: #2e2e2e;        /* group borders */
+    --legend: #8a8a8a;      /* group titles */
+    --label: #bdbdbd;       /* control labels */
+    --dim: #5a5a5a;
+    --cell: 84px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--label); }
+  body { font: 11px/1.4 "SF Mono", Menlo, Consolas, monospace; letter-spacing: 0.16em; text-transform: uppercase; padding: 26px 28px 40px; }
+  button, select, input { font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
+  select, input { text-transform: none; }
+
+  #brand { display: flex; align-items: center; gap: 22px; margin-bottom: 22px; flex-wrap: wrap; }
+  #brand h1 { font-size: 13px; font-weight: 400; letter-spacing: 0.3em; color: var(--label); margin: 0; }
+
+  /* ── groups ───────────────────────────────────────────────────────── */
+  #face { display: flex; flex-direction: column; gap: 18px; }
+  /* one bar across the top that stays put while the faceplate scrolls */
+  #panel { position: sticky; top: 0; z-index: 3; background: var(--bg); padding: 8px 0 10px; margin: -8px 0 12px; }
+  #bar { width: 100%; --cell: 60px; }
+  #bar .cells { column-gap: 4px; }
+  #bar .cells { align-items: flex-start; flex-wrap: wrap; }
+  .bardiv { align-self: stretch; width: 1px; background: var(--line); margin: 0 7px; }
+  .frow { display: flex; flex-wrap: wrap; gap: 18px 22px; align-items: stretch; }
+  fieldset.grp { position: relative; margin: 0; border: 1px solid var(--line); padding: 14px 16px 12px; min-width: 0; max-width: 100%; }
+  fieldset.grp legend { padding: 0 8px; margin-left: 12px; color: var(--legend); font-size: 10px; letter-spacing: 0.22em; }
+  .grptools { position: absolute; top: -14px; right: 12px; display: flex; background: var(--bg); padding: 0 4px; line-height: 14px; }
+  .grptools button { background: none; border: none; color: var(--dim); font-size: 10px; line-height: 14px; padding: 0 5px; cursor: pointer; }
+  .grptools button:hover { color: #fff; }
+
+  .cells { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 6px; }
+  .cell { width: var(--cell); display: flex; flex-direction: column; align-items: center; gap: 6px; user-select: none; -webkit-user-select: none; }
+  .clabel { color: var(--label); font-size: 10px; text-align: center; white-space: nowrap; line-height: 12px; min-height: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .cell.changed .clabel { color: #fff; }
+  .cell.changed .clabel::after { content: "•"; margin-left: 3px; }
+  .cell.rx .clabel { animation: rxflash .5s; }
+  @keyframes rxflash { from { color: #fff; text-shadow: 0 0 8px #fff; } }
+
+  /* knob */
+  .kcell svg { cursor: ns-resize; touch-action: none; display: block; }
+  .kring { stroke: #3a3a3a; stroke-width: 1.5; }
+  .karc  { stroke: #c9c9c9; stroke-width: 2; stroke-linecap: round; }
+  .ktick { stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+  .kcell svg:hover .kring { stroke: #555; }
+  .kcell.live .clabel { color: #fff; }
+  .kcell.rx .kring { animation: rxring .5s; }
+  @keyframes rxring { from { stroke: #fff; } }
+  select.cvalue { appearance: none; -webkit-appearance: none; background: none; border: none; border-bottom: 1px dotted #444; border-radius: 0;
+                  color: var(--dim); font-size: 10px; letter-spacing: .06em; padding: 0 1px; margin-top: -4px; max-width: 100%; text-align: center; text-align-last: center; cursor: pointer; }
+  select.cvalue:hover { color: #fff; border-bottom-color: #999; }
+
+  /* toggle dot: empty circle off, filled on */
+  .dotcell { padding-top: 14px; gap: 14px; }
+  button.dot { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid #555; background: none; padding: 0; cursor: pointer; }
+  button.dot:hover { border-color: #999; }
+  button.dot.on { background: #fff; border-color: #fff; }
+
+  /* segmented: joined boxes, selected = filled */
+  .segcell { width: auto; min-width: var(--cell); padding-top: 10px; gap: 13px; }
+  .seg { display: flex; }
+  .seg button { background: none; border: 1px solid var(--line); margin-left: -1px; color: #9a9a9a; padding: 6px 9px; cursor: pointer; white-space: nowrap; }
+  .seg button:first-child { margin-left: 0; }
+  .seg button:hover { color: #fff; }
+  .seg button.on { background: #fff; color: #050505; border-color: #fff; position: relative; }
+  .selcell .seg button.on { background: #d0d0d0; border-color: #d0d0d0; }
+
+  /* boxed select (like slice's text field) */
+  .pickcell { width: 168px; padding-top: 10px; gap: 13px; }
+  select.box { appearance: none; -webkit-appearance: none; width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 0;
+               color: #ddd; padding: 6px 9px; cursor: pointer; letter-spacing: .06em; text-overflow: ellipsis; }
+  select.box:hover { border-color: #666; }
+
+  .widecell { width: auto; gap: 6px; }
+  .cell.off { opacity: .22; pointer-events: none; }
+  .cell.off .dot { display: block; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid #555; }
+  .ghostknob { display: block; width: 46px; height: 46px; border-radius: 50%; border: 1.5px solid #3a3a3a; transform: scale(.8); }
+  .fixedcell { width: 168px; padding-top: 10px; gap: 13px; }
+  .fixedcell .fixed { width: 100%; }
+  .fixed { border: 1px dashed var(--line); color: #9a9a9a; padding: 6px 9px; white-space: nowrap; }
+  svg.envgraph { width: 150px; height: 46px; display: block; }
+  svg.envgraph path { fill: none; stroke: #c9c9c9; stroke-width: 1.5; stroke-linejoin: round; }
+  svg.envgraph .base { stroke: #3a3a3a; }
+  .steps { display: flex; gap: 2px; width: 288px; height: 46px; cursor: crosshair; touch-action: none; }
+  .step { flex: 1; position: relative; background: #111; display: flex; align-items: flex-end; }
+  .step:nth-child(4n+1) { background: #191919; }
+  .step i { display: block; width: 100%; background: #9a9a9a; }
+  .step.rest::after { content: attr(data-mark); position: absolute; inset: auto 0 2px; text-align: center; font-size: 7px; color: var(--dim); letter-spacing: 0; }
+  .step.rx i { animation: rxbar .4s; }
+  @keyframes rxbar { from { background: #fff; } }
+
+  /* plain buttons (get / send / undo…) — like slice's RESTORE */
+  .btncell { width: auto; min-width: var(--cell); padding-left: 4px; padding-right: 4px; padding-top: 10px; gap: 13px; }
+  button.btn { background: none; border: 1px solid var(--line); color: var(--label); padding: 6px 12px; cursor: pointer; }
+  button.btn:hover { border-color: #888; color: #fff; }
+  button.btn.on { background: #fff; color: #050505; border-color: #fff; }
+
+  /* program display */
+  .progrow { display: flex; gap: 6px; }
+  input.box { width: 100%; background: var(--panel); border: 1px solid var(--line); color: #ddd; padding: 6px 9px; letter-spacing: .06em; }
+  dialog#storedlg { background: var(--bg); color: var(--label); border: none; padding: 0; }
+  dialog#storedlg::backdrop { background: rgba(0,0,0,.75); }
+  #storedlg fieldset.grp { padding: 16px 18px 16px; width: 420px; max-width: 90vw; }
+  #st-msg { text-transform: none; letter-spacing: .04em; color: #aaa; line-height: 1.6; margin: 16px 0; min-height: 3.2em; }
+  #st-msg b { color: #fff; font-weight: 400; }
+  .st-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #st-go { border-color: #888; }
+  #st-go:disabled { opacity: .3; cursor: default; }
+  #prognum { min-width: 46px; font-variant-numeric: tabular-nums; color: #fff; }
+  #programs { list-style: none; margin: 0; padding: 0; max-height: 260px; columns: 2; column-gap: 24px; overflow: auto; text-transform: none; letter-spacing: .06em; }
+  #programs .bankhead { color: var(--legend); letter-spacing: .22em; text-transform: uppercase; font-size: 10px; margin: 10px 0 4px; }
+  #programs button { background: none; border: none; padding: 2px 0; text-align: left; width: 100%; color: #bbb; cursor: pointer; text-transform: none; }
+  #programs button:hover { color: #fff; }
+  #programs button.on { color: #050505; background: #ddd; }
+  .lcdcell { width: 250px; align-items: stretch; margin-right: 6px; padding-top: 10px; }
+  #lcd { background: var(--panel); border: 1px solid var(--line); height: 29px; padding: 0 12px; display: flex; align-items: center; gap: 12px; }
+  #pname { flex: 1; min-width: 0; background: none; border: none; outline: none; color: #fff; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; padding: 0; }
+  .portcell { width: 176px; padding-top: 10px; gap: 13px; }
+  .chcell { width: 64px; padding-top: 10px; gap: 13px; }
+  #status { flex: 1; min-width: 0; color: var(--dim); text-transform: none; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status.err { color: #fff; }
+  #status.err::before { content: "! "; }
+
+  /* footer telemetry, bottom-right like the plugins */
+  #tele { margin-top: 26px; text-align: right; color: #6a6a6a; font-size: 10px; letter-spacing: .22em; line-height: 1.9; }
+  #rx { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #222; margin-left: 6px; vertical-align: 1px; }
+  #rx.blink { animation: blink .25s; }
+  @keyframes blink { from { background: #fff; } }
+  #barcode { display: block; margin: 6px 0 0 auto; height: 16px; }
+
+  /* setup modal — same shape as the Sequence app's settings dialog:
+     blurred backdrop, centred #0a0a0a panel, sections split by hairlines */
+  .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.2); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .modal[hidden] { display: none; }
+  .modal-panel { width: 680px; max-width: calc(100vw - 32px); max-height: 85vh; display: flex; flex-direction: column; padding: 24px; background: #0a0a0a; border: 1px solid rgba(255,255,255,.15); color: rgba(255,255,255,.9); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  #setup-title { color: #fff; font-size: 13px; letter-spacing: .2em; }
+  button.mini-btn { white-space: nowrap; flex: none; padding: 3px 9px; font-size: 10px; border-color: rgba(255,255,255,.15); color: rgba(255,255,255,.6); }
+  button.mini-btn:hover { color: #fff; border-color: #fff; }
+  .modal-body { flex: 1; overflow-y: auto; margin: 0 -8px; padding: 0 16px 0 8px; }
+  .msec { display: flex; flex-direction: column; gap: 12px; padding: 20px 0; border-top: 1px solid rgba(255,255,255,.1); }
+  .msec:first-child { border-top: none; padding-top: 0; }
+  .msec-label { font-size: 10px; letter-spacing: .22em; color: rgba(255,255,255,.4); }
+  .mrow { display: flex; gap: 8px; align-items: center; }
+  .mnote { color: var(--dim); text-transform: none; letter-spacing: .03em; line-height: 1.7; font-size: 11px; }
+  #backupdir { word-break: break-all; }
+  /* full-width button that doubles as the progress bar */
+  .progressbtn { position: relative; width: 100%; height: 34px; background: none; border: 1px solid rgba(255,255,255,.15); color: rgba(255,255,255,.75); cursor: pointer; overflow: hidden; padding: 0; }
+  .progressbtn:hover { border-color: #fff; color: #fff; }
+  .progressbtn .pfill { position: absolute; inset: 0 auto 0 0; width: 0; background: #ddd; transition: width .2s linear; }
+  .progressbtn .plabel { position: relative; letter-spacing: .2em; font-size: 10px; mix-blend-mode: difference; color: #fff; }
+  .progressbtn.running .pfill { background-image: repeating-linear-gradient(-45deg, #ddd 0 8px, #bbb 8px 16px); background-size: 22.6px 22.6px; animation: crawl .6s linear infinite; }
+  @keyframes crawl { to { background-position: 22.6px 0; } }
+  #backups { list-style: none; margin: 0; padding: 0; text-transform: none; letter-spacing: .06em; max-height: 140px; overflow: auto; color: #bbb; line-height: 1.8; }
+  #setup-steps { margin: 0; padding-left: 18px; color: #888; text-transform: none; letter-spacing: .03em; line-height: 1.6; }
+  .modal .portcell { width: 240px; }
+  .dim { color: var(--dim); }
+
+  @media (max-width: 700px) { body { padding: 18px 14px; } .lcdcell { width: 100%; } }
+</style>
+</head>
+<body>
+<div id="brand">
+  <h1>NEW SPEECH &nbsp;|&nbsp; EDIT</h1>
+  <div class="seg" id="devices"></div>
+  <div id="status">starting…</div>
+  <button class="btn" id="libtoggle" title="l — midi ports, backups, program names" >setup</button>
+</div>
+
+<div id="panel">
+  <fieldset class="grp" id="bar"><legend>program</legend>
+    <div class="cells">
+      <div class="cell lcdcell">
+        <div id="lcd">
+          <input id="pname" type="text" maxlength="16" spellcheck="false" placeholder="—" aria-label="program name" title="program name — type to rename">
+        </div>
+      </div>
+      <div class="cell btncell"><div class="seg"><button id="get" title="read the synth's current sound">get</button><button id="send" title="push this whole patch to the synth">send</button></div><span class="clabel">synth</span></div>
+      <div class="cell btncell" id="progcell"><div class="progrow"><div class="seg" id="banks"></div><div class="seg"><button id="prev" title="previous program  [">◂</button><button id="prognum" title="open the program list">—</button><button id="next" title="next program  ]">▸</button></div></div><span class="clabel">bank · program</span></div>
+      <div class="cell btncell" id="storecell"><button class="btn" id="store" title="write this sound into a memory slot on the synth">store</button><span class="clabel">to slot</span></div>
+      <div class="bardiv"></div>
+      <div class="cell dotcell"><button class="dot" id="hold" title="space"></button><span class="clabel">hold</span></div>
+      <div class="cell dotcell"><button class="dot" id="ab" title="flip between your edit and the saved version"></button><span class="clabel">a/b</span></div>
+      <div class="cell btncell"><div class="seg"><button id="undo" title="cmd-z">undo</button><button id="redo" title="cmd-shift-z">redo</button></div><span class="clabel">history</span></div>
+      <div class="bardiv"></div>
+      <div id="mutknob"></div>
+      <div class="cell btncell"><div class="seg"><button id="mutate" title="nudge every param by the amount">mutate</button><button id="random" title="roll every param">random</button></div><span class="clabel">whole patch</span></div>
+    </div>
+  </fieldset>
+</div>
+
+<div id="face"></div>
+
+<div id="tele">
+  <div id="tele-dev">—</div>
+  <div id="tele-port">—<span id="rx" title="MIDI from synth"></span></div>
+  <svg id="barcode" width="480" height="16" viewBox="0 0 480 16" aria-hidden="true"></svg>
+</div>
+
+<dialog id="storedlg">
+  <fieldset class="grp"><legend>store to synth</legend>
+    <div class="cells">
+      <div class="cell segcell"><div class="seg" id="st-banks"></div><span class="clabel">bank</span></div>
+      <label class="cell chcell"><input class="box" id="st-prog" type="number" min="1" max="128"><span class="clabel">program</span></label>
+    </div>
+    <p id="st-msg">—</p>
+    <div class="st-actions"><button class="btn" id="st-cancel">cancel</button><button class="btn" id="st-go">store</button></div>
+  </fieldset>
+</dialog>
+
+<div id="setup" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setup-title">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <span id="setup-title">setup</span>
+      <button class="btn mini-btn" id="setup-close" title="esc">close</button>
+    </div>
+    <div class="modal-body">
+      <section class="msec">
+        <div class="msec-label">midi</div>
+        <div class="cells">
+          <label class="cell portcell"><select class="box" id="in"></select><span class="clabel">in</span></label>
+          <label class="cell portcell"><select class="box" id="out"></select><span class="clabel">out</span></label>
+          <label class="cell chcell"><select class="box" id="ch">
+            <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option>
+            <option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option><option>16</option>
+          </select><span class="clabel">ch</span></label>
+        </div>
+      </section>
+      <section class="msec">
+        <div class="msec-label">backups</div>
+        <button class="progressbtn" id="backup"><span class="pfill"></span><span class="plabel">create backup</span></button>
+        <div class="mnote">reads every program on the synth into one dated .syx (~40 s) — the sound doesn't change</div>
+        <ul id="backups"></ul>
+        <div class="mnote" id="backupdir"></div>
+      </section>
+      <section class="msec">
+        <div class="msec-label">programs on the synth</div>
+        <ul id="programs"></ul>
+      </section>
+      <section class="msec">
+        <div class="msec-label">synth setup</div>
+        <ol id="setup-steps"></ol>
+      </section>
+      <section class="msec">
+        <div class="msec-label">keys</div>
+        <div class="mnote">space hold · a–k play · z/x octave · [ ] program · l setup · esc close<br>drag knobs (shift = fine) · wheel = one step · hover shows the value<br>double-click a knob = back to what the synth has · • = changed since get · click an underlined value to pick from its list</div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="editor.js"></script>
+</body>
+</html>

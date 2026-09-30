@@ -1,0 +1,647 @@
+import { Midi } from "./midi.js";
+import { makeDriver } from "./drivers.js";
+import { createKnob } from "./knob.js";
+
+const $ = (s, el = document) => el.querySelector(s);
+const h = (tag, attrs = {}, ...kids) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v != null && v !== false) el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null) el.append(k);
+  return el;
+};
+const LS = "rack.";
+const lsGet = (k, d) => { try { return localStorage.getItem(LS + k) ?? d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(LS + k, v); } catch {} };
+
+const NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const KEYS = { a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11, k: 12 };
+
+const midi = new Midi();
+let schema = null, layout = null, driver = null, byKey = new Map();
+let values = {};          // live patch
+let saved = {};           // last loaded/saved — the A/B reference + changed markers
+let compareSnapshot = null;
+let undo = [], redo = [];
+let pending = new Map();  // coalesced live sends
+let heldNote = null, octave = 4;
+let mutAmt = Number(lsGet("mutate", "15"));
+const mutateAmount = () => mutAmt / 100;
+let cur = { bank: 0, prog: 0 }, pendingBank = null, scanning = false;
+
+// every on-screen control registers the param keys it shows; setValue fans out
+const registry = new Map(); // key → Set<{ update(v), flash?(), changed?(on) }>
+const register = (key, ctl) => { (registry.get(key) || registry.set(key, new Set()).get(key)).add(ctl); return () => registry.get(key)?.delete(ctl); };
+
+const channel = () => Number(lsGet(`${schema.id}.ch`, "1")) - 1;
+const status = (msg, err = false) => { const s = $("#status"); s.textContent = msg; s.classList.toggle("err", err); };
+
+// ---------- formatting ----------
+const isName = (p) => p.display === "char" || p.display === "ascii";
+function fmt(p, v) {
+  if (v == null) return "—";
+  if (p.options) return p.options[v - p.min] ?? v;
+  if (p.display === "note") return NOTE[v % 12] + Math.floor(v / 12);
+  if (isName(p)) return String.fromCharCode(v);
+  if (p.display === "paramIndex") return schema.params.find((q) => (q.sysexIndex ?? q.nrpn) === v)?.name ?? "—";
+  if (p.display === "seqStep") return v === 126 ? "reset" : v === 127 ? "rest" : String(v);
+  const n = v + (p.offset || 0);
+  return p.display === "bipolar" && n > 0 ? "+" + n : String(n);
+}
+const clamp = (p, v) => Math.max(p.min, Math.min(p.max, Math.round(v)));
+
+// ---------- state ----------
+const snapshot = () => ({ ...values });
+function commitUndo(before) {
+  if (JSON.stringify(before) === JSON.stringify(values)) return;
+  undo.push(before); if (undo.length > 300) undo.shift(); redo = [];
+}
+let gestureBefore = null;
+const begin = () => { gestureBefore ??= snapshot(); };
+const end = () => { if (gestureBefore) commitUndo(gestureBefore); gestureBefore = null; };
+
+function setValue(p, v, { send = true, from = "ui" } = {}) {
+  v = clamp(p, v);
+  values[p.key] = v;
+  const changed = saved[p.key] != null && saved[p.key] !== v;
+  for (const c of registry.get(p.key) || []) {
+    c.update(v);
+    c.changed?.(changed);
+    if (from === "synth") c.flash?.();
+  }
+  if (isName(p)) renderName();
+  if (from !== "load" && !isName(p)) showLast(p, v);
+  if (send) { pending.set(p.key, p); schedule(); }
+}
+
+let raf = 0;
+function schedule() {
+  if (raf) return;
+  raf = requestAnimationFrame(() => {
+    raf = 0;
+    for (const [k, p] of pending) driver.sendParam(p, values[k]);
+    pending.clear();
+  });
+}
+
+function applyAll(next, { send = true } = {}) {
+  for (const p of schema.params) if (next[p.key] != null) setValue(p, next[p.key], { send: false, from: "load" });
+  if (send) driver.sendPatch(values);
+}
+
+// knob labels show the value on hover/drag, so nothing else echoes it
+function showLast() {}
+
+// ---------- name ----------
+const nameParams = () => schema.params.filter(isName);
+const nameString = () => nameParams().map((p) => String.fromCharCode(values[p.key] ?? 32)).join("").trimEnd();
+function renderName() { const el = $("#pname"); if (el && document.activeElement !== el) el.value = nameString(); }
+function setName(str) {
+  nameParams().forEach((p, i) => {
+    const c = (str[i] ?? " ").charCodeAt(0);
+    setValue(p, c >= 32 && c <= 126 ? c : 32);
+  });
+}
+
+// ---------- variation ----------
+function randomize(params, amount = 1) {
+  const before = snapshot();
+  for (const p of params) {
+    if (isName(p) || p.norandom || p.display === "paramIndex") continue;
+    const span = p.max - p.min;
+    let v;
+    if (amount >= 1) v = p.min + Math.random() * (span + 1);
+    else if (p.options || span <= 1) { if (Math.random() > amount * 0.5) continue; v = p.min + Math.random() * (span + 1); }
+    else v = (values[p.key] ?? p.min) + (Math.random() * 2 - 1) * span * amount * 0.5;
+    setValue(p, Math.floor(v >= p.max ? p.max : v), { send: false, from: "load" });
+  }
+  driver.sendPatch(values);
+  commitUndo(before);
+}
+
+// ---------- faceplate ----------
+const fill = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+
+// if the device ships no layout, derive a plain one from its groups
+function autoLayout() {
+  const groups = schema.groups || [...new Set(schema.params.map((p) => p.group))].map((id) => ({ id, name: id }));
+  return { rows: [{ id: "all", groups: groups
+    .map((g) => ({ title: g.name, controls: schema.params.filter((p) => p.group === g.id && !isName(p)).map((p) => ({ k: p.key, label: p.name })) }))
+    .filter((s) => s.controls.length) }] };
+}
+
+function renderFaceplate() {
+  registry.clear();
+  const root = $("#face"); root.replaceChildren();
+  for (const row of layout.rows) {
+    const rowEl = h("div", { class: `frow frow-${row.id}` });
+    for (const g of row.groups) rowEl.append(renderGroup(g));
+    root.append(rowEl);
+  }
+}
+
+// a bordered group: legend in the border, one cell per control, label under each
+function renderGroup(g) {
+  const cells = h("div", { class: "cells" });
+  const el = h("fieldset", { class: "grp" }, h("legend", {}, g.title), cells);
+
+  const opts = g.select?.options || [{ label: "", vars: {} }];
+  const selKey = `${schema.id}.sel.${g.title}`;
+  let current = lsGet(selKey, opts[0].label);
+  if (current !== g.select?.all && !opts.some((o) => o.label === current)) current = opts[0].label;
+  let unbind = [];
+
+  // the params a template key resolves to for the current select (several when "all")
+  const resolve = (tpl) => {
+    const chosen = current === g.select?.all ? opts : [opts.find((o) => o.label === current)];
+    return [...new Set(chosen.map((o) => fill(tpl, o.vars)))].map((k) => byKey.get(k)).filter(Boolean);
+  };
+  const stepKeys = (c) => Array.from({ length: c.count }, (_, i) => c.k.replace("{i}", i + 1));
+  const groupParams = () => g.controls.flatMap((c) => !c.k && !c.keys ? [] : c.keys ? c.keys.flatMap(resolve)
+    : c.count ? stepKeys(c).flatMap(resolve) : resolve(c.k));
+
+  el.append(h("div", { class: "grptools" },
+    h("button", { title: "randomize this group (the copy selected)", onclick: () => randomize(groupParams()) }, "rand"),
+    h("button", { title: "nudge this group by the mutate amount", onclick: () => randomize(groupParams(), mutateAmount()) }, "mut")));
+
+  function build() {
+    unbind.forEach((u) => u()); unbind = [];
+    cells.replaceChildren();
+    for (const c of g.controls) {
+      if (c.only && !c.only.includes(current)) { cells.append(offCell(c)); continue; }
+      if (c.as === "select") { cells.append(selectCell()); continue; }
+      if (c.as === "env") { cells.append(envCell(c, c.keys.map((k) => resolve(k)[0]).filter(Boolean))); continue; }
+      if (c.as === "steps") { cells.append(stepsCell(c, stepKeys(c).map((k) => resolve(k)[0]).filter(Boolean))); continue; }
+      const ps = resolve(c.k);
+      if (ps.length) cells.append(control(c, ps));
+    }
+  }
+
+  // a control that doesn't apply to the current copy: dimmed in place (the
+  // plugins' THRESH/WAVE pattern), or the hard-wired destination as text
+  function offCell(c) {
+    const opt = opts.find((o) => o.label === current);
+    const fixed = c.fixed && opt ? fill(c.fixed, opt.vars) : "";
+    if (fixed) return h("div", { class: "cell fixedcell", title: `${opt.label} envelope is wired to ${fixed}` },
+      h("div", { class: "fixed" }, "→ " + fixed), h("span", { class: "clabel" }, c.label));
+    const mark = c.as === "toggle" ? h("span", { class: "dot" })
+      : h("span", { class: "ghostknob" });
+    return h("div", { class: `cell off ${c.as === "toggle" ? "dotcell" : "kcell"}` }, mark, h("span", { class: "clabel" }, c.label));
+  }
+
+  function selectCell() {
+    const labels = [...opts.map((o) => o.label), ...(g.select.all ? [g.select.all] : [])];
+    const btns = labels.map((l) => h("button", { class: l === current ? "on" : "", onclick: () => {
+      current = l; lsSet(selKey, l); build();
+    } }, l));
+    return h("div", { class: "cell segcell selcell" }, h("div", { class: "seg" }, btns), h("span", { class: "clabel" }, g.select.label));
+  }
+
+  function control(c, ps) {
+    const p = ps[0];
+    const write = (v) => { begin(); for (const q of ps) setValue(q, v); };
+    const reset = () => { if (saved[p.key] != null) { begin(); for (const q of ps) setValue(q, saved[q.key]); end(); } };
+    const as = c.as || (p.options?.length === 2 ? "toggle" : "knob");
+    const hover = () => showLast(p, values[p.key]);
+
+    if (as === "toggle") {
+      const dot = h("button", { class: "dot", "aria-label": p.name, onclick: () => { begin(); write(values[p.key] === p.max ? p.min : p.max); end(); }, onpointerenter: hover });
+      const cell = h("div", { class: "cell dotcell", title: p.name }, dot, h("span", { class: "clabel" }, c.label));
+      return bindAll(ps, { update: (v) => dot.classList.toggle("on", v === p.max), changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
+    }
+    if (as === "seg") {
+      const labels = c.labels || p.options;
+      const btns = labels.map((l, i) => h("button", { title: p.options?.[i], onclick: () => { begin(); write(p.min + i); end(); }, onpointerenter: hover }, l));
+      const cell = h("div", { class: "cell segcell" }, h("div", { class: "seg" }, btns), h("span", { class: "clabel" }, c.label));
+      return bindAll(ps, { update: (v) => btns.forEach((b, i) => b.classList.toggle("on", p.min + i === v)), changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
+    }
+    if (as === "pick") {
+      const options = p.options || Array.from({ length: p.max - p.min + 1 }, (_, i) => fmt(p, p.min + i));
+      const sel = h("select", { class: "box", onchange: (e) => { begin(); write(Number(e.target.value)); end(); }, onpointerenter: hover },
+        options.map((o, i) => new Option(o, p.min + i)));
+      const cell = h("label", { class: "cell pickcell", title: p.name }, sel, h("span", { class: "clabel" }, c.label));
+      return bindAll(ps, { update: (v) => { sel.value = v; }, changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
+    }
+    const k = createKnob({ label: c.label, fmt, onBegin: begin, onChange: write, onEnd: end, onReset: reset, onHover: showLast });
+    k.setParam(p);
+    return bindAll(ps, { update: k.set, changed: k.setChanged, flash: k.flash }, k.el);
+  }
+
+  // register each shown param (display follows the first); update now
+  function bindAll(ps, ctl, el) {
+    ps.forEach((q, i) => unbind.push(register(q.key, i === 0 ? ctl : { update() {}, flash: ctl.flash })));
+    ctl.update(values[ps[0].key]);
+    ctl.changed?.(saved[ps[0].key] != null && saved[ps[0].key] !== values[ps[0].key]);
+    return el;
+  }
+
+  // envelope shape drawn from DADSR — the knobs beside it are the handles
+  function envCell(c, ps) {
+    const W = 150, H = 46;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("class", "envgraph");
+    const base = document.createElementNS(svg.namespaceURI, "line");
+    Object.entries({ x1: 0, x2: W, y1: H - 2, y2: H - 2, class: "base" }).forEach(([k, v]) => base.setAttribute(k, v));
+    const path = document.createElementNS(svg.namespaceURI, "path");
+    svg.append(base, path);
+    const draw = () => {
+      const [d, a, dc, s, r] = ps.map((p) => (values[p.key] - p.min) / (p.max - p.min || 1));
+      const seg = (W - 8) / 4.4, y0 = H - 2, top = 3, sy = y0 - s * (y0 - top);
+      let x = 1;
+      const pts = [[x, y0]];
+      x += d * seg; pts.push([x, y0]);
+      x += a * seg + 1; pts.push([x, top]);
+      x += dc * seg + 1; pts.push([x, sy]);
+      x += seg * 0.4; pts.push([x, sy]);
+      x += r * seg + 1; pts.push([x, y0]);
+      path.setAttribute("d", "M" + pts.map((q) => q.map((n) => n.toFixed(1)).join(",")).join(" L"));
+    };
+    ps.forEach((p) => unbind.push(register(p.key, { update: draw })));
+    draw();
+    return h("div", { class: "cell widecell" }, svg, h("span", { class: "clabel" }, c.label));
+  }
+
+  // 16 steps as bars; drag across to draw, alt-click = rest (track 1) / reset (2–4)
+  function stepsCell(c, ps) {
+    const grid = h("div", { class: "steps" });
+    for (const p of ps) {
+      const bar = h("i");
+      const step = h("div", { class: "step" }, bar);
+      const update = (v) => {
+        step.classList.toggle("rest", v >= 126);
+        bar.style.height = v >= 126 ? "0%" : (v / 125) * 100 + "%";
+        step.dataset.mark = v === 127 ? "rest" : v === 126 ? "rst" : "";
+      };
+      unbind.push(register(p.key, { update, flash: () => flash(step) }));
+      update(values[p.key]);
+      grid.append(step);
+    }
+    const at = (e) => {
+      const r = grid.getBoundingClientRect();
+      const i = Math.max(0, Math.min(ps.length - 1, Math.floor(((e.clientX - r.left) / r.width) * ps.length)));
+      const v = Math.round(Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height)) * 125);
+      return { p: ps[i], v };
+    };
+    grid.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); grid.setPointerCapture(e.pointerId); begin();
+      const first = at(e);
+      if (e.altKey) { setValue(first.p, first.p.max); end(); return; }
+      setValue(first.p, first.v);
+      const move = (ev) => { const { p, v } = at(ev); setValue(p, v); };
+      const up = () => { grid.removeEventListener("pointermove", move); grid.removeEventListener("pointerup", up); end(); };
+      grid.addEventListener("pointermove", move); grid.addEventListener("pointerup", up);
+    });
+    return h("div", { class: "cell widecell stepscell" }, grid, h("span", { class: "clabel" }, c.label));
+  }
+
+  build();
+  return el;
+}
+
+function flash(el) { el.classList.remove("rx"); void el.offsetWidth; el.classList.add("rx"); }
+
+// ---------- hardware ----------
+async function getFromSynth() {
+  try {
+    status("asking the synth for its edit buffer…");
+    const { values: v } = await driver.requestPatch();
+    const before = snapshot();
+    saved = { ...v };
+    applyAll(v, { send: false });
+    commitUndo(before);
+    status(`read edit buffer${nameParams().length ? ` — “${nameString()}”` : ""}`);
+  } catch (e) { status(e.message + " — check both MIDI cables, the channel, and sysex on the synth", true); }
+}
+
+function noteOn(n) { if (heldNote != null) midi.noteOff(channel(), heldNote); heldNote = n; midi.noteOn(channel(), n, 100); $("#hold").classList.add("on"); }
+function noteOff() { if (heldNote != null) midi.noteOff(channel(), heldNote); heldNote = null; $("#hold").classList.remove("on"); }
+
+// ---------- setup ----------
+function fillPorts() {
+  if (!midi.access) return;
+  const want = midi.savedPorts(schema.id);
+  const fillSel = (sel, ports, id) => {
+    sel.replaceChildren(h("option", { value: "" }, "—"), ...ports.map((p) => h("option", { value: p.id }, p.name)));
+    sel.value = ports.some((p) => p.id === id) ? id : "";
+  };
+  fillSel($("#in"), midi.inputs(), want.in);
+  fillSel($("#out"), midi.outputs(), want.out);
+  usePorts();
+  if (!midi.inputs().length && !midi.outputs().length) status("no MIDI ports — is the interface plugged in?", true);
+  else if (!$("#out").value) { openSetup(); status("pick this synth's MIDI in + out in setup", true); }
+}
+
+async function selectDevice(id) {
+  schema = await (await fetch(`/devices/${id}.json`)).json();
+  const lr = await fetch(`/devices/${id}.layout.json`);
+  byKey = new Map(schema.params.map((p) => [p.key, p]));
+  layout = lr.ok ? await lr.json() : autoLayout();
+  lsSet("device", id);
+  midi.gapMs = schema.gapMs ?? 2;
+  driver = makeDriver(schema, midi, channel);
+  // until GET reads the synth: bipolar params sit at centre, the rest at min
+  values = Object.fromEntries(schema.params.map((p) => [p.key, p.default ?? (p.display === "bipolar" ? clamp(p, -(p.offset || 0)) : p.min)]));
+  saved = {}; undo = []; redo = [];
+  $("#ch").value = channel() + 1;
+  $("#pname").hidden = !nameParams().length;
+  document.querySelectorAll("#devices button").forEach((b) => b.classList.toggle("on", b.dataset.id === id));
+  fillPorts();
+  renderProgramControls();
+  renderFaceplate();
+  renderName();
+  refreshBackups();
+  $("#setup-steps").replaceChildren(...(schema.setup || []).map((s) => h("li", {}, s)));
+  status(`${schema.params.length} params · get reads the synth's current sound`);
+}
+
+async function boot() {
+  let midiErr = null;
+  try { await midi.init(); } catch (e) { midiErr = e; }
+  midi.onPorts = () => schema && fillPorts();
+  midi.on((ev) => {
+    if (!driver) return;
+    $("#rx").classList.remove("blink"); void $("#rx").offsetWidth; $("#rx").classList.add("blink");
+    // synth changed program on its front panel → pull the new sound in
+    if (ev.type === "cc" && ev.ch === channel() && ev.num === schema.programs?.bankCC) { pendingBank = ev.val; return; }
+    if (ev.type === "program" && ev.ch === channel()) {
+      setCurrent(pendingBank ?? cur.bank, ev.program); pendingBank = null;
+      return getFromSynth();
+    }
+    for (const { param, value } of driver.decode(ev)) setValue(param, value, { send: false, from: "synth" });
+  });
+
+  const devices = await (await fetch("/api/devices")).json();
+  $("#devices").replaceChildren(...devices.map((d) => h("button", { "data-id": d.id, onclick: () => selectDevice(d.id) }, d.name)));
+  $("#in").onchange = $("#out").onchange = usePorts;
+  $("#ch").onchange = (e) => { lsSet(`${schema.id}.ch`, e.target.value); telemetry(); };
+  const mk = createKnob({ label: "amount", fmt: (p, v) => v + "%", onBegin() {}, onEnd() {},
+    onChange: (v) => { mutAmt = v; lsSet("mutate", v); }, onHover: (p, v) => showLast(p, v) });
+  mk.setParam({ key: "mutate", name: "Mutate Amount", min: 2, max: 60 });
+  mk.set(mutAmt);
+  $("#mutknob").replaceWith(mk.el);
+  barcode();
+  $("#get").onclick = getFromSynth;
+  $("#send").onclick = () => { driver.sendPatch(values); status("sent whole patch to edit buffer"); };
+  $("#hold").onclick = () => heldNote != null ? noteOff() : noteOn(12 * octave + 12);
+  $("#undo").onclick = doUndo;
+  $("#redo").onclick = doRedo;
+  $("#ab").onclick = toggleCompare;
+  $("#mutate").onclick = () => randomize(schema.params, mutateAmount());
+  $("#random").onclick = () => randomize(schema.params);
+  $("#prev").onclick = () => stepProgram(-1);
+  $("#next").onclick = () => stepProgram(1);
+  $("#prognum").onclick = openSetup;
+  $("#setup-close").onclick = closeSetup;
+  $("#setup").onclick = (e) => { if (e.target === $("#setup")) closeSetup(); };
+  $("#backup").onclick = createBackup;
+  $("#store").onclick = openStore;
+  $("#st-cancel").onclick = () => $("#storedlg").close();
+  $("#st-go").onclick = doStore;
+  $("#st-prog").onchange = () => { stTarget.prog = Math.max(0, Math.min(schema.programs.perBank - 1, Number($("#st-prog").value) - 1)); readTarget(); };
+  $("#libtoggle").onclick = openSetup;
+  $("#pname").oninput = (e) => setName(e.target.value);
+
+
+  const want = lsGet("device", devices[0]?.id);
+  const first = devices.some((d) => d.id === want) ? want : devices[0]?.id;
+  if (first) await selectDevice(first);
+  if (midiErr) status("Web MIDI unavailable (" + midiErr.message + ") — use Chrome and allow MIDI + SysEx. Library still works.", true);
+}
+
+// ---------- programs on the synth ----------
+const pad3 = (n) => String(n + 1).padStart(3, "0");
+const slotKey = (b, p) => `${b}-${p}`;
+function names() { try { return JSON.parse(lsGet(`${schema.id}.names`, "{}")); } catch { return {}; } }
+
+function renderProgramControls() {
+  const pr = schema.programs;
+  $("#progcell").hidden = !pr;
+  $("#storecell").hidden = !pr || schema.sysex?.cmd?.programDump == null;
+  if (!pr) return;
+  try { cur = JSON.parse(lsGet(`${schema.id}.prog`, "")) || cur; } catch { cur = { bank: 0, prog: 0 }; }
+  $("#banks").replaceChildren(...Array.from({ length: pr.banks }, (_, b) =>
+    h("button", { "data-b": b, onclick: () => goProgram(b, cur.prog) }, String(b + 1))));
+  showCurrent();
+  renderProgramList();
+}
+
+function setCurrent(bank, prog) {
+  cur = { bank, prog };
+  lsSet(`${schema.id}.prog`, JSON.stringify(cur));
+  showCurrent();
+}
+
+function showCurrent() {
+  document.querySelectorAll("#banks button").forEach((b) => b.classList.toggle("on", Number(b.dataset.b) === cur.bank));
+  $("#prognum").textContent = pad3(cur.prog);
+  $("#prognum").title = names()[slotKey(cur.bank, cur.prog)] || "open the program list";
+  document.querySelectorAll("#programs button").forEach((b) => b.classList.toggle("on", b.dataset.k === slotKey(cur.bank, cur.prog)));
+}
+
+function goProgram(bank, prog) {
+  const pr = schema.programs;
+  if (gestureBefore == null && Object.keys(saved).length && JSON.stringify(saved) !== JSON.stringify(values))
+    status("left unsaved edits behind — undo brings them back", true);
+  driver.programChange(bank, prog);
+  setCurrent(bank, prog);
+  // let the change land, then read the new sound in
+  setTimeout(getFromSynth, midi.drainMs() + 120);
+}
+
+// ◂ ▸ walk straight through the banks: 3-128 → next is 1-001 of the next bank
+function stepProgram(dir) {
+  const pr = schema.programs; if (!pr) return;
+  const total = pr.banks * pr.perBank;
+  const i = (cur.bank * pr.perBank + cur.prog + dir + total) % total;
+  goProgram(Math.floor(i / pr.perBank), i % pr.perBank);
+}
+
+function renderProgramList() {
+  const pr = schema.programs, known = names(), ul = $("#programs");
+  ul.replaceChildren();
+  if (!Object.keys(known).length) { ul.append(h("li", { class: "dim" }, "create a backup to read the slot names")); return; }
+  for (let b = 0; b < pr.banks; b++) {
+    ul.append(h("li", { class: "bankhead" }, `bank ${b + 1}`));
+    for (let p = 0; p < pr.perBank; p++) {
+      const k = slotKey(b, p);
+      ul.append(h("li", {}, h("button", { "data-k": k, onclick: () => goProgram(b, p) },
+        h("span", { class: "dim" }, pad3(p) + " "), known[k] ?? "…")));
+    }
+  }
+  showCurrent();
+}
+
+// ---------- backups ----------
+// read every slot (one program dump each — the sound doesn't change) into one
+// .syx + a name index in Dropbox; the names also fill the program list
+async function createBackup() {
+  if (scanning) { scanning = false; return; }
+  const pr = schema.programs; if (!pr) return;
+  scanning = true;
+  const btn = $("#backup"), fillEl = btn.querySelector(".pfill"), label = btn.querySelector(".plabel");
+  btn.classList.add("running");
+  const progress = (n) => { fillEl.style.width = (n / total) * 100 + "%"; label.textContent = `backing up ${n} / ${total} · click to stop`; };
+  const known = names(), slots = [], syx = [];
+  const total = pr.banks * pr.perBank;
+  let n = 0, failed = 0;
+  progress(0);
+  for (let b = 0; b < pr.banks && scanning; b++) for (let p = 0; p < pr.perBank && scanning; p++) {
+    try {
+      const got = await driver.requestProgram(b, p);
+      const name = nameParams().map((q) => String.fromCharCode(got.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
+      known[slotKey(b, p)] = name;
+      slots.push({ bank: b + 1, program: p + 1, name });
+      syx.push(...got.syx);
+    } catch { failed++; if (failed > 3 && n < 5) scanning = false; }
+    n++;
+    progress(n);
+    if (n % 8 === 0) status(`backing up… ${n}/${total}`);
+  }
+  const finished = n === total;
+  scanning = false;
+  btn.classList.remove("running");
+  label.textContent = "create backup";
+  // leave the bar full for a beat on success, then reset
+  setTimeout(() => { if (!scanning) fillEl.style.width = "0"; }, finished ? 1500 : 0);
+  lsSet(`${schema.id}.names`, JSON.stringify(known));
+  renderProgramList();
+  if (!slots.length) return status("the synth isn't answering program requests — check MIDI in + sysex", true);
+  if (!finished) return status(`backup stopped at ${n}/${total} — nothing written`, true);
+  const at = new Date();
+  const stamp = `${schema.name} ${localStamp(at)}`;
+  const r = await fetch(`/api/backups/${schema.id}`, { method: "PUT", body: JSON.stringify({ stamp, at: at.toISOString(), slots, failed, syx }) });
+  if (!r.ok) return status("writing the backup failed: " + (await r.text()), true);
+  status(`backed up ${slots.length} programs${failed ? ` (${failed} didn't answer)` : ""} → ${(await r.json()).file}`, !!failed);
+  refreshBackups();
+}
+
+// local date + time for filenames: 2026-09-30 1042
+function localStamp(d = new Date()) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}${p2(d.getMinutes())}`;
+}
+
+async function refreshBackups() {
+  const { dir, backups } = await (await fetch(`/api/backups/${schema.id}`)).json();
+  $("#backupdir").textContent = dir;
+  $("#backups").replaceChildren(...(backups.length ? backups.map((b) =>
+    h("li", {}, b.file, h("span", { class: "dim" }, ` · ${b.count} programs${b.failed ? ` · ${b.failed} missing` : ""}`)))
+    : [h("li", { class: "dim" }, "no backups yet")]));
+}
+
+// ---------- store to a slot ----------
+// overwrites a program on the synth: read the slot first (shows what's being
+// replaced + becomes a slot backup in backups/slots/), write, then read it back
+let stTarget = null, stOld = null, stSeq = 0;
+
+function openStore() {
+  const pr = schema.programs;
+  stTarget = { ...cur };
+  $("#st-banks").replaceChildren(...Array.from({ length: pr.banks }, (_, b) =>
+    h("button", { "data-b": b, onclick: () => { stTarget.bank = b; readTarget(); } }, String(b + 1))));
+  $("#storedlg").showModal();
+  readTarget();
+}
+
+async function readTarget() {
+  const my = ++stSeq;
+  document.querySelectorAll("#st-banks button").forEach((b) => b.classList.toggle("on", Number(b.dataset.b) === stTarget.bank));
+  $("#st-prog").value = stTarget.prog + 1;
+  $("#st-go").disabled = true; stOld = null;
+  const where = `bank ${stTarget.bank + 1} · ${pad3(stTarget.prog)}`;
+  $("#st-msg").textContent = `reading what's in ${where}…`;
+  try {
+    const old = await driver.requestProgram(stTarget.bank, stTarget.prog);
+    if (my !== stSeq) return;
+    stOld = old;
+    const oldName = nameParams().map((q) => String.fromCharCode(old.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
+    stOld.name = oldName;
+    $("#st-msg").innerHTML = "";
+    $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}, replacing `, h("b", {}, `“${oldName}”`),
+      ". The old one is backed up first.");
+    $("#st-go").disabled = false;
+  } catch (e) {
+    if (my !== stSeq) return;
+    $("#st-msg").textContent = `couldn't read ${where} (${e.message}) — not storing without a backup.`;
+  }
+}
+
+async function doStore() {
+  const { bank, prog } = stTarget, where = `bank ${bank + 1} · ${pad3(prog)}`;
+  $("#st-go").disabled = true;
+  try {
+    $("#st-msg").textContent = "backing up the old program…";
+    const r = await fetch(`/api/backup/${schema.id}/${encodeURIComponent(`${localStamp()} slot ${bank + 1}-${pad3(prog)} ${stOld.name}`)}`, {
+      method: "PUT", body: JSON.stringify({ device: schema.id, slot: { bank, prog }, name: stOld.name, values: stOld.values, syx: stOld.syx }) });
+    if (!r.ok) throw new Error("backup failed: " + (await r.text()));
+
+    $("#st-msg").textContent = `writing ${where}…`;
+    const sent = driver.writeProgram(bank, prog, values);
+    await new Promise((res) => setTimeout(res, midi.drainMs() + 400));
+    const back = await driver.requestProgram(bank, prog);
+    if (!driver.sameProgram(sent, back.data)) throw new Error(`read ${where} back and it doesn't match — check the synth (memory protect?)`);
+
+    const known = names(); known[slotKey(bank, prog)] = nameString() || "(unnamed)";
+    lsSet(`${schema.id}.names`, JSON.stringify(known));
+    saved = snapshot(); applyAll(values, { send: false });
+    renderProgramList();
+    $("#storedlg").close();
+    status(`stored “${nameString()}” in ${where} — verified · old “${stOld.name}” backed up`);
+  } catch (e) {
+    $("#st-msg").textContent = e.message;
+    $("#st-go").disabled = false;
+  }
+}
+
+function openSetup() { $("#setup").hidden = false; }
+function closeSetup() { $("#setup").hidden = true; }
+
+function usePorts() {
+  midi.usePorts(schema.id, $("#in").value, $("#out").value);
+  telemetry();
+}
+
+// bottom-right readout, like the plugins' [NS-AE] block
+function telemetry() {
+  const port = midi.output?.name || "no output";
+  $("#tele-dev").textContent = `[NS-EDIT] ${schema.name} · ${schema.params.length} params`;
+  $("#tele-port").firstChild.textContent = `${port} · ch ${channel() + 1} · ${schema.transport}`;
+}
+
+function barcode() {
+  const svg = $("#barcode"); let x = 0, out = "";
+  while (x < 480) { const w = 1 + Math.floor(Math.random() * 4); if (Math.random() > 0.35) out += `<rect x="${x}" y="0" width="${w}" height="16" fill="#6a6a6a"/>`; x += w + 1 + Math.floor(Math.random() * 3); }
+  svg.innerHTML = out;
+}
+
+function doUndo() { if (!undo.length) return; redo.push(snapshot()); applyAll(undo.pop()); status("undo"); }
+function doRedo() { if (!redo.length) return; undo.push(snapshot()); applyAll(redo.pop()); status("redo"); }
+function toggleCompare() {
+  if (compareSnapshot) { applyAll(compareSnapshot); compareSnapshot = null; $("#ab").classList.remove("on"); status("back to your edit"); }
+  else { if (!Object.keys(saved).length) return status("nothing read from the synth yet to compare against — hit get", true);
+    compareSnapshot = snapshot(); applyAll(saved); $("#ab").classList.add("on"); status("hearing the version on the synth — press again to return"); }
+}
+
+// computer keyboard plays notes (a–k row, z/x octave); space holds; l = setup
+addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#setup").hidden) { e.preventDefault(); return closeSetup(); }
+  if (e.target.matches("input[type=text], input:not([type]), select") || e.metaKey || e.ctrlKey) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "z") { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
+    return;
+  }
+  if (e.repeat) return;
+  if (e.key === " ") { e.preventDefault(); return heldNote != null ? noteOff() : noteOn(12 * octave + 12); }
+  if (e.key === "z") { octave = Math.max(0, octave - 1); return status(`octave ${octave}`); }
+  if (e.key === "x") { octave = Math.min(8, octave + 1); return status(`octave ${octave}`); }
+  if (e.key === "l") return $("#setup").hidden ? openSetup() : closeSetup();
+  if (e.key === "[") return stepProgram(-1);
+  if (e.key === "]") return stepProgram(1);
+  if (e.key in KEYS) noteOn(12 * octave + 12 + KEYS[e.key]);
+});
+addEventListener("keyup", (e) => {
+  if (e.key in KEYS && heldNote === 12 * octave + 12 + KEYS[e.key]) noteOff();
+});
+
+boot();
