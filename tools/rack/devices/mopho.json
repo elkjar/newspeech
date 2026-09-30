@@ -101,10 +101,10 @@
       "min": 0,
       "max": 100,
       "display": "bipolar",
-      "offset": -50,
       "sysexIndex": 1,
       "cc": 21,
-      "note": "Cents; 50 = centered"
+      "note": "Cents; 50 = centered",
+      "valueOffset": -50
     },
     {
       "nrpn": 2,
@@ -281,10 +281,10 @@
       "min": 0,
       "max": 100,
       "display": "bipolar",
-      "offset": -50,
       "sysexIndex": 7,
       "cc": 25,
-      "note": "Cents; 50 = centered"
+      "note": "Cents; 50 = centered",
+      "valueOffset": -50
     },
     {
       "nrpn": 7,
@@ -611,9 +611,9 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
       "sysexIndex": 25,
-      "cc": 106
+      "cc": 106,
+      "valueOffset": -127
     },
     {
       "nrpn": 21,
@@ -1967,9 +1967,9 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
       "sysexIndex": 62,
-      "cc": 86
+      "cc": 86,
+      "valueOffset": -127
     },
     {
       "nrpn": 59,
@@ -2094,8 +2094,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 71
+      "sysexIndex": 71,
+      "valueOffset": -127
     },
     {
       "nrpn": 67,
@@ -2199,8 +2199,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 74
+      "sysexIndex": 74,
+      "valueOffset": -127
     },
     {
       "nrpn": 70,
@@ -2304,8 +2304,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 77
+      "sysexIndex": 77,
+      "valueOffset": -127
     },
     {
       "nrpn": 73,
@@ -2409,8 +2409,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 80
+      "sysexIndex": 80,
+      "valueOffset": -127
     },
     {
       "nrpn": 76,
@@ -2479,8 +2479,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 82
+      "sysexIndex": 82,
+      "valueOffset": -127
     },
     {
       "nrpn": 82,
@@ -2549,8 +2549,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 84
+      "sysexIndex": 84,
+      "valueOffset": -127
     },
     {
       "nrpn": 84,
@@ -2619,8 +2619,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 86
+      "sysexIndex": 86,
+      "valueOffset": -127
     },
     {
       "nrpn": 86,
@@ -2689,8 +2689,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 88
+      "sysexIndex": 88,
+      "valueOffset": -127
     },
     {
       "nrpn": 88,
@@ -2759,8 +2759,8 @@
       "min": 0,
       "max": 254,
       "display": "bipolar",
-      "offset": -127,
-      "sysexIndex": 90
+      "sysexIndex": 90,
+      "valueOffset": -127
     },
     {
       "nrpn": 90,
@@ -4128,8 +4128,8 @@
       "min": 0,
       "max": 24,
       "display": "bipolar",
-      "offset": -12,
-      "note": "12 = no transpose; semitones"
+      "note": "12 = no transpose; semitones",
+      "valueOffset": -12
     },
     {
       "index": 1,
@@ -4139,8 +4139,8 @@
       "min": 0,
       "max": 100,
       "display": "bipolar",
-      "offset": -50,
-      "note": "50 = centered; cents"
+      "note": "50 = centered; cents",
+      "valueOffset": -50
     },
     {
       "index": 2,
@@ -4403,9 +4403,32 @@
     "Cable both ways: interface out \u2192 Mopho in, Mopho out \u2192 interface in."
   ],
   "programs": {
-    "banks": 3,
-    "perBank": 128,
-    "bankCC": 32,
-    "note": "bank change = CC32 (0-2) then Program Change; UI shows 1-based like the Mopho's display"
+    "banks": [
+      {
+        "label": "1",
+        "lsb": 0,
+        "count": 128,
+        "dump": true,
+        "write": true,
+        "sysexBank": 0
+      },
+      {
+        "label": "2",
+        "lsb": 1,
+        "count": 128,
+        "dump": true,
+        "write": true,
+        "sysexBank": 1
+      },
+      {
+        "label": "3",
+        "lsb": 2,
+        "count": 128,
+        "dump": true,
+        "write": true,
+        "sysexBank": 2
+      }
+    ],
+    "note": "bank change = CC32 (0-2) then Program Change; sysexBank = the bank byte in program dump requests/writes"
   }
 }

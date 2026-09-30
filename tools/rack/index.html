@@ -117,6 +117,7 @@
   .st-actions { display: flex; gap: 8px; justify-content: flex-end; }
   #st-go { border-color: #888; }
   #st-go:disabled { opacity: .3; cursor: default; }
+  select.bankpick { width: 128px; padding: 6px 8px; }
   #prognum { min-width: 46px; font-variant-numeric: tabular-nums; color: #fff; }
   #programs { list-style: none; margin: 0; padding: 0; max-height: 260px; columns: 2; column-gap: 24px; overflow: auto; text-transform: none; letter-spacing: .06em; }
   #programs .bankhead { color: var(--legend); letter-spacing: .22em; text-transform: uppercase; font-size: 10px; margin: 10px 0 4px; }
@@ -187,7 +188,7 @@
         </div>
       </div>
       <div class="cell btncell"><div class="seg"><button id="get" title="read the synth's current sound">get</button><button id="send" title="push this whole patch to the synth">send</button></div><span class="clabel">synth</span></div>
-      <div class="cell btncell" id="progcell"><div class="progrow"><div class="seg" id="banks"></div><div class="seg"><button id="prev" title="previous program  [">◂</button><button id="prognum" title="open the program list">—</button><button id="next" title="next program  ]">▸</button></div></div><span class="clabel">bank · program</span></div>
+      <div class="cell btncell" id="progcell"><div class="progrow"><div id="banks"></div><div class="seg"><button id="prev" title="previous program  [">◂</button><button id="prognum" title="open the program list">—</button><button id="next" title="next program  ]">▸</button></div></div><span class="clabel">bank · program</span></div>
       <div class="cell btncell" id="storecell"><button class="btn" id="store" title="write this sound into a memory slot on the synth">store</button><span class="clabel">to slot</span></div>
       <div class="bardiv"></div>
       <div class="cell dotcell"><button class="dot" id="hold" title="space"></button><span class="clabel">hold</span></div>

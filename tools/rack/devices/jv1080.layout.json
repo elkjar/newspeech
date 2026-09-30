@@ -1,0 +1,1375 @@
+{
+  "comment": "Same plugin-panel pattern as mopho.layout.json. Rows follow the JV signal path: patch common -> tone wave -> pitch -> TVF -> TVA -> LFOs -> control matrix -> outputs/FX. Tone groups share one select var {t} (1-4, 'all' writes all four tones); each tone group carries its own picker cell. Envelopes: the JV's pitch/filter/amp envelopes are 4-time/4-level (T1-T4, L1-L4; the amp envelope has L1-L3 and always ends at 0), not DADSR, so they are plain knobs here. The 'env' widget expects 5 DADSR keys; a T/L graph widget (keys = [T1..T4], levels = [L1..L4]) would be the natural addition. Wave: group (INT/PCM/EXP) is a seg, 'bank id' is the Wave Group ID (INT: 1 = INT-A, 2 = INT-B), 'wave' is a pick whose names come from schema.waves via the param's waveLookup (the editor needs a 'wave' display for that; until then it shows the number). The two LFOs and the three controllers each get their own group because the layout format has one select var per group (tone). EFX p1-p3 labels depend on EFX type (schema.efxTypes[efxType].params[n]). Tone pickers are linked (select.shared = 'tone'): choosing a tone in any group switches every tone group.",
+  "rows": [
+    {
+      "id": "patch",
+      "groups": [
+        {
+          "title": "patch",
+          "controls": [
+            {
+              "k": "patchLevel",
+              "label": "level"
+            },
+            {
+              "k": "patchPan",
+              "label": "pan"
+            },
+            {
+              "k": "octaveShift",
+              "label": "octave"
+            },
+            {
+              "k": "bendUp",
+              "label": "bend +"
+            },
+            {
+              "k": "bendDown",
+              "label": "bend \u2013"
+            },
+            {
+              "k": "analogFeel",
+              "label": "analog feel"
+            }
+          ]
+        },
+        {
+          "title": "voice",
+          "controls": [
+            {
+              "k": "keyAssign",
+              "label": "assign",
+              "as": "seg",
+              "labels": [
+                "poly",
+                "solo"
+              ]
+            },
+            {
+              "k": "soloLegato",
+              "label": "legato",
+              "as": "toggle"
+            },
+            {
+              "k": "portaSwitch",
+              "label": "porta",
+              "as": "toggle"
+            },
+            {
+              "k": "portaTime",
+              "label": "time"
+            },
+            {
+              "k": "portaMode",
+              "label": "mode",
+              "as": "seg",
+              "labels": [
+                "norm",
+                "legato"
+              ]
+            },
+            {
+              "k": "portaType",
+              "label": "type",
+              "as": "seg",
+              "labels": [
+                "rate",
+                "time"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "structure",
+          "controls": [
+            {
+              "k": "structure12",
+              "label": "1\u00b72 type",
+              "as": "pick"
+            },
+            {
+              "k": "booster12",
+              "label": "1\u00b72 boost",
+              "as": "seg",
+              "labels": [
+                "0",
+                "+6",
+                "+12",
+                "+18"
+              ]
+            },
+            {
+              "k": "structure34",
+              "label": "3\u00b74 type",
+              "as": "pick"
+            },
+            {
+              "k": "booster34",
+              "label": "3\u00b74 boost",
+              "as": "seg",
+              "labels": [
+                "0",
+                "+6",
+                "+12",
+                "+18"
+              ]
+            },
+            {
+              "k": "velRangeSwitch",
+              "label": "vel range",
+              "as": "toggle"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tone",
+      "groups": [
+        {
+          "title": "tone \u00b7 wave",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Switch",
+              "label": "on",
+              "as": "toggle"
+            },
+            {
+              "k": "t{t}WaveGroup",
+              "label": "group",
+              "as": "seg",
+              "labels": [
+                "int",
+                "pcm",
+                "exp"
+              ]
+            },
+            {
+              "k": "t{t}WaveGroupId",
+              "label": "bank id"
+            },
+            {
+              "k": "t{t}WaveNumber",
+              "label": "wave",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}WaveGain",
+              "label": "gain",
+              "as": "seg",
+              "labels": [
+                "-6",
+                "0",
+                "+6",
+                "+12"
+              ]
+            },
+            {
+              "k": "t{t}FxmSwitch",
+              "label": "fxm",
+              "as": "toggle"
+            },
+            {
+              "k": "t{t}FxmDepth",
+              "label": "fxm depth"
+            }
+          ]
+        },
+        {
+          "title": "range \u00b7 delay",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}KeyLower",
+              "label": "key lo"
+            },
+            {
+              "k": "t{t}KeyUpper",
+              "label": "key hi"
+            },
+            {
+              "k": "t{t}VelLower",
+              "label": "vel lo"
+            },
+            {
+              "k": "t{t}VelUpper",
+              "label": "vel hi"
+            },
+            {
+              "k": "t{t}DelayMode",
+              "label": "delay mode",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}DelayTime",
+              "label": "delay"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pitch",
+      "groups": [
+        {
+          "title": "pitch",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Coarse",
+              "label": "coarse"
+            },
+            {
+              "k": "t{t}Fine",
+              "label": "fine"
+            },
+            {
+              "k": "t{t}RandomPitch",
+              "label": "random"
+            },
+            {
+              "k": "t{t}PitchKf",
+              "label": "key flw"
+            },
+            {
+              "k": "t{t}PenvDepth",
+              "label": "env amt"
+            },
+            {
+              "k": "t{t}PenvVelSens",
+              "label": "velocity"
+            }
+          ]
+        },
+        {
+          "title": "pitch env",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}PenvT1",
+              "label": "t1"
+            },
+            {
+              "k": "t{t}PenvT2",
+              "label": "t2"
+            },
+            {
+              "k": "t{t}PenvT3",
+              "label": "t3"
+            },
+            {
+              "k": "t{t}PenvT4",
+              "label": "t4"
+            },
+            {
+              "k": "t{t}PenvL1",
+              "label": "l1"
+            },
+            {
+              "k": "t{t}PenvL2",
+              "label": "l2"
+            },
+            {
+              "k": "t{t}PenvL3",
+              "label": "l3"
+            },
+            {
+              "k": "t{t}PenvL4",
+              "label": "l4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tvf",
+      "groups": [
+        {
+          "title": "filter",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}FilterType",
+              "label": "type",
+              "as": "seg",
+              "labels": [
+                "off",
+                "lpf",
+                "bpf",
+                "hpf",
+                "pkg"
+              ]
+            },
+            {
+              "k": "t{t}Cutoff",
+              "label": "cutoff"
+            },
+            {
+              "k": "t{t}Reso",
+              "label": "reso"
+            },
+            {
+              "k": "t{t}CutoffKf",
+              "label": "key flw"
+            },
+            {
+              "k": "t{t}FenvDepth",
+              "label": "env amt"
+            },
+            {
+              "k": "t{t}FenvVelSens",
+              "label": "velocity"
+            }
+          ]
+        },
+        {
+          "title": "filter env",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}FenvT1",
+              "label": "t1"
+            },
+            {
+              "k": "t{t}FenvT2",
+              "label": "t2"
+            },
+            {
+              "k": "t{t}FenvT3",
+              "label": "t3"
+            },
+            {
+              "k": "t{t}FenvT4",
+              "label": "t4"
+            },
+            {
+              "k": "t{t}FenvL1",
+              "label": "l1"
+            },
+            {
+              "k": "t{t}FenvL2",
+              "label": "l2"
+            },
+            {
+              "k": "t{t}FenvL3",
+              "label": "l3"
+            },
+            {
+              "k": "t{t}FenvL4",
+              "label": "l4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tva",
+      "groups": [
+        {
+          "title": "amp",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Level",
+              "label": "level"
+            },
+            {
+              "k": "t{t}Pan",
+              "label": "pan"
+            },
+            {
+              "k": "t{t}AenvVelSens",
+              "label": "velocity"
+            },
+            {
+              "k": "t{t}AenvVelCurve",
+              "label": "vel curve"
+            },
+            {
+              "k": "t{t}BiasLevel",
+              "label": "bias"
+            },
+            {
+              "k": "t{t}RandomPan",
+              "label": "rnd pan"
+            }
+          ]
+        },
+        {
+          "title": "amp env",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}AenvT1",
+              "label": "t1"
+            },
+            {
+              "k": "t{t}AenvT2",
+              "label": "t2"
+            },
+            {
+              "k": "t{t}AenvT3",
+              "label": "t3"
+            },
+            {
+              "k": "t{t}AenvT4",
+              "label": "t4"
+            },
+            {
+              "k": "t{t}AenvL1",
+              "label": "l1"
+            },
+            {
+              "k": "t{t}AenvL2",
+              "label": "l2"
+            },
+            {
+              "k": "t{t}AenvL3",
+              "label": "l3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lfo",
+      "groups": [
+        {
+          "title": "lfo 1",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Lfo1Wave",
+              "label": "wave",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Lfo1Rate",
+              "label": "rate"
+            },
+            {
+              "k": "t{t}Lfo1Delay",
+              "label": "delay"
+            },
+            {
+              "k": "t{t}Lfo1FadeTime",
+              "label": "fade"
+            },
+            {
+              "k": "t{t}Lfo1KeyTrig",
+              "label": "key trig",
+              "as": "toggle"
+            },
+            {
+              "k": "t{t}Lfo1ExtSync",
+              "label": "sync",
+              "as": "seg",
+              "labels": [
+                "off",
+                "clk",
+                "tap"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "lfo 1 depth",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}PitchLfo1",
+              "label": "pitch"
+            },
+            {
+              "k": "t{t}FilterLfo1",
+              "label": "filter"
+            },
+            {
+              "k": "t{t}AmpLfo1",
+              "label": "amp"
+            },
+            {
+              "k": "t{t}PanLfo1",
+              "label": "pan"
+            }
+          ]
+        },
+        {
+          "title": "lfo 2",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Lfo2Wave",
+              "label": "wave",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Lfo2Rate",
+              "label": "rate"
+            },
+            {
+              "k": "t{t}Lfo2Delay",
+              "label": "delay"
+            },
+            {
+              "k": "t{t}Lfo2FadeTime",
+              "label": "fade"
+            },
+            {
+              "k": "t{t}Lfo2KeyTrig",
+              "label": "key trig",
+              "as": "toggle"
+            },
+            {
+              "k": "t{t}Lfo2ExtSync",
+              "label": "sync",
+              "as": "seg",
+              "labels": [
+                "off",
+                "clk",
+                "tap"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "lfo 2 depth",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}PitchLfo2",
+              "label": "pitch"
+            },
+            {
+              "k": "t{t}FilterLfo2",
+              "label": "filter"
+            },
+            {
+              "k": "t{t}AmpLfo2",
+              "label": "amp"
+            },
+            {
+              "k": "t{t}PanLfo2",
+              "label": "pan"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "control",
+      "groups": [
+        {
+          "title": "sources",
+          "controls": [
+            {
+              "k": "ctrlSrc2",
+              "label": "ctrl 2",
+              "as": "pick"
+            },
+            {
+              "k": "ctrlSrc3",
+              "label": "ctrl 3",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "ctrl 1 \u00b7 mod wheel",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Ctrl1Dest1",
+              "label": "dest 1",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl1Depth1",
+              "label": "amt 1"
+            },
+            {
+              "k": "t{t}Ctrl1Dest2",
+              "label": "dest 2",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl1Depth2",
+              "label": "amt 2"
+            },
+            {
+              "k": "t{t}Ctrl1Dest3",
+              "label": "dest 3",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl1Depth3",
+              "label": "amt 3"
+            },
+            {
+              "k": "t{t}Ctrl1Dest4",
+              "label": "dest 4",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl1Depth4",
+              "label": "amt 4"
+            }
+          ]
+        },
+        {
+          "title": "ctrl 2",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Ctrl2Dest1",
+              "label": "dest 1",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl2Depth1",
+              "label": "amt 1"
+            },
+            {
+              "k": "t{t}Ctrl2Dest2",
+              "label": "dest 2",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl2Depth2",
+              "label": "amt 2"
+            },
+            {
+              "k": "t{t}Ctrl2Dest3",
+              "label": "dest 3",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl2Depth3",
+              "label": "amt 3"
+            },
+            {
+              "k": "t{t}Ctrl2Dest4",
+              "label": "dest 4",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl2Depth4",
+              "label": "amt 4"
+            }
+          ]
+        },
+        {
+          "title": "ctrl 3",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Ctrl3Dest1",
+              "label": "dest 1",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl3Depth1",
+              "label": "amt 1"
+            },
+            {
+              "k": "t{t}Ctrl3Dest2",
+              "label": "dest 2",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl3Depth2",
+              "label": "amt 2"
+            },
+            {
+              "k": "t{t}Ctrl3Dest3",
+              "label": "dest 3",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl3Depth3",
+              "label": "amt 3"
+            },
+            {
+              "k": "t{t}Ctrl3Dest4",
+              "label": "dest 4",
+              "as": "pick"
+            },
+            {
+              "k": "t{t}Ctrl3Depth4",
+              "label": "amt 4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fx",
+      "groups": [
+        {
+          "title": "tone out",
+          "select": {
+            "label": "tone",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "t": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "t": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "t": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "t": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "tone"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "t{t}Output",
+              "label": "out",
+              "as": "seg",
+              "labels": [
+                "mix",
+                "efx",
+                "out1",
+                "out2"
+              ]
+            },
+            {
+              "k": "t{t}OutLevel",
+              "label": "level"
+            },
+            {
+              "k": "t{t}ChorusSend",
+              "label": "chorus"
+            },
+            {
+              "k": "t{t}ReverbSend",
+              "label": "reverb"
+            }
+          ]
+        },
+        {
+          "title": "efx",
+          "controls": [
+            {
+              "k": "efxType",
+              "label": "type",
+              "as": "pick"
+            },
+            {
+              "k": "efxParam1",
+              "label": "p1"
+            },
+            {
+              "k": "efxParam2",
+              "label": "p2"
+            },
+            {
+              "k": "efxParam3",
+              "label": "p3"
+            },
+            {
+              "k": "efxLevel",
+              "label": "level"
+            },
+            {
+              "k": "efxChorusSend",
+              "label": "\u2192 chorus"
+            },
+            {
+              "k": "efxReverbSend",
+              "label": "\u2192 reverb"
+            },
+            {
+              "k": "efxOutput",
+              "label": "out",
+              "as": "seg",
+              "labels": [
+                "mix",
+                "out1",
+                "out2"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "chorus",
+          "controls": [
+            {
+              "k": "chorusLevel",
+              "label": "level"
+            },
+            {
+              "k": "chorusRate",
+              "label": "rate"
+            },
+            {
+              "k": "chorusDepth",
+              "label": "depth"
+            },
+            {
+              "k": "chorusPreDelay",
+              "label": "pre dly"
+            },
+            {
+              "k": "chorusFeedback",
+              "label": "feedback"
+            },
+            {
+              "k": "chorusOutput",
+              "label": "out",
+              "as": "seg",
+              "labels": [
+                "mix",
+                "rev",
+                "mix+rev"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "reverb",
+          "controls": [
+            {
+              "k": "reverbType",
+              "label": "type",
+              "as": "pick"
+            },
+            {
+              "k": "reverbLevel",
+              "label": "level"
+            },
+            {
+              "k": "reverbTime",
+              "label": "time"
+            },
+            {
+              "k": "reverbHfDamp",
+              "label": "hf damp",
+              "as": "pick"
+            },
+            {
+              "k": "reverbFeedback",
+              "label": "dly fbk"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

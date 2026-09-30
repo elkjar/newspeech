@@ -29,7 +29,7 @@ let pending = new Map();  // coalesced live sends
 let heldNote = null, octave = 4;
 let mutAmt = Number(lsGet("mutate", "15"));
 const mutateAmount = () => mutAmt / 100;
-let cur = { bank: 0, prog: 0 }, pendingBank = null, scanning = false;
+let cur = { bank: 0, prog: 0 }, scanning = false;
 
 // every on-screen control registers the param keys it shows; setValue fans out
 const registry = new Map(); // key → Set<{ update(v), flash?(), changed?(on) }>
@@ -43,12 +43,22 @@ const isName = (p) => p.display === "char" || p.display === "ascii";
 function fmt(p, v) {
   if (v == null) return "—";
   if (p.options) return p.options[v - p.min] ?? v;
-  if (p.display === "note") return NOTE[v % 12] + Math.floor(v / 12);
+  if (p.display === "note") return NOTE[v % 12] + (Math.floor(v / 12) + (schema.noteOctaveBase ?? 0));
+  if (p.display === "wave") return waveName(p, v);
   if (isName(p)) return String.fromCharCode(v);
   if (p.display === "paramIndex") return schema.params.find((q) => (q.sysexIndex ?? q.nrpn) === v)?.name ?? "—";
   if (p.display === "seqStep") return v === 126 ? "reset" : v === 127 ? "rest" : String(v);
-  const n = v + (p.offset || 0);
+  const n = v + (p.valueOffset || 0);
   return p.display === "bipolar" && n > 0 ? "+" + n : String(n);
+}
+
+// JV-style wave numbers: the name depends on the tone's wave group + bank id
+function waveName(p, v) {
+  const wl = p.waveLookup, num = String(v + (p.valueOffset || 0)).padStart(3, "0");
+  if (!wl || values[wl.groupKey] !== 0) return "#" + num;       // PCM / EXP: number only
+  const bank = values[wl.groupIdKey] === 1 ? "INT-A" : values[wl.groupIdKey] === 2 ? "INT-B" : null;
+  const name = bank && schema.waves?.[bank]?.[v];
+  return name ? `${bank.slice(-1)}${num} ${name}` : "#" + num;
 }
 const clamp = (p, v) => Math.max(p.min, Math.min(p.max, Math.round(v)));
 
@@ -81,6 +91,9 @@ function schedule() {
   if (raf) return;
   raf = requestAnimationFrame(() => {
     raf = 0;
+    // slow units (JV: 20 ms between messages) — hold the latest values until the
+    // queue drains instead of piling up a backlog behind a knob drag
+    if (midi.drainMs() > (schema.gapMs ?? 2) * 2) return schedule();
     for (const [k, p] of pending) driver.sendParam(p, values[k]);
     pending.clear();
   });
@@ -109,7 +122,7 @@ function setName(str) {
 function randomize(params, amount = 1) {
   const before = snapshot();
   for (const p of params) {
-    if (isName(p) || p.norandom || p.display === "paramIndex") continue;
+    if (isName(p) || p.norandom || p.notInPatch || p.display === "paramIndex") continue;
     const span = p.max - p.min;
     let v;
     if (amount >= 1) v = p.min + Math.random() * (span + 1);
@@ -132,8 +145,11 @@ function autoLayout() {
     .filter((s) => s.controls.length) }] };
 }
 
+const sharedSelects = new Map(); // shared id → Set<(label) => void>
+
 function renderFaceplate() {
   registry.clear();
+  sharedSelects.clear();
   const root = $("#face"); root.replaceChildren();
   for (const row of layout.rows) {
     const rowEl = h("div", { class: `frow frow-${row.id}` });
@@ -148,7 +164,9 @@ function renderGroup(g) {
   const el = h("fieldset", { class: "grp" }, h("legend", {}, g.title), cells);
 
   const opts = g.select?.options || [{ label: "", vars: {} }];
-  const selKey = `${schema.id}.sel.${g.title}`;
+  // select.shared links every group with the same id (the JV's tone 1–4)
+  const shared = g.select?.shared;
+  const selKey = shared ? `${schema.id}.sel.@${shared}` : `${schema.id}.sel.${g.title}`;
   let current = lsGet(selKey, opts[0].label);
   if (current !== g.select?.all && !opts.some((o) => o.label === current)) current = opts[0].label;
   let unbind = [];
@@ -194,7 +212,9 @@ function renderGroup(g) {
   function selectCell() {
     const labels = [...opts.map((o) => o.label), ...(g.select.all ? [g.select.all] : [])];
     const btns = labels.map((l) => h("button", { class: l === current ? "on" : "", onclick: () => {
-      current = l; lsSet(selKey, l); build();
+      lsSet(selKey, l);
+      if (shared) for (const fn of sharedSelects.get(shared) || []) fn(l);
+      else { current = l; build(); }
     } }, l));
     return h("div", { class: "cell segcell selcell" }, h("div", { class: "seg" }, btns), h("span", { class: "clabel" }, g.select.label));
   }
@@ -218,10 +238,12 @@ function renderGroup(g) {
       return bindAll(ps, { update: (v) => btns.forEach((b, i) => b.classList.toggle("on", p.min + i === v)), changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
     }
     if (as === "pick") {
-      const options = p.options || Array.from({ length: p.max - p.min + 1 }, (_, i) => fmt(p, p.min + i));
-      const sel = h("select", { class: "box", onchange: (e) => { begin(); write(Number(e.target.value)); end(); }, onpointerenter: hover },
-        options.map((o, i) => new Option(o, p.min + i)));
+      const optionList = () => (p.options || Array.from({ length: p.max - p.min + 1 }, (_, i) => fmt(p, p.min + i))).map((o, i) => new Option(o, p.min + i));
+      const sel = h("select", { class: "box", onchange: (e) => { begin(); write(Number(e.target.value)); end(); }, onpointerenter: hover }, optionList());
       const cell = h("label", { class: "cell pickcell", title: p.name }, sel, h("span", { class: "clabel" }, c.label));
+      // wave names change with the tone's wave group / bank — rebuild the list when they do
+      if (p.waveLookup) for (const k of [p.waveLookup.groupKey, p.waveLookup.groupIdKey])
+        unbind.push(register(k, { update: () => { sel.replaceChildren(...optionList()); sel.value = values[p.key]; } }));
       return bindAll(ps, { update: (v) => { sel.value = v; }, changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
     }
     const k = createKnob({ label: c.label, fmt, onBegin: begin, onChange: write, onEnd: end, onReset: reset, onHover: showLast });
@@ -296,6 +318,7 @@ function renderGroup(g) {
     return h("div", { class: "cell widecell stepscell" }, grid, h("span", { class: "clabel" }, c.label));
   }
 
+  if (shared) (sharedSelects.get(shared) || sharedSelects.set(shared, new Set()).get(shared)).add((l) => { current = l; build(); });
   build();
   return el;
 }
@@ -342,10 +365,11 @@ async function selectDevice(id) {
   midi.gapMs = schema.gapMs ?? 2;
   driver = makeDriver(schema, midi, channel);
   // until GET reads the synth: bipolar params sit at centre, the rest at min
-  values = Object.fromEntries(schema.params.map((p) => [p.key, p.default ?? (p.display === "bipolar" ? clamp(p, -(p.offset || 0)) : p.min)]));
+  values = Object.fromEntries(schema.params.map((p) => [p.key, p.default ?? (p.display === "bipolar" ? clamp(p, -(p.valueOffset || 0)) : p.min)]));
   saved = {}; undo = []; redo = [];
   $("#ch").value = channel() + 1;
   $("#pname").hidden = !nameParams().length;
+  $("#pname").maxLength = nameParams().length || 16;
   document.querySelectorAll("#devices button").forEach((b) => b.classList.toggle("on", b.dataset.id === id));
   fillPorts();
   renderProgramControls();
@@ -364,11 +388,7 @@ async function boot() {
     if (!driver) return;
     $("#rx").classList.remove("blink"); void $("#rx").offsetWidth; $("#rx").classList.add("blink");
     // synth changed program on its front panel → pull the new sound in
-    if (ev.type === "cc" && ev.ch === channel() && ev.num === schema.programs?.bankCC) { pendingBank = ev.val; return; }
-    if (ev.type === "program" && ev.ch === channel()) {
-      setCurrent(pendingBank ?? cur.bank, ev.program); pendingBank = null;
-      return getFromSynth();
-    }
+    if (ev.ch === channel() && banks().length && followProgram(ev)) return;
     for (const { param, value } of driver.decode(ev)) setValue(param, value, { send: false, from: "synth" });
   });
 
@@ -399,7 +419,7 @@ async function boot() {
   $("#store").onclick = openStore;
   $("#st-cancel").onclick = () => $("#storedlg").close();
   $("#st-go").onclick = doStore;
-  $("#st-prog").onchange = () => { stTarget.prog = Math.max(0, Math.min(schema.programs.perBank - 1, Number($("#st-prog").value) - 1)); readTarget(); };
+  $("#st-prog").onchange = () => { stTarget.prog = Math.max(0, Math.min(banks()[stTarget.bank].count - 1, Number($("#st-prog").value) - 1)); readTarget(); };
   $("#libtoggle").onclick = openSetup;
   $("#pname").oninput = (e) => setName(e.target.value);
 
@@ -411,18 +431,26 @@ async function boot() {
 }
 
 // ---------- programs on the synth ----------
+// schema.programs.banks: [{ label, msb?, lsb?, count, dump?, write? }] — dump =
+// readable over sysex (backups, names, store's read-first), write = storable
 const pad3 = (n) => String(n + 1).padStart(3, "0");
 const slotKey = (b, p) => `${b}-${p}`;
+const banks = () => schema.programs?.banks || [];
+const bankName = (bi) => { const l = banks()[bi]?.label ?? String(bi + 1); return /^\d+$/.test(l) ? `bank ${l}` : l; };
+const slotName = (bi, p) => `${bankName(bi)} · ${pad3(p)}`;
 function names() { try { return JSON.parse(lsGet(`${schema.id}.names`, "{}")); } catch { return {}; } }
 
 function renderProgramControls() {
-  const pr = schema.programs;
-  $("#progcell").hidden = !pr;
-  $("#storecell").hidden = !pr || schema.sysex?.cmd?.programDump == null;
-  if (!pr) return;
+  const bs = banks();
+  $("#progcell").hidden = !bs.length;
+  $("#storecell").hidden = !bs.some((b) => b.write) || !driver.writeProgram;
+  if (!bs.length) return;
   try { cur = JSON.parse(lsGet(`${schema.id}.prog`, "")) || cur; } catch { cur = { bank: 0, prog: 0 }; }
-  $("#banks").replaceChildren(...Array.from({ length: pr.banks }, (_, b) =>
-    h("button", { "data-b": b, onclick: () => goProgram(b, cur.prog) }, String(b + 1))));
+  if (!bs[cur.bank]) cur = { bank: 0, prog: 0 };
+  // a few banks → buttons (Mopho 1/2/3); many → a dropdown (JV user/presets/cards/exp)
+  $("#banks").replaceChildren(bs.length <= 4
+    ? h("div", { class: "seg" }, bs.map((b, i) => h("button", { "data-b": i, onclick: () => goProgram(i, cur.prog) }, b.label)))
+    : h("select", { class: "box bankpick", onchange: (e) => goProgram(Number(e.target.value), cur.prog) }, bs.map((b, i) => new Option(b.label, i))));
   showCurrent();
   renderProgramList();
 }
@@ -435,41 +463,58 @@ function setCurrent(bank, prog) {
 
 function showCurrent() {
   document.querySelectorAll("#banks button").forEach((b) => b.classList.toggle("on", Number(b.dataset.b) === cur.bank));
+  const pick = $("#banks select"); if (pick) pick.value = cur.bank;
   $("#prognum").textContent = pad3(cur.prog);
   $("#prognum").title = names()[slotKey(cur.bank, cur.prog)] || "open the program list";
   document.querySelectorAll("#programs button").forEach((b) => b.classList.toggle("on", b.dataset.k === slotKey(cur.bank, cur.prog)));
 }
 
 function goProgram(bank, prog) {
-  const pr = schema.programs;
   if (gestureBefore == null && Object.keys(saved).length && JSON.stringify(saved) !== JSON.stringify(values))
     status("left unsaved edits behind — undo brings them back", true);
+  prog = Math.min(prog, (banks()[bank]?.count ?? 128) - 1);
   driver.programChange(bank, prog);
   setCurrent(bank, prog);
   // let the change land, then read the new sound in
-  setTimeout(getFromSynth, midi.drainMs() + 120);
+  setTimeout(getFromSynth, midi.drainMs() + 150);
 }
 
-// ◂ ▸ walk straight through the banks: 3-128 → next is 1-001 of the next bank
+// ◂ ▸ walk straight through the banks: last program of one → first of the next
 function stepProgram(dir) {
-  const pr = schema.programs; if (!pr) return;
-  const total = pr.banks * pr.perBank;
-  const i = (cur.bank * pr.perBank + cur.prog + dir + total) % total;
-  goProgram(Math.floor(i / pr.perBank), i % pr.perBank);
+  const bs = banks(); if (!bs.length) return;
+  let { bank, prog } = cur;
+  prog += dir;
+  if (prog >= bs[bank].count) { bank = (bank + 1) % bs.length; prog = 0; }
+  if (prog < 0) { bank = (bank - 1 + bs.length) % bs.length; prog = bs[bank].count - 1; }
+  goProgram(bank, prog);
+}
+
+// the synth announced a bank/program change from its own panel: CC0/CC32 latch, PC lands
+let latched = {};
+function followProgram(ev) {
+  if (ev.type === "cc" && (ev.num === 0 || ev.num === 32)) { latched[ev.num] = ev.val; return true; }
+  if (ev.type !== "program") return false;
+  const bs = banks();
+  let bi = bs.findIndex((b) => (b.msb == null || b.msb === (latched[0] ?? b.msb)) && (b.lsb == null || b.lsb === (latched[32] ?? b.lsb)));
+  if (latched[0] == null && latched[32] == null) bi = cur.bank; // no bank select sent: same bank
+  setCurrent(bi < 0 ? cur.bank : bi, ev.program); latched = {};
+  getFromSynth();
+  return true;
 }
 
 function renderProgramList() {
-  const pr = schema.programs, known = names(), ul = $("#programs");
+  const known = names(), ul = $("#programs");
   ul.replaceChildren();
   if (!Object.keys(known).length) { ul.append(h("li", { class: "dim" }, "create a backup to read the slot names")); return; }
-  for (let b = 0; b < pr.banks; b++) {
-    ul.append(h("li", { class: "bankhead" }, `bank ${b + 1}`));
-    for (let p = 0; p < pr.perBank; p++) {
-      const k = slotKey(b, p);
-      ul.append(h("li", {}, h("button", { "data-k": k, onclick: () => goProgram(b, p) },
+  banks().forEach((b, bi) => {
+    if (!b.dump) return;
+    ul.append(h("li", { class: "bankhead" }, bankName(bi)));
+    for (let p = 0; p < b.count; p++) {
+      const k = slotKey(bi, p);
+      ul.append(h("li", {}, h("button", { "data-k": k, onclick: () => goProgram(bi, p) },
         h("span", { class: "dim" }, pad3(p) + " "), known[k] ?? "…")));
     }
-  }
+  });
   showCurrent();
 }
 
@@ -478,21 +523,22 @@ function renderProgramList() {
 // .syx + a name index in Dropbox; the names also fill the program list
 async function createBackup() {
   if (scanning) { scanning = false; return; }
-  const pr = schema.programs; if (!pr) return;
+  const readable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => b.dump);
+  if (!readable.length) return status("this synth can't send its programs over MIDI", true);
   scanning = true;
   const btn = $("#backup"), fillEl = btn.querySelector(".pfill"), label = btn.querySelector(".plabel");
   btn.classList.add("running");
   const progress = (n) => { fillEl.style.width = (n / total) * 100 + "%"; label.textContent = `backing up ${n} / ${total} · click to stop`; };
   const known = names(), slots = [], syx = [];
-  const total = pr.banks * pr.perBank;
+  const total = readable.reduce((t, b) => t + b.count, 0);
   let n = 0, failed = 0;
   progress(0);
-  for (let b = 0; b < pr.banks && scanning; b++) for (let p = 0; p < pr.perBank && scanning; p++) {
+  for (const { bi, label, count } of readable) for (let p = 0; p < count && scanning; p++) {
     try {
-      const got = await driver.requestProgram(b, p);
+      const got = await driver.requestProgram(bi, p);
       const name = nameParams().map((q) => String.fromCharCode(got.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
-      known[slotKey(b, p)] = name;
-      slots.push({ bank: b + 1, program: p + 1, name });
+      known[slotKey(bi, p)] = name;
+      slots.push({ bank: label, program: p + 1, name });
       syx.push(...got.syx);
     } catch { failed++; if (failed > 3 && n < 5) scanning = false; }
     n++;
@@ -537,10 +583,10 @@ async function refreshBackups() {
 let stTarget = null, stOld = null, stSeq = 0;
 
 function openStore() {
-  const pr = schema.programs;
-  stTarget = { ...cur };
-  $("#st-banks").replaceChildren(...Array.from({ length: pr.banks }, (_, b) =>
-    h("button", { "data-b": b, onclick: () => { stTarget.bank = b; readTarget(); } }, String(b + 1))));
+  const writable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => b.write);
+  stTarget = writable.some((b) => b.bi === cur.bank) ? { ...cur } : { bank: writable[0].bi, prog: cur.prog };
+  $("#st-banks").replaceChildren(...writable.map((b) =>
+    h("button", { "data-b": b.bi, onclick: () => { stTarget.bank = b.bi; readTarget(); } }, b.label)));
   $("#storedlg").showModal();
   readTarget();
 }
@@ -550,7 +596,8 @@ async function readTarget() {
   document.querySelectorAll("#st-banks button").forEach((b) => b.classList.toggle("on", Number(b.dataset.b) === stTarget.bank));
   $("#st-prog").value = stTarget.prog + 1;
   $("#st-go").disabled = true; stOld = null;
-  const where = `bank ${stTarget.bank + 1} · ${pad3(stTarget.prog)}`;
+  $("#st-prog").max = banks()[stTarget.bank].count;
+  const where = slotName(stTarget.bank, stTarget.prog);
   $("#st-msg").textContent = `reading what's in ${where}…`;
   try {
     const old = await driver.requestProgram(stTarget.bank, stTarget.prog);
@@ -569,11 +616,11 @@ async function readTarget() {
 }
 
 async function doStore() {
-  const { bank, prog } = stTarget, where = `bank ${bank + 1} · ${pad3(prog)}`;
+  const { bank, prog } = stTarget, where = slotName(bank, prog);
   $("#st-go").disabled = true;
   try {
     $("#st-msg").textContent = "backing up the old program…";
-    const r = await fetch(`/api/backup/${schema.id}/${encodeURIComponent(`${localStamp()} slot ${bank + 1}-${pad3(prog)} ${stOld.name}`)}`, {
+    const r = await fetch(`/api/backup/${schema.id}/${encodeURIComponent(`${localStamp()} slot ${banks()[bank].label}-${pad3(prog)} ${stOld.name}`)}`, {
       method: "PUT", body: JSON.stringify({ device: schema.id, slot: { bank, prog }, name: stOld.name, values: stOld.values, syx: stOld.syx }) });
     if (!r.ok) throw new Error("backup failed: " + (await r.text()));
 
@@ -581,7 +628,7 @@ async function doStore() {
     const sent = driver.writeProgram(bank, prog, values);
     await new Promise((res) => setTimeout(res, midi.drainMs() + 400));
     const back = await driver.requestProgram(bank, prog);
-    if (!driver.sameProgram(sent, back.data)) throw new Error(`read ${where} back and it doesn't match — check the synth (memory protect?)`);
+    if (!driver.sameProgram(sent, back.data)) throw new Error(`read ${where} back and it doesn't match — check the synth's memory / exclusive protect`);
 
     const known = names(); known[slotKey(bank, prog)] = nameString() || "(unnamed)";
     lsSet(`${schema.id}.names`, JSON.stringify(known));
