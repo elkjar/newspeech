@@ -69,24 +69,26 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   .wrap { position: relative; z-index: 3; padding: 0 var(--col-pad); }
   .grid { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 28px; }
 
-  .hero { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding: calc(80px + var(--ns-nav-h, 0px)) 0 120px; }
-  .hero h1 {
-    font-family: "zxx-sans", ui-monospace, monospace;
-    font-weight: normal;
-    font-size: clamp(54px, 9.35vw, 143px);
-    line-height: 0.95;
-    letter-spacing: 0.01em;
-    margin: 0 0 36px;
-    user-select: none;
-  }
-  .hero .dek { max-width: 46ch; font-size: 15px; line-height: 1.75; color: rgba(255, 255, 255, 0.88); margin: 0; }
-
   /* sections: staggered across the column, a long gap between each so the
      years spread out under them */
   .s { padding: 22vh 0; }
   .s .in { grid-column: 1 / 7; }
   .s.p-right .in { grid-column: 7 / 13; }
   .s.p-wide .in { grid-column: 3 / 12; }
+  /* the first section opens the page: clears the nav, headline-size title */
+  .s.lead { padding-top: calc(16vh + var(--ns-nav-h, 0px)); }
+  .s.lead .in { grid-column: 1 / 13; }
+  .s.lead .copy { max-width: 58ch; }
+  .s.lead h1 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-weight: normal;
+    font-size: clamp(54px, 9.35vw, 143px);
+    line-height: 0.95;
+    letter-spacing: 0.01em;
+    margin: 0 0 36px;
+    white-space: nowrap; /* per-letter spans would otherwise break mid-word */
+    user-select: none;
+  }
   .s h2 {
     font-family: "zxx-sans", ui-monospace, monospace;
     font-weight: normal;
@@ -103,7 +105,7 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   .s a { color: #fff; text-underline-offset: 3px; }
   /* reading plates: text sits on a soft dark field so the brightest stripes
      never fight it */
-  .s .in, .hero > * { position: relative; }
+  .s .in { position: relative; }
   .s .in::before {
     content: "";
     position: absolute;
@@ -142,13 +144,9 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
 <main>
 <canvas id="record" aria-hidden="true"></canvas>
 <div class="wrap">
-  <header class="hero">
-    <h1 data-wear>${esc(fm.title || "about")}</h1>
-    <p class="dek">${esc(fm.dek || "")}</p>
-  </header>
-${sections.map((s, i) => `  <section class="s ${PLACES[i % PLACES.length]}">
+${sections.map((s, i) => `  <section class="s ${PLACES[i % PLACES.length]}${i === 0 ? " lead" : ""}">
     <div class="grid"><div class="in">
-      <h2 data-wear>${esc(s.title)}</h2>
+      <${i === 0 ? "h1" : "h2"} data-wear>${esc(s.title)}</${i === 0 ? "h1" : "h2"}>
       <div class="copy">${s.html}</div>
     </div></div>
   </section>`).join("\n")}

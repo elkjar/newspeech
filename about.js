@@ -139,14 +139,15 @@
     for (const sec of sections) {
       const d = damageAt(sec);
       damage.set(sec, d);
-      const k = Math.pow(d, 1.1); // quiet at the top, wrecked at the bottom
+      // the coolest stretch of the record reads clean; damage starts after it
+      const k = Math.pow(Math.max(0, (d - 0.15) / 0.85), 1.1);
       // paragraphs slip sideways, alternating, more the lower they sit
       [...sec.querySelectorAll(".copy > *")].forEach((p, j) => {
         const dx = (j % 2 ? 1 : -1) * k * rand(14, 52);
         p.style.transform = `translateX(${dx.toFixed(1)}px)`;
       });
       // the heading's letters drift off the line
-      for (const s of sec.querySelectorAll("h2 [data-o]")) {
+      for (const s of sec.querySelectorAll("h1 [data-o], h2 [data-o]")) {
         s.style.transform = `translate(${(k * rand(-14, 14)).toFixed(1)}px, ${(k * rand(-30, 30)).toFixed(1)}px) rotate(${(k * rand(-18, 18)).toFixed(1)}deg)`;
       }
       // a share of the characters rot to ghosts — still there, still readable
@@ -158,7 +159,7 @@
     }
   }
 
-  // headings (and the hero title): wrap for scrambles + drift
+  // headings (the lead h1 + the section h2s): wrap for scrambles + drift
   for (const el of document.querySelectorAll("[data-wear]")) {
     const txt = el.textContent;
     el.textContent = "";

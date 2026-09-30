@@ -8,7 +8,9 @@ noindex: true
 <!--
 about.md — the words on about.html (built by tools/build-about.mjs, run by
 build.sh). rewrite anything in your own voice; keep the `## ` headings — each
-one is a section of the page, in order. **bold**, *em* and [links](url) work
+one is a section of the page, in order. the first section opens the page at
+headline size (there's no separate "about" title); the frontmatter title/dek
+only feed the browser tab + link previews. **bold**, *em* and [links](url) work
 like the news posts.
 
 DRAFT (2026-09-29) — assembled from your own words where they exist (the
@@ -29,7 +31,7 @@ the page stays noindex + out of the nav/footer until you say it's ready.
 
 ## newspeech
 
-newspeech is the umbrella for everything i make: records, a 24/7 generative broadcast, and the instruments built to make them — a step sequencer, browser tools, audio plugins, a sample library recorded from the rack, audio-reactive visualizers. all of it lives here, and most of it is free.
+i'm chris elkjar. newspeech is the umbrella for everything i make: records, a 24/7 generative broadcast, and the instruments built to make them — a step sequencer, browser tools, audio plugins, a sample library recorded from the rack, audio-reactive visualizers. all of it lives here, and most of it is free.
 
 i always loved creating and releasing things for free, removing the commerce side of music and focusing on the parts that excited me. the tools are released the same way the music is: use them on anything, commercial or not, no credit needed.
 
