@@ -587,9 +587,9 @@ async function renderRack() {
       const { backups } = await (await fetch(`/api/backups/${d.id}`)).json();
       if (backups[0]) last = "backed up " + new Date(backups[0].at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     } catch {}
-    const state = h("div", { class: "rstate" }, outName && inName ? "checking…" : "ports not set");
+    const state = h("div", { class: "rstate" }, outName && inName ? h("span", { class: "dots" }, "checking") : "ports not set");
     const go = h("button", { class: "btn", onclick: (e) => { e.stopPropagation(); startConnect(d.id); } }, "connect");
-    const card = h("fieldset", { class: "grp rackcard", draggable: "true", "data-id": d.id, onclick: () => card.classList.contains("online") && startConnect(d.id) },
+    const card = h("fieldset", { class: `grp rackcard${outName && inName ? " waiting" : ""}`, draggable: "true", "data-id": d.id, onclick: () => card.classList.contains("online") && startConnect(d.id) },
       h("legend", {}, h("span", { class: "rdot" }), d.name),
       await art(d.id),
       h("div", { class: "rinfo" }, state,
@@ -624,9 +624,13 @@ function dragCard(card) {
 let probing = 0;
 async function probeRack(cards) {
   const run = ++probing;
+  const toCheck = cards.filter((c) => c.ready).length;
+  if (toCheck) status("checking which synths are connected…");
+  let online = 0;
   for (const c of cards) {
     if (run !== probing || view !== "rack") return;
     if (!c.ready) { c.card.classList.add("offline"); continue; }
+    c.card.classList.add("probing");
     let ok = false;
     try {
       const sch = await (await fetch(`/devices/${c.d.id}.json`)).json();
@@ -637,9 +641,12 @@ async function probeRack(cards) {
       ok = await drv.probe?.().catch(() => false);
     } catch { ok = false; }
     if (run !== probing) return;
+    c.card.classList.remove("waiting", "probing");
     c.card.classList.toggle("online", !!ok); c.card.classList.toggle("offline", !ok);
     c.state.hidden = true; // the dot says it; "ports not set" stays when there's nothing to try
+    if (ok) online++;
   }
+  if (run === probing && toCheck) status(`${online} of ${cards.length} connected${online ? " — click one to open it" : ""}`);
 }
 
 async function startConnect(id, { auto = true } = {}) {
