@@ -119,30 +119,47 @@ function nrpnDriver(schema, midi, getChannel) {
   };
 }
 
-// Roland DT1/RQ1 (JV-1080; the D-110/U-110/S-330 speak the same shape).
-// Addresses and sizes are 4 bytes of 7 bits; a param lives at block base +
-// byte offset; checksum = (128 - sum(addr+data) % 128) % 128. Multi-byte
-// values ("nibble") travel high 4 bits first.
+// Roland DT1/RQ1 — JV-1080 (4-byte addresses) and the LA family (D-110:
+// 3-byte). Addresses and sizes are 7 bits per byte; a param lives at block
+// base + byte offset; checksum = (128 - sum(addr+data) % 128) % 128.
+// Value encodings: plain byte · "nibble" (JV multi-byte, high 4 bits first) ·
+// bits {shift,width} (several params share a byte) · "d110pcm" (PCM bank bit
+// + wave number over 2 bytes). A live mirror of every block keeps shared
+// bytes and unmodelled bytes intact whatever gets sent.
 function rolandDriver(schema, midi, getChannel) {
   const R = schema.roland;
   const mfr = R.manufacturerId, model = R.modelId, dev = R.defaultDeviceId ?? 16;
+  const AB = R.addressBytes ?? 4, SB = R.sizeBytes ?? AB;
   const hdr = [0xf0, ...mfr, dev, ...model];
   const A = hdr.length + 1; // index of the first address byte in a message
   const toInt = (a) => a.reduce((n, b) => n * 128 + b, 0);
-  const toAddr = (n) => [(n >> 21) & 127, (n >> 14) & 127, (n >> 7) & 127, n & 127];
+  const toBytes = (n, count) => Array.from({ length: count }, (_, i) => (n >> (7 * (count - 1 - i))) & 127);
   const sum = (bytes) => (128 - (bytes.reduce((t, b) => t + b, 0) % 128)) % 128;
   const isDT1 = (d) => d[0] === 0xf0 && hdr.every((b, i) => d[i] === b) && d[hdr.length] === R.commands.DT1;
+  const bank = (bi) => schema.programs.banks[bi];
 
-  // the blocks that make up a patch (system/global blocks stay out of sends)
   const blocks = Object.entries(R.blocks).map(([name, b]) => ({ name, ...b, at: toInt(b.base) }));
+  const blockOf = new Map(blocks.map((b) => [b.name, b]));
   const paramsOf = new Map(blocks.map((b) => [b.name, schema.params.filter((p) => p.block === b.name)]));
   const patchBlocks = blocks.filter((b) => paramsOf.get(b.name).some((p) => !p.notInPatch));
-  const size = (p) => p.size || 1;
+  const contextBlocks = blocks.filter((b) => !patchBlocks.includes(b));
 
-  const encode = (p, v) => size(p) === 1 ? [v & 127] : Array.from({ length: size(p) }, (_, i) => (v >> (4 * (size(p) - 1 - i))) & 15);
-  const decodeAt = (p, data, off) => size(p) === 1 ? data[off] : data.slice(off, off + size(p)).reduce((n, b) => (n << 4) | (b & 15), 0);
+  const width = (p) => (p.encoding === "d110pcm" ? 2 : p.size || 1);
+  function read(p, data, off = p.offset) {
+    if (p.encoding === "d110pcm") return ((data[off] >> 1) & 1) * 128 + data[off + 1];
+    if (p.bits) return (data[off] >> p.bits.shift) & ((1 << p.bits.width) - 1);
+    if ((p.size || 1) > 1) return data.slice(off, off + p.size).reduce((n, b) => (n << 4) | (b & 15), 0);
+    return data[off];
+  }
+  function write(p, v, data) {
+    const o = p.offset;
+    if (p.encoding === "d110pcm") { data[o] = (data[o] & 1) | (((v >> 7) & 1) << 1); data[o + 1] = v & 127; return; }
+    if (p.bits) { const m = ((1 << p.bits.width) - 1) << p.bits.shift; data[o] = (data[o] & ~m) | ((v << p.bits.shift) & m); return; }
+    if ((p.size || 1) > 1) { for (let i = 0; i < p.size; i++) data[o + i] = (v >> (4 * (p.size - 1 - i))) & 15; return; }
+    data[o] = v & 127;
+  }
 
-  const dt1 = (addrInt, data) => { const a = toAddr(addrInt); midi.send([...hdr, R.commands.DT1, ...a, ...data, sum([...a, ...data]), 0xf7]); };
+  const dt1 = (addrInt, data) => { const a = toBytes(addrInt, AB); midi.send([...hdr, R.commands.DT1, ...a, ...data, sum([...a, ...data]), 0xf7]); };
 
   // RQ1 → collect the DT1 reply(s) covering [addr, addr+len)
   let inFlight = 0; // our own replies aren't front-panel edits
@@ -159,80 +176,103 @@ function rolandDriver(schema, midi, getChannel) {
       };
       const off = midi.on((ev) => {
         if (ev.type !== "sysex" || !isDT1(ev.data)) return;
-        const d = ev.data, a = toInt([...d.slice(A, A + 4)]), data = d.slice(A + 4, d.length - 2);
+        const d = ev.data, a = toInt([...d.slice(A, A + AB)]), data = d.slice(A + AB, d.length - 2);
         if (a + data.length <= addrInt || a >= addrInt + len) return;
         raw.push(...d);
         data.forEach((b, i) => { const k = a - addrInt + i; if (k >= 0 && k < len && buf[k] == null) { buf[k] = b; got++; } });
         clearTimeout(idle);
         if (got >= len) done(); else idle = setTimeout(done, 300);
       });
-      const hard = setTimeout(done, 2000);
-      const a = toAddr(addrInt), s = toAddr(len);
+      const hard = setTimeout(done, 2500);
+      const a = toBytes(addrInt, AB), s = toBytes(len, SB);
       midi.send([...hdr, R.commands.RQ1, ...a, ...s, sum([...a, ...s]), 0xf7]);
     });
   }
 
-  let lastData = {}; // block name → bytes last read, so unmodelled bytes survive a send
-  const blockBytes = (b, values) => {
-    const data = lastData[b.name] ? [...lastData[b.name]] : new Array(b.size).fill(0);
-    for (const p of paramsOf.get(b.name)) if (values[p.key] != null) encode(p, values[p.key]).forEach((x, i) => { data[p.offset + i] = x; });
+  const mirror = {}; // block name → current bytes on the synth, as best we know
+  const bytesOf = (b) => (mirror[b.name] ??= new Array(b.size).fill(0));
+  const withValues = (b, values) => {
+    const data = [...bytesOf(b)];
+    for (const p of paramsOf.get(b.name)) if (values[p.key] != null) write(p, values[p.key], data);
     return data;
   };
-  const valuesFrom = (dataByBlock) => {
-    const v = {};
-    for (const b of patchBlocks) { const data = dataByBlock[b.name]; if (!data) continue;
-      for (const p of paramsOf.get(b.name)) v[p.key] = decodeAt(p, data, p.offset); }
-    return v;
-  };
-  // user memory: the temporary block's first two address bytes (03 00) → (11, n)
-  const userAt = (b, prog) => toInt([R.userPatchFirstByte, prog, b.base[2], b.base[3]]);
-  const needUser = (bi) => { if (!schema.programs.banks[bi]?.dump) throw new Error(`${schema.programs.banks[bi]?.label ?? "that bank"} is read-only (ROM)`); };
+  const valuesFrom = (b, data, into = {}) => { for (const p of paramsOf.get(b.name)) into[p.key] = read(p, data); return into; };
+
+  // stored memory: JV = the temp block's first two address bytes → (11, n);
+  // LA = base + n × stride, one block per slot
+  const memOf = (bi) => R.userMemory?.[bank(bi).memory];
+  function slotBlocks(bi, prog) {
+    const mem = memOf(bi);
+    if (mem) return [{ b: patchBlocks.find((x) => x.size === mem.size) || null, at: toInt(mem.base) + prog * mem.stride, size: mem.size }];
+    return patchBlocks.map((b) => ({ b, at: toInt([R.userPatchFirstByte, prog, ...b.base.slice(2)]), size: b.size }));
+  }
+  const needDump = (bi) => { if (!bank(bi)?.dump) throw new Error(`${bank(bi)?.label ?? "that bank"} can't be read over MIDI`); };
+  const nameFrom = (data) => String.fromCharCode(...data.slice(0, 10).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
+
+  // packages: several params the synth only accepts together (D-110 partial reserve)
+  const pkgFor = (p) => Object.values(R.packages || {}).find((k) => k.block === p.block && p.offset >= k.offset && p.offset < k.offset + k.size);
 
   return {
     sendParam(p, v) {
-      const b = blocks.find((x) => x.name === p.block);
-      dt1(b.at + p.offset, encode(p, v));
+      const b = blockOf.get(p.block), data = bytesOf(b);
+      write(p, v, data);
+      const pk = pkgFor(p);
+      const [o, n] = pk ? [pk.offset, pk.size] : [p.offset, width(p)];
+      dt1(b.at + o, data.slice(o, o + n));
     },
-    sendPatch(values) { for (const b of patchBlocks) dt1(b.at, blockBytes(b, values)); },
+    sendPatch(values) { for (const b of patchBlocks) { mirror[b.name] = withValues(b, values); dt1(b.at, mirror[b.name]); } },
 
     async requestPatch() {
-      const data = {}, syx = [];
-      for (const b of patchBlocks) { const r = await rq1(b.at, b.size); data[b.name] = r.data; syx.push(...r.raw); }
-      lastData = data;
-      return { values: valuesFrom(data), syx };
+      const values = {}, syx = [];
+      for (const b of patchBlocks) { const r = await rq1(b.at, b.size); mirror[b.name] = r.data; valuesFrom(b, r.data, values); syx.push(...r.raw); }
+      // context (part setup, system): shown and editable, never sent as part of a patch
+      for (const b of contextBlocks) { try { const r = await rq1(b.at, b.size); mirror[b.name] = r.data; valuesFrom(b, r.data, values); } catch {} }
+      return { values, syx };
     },
 
-    programChange(bi, prog) { selectProgram(midi, getChannel(), schema.programs.banks[bi], prog); },
+    programChange(bi, prog) {
+      const sel = bank(bi).select;
+      if (sel?.type === "dt1") dt1(toInt(sel.address), sel.data.map((x) => (x === "prog" ? prog : x)));
+      else selectProgram(midi, getChannel(), bank(bi), prog + (sel?.offset || 0));
+    },
 
     async requestProgram(bi, prog) {
-      needUser(bi);
-      const data = {}, syx = [];
-      for (const b of patchBlocks) { const r = await rq1(userAt(b, prog), b.size); data[b.name] = r.data; syx.push(...r.raw); }
-      return { values: valuesFrom(data), data, syx };
+      needDump(bi);
+      const data = {}, syx = [], values = {};
+      let name = "";
+      for (const s of slotBlocks(bi, prog)) {
+        const r = await rq1(s.at, s.size);
+        syx.push(...r.raw);
+        if (s.b) { data[s.b.name] = r.data; valuesFrom(s.b, r.data, values); }
+        else name ||= nameFrom(r.data); // patches/timbres: raw, backup only
+      }
+      return { values, data, syx, name: name || undefined };
     },
 
     writeProgram(bi, prog, values) {
-      needUser(bi);
+      if (!bank(bi)?.write) throw new Error(`${bank(bi)?.label ?? "that bank"} is read-only`);
       const sent = {};
-      for (const b of patchBlocks) { sent[b.name] = blockBytes(b, values); dt1(userAt(b, prog), sent[b.name]); }
+      for (const s of slotBlocks(bi, prog)) { if (!s.b) continue; sent[s.b.name] = withValues(s.b, values); dt1(s.at, sent[s.b.name]); }
       return sent;
     },
 
     sameProgram(a, b) {
-      return patchBlocks.every((blk) => paramsOf.get(blk.name).every((p) =>
-        decodeAt(p, a[blk.name], p.offset) === decodeAt(p, b[blk.name], p.offset)));
+      return patchBlocks.filter((blk) => a[blk.name] && b[blk.name]).every((blk) =>
+        paramsOf.get(blk.name).every((p) => read(p, a[blk.name]) === read(p, b[blk.name])));
     },
 
-    // front-panel edits come back as DT1 when the JV's Tx Exclusive is on
+    // front-panel edits (JV with Tx Exclusive on); the D-110 doesn't send these
     decode(ev) {
       if (ev.type !== "sysex" || !isDT1(ev.data) || inFlight) return [];
-      const d = ev.data, a = toInt([...d.slice(A, A + 4)]), data = d.slice(A + 4, d.length - 2);
+      const d = ev.data, a = toInt([...d.slice(A, A + AB)]), data = d.slice(A + AB, d.length - 2);
       const out = [];
-      for (const b of patchBlocks) {
+      for (const b of blocks) {
         if (a + data.length <= b.at || a >= b.at + b.size) continue;
+        const m = bytesOf(b);
+        data.forEach((x, i) => { const k = a - b.at + i; if (k >= 0 && k < b.size) m[k] = x; });
         for (const p of paramsOf.get(b.name)) {
           const k = b.at + p.offset - a;
-          if (k >= 0 && k + size(p) <= data.length) out.push({ param: p, value: decodeAt(p, data, k) });
+          if (k >= 0 && k + width(p) <= data.length) out.push({ param: p, value: read(p, m) });
         }
       }
       return out;

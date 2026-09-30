@@ -1,0 +1,695 @@
+{
+  "comment": "Same plugin-panel pattern as mopho/jv1080 layouts. Rows follow the LA signal path: tone common (structures pair partials 1&2 and 3&4; S = synth, P = PCM, R = ring mod) -> WG (synth: waveform + pulse width; PCM: wave pick) -> pitch envelope + LFO -> TVF + its envelope (synth partials only; PCM partials skip the TVF) -> TVA + its envelope -> part 1 / reverb context. All partial groups share one select var {p} (select.shared = 'partial', 'all' writes all four partials). Envelopes are 5-time / 3-level + sustain (TVF/TVA) and 4-time / L0-L2 + sustain + end (pitch), not DADSR, so they are plain knobs laid out T1 L1 T2 L2 ... in time order. The waveform seg and pulse-width knobs only matter for synth partials and the PCM pick only for PCM partials -- which is which depends on the structure, so nothing is dimmed ('only' keys off the select, not the structure). The part / reverb groups edit the timbre temp + system areas (not stored with the tone). The tone name is edited in the name field (name1-10 are the ascii params).",
+  "rows": [
+    {
+      "id": "tone",
+      "groups": [
+        {
+          "title": "tone",
+          "controls": [
+            {
+              "k": "structure12",
+              "label": "1·2 struct",
+              "as": "pick"
+            },
+            {
+              "k": "structure34",
+              "label": "3·4 struct",
+              "as": "pick"
+            },
+            {
+              "k": "p1On",
+              "label": "p1",
+              "as": "toggle"
+            },
+            {
+              "k": "p2On",
+              "label": "p2",
+              "as": "toggle"
+            },
+            {
+              "k": "p3On",
+              "label": "p3",
+              "as": "toggle"
+            },
+            {
+              "k": "p4On",
+              "label": "p4",
+              "as": "toggle"
+            },
+            {
+              "k": "envMode",
+              "label": "env mode",
+              "as": "seg",
+              "labels": [
+                "norm",
+                "no sus"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wg",
+      "groups": [
+        {
+          "title": "wg",
+          "select": {
+            "label": "partial",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "p": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "p": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "p": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "p": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "partial"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{p}Waveform",
+              "label": "synth wave",
+              "as": "seg",
+              "labels": [
+                "squ",
+                "saw"
+              ]
+            },
+            {
+              "k": "p{p}PcmWave",
+              "label": "pcm wave",
+              "as": "pick"
+            },
+            {
+              "k": "p{p}PitchCoarse",
+              "label": "coarse",
+              "as": "pick"
+            },
+            {
+              "k": "p{p}PitchFine",
+              "label": "fine"
+            },
+            {
+              "k": "p{p}PitchKf",
+              "label": "key flw",
+              "as": "pick"
+            },
+            {
+              "k": "p{p}Bender",
+              "label": "bend",
+              "as": "toggle"
+            },
+            {
+              "k": "p{p}PulseWidth",
+              "label": "pw"
+            },
+            {
+              "k": "p{p}PwVelo",
+              "label": "pw velo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pitch",
+      "groups": [
+        {
+          "title": "pitch env",
+          "select": {
+            "label": "partial",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "p": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "p": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "p": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "p": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "partial"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{p}PenvDepth",
+              "label": "depth"
+            },
+            {
+              "k": "p{p}PenvVelo",
+              "label": "velocity"
+            },
+            {
+              "k": "p{p}PenvTimeKf",
+              "label": "time kf"
+            },
+            {
+              "k": "p{p}PenvT1",
+              "label": "t1"
+            },
+            {
+              "k": "p{p}PenvT2",
+              "label": "t2"
+            },
+            {
+              "k": "p{p}PenvT3",
+              "label": "t3"
+            },
+            {
+              "k": "p{p}PenvT4",
+              "label": "t4"
+            }
+          ]
+        },
+        {
+          "title": "pitch env levels",
+          "select": {
+            "label": "partial",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "p": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "p": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "p": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "p": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "partial"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{p}PenvL0",
+              "label": "l0"
+            },
+            {
+              "k": "p{p}PenvL1",
+              "label": "l1"
+            },
+            {
+              "k": "p{p}PenvL2",
+              "label": "l2"
+            },
+            {
+              "k": "p{p}PenvSusL",
+              "label": "sus"
+            },
+            {
+              "k": "p{p}PenvEndL",
+              "label": "end"
+            }
+          ]
+        },
+        {
+          "title": "pitch lfo",
+          "select": {
+            "label": "partial",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "p": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "p": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "p": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "p": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "partial"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{p}LfoRate",
+              "label": "rate"
+            },
+            {
+              "k": "p{p}LfoDepth",
+              "label": "depth"
+            },
+            {
+              "k": "p{p}LfoModSens",
+              "label": "mod whl"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tvf",
+      "groups": [
+        {
+          "title": "tvf",
+          "select": {
+            "label": "partial",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "p": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "p": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "p": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "p": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "partial"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{p}Cutoff",
+              "label": "cutoff"
+            },
+            {
+              "k": "p{p}Reso",
+              "label": "reso"
+            },
+            {
+              "k": "p{p}TvfKf",
+              "label": "key flw",
+              "as": "pick"
+            },
+            {
+              "k": "p{p}TvfBiasPoint",
+              "label": "bias pt",
+              "as": "pick"
+            },
+            {
+              "k": "p{p}TvfBiasLevel",
+              "label": "bias lvl"
+            },
+            {
+              "k": "p{p}FenvDepth",
+              "label": "env amt"
+            },
+            {
+              "k": "p{p}FenvVelo",
+              "label": "velocity"
+            },
+            {
+              "k": "p{p}FenvDepthKf",
+              "label": "depth kf"
+            },
+            {
+              "k": "p{p}FenvTimeKf",
+              "label": "time kf"
+            }
+          ]
+        },
+        {
+          "title": "tvf env",
+          "select": {
+            "label": "partial",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "p": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "p": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "p": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "p": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "partial"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{p}FenvT1",
+              "label": "t1"
+            },
+            {
+              "k": "p{p}FenvL1",
+              "label": "l1"
+            },
+            {
+              "k": "p{p}FenvT2",
+              "label": "t2"
+            },
+            {
+              "k": "p{p}FenvL2",
+              "label": "l2"
+            },
+            {
+              "k": "p{p}FenvT3",
+              "label": "t3"
+            },
+            {
+              "k": "p{p}FenvL3",
+              "label": "l3"
+            },
+            {
+              "k": "p{p}FenvT4",
+              "label": "t4"
+            },
+            {
+              "k": "p{p}FenvSusL",
+              "label": "sus"
+            },
+            {
+              "k": "p{p}FenvT5",
+              "label": "t5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tva",
+      "groups": [
+        {
+          "title": "tva",
+          "select": {
+            "label": "partial",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "p": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "p": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "p": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "p": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "partial"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{p}Level",
+              "label": "level"
+            },
+            {
+              "k": "p{p}TvaVelo",
+              "label": "velocity"
+            },
+            {
+              "k": "p{p}TvaBiasP1",
+              "label": "bias pt 1",
+              "as": "pick"
+            },
+            {
+              "k": "p{p}TvaBiasL1",
+              "label": "bias 1"
+            },
+            {
+              "k": "p{p}TvaBiasP2",
+              "label": "bias pt 2",
+              "as": "pick"
+            },
+            {
+              "k": "p{p}TvaBiasL2",
+              "label": "bias 2"
+            },
+            {
+              "k": "p{p}AenvTimeKf",
+              "label": "time kf"
+            },
+            {
+              "k": "p{p}AenvT1Velo",
+              "label": "t1 velo"
+            }
+          ]
+        },
+        {
+          "title": "tva env",
+          "select": {
+            "label": "partial",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "p": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "p": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "p": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "p": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "partial"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{p}AenvT1",
+              "label": "t1"
+            },
+            {
+              "k": "p{p}AenvL1",
+              "label": "l1"
+            },
+            {
+              "k": "p{p}AenvT2",
+              "label": "t2"
+            },
+            {
+              "k": "p{p}AenvL2",
+              "label": "l2"
+            },
+            {
+              "k": "p{p}AenvT3",
+              "label": "t3"
+            },
+            {
+              "k": "p{p}AenvL3",
+              "label": "l3"
+            },
+            {
+              "k": "p{p}AenvT4",
+              "label": "t4"
+            },
+            {
+              "k": "p{p}AenvSusL",
+              "label": "sus"
+            },
+            {
+              "k": "p{p}AenvT5",
+              "label": "t5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "part",
+      "groups": [
+        {
+          "title": "part 1",
+          "controls": [
+            {
+              "k": "part1ToneGroup",
+              "label": "group",
+              "as": "seg",
+              "labels": [
+                "a",
+                "b",
+                "i",
+                "r"
+              ]
+            },
+            {
+              "k": "part1ToneNumber",
+              "label": "tone #"
+            },
+            {
+              "k": "part1Level",
+              "label": "level"
+            },
+            {
+              "k": "part1Pan",
+              "label": "pan"
+            },
+            {
+              "k": "part1KeyShift",
+              "label": "key shift"
+            },
+            {
+              "k": "midiCh1",
+              "label": "midi ch",
+              "as": "pick"
+            },
+            {
+              "k": "reserve1",
+              "label": "partials"
+            }
+          ]
+        },
+        {
+          "title": "reverb",
+          "controls": [
+            {
+              "k": "reverbMode",
+              "label": "type",
+              "as": "pick"
+            },
+            {
+              "k": "reverbTime",
+              "label": "time"
+            },
+            {
+              "k": "reverbLevel",
+              "label": "level"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

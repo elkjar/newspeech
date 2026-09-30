@@ -436,21 +436,23 @@ async function boot() {
 const pad3 = (n) => String(n + 1).padStart(3, "0");
 const slotKey = (b, p) => `${b}-${p}`;
 const banks = () => schema.programs?.banks || [];
+// banks you can play/step through (patch/timbre memories on the D-110 are backup-only)
+const navBanks = () => banks().map((b, bi) => ({ ...b, bi })).filter((b) => !b.backupOnly);
 const bankName = (bi) => { const l = banks()[bi]?.label ?? String(bi + 1); return /^\d+$/.test(l) ? `bank ${l}` : l; };
 const slotName = (bi, p) => `${bankName(bi)} · ${pad3(p)}`;
 function names() { try { return JSON.parse(lsGet(`${schema.id}.names`, "{}")); } catch { return {}; } }
 
 function renderProgramControls() {
-  const bs = banks();
+  const bs = navBanks();
   $("#progcell").hidden = !bs.length;
   $("#storecell").hidden = !bs.some((b) => b.write) || !driver.writeProgram;
   if (!bs.length) return;
   try { cur = JSON.parse(lsGet(`${schema.id}.prog`, "")) || cur; } catch { cur = { bank: 0, prog: 0 }; }
-  if (!bs[cur.bank]) cur = { bank: 0, prog: 0 };
+  if (!bs.some((b) => b.bi === cur.bank)) cur = { bank: bs[0].bi, prog: 0 };
   // a few banks → buttons (Mopho 1/2/3); many → a dropdown (JV user/presets/cards/exp)
-  $("#banks").replaceChildren(bs.length <= 4
-    ? h("div", { class: "seg" }, bs.map((b, i) => h("button", { "data-b": i, onclick: () => goProgram(i, cur.prog) }, b.label)))
-    : h("select", { class: "box bankpick", onchange: (e) => goProgram(Number(e.target.value), cur.prog) }, bs.map((b, i) => new Option(b.label, i))));
+  $("#banks").replaceChildren(bs.length <= 3
+    ? h("div", { class: "seg" }, bs.map((b) => h("button", { "data-b": b.bi, onclick: () => goProgram(b.bi, cur.prog) }, b.label)))
+    : h("select", { class: "box bankpick", onchange: (e) => goProgram(Number(e.target.value), cur.prog) }, bs.map((b) => new Option(b.label, b.bi))));
   showCurrent();
   renderProgramList();
 }
@@ -481,12 +483,11 @@ function goProgram(bank, prog) {
 
 // ◂ ▸ walk straight through the banks: last program of one → first of the next
 function stepProgram(dir) {
-  const bs = banks(); if (!bs.length) return;
-  let { bank, prog } = cur;
-  prog += dir;
-  if (prog >= bs[bank].count) { bank = (bank + 1) % bs.length; prog = 0; }
-  if (prog < 0) { bank = (bank - 1 + bs.length) % bs.length; prog = bs[bank].count - 1; }
-  goProgram(bank, prog);
+  const bs = navBanks(); if (!bs.length) return;
+  let i = Math.max(0, bs.findIndex((b) => b.bi === cur.bank)), prog = cur.prog + dir;
+  if (prog >= bs[i].count) { i = (i + 1) % bs.length; prog = 0; }
+  if (prog < 0) { i = (i - 1 + bs.length) % bs.length; prog = bs[i].count - 1; }
+  goProgram(bs[i].bi, prog);
 }
 
 // the synth announced a bank/program change from its own panel: CC0/CC32 latch, PC lands
@@ -495,7 +496,7 @@ function followProgram(ev) {
   if (ev.type === "cc" && (ev.num === 0 || ev.num === 32)) { latched[ev.num] = ev.val; return true; }
   if (ev.type !== "program") return false;
   const bs = banks();
-  let bi = bs.findIndex((b) => (b.msb == null || b.msb === (latched[0] ?? b.msb)) && (b.lsb == null || b.lsb === (latched[32] ?? b.lsb)));
+  let bi = bs.findIndex((b) => !b.backupOnly && (b.msb == null || b.msb === (latched[0] ?? b.msb)) && (b.lsb == null || b.lsb === (latched[32] ?? b.lsb)));
   if (latched[0] == null && latched[32] == null) bi = cur.bank; // no bank select sent: same bank
   setCurrent(bi < 0 ? cur.bank : bi, ev.program); latched = {};
   getFromSynth();
@@ -507,7 +508,7 @@ function renderProgramList() {
   ul.replaceChildren();
   if (!Object.keys(known).length) { ul.append(h("li", { class: "dim" }, "create a backup to read the slot names")); return; }
   banks().forEach((b, bi) => {
-    if (!b.dump) return;
+    if (!b.dump || b.backupOnly) return;
     ul.append(h("li", { class: "bankhead" }, bankName(bi)));
     for (let p = 0; p < b.count; p++) {
       const k = slotKey(bi, p);
@@ -536,7 +537,7 @@ async function createBackup() {
   for (const { bi, label, count } of readable) for (let p = 0; p < count && scanning; p++) {
     try {
       const got = await driver.requestProgram(bi, p);
-      const name = nameParams().map((q) => String.fromCharCode(got.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
+      const name = got.name ?? (nameParams().map((q) => String.fromCharCode(got.values[q.key] ?? 32)).join("").trim() || "(unnamed)");
       known[slotKey(bi, p)] = name;
       slots.push({ bank: label, program: p + 1, name });
       syx.push(...got.syx);
@@ -583,7 +584,7 @@ async function refreshBackups() {
 let stTarget = null, stOld = null, stSeq = 0;
 
 function openStore() {
-  const writable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => b.write);
+  const writable = navBanks().filter((b) => b.write);
   stTarget = writable.some((b) => b.bi === cur.bank) ? { ...cur } : { bank: writable[0].bi, prog: cur.prog };
   $("#st-banks").replaceChildren(...writable.map((b) =>
     h("button", { "data-b": b.bi, onclick: () => { stTarget.bank = b.bi; readTarget(); } }, b.label)));
