@@ -448,6 +448,22 @@ const bankName = (bi) => { const l = banks()[bi]?.label ?? String(bi + 1); retur
 const slotName = (bi, p) => `${bankName(bi)} · ${pad3(p)}`;
 function names() { try { return JSON.parse(lsGet(`${schema.id}.names`, "{}")); } catch { return {}; } }
 
+// when each bank's names were last read from the synth; older than this → re-read on connect
+const NAMES_STALE_MS = 72 * 3600 * 1000;
+const namesStamp = (bi) => { lsSet(`${schema.id}.namesAt.${bi}`, String(Date.now())); };
+function namesAge(bi) {
+  let at = Number(lsGet(`${schema.id}.namesAt.${bi}`, "0"));
+  // names saved before timestamps existed: count them as fresh from now
+  if (!at) { const b = banks()[bi], known = names();
+    if (b && Array.from({ length: b.count }, (_, p) => known[slotKey(bi, p)]).some(Boolean)) { namesStamp(bi); at = Date.now(); } }
+  return at ? Date.now() - at : Infinity;
+}
+function ageText(ms) {
+  if (!isFinite(ms)) return "not read yet";
+  const m = ms / 60000;
+  return m < 2 ? "just read" : m < 90 ? `${Math.round(m)} min old` : m < 48 * 60 ? `${Math.round(m / 60)} h old` : `${Math.round(m / 1440)} d old`;
+}
+
 function renderProgramControls() {
   const bs = navBanks();
   $("#progcell").hidden = !bs.length;
@@ -485,7 +501,7 @@ function renderProgPick() {
   const label = (p) => `${pad3(p)} ${known[slotKey(cur.bank, p)] ?? "—"}`;
   if (pickBank !== cur.bank || sel.options.length !== b.count + 1) {
     sel.replaceChildren(...Array.from({ length: b.count }, (_, p) => new Option(label(p), p)),
-      new Option(scanningNames ? "reading names…" : "↻ read names from synth", -1));
+      new Option(scanningNames ? "reading names…" : `↻ read names (${ageText(namesAge(cur.bank))})`, -1));
     pickBank = cur.bank;
   } else for (let p = 0; p < b.count; p++) sel.options[p].textContent = label(p);
   sel.value = cur.prog;
@@ -519,6 +535,7 @@ async function readNames(bi, onEach = () => {}) {
     onEach(p + 1);
   }
   lsSet(`${schema.id}.names`, JSON.stringify(known));
+  namesStamp(bi);
   if (!direct) {
     lsSet(`${schema.id}.romScanned.${bi}`, "1");
     if (b.count > 8 && got.every((x) => x === got[0])) lsSet(`${schema.id}.absent.${bi}`, "1");
@@ -669,7 +686,8 @@ async function runConnect() {
       return;
     }
     // 2 — program names: readable banks every time, ROM banks once ever
-    const todo = navBanks().filter((b) => b.dump || (b.select || b.msb != null || b.lsb != null) && lsGet(`${schema.id}.romScanned.${b.bi}`, "") !== "1");
+    const todo = navBanks().filter((b) => b.dump ? namesAge(b.bi) > NAMES_STALE_MS
+      : (b.select || b.msb != null || b.lsb != null) && lsGet(`${schema.id}.romScanned.${b.bi}`, "") !== "1");
     const total = todo.reduce((t, b) => t + b.count, 0);
     if (total) {
       const haveNames = Object.keys(names()).length > 0;
@@ -791,6 +809,7 @@ async function createBackup() {
   // leave the bar full for a beat on success, then reset
   setTimeout(() => { if (!scanning) fillEl.style.width = "0"; }, finished ? 1500 : 0);
   lsSet(`${schema.id}.names`, JSON.stringify(known));
+  if (finished) readable.forEach((b) => namesStamp(b.bi));
   renderProgramList();
   if (!slots.length) return status("the synth isn't answering program requests — check MIDI in + sysex", true);
   if (!finished) return status(`backup stopped at ${n}/${total} — nothing written`, true);
