@@ -35,8 +35,12 @@
   body.state-edit #rackview, body.state-edit #connectview,
   body.state-connect #rackview, body.state-rack #connectview { display: none !important; }
   #synthname { color: #fff; letter-spacing: .22em; }
-  #rackcards { gap: 18px 22px; }
-  .rackcard { min-width: 260px; width: 340px; display: flex; flex-direction: column; }
+  #rackcards { display: grid; grid-template-columns: repeat(auto-fill, 340px); gap: 18px 22px; }
+  .rackcard { width: 340px; min-height: 250px; display: flex; flex-direction: column; cursor: grab; }
+  .rackcard.dragging { opacity: .35; }
+  .rackcard .art { height: 110px; display: flex; align-items: center; justify-content: center; margin: 4px 0 12px; }
+  .rackcard .art svg { max-height: 100%; width: 100%; }
+  .rackcard .rgo { margin-top: auto; padding-top: 12px; }
   .rackcard .rdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid #555; margin-right: 8px; vertical-align: 1px; }
   .rackcard.online { cursor: pointer; }
   .rackcard.online:hover { border-color: #666; }
@@ -46,7 +50,7 @@
   .rackcard.online .rgo { display: none; }
   .rackcard .rstate { color: #bbb; }
   .rackcard.online .rstate { color: #3ddc6f; }
-  .rackcard .rgo { margin-top: 12px; }
+
   .art { color: #9a9a9a; margin: 4px 0 14px; }
   .art svg { display: block; width: 100%; height: auto; max-height: 110px; }
   #connect-art { max-width: 520px; color: #d0d0d0; }

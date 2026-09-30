@@ -1,36 +1,67 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 70" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="1" y="1" width="318" height="68" rx="2"/>
-  <line x1="16" y1="1" x2="16" y2="69"/><line x1="304" y1="1" x2="304" y2="69"/>
-  <rect x="6" y="14.5" width="5" height="6" rx="3"/><rect x="309" y="14.5" width="5" height="6" rx="3"/>
-  <rect x="6" y="49.5" width="5" height="6" rx="3"/><rect x="309" y="49.5" width="5" height="6" rx="3"/>
-  <circle cx="34" cy="22" r="6"/><line x1="34" y1="22" x2="30.9" y2="18.3"/>
-  <circle cx="34" cy="48" r="2.5"/>
-  <rect x="50" y="18" width="30" height="4" rx="1"/><rect x="50" y="30" width="30" height="4" rx="1"/>
-  <rect x="96" y="14" width="92" height="26" rx="1"/><path d="M102 22h44m-44 8h62"/>
-  <rect x="96.0" y="48" width="10" height="6" rx="1"/>
-  <rect x="109.7" y="48" width="10" height="6" rx="1"/>
-  <rect x="123.4" y="48" width="10" height="6" rx="1"/>
-  <rect x="137.1" y="48" width="10" height="6" rx="1"/>
-  <rect x="150.8" y="48" width="10" height="6" rx="1"/>
-  <rect x="164.5" y="48" width="10" height="6" rx="1"/>
-  <rect x="178.2" y="48" width="10" height="6" rx="1"/>
-  <rect x="202" y="14" width="10" height="6" rx="1"/>
-  <rect x="218" y="14" width="10" height="6" rx="1"/>
-  <rect x="234" y="14" width="10" height="6" rx="1"/>
-  <rect x="250" y="14" width="10" height="6" rx="1"/>
-  <rect x="266" y="14" width="10" height="6" rx="1"/>
-  <rect x="282" y="14" width="10" height="6" rx="1"/>
-  <rect x="202" y="27" width="10" height="6" rx="1"/>
-  <rect x="218" y="27" width="10" height="6" rx="1"/>
-  <rect x="234" y="27" width="10" height="6" rx="1"/>
-  <rect x="250" y="27" width="10" height="6" rx="1"/>
-  <rect x="266" y="27" width="10" height="6" rx="1"/>
-  <rect x="282" y="27" width="10" height="6" rx="1"/>
-  <rect x="202" y="40" width="10" height="6" rx="1"/>
-  <rect x="218" y="40" width="10" height="6" rx="1"/>
-  <rect x="234" y="40" width="10" height="6" rx="1"/>
-  <rect x="250" y="40" width="10" height="6" rx="1"/>
-  <rect x="266" y="40" width="10" height="6" rx="1"/>
-  <rect x="282" y="40" width="10" height="6" rx="1"/>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 60" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="1" y="1" width="318" height="58" rx="2"/>
+  <circle cx="6.4" cy="4.3" r="2.2"/>
+  <circle cx="6.4" cy="54.4" r="2.2"/>
+  <circle cx="313.6" cy="4.3" r="2.2"/>
+  <circle cx="313.6" cy="54.4" r="2.2"/>
+  <line x1="19.1" y1="4.7" x2="36.6" y2="4.7"/>
+  <line x1="40" y1="4.7" x2="67.7" y2="4.7"/>
+  <line x1="69.8" y1="3.6" x2="122.3" y2="3.6"/>
+  <line x1="69.8" y1="6.2" x2="122.3" y2="6.2"/>
+  <line x1="125.5" y1="5.6" x2="152.1" y2="5.6"/>
+  <circle cx="33" cy="21.4" r="4.4"/>
+  <line x1="32.3" y1="20.5" x2="30.7" y2="18.1"/>
+  <path d="M28.9 25.5L28 26.3M27.3 22.5L26.1 22.7M27.6 19.1L26.5 18.7M29.8 16.5L29.1 15.5M33 15.6L33 14.4M36.2 16.5L36.9 15.5M38.3 19.1L39.4 18.7M38.7 22.5L39.8 22.7M37.1 25.5L37.9 26.3"/>
+  <circle cx="33.6" cy="42.1" r="3.2"/>
+  <circle cx="33.6" cy="42.1" r="1.6"/>
+  <rect x="48.5" y="9" width="104.3" height="14.1" rx="1"/>
+  <line x1="52.8" y1="13.7" x2="93.6" y2="13.7"/>
+  <line x1="52.8" y1="19.2" x2="63.8" y2="19.2"/>
+  <line x1="134" y1="19.2" x2="148.9" y2="19.2"/>
+  <rect x="59" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="49.8" y="47.3" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="59" y="47.3" width="8.4" height="3.2" rx="0.8"/>
+  <line x1="72.8" y1="31.4" x2="151.1" y2="31.4"/>
+  <path d="M72.8 34.8H110.6M112.8 34.8H151.1"/>
+  <rect x="72.8" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="82.8" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="92.6" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="102.4" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="112.2" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="122" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="132" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <rect x="142" y="37.5" width="8.4" height="3.2" rx="0.8"/>
+  <circle cx="172.3" cy="17.7" r="9"/>
+  <line x1="173.3" y1="15.7" x2="175.8" y2="10.4"/>
+  <rect x="158.5" y="31.1" width="9" height="3.2" rx="0.8"/>
+  <rect x="177" y="31.1" width="9" height="3.2" rx="0.8"/>
+  <rect x="167.8" y="37.5" width="9" height="3.2" rx="0.8"/>
+  <rect x="158.5" y="43.9" width="9" height="3.2" rx="0.8"/>
+  <rect x="177.4" y="43.9" width="9" height="3.2" rx="0.8"/>
+  <rect x="167.8" y="49.6" width="9" height="3.2" rx="0.8"/>
+  <rect x="192.3" y="9.5" width="9" height="3.2" rx="0.8"/>
+  <rect x="202.1" y="9.5" width="9" height="3.2" rx="0.8"/>
+  <rect x="212.1" y="9.5" width="9" height="3.2" rx="0.8"/>
+  <rect x="192.3" y="21.9" width="9" height="3.2" rx="0.8"/>
+  <rect x="202.1" y="21.9" width="9" height="3.2" rx="0.8"/>
+  <rect x="212.1" y="21.9" width="9" height="3.2" rx="0.8"/>
+  <rect x="192.3" y="33.8" width="9" height="3.2" rx="0.8"/>
+  <rect x="202.1" y="33.8" width="9" height="3.2" rx="0.8"/>
+  <rect x="212.1" y="33.8" width="9" height="3.2" rx="0.8"/>
+  <path d="M191.5 14.9V27.3"/>
+  <rect x="235.5" y="9.5" width="9" height="3.2" rx="0.8"/>
+  <rect x="246.6" y="9.5" width="9" height="3.2" rx="0.8"/>
+  <rect x="256.8" y="9.5" width="9" height="3.2" rx="0.8"/>
+  <rect x="231.7" y="21.9" width="9" height="3.2" rx="0.8"/>
+  <rect x="241.9" y="21.9" width="9" height="3.2" rx="0.8"/>
+  <rect x="252.3" y="21.9" width="9" height="3.2" rx="0.8"/>
+  <rect x="262.5" y="21.9" width="9" height="3.2" rx="0.8"/>
+  <path d="M236.2 21.4V19.2H267V21.4M256.2 19.2V13.7"/>
+  <rect x="231.5" y="34.2" width="40" height="6.8" rx="1"/>
+  <line x1="234" y1="37.6" x2="268.9" y2="37.6"/>
+  <rect x="231.5" y="45.1" width="40" height="7.3" rx="1"/>
+  <line x1="234" y1="48.7" x2="268.9" y2="48.7"/>
+  <rect x="284" y="17.9" width="12.1" height="1.5" rx="0.6"/>
+  <rect x="283" y="31.6" width="11.9" height="11.1" rx="1"/>
+  <rect x="285.1" y="46.5" width="8.1" height="4.7" rx="0.6"/>
 </svg>

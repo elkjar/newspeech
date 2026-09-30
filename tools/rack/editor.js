@@ -552,10 +552,16 @@ async function art(id) {
 }
 function setView(v) { view = v; document.body.className = `state-${v}`; }
 
+function rackOrder() {
+  let order = []; try { order = JSON.parse(lsGet("rackOrder", "[]")); } catch {}
+  const pos = (id) => { const i = order.indexOf(id); return i < 0 ? 1e3 + devices.findIndex((d) => d.id === id) : i; };
+  return [...devices].sort((a, b) => pos(a.id) - pos(b.id));
+}
+
 async function renderRack() {
   setView("rack");
   $("#synthname").textContent = "";
-  const cards = await Promise.all(devices.map(async (d) => {
+  const cards = await Promise.all(rackOrder().map(async (d) => {
     const ports = midi.access ? midi.savedPorts(d.id) : {};
     const outName = midi.access && midi.access.outputs.get(ports.out)?.name;
     const inName = midi.access && midi.access.inputs.get(ports.in)?.name;
@@ -566,7 +572,7 @@ async function renderRack() {
     } catch {}
     const state = h("div", { class: "rstate" }, outName && inName ? "checking…" : "ports not set");
     const go = h("button", { class: "btn", onclick: (e) => { e.stopPropagation(); startConnect(d.id); } }, "connect");
-    const card = h("fieldset", { class: "grp rackcard", onclick: () => card.classList.contains("online") && startConnect(d.id) },
+    const card = h("fieldset", { class: "grp rackcard", draggable: "true", "data-id": d.id, onclick: () => card.classList.contains("online") && startConnect(d.id) },
       h("legend", {}, h("span", { class: "rdot" }), d.name),
       await art(d.id),
       h("div", { class: "rinfo" }, state,
@@ -575,7 +581,25 @@ async function renderRack() {
     return { d, card, state, ready: !!(outName && inName), ports };
   }));
   $("#rackcards").replaceChildren(...cards.map((c) => c.card));
+  cards.forEach((c) => dragCard(c.card));
   probeRack(cards);
+}
+
+// drag a card onto another to reorder; the order is kept
+let dragging = null;
+function dragCard(card) {
+  card.addEventListener("dragstart", (e) => { dragging = card; card.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", card.dataset.id); });
+  card.addEventListener("dragend", () => {
+    card.classList.remove("dragging"); dragging = null;
+    lsSet("rackOrder", JSON.stringify([...document.querySelectorAll("#rackcards .rackcard")].map((c) => c.dataset.id)));
+  });
+  card.addEventListener("dragover", (e) => {
+    if (!dragging || dragging === card) return;
+    e.preventDefault();
+    const r = card.getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    card.parentNode.insertBefore(dragging, after ? card.nextSibling : card);
+  });
 }
 
 // ask each synth on its saved ports whether it's there — one at a time, so

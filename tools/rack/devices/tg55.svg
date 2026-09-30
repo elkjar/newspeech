@@ -1,22 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 40" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="1" y="1" width="318" height="38" rx="2"/>
-  <line x1="16" y1="1" x2="16" y2="39"/><line x1="304" y1="1" x2="304" y2="39"/>
-  <rect x="6" y="17.0" width="5" height="6" rx="3"/><rect x="309" y="17.0" width="5" height="6" rx="3"/>
-  <rect x="28" y="17" width="34" height="4" rx="1"/>
-  <rect x="74" y="10" width="80" height="20" rx="1"/><path d="M79 17h44m-44 6h60"/>
-  <rect x="166" y="11" width="10" height="6" rx="1"/>
-  <rect x="182" y="11" width="10" height="6" rx="1"/>
-  <rect x="198" y="11" width="10" height="6" rx="1"/>
-  <rect x="214" y="11" width="10" height="6" rx="1"/>
-  <rect x="230" y="11" width="10" height="6" rx="1"/>
-  <rect x="246" y="11" width="10" height="6" rx="1"/>
-  <rect x="166" y="23" width="10" height="6" rx="1"/>
-  <rect x="182" y="23" width="10" height="6" rx="1"/>
-  <rect x="198" y="23" width="10" height="6" rx="1"/>
-  <rect x="214" y="23" width="10" height="6" rx="1"/>
-  <rect x="230" y="23" width="10" height="6" rx="1"/>
-  <rect x="246" y="23" width="10" height="6" rx="1"/>
-  <path d="M268 14l5 -4 5 4M268 26l5 4 5-4"/>
-  <circle cx="292" cy="20" r="7"/><line x1="292" y1="20" x2="294.8" y2="15.2"/>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 29" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="1" y="1" width="318" height="27" rx="1.5"/>
+  <line x1="17.6" y1="0" x2="17.6" y2="29"/>
+  <line x1="302.7" y1="0" x2="302.7" y2="29"/>
+  <rect x="7.1" y="2.7" width="5" height="2.2" rx="1.1"/>
+  <rect x="7.1" y="23.8" width="5" height="2.2" rx="1.1"/>
+  <rect x="308.4" y="2.7" width="5" height="2.2" rx="1.1"/>
+  <rect x="308.4" y="23.8" width="5" height="2.2" rx="1.1"/>
+  <rect x="22.4" y="4.3" width="14.9" height="20.6" rx="1"/>
+  <rect x="24.5" y="7.6" width="10.7" height="14.1" rx="0.6"/>
+  <rect x="42.7" y="4.7" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="42.7" y="14.8" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="55" y="4.7" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="55" y="14.8" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="70.9" y="3.3" width="68.3" height="21.7" rx="1"/>
+  <line x1="77.9" y1="6.2" x2="117.3" y2="6.2"/>
+  <rect x="77.3" y="8.7" width="42.1" height="12.5" rx="0.6"/>
+  <line x1="80" y1="13" x2="112" y2="13"/>
+  <line x1="80" y1="17.1" x2="106.7" y2="17.1"/>
+  <circle cx="130.7" cy="16.3" r="3.6"/>
+  <line x1="131.1" y1="15.5" x2="132.3" y2="13.5"/>
+  <rect x="145.9" y="4.7" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="145.9" y="14.8" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="158.2" y="4.7" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="158.2" y="14.8" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="170.4" y="4.7" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="170.4" y="14.8" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="182.7" y="4.7" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="182.7" y="14.8" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="195.8" y="4.7" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="195.8" y="14.8" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="207.5" y="4.7" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="207.5" y="14.8" width="10.6" height="8.4" rx="0.8"/>
+  <rect x="225.6" y="4.3" width="41.1" height="7.9" rx="0.8"/>
+  <line x1="228.8" y1="8.1" x2="263.5" y2="8.1"/>
+  <rect x="225.6" y="14.4" width="41.1" height="7.9" rx="0.8"/>
+  <line x1="228.8" y1="18.2" x2="263.5" y2="18.2"/>
+  <circle cx="277.9" cy="15.2" r="3"/>
+  <circle cx="277.9" cy="15.2" r="1.4"/>
+  <circle cx="294.9" cy="15.2" r="3.8"/>
+  <line x1="294.3" y1="14.4" x2="292.7" y2="12.6"/>
 </svg>
