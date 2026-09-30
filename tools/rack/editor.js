@@ -394,7 +394,7 @@ async function boot() {
   devices = await (await fetch("/api/devices")).json();
   $("#in").onchange = $("#out").onchange = usePorts;
   $("#back").onclick = disconnect;
-  $("#recheck").onclick = () => renderRack();
+  $("#recheck").onclick = () => renderRack({ force: true });
   $("#connect-go").onclick = () => runConnect();
   $("#connect-retry").onclick = () => runConnect();
   $("#connect-skip").onclick = () => { skipNames = true; };
@@ -577,7 +577,7 @@ function rackOrder() {
   return [...devices].sort((a, b) => pos(a.id) - pos(b.id));
 }
 
-async function renderRack() {
+async function renderRack({ force = false } = {}) {
   setView("rack");
   $("#synthname").textContent = "";
   const cards = await Promise.all(rackOrder().map(async (d) => {
@@ -601,7 +601,7 @@ async function renderRack() {
   }));
   $("#rackcards").replaceChildren(...cards.map((c) => c.card));
   cards.forEach((c) => dragCard(c.card));
-  probeRack(cards);
+  probeRack(cards, { force });
 }
 
 // drag a card onto another to reorder; the order is kept
@@ -621,12 +621,32 @@ function dragCard(card) {
   });
 }
 
+// last answer from each synth, so coming back to the rack doesn't re-ask;
+// older than this (or ↻ check again) and it asks again
+const PROBE_FRESH_MS = 15 * 60 * 1000;
+function probeCache() { try { return JSON.parse(lsGet("probe", "{}")); } catch { return {}; } }
+function rememberProbe(id, ok) { const c = probeCache(); c[id] = { ok: !!ok, at: Date.now() }; lsSet("probe", JSON.stringify(c)); }
+
+function showProbe(c, ok) {
+  c.card.classList.remove("waiting", "probing");
+  c.card.classList.toggle("online", !!ok); c.card.classList.toggle("offline", !ok);
+  c.state.hidden = true; // the dot says it; "ports not set" stays when there's nothing to try
+}
+
 // ask each synth on its saved ports whether it's there — one at a time, so
 // synths sharing a port (JV / D-110 / TG-55 on 8) don't talk over each other
 let probing = 0;
-async function probeRack(cards) {
+async function probeRack(cards, { force = false } = {}) {
   const run = ++probing;
+  const cache = probeCache();
+  const fresh = (c) => !force && cache[c.d.id] && Date.now() - cache[c.d.id].at < PROBE_FRESH_MS;
+  for (const c of cards) if (c.ready && fresh(c)) showProbe(c, cache[c.d.id].ok);
+  const all = cards;
+  const summary = () => { const n = all.filter((c) => c.card.classList.contains("online")).length;
+    status(`${n} of ${all.length} connected${n ? " — click one to open it" : ""}`); };
+  cards = cards.filter((c) => !c.ready || !fresh(c));
   const toCheck = cards.filter((c) => c.ready).length;
+  if (!toCheck) { cards.forEach((c) => !c.ready && c.card.classList.add("offline")); return summary(); }
   if (toCheck) status("checking which synths are connected…");
   let online = 0;
   for (const c of cards) {
@@ -643,12 +663,11 @@ async function probeRack(cards) {
       ok = await drv.probe?.().catch(() => false);
     } catch { ok = false; }
     if (run !== probing) return;
-    c.card.classList.remove("waiting", "probing");
-    c.card.classList.toggle("online", !!ok); c.card.classList.toggle("offline", !ok);
-    c.state.hidden = true; // the dot says it; "ports not set" stays when there's nothing to try
+    rememberProbe(c.d.id, ok);
+    showProbe(c, ok);
     if (ok) online++;
   }
-  if (run === probing && toCheck) status(`${online} of ${cards.length} connected${online ? " — click one to open it" : ""}`);
+  if (run === probing) summary();
 }
 
 async function startConnect(id, { auto = true } = {}) {
@@ -687,8 +706,10 @@ async function runConnect() {
     try {
       const { values: v } = await driver.requestPatch();
       saved = { ...v }; applyAll(v, { send: false });
+      rememberProbe(schema.id, true);
       s1.ok(`${schema.name} is answering${nameParams().length ? ` — “${nameString()}” in the edit buffer` : ""}`);
     } catch (e) {
+      rememberProbe(schema.id, false);
       s1.err(`no answer from the ${schema.name} (${e.message})`);
       $("#ctrouble").hidden = false; $("#connect-retry").hidden = false;
       status("check the cables and the synth's settings, then retry", true);
