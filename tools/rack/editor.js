@@ -889,8 +889,10 @@ let stTarget = null, stOld = null, stSeq = 0;
 function openStore() {
   const writable = navBanks().filter((b) => b.write);
   stTarget = writable.some((b) => b.bi === cur.bank) ? { ...cur } : { bank: writable[0].bi, prog: cur.prog };
-  $("#st-banks").replaceChildren(...writable.map((b) =>
-    h("button", { "data-b": b.bi, onclick: () => { stTarget.bank = b.bi; readTarget(); } }, b.label)));
+  // read-only banks show too, disabled — so it's clear why they can't be picked
+  $("#st-banks").replaceChildren(...navBanks().map((b) => b.write
+    ? h("button", { "data-b": b.bi, onclick: () => { stTarget.bank = b.bi; readTarget(); } }, b.label)
+    : h("button", { disabled: true, class: "rom", title: `${b.label} is ROM — it can't be written. Store edits into a writable bank.` }, `${b.label} · rom`)));
   $("#storedlg").showModal();
   readTarget();
 }
