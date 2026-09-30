@@ -384,10 +384,21 @@ function yamahaDriver(schema, midi, getChannel, prefs) {
       return { values, syx: dump.raw };
     },
 
-    programChange(bi, prog) {
-      const sel = bank(bi).select, ch = getChannel();
+    // program change (works when the TG55's Program Change mode is 'direct'), and
+    // for readable voice banks also load the slot straight into the edit buffer —
+    // that's what sounds while editing, and it works whatever the PC settings are
+    async programChange(bi, prog) {
+      const b = bank(bi), sel = b.select, ch = getChannel();
       midi.send([0xc0 | ch, sel.prefix & 127]);
       midi.send([0xc0 | ch, (prog + (sel.offset || 0)) & 127]);
+      if (!b.dump || b.sysex?.type !== "VC" || b.drumSlots?.includes(prog)) return;
+      await sleep(120);
+      const dump = await fetchDumpFindingDevice("VC", b.sysex.memoryType, prog);
+      const img = toImage(dump.data, mirror);
+      if (!img) return;
+      mirror = img;
+      midi.send(dumpMsg(img, 0x7f, 0));
+      await sleep(midi.drainMs() + 150);
     },
 
     async requestProgram(bi, prog) {

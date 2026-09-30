@@ -477,10 +477,11 @@ function goProgram(bank, prog) {
   if (gestureBefore == null && Object.keys(saved).length && JSON.stringify(saved) !== JSON.stringify(values))
     status("left unsaved edits behind — undo brings them back", true);
   prog = Math.min(prog, (banks()[bank]?.count ?? 128) - 1);
-  driver.programChange(bank, prog);
   setCurrent(bank, prog);
-  // let the change land, then read the new sound in
-  setTimeout(getFromSynth, midi.drainMs() + 150);
+  // some drivers load the slot themselves (TG-55) — wait for that, then read the new sound in
+  Promise.resolve(driver.programChange(bank, prog))
+    .catch((e) => status(e.message, true))
+    .then(() => setTimeout(getFromSynth, midi.drainMs() + 150));
 }
 
 // ◂ ▸ walk straight through the banks: last program of one → first of the next
