@@ -156,8 +156,9 @@ function rolandDriver(schema, midi, getChannel) {
   const patchBlocks = blocks.filter((b) => paramsOf.get(b.name).some((p) => !p.notInPatch));
   const contextBlocks = blocks.filter((b) => !patchBlocks.includes(b));
 
-  const width = (p) => (p.encoding === "d110pcm" ? 2 : p.size || 1);
+  const width = (p) => (p.encoding === "d110pcm" || p.encoding === "nibbleLE" ? 2 : p.size || 1);
   function read(p, data, off = p.offset) {
+    if (p.encoding === "nibbleLE") return (data[off] & 15) | ((data[off + 1] & 15) << 4); // U-110: low nibble first
     if (p.encoding === "d110pcm") return ((data[off] >> 1) & 1) * 128 + data[off + 1];
     if (p.bits) return (data[off] >> p.bits.shift) & ((1 << p.bits.width) - 1);
     if ((p.size || 1) > 1) return data.slice(off, off + p.size).reduce((n, b) => (n << 4) | (b & 15), 0);
@@ -165,13 +166,20 @@ function rolandDriver(schema, midi, getChannel) {
   }
   function write(p, v, data) {
     const o = p.offset;
+    if (p.encoding === "nibbleLE") { data[o] = v & 15; data[o + 1] = (v >> 4) & 15; return; }
     if (p.encoding === "d110pcm") { data[o] = (data[o] & 1) | (((v >> 7) & 1) << 1); data[o + 1] = v & 127; return; }
     if (p.bits) { const m = ((1 << p.bits.width) - 1) << p.bits.shift; data[o] = (data[o] & ~m) | ((v << p.bits.shift) & m); return; }
     if ((p.size || 1) > 1) { for (let i = 0; i < p.size; i++) data[o + i] = (v >> (4 * (p.size - 1 - i))) & 15; return; }
     data[o] = v & 127;
   }
 
-  const dt1 = (addrInt, data) => { const a = toBytes(addrInt, AB); midi.send([...hdr, R.commands.DT1, ...a, ...data, sum([...a, ...data]), 0xf7]); };
+  const dt1 = (addrInt, data) => {
+    const max = R.maxDT1 || 256; // U-110 takes 128-byte packets
+    for (let k = 0; k < data.length; k += max) {
+      const a = toBytes(addrInt + k, AB), chunk = data.slice(k, k + max);
+      midi.send([...hdr, R.commands.DT1, ...a, ...chunk, sum([...a, ...chunk]), 0xf7]);
+    }
+  };
 
   // RQ1 → collect the DT1 reply(s) covering [addr, addr+len)
   let inFlight = 0; // our own replies aren't front-panel edits
@@ -193,14 +201,15 @@ function rolandDriver(schema, midi, getChannel) {
         raw.push(...d);
         data.forEach((b, i) => { const k = a - addrInt + i; if (k >= 0 && k < len && buf[k] == null) { buf[k] = b; got++; } });
         clearTimeout(idle);
-        if (got >= len) done(); else idle = setTimeout(done, 300);
+        if (got >= len) done(); else idle = setTimeout(done, len > 2048 ? 800 : 300);
       });
-      const hard = setTimeout(done, 2500);
+      const hard = setTimeout(done, 2500 + len * 0.45); // a whole bank takes seconds at 31.25 kbaud
       const a = toBytes(addrInt, AB), s = toBytes(len, SB);
       midi.send([...hdr, R.commands.RQ1, ...a, ...s, sum([...a, ...s]), 0xf7]);
     });
   }
 
+  let bankCache = null;
   const mirror = {}; // block name → current bytes on the synth, as best we know
   const bytesOf = (b) => (mirror[b.name] ??= new Array(b.size).fill(0));
   const withValues = (b, values) => {
@@ -228,6 +237,11 @@ function rolandDriver(schema, midi, getChannel) {
     sendParam(p, v) {
       const b = blockOf.get(p.block), data = bytesOf(b);
       write(p, v, data);
+      if (p.live) return dt1(toInt(p.live), [v & 127]);
+      if (p.display === "ascii" && R.liveName) {
+        const first = Math.min(...paramsOf.get(b.name).filter((q) => q.display === "ascii").map((q) => q.offset));
+        return dt1(toInt(R.liveName.address), data.slice(first, first + R.liveName.size));
+      }
       const pk = pkgFor(p);
       const [o, n] = pk ? [pk.offset, pk.size] : [p.offset, width(p)];
       dt1(b.at + o, data.slice(o, o + n));
@@ -250,8 +264,8 @@ function rolandDriver(schema, midi, getChannel) {
       const s = slotBlocks(bi, prog)[0];
       const ps = s.b ? paramsOf.get(s.b.name).filter((p) => p.display === "ascii") : [];
       if (!ps.length) return (await this.requestProgram(bi, prog)).name || "";
-      const r = await rq1(s.at, Math.max(...ps.map((p) => p.offset)) + 1);
-      return ps.map((p) => String.fromCharCode(r.data[p.offset] || 32)).join("").trim();
+      const r = await rq1(s.at, Math.max(...ps.map((p) => p.offset + width(p))));
+      return ps.map((p) => String.fromCharCode(read(p, r.data) || 32)).join("").trim();
     },
 
     // just the name bytes of the edit buffer — quick, for scanning ROM banks by selecting each slot
@@ -259,9 +273,8 @@ function rolandDriver(schema, midi, getChannel) {
       const b = patchBlocks[0];
       const ps = paramsOf.get(b.name).filter((p) => p.display === "ascii");
       if (!ps.length) return "";
-      const len = Math.max(...ps.map((p) => p.offset)) + 1;
-      const r = await rq1(b.at, len);
-      return ps.map((p) => String.fromCharCode(r.data[p.offset] || 32)).join("").trim();
+      const r = await rq1(b.at, Math.max(...ps.map((p) => p.offset + width(p))));
+      return ps.map((p) => String.fromCharCode(read(p, r.data) || 32)).join("").trim();
     },
 
     programChange(bi, prog) {
@@ -270,7 +283,27 @@ function rolandDriver(schema, midi, getChannel) {
       else selectProgram(midi, getChannel(), bank(bi), prog + (sel?.offset || 0));
     },
 
+    // whole bank in one request (bank.bankDump) — sliced into slots; cached for
+    // a few seconds so store's read-first + read-back don't each take 6 s
+    async requestBank(bi) {
+      const bk = bank(bi), bd = bk.bankDump;
+      if (!bd) throw new Error(`${bk.label} has no bank dump`);
+      if (bankCache?.bi === bi && Date.now() - bankCache.at < 5000) return bankCache.slots;
+      const r = await rq1(toInt(bd.address), toInt(bd.size));
+      const blk = patchBlocks[0], slots = [];
+      for (let n = 0; n < bk.count; n++) {
+        const data = r.data.slice(n * bd.slotBytes, (n + 1) * bd.slotBytes), values = valuesFrom(blk, data, {});
+        const name = paramsOf.get(blk.name).filter((p) => p.display === "ascii").map((p) => String.fromCharCode(read(p, data) || 32)).join("").trim();
+        slots.push({ values, data: { [blk.name]: data }, name, syx: [] });
+      }
+      if (slots[0]) slots[0].syx = r.raw; // the raw dump rides on slot 0 for backups
+      bankCache = { bi, at: Date.now(), slots };
+      return slots;
+    },
+    forgetBank() { bankCache = null; },
+
     async requestProgram(bi, prog) {
+      if (!bank(bi)?.dump && bank(bi)?.bankDump) { const s = (await this.requestBank(bi))[prog]; return { ...s }; }
       needDump(bi);
       const data = {}, syx = [], values = {};
       let name = "";

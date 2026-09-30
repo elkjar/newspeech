@@ -517,6 +517,13 @@ function renderProgPick() {
 let scanningNames = false, skipNames = false;
 async function readNames(bi, onEach = () => {}) {
   const b = banks()[bi], known = names(), direct = b.dump;
+  if (!b.dump && b.bankDump && driver.requestBank) { // U-110: all 64 in one read
+    if (!scanningNames || skipNames) return false;
+    const slots = await driver.requestBank(bi);
+    slots.forEach((sl, p) => { known[slotKey(bi, p)] = sl.name || "(unnamed)"; });
+    lsSet(`${schema.id}.names`, JSON.stringify(known)); namesStamp(bi); onEach(b.count);
+    return true;
+  }
   const got = [];
   for (let p = 0; p < b.count; p++) {
     if (!scanningNames || skipNames) return false;
@@ -722,13 +729,13 @@ async function runConnect() {
     // readable banks: when missing or > 72 h old. ROM banks: once — and a skipped
     // or stopped scan isn't retried for 72 h either (↻ in the dropdown forces one)
     const romTriedAge = (bi) => Date.now() - Number(lsGet(`${schema.id}.romTried.${bi}`, "0"));
-    const todo = navBanks().filter((b) => b.dump ? namesAge(b.bi) > NAMES_STALE_MS
+    const todo = navBanks().filter((b) => b.dump || b.bankDump ? namesAge(b.bi) > NAMES_STALE_MS
       : (b.select || b.msb != null || b.lsb != null) && lsGet(`${schema.id}.romScanned.${b.bi}`, "") !== "1" && romTriedAge(b.bi) > NAMES_STALE_MS);
     const total = todo.reduce((t, b) => t + b.count, 0);
     if (total) {
       const haveNames = Object.keys(names()).length > 0;
       $("#connect-skip").hidden = !haveNames; skipNames = false; scanningNames = true;
-      const rom = todo.filter((b) => !b.dump);
+      const rom = todo.filter((b) => !b.dump && !b.bankDump);
       const s2 = step(`reading program names — ${todo.map((b) => b.label).join(", ")}` + (rom.length ? " (ROM banks are read once: the synth steps through them, then comes back)" : ""));
       const back = { ...cur };
       let done = 0;
@@ -744,7 +751,7 @@ async function runConnect() {
       } catch (e) { s2.err(`program names stopped: ${e.message} — carrying on with what's saved`); }
       // whatever was skipped or stopped waits 72 h before the next automatic try
       for (const b of todo) if (!finished.has(b.bi)) {
-        if (b.dump) namesStamp(b.bi); else lsSet(`${schema.id}.romTried.${b.bi}`, String(Date.now()));
+        if (b.dump || b.bankDump) namesStamp(b.bi); else lsSet(`${schema.id}.romTried.${b.bi}`, String(Date.now()));
       }
       scanningNames = false; $("#connect-skip").hidden = true;
       if (rom.length) { driver.programChange(back.bank, back.prog); await new Promise((r) => setTimeout(r, midi.drainMs() + 150));
@@ -829,18 +836,24 @@ function renderProgramList() {
 // .syx + a name index in Dropbox; the names also fill the program list
 async function createBackup() {
   if (scanning) { scanning = false; return; }
-  const readable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => b.dump && b.write);
+  const readable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => (b.dump || b.bankDump) && b.write);
   if (!readable.length) return status("this synth can't send its programs over MIDI", true);
   scanning = true;
   const btn = $("#backup"), fillEl = btn.querySelector(".pfill"), label = btn.querySelector(".plabel");
   btn.classList.add("running");
   const progress = (n) => { fillEl.style.width = (n / total) * 100 + "%"; label.textContent = `backing up ${n} / ${total} · click to stop`; };
   const known = names(), slots = [], syx = [];
+  const slots_push = (label, p, name) => slots.push({ bank: label, program: p + 1, name: name || "(unnamed)" });
   const total = readable.reduce((t, b) => t + b.count, 0);
   let n = 0, failed = 0;
   progress(0);
-  for (const { bi, label, count } of readable) for (let p = 0; p < count && scanning; p++) {
+  for (const { bi, label, count, dump, bankDump } of readable) for (let p = 0; p < count && scanning; p++) {
     try {
+      if (!dump && bankDump && driver.requestBank) { // whole bank at once (U-110)
+        const slots = await driver.requestBank(bi);
+        slots.forEach((sl, q) => { known[slotKey(bi, q)] = sl.name || "(unnamed)"; slots_push(label, q, sl.name); });
+        syx.push(...slots[0].syx); n += count; progress(n); break;
+      }
       const got = await driver.requestProgram(bi, p);
       const name = got.name ?? (nameParams().map((q) => String.fromCharCode(got.values[q.key] ?? 32)).join("").trim() || "(unnamed)");
       known[slotKey(bi, p)] = name;
@@ -935,6 +948,7 @@ async function doStore() {
 
     $("#st-msg").textContent = `writing ${where}…`;
     const sent = driver.writeProgram(bank, prog, values);
+    driver.forgetBank?.();
     await new Promise((res) => setTimeout(res, midi.drainMs() + 400));
     const back = await driver.requestProgram(bank, prog);
     if (!driver.sameProgram(sent, back.data)) throw new Error(`read ${where} back and it doesn't match — check the synth's memory / exclusive protect`);
