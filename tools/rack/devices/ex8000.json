@@ -1,0 +1,1087 @@
+{
+ "id": "ex8000",
+ "name": "Korg EX-8000",
+ "transport": "korg",
+ "source": "Korg DW-8000 Owner's Manual (korg.com/us/support, DW-8000_Owners_Manual.pdf, scanned; read from 160 dpi page renders): MIDI parameters 84-87 p.56, Transmitted Data p.60-62, Recognized Receive Data p.63-65 (device ID request, write request, data save request, data load, parameter change), DW-8000 Bit Map p.66-67, Bit Map and corresponding values p.68-69, communication examples p.70-71. Korg EX-8000 Owner's Manual (archive.org item manualzilla-id-5962154; PDF + OCR text): front panel pp.6-7, parameter chart on the panel (p.2), MIDI parameters 84-88 + key window pp.15-18, waveforms p.22, delay ranges, MIDI implementation pp.51-64 ('EX-8000 ID 03H', identical bit map), MIDI data transfer (param 78). Cross-checked against KnobKraft-orm (adaptations/KorgDW8000.py and the older C++ synths/korg-dw8000: 10h/11h/40h, device-ID 4n, 75 ms message delay), sjbaines/Korg_DW-8000_Midi_Enhancer (41h parameter change, bit widths, param 85 = 2), soundengine.com 'De-mystify Korg DW-8000 SysEx' (setup). Edisyn has no DW/EX-8000 editor. Byte layout validated against the 64-program KnobKraft test bank (adaptations/testData/KorgDW8000_bank_a.syx: 64 x [40h dump + 11h write request]): every byte inside its bit-map range.",
+ "korg": {
+  "manufacturerId": [
+   66
+  ],
+  "modelId": 3,
+  "header": [
+   240,
+   66,
+   48,
+   3
+  ],
+  "headerHex": "F0 42 3n 03",
+  "channelNibble": "Byte 2 = 3n, n = parameter 84 (CH) - 1. Messages whose n differs from parameter 84 are ignored, whatever OMNI (86) says (manual p.65 note 5). The unit's own replies carry n.",
+  "messageTypes": {
+   "dataSaveRequest": 16,
+   "writeRequest": 17,
+   "writeCompleted": 33,
+   "writeError": 34,
+   "dataDump": 64,
+   "parameterChange": 65
+  },
+  "formats": {
+   "deviceIdRequest": "F0 42 4n F7 -> device ID F0 42 3n 03 F7 (5 bytes; 03 = DW-8000 -- the EX-8000 answers the same 03). Channel-specific: n must equal parameter 84; sweep n = 0..15 to find it.",
+   "dataSaveRequest": "F0 42 3n 03 10 F7 -> data dump of the sound being played (the edit buffer, edits included).",
+   "dataDump": "F0 42 3n 03 40 <51 data bytes> F7 = 57 bytes. Received ('DATA LOAD') into the edit buffer only -- nothing is stored until a write request. Worked example (KnobKraft test bank, program 11, ch 1): F0 42 30 03 40 00 00 1F 02 01 03 0A 00 00 1F 00 03 00 00 35 0C 04 02 00 1F 04 0B 15 1F 12 08 04 00 1F 1F 1F 1F 04 04 00 14 00 00 00 02 00 06 0B 09 1A 00 08 00 01 03 03 F7 -> osc1Oct 00 (16'), osc1Wave 00 (1 saw), osc1Level 1F (31), abSelect 02 (OSC2), abMode 01 (DOWN), abTime 03, abInt 0A (10), osc2Oct 00, osc2Wave 00, osc2Level 1F, interval 00 (unison), detune 03, noise 00, assign 00 (POLY 1), parNoMemory 35h = 53 (panel 76), cutoff 0C (12), reso 04, kbd 02 (1/2), polarity 00, EG int 1F, VCF EG 04 0B 15 1F 12 08 vel 04, VCA EG 00 1F 1F 1F 1F 04 vel 04, MG 00 (tri) 14 (20) 00 00 00, bend 02 / VCF 00 (off), delay 06 (128-256 ms) 0B 09 1A 00 08, porta 00, AT 01 03 03.",
+   "parameterChange": "F0 42 3n 03 41 <offset> <value> F7 (8 bytes), offset = bit-map offset 0-50 (p.paramChange), value = the whole bit-map byte (fields are right-aligned; every offset holds exactly one field). Example: VCF cutoff (offset 15) = 40 on ch 1 -> F0 42 30 03 41 0F 28 F7. Changes the edit buffer immediately; no reply.",
+   "writeRequest": "F0 42 3n 03 11 <program 0-63> F7 -> stores the edit buffer into that program; reply WRITE COMPLETED F0 42 3n 03 21 F7, or WRITE ERROR F0 42 3n 03 22 F7 when the WRITE switch is at DISABLE. Example: write to panel program 23 (= 1*8 + 2 = 10) -> F0 42 30 03 11 0A F7.",
+   "noChecksum": "No checksum, no nybbles, no address, no program number in the dump."
+  },
+  "programBytes": 51,
+  "dumpLength": 57,
+  "encoding": "raw: one MIDI data byte per bit-map offset, value right-aligned in the low bits (unused high bits 0).",
+  "programNumbering": "Program change / write-request number p = 0-63 <-> panel display 11-88: tens = floor(p / 8) + 1 (BANK), ones = p % 8 + 1.",
+  "transmits": "Panel edits are NOT transmitted. DW-8000 sends notes, joystick CC1/CC2, damper, program change, aftertouch, bend; EX-8000 (no keyboard) transmits only program change and the SysEx replies.",
+  "sharedWith": "Wavestation SR (devices/wavestationsr.json): same F0 42 3n <model> framing, same 10h request / 40h dump / 41h parameter change / 11h write / 21h-22h write reply codes. See driverNotes 'COMMON'."
+ },
+ "gapMs": 30,
+ "defaultChannel": 1,
+ "noteOctaveBase": -1,
+ "waves": [
+  "1 Saw (brass/strings)",
+  "2 Square (clarinet)",
+  "3 Acoustic piano",
+  "4 Electric piano",
+  "5 Electric piano (hard)",
+  "6 Clavi",
+  "7 Organ",
+  "8 Brass",
+  "9 Saxophone",
+  "10 Violin",
+  "11 Acoustic guitar",
+  "12 Distorted guitar",
+  "13 Electric bass",
+  "14 Digital bass",
+  "15 Bell",
+  "16 Sine (organ/whistle)"
+ ],
+ "wavesNote": "DWGS waveforms, panel values 1-16 = stored 0-15 (EX-8000 manual p.22: instrument family per wave).",
+ "params": [
+  {
+   "key": "osc1Oct",
+   "name": "OSC 1 Octave",
+   "group": "osc1",
+   "offset": 0,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 2,
+   "display": "enum",
+   "options": [
+    "16'",
+    "8'",
+    "4'"
+   ],
+   "panel": 11,
+   "paramChange": 0,
+   "default": 1,
+   "note": "00 = 16', 01 = 8', 10 = 4', 11 = inhibit (never send 3)."
+  },
+  {
+   "key": "osc1Wave",
+   "name": "OSC 1 Waveform",
+   "group": "osc1",
+   "offset": 1,
+   "bits": {
+    "shift": 0,
+    "width": 4
+   },
+   "min": 0,
+   "max": 15,
+   "display": "enum",
+   "options": [
+    "1 Saw (brass/strings)",
+    "2 Square (clarinet)",
+    "3 Acoustic piano",
+    "4 Electric piano",
+    "5 Electric piano (hard)",
+    "6 Clavi",
+    "7 Organ",
+    "8 Brass",
+    "9 Saxophone",
+    "10 Violin",
+    "11 Acoustic guitar",
+    "12 Distorted guitar",
+    "13 Electric bass",
+    "14 Digital bass",
+    "15 Bell",
+    "16 Sine (organ/whistle)"
+   ],
+   "panel": 12,
+   "paramChange": 1,
+   "default": 0,
+   "note": "Stored 0-15 = panel 1-16 (DWGS waves, EX-8000 manual p.22)."
+  },
+  {
+   "key": "osc1Level",
+   "name": "OSC 1 Level",
+   "group": "osc1",
+   "offset": 2,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 13,
+   "paramChange": 2,
+   "default": 31
+  },
+  {
+   "key": "abSelect",
+   "name": "Auto Bend Select",
+   "group": "autobend",
+   "offset": 3,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 3,
+   "display": "enum",
+   "options": [
+    "OFF",
+    "OSC1",
+    "OSC2",
+    "BOTH"
+   ],
+   "panel": 14,
+   "paramChange": 3,
+   "default": 0
+  },
+  {
+   "key": "abMode",
+   "name": "Auto Bend Mode",
+   "group": "autobend",
+   "offset": 4,
+   "bits": {
+    "shift": 0,
+    "width": 1
+   },
+   "min": 0,
+   "max": 1,
+   "display": "enum",
+   "options": [
+    "UP",
+    "DOWN"
+   ],
+   "panel": 15,
+   "paramChange": 4,
+   "default": 0,
+   "note": "Panel 1 = UP (pitch rises to the key pitch), 2 = DOWN."
+  },
+  {
+   "key": "abTime",
+   "name": "Auto Bend Time",
+   "group": "autobend",
+   "offset": 5,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 16,
+   "paramChange": 5,
+   "default": 0
+  },
+  {
+   "key": "abInt",
+   "name": "Auto Bend Intensity",
+   "group": "autobend",
+   "offset": 6,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 17,
+   "paramChange": 6,
+   "default": 0
+  },
+  {
+   "key": "osc2Oct",
+   "name": "OSC 2 Octave",
+   "group": "osc2",
+   "offset": 7,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 2,
+   "display": "enum",
+   "options": [
+    "16'",
+    "8'",
+    "4'"
+   ],
+   "panel": 21,
+   "paramChange": 7,
+   "default": 1,
+   "note": "00 = 16', 01 = 8', 10 = 4', 11 = inhibit."
+  },
+  {
+   "key": "osc2Wave",
+   "name": "OSC 2 Waveform",
+   "group": "osc2",
+   "offset": 8,
+   "bits": {
+    "shift": 0,
+    "width": 4
+   },
+   "min": 0,
+   "max": 15,
+   "display": "enum",
+   "options": [
+    "1 Saw (brass/strings)",
+    "2 Square (clarinet)",
+    "3 Acoustic piano",
+    "4 Electric piano",
+    "5 Electric piano (hard)",
+    "6 Clavi",
+    "7 Organ",
+    "8 Brass",
+    "9 Saxophone",
+    "10 Violin",
+    "11 Acoustic guitar",
+    "12 Distorted guitar",
+    "13 Electric bass",
+    "14 Digital bass",
+    "15 Bell",
+    "16 Sine (organ/whistle)"
+   ],
+   "panel": 22,
+   "paramChange": 8,
+   "default": 0
+  },
+  {
+   "key": "osc2Level",
+   "name": "OSC 2 Level",
+   "group": "osc2",
+   "offset": 9,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 23,
+   "paramChange": 9,
+   "default": 31
+  },
+  {
+   "key": "osc2Interval",
+   "name": "OSC 2 Interval",
+   "group": "osc2",
+   "offset": 10,
+   "bits": {
+    "shift": 0,
+    "width": 3
+   },
+   "min": 0,
+   "max": 4,
+   "display": "enum",
+   "options": [
+    "unison",
+    "min 3rd",
+    "maj 3rd",
+    "4th",
+    "5th"
+   ],
+   "panel": 24,
+   "paramChange": 10,
+   "default": 0,
+   "note": "Bit map: 000 = 1, 001 = '-3', 010 = 3, 011 = 4, 100 = 5; 101-111 inhibit. The EX-8000 manual text calls these unison, minor 3rd, major 3rd, perfect 4th, perfect 5th above OSC 1 (so '-3' = flat 3rd, not -3 semitones)."
+  },
+  {
+   "key": "osc2Detune",
+   "name": "OSC 2 Detune",
+   "group": "osc2",
+   "offset": 11,
+   "bits": {
+    "shift": 0,
+    "width": 3
+   },
+   "min": 0,
+   "max": 6,
+   "display": "int",
+   "panel": 25,
+   "paramChange": 11,
+   "default": 3,
+   "note": "0-6; 111 = inhibit."
+  },
+  {
+   "key": "noiseLevel",
+   "name": "Noise Level",
+   "group": "noise",
+   "offset": 12,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 26,
+   "paramChange": 12,
+   "default": 0
+  },
+  {
+   "key": "assignMode",
+   "name": "Key Assign Mode",
+   "group": "noise",
+   "offset": 13,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 3,
+   "display": "enum",
+   "options": [
+    "POLY 1",
+    "POLY 2",
+    "UNISON 1",
+    "UNISON 2"
+   ],
+   "paramChange": 13,
+   "default": 0,
+   "note": "Stored per program; set with the KEY ASSIGN buttons (no parameter number). The manual's 'bit map and values' table prints it after offset 50 -- offset 13 is correct (bit map p.66)."
+  },
+  {
+   "key": "paramNoMemory",
+   "name": "Parameter No. Memory",
+   "group": "noise",
+   "offset": 14,
+   "bits": {
+    "shift": 0,
+    "width": 6
+   },
+   "min": 0,
+   "max": 62,
+   "display": "int",
+   "paramChange": 14,
+   "default": 0,
+   "norandom": true,
+   "note": "Which panel parameter is pre-selected when the program is recalled. value = (tens - 1) * 8 + (ones - 1) of the panel number 11-88; 7, 14, 15, 21, 22, 23, 31, 39, 47, 55 (= nonexistent 18, 27, 28, 36, 37, 38, 48, 58, 68, 78) are inhibit. Not a sound parameter: keep the mirror's value."
+  },
+  {
+   "key": "vcfCutoff",
+   "name": "VCF Cutoff",
+   "group": "vcf",
+   "offset": 15,
+   "bits": {
+    "shift": 0,
+    "width": 6
+   },
+   "min": 0,
+   "max": 63,
+   "display": "int",
+   "panel": 31,
+   "paramChange": 15,
+   "default": 63
+  },
+  {
+   "key": "vcfReso",
+   "name": "VCF Resonance",
+   "group": "vcf",
+   "offset": 16,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 32,
+   "paramChange": 16,
+   "default": 0
+  },
+  {
+   "key": "vcfKbdTrack",
+   "name": "VCF Keyboard Tracking",
+   "group": "vcf",
+   "offset": 17,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 3,
+   "display": "enum",
+   "options": [
+    "0",
+    "1/4",
+    "1/2",
+    "FULL"
+   ],
+   "panel": 33,
+   "paramChange": 17,
+   "default": 0
+  },
+  {
+   "key": "vcfPolarity",
+   "name": "VCF EG Polarity",
+   "group": "vcf",
+   "offset": 18,
+   "bits": {
+    "shift": 0,
+    "width": 1
+   },
+   "min": 0,
+   "max": 1,
+   "display": "enum",
+   "options": [
+    "NORMAL",
+    "INVERTED"
+   ],
+   "panel": 34,
+   "paramChange": 18,
+   "default": 0,
+   "note": "Panel 1 = normal (cutoff rises in the attack), 2 = inverted."
+  },
+  {
+   "key": "vcfEgInt",
+   "name": "VCF EG Intensity",
+   "group": "vcf",
+   "offset": 19,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 35,
+   "paramChange": 19,
+   "default": 0
+  },
+  {
+   "key": "vcfAttack",
+   "name": "VCF EG Attack",
+   "group": "vcfeg",
+   "offset": 20,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 41,
+   "paramChange": 20,
+   "default": 0
+  },
+  {
+   "key": "vcfDecay",
+   "name": "VCF EG Decay",
+   "group": "vcfeg",
+   "offset": 21,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 42,
+   "paramChange": 21,
+   "default": 31
+  },
+  {
+   "key": "vcfBreak",
+   "name": "VCF EG Break Point",
+   "group": "vcfeg",
+   "offset": 22,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 43,
+   "paramChange": 22,
+   "default": 31
+  },
+  {
+   "key": "vcfSlope",
+   "name": "VCF EG Slope",
+   "group": "vcfeg",
+   "offset": 23,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 44,
+   "paramChange": 23,
+   "default": 31
+  },
+  {
+   "key": "vcfSustain",
+   "name": "VCF EG Sustain",
+   "group": "vcfeg",
+   "offset": 24,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 45,
+   "paramChange": 24,
+   "default": 31
+  },
+  {
+   "key": "vcfRelease",
+   "name": "VCF EG Release",
+   "group": "vcfeg",
+   "offset": 25,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 46,
+   "paramChange": 25,
+   "default": 0
+  },
+  {
+   "key": "vcfVelSens",
+   "name": "VCF EG Velocity Sensitivity",
+   "group": "vcfeg",
+   "offset": 26,
+   "bits": {
+    "shift": 0,
+    "width": 3
+   },
+   "min": 0,
+   "max": 7,
+   "display": "int",
+   "panel": 47,
+   "paramChange": 26,
+   "default": 0
+  },
+  {
+   "key": "vcaAttack",
+   "name": "VCA EG Attack",
+   "group": "vcaeg",
+   "offset": 27,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 51,
+   "paramChange": 27,
+   "default": 0
+  },
+  {
+   "key": "vcaDecay",
+   "name": "VCA EG Decay",
+   "group": "vcaeg",
+   "offset": 28,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 52,
+   "paramChange": 28,
+   "default": 31
+  },
+  {
+   "key": "vcaBreak",
+   "name": "VCA EG Break Point",
+   "group": "vcaeg",
+   "offset": 29,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 53,
+   "paramChange": 29,
+   "default": 31
+  },
+  {
+   "key": "vcaSlope",
+   "name": "VCA EG Slope",
+   "group": "vcaeg",
+   "offset": 30,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 54,
+   "paramChange": 30,
+   "default": 31
+  },
+  {
+   "key": "vcaSustain",
+   "name": "VCA EG Sustain",
+   "group": "vcaeg",
+   "offset": 31,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 55,
+   "paramChange": 31,
+   "default": 31
+  },
+  {
+   "key": "vcaRelease",
+   "name": "VCA EG Release",
+   "group": "vcaeg",
+   "offset": 32,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 56,
+   "paramChange": 32,
+   "default": 4
+  },
+  {
+   "key": "vcaVelSens",
+   "name": "VCA EG Velocity Sensitivity",
+   "group": "vcaeg",
+   "offset": 33,
+   "bits": {
+    "shift": 0,
+    "width": 3
+   },
+   "min": 0,
+   "max": 7,
+   "display": "int",
+   "panel": 57,
+   "paramChange": 33,
+   "default": 0
+  },
+  {
+   "key": "mgWave",
+   "name": "MG Waveform",
+   "group": "mg",
+   "offset": 34,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 3,
+   "display": "enum",
+   "options": [
+    "TRIANGLE",
+    "SAW (down)",
+    "RAMP (up)",
+    "SQUARE"
+   ],
+   "panel": 61,
+   "paramChange": 34,
+   "default": 0,
+   "note": "Panel 1-4. Bit-map icons: 1 triangle, 2 falling saw, 3 rising ramp, 4 square."
+  },
+  {
+   "key": "mgFreq",
+   "name": "MG Frequency",
+   "group": "mg",
+   "offset": 35,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 62,
+   "paramChange": 35,
+   "default": 20
+  },
+  {
+   "key": "mgDelay",
+   "name": "MG Delay",
+   "group": "mg",
+   "offset": 36,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 63,
+   "paramChange": 36,
+   "default": 0
+  },
+  {
+   "key": "mgOsc",
+   "name": "MG to OSC (vibrato depth)",
+   "group": "mg",
+   "offset": 37,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 64,
+   "paramChange": 37,
+   "default": 0
+  },
+  {
+   "key": "mgVcf",
+   "name": "MG to VCF (wah depth)",
+   "group": "mg",
+   "offset": 38,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 65,
+   "paramChange": 38,
+   "default": 0
+  },
+  {
+   "key": "bendOsc",
+   "name": "Bend Range OSC (semitones)",
+   "group": "bend",
+   "offset": 39,
+   "bits": {
+    "shift": 0,
+    "width": 4
+   },
+   "min": 0,
+   "max": 12,
+   "display": "int",
+   "panel": 66,
+   "paramChange": 39,
+   "default": 2,
+   "note": "0-12 semitones; 1101-1111 inhibit. The manual's bit map misprints this offset as 38 (corrected to 39 by hand in the scan)."
+  },
+  {
+   "key": "bendVcf",
+   "name": "Bend VCF",
+   "group": "bend",
+   "offset": 40,
+   "bits": {
+    "shift": 0,
+    "width": 1
+   },
+   "min": 0,
+   "max": 1,
+   "display": "enum",
+   "options": [
+    "OFF",
+    "ON"
+   ],
+   "panel": 67,
+   "paramChange": 40,
+   "default": 0,
+   "note": "0 = OFF, 1 = ON (manual p.69). KnobKraft labels this the other way round -- the manual wins."
+  },
+  {
+   "key": "delayTime",
+   "name": "Delay Time (range)",
+   "group": "delay",
+   "offset": 41,
+   "bits": {
+    "shift": 0,
+    "width": 3
+   },
+   "min": 0,
+   "max": 7,
+   "display": "enum",
+   "options": [
+    "2-4 ms",
+    "4-8 ms",
+    "8-16 ms",
+    "16-32 ms",
+    "32-64 ms",
+    "64-128 ms",
+    "128-256 ms",
+    "256-512 ms"
+   ],
+   "panel": 71,
+   "paramChange": 41,
+   "default": 0,
+   "note": "Coarse range (EX-8000 manual 'DELAY TIME RANGE'); FACTOR fine-tunes within it."
+  },
+  {
+   "key": "delayFactor",
+   "name": "Delay Factor",
+   "group": "delay",
+   "offset": 42,
+   "bits": {
+    "shift": 0,
+    "width": 4
+   },
+   "min": 0,
+   "max": 15,
+   "display": "int",
+   "panel": 72,
+   "paramChange": 42,
+   "default": 0
+  },
+  {
+   "key": "delayFeedback",
+   "name": "Delay Feedback",
+   "group": "delay",
+   "offset": 43,
+   "bits": {
+    "shift": 0,
+    "width": 4
+   },
+   "min": 0,
+   "max": 15,
+   "display": "int",
+   "panel": 73,
+   "paramChange": 43,
+   "default": 0
+  },
+  {
+   "key": "delayModFreq",
+   "name": "Delay Modulation Frequency",
+   "group": "delay",
+   "offset": 44,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 74,
+   "paramChange": 44,
+   "default": 0
+  },
+  {
+   "key": "delayModInt",
+   "name": "Delay Modulation Intensity",
+   "group": "delay",
+   "offset": 45,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 75,
+   "paramChange": 45,
+   "default": 0
+  },
+  {
+   "key": "delayLevel",
+   "name": "Delay Effect Level",
+   "group": "delay",
+   "offset": 46,
+   "bits": {
+    "shift": 0,
+    "width": 4
+   },
+   "min": 0,
+   "max": 15,
+   "display": "int",
+   "panel": 76,
+   "paramChange": 46,
+   "default": 0,
+   "note": "0 = delay off."
+  },
+  {
+   "key": "portamento",
+   "name": "Portamento Time",
+   "group": "noise",
+   "offset": 47,
+   "bits": {
+    "shift": 0,
+    "width": 5
+   },
+   "min": 0,
+   "max": 31,
+   "display": "int",
+   "panel": 77,
+   "paramChange": 47,
+   "default": 0
+  },
+  {
+   "key": "atOscMg",
+   "name": "Aftertouch to OSC MG",
+   "group": "bend",
+   "offset": 48,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 3,
+   "display": "int",
+   "panel": 81,
+   "paramChange": 48,
+   "default": 0
+  },
+  {
+   "key": "atVcf",
+   "name": "Aftertouch to VCF",
+   "group": "bend",
+   "offset": 49,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 3,
+   "display": "int",
+   "panel": 82,
+   "paramChange": 49,
+   "default": 0
+  },
+  {
+   "key": "atVca",
+   "name": "Aftertouch to VCA",
+   "group": "bend",
+   "offset": 50,
+   "bits": {
+    "shift": 0,
+    "width": 2
+   },
+   "min": 0,
+   "max": 3,
+   "display": "int",
+   "panel": 83,
+   "paramChange": 50,
+   "default": 0
+  }
+ ],
+ "groups": [
+  {
+   "id": "osc1",
+   "name": "OSC 1 (octave, DWGS wave, level)"
+  },
+  {
+   "id": "osc2",
+   "name": "OSC 2 (octave, DWGS wave, level, interval, detune)"
+  },
+  {
+   "id": "autobend",
+   "name": "Auto Bend (per-note pitch swoop)"
+  },
+  {
+   "id": "noise",
+   "name": "Noise, key assign, portamento"
+  },
+  {
+   "id": "vcf",
+   "name": "VCF (24 dB low-pass: cutoff, resonance, key track, EG polarity/amount)"
+  },
+  {
+   "id": "vcfeg",
+   "name": "VCF EG (A D B S Su R) + velocity"
+  },
+  {
+   "id": "vcaeg",
+   "name": "VCA EG (A D B S Su R) + velocity"
+  },
+  {
+   "id": "mg",
+   "name": "MG (LFO)"
+  },
+  {
+   "id": "bend",
+   "name": "Pitch bend + aftertouch"
+  },
+  {
+   "id": "delay",
+   "name": "Digital delay"
+  }
+ ],
+ "programs": {
+  "banks": [
+   {
+    "label": "internal",
+    "count": 64,
+    "dump": false,
+    "write": true,
+    "firstNumber": "11",
+    "select": {
+     "type": "pc",
+     "offset": 0
+    },
+    "note": "Programs 11-88 (8 banks x 8) = PC 0-63. No slot read by SysEx: select with Program Change, then request the edit buffer (10h) -- the editor's 'loadable' path (it changes what is playing). Store = 40h dump + 11h write request (WRITE switch at ENABLE)."
+   }
+  ],
+  "note": "Program Change 0-63 on the parameter-84 channel (received only with ENABLE (85) = 2; numbers above 63 have 64 subtracted). No bank select, no program names, no bulk dump: a 'bank backup' is 64 x (PC, 10h request)."
+ },
+ "backup": {
+  "areas": [
+   {
+    "what": "programs 11-88",
+    "request": "for p in 0..63: C0+n p, then F0 42 3n 03 10 F7",
+    "count": 64,
+    "bytes": 57
+   }
+  ],
+  "restore": "WRITE switch to ENABLE; for each program: F0 42 3n 03 40 <51> F7, then F0 42 3n 03 11 <p> F7, wait for 21h (WRITE COMPLETED) before the next pair (this is exactly the KnobKraft bank file layout: 64 x [dump, write request]). WRITE switch back to DISABLE.",
+  "notInSysex": "MIDI parameters 84-88 (channel, enable, omni, key window) and the KEY ASSIGN / TAPE / WRITE switch positions have no SysEx."
+ },
+ "setup": [
+  "Units: works with the DW-8000 keyboard too (same model ID 03, same bit map). The EX-8000 is the 2U module: no keyboard, no joystick, no arpeggiator; 84 CH / 85 ENA / 86 OMNI / 87-88 key window.",
+  "Press PARAMETER, select 84 (CH) = the editor channel. SysEx carries this channel and the unit ignores SysEx on any other channel, regardless of OMNI.",
+  "Parameter 85 (ENA) = 2 (ALL). At 1 (note data only) program changes and all SysEx are ignored. Retained through power-off.",
+  "Parameter 86 (OMNI) = 0 or 1, either works for SysEx; 0 = OFF keeps notes to the CH channel.",
+  "EX-8000 only: parameters 87/88 (key window bottom/top) must cover the notes you audition with (defaults C1-C8). Hidden parameter 78 (MIDI data transfer) should stay 0 -- it resets to 0 at power-on.",
+  "To store programs: front-panel WRITE switch (EX-8000; on the DW-8000 it is on the rear panel) to ENABLE. At DISABLE every write request is answered with WRITE ERROR (22h). Set it back to DISABLE afterwards.",
+  "Cable both ways: interface out -> MIDI IN, unit MIDI OUT -> interface in (dumps and write replies come back on MIDI OUT; the EX-8000 MIDI OUT is not a THRU).",
+  "No memory protect beyond the WRITE switch, and no factory reset: back up all 64 programs first."
+ ],
+ "uncertain": [
+  "EX-8000 vs DW-8000: the EX-8000 manual prints the same model ID (03H), the same 51-byte bit map and the same 10h/11h/40h/41h/21h/22h messages, so one schema covers both. Only DW-8000 hardware behaviour is confirmed by third-party tools (KnobKraft, Midi Enhancer); nobody documents testing an EX-8000.",
+  "EX-8000 MIDI OUT: the manual's 'Transmitted MIDI data' lists Program Change and SysEx, while its MIDI-jacks paragraph says MIDI OUT 'does not transmit program change data, etc.'. Assume only SysEx replies come back.",
+  "Edit buffer audibility: the manual says DATA LOAD / PARAMETER CHANGE change 'the current sound'; one user write-up (soundengine.com) says a loaded sound is not heard until written and reselected. Test: send 41h cutoff changes while holding a note. If parameter changes are not heard until a new note, that is normal for this synth (voices take parameters at note-on).",
+  "OSC 2 Interval '-3': the bit map prints 001 = -3; the EX-8000 manual text lists the intervals as unison, minor 3rd, major 3rd, 4th, 5th above OSC 1 and the panel legend reads '1-3345'. Taken as a flat (minor) 3rd up, not 3 semitones down.",
+  "MG waveform order 2/3 (saw down vs ramp up) is read from the bit-map icons; KnobKraft calls them Sawtooth / Inverse Saw in the same order.",
+  "Bend VCF polarity: manual p.69 '0 = 0 (OFF), 1 = 1 (ON)'; KnobKraft's table says 0 = On, 1 = Off. The manual is used.",
+  "Pacing: Korg gives no timing. 30 ms between parameter changes and 100 ms after a dump are conservative guesses; KnobKraft uses 75 ms between messages. Write-completed timeout 2000 ms is a guess (a write takes well under a second on similar Korg units).",
+  "Parameter-No.-Memory (offset 14) inhibit list is printed as '7, 14, 15, 21, 22, 23, 31, 39, 47, 55'; the (tens-1)*8+(ones-1) formula reproduces it (missing panel numbers 18, 27, 28, 36-38, 48, 58, 68, 78), but the EX-8000 has no 87/88 sound parameters either -- harmless since the value is only preserved, never edited.",
+  "Device ID request on the EX-8000: printed identically (F0 42 4n F7 -> F0 42 3n 03 F7) but untested; probe falls back to a 10h request."
+ ],
+ "driverNotes": "Korg EX-8000 / DW-8000 (Korg 42h, model 03h). COMMON (shared korgDriver, see also wavestationsr.json): every message is F0 42 3n <model> <type> ... F7 with n = channel() (the unit's SysEx channel, set on the unit); match incoming on F0 42 3x <model> and adopt x if it differs. Shared type codes: 10h = dump request, 40h = dump, 41h = parameter change, 11h = write request, 21h = write completed, 22h = write error. Per unit: schema.korg.modelId (03 here, 28h WS SR), data encoding (raw here, nybbles + checksum on the WS), parameter-change payload (offset+value here, number+ASCII on the WS), program model (one 64-slot memory here, banked patches on the WS). EX-8000 SPECIFIC. (1) DATA: a program is 51 bytes, one per bit-map offset (p.offset 0-50), value right-aligned: read v = byte & mask(p.bits.width); write byte = v. No nybbles, no checksum, no name. Keep a 51-byte mirror of the last dump read; paramNoMemory (offset 14) is not a sound parameter -- carry it through from the mirror. Never write the inhibit codes: octave 3, interval 5-7, detune 7, bendOsc 13-15 (ranges in params already exclude them). (2) READ: requestPatch = send F0 42 3n 03 10 F7, wait up to ~500 ms for F0 42 3n 03 40 + 51 + F7 (57 bytes, ~18 ms on the wire); returns the sound being played INCLUDING unsaved edits (it is the edit buffer). There is no way to read a stored slot without selecting it: requestProgram(0, p) (bank flag dump:false, so the editor will instead programChange + requestPatch) = C0|ch p, wait ~150 ms, then 10h. (3) EDIT: sendParam(p, v) = F0 42 3n 03 41 <p.paramChange> <v> F7 (p.paramChange == p.offset). One message per change; coalesce to the newest value per param; >= 30 ms apart (gapMs; KnobKraft uses 75 ms between whole messages, the Midi Enhancer streams them at controller rate). sendPatch(values) = one F0 42 3n 03 40 <51 bytes from mirror+values> F7 (DATA LOAD -> edit buffer, nothing stored); then wait >= 100 ms. (4) programChange(0, p) = C0|ch, p (0-63). Afterwards requestPatch to adopt what is playing. (The unit only receives PC with ENABLE = 2.) (5) writeProgram(0, p, values): send the 40h dump of mirror+values, wait ~100 ms, send F0 42 3n 03 11 <p> F7, then wait up to ~2000 ms for F0 42 3n 03 21 F7 (WRITE COMPLETED; resolve) or ...22 F7 (WRITE ERROR -> throw 'WRITE switch is at DISABLE'). No reply at all = MIDI OUT not cabled or wrong channel: throw. Verify with PC p + 10h + sameProgram. Return the 51 bytes written. (6) probe: send F0 42 4n F7 (n = channel()), wait 300 ms for F0 42 3x 03 F7 (adopt x). If nothing, sweep n = 0..15 at ~100 ms each (KnobKraft waits 100 ms per channel), or fall back to 10h. A 03 reply cannot tell EX-8000 from DW-8000 -- both fine. (7) sameProgram(a, b): compare offsets 0-50 except 14 (paramNoMemory). (8) decode(ev): the unit never transmits panel edits, so only handle unsolicited 40h dumps (a DW-8000/EX-8000 never sends one unprompted; another unit's 'single program save' would) and ignore everything else. Program Change from a DW-8000 keyboard's panel: the editor's follow logic can re-read with 10h. (9) PACING: gapMs 30 for short messages; 100 ms after a dump; never send a second 40h before the first is processed (forum reports: the DW-8000 accepts one 57-byte message at a time). Bank restore: [40h, 11h, wait 21h] x 64. (10) Programs are numbered 11-88 on the panel: label slot p as String(floor(p/8)+1) + String(p%8+1)."
+}

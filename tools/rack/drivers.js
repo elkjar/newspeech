@@ -37,7 +37,7 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg"];
 
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
@@ -48,6 +48,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "emax") return emaxDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "yamaha4op") return yamaha4opDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "oberheim") return oberheimDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "korg") return schema.korg.modelId === 0x28 ? wavestationDriver(schema, midi, getChannel, prefs) : korgDwDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
 
@@ -1110,6 +1111,231 @@ function oberheimDriver(schema, midi, getChannel, prefs) {
       if (ev.type !== "sysex" || !isOp(0x0d)(ev.data)) return [];
       mirror = unpack(ev.data, 5); haveRead = true;
       return schema.params.map((p) => ({ param: p, value: read(p, mirror) }));
+    },
+  };
+}
+
+// Korg, shared framing: F0 42 3n <model> <type> … F7, n = the unit's channel;
+// 10h request, 40h dump, 41h param change, 11h write, 21h/22h write ok/error.
+const korgIs = (model, type, pred) => (d) => d[0] === 0xf0 && d[1] === 0x42 && d[2] >> 4 === 3 && d[3] === model && d[4] === type && (!pred || pred(d));
+
+// EX-8000 / DW-8000 (model 03): 51 raw bytes, no checksum, no names; param
+// change = 41 <offset> <value>; the dump IS the edit buffer; store = dump + 11 <p>.
+function korgDwDriver(schema, midi, getChannel) {
+  const M = schema.korg.modelId, sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const H = () => [0xf0, 0x42, 0x30 | (getChannel() & 15), M];
+  const mask = (w) => (1 << w) - 1;
+  let mirror = new Array(51).fill(0), haveRead = false;
+  const valuesOf = (img) => Object.fromEntries(schema.params.map((p) => [p.key, img[p.offset] & mask(p.bits?.width ?? 7)]));
+  const withValues = (v) => { const img = [...mirror]; for (const p of schema.params) if (v[p.key] != null) img[p.offset] = v[p.key] & mask(p.bits?.width ?? 7); return img; };
+  async function fetchEdit(t = 600) { const r = midi.waitSysex(korgIs(M, 0x40), t); midi.send([...H(), 0x10, 0xf7]); const d = await r; return { img: [...d.slice(5, 5 + 51)], raw: [...d] }; }
+  return {
+    async probe() { await fetchEdit(900); return true; },
+    async requestPatch() { const { img, raw } = await fetchEdit(); mirror = img; haveRead = true; return { values: valuesOf(img), syx: raw }; },
+    sendParam(p, v) { mirror[p.offset] = v & mask(p.bits?.width ?? 7); midi.send([...H(), 0x41, p.paramChange & 127, mirror[p.offset], 0xf7]); },
+    sendPatch(values) { if (!haveRead) throw new Error("read the program first (get)"); mirror = withValues(values); midi.send([...H(), 0x40, ...mirror, 0xf7]); },
+    async programChange(bi, prog) { midi.send([0xc0 | (getChannel() & 15), prog & 63]); await sleep(150); },
+    async writeProgram(bi, prog, values) {
+      if (!haveRead) throw new Error("read the program first (get)");
+      mirror = withValues(values); midi.send([...H(), 0x40, ...mirror, 0xf7]); await sleep(120);
+      const r = midi.waitSysex((d) => korgIs(M, 0x21)(d) || korgIs(M, 0x22)(d), 2000);
+      midi.send([...H(), 0x11, prog & 63, 0xf7]);
+      const d = await r.catch(() => { throw new Error("no answer to the write — check MIDI out and the channel"); });
+      if (d[4] === 0x22) throw new Error("write refused — set the WRITE switch on the back to ENABLE");
+      return [...mirror];
+    },
+    sameProgram(a, b) { return !!a && !!b && schema.params.every((p) => (a[p.offset] & mask(p.bits?.width ?? 7)) === (b[p.offset] & mask(p.bits?.width ?? 7))); },
+    decode(ev) { // an unsolicited dump (the unit doesn't send panel edits)
+      if (ev.type !== "sysex" || !korgIs(M, 0x40)(ev.data)) return [];
+      mirror = [...ev.data.slice(5, 56)]; haveRead = true;
+      return schema.params.map((p) => ({ param: p, value: mirror[p.offset] & mask(p.bits?.width ?? 7) }));
+    },
+  };
+}
+
+// Wavestation SR (model 28h): 426-byte patches, nybbles low first + checksum.
+// Param changes carry the value as ASCII text (CURRENT_WAVE 79 / MIX_ENV_POINT 193
+// select the target first). No edit-buffer request and no patch program change:
+// a patch is selected by re-pointing the current Part (params 57/58), and read
+// back from its stored slot. Patch Write is broken on the SR, so store = whole
+// bank read-modify-write. Derived bytes are recomputed before any dump.
+function wavestationDriver(schema, midi, getChannel, prefs) {
+  const K = schema.korg, M = 0x28, N = K.patchBytes, RT = K.rateTab;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const H = () => [0xf0, 0x42, 0x30 | (getChannel() & 15), M];
+  const bank = (bi) => schema.programs.banks[bi];
+  const BANKS = ["RAM1", "RAM2", "RAM3", "ROM4", "ROM5", "ROM6", "ROM7", "ROM8", "ROM9", "ROM10", "ROM11", "CARD"];
+  const unpack = (d, from, count) => { const out = []; for (let i = 0; i < count; i++) out.push((d[from + 2 * i] & 15) | ((d[from + 2 * i + 1] & 15) << 4)); return out; };
+  const pack = (bytes) => bytes.flatMap((b) => [b & 15, (b >> 4) & 15]);
+  const cks = (nyb) => nyb.reduce((t, b) => t + b, 0) & 0x7f;
+  const be = (img, o, n) => { let v = 0; for (let i = 0; i < n; i++) v = v * 256 + img[o + i]; return v; };
+  const setBe = (img, o, n, v) => { for (let i = n - 1; i >= 0; i--) { img[o + i] = v & 255; v = Math.floor(v / 256); } };
+  const set32 = (img, o, v) => setBe(img, o, 4, v < 0 ? v + 0x100000000 : v);
+
+  const WB = K.waveBank.encode;
+  function read(p, img) {
+    const o = p.offset, b = img[o];
+    if (p.encoding === "waveNum") return be(img, o, 2);
+    if (p.encoding === "waveBank") {
+      const w = p.wave, ex = img[88], b1 = (ex >> w) & 1, b2 = (ex >> (w + 4)) & 1, wb = b;
+      const name = b2 ? ["ROM7", "ROM8", "ROM9", "ROM10"][wb & 3] : b1 ? (wb >= 4 ? "RAM3" : ["ROM4", "ROM5", "RAM3", "ROM6"][wb]) : ["RAM1", "RAM2", "ROM11", "CARD"][wb & 3];
+      return BANKS.indexOf(name);
+    }
+    if (p.bits) return (b >> p.bits.shift) & ((1 << p.bits.width) - 1);
+    if (p.display === "ascii") return b === 0x7f || b === 0 ? 32 : b;
+    if (p.encoding === "s8") return b >= 128 ? b - 256 : b;
+    return b;
+  }
+  function write(p, v, img) {
+    const o = p.offset;
+    if (p.encoding === "waveNum") return setBe(img, o, 2, v);
+    if (p.encoding === "waveBank") {
+      const [wb, ex] = WB[BANKS[v]], w = p.wave;
+      img[o] = wb; img[88] = (img[88] & ~((1 << w) | (1 << (w + 4)))) | (ex === 1 ? 1 << w : ex === 2 ? 1 << (w + 4) : 0); return;
+    }
+    if (p.bits) { const m = ((1 << p.bits.width) - 1) << p.bits.shift; img[o] = (img[o] & ~m) | ((v << p.bits.shift) & m); return; }
+    img[o] = v & 255;
+  }
+  // derived fields the SR expects consistent with the values (Korg Developer FAQ, Edisyn's fixed formulas)
+  function derive(img) {
+    const rate = (i) => RT[img[16 + i]] || 1;
+    [0, 1, 2, 2, 1, 0, 3].forEach((r, i) => setBe(img, 20 + 2 * i, 2, rate(r)));
+    for (let n = 1; n <= 4; n++) {
+      set32(img, 34 + 4 * (n - 1), Math.trunc((0x1000000 * (img[66 + n] - img[66 + n - 1])) / rate(n - 1)));
+      set32(img, 50 + 4 * (n - 1), Math.trunc((0x1000000 * (img[71 + n] - img[71 + n - 1])) / rate(n - 1)));
+    }
+    for (let w = 0; w < 4; w++) {
+      const B = 90 + 84 * w;
+      for (const [amt, fade, inc] of [[7, 9, 74], [16, 18, 78]]) {
+        const a = img[B + amt], f = img[B + fade];
+        set32(img, B + inc, f === 0 ? Math.floor((0x7fffff * a) / 127) : Math.floor((0x7fffff * a) / ((RT[f] || 1) * 127)));
+      }
+      for (let k = 42; k <= 46; k++) img[B + k] = 0xff; // macros: USER
+      const wn = be(img, B + 3, 2); img[B + 83] = wn >= 397 ? wn - 396 : 0;
+    }
+    return img;
+  }
+  const valuesOf = (img) => Object.fromEntries(schema.params.map((p) => [p.key, read(p, img)]));
+  const withValues = (v, base = mirror) => { const img = [...base]; for (const p of schema.params) if (v[p.key] != null) write(p, v[p.key], img); return derive(img); };
+  const nameOf = (img) => String.fromCharCode(...img.slice(0, 15).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
+
+  // parameter change with an ASCII value; type by number
+  const pcType = (n) => (n < 380 ? 0x41 : n < 407 ? 0x42 : 0x43);
+  const pcSend = (n, text) => midi.send([...H(), pcType(n), n & 127, (n >> 7) & 127, ...[...String(text)].map((c) => (c === " " ? 0x7f : c.charCodeAt(0))), 0x00, 0xf7]);
+  const num = (x) => (x > 0 ? "+" : "") + x;
+  let curWave = null, curPoint = null;
+
+  let mirror = new Array(N).fill(0), haveRead = false;
+  let slot = (() => { try { return JSON.parse(prefs?.get("slot") || "null"); } catch { return null; } })();
+  const bnum = (bi) => bank(bi).sysex.bank;
+
+  async function fetchSlot(b, prog, t = 1500) {
+    const r = midi.waitSysex(korgIs(M, 0x40, (d) => d[5] === b && d[6] === prog), t);
+    midi.send([...H(), 0x10, b, prog, 0xf7]);
+    const d = await r, img = unpack(d, 7, N), nyb = [...d.slice(7, 7 + 2 * N)];
+    if (cks(nyb) !== d[7 + 2 * N]) throw new Error("patch checksum failed");
+    await sleep(300);
+    return { img, raw: [...d] };
+  }
+  const banks = new Map(); // bank number → { at, slots }
+  async function fetchBank(b) {
+    const c = banks.get(b); if (c && Date.now() - c.at < 60000) return c;
+    const r = midi.waitSysex(korgIs(M, 0x4c, (d) => d[5] === b), 15000);
+    midi.send([...H(), 0x1c, b, 0xf7]);
+    const d = await r, all = unpack(d, 6, 35 * N);
+    if (cks([...d.slice(6, 6 + 70 * N)]) !== d[6 + 70 * N]) throw new Error("bank checksum failed");
+    const e = { at: Date.now(), raw: [...d], slots: Array.from({ length: 35 }, (_, i) => all.slice(i * N, (i + 1) * N)) };
+    banks.set(b, e); await sleep(300); return e;
+  }
+  const waitLoad = async (t) => { const d = await midi.waitSysex((x) => korgIs(M, 0x23)(x) || korgIs(M, 0x24)(x), t); if (d[4] === 0x24) throw new Error("the Wavestation reported a checksum error"); };
+
+  return {
+    async probe() {
+      const r = midi.waitSysex((d) => d[1] === 0x7e && d[3] === 0x06 && d[4] === 0x02 && d[5] === 0x42 && d[6] === 0x28, 700);
+      midi.send([0xf0, 0x7e, 0x7f, 0x06, 0x01, 0xf7]);
+      try { await r; } catch { await fetchSlot(0, 0, 1500); }
+      return true;
+    },
+    // no edit-buffer request: read the slot the editor last selected
+    async requestPatch() {
+      if (!slot) throw new Error("pick a patch first — the Wavestation can't send its edit buffer");
+      const { img, raw } = await fetchSlot(slot.b, slot.prog); mirror = img; haveRead = true;
+      return { values: valuesOf(img), syx: raw };
+    },
+    async adoptSlot(bi, prog) {
+      const { img } = await fetchSlot(bnum(bi), prog); mirror = img; haveRead = true;
+      return { values: valuesOf(img) };
+    },
+
+    sendParam(p, v) {
+      write(p, v, mirror);
+      if (p.pcName) return pcSend(59, nameOf(mirror).padEnd(15));
+      if (p.pcWave && curWave !== p.wave) { pcSend(79, p.wave); curWave = p.wave; }
+      if (p.pcPoint != null && curPoint !== p.pcPoint) { pcSend(193, p.pcPoint); curPoint = p.pcPoint; }
+      if (p.pc === 77) { curWave = curPoint = null; } // structure change: targets unknown
+      const x = p.encoding === "waveBank" ? K.bankNumbers[BANKS[v]] : p.pcScale ? v * p.pcScale : v;
+      pcSend(p.pc, num(x));
+    },
+    async sendPatch(values) {
+      if (!haveRead || !slot) throw new Error("pick and read a patch first");
+      mirror = withValues(values);
+      const nyb = pack(mirror);
+      const ack = waitLoad(2500).catch((e) => { if (/checksum/.test(e.message)) throw e; });
+      midi.send([...H(), 0x40, slot.b, slot.prog, ...nyb, cks(nyb), 0xf7]);
+      await ack; curWave = curPoint = null;
+    },
+
+    // re-point the current Part (Edisyn's tested sequence), then remember the slot
+    async programChange(bi, prog) {
+      const b = bank(bi).select.bank;
+      for (const [n, v] of [[4, 1], [4, 0], [57, b], [58, prog], [4, 1], [427, 1]]) { pcSend(n, num(v)); await sleep(40); }
+      slot = { b: bnum(bi), prog }; prefs?.set("slot", JSON.stringify(slot));
+      curWave = curPoint = null; await sleep(300);
+    },
+
+    async requestProgram(bi, prog) {
+      const { img, raw } = await fetchSlot(bnum(bi), prog);
+      return { values: valuesOf(img), data: img, syx: raw, name: nameOf(img) || undefined };
+    },
+    async requestSlotName(bi, prog) {
+      const b = bank(bi);
+      if (!b.write) { const fac = schema.factoryPatchNames?.[b.label]; if (fac?.[prog]) return fac[prog]; }
+      return nameOf((await fetchBank(bnum(bi))).slots[prog]);
+    },
+    forgetBank() { banks.clear(); },
+
+    // Patch Write is broken on the SR: read the bank, splice the slot, send the bank
+    async writeProgram(bi, prog, values) {
+      const b = bank(bi);
+      if (!b?.write) throw new Error(`${b?.label ?? "that bank"} is read-only`);
+      if (!haveRead) throw new Error("pick and read a patch first");
+      const bk = await fetchBank(bnum(bi));
+      const slots = bk.slots.map((x) => [...x]);
+      slots[prog] = withValues(values);
+      const nyb = pack(slots.flat());
+      const ack = waitLoad(20000).catch(() => null);
+      midi.send([...H(), 0x4c, bnum(bi), ...nyb, cks(nyb), 0xf7]);
+      await ack; await sleep(midi.drainMs() + 500);
+      banks.delete(bnum(bi));
+      return slots[prog];
+    },
+    sameProgram(a, b) { return !!a && !!b && schema.params.every((p) => read(p, a) === read(p, b)); },
+
+    // panel edits (MIDI Param = TRANSMIT): number + ASCII value, with wave/point context
+    decode(ev) {
+      const d = ev.data;
+      if (ev.type !== "sysex" || d[1] !== 0x42 || d[3] !== M || ![0x41, 0x42, 0x43].includes(d[4])) return [];
+      const n = d[5] | (d[6] << 7), txt = String.fromCharCode(...[...d.slice(7, d.indexOf(0, 7))].map((c) => (c === 0x7f ? 32 : c)));
+      if (n === 79) { curWave = parseInt(txt, 10); return []; }
+      if (n === 193) { curPoint = parseInt(txt, 10); return []; }
+      const p = schema.params.find((q) => q.pc === n && (!q.pcWave || q.wave === curWave) && (q.pcPoint == null || q.pcPoint === curPoint));
+      if (!p) return [];
+      let v = parseInt(txt, 10);
+      if (p.encoding === "waveBank") v = BANKS.indexOf(Object.keys(K.bankNumbers).find((k) => K.bankNumbers[k] === v));
+      else if (p.pcScale) v = Math.round(v / p.pcScale);
+      if (Number.isNaN(v)) return [];
+      write(p, v, mirror);
+      return [{ param: p, value: v }];
     },
   };
 }

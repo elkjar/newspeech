@@ -549,7 +549,7 @@ async function readNames(bi, onEach = () => {}) {
   namesStamp(bi);
   if (!direct) {
     lsSet(`${schema.id}.romScanned.${bi}`, "1");
-    if (b.count > 8 && got.every((x) => x === got[0])) lsSet(`${schema.id}.absent.${bi}`, "1");
+    if (b.count > 8 && got[0] && got.every((x) => x === got[0])) lsSet(`${schema.id}.absent.${bi}`, "1");
   }
   return true;
 }
@@ -732,7 +732,8 @@ async function runConnect() {
     // readable banks: when missing or > 72 h old. ROM banks: once — and a skipped
     // or stopped scan isn't retried for 72 h either (↻ in the dropdown forces one)
     const romTriedAge = (bi) => Date.now() - Number(lsGet(`${schema.id}.romTried.${bi}`, "0"));
-    const todo = navBanks().filter((b) => b.dump || b.bankDump ? namesAge(b.bi) > NAMES_STALE_MS
+    // units with no patch names (EX-8000) have nothing to read
+    const todo = !nameParams().length ? [] : navBanks().filter((b) => b.dump || b.bankDump ? namesAge(b.bi) > NAMES_STALE_MS
       : (b.select || b.msb != null || b.lsb != null) && lsGet(`${schema.id}.romScanned.${b.bi}`, "") !== "1" && romTriedAge(b.bi) > NAMES_STALE_MS);
     const total = todo.reduce((t, b) => t + b.count, 0);
     if (total) {
