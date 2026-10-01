@@ -1,0 +1,2697 @@
+{
+ "id": "muse",
+ "name": "Moog Muse",
+ "transport": "moog",
+ "source": "Moog Music, 'Muse Firmware V1.4 Release Notes (Read Me).pdf' (May 2025) -- Appendix A: MIDI CC (the only published parameter map, introduced in fw 1.1.0: 'MIDI CC map implemented'), MIDI section (program change send/receive, SEQ PGM CHNG CHANNEL); in https://cdn.inmusicbrands.com/Moog/Muse/Muse%20Firmware%20V1.4.zip. Muse User's Manual v1.4.0 (https://cdn.inmusicbrands.com/Moog/Muse/Muse_Manual-1.4.0.pdf) pp.109-110 MIDI settings (KEYBOARD/LHC MIDI OUT CHANNEL, MULTI MODE, MIDI IN CHANNEL, MULTI IN B CHANNEL, SEND/RECIEVE CC, SEND/RECIEVE PGM CHNG with 'MSB is 0, LSB is 1-16 (BANK), PC is 1-16 (PATCH)'), KNOB MODE p.109, DISK MODE library p.112; panel drawing p.13. Moog forum 'Editor / VST for Moog Muse' (Derek_Cook, 2 Dec 2025: Moog support confirmed 'there is no SYSEX mode in the Muse MIDI implementation'). Electra One community '[Preset] Moog Muse' (NewIgnis, May 2026: 'controls only one Timbre; but performs Program Changes'; 'the Muse doesn't allow patch parsing'). pencilresearch/midi Moog/Muse.csv (midi.guide/d/moog/muse) cross-checked -- its envelope rows 79-89 are mislabelled, official chart used.",
+ "gapMs": 1,
+ "defaultChannel": 1,
+ "timbres": {
+  "count": 2,
+  "label": "timbre",
+  "names": [
+   "A",
+   "B"
+  ],
+  "note": "Bi-timbral. The CC map has no timbre field: per-timbre addressing is by MIDI channel in MULTI MODE (A = MIDI IN CHANNEL, B = MULTI IN B CHANNEL) -- see uncertain."
+ },
+ "driverNotes": "NEW transport 'moog' (shared with devices/moogone.json; no driver yet). For the Muse it is plain 7-bit Control Change on two channels -- no NRPN, no SysEx. (1) CHANNELS: chA = the editor channel (= Muse MIDI IN CHANNEL = KEYBOARD MIDI OUT CHANNEL); chB = a per-device pref 'timbreBChannel' (default chA + 1, 1-16) = Muse MULTI IN B CHANNEL. (2) SEND (sendParam): wire = p.wire ? p.wire[v - p.min] : v (0-127); ch = p.timbre === 'b' ? chB : chA (globals, timbre null, go on chA); midi.cc(ch, p.cc, wire). p.wire = lower bound of each option's band from the chart (switches 0 / 64; 0-24/25-49/... waveforms; 0-42/43-84/85-127 three-way; 0-31/32-63/64-95/96-127 four-way). (3) sendPatch(values): CC burst (85 per timbre + 13 global, skipping the 4 notInPatch performance controllers) -- 183 CCs, ~550 bytes, instant. (4) DECODE (decode ev): ev.type === 'cc'. On chB -> timbre b params by cc. On chA -> timbre-null params by cc, else the timbre the editor is showing (read the layout's shared 'timbre' select; default a) -- the Muse sends panel moves as CCs on KEYBOARD MIDI OUT CHANNEL with nothing that says which timbre was being edited. Enum decode: option = last i with p.wire[i] <= value. Ignore CC1/11/64 echoes of the performance controls unless shown. (5) programChange(bi, prog): CC0 = 0, CC32 = bank.lsb, PC = prog on chA (the existing selectProgram with {msb:0, lsb}). Needs RECIEVE PGM CHNG = ON. Incoming PCs (SEND PGM CHNG, default ON) arrive when the player picks a patch -> ev.type 'program' -> mark the editor's values stale. (6) requestPatch / requestProgram / writeProgram / names: impossible (no SysEx at all, per Moog support) -> throw 'Muse has no MIDI patch dump (save on the synth; back up via DISK MODE)'. (7) probe(): nothing answers; return true when the output port is open, or 'heard' once any CC/PC arrives. (8) midi.js note: receiveCC treats CC6/38/98/99 as NRPN parts -- the Muse map uses none of them, so nothing is lost.",
+ "capabilities": {
+  "canRead": false,
+  "canBackup": false,
+  "canStore": false,
+  "followsPanel": "partial",
+  "sendWholePatch": "CC burst of the 183 patch params (85 per timbre x 2 + 13 global), 7-bit",
+  "note": "Send-only. Panel-follow is partial: only the 102 CC-mapped controls transmit (SEND CC = ON, the default), 7-bit, and a received CC can't say which timbre the player was editing. No SysEx -> no reading the current sound, no names, no MIDI backup/store. Backup is DISK MODE (hold SELECT at power-on, USB-B shows a MOOG_MUSE drive: library/bankNN/patchNN/<name>.mmp, plain-text libconfig-style files) -- a possible future file import/export path, not MIDI."
+ },
+ "setup": [
+  "Firmware: MENU > VERSION. Needs 1.1.0+ for the CC map and 1.4.0+ (May 2025) for program change send/receive; use 1.4.",
+  "MIDI (PROGRAMMER) > RECIEVE CC = ON (default OFF -- nothing the editor sends does anything until this is on).",
+  "MIDI > SEND CC = ON (default) so knob moves come back to the editor.",
+  "MIDI > MIDI IN CHANNEL = the editor channel; KEYBOARD MIDI OUT CHANNEL = the same channel.",
+  "MIDI > MULTI MODE = ON (default) and MULTI IN B CHANNEL = editor channel + 1 (must differ from MIDI IN CHANNEL -- 1.4 refuses a collision). Timbre B edits go there.",
+  "MIDI > RECIEVE PGM CHNG = ON (default OFF) for patch select from the editor; SEND PGM CHNG = ON (default) so patch changes on the synth are noticed.",
+  "MENU > KNOB MODE: any; ABSOLUTE (default) means touching a knob jumps the value away from what the editor last sent.",
+  "Cable both ways: USB-B (class-compliant; Windows driver 'Install Moog Music Muse 1.0.1.exe') or DIN IN + OUT."
+ ],
+ "programs": {
+  "banks": [
+   {
+    "label": "bank 01",
+    "msb": 0,
+    "lsb": 0,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "01-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 02",
+    "msb": 0,
+    "lsb": 1,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "02-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 03",
+    "msb": 0,
+    "lsb": 2,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "03-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 04",
+    "msb": 0,
+    "lsb": 3,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "04-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 05",
+    "msb": 0,
+    "lsb": 4,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "05-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 06",
+    "msb": 0,
+    "lsb": 5,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "06-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 07",
+    "msb": 0,
+    "lsb": 6,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "07-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 08",
+    "msb": 0,
+    "lsb": 7,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "08-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 09",
+    "msb": 0,
+    "lsb": 8,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "09-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 10",
+    "msb": 0,
+    "lsb": 9,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "10-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 11",
+    "msb": 0,
+    "lsb": 10,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "11-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 12",
+    "msb": 0,
+    "lsb": 11,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "12-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 13",
+    "msb": 0,
+    "lsb": 12,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "13-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 14",
+    "msb": 0,
+    "lsb": 13,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "14-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 15",
+    "msb": 0,
+    "lsb": 14,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "15-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   },
+   {
+    "label": "bank 16",
+    "msb": 0,
+    "lsb": 15,
+    "count": 16,
+    "dump": false,
+    "write": false,
+    "firstNumber": "16-01",
+    "note": "PC 0-15 = patch 1-16 in this bank"
+   }
+  ],
+  "note": "16 banks x 16 patches. Muse manual: 'MSB is 0, LSB is 1-16 (selecting a BANK), PC is 1-16'; taken as the usual 1-based display of wire values 0-15 (see uncertain). Sequences change separately on SEQ PGM CHNG CHANNEL (default 16), same format -- not modelled."
+ },
+ "groups": [
+  {
+   "id": "aosc",
+   "name": "Timbre A: Oscillators"
+  },
+  {
+   "id": "amodosc",
+   "name": "Timbre A: Modulation oscillator"
+  },
+  {
+   "id": "amixer",
+   "name": "Timbre A: Mixer"
+  },
+  {
+   "id": "afilter",
+   "name": "Timbre A: Filters"
+  },
+  {
+   "id": "afenv",
+   "name": "Timbre A: Filter envelope"
+  },
+  {
+   "id": "aaenv",
+   "name": "Timbre A: VCA envelope"
+  },
+  {
+   "id": "avca",
+   "name": "Timbre A: VCA / voice"
+  },
+  {
+   "id": "alfo",
+   "name": "Timbre A: LFOs"
+  },
+  {
+   "id": "aplfo",
+   "name": "Timbre A: Pitch LFO"
+  },
+  {
+   "id": "aarp",
+   "name": "Timbre A: Arpeggiator"
+  },
+  {
+   "id": "bosc",
+   "name": "Timbre B: Oscillators"
+  },
+  {
+   "id": "bmodosc",
+   "name": "Timbre B: Modulation oscillator"
+  },
+  {
+   "id": "bmixer",
+   "name": "Timbre B: Mixer"
+  },
+  {
+   "id": "bfilter",
+   "name": "Timbre B: Filters"
+  },
+  {
+   "id": "bfenv",
+   "name": "Timbre B: Filter envelope"
+  },
+  {
+   "id": "baenv",
+   "name": "Timbre B: VCA envelope"
+  },
+  {
+   "id": "bvca",
+   "name": "Timbre B: VCA / voice"
+  },
+  {
+   "id": "blfo",
+   "name": "Timbre B: LFOs"
+  },
+  {
+   "id": "bplfo",
+   "name": "Timbre B: Pitch LFO"
+  },
+  {
+   "id": "barp",
+   "name": "Timbre B: Arpeggiator"
+  },
+  {
+   "id": "delay",
+   "name": "Diffusion delay (global)"
+  },
+  {
+   "id": "global",
+   "name": "Output / clock / sequencer (global)"
+  },
+  {
+   "id": "perf",
+   "name": "Performance controllers (not stored)"
+  }
+ ],
+ "params": [
+  {
+   "key": "aOsc1Octave",
+   "name": "A Osc 1 Octave",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 44,
+   "min": 0,
+   "max": 3,
+   "options": [
+    "16'",
+    "8'",
+    "4'",
+    "2'"
+   ],
+   "wire": [
+    0,
+    32,
+    64,
+    96
+   ]
+  },
+  {
+   "key": "aOsc1Freq",
+   "name": "A Osc 1 Frequency",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 45,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "+/-7 semitones, noon = in tune"
+  },
+  {
+   "key": "aOsc1TriSaw",
+   "name": "A Osc 1 Tri/Saw Mix",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 46,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aOsc1Pw",
+   "name": "A Osc 1 Pulse Width",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 47,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aOsc1WaveMix",
+   "name": "A Osc 1 Wave Mix (tri/saw <-> pulse)",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 48,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aOsc2Octave",
+   "name": "A Osc 2 Octave",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 49,
+   "min": 0,
+   "max": 3,
+   "options": [
+    "16'",
+    "8'",
+    "4'",
+    "2'"
+   ],
+   "wire": [
+    0,
+    32,
+    64,
+    96
+   ]
+  },
+  {
+   "key": "aOsc2Freq",
+   "name": "A Osc 2 Frequency",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 50,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "+/-7 semitones, noon = in tune"
+  },
+  {
+   "key": "aOsc2TriSaw",
+   "name": "A Osc 2 Tri/Saw Mix",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 51,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aOsc2Pw",
+   "name": "A Osc 2 Pulse Width",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 52,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aOsc2WaveMix",
+   "name": "A Osc 2 Wave Mix (tri/saw <-> pulse)",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 53,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aSync",
+   "name": "A Osc 2>1 Sync",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 54,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aFm21",
+   "name": "A Osc 2>1 FM",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 55,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aFm12",
+   "name": "A Osc 1>2 FM",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 56,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aFmAmt",
+   "name": "A FM Amount",
+   "group": "aosc",
+   "timbre": "a",
+   "cc": 57,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aModOscFreq",
+   "name": "A Mod Osc Frequency",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 25,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aModOscAudio",
+   "name": "A Mod Osc Audio range",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 26,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aModOscKbTrack",
+   "name": "A Mod Osc KB Track",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 27,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aModOscWave",
+   "name": "A Mod Osc Waveform",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 28,
+   "min": 0,
+   "max": 4,
+   "options": [
+    "sine",
+    "saw",
+    "ramp",
+    "square",
+    "noise"
+   ],
+   "wire": [
+    0,
+    25,
+    50,
+    75,
+    100
+   ],
+   "note": "Chart prints SQUARE as '5-99' -- read as 75-99"
+  },
+  {
+   "key": "aModOscKbReset",
+   "name": "A Mod Osc KB Reset",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 29,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aModOscUnipolar",
+   "name": "A Mod Osc Unipolar",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 30,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aModOscPitchAmt",
+   "name": "A Mod Osc Pitch Amount",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 31,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aModOscPitchOsc1",
+   "name": "A Mod Osc Pitch -> Osc 1",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 33,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127 (not the usual 0-63 off / 64-127 on)"
+  },
+  {
+   "key": "aModOscPitchOsc2",
+   "name": "A Mod Osc Pitch -> Osc 2",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 34,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "aModOscPwmAmt",
+   "name": "A Mod Osc PWM Amount",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 35,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aModOscPwmOsc1",
+   "name": "A Mod Osc PWM -> Osc 1",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 36,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "aModOscPwmOsc2",
+   "name": "A Mod Osc PWM -> Osc 2",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 37,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "aModOscFiltAmt",
+   "name": "A Mod Osc Filter Amount",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 39,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aModOscFilt1",
+   "name": "A Mod Osc Filter -> Filter 1",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 40,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "aModOscFilt2",
+   "name": "A Mod Osc Filter -> Filter 2",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 41,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "aModOscVcaAmt",
+   "name": "A Mod Osc VCA Amount",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 42,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aModOscVcaPan",
+   "name": "A Mod Osc VCA Pan",
+   "group": "amodosc",
+   "timbre": "a",
+   "cc": 43,
+   "min": 0,
+   "max": 127,
+   "note": "Panel PAN button; chart range 0-127"
+  },
+  {
+   "key": "aMixOsc1",
+   "name": "A Mixer Osc 1",
+   "group": "amixer",
+   "timbre": "a",
+   "cc": 58,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aMixOsc2",
+   "name": "A Mixer Osc 2",
+   "group": "amixer",
+   "timbre": "a",
+   "cc": 59,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aMixRing",
+   "name": "A Mixer Ring Mod",
+   "group": "amixer",
+   "timbre": "a",
+   "cc": 60,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aMixModOsc",
+   "name": "A Mixer Mod Osc",
+   "group": "amixer",
+   "timbre": "a",
+   "cc": 61,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aMixNoise",
+   "name": "A Mixer Noise",
+   "group": "amixer",
+   "timbre": "a",
+   "cc": 62,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aOverload",
+   "name": "A Overload (Clipping Level)",
+   "group": "amixer",
+   "timbre": "a",
+   "cc": 65,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFilt1Hp",
+   "name": "A Filter 1 High Pass",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 66,
+   "min": 0,
+   "max": 127,
+   "note": "Panel HIGH PASS button; chart range 0-127"
+  },
+  {
+   "key": "aFilt1Cutoff",
+   "name": "A Filter 1 Cutoff",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 67,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFilt1Reso",
+   "name": "A Filter 1 Resonance",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 68,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFilt1EnvAmt",
+   "name": "A Filter 1 Envelope Amount",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 69,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "bipolar, 0 at noon"
+  },
+  {
+   "key": "aFilt1Kb",
+   "name": "A Filter 1 KB Tracking",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 70,
+   "min": 0,
+   "max": 2,
+   "options": [
+    "off",
+    "1:2",
+    "1:1"
+   ],
+   "wire": [
+    0,
+    43,
+    85
+   ]
+  },
+  {
+   "key": "aFilt2Cutoff",
+   "name": "A Filter 2 Cutoff",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 72,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFilt2Reso",
+   "name": "A Filter 2 Resonance",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 73,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFilt2EnvAmt",
+   "name": "A Filter 2 Envelope Amount",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 75,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "bipolar, 0 at noon"
+  },
+  {
+   "key": "aFilt2Kb",
+   "name": "A Filter 2 KB Tracking",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 76,
+   "min": 0,
+   "max": 2,
+   "options": [
+    "off",
+    "1:2",
+    "1:1"
+   ],
+   "wire": [
+    0,
+    43,
+    85
+   ]
+  },
+  {
+   "key": "aFiltLink",
+   "name": "A Link Filters",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 77,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aFiltOrder",
+   "name": "A Filter Order",
+   "group": "afilter",
+   "timbre": "a",
+   "cc": 78,
+   "min": 0,
+   "max": 2,
+   "options": [
+    "series",
+    "stereo",
+    "parallel"
+   ],
+   "wire": [
+    0,
+    43,
+    85
+   ]
+  },
+  {
+   "key": "aFiltEgAttack",
+   "name": "A Filter EG Attack",
+   "group": "afenv",
+   "timbre": "a",
+   "cc": 79,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFiltEgDecay",
+   "name": "A Filter EG Decay",
+   "group": "afenv",
+   "timbre": "a",
+   "cc": 80,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFiltEgSustain",
+   "name": "A Filter EG Sustain",
+   "group": "afenv",
+   "timbre": "a",
+   "cc": 81,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFiltEgRelease",
+   "name": "A Filter EG Release",
+   "group": "afenv",
+   "timbre": "a",
+   "cc": 82,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aFiltEgLoop",
+   "name": "A Filter EG Loop",
+   "group": "afenv",
+   "timbre": "a",
+   "cc": 83,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aFiltEgVel",
+   "name": "A Filter EG Velocity",
+   "group": "afenv",
+   "timbre": "a",
+   "cc": 85,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aVcaEgAttack",
+   "name": "A VCA EG Attack",
+   "group": "aaenv",
+   "timbre": "a",
+   "cc": 86,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aVcaEgDecay",
+   "name": "A VCA EG Decay",
+   "group": "aaenv",
+   "timbre": "a",
+   "cc": 87,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aVcaEgSustain",
+   "name": "A VCA EG Sustain",
+   "group": "aaenv",
+   "timbre": "a",
+   "cc": 88,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aVcaEgRelease",
+   "name": "A VCA EG Release",
+   "group": "aaenv",
+   "timbre": "a",
+   "cc": 89,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aVcaEgLoop",
+   "name": "A VCA EG Loop",
+   "group": "aaenv",
+   "timbre": "a",
+   "cc": 90,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aVcaEgVel",
+   "name": "A VCA EG Velocity",
+   "group": "aaenv",
+   "timbre": "a",
+   "cc": 91,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aVolume",
+   "name": "A Timbre Volume (VCA level)",
+   "group": "avca",
+   "timbre": "a",
+   "cc": 7,
+   "min": 0,
+   "max": 127,
+   "note": "'Volume control for the currently active timbre (A/B) before it reaches the voice summing busses'"
+  },
+  {
+   "key": "aPan",
+   "name": "A Pan",
+   "group": "avca",
+   "timbre": "a",
+   "cc": 10,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "L ... 0 ... R"
+  },
+  {
+   "key": "aPanSpread",
+   "name": "A Pan Spread",
+   "group": "avca",
+   "timbre": "a",
+   "cc": 9,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aGlide",
+   "name": "A Glide Time",
+   "group": "avca",
+   "timbre": "a",
+   "cc": 5,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aDetune",
+   "name": "A Voice Detune",
+   "group": "avca",
+   "timbre": "a",
+   "cc": 92,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aUnison",
+   "name": "A Voice Unison",
+   "group": "avca",
+   "timbre": "a",
+   "cc": 108,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aMono",
+   "name": "A Voice Mono",
+   "group": "avca",
+   "timbre": "a",
+   "cc": 109,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aLfo1Rate",
+   "name": "A LFO 1 Rate",
+   "group": "alfo",
+   "timbre": "a",
+   "cc": 12,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aLfo1Amt",
+   "name": "A LFO 1 Amplitude",
+   "group": "alfo",
+   "timbre": "a",
+   "cc": 13,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aLfo1Wave",
+   "name": "A LFO 1 Waveform",
+   "group": "alfo",
+   "timbre": "a",
+   "cc": 14,
+   "min": 0,
+   "max": 4,
+   "options": [
+    "tri",
+    "saw",
+    "square",
+    "random",
+    "user"
+   ],
+   "wire": [
+    0,
+    25,
+    50,
+    75,
+    100
+   ]
+  },
+  {
+   "key": "aLfo2Rate",
+   "name": "A LFO 2 Rate",
+   "group": "alfo",
+   "timbre": "a",
+   "cc": 15,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aLfo2Amt",
+   "name": "A LFO 2 Amplitude",
+   "group": "alfo",
+   "timbre": "a",
+   "cc": 16,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aLfo2Wave",
+   "name": "A LFO 2 Waveform",
+   "group": "alfo",
+   "timbre": "a",
+   "cc": 17,
+   "min": 0,
+   "max": 4,
+   "options": [
+    "tri",
+    "saw",
+    "square",
+    "random",
+    "user"
+   ],
+   "wire": [
+    0,
+    25,
+    50,
+    75,
+    100
+   ]
+  },
+  {
+   "key": "aPlfoRate",
+   "name": "A Pitch LFO Rate",
+   "group": "aplfo",
+   "timbre": "a",
+   "cc": 18,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "aPlfoShape",
+   "name": "A Pitch LFO Shape",
+   "group": "aplfo",
+   "timbre": "a",
+   "cc": 19,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "ramp down ... triangle (noon) ... ramp up"
+  },
+  {
+   "key": "aPlfoAmt",
+   "name": "A Pitch LFO Amount",
+   "group": "aplfo",
+   "timbre": "a",
+   "cc": 20,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "noon = no modulation"
+  },
+  {
+   "key": "aPlfoOsc1",
+   "name": "A Pitch LFO -> Osc 1",
+   "group": "aplfo",
+   "timbre": "a",
+   "cc": 21,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aPlfoOsc2",
+   "name": "A Pitch LFO -> Osc 2",
+   "group": "aplfo",
+   "timbre": "a",
+   "cc": 22,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aPlfoModOsc",
+   "name": "A Pitch LFO -> Mod Osc",
+   "group": "aplfo",
+   "timbre": "a",
+   "cc": 23,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aPlfoDetune",
+   "name": "A Pitch LFO -> Detune",
+   "group": "aplfo",
+   "timbre": "a",
+   "cc": 24,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aArpOn",
+   "name": "A Arpeggiator On",
+   "group": "aarp",
+   "timbre": "a",
+   "cc": 112,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aArpClockDiv",
+   "name": "A Arpeggiator Clock Div",
+   "group": "aarp",
+   "timbre": "a",
+   "cc": 111,
+   "min": 0,
+   "max": 127,
+   "note": "0-127 sweeps the division list (bands not published)"
+  },
+  {
+   "key": "aArpFwBk",
+   "name": "A Arpeggiator FW/BK",
+   "group": "aarp",
+   "timbre": "a",
+   "cc": 113,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "aArpDir",
+   "name": "A Arpeggiator Direction",
+   "group": "aarp",
+   "timbre": "a",
+   "cc": 114,
+   "min": 0,
+   "max": 2,
+   "options": [
+    "order",
+    "pattern",
+    "random"
+   ],
+   "wire": [
+    0,
+    43,
+    85
+   ]
+  },
+  {
+   "key": "aArpOct",
+   "name": "A Arpeggiator Octave Range",
+   "group": "aarp",
+   "timbre": "a",
+   "cc": 115,
+   "min": 0,
+   "max": 3,
+   "options": [
+    "1",
+    "2",
+    "3",
+    "4"
+   ],
+   "wire": [
+    0,
+    32,
+    64,
+    96
+   ]
+  },
+  {
+   "key": "bOsc1Octave",
+   "name": "B Osc 1 Octave",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 44,
+   "min": 0,
+   "max": 3,
+   "options": [
+    "16'",
+    "8'",
+    "4'",
+    "2'"
+   ],
+   "wire": [
+    0,
+    32,
+    64,
+    96
+   ]
+  },
+  {
+   "key": "bOsc1Freq",
+   "name": "B Osc 1 Frequency",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 45,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "+/-7 semitones, noon = in tune"
+  },
+  {
+   "key": "bOsc1TriSaw",
+   "name": "B Osc 1 Tri/Saw Mix",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 46,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bOsc1Pw",
+   "name": "B Osc 1 Pulse Width",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 47,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bOsc1WaveMix",
+   "name": "B Osc 1 Wave Mix (tri/saw <-> pulse)",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 48,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bOsc2Octave",
+   "name": "B Osc 2 Octave",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 49,
+   "min": 0,
+   "max": 3,
+   "options": [
+    "16'",
+    "8'",
+    "4'",
+    "2'"
+   ],
+   "wire": [
+    0,
+    32,
+    64,
+    96
+   ]
+  },
+  {
+   "key": "bOsc2Freq",
+   "name": "B Osc 2 Frequency",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 50,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "+/-7 semitones, noon = in tune"
+  },
+  {
+   "key": "bOsc2TriSaw",
+   "name": "B Osc 2 Tri/Saw Mix",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 51,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bOsc2Pw",
+   "name": "B Osc 2 Pulse Width",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 52,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bOsc2WaveMix",
+   "name": "B Osc 2 Wave Mix (tri/saw <-> pulse)",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 53,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bSync",
+   "name": "B Osc 2>1 Sync",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 54,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bFm21",
+   "name": "B Osc 2>1 FM",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 55,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bFm12",
+   "name": "B Osc 1>2 FM",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 56,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bFmAmt",
+   "name": "B FM Amount",
+   "group": "bosc",
+   "timbre": "b",
+   "cc": 57,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bModOscFreq",
+   "name": "B Mod Osc Frequency",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 25,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bModOscAudio",
+   "name": "B Mod Osc Audio range",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 26,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bModOscKbTrack",
+   "name": "B Mod Osc KB Track",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 27,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bModOscWave",
+   "name": "B Mod Osc Waveform",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 28,
+   "min": 0,
+   "max": 4,
+   "options": [
+    "sine",
+    "saw",
+    "ramp",
+    "square",
+    "noise"
+   ],
+   "wire": [
+    0,
+    25,
+    50,
+    75,
+    100
+   ],
+   "note": "Chart prints SQUARE as '5-99' -- read as 75-99"
+  },
+  {
+   "key": "bModOscKbReset",
+   "name": "B Mod Osc KB Reset",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 29,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bModOscUnipolar",
+   "name": "B Mod Osc Unipolar",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 30,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bModOscPitchAmt",
+   "name": "B Mod Osc Pitch Amount",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 31,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bModOscPitchOsc1",
+   "name": "B Mod Osc Pitch -> Osc 1",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 33,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127 (not the usual 0-63 off / 64-127 on)"
+  },
+  {
+   "key": "bModOscPitchOsc2",
+   "name": "B Mod Osc Pitch -> Osc 2",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 34,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "bModOscPwmAmt",
+   "name": "B Mod Osc PWM Amount",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 35,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bModOscPwmOsc1",
+   "name": "B Mod Osc PWM -> Osc 1",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 36,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "bModOscPwmOsc2",
+   "name": "B Mod Osc PWM -> Osc 2",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 37,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "bModOscFiltAmt",
+   "name": "B Mod Osc Filter Amount",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 39,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bModOscFilt1",
+   "name": "B Mod Osc Filter -> Filter 1",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 40,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "bModOscFilt2",
+   "name": "B Mod Osc Filter -> Filter 2",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 41,
+   "min": 0,
+   "max": 127,
+   "note": "Panel button; chart range 0-127"
+  },
+  {
+   "key": "bModOscVcaAmt",
+   "name": "B Mod Osc VCA Amount",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 42,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bModOscVcaPan",
+   "name": "B Mod Osc VCA Pan",
+   "group": "bmodosc",
+   "timbre": "b",
+   "cc": 43,
+   "min": 0,
+   "max": 127,
+   "note": "Panel PAN button; chart range 0-127"
+  },
+  {
+   "key": "bMixOsc1",
+   "name": "B Mixer Osc 1",
+   "group": "bmixer",
+   "timbre": "b",
+   "cc": 58,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bMixOsc2",
+   "name": "B Mixer Osc 2",
+   "group": "bmixer",
+   "timbre": "b",
+   "cc": 59,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bMixRing",
+   "name": "B Mixer Ring Mod",
+   "group": "bmixer",
+   "timbre": "b",
+   "cc": 60,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bMixModOsc",
+   "name": "B Mixer Mod Osc",
+   "group": "bmixer",
+   "timbre": "b",
+   "cc": 61,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bMixNoise",
+   "name": "B Mixer Noise",
+   "group": "bmixer",
+   "timbre": "b",
+   "cc": 62,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bOverload",
+   "name": "B Overload (Clipping Level)",
+   "group": "bmixer",
+   "timbre": "b",
+   "cc": 65,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFilt1Hp",
+   "name": "B Filter 1 High Pass",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 66,
+   "min": 0,
+   "max": 127,
+   "note": "Panel HIGH PASS button; chart range 0-127"
+  },
+  {
+   "key": "bFilt1Cutoff",
+   "name": "B Filter 1 Cutoff",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 67,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFilt1Reso",
+   "name": "B Filter 1 Resonance",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 68,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFilt1EnvAmt",
+   "name": "B Filter 1 Envelope Amount",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 69,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "bipolar, 0 at noon"
+  },
+  {
+   "key": "bFilt1Kb",
+   "name": "B Filter 1 KB Tracking",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 70,
+   "min": 0,
+   "max": 2,
+   "options": [
+    "off",
+    "1:2",
+    "1:1"
+   ],
+   "wire": [
+    0,
+    43,
+    85
+   ]
+  },
+  {
+   "key": "bFilt2Cutoff",
+   "name": "B Filter 2 Cutoff",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 72,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFilt2Reso",
+   "name": "B Filter 2 Resonance",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 73,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFilt2EnvAmt",
+   "name": "B Filter 2 Envelope Amount",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 75,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "bipolar, 0 at noon"
+  },
+  {
+   "key": "bFilt2Kb",
+   "name": "B Filter 2 KB Tracking",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 76,
+   "min": 0,
+   "max": 2,
+   "options": [
+    "off",
+    "1:2",
+    "1:1"
+   ],
+   "wire": [
+    0,
+    43,
+    85
+   ]
+  },
+  {
+   "key": "bFiltLink",
+   "name": "B Link Filters",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 77,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bFiltOrder",
+   "name": "B Filter Order",
+   "group": "bfilter",
+   "timbre": "b",
+   "cc": 78,
+   "min": 0,
+   "max": 2,
+   "options": [
+    "series",
+    "stereo",
+    "parallel"
+   ],
+   "wire": [
+    0,
+    43,
+    85
+   ]
+  },
+  {
+   "key": "bFiltEgAttack",
+   "name": "B Filter EG Attack",
+   "group": "bfenv",
+   "timbre": "b",
+   "cc": 79,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFiltEgDecay",
+   "name": "B Filter EG Decay",
+   "group": "bfenv",
+   "timbre": "b",
+   "cc": 80,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFiltEgSustain",
+   "name": "B Filter EG Sustain",
+   "group": "bfenv",
+   "timbre": "b",
+   "cc": 81,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFiltEgRelease",
+   "name": "B Filter EG Release",
+   "group": "bfenv",
+   "timbre": "b",
+   "cc": 82,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bFiltEgLoop",
+   "name": "B Filter EG Loop",
+   "group": "bfenv",
+   "timbre": "b",
+   "cc": 83,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bFiltEgVel",
+   "name": "B Filter EG Velocity",
+   "group": "bfenv",
+   "timbre": "b",
+   "cc": 85,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bVcaEgAttack",
+   "name": "B VCA EG Attack",
+   "group": "baenv",
+   "timbre": "b",
+   "cc": 86,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bVcaEgDecay",
+   "name": "B VCA EG Decay",
+   "group": "baenv",
+   "timbre": "b",
+   "cc": 87,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bVcaEgSustain",
+   "name": "B VCA EG Sustain",
+   "group": "baenv",
+   "timbre": "b",
+   "cc": 88,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bVcaEgRelease",
+   "name": "B VCA EG Release",
+   "group": "baenv",
+   "timbre": "b",
+   "cc": 89,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bVcaEgLoop",
+   "name": "B VCA EG Loop",
+   "group": "baenv",
+   "timbre": "b",
+   "cc": 90,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bVcaEgVel",
+   "name": "B VCA EG Velocity",
+   "group": "baenv",
+   "timbre": "b",
+   "cc": 91,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bVolume",
+   "name": "B Timbre Volume (VCA level)",
+   "group": "bvca",
+   "timbre": "b",
+   "cc": 7,
+   "min": 0,
+   "max": 127,
+   "note": "'Volume control for the currently active timbre (A/B) before it reaches the voice summing busses'"
+  },
+  {
+   "key": "bPan",
+   "name": "B Pan",
+   "group": "bvca",
+   "timbre": "b",
+   "cc": 10,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "L ... 0 ... R"
+  },
+  {
+   "key": "bPanSpread",
+   "name": "B Pan Spread",
+   "group": "bvca",
+   "timbre": "b",
+   "cc": 9,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bGlide",
+   "name": "B Glide Time",
+   "group": "bvca",
+   "timbre": "b",
+   "cc": 5,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bDetune",
+   "name": "B Voice Detune",
+   "group": "bvca",
+   "timbre": "b",
+   "cc": 92,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bUnison",
+   "name": "B Voice Unison",
+   "group": "bvca",
+   "timbre": "b",
+   "cc": 108,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bMono",
+   "name": "B Voice Mono",
+   "group": "bvca",
+   "timbre": "b",
+   "cc": 109,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bLfo1Rate",
+   "name": "B LFO 1 Rate",
+   "group": "blfo",
+   "timbre": "b",
+   "cc": 12,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bLfo1Amt",
+   "name": "B LFO 1 Amplitude",
+   "group": "blfo",
+   "timbre": "b",
+   "cc": 13,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bLfo1Wave",
+   "name": "B LFO 1 Waveform",
+   "group": "blfo",
+   "timbre": "b",
+   "cc": 14,
+   "min": 0,
+   "max": 4,
+   "options": [
+    "tri",
+    "saw",
+    "square",
+    "random",
+    "user"
+   ],
+   "wire": [
+    0,
+    25,
+    50,
+    75,
+    100
+   ]
+  },
+  {
+   "key": "bLfo2Rate",
+   "name": "B LFO 2 Rate",
+   "group": "blfo",
+   "timbre": "b",
+   "cc": 15,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bLfo2Amt",
+   "name": "B LFO 2 Amplitude",
+   "group": "blfo",
+   "timbre": "b",
+   "cc": 16,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bLfo2Wave",
+   "name": "B LFO 2 Waveform",
+   "group": "blfo",
+   "timbre": "b",
+   "cc": 17,
+   "min": 0,
+   "max": 4,
+   "options": [
+    "tri",
+    "saw",
+    "square",
+    "random",
+    "user"
+   ],
+   "wire": [
+    0,
+    25,
+    50,
+    75,
+    100
+   ]
+  },
+  {
+   "key": "bPlfoRate",
+   "name": "B Pitch LFO Rate",
+   "group": "bplfo",
+   "timbre": "b",
+   "cc": 18,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "bPlfoShape",
+   "name": "B Pitch LFO Shape",
+   "group": "bplfo",
+   "timbre": "b",
+   "cc": 19,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "ramp down ... triangle (noon) ... ramp up"
+  },
+  {
+   "key": "bPlfoAmt",
+   "name": "B Pitch LFO Amount",
+   "group": "bplfo",
+   "timbre": "b",
+   "cc": 20,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "noon = no modulation"
+  },
+  {
+   "key": "bPlfoOsc1",
+   "name": "B Pitch LFO -> Osc 1",
+   "group": "bplfo",
+   "timbre": "b",
+   "cc": 21,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bPlfoOsc2",
+   "name": "B Pitch LFO -> Osc 2",
+   "group": "bplfo",
+   "timbre": "b",
+   "cc": 22,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bPlfoModOsc",
+   "name": "B Pitch LFO -> Mod Osc",
+   "group": "bplfo",
+   "timbre": "b",
+   "cc": 23,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bPlfoDetune",
+   "name": "B Pitch LFO -> Detune",
+   "group": "bplfo",
+   "timbre": "b",
+   "cc": 24,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bArpOn",
+   "name": "B Arpeggiator On",
+   "group": "barp",
+   "timbre": "b",
+   "cc": 112,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bArpClockDiv",
+   "name": "B Arpeggiator Clock Div",
+   "group": "barp",
+   "timbre": "b",
+   "cc": 111,
+   "min": 0,
+   "max": 127,
+   "note": "0-127 sweeps the division list (bands not published)"
+  },
+  {
+   "key": "bArpFwBk",
+   "name": "B Arpeggiator FW/BK",
+   "group": "barp",
+   "timbre": "b",
+   "cc": 113,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "bArpDir",
+   "name": "B Arpeggiator Direction",
+   "group": "barp",
+   "timbre": "b",
+   "cc": 114,
+   "min": 0,
+   "max": 2,
+   "options": [
+    "order",
+    "pattern",
+    "random"
+   ],
+   "wire": [
+    0,
+    43,
+    85
+   ]
+  },
+  {
+   "key": "bArpOct",
+   "name": "B Arpeggiator Octave Range",
+   "group": "barp",
+   "timbre": "b",
+   "cc": 115,
+   "min": 0,
+   "max": 3,
+   "options": [
+    "1",
+    "2",
+    "3",
+    "4"
+   ],
+   "wire": [
+    0,
+    32,
+    64,
+    96
+   ]
+  },
+  {
+   "key": "delayTimeL",
+   "name": "Delay Time Left",
+   "group": "delay",
+   "timbre": null,
+   "cc": 93,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "delayTimeR",
+   "name": "Delay Time Right",
+   "group": "delay",
+   "timbre": null,
+   "cc": 94,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "delayLink",
+   "name": "Link Delays",
+   "group": "delay",
+   "timbre": null,
+   "cc": 95,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "delaySync",
+   "name": "Delay Clock Sync",
+   "group": "delay",
+   "timbre": null,
+   "cc": 102,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "delayFeedback",
+   "name": "Delay Feedback",
+   "group": "delay",
+   "timbre": null,
+   "cc": 103,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "delayCharacter",
+   "name": "Delay Character",
+   "group": "delay",
+   "timbre": null,
+   "cc": 104,
+   "min": 0,
+   "max": 127,
+   "display": "bipolar",
+   "valueOffset": -64,
+   "default": 64,
+   "note": "- 0 + (noon = 0)"
+  },
+  {
+   "key": "delayMix",
+   "name": "Delay Mix",
+   "group": "delay",
+   "timbre": null,
+   "cc": 105,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "delayTimbreA",
+   "name": "Delay on Timbre A",
+   "group": "delay",
+   "timbre": null,
+   "cc": 106,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "delayTimbreB",
+   "name": "Delay on Timbre B",
+   "group": "delay",
+   "timbre": null,
+   "cc": 107,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ]
+  },
+  {
+   "key": "lowCut",
+   "name": "Low Cut",
+   "group": "global",
+   "timbre": null,
+   "cc": 8,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "mute",
+   "name": "Mute (main out)",
+   "group": "global",
+   "timbre": null,
+   "cc": 3,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ],
+   "note": "Clickless mute of MAIN OUT",
+   "norandom": true
+  },
+  {
+   "key": "tempo",
+   "name": "Clock Tempo",
+   "group": "global",
+   "timbre": null,
+   "cc": 116,
+   "min": 0,
+   "max": 127,
+   "norandom": true
+  },
+  {
+   "key": "seqClockDiv",
+   "name": "Sequencer Clock Div",
+   "group": "global",
+   "timbre": null,
+   "cc": 110,
+   "min": 0,
+   "max": 127
+  },
+  {
+   "key": "modWheel",
+   "name": "Mod Wheel",
+   "group": "perf",
+   "timbre": null,
+   "cc": 1,
+   "min": 0,
+   "max": 127,
+   "notInPatch": true,
+   "norandom": true
+  },
+  {
+   "key": "expression",
+   "name": "Expression",
+   "group": "perf",
+   "timbre": null,
+   "cc": 11,
+   "min": 0,
+   "max": 127,
+   "notInPatch": true,
+   "norandom": true
+  },
+  {
+   "key": "sustain",
+   "name": "Sustain Pedal",
+   "group": "perf",
+   "timbre": null,
+   "cc": 64,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ],
+   "notInPatch": true,
+   "norandom": true
+  },
+  {
+   "key": "hold",
+   "name": "Hold",
+   "group": "perf",
+   "timbre": null,
+   "cc": 71,
+   "min": 0,
+   "max": 1,
+   "options": [
+    "off",
+    "on"
+   ],
+   "wire": [
+    0,
+    64
+   ],
+   "notInPatch": true,
+   "norandom": true
+  }
+ ],
+ "uncertain": [
+  "Per-timbre CC addressing is not documented. The MULTI MODE text says 'messages at MIDI CHANNEL IN will control TIMBRE A ... TIMBRE B ... via messages at MULTI IN B CHANNEL' -- read here as covering CCs as well as notes. It may instead be that CCs only ever hit the timbre selected on the panel (Timbre Volume is described as 'for the currently active timbre'), and the Electra One preset author notes his preset 'controls only one Timbre'. First hardware test: move a B-channel CC and watch which timbre changes; if it's always the panel timbre, drop the b* params and tell the user to pick the timbre on the synth.",
+  "Which timbre a transmitted panel CC belongs to is not encoded; assumed to be the panel-selected timbre.",
+  "Bank select: manual prints 'LSB is 1-16 ... PC is 1-16'. Assumed 1-based display of 0-15; if bank 1 doesn't answer to LSB 0, use lsb 1-16 (and PC 1-16 would mean prog+1, unlikely).",
+  "CC 33/34/36/37/40/41/43/66 are panel buttons (mod-osc routing, PAN, HIGH PASS) but the chart gives them a plain 0-127 range, not the '0-63 off / 64-127 on' used for other switches. Modelled as 0-127 as printed; probably on/off at 64.",
+  "Mod Osc Waveform: chart prints SQUARE as '5-99' (typo) -- read as 75-99.",
+  "Arpeggiator / Sequencer Clock Div, Clock Tempo, LFO rates: 0-127 sweeps with no published band tables or units.",
+  "Filter 1 'High Pass' (CC66) and Filter 1 Cutoff 'spacing' (cutoff becomes spacing when LINK FILTERS is on) -- CC behaviour in linked mode not stated.",
+  "Master MAIN OUT / HEADPHONES volume, mod map (16 slots per timbre), chord memory, voice count/split/stack, envelope curves and MORE-menu params, global mod (1.4) and sequencer steps have no CCs: the editor can't touch them.",
+  "No NRPN / 14-bit anywhere in the 1.1-1.4 docs; CCs stepping is coarse on filter cutoff (128 steps).",
+  "pencilresearch/midi (midi.guide) Muse.csv has the envelope CCs shifted (80 = Sustain, 81 = Delay, no Decay); the official chart (79 A, 80 D, 81 S, 82 R; 86-89 VCA A/D/S/R) is used."
+ ]
+}
