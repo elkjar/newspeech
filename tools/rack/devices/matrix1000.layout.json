@@ -1,0 +1,668 @@
+{
+  "comment": "Plugin-panel pattern (mopho/esq1). Rows follow the Matrix-6/1000 voice: DCO 1/2 -> mix -> VCF (+ DCO 1 -> VCF FM) -> VCA 1 -> VCA 2 (Env 2), then the hard-wired modulators (Env 1 -> VCF, Env 2 -> VCA 2, Env 3 -> FM; LFO 1 -> both DCO freqs, LFO 2 -> both PWs, Ramp n -> LFO n amp), then the 10-slot matrix, tracking generator and portamento/keyboard. The Matrix-1000 has no panel editing, so every control here is editor-only. DCO uses one select (select.shared 'dco'); the two LFO groups share 'lfo' (LFO n's ramp is Ramp n; 'spd mod' is pressure for LFO 1, keyboard for LFO 2); envelopes share 'env' and their 'dest amt' cell resolves to the env's hard-wired amount (vcfEnv1 / vca2Env2 / vcfFmEnv3). 'levers' edits the fixed bend / vibrato / portamento / key-track switches of DCO 1, DCO 2 or the VCF (DCO 1 has no key-track switch). The mod matrix slot select picks one of 10 slots; a source or destination of 'none' empties the slot (the driver writes 0/0 to both).",
+  "rows": [
+    {
+      "id": "osc",
+      "groups": [
+        {
+          "title": "dco",
+          "select": {
+            "label": "dco",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              }
+            ],
+            "shared": "dco"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "dco{n}Freq",
+              "label": "freq"
+            },
+            {
+              "k": "dco{n}Shape",
+              "label": "saw↔tri"
+            },
+            {
+              "k": "dco{n}PW",
+              "label": "pw"
+            },
+            {
+              "k": "dco{n}FreqLfo1",
+              "label": "lfo 1 → freq"
+            },
+            {
+              "k": "dco{n}PwLfo2",
+              "label": "lfo 2 → pw"
+            },
+            {
+              "k": "dco2Detune",
+              "label": "detune",
+              "only": [
+                "2"
+              ]
+            },
+            {
+              "k": "sync",
+              "label": "sync",
+              "as": "pick",
+              "only": [
+                "1"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "levers",
+          "select": {
+            "label": "to",
+            "options": [
+              {
+                "label": "dco 1",
+                "vars": {
+                  "d": "dco1"
+                }
+              },
+              {
+                "label": "dco 2",
+                "vars": {
+                  "d": "dco2"
+                }
+              },
+              {
+                "label": "vcf",
+                "vars": {
+                  "d": "vcf"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{d}Bend",
+              "label": "bend",
+              "as": "toggle"
+            },
+            {
+              "k": "{d}Vibrato",
+              "label": "vibrato",
+              "as": "toggle"
+            },
+            {
+              "k": "{d}Porta",
+              "label": "porta",
+              "as": "toggle"
+            },
+            {
+              "k": "{d}KeyTrack",
+              "label": "key trk",
+              "as": "toggle",
+              "only": [
+                "dco 2",
+                "vcf"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "mixer",
+          "controls": [
+            {
+              "k": "dco1Waveform",
+              "label": "dco 1 wave",
+              "as": "seg",
+              "labels": [
+                "off",
+                "pls",
+                "wav",
+                "both"
+              ]
+            },
+            {
+              "k": "dco2Waveform",
+              "label": "dco 2 wave",
+              "as": "seg",
+              "labels": [
+                "off",
+                "pls",
+                "wav",
+                "both",
+                "nse"
+              ]
+            },
+            {
+              "k": "mix",
+              "label": "dco 2↔1"
+            },
+            {
+              "k": "dco1Click",
+              "label": "click 1",
+              "as": "toggle"
+            },
+            {
+              "k": "dco2Click",
+              "label": "click 2",
+              "as": "toggle"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "filter",
+      "groups": [
+        {
+          "title": "vcf",
+          "controls": [
+            {
+              "k": "vcfFreq",
+              "label": "cutoff"
+            },
+            {
+              "k": "vcfRes",
+              "label": "reso"
+            },
+            {
+              "k": "vcfEnv1",
+              "label": "env 1 amt"
+            },
+            {
+              "k": "vcfPressure",
+              "label": "pressure"
+            },
+            {
+              "k": "vcfKeyTrack",
+              "label": "key trk",
+              "as": "toggle"
+            },
+            {
+              "k": "vcfFm",
+              "label": "fm (dco 1)"
+            },
+            {
+              "k": "vcfFmEnv3",
+              "label": "env 3 → fm"
+            },
+            {
+              "k": "vcfFmPressure",
+              "label": "press → fm"
+            }
+          ]
+        },
+        {
+          "title": "vca",
+          "controls": [
+            {
+              "k": "vca1",
+              "label": "vca 1"
+            },
+            {
+              "k": "vca1Velocity",
+              "label": "velocity"
+            },
+            {
+              "k": "vca2Env2",
+              "label": "env 2 → vca 2"
+            },
+            {
+              "k": "env2Amp",
+              "label": "env 2 amp"
+            },
+            {
+              "k": "env2Velocity",
+              "label": "env 2 vel"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "env",
+      "groups": [
+        {
+          "title": "envelopes",
+          "select": {
+            "label": "env",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1",
+                  "to": "vcfEnv1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2",
+                  "to": "vca2Env2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3",
+                  "to": "vcfFmEnv3"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "env"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "as": "env",
+              "label": "shape",
+              "keys": [
+                "env{e}Delay",
+                "env{e}Attack",
+                "env{e}Decay",
+                "env{e}Sustain",
+                "env{e}Release"
+              ]
+            },
+            {
+              "k": "env{e}Delay",
+              "label": "delay"
+            },
+            {
+              "k": "env{e}Attack",
+              "label": "attack"
+            },
+            {
+              "k": "env{e}Decay",
+              "label": "decay"
+            },
+            {
+              "k": "env{e}Sustain",
+              "label": "sustain"
+            },
+            {
+              "k": "env{e}Release",
+              "label": "release"
+            },
+            {
+              "k": "env{e}Amp",
+              "label": "amplitude"
+            },
+            {
+              "k": "env{e}Velocity",
+              "label": "velocity"
+            }
+          ]
+        },
+        {
+          "title": "env modes",
+          "select": {
+            "label": "env",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "e": "1",
+                  "to": "vcfEnv1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "e": "2",
+                  "to": "vca2Env2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "3",
+                  "to": "vcfFmEnv3"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "env"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{to}",
+              "label": "dest amt"
+            },
+            {
+              "k": "env{e}Trigger",
+              "label": "trigger",
+              "as": "pick"
+            },
+            {
+              "k": "env{e}Mode",
+              "label": "mode",
+              "as": "seg",
+              "labels": [
+                "norm",
+                "dadr",
+                "free",
+                "d+f"
+              ]
+            },
+            {
+              "k": "env{e}LfoTrig",
+              "label": "lfo trig",
+              "as": "pick"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lfo",
+      "groups": [
+        {
+          "title": "lfo",
+          "select": {
+            "label": "lfo",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "lfo"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "lfo{n}Wave",
+              "label": "wave",
+              "as": "seg",
+              "labels": [
+                "tri",
+                "up",
+                "dn",
+                "sqr",
+                "rnd",
+                "nse",
+                "s&h"
+              ]
+            },
+            {
+              "k": "lfo{n}Speed",
+              "label": "speed"
+            },
+            {
+              "k": "lfo{n}Amp",
+              "label": "amount"
+            },
+            {
+              "k": "lfo{n}Trigger",
+              "label": "trigger",
+              "as": "seg",
+              "labels": [
+                "free",
+                "sgl",
+                "mlt",
+                "ext"
+              ]
+            },
+            {
+              "k": "lfo{n}Retrig",
+              "label": "retrig pt"
+            },
+            {
+              "k": "lfo{n}Lag",
+              "label": "lag",
+              "as": "toggle"
+            },
+            {
+              "k": "lfo{n}Sample",
+              "label": "s&h src",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "ramp · lfo mod",
+          "select": {
+            "label": "lfo",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "lfo"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "ramp{n}Rate",
+              "label": "ramp rate"
+            },
+            {
+              "k": "ramp{n}Mode",
+              "label": "ramp trig",
+              "as": "seg",
+              "labels": [
+                "sgl",
+                "mlt",
+                "ext",
+                "gate"
+              ]
+            },
+            {
+              "k": "lfo{n}RampAmt",
+              "label": "ramp → amt"
+            },
+            {
+              "k": "lfo{n}SpeedMod",
+              "label": "spd mod"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mod",
+      "groups": [
+        {
+          "title": "mod matrix",
+          "select": {
+            "label": "slot",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "s": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "s": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "s": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "s": "4"
+                }
+              },
+              {
+                "label": "5",
+                "vars": {
+                  "s": "5"
+                }
+              },
+              {
+                "label": "6",
+                "vars": {
+                  "s": "6"
+                }
+              },
+              {
+                "label": "7",
+                "vars": {
+                  "s": "7"
+                }
+              },
+              {
+                "label": "8",
+                "vars": {
+                  "s": "8"
+                }
+              },
+              {
+                "label": "9",
+                "vars": {
+                  "s": "9"
+                }
+              },
+              {
+                "label": "10",
+                "vars": {
+                  "s": "10"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "mod{s}Src",
+              "label": "source",
+              "as": "pick"
+            },
+            {
+              "k": "mod{s}Amt",
+              "label": "amount"
+            },
+            {
+              "k": "mod{s}Dst",
+              "label": "dest",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "tracking",
+          "controls": [
+            {
+              "k": "trackSrc",
+              "label": "input",
+              "as": "pick"
+            },
+            {
+              "k": "trackPoint1",
+              "label": "p1"
+            },
+            {
+              "k": "trackPoint2",
+              "label": "p2"
+            },
+            {
+              "k": "trackPoint3",
+              "label": "p3"
+            },
+            {
+              "k": "trackPoint4",
+              "label": "p4"
+            },
+            {
+              "k": "trackPoint5",
+              "label": "p5"
+            }
+          ]
+        },
+        {
+          "title": "portamento · keys",
+          "controls": [
+            {
+              "k": "portaRate",
+              "label": "rate"
+            },
+            {
+              "k": "portaVelocity",
+              "label": "velocity"
+            },
+            {
+              "k": "portaMode",
+              "label": "mode",
+              "as": "seg",
+              "labels": [
+                "spd",
+                "time",
+                "exp",
+                "exp2"
+              ]
+            },
+            {
+              "k": "portaLegato",
+              "label": "legato",
+              "as": "toggle"
+            },
+            {
+              "k": "keyboardMode",
+              "label": "voices",
+              "as": "seg",
+              "labels": [
+                "reas",
+                "rot",
+                "uni",
+                "rob"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

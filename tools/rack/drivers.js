@@ -37,7 +37,7 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim"];
 
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
@@ -47,6 +47,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "ensoniq") return ensoniqDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "emax") return emaxDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "yamaha4op") return yamaha4opDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "oberheim") return oberheimDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
 
@@ -968,6 +969,147 @@ function yamaha4opDriver(schema, midi, getChannel, prefs) {
       if (ev.type !== "sysex" || !isDump(0x03)(ev.data) || !ok(ev.data)) return [];
       const v = valuesFromEdit(null, ev.data);
       return VC.map((p) => ({ param: p, value: v[p.key] }));
+    },
+  };
+}
+
+// Oberheim Matrix-1000 (Matrix-6 patch format). F0 10 06 <op> … F7, no channel
+// byte. A patch is 134 bytes, low nibble first, + checksum (sum & 7F). Live edits:
+// 06 <param> <value> and matrix slots 0B <slot> <src> <amt> <dst>. Bank select is
+// 0A <bank> … 0C (bank lock). No front panel editing and no stored names: ROM
+// names come from the factory list, writable slots from names saved at store.
+function oberheimDriver(schema, midi, getChannel, prefs) {
+  const H = [0xf0, 0x10, 0x06];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const bank = (bi) => schema.programs.banks[bi];
+  const N = 134;
+  const isOp = (...ops) => (d) => d[0] === 0xf0 && d[1] === 0x10 && d[2] === 0x06 && ops.includes(d[3]);
+  const pack = (img) => img.flatMap((b) => [b & 15, (b >> 4) & 15]);
+  const cks = (img) => img.reduce((t, b) => t + b, 0) & 0x7f;
+  const unpack = (d, at) => { const img = []; for (let i = 0; i < N; i++) img.push((d[at + 2 * i] & 15) | ((d[at + 2 * i + 1] & 15) << 4)); return img; };
+  const okCks = (d, at, img) => d.length < at + 2 * N + 2 || d[at + 2 * N] === cks(img);
+
+  const mask = (w) => (1 << w) - 1;
+  function read(p, img) {
+    const b = img[p.offset];
+    if (p.encoding === "name6") return b < 0x20 ? b + 0x40 : b;
+    if (p.encoding === "trackSrc") return b || 1;
+    if (p.bits) return (b >> p.bits.shift) & mask(p.bits.width);
+    if (p.encoding === "signed") return b >= 128 ? b - 256 : b;
+    return b;
+  }
+  function write(p, v, img) {
+    const o = p.offset;
+    if (p.encoding === "name6") { img[o] = v >= 0x40 ? v - 0x40 : v; return; }
+    if (p.bits) { const m = mask(p.bits.width) << p.bits.shift; img[o] = (img[o] & ~m) | ((v << p.bits.shift) & m); return; }
+    img[o] = v & 0xff; // signed values sign-extend through bit 7
+  }
+  const slotParams = (slot) => schema.params.filter((p) => p.slot === slot);
+  const normaliseSlot = (img, slot) => { const at = 104 + 3 * slot; if (!img[at] || !img[at + 2]) { img[at] = 0; img[at + 1] = 0; img[at + 2] = 0; } };
+  const valuesOf = (img) => Object.fromEntries(schema.params.map((p) => [p.key, read(p, img)]));
+  let mirror = new Array(N).fill(0), haveRead = false, fw = null, lastSel = null;
+
+  // names: ROM banks from the factory list; writable slots from names saved at store time
+  const savedNames = () => { try { return JSON.parse(prefs?.get("slotNames") || "{}"); } catch { return {}; } };
+  const classic = (bi, p) => schema.programs.classicNames?.[bank(bi).bank * 100 + p];
+  const nameFor = (bi, p) => (bank(bi).write ? savedNames()[`${bank(bi).bank}-${p}`] : null) || classic(bi, p) || "";
+  const imgName = (img) => schema.params.filter((p) => p.display === "ascii").map((p) => String.fromCharCode(read(p, img))).join("").trim();
+
+  async function fetchEdit() {
+    const r = midi.waitSysex(isOp(0x01, 0x0d), 900);
+    midi.send([...H, 0x04, 0x04, 0x00, 0xf7]);
+    const d = await r, at = d[3] === 0x01 ? 5 : 5, img = unpack(d, at);
+    if (!okCks(d, at, img)) throw new Error("patch checksum failed");
+    return { img, raw: [...d] };
+  }
+  const bankSel = async (b) => { midi.send([...H, 0x0a, b & 127, 0xf7]); await sleep(20); };
+  const unlock = async () => { midi.send([...H, 0x0c, 0xf7]); await sleep(20); };
+
+  let sendTimer = null;
+  const queueWhole = () => { clearTimeout(sendTimer); sendTimer = setTimeout(() => midi.send([...H, 0x0d, 0x00, ...pack(mirror), cks(mirror), 0xf7]), 250); };
+
+  return {
+    // device inquiry carries the firmware version as ASCII (' 111' = 1.11)
+    async probe() {
+      try {
+        const r = midi.waitSysex((d) => d[1] === 0x7e && d[3] === 0x06 && d[4] === 0x02 && d[5] === 0x10, 900);
+        midi.send([0xf0, 0x7e, 0x7f, 0x06, 0x01, 0xf7]);
+        const d = await r; fw = parseInt(String.fromCharCode(...d.slice(10, 14)).trim(), 10) / 100 || null;
+        prefs?.set("fw", String(fw ?? ""));
+      } catch { await fetchEdit(); }
+      return true;
+    },
+    async requestPatch() {
+      const { img, raw } = await fetchEdit(); mirror = img; haveRead = true;
+      const values = valuesOf(img);
+      // the 1000 answers with a placeholder ('BNK0: 12'): show the slot's real name when we know it
+      if (/^BNK\d: \d\d$/.test(imgName(img)) && lastSel) {
+        const nm = (nameFor(lastSel.bi, lastSel.prog) || "").padEnd(8).slice(0, 8);
+        schema.params.filter((p) => p.display === "ascii").forEach((p, i) => { values[p.key] = nm.charCodeAt(i); });
+      }
+      return { values, syx: raw };
+    },
+
+    sendPatch(values) {
+      if (!haveRead) throw new Error("read the patch from the Matrix first (get)");
+      for (const p of schema.params) if (values[p.key] != null) write(p, Math.max(p.min, Math.min(p.max, values[p.key])), mirror);
+      for (let s = 0; s < 10; s++) normaliseSlot(mirror, s);
+      clearTimeout(sendTimer); midi.send([...H, 0x0d, 0x00, ...pack(mirror), cks(mirror), 0xf7]);
+    },
+
+    sendParam(p, v) {
+      v = Math.max(p.min, Math.min(p.max, v));
+      write(p, v, mirror);
+      if (p.liveEdit === "none") return;
+      if (p.liveEdit === "matrix") {
+        normaliseSlot(mirror, p.slot); const at = 104 + 3 * p.slot;
+        return midi.send([...H, 0x0b, p.slot, mirror[at] & 127, mirror[at + 1] & 0x7f, mirror[at + 2] & 127, 0xf7]);
+      }
+      // firmware below 1.13 mis-handles two remote-edit params: send the whole patch for those
+      const fwNow = fw ?? (Number(prefs?.get("fw")) || null);
+      if (p.bug && (!fwNow || fwNow < 1.13)) return haveRead && queueWhole();
+      const data = p.encoding === "signed" ? v & 0x7f : p.bits ? mirror[p.offset] & 127 : v & 127;
+      midi.send([...H, 0x06, p.param & 127, data, 0xf7]);
+    },
+
+    async programChange(bi, prog) {
+      lastSel = { bi, prog };
+      await bankSel(bank(bi).bank); midi.send([0xc0 | (getChannel() & 15), prog & 127]); await sleep(20); await unlock(); await sleep(150);
+    },
+
+    // a stored slot without changing the sound: bank lock, request 04 01 <p>
+    async requestProgram(bi, prog) {
+      await bankSel(bank(bi).bank); await unlock();
+      const r = midi.waitSysex((d) => isOp(0x01)(d) && d[4] === prog, 900);
+      midi.send([...H, 0x04, 0x01, prog & 127, 0xf7]);
+      const d = await r, img = unpack(d, 5);
+      if (!okCks(d, 5, img)) throw new Error("patch checksum failed");
+      await sleep(300);
+      return { values: valuesOf(img), data: img, syx: [...d], name: nameFor(bi, prog) || imgName(img) || undefined };
+    },
+    async requestSlotName(bi, prog) { return nameFor(bi, prog) || `${bank(bi).label} ${String(prog).padStart(2, "0")}`; },
+
+    async writeProgram(bi, prog, values) {
+      const b = bank(bi);
+      if (!b?.write) throw new Error(`${b?.label ?? "that bank"} is ROM`);
+      if (!haveRead) throw new Error("read the patch from the Matrix first (get)");
+      const img = [...mirror];
+      for (const p of schema.params) if (values[p.key] != null) write(p, values[p.key], img);
+      for (let s = 0; s < 10; s++) normaliseSlot(img, s);
+      await bankSel(b.bank);
+      midi.send([...H, 0x01, prog & 127, ...pack(img), cks(img), 0xf7]);
+      await sleep(midi.drainMs() + 300); await unlock(); await sleep(100);
+      // the 1000 keeps no names: remember the one given for this slot
+      const nm = imgName(img), all = savedNames(); if (nm) { all[`${b.bank}-${prog}`] = nm; prefs?.set("slotNames", JSON.stringify(all)); }
+      return img;
+    },
+    sameProgram(a, b) { return !!a && !!b && schema.params.filter((p) => p.liveEdit !== "none").every((p) => read(p, a) === read(p, b)); },
+
+    // no panel editing: only unsolicited patch dumps (panel Data Dump) come in
+    decode(ev) {
+      if (ev.type !== "sysex" || !isOp(0x0d)(ev.data)) return [];
+      mirror = unpack(ev.data, 5); haveRead = true;
+      return schema.params.map((p) => ({ param: p, value: read(p, mirror) }));
     },
   };
 }
