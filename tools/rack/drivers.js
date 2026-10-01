@@ -37,7 +37,7 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op"];
 
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
@@ -46,6 +46,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "yamaha") return yamahaDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "ensoniq") return ensoniqDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "emax") return emaxDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "yamaha4op") return yamaha4opDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
 
@@ -842,5 +843,131 @@ function emaxDriver(schema, midi, getChannel, prefs) {
     },
     sameProgram(a, b) { return !!a && !!b && P("preset").every((p) => presetNums(p).every((n) => a[n] === b[n])); },
     decode() { return []; }, // the Emax doesn't transmit panel edits (program changes are followed by the editor)
+  };
+}
+
+// Yamaha 4-op FM (TX81Z; DX11/DX21-family formats). n = MIDI channel.
+// Param change F0 43 1n <12 VCED | 13 ACED> pp dd F7. A voice is TWO dumps:
+// ACED (7E 'LM  8976AE', 23 bytes) then VCED (03, 93 bytes). Stored voices exist
+// only inside the packed 32-voice bank VMEM (04, 4096 bytes): read the bank,
+// rebuild one slot, Memory Protect off, send it back. Slow unit: ~70 ms gaps.
+function yamaha4opDriver(schema, midi, getChannel, prefs) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const ch = () => getChannel() & 15;
+  const bank = (bi) => schema.programs.banks[bi];
+  const ascii = (str) => [...str].map((c) => c.charCodeAt(0));
+  const csum = (data) => (128 - (data.reduce((t, x) => t + x, 0) % 128)) % 128;
+  const isDump = (fmt, pred) => (d) => d[0] === 0xf0 && d[1] === 0x43 && d[2] >> 4 === 0 && d[3] === fmt && (!pred || pred(d));
+  const isAced = isDump(0x7e, (d) => String.fromCharCode(...d.slice(6, 16)) === "LM  8976AE");
+  const body = (d) => [...d.slice(6, d.length - 2)]; // after the 2 byte-count bytes, before the checksum
+  const ok = (d) => (body(d).reduce((t, x) => t + x, 0) + d[d.length - 2]) % 128 === 0;
+  const VC = schema.params.filter((p) => p.block === "VCED"), AC = schema.params.filter((p) => p.block === "ACED");
+  const enableParams = schema.params.filter((p) => p.bits);
+  let enable = 0x0f;
+
+  const fixedTail = [99, 99, 99, 50, 50, 50]; // VCED 87-92: pitch EG rates/levels (TX81Z keeps them fixed)
+  const vcedFrom = (v) => { const d = new Array(93).fill(0); fixedTail.forEach((x, i) => { d[87 + i] = x; }); for (const p of VC) if (v[p.key] != null) d[p.pp] = v[p.key] & 127; return d; };
+  const acedFrom = (v) => { const d = new Array(23).fill(0); for (const p of AC) if (v[p.key] != null) d[p.pp] = v[p.key] & 127; return d; };
+  const editMsgs = (v) => {
+    const a = [...ascii("LM  8976AE"), ...acedFrom(v)], vc = vcedFrom(v);
+    return [[0xf0, 0x43, ch(), 0x7e, 0x00, 0x21, ...a, csum(a), 0xf7], [0xf0, 0x43, ch(), 0x03, 0x00, 0x5d, ...vc, csum(vc), 0xf7]];
+  };
+  const valuesFromEdit = (aced, vced) => {
+    const v = {}; const a = aced ? body(aced).slice(10) : null, vc = body(vced);
+    for (const p of VC) v[p.key] = vc[p.pp];
+    if (a) for (const p of AC) v[p.key] = a[p.pp];
+    for (const p of enableParams) v[p.key] = (enable >> p.bits.shift) & 1;
+    return v;
+  };
+
+  // packed bank slot ⇄ values (p.vmem = {offset, shift, width} inside a 128-byte slot)
+  const fromSlot = (slot) => { const v = {}; for (const p of schema.params) if (p.vmem) v[p.key] = (slot[p.vmem.offset] >> p.vmem.shift) & ((1 << p.vmem.width) - 1); return v; };
+  const intoSlot = (slot, v) => {
+    const out = [...slot];
+    for (const p of schema.params) if (p.vmem && v[p.key] != null) {
+      const m = ((1 << p.vmem.width) - 1) << p.vmem.shift;
+      out[p.vmem.offset] = (out[p.vmem.offset] & ~m) | ((v[p.key] << p.vmem.shift) & m);
+    }
+    return out;
+  };
+  const nameOfSlot = (slot) => String.fromCharCode(...slot.slice(57, 67).map((c) => (c >= 32 && c < 127 ? c : 32))).trim();
+
+  async function fetchEdit(timeout = 1500) {
+    const ra = midi.waitSysex(isAced, timeout).catch(() => null), rv = midi.waitSysex(isDump(0x03), timeout);
+    midi.send([0xf0, 0x43, 0x20 | ch(), 0x7e, ...ascii("LM  8976AE"), 0xf7]);
+    const [aced, vced] = [await ra, await rv];
+    if (!ok(vced)) throw new Error("voice dump checksum failed");
+    return { aced: aced && ok(aced) ? aced : null, vced };
+  }
+  let bankCache = null, lastBank = null;
+  async function fetchBank() {
+    if (bankCache && Date.now() - bankCache.at < 5000) return bankCache;
+    const r = midi.waitSysex(isDump(0x04), 4000);
+    midi.send([0xf0, 0x43, 0x20 | ch(), 0x04, 0xf7]);
+    const d = await r;
+    if (!ok(d)) throw new Error("bank dump checksum failed");
+    const data = body(d);
+    bankCache = { at: Date.now(), raw: [...d], slots: Array.from({ length: 32 }, (_, i) => data.slice(i * 128, (i + 1) * 128)) };
+    lastBank = bankCache;
+    await sleep(800);
+    return bankCache;
+  }
+
+  let haveRead = false;
+  const play = async () => { midi.send([0xf0, 0x43, 0x10 | ch(), 0x13, 0x44, 0x7f, 0xf7]); midi.send([0xf0, 0x43, 0x10 | ch(), 0x13, 0x44, 0x00, 0xf7]); await sleep(70); };
+
+  return {
+    async probe() { const r = midi.waitSysex(isDump(0x03), 900); midi.send([0xf0, 0x43, 0x20 | ch(), 0x03, 0xf7]); await r; return true; },
+    async requestPatch() { const { aced, vced } = await fetchEdit(); haveRead = true; return { values: valuesFromEdit(aced, vced), syx: [...(aced || []), ...vced] }; },
+
+    sendParam(p, v) {
+      if (p.bits) { enable = (enable & ~(1 << p.bits.shift)) | ((v & 1) << p.bits.shift); return midi.send([0xf0, 0x43, 0x10 | ch(), 0x12, 0x5d, enable, 0xf7]); }
+      midi.send([0xf0, 0x43, 0x10 | ch(), p.block === "ACED" ? 0x13 : 0x12, p.pp & 127, v & 127, 0xf7]);
+    },
+    sendPatch(values) { const [a, v] = editMsgs(values); midi.send(a); midi.send(v); enable = 0x0f; },
+
+    // program changes go through the unit's table; after "Init P.Ch.Tbl", PC 0-127 = I01-C32.
+    // Beyond that (D bank, performances), re-point table entry 128 and send PC 127 (Edisyn's way).
+    async programChange(bi, prog) {
+      const mem = (bank(bi).select?.memBase || 0) + prog;
+      if (mem < 128) midi.send([0xc0 | ch(), mem]);
+      else { midi.send([0xf0, 0x43, 0x10 | ch(), 0x10, 0x7f, 0x7f, (mem >> 7) & 127, mem & 127, 0xf7]); await sleep(70); await play(); midi.send([0xc0 | ch(), 127]); }
+      enable = 0x0f; await sleep(150);
+    },
+
+    async requestProgram(bi, prog) {
+      if (!bank(bi)?.dump) throw new Error(`${bank(bi)?.label ?? "that bank"} can't be read over MIDI`);
+      const b = await fetchBank(), slot = b.slots[prog];
+      return { values: fromSlot(slot), data: slot, syx: prog === 0 ? b.raw : [], name: nameOfSlot(slot) || undefined };
+    },
+    async requestSlotName(bi, prog) { return nameOfSlot((await fetchBank()).slots[prog]); },
+    forgetBank() { bankCache = null; },
+
+    // documented store: bank read-modify-write with Memory Protect switched off first
+    async writeProgram(bi, prog, values) {
+      if (!bank(bi)?.write) throw new Error(`${bank(bi)?.label ?? "that bank"} is read-only`);
+      if (!haveRead) throw new Error("read the voice from the TX81Z first (get)");
+      const b = lastBank || (await fetchBank());
+      const slots = b.slots.map((x) => [...x]);
+      slots[prog] = intoSlot(slots[prog], values);
+      midi.send([0xf0, 0x43, 0x10 | ch(), 0x10, 0x7b, 0x08, 0x00, 0xf7]); await sleep(70); // memory protect off
+      await play(); await sleep(100);
+      const data = slots.flat();
+      midi.send([0xf0, 0x43, ch(), 0x04, 0x20, 0x00, ...data, csum(data), 0xf7]);
+      await sleep(midi.drainMs() + 800);
+      bankCache = null;
+      return slots[prog];
+    },
+    sameProgram(a, b) {
+      if (!a || !b) return false;
+      return schema.params.filter((p) => p.vmem).every((p) => ((a[p.vmem.offset] >> p.vmem.shift) & ((1 << p.vmem.width) - 1)) === ((b[p.vmem.offset] >> p.vmem.shift) & ((1 << p.vmem.width) - 1)));
+    },
+
+    // the TX81Z sends ACED+VCED whenever a voice is selected on it (panel or PC)
+    decode(ev) {
+      if (ev.type !== "sysex" || !isDump(0x03)(ev.data) || !ok(ev.data)) return [];
+      const v = valuesFromEdit(null, ev.data);
+      return VC.map((p) => ({ param: p, value: v[p.key] }));
+    },
   };
 }
