@@ -37,7 +37,7 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite"];
 
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
@@ -48,6 +48,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "emax") return emaxDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "yamaha4op") return yamaha4opDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "oberheim") return oberheimDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "tclite") return tcLiteDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "korg") return schema.korg.modelId === 0x28 ? wavestationDriver(schema, midi, getChannel, prefs) : korgDwDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
@@ -1337,5 +1338,53 @@ function wavestationDriver(schema, midi, getChannel, prefs) {
       write(p, v, mirror);
       return [{ param: p, value: v }];
     },
+  };
+}
+
+// TC Electronic G-Force, live-controls level: it answers no requests, so there is
+// no read-back. Live = CCs into its I/O Setup control assignments (Ext 1-8,
+// volume, tap, bypasses); presets = CC0 bank + PC. The user bank travels only as
+// a dump started on the unit's panel (Utility > User bank to MIDI), which
+// captureBank catches: F0 00 20 1F <dev> 10 <nH> <nL> F7, then n × 11 packets of
+// 64 bytes sent as nibbles (high first), ck = (-sum of the 64 bytes) & 7F.
+// Presets are 614 bytes with a 20-char name at +106.
+function tcLiteDriver(schema, midi, getChannel) {
+  const ch = () => getChannel() & 15;
+  const isTc = (type) => (d) => d[0] === 0xf0 && d[1] === 0x00 && d[2] === 0x20 && d[3] === 0x1f && d[5] === type;
+  const byCc = new Map(schema.params.filter((p) => p.path === "cc").map((p) => [p.cc, p]));
+  return {
+    canRead: false,
+    probe: null, // nothing can be asked — the rack shows it as untestable
+    async requestPatch() { return { values: {}, syx: [] }; },
+    sendParam(p, v) { if (p.path === "cc") midi.cc(ch(), p.cc, v & 127); },
+    sendPatch() {},
+    programChange(bi, prog) { const b = schema.programs.banks[bi]; midi.cc(ch(), 0, b.msb ?? b.select?.msb ?? 0); midi.send([0xc0 | ch(), prog & 127]); },
+
+    // wait for a front-panel bank dump; validate every packet before keeping it
+    captureBank(onProgress = () => {}, timeoutMs = 120000) {
+      return new Promise((resolve, reject) => {
+        const msgs = []; let want = null, bytes = [];
+        const fail = (m) => { off(); clearTimeout(t); reject(new Error(m)); };
+        const t = setTimeout(() => fail(want == null ? "no dump arrived — start Utility > User bank to MIDI on the G-Force" : `dump stopped at ${msgs.length - 1}/${want}`), timeoutMs);
+        const off = midi.on((ev) => {
+          if (ev.type !== "sysex") return;
+          const d = [...ev.data];
+          if (isTc(0x10)(d)) { want = (d[6] << 7) | d[7]; msgs.length = 0; bytes = []; msgs.push(d); onProgress(0, want); return; }
+          if (want == null || !isTc(0x11)(d)) return;
+          const body = d.slice(7, d.length - 2), ck = d[d.length - 2], dec = [];
+          for (let i = 0; i + 1 < body.length; i += 2) dec.push(((body[i] & 15) << 4) | (body[i + 1] & 15));
+          if (dec.length !== 64 || ((-dec.reduce((s, x) => s + x, 0)) & 0x7f) !== ck) return fail(`packet ${msgs.length} failed its checksum — dump discarded`);
+          msgs.push(d); bytes.push(...dec); onProgress(msgs.length - 1, want);
+          if (msgs.length - 1 === want) {
+            off(); clearTimeout(t);
+            const n = Math.floor(bytes.length / 614);
+            const names = Array.from({ length: n }, (_, i) => String.fromCharCode(...bytes.slice(i * 614 + 106, i * 614 + 126).map((c) => (c >= 32 && c < 127 ? c : 32))).trim());
+            resolve({ syx: msgs.flat(), names, packets: want });
+          }
+        });
+      });
+    },
+
+    decode(ev) { const p = ev.type === "cc" && ev.ch === ch() && byCc.get(ev.num); return p ? [{ param: p, value: ev.val }] : []; },
   };
 }

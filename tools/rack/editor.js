@@ -372,6 +372,7 @@ async function selectDevice(id) {
   saved = {}; undo = []; redo = [];
   $("#ch").value = channel() + 1;
   $("#pname").hidden = !nameParams().length;
+  document.body.classList.toggle("noread", driver.canRead === false);
   $("#pname").maxLength = nameParams().length || 16;
   $("#synthname").textContent = schema.name;
   fillPorts();
@@ -379,6 +380,7 @@ async function selectDevice(id) {
   renderFaceplate();
   renderName();
   refreshBackups();
+  $("#backup .plabel").textContent = driver.captureBank ? "capture bank" : "create backup";
   $("#setup-steps").replaceChildren(...(schema.setup || []).map((s) => h("li", {}, s)));
 }
 
@@ -603,7 +605,7 @@ async function renderRack({ force = false } = {}) {
     const supported = TRANSPORTS.includes(d.transport);
     const state = h("div", { class: "rstate" }, !supported ? "driver coming" : outName && inName ? h("span", { class: "dots" }, "checking") : "ports not set");
     const go = h("button", { class: "btn", onclick: (e) => { e.stopPropagation(); startConnect(d.id); } }, "connect");
-    const card = h("fieldset", { class: `grp rackcard${!supported ? " pending" : outName && inName ? " waiting" : ""}`, draggable: "true", "data-id": d.id, onclick: () => card.classList.contains("online") && startConnect(d.id) },
+    const card = h("fieldset", { class: `grp rackcard${!supported ? " pending" : outName && inName ? " waiting" : ""}`, draggable: "true", "data-id": d.id, onclick: () => (card.classList.contains("online") || card.classList.contains("untested")) && startConnect(d.id) },
       h("legend", {}, h("span", { class: "rdot" }), d.name),
       await art(d.id),
       h("div", { class: "rinfo" }, state,
@@ -652,7 +654,7 @@ async function probeRack(cards, { force = false } = {}) {
   const run = ++probing;
   const cache = probeCache();
   cards = cards.filter((c) => c.supported);
-  const fresh = (c) => !force && cache[c.d.id] && Date.now() - cache[c.d.id].at < PROBE_FRESH_MS;
+  const fresh = (c) => !force && cache[c.d.id] && Date.now() - cache[c.d.id].at < PROBE_FRESH_MS && cache[c.d.id].ok !== "untested";
   for (const c of cards) if (c.ready && fresh(c)) showProbe(c, cache[c.d.id].ok);
   const all = cards;
   const summary = () => { const n = all.filter((c) => c.card.classList.contains("online")).length;
@@ -673,7 +675,8 @@ async function probeRack(cards, { force = false } = {}) {
       midi.usePorts(c.d.id, c.ports.in, c.ports.out);
       const ch = () => Number(lsGet(`${c.d.id}.ch`, String(sch.defaultChannel ?? 1))) - 1;
       const drv = makeDriver(sch, midi, ch, { get: (k) => lsGet(`${c.d.id}.${k}`, null), set: (k, v) => lsSet(`${c.d.id}.${k}`, v) });
-      ok = await drv.probe?.().catch(() => false);
+      if (!drv.probe) { c.card.classList.remove("waiting", "probing"); c.card.classList.add("untested"); c.state.hidden = true; continue; }
+      ok = await drv.probe().catch(() => false);
     } catch { ok = false; }
     if (run !== probing) return;
     rememberProbe(c.d.id, ok);
@@ -714,6 +717,11 @@ async function runConnect() {
   try {
     if (!$("#out").value || !$("#in").value) { status("pick both MIDI ports first", true); return; }
     usePorts(); lsSet(`${schema.id}.ch`, $("#ch").value);
+    if (driver.canRead === false) {
+      step(`the ${schema.name} can't be asked anything — live controls, preset select and bank capture`).ok();
+      pickBank = null; renderProgramControls(); setView("edit");
+      status(`${schema.name} · live controls`); return;
+    }
     // 1 — is it there?
     const s1 = step(`talking to the ${schema.name}…`);
     try {
@@ -839,6 +847,7 @@ function renderProgramList() {
 // read every slot (one program dump each — the sound doesn't change) into one
 // .syx + a name index in Dropbox; the names also fill the program list
 async function createBackup() {
+  if (driver.captureBank) return captureBackup();
   if (scanning) { scanning = false; return; }
   const readable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => (b.dump || b.bankDump) && b.write);
   if (!readable.length) return status("this synth can't send its programs over MIDI", true);
@@ -885,6 +894,29 @@ async function createBackup() {
   if (!r.ok) return status("writing the backup failed: " + (await r.text()), true);
   status(`backed up ${slots.length} programs${failed ? ` (${failed} didn't answer)` : ""} → ${(await r.json()).file}`, !!failed);
   refreshBackups();
+}
+
+// units that only send their bank when told to on their own panel (G-Force):
+// listen, validate every packet, save it like any other backup
+let capturing = false;
+async function captureBackup() {
+  if (capturing) return;
+  capturing = true;
+  const btn = $("#backup"), fillEl = btn.querySelector(".pfill"), label = btn.querySelector(".plabel");
+  btn.classList.add("running"); label.textContent = "waiting — start Utility › User bank to MIDI on the unit";
+  try {
+    const got = await driver.captureBank((n, of) => { fillEl.style.width = (n / of) * 100 + "%"; label.textContent = `receiving ${n} / ${of}`; });
+    const user = banks().findIndex((b) => b.label === "user"), known = names();
+    got.names.forEach((nm, i) => { if (user >= 0) known[slotKey(user, i)] = nm || "(unnamed)"; });
+    lsSet(`${schema.id}.names`, JSON.stringify(known)); if (user >= 0) namesStamp(user);
+    const at = new Date();
+    const r = await fetch(`/api/backups/${schema.id}`, { method: "PUT", body: JSON.stringify({ stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots: got.names.map((n, i) => ({ bank: "user", program: i + 1, name: n })), failed: 0, syx: got.syx }) });
+    if (!r.ok) throw new Error("writing the backup failed: " + (await r.text()));
+    status(`captured ${got.names.length} presets → ${(await r.json()).file}`);
+    refreshBackups(); renderProgramList(); pickBank = null; renderProgPick();
+  } catch (e) { status(e.message, true); }
+  capturing = false; btn.classList.remove("running"); label.textContent = "capture bank";
+  setTimeout(() => { fillEl.style.width = "0"; }, 1500);
 }
 
 // local date + time for filenames: 2026-09-30 1042

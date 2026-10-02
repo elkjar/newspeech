@@ -49,6 +49,11 @@
   .rackcard.online .art { color: #e0e0e0; }
   .rackcard.online .rgo, .rackcard.waiting .rgo { visibility: hidden; }
   .rackcard.pending { opacity: .55; }
+  .rackcard.untested { cursor: pointer; }
+  .rackcard.untested .rdot { border-color: #ddd; }
+  .rackcard.untested .rgo { visibility: hidden; }
+  /* units with no read-back (G-Force): no get/send/store/a-b */
+  body.noread .cell:has(#get), body.noread #storecell, body.noread .cell:has(#ab) { display: none; }
   .rackcard.pending .rgo { visibility: hidden; }
   .rackcard .rstate { color: #bbb; }
   /* checking: every waiting card's dot breathes; the one being asked gets a sweep */

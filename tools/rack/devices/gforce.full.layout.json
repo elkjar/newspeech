@@ -1,0 +1,889 @@
+{
+ "comment": "Plugin-panel pattern. The G-Force has no preset SysEx: only the CC controls send anything -- LIVE (main vol, bypass, tempo tap, tuner), BLOCK BYPASS (the 9 front-panel block keys, and the unit reports their state back at every preset change), and EXT 1-8 (drive whatever the current preset's Modifier Matrix links them to). Everything else (gate, routing grid 8x4 one row at a time (shared row select over two groups), the eight blocks behind one shared select drawn once in BLOCK with generic P1..P16 slots -- names/ranges in gforce.json algorithms[block][algo].slots --, modifiers, matrix links) documents the preset for offline editing/reference and stays inert on the wire (param.path = 'none').",
+ "rows": [
+  {
+   "id": "preset",
+   "groups": [
+    {
+     "title": "preset / gate",
+     "controls": [
+      {
+       "k": "gateMode",
+       "label": "gate",
+       "as": "seg",
+       "labels": [
+        "hard",
+        "soft"
+       ]
+      },
+      {
+       "k": "gateThreshold",
+       "label": "thresh"
+      },
+      {
+       "k": "gateMaxDamping",
+       "label": "damping"
+      },
+      {
+       "k": "gateReleaseRate",
+       "label": "release"
+      },
+      {
+       "k": "gateLevel",
+       "label": "in level"
+      }
+     ]
+    },
+    {
+     "title": "live",
+     "controls": [
+      {
+       "k": "ccMainVol",
+       "label": "main vol"
+      },
+      {
+       "k": "ccBypass",
+       "label": "bypass",
+       "as": "toggle"
+      },
+      {
+       "k": "ccTempo",
+       "label": "tap",
+       "as": "toggle"
+      },
+      {
+       "k": "ccTuner",
+       "label": "tuner",
+       "as": "toggle"
+      }
+     ]
+    },
+    {
+     "title": "out (global)",
+     "controls": [
+      {
+       "k": "outLevel",
+       "label": "level"
+      },
+      {
+       "k": "outFilters",
+       "label": "spk filt",
+       "as": "toggle"
+      },
+      {
+       "k": "outLocut",
+       "label": "locut",
+       "as": "seg",
+       "labels": [
+        "40",
+        "80"
+       ]
+      },
+      {
+       "k": "outHicut",
+       "label": "hicut",
+       "as": "pick"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "routing",
+   "groups": [
+    {
+     "title": "routing cols 1-4",
+     "select": {
+      "label": "row",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "r": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "r": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "r": "3"
+        }
+       },
+       {
+        "label": "4",
+        "vars": {
+         "r": "4"
+        }
+       }
+      ],
+      "shared": "gfrow"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "grid{r}c1",
+       "label": "col 1",
+       "as": "pick"
+      },
+      {
+       "k": "grid{r}c2",
+       "label": "col 2",
+       "as": "pick"
+      },
+      {
+       "k": "grid{r}c3",
+       "label": "col 3",
+       "as": "pick"
+      },
+      {
+       "k": "grid{r}c4",
+       "label": "col 4",
+       "as": "pick"
+      }
+     ]
+    },
+    {
+     "title": "routing cols 5-8",
+     "select": {
+      "label": "row",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "r": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "r": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "r": "3"
+        }
+       },
+       {
+        "label": "4",
+        "vars": {
+         "r": "4"
+        }
+       }
+      ],
+      "shared": "gfrow"
+     },
+     "controls": [
+      {
+       "k": "grid{r}c5",
+       "label": "col 5",
+       "as": "pick"
+      },
+      {
+       "k": "grid{r}c6",
+       "label": "col 6",
+       "as": "pick"
+      },
+      {
+       "k": "grid{r}c7",
+       "label": "col 7",
+       "as": "pick"
+      },
+      {
+       "k": "grid{r}c8",
+       "label": "col 8",
+       "as": "pick"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "keys",
+   "groups": [
+    {
+     "title": "block bypass",
+     "controls": [
+      {
+       "k": "bypGate",
+       "label": "gate",
+       "as": "toggle"
+      },
+      {
+       "k": "bypCpr",
+       "label": "comp",
+       "as": "toggle"
+      },
+      {
+       "k": "bypFil",
+       "label": "filt",
+       "as": "toggle"
+      },
+      {
+       "k": "bypPan",
+       "label": "pan",
+       "as": "toggle"
+      },
+      {
+       "k": "bypPit",
+       "label": "pitch",
+       "as": "toggle"
+      },
+      {
+       "k": "bypDly",
+       "label": "delay",
+       "as": "toggle"
+      },
+      {
+       "k": "bypDrv",
+       "label": "drive",
+       "as": "toggle"
+      },
+      {
+       "k": "bypCho",
+       "label": "chorus",
+       "as": "toggle"
+      },
+      {
+       "k": "bypRev",
+       "label": "reverb",
+       "as": "toggle"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "block",
+   "groups": [
+    {
+     "title": "block",
+     "select": {
+      "label": "block",
+      "options": [
+       {
+        "label": "cpr",
+        "vars": {
+         "b": "cpr"
+        }
+       },
+       {
+        "label": "fil",
+        "vars": {
+         "b": "fil"
+        }
+       },
+       {
+        "label": "pan",
+        "vars": {
+         "b": "pan"
+        }
+       },
+       {
+        "label": "pit",
+        "vars": {
+         "b": "pit"
+        }
+       },
+       {
+        "label": "dly",
+        "vars": {
+         "b": "dly"
+        }
+       },
+       {
+        "label": "drv",
+        "vars": {
+         "b": "drv"
+        }
+       },
+       {
+        "label": "cho",
+        "vars": {
+         "b": "cho"
+        }
+       },
+       {
+        "label": "rev",
+        "vars": {
+         "b": "rev"
+        }
+       }
+      ],
+      "shared": "block"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{b}Algo",
+       "label": "algorithm",
+       "as": "pick"
+      },
+      {
+       "k": "{b}Mix",
+       "label": "mix"
+      },
+      {
+       "k": "{b}InLevel",
+       "label": "in"
+      },
+      {
+       "k": "{b}OutLevel",
+       "label": "out"
+      },
+      {
+       "k": "{b}MuteMode",
+       "label": "mute",
+       "as": "pick"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "params",
+   "groups": [
+    {
+     "title": "algorithm params 1-8",
+     "select": {
+      "label": "block",
+      "options": [
+       {
+        "label": "cpr",
+        "vars": {
+         "b": "cpr"
+        }
+       },
+       {
+        "label": "fil",
+        "vars": {
+         "b": "fil"
+        }
+       },
+       {
+        "label": "pan",
+        "vars": {
+         "b": "pan"
+        }
+       },
+       {
+        "label": "pit",
+        "vars": {
+         "b": "pit"
+        }
+       },
+       {
+        "label": "dly",
+        "vars": {
+         "b": "dly"
+        }
+       },
+       {
+        "label": "drv",
+        "vars": {
+         "b": "drv"
+        }
+       },
+       {
+        "label": "cho",
+        "vars": {
+         "b": "cho"
+        }
+       },
+       {
+        "label": "rev",
+        "vars": {
+         "b": "rev"
+        }
+       }
+      ],
+      "shared": "block"
+     },
+     "controls": [
+      {
+       "k": "{b}P1",
+       "label": "p1"
+      },
+      {
+       "k": "{b}P2",
+       "label": "p2"
+      },
+      {
+       "k": "{b}P3",
+       "label": "p3"
+      },
+      {
+       "k": "{b}P4",
+       "label": "p4"
+      },
+      {
+       "k": "{b}P5",
+       "label": "p5"
+      },
+      {
+       "k": "{b}P6",
+       "label": "p6"
+      },
+      {
+       "k": "{b}P7",
+       "label": "p7"
+      },
+      {
+       "k": "{b}P8",
+       "label": "p8"
+      }
+     ]
+    },
+    {
+     "title": "algorithm params 9-16",
+     "select": {
+      "label": "block",
+      "options": [
+       {
+        "label": "cpr",
+        "vars": {
+         "b": "cpr"
+        }
+       },
+       {
+        "label": "fil",
+        "vars": {
+         "b": "fil"
+        }
+       },
+       {
+        "label": "pan",
+        "vars": {
+         "b": "pan"
+        }
+       },
+       {
+        "label": "pit",
+        "vars": {
+         "b": "pit"
+        }
+       },
+       {
+        "label": "dly",
+        "vars": {
+         "b": "dly"
+        }
+       },
+       {
+        "label": "drv",
+        "vars": {
+         "b": "drv"
+        }
+       },
+       {
+        "label": "cho",
+        "vars": {
+         "b": "cho"
+        }
+       },
+       {
+        "label": "rev",
+        "vars": {
+         "b": "rev"
+        }
+       }
+      ],
+      "shared": "block"
+     },
+     "controls": [
+      {
+       "k": "{b}P9",
+       "label": "p9"
+      },
+      {
+       "k": "{b}P10",
+       "label": "p10"
+      },
+      {
+       "k": "{b}P11",
+       "label": "p11"
+      },
+      {
+       "k": "{b}P12",
+       "label": "p12"
+      },
+      {
+       "k": "{b}P13",
+       "label": "p13"
+      },
+      {
+       "k": "{b}P14",
+       "label": "p14"
+      },
+      {
+       "k": "{b}P15",
+       "label": "p15"
+      },
+      {
+       "k": "{b}P16",
+       "label": "p16"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ext",
+   "groups": [
+    {
+     "title": "ext 1-8",
+     "controls": [
+      {
+       "k": "ccExt1",
+       "label": "ext 1"
+      },
+      {
+       "k": "ccExt2",
+       "label": "ext 2"
+      },
+      {
+       "k": "ccExt3",
+       "label": "ext 3"
+      },
+      {
+       "k": "ccExt4",
+       "label": "ext 4"
+      },
+      {
+       "k": "ccExt5",
+       "label": "ext 5"
+      },
+      {
+       "k": "ccExt6",
+       "label": "ext 6"
+      },
+      {
+       "k": "ccExt7",
+       "label": "ext 7"
+      },
+      {
+       "k": "ccExt8",
+       "label": "ext 8"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "mod",
+   "groups": [
+    {
+     "title": "lfo",
+     "select": {
+      "label": "lfo",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "n": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "n": "2"
+        }
+       }
+      ],
+      "all": "both"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "lfo{n}Speed",
+       "label": "speed"
+      },
+      {
+       "k": "lfo{n}Depth",
+       "label": "depth"
+      },
+      {
+       "k": "lfo{n}Tempo",
+       "label": "tempo"
+      },
+      {
+       "k": "lfo{n}Curve",
+       "label": "curve",
+       "as": "seg",
+       "labels": [
+        "sqr",
+        "sin",
+        "tri"
+       ]
+      },
+      {
+       "k": "lfo{n}Pulsewidth",
+       "label": "pw"
+      },
+      {
+       "k": "lfo{n}Out2Phase",
+       "label": "out2 ph"
+      }
+     ]
+    },
+    {
+     "title": "adsr",
+     "select": {
+      "label": "adsr",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "n": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "n": "2"
+        }
+       }
+      ],
+      "all": "both"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "adsr{n}Attack",
+       "label": "attack"
+      },
+      {
+       "k": "adsr{n}Decay",
+       "label": "decay"
+      },
+      {
+       "k": "adsr{n}Sustain",
+       "label": "sustain"
+      },
+      {
+       "k": "adsr{n}SustainLevel",
+       "label": "sus lvl"
+      },
+      {
+       "k": "adsr{n}Release",
+       "label": "release"
+      },
+      {
+       "k": "adsr{n}Mode",
+       "label": "mode",
+       "as": "pick"
+      },
+      {
+       "k": "adsr{n}Threshold",
+       "label": "thresh"
+      }
+     ]
+    },
+    {
+     "title": "env / pitch",
+     "controls": [
+      {
+       "k": "envAttack",
+       "label": "attack"
+      },
+      {
+       "k": "envRelease",
+       "label": "release"
+      },
+      {
+       "k": "pdetRange",
+       "label": "pitch range",
+       "as": "seg",
+       "labels": [
+        "6s",
+        "7s",
+        "bass"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "matrix",
+   "groups": [
+    {
+     "title": "matrix",
+     "select": {
+      "label": "link",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "m": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "m": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "m": "3"
+        }
+       },
+       {
+        "label": "4",
+        "vars": {
+         "m": "4"
+        }
+       },
+       {
+        "label": "5",
+        "vars": {
+         "m": "5"
+        }
+       },
+       {
+        "label": "6",
+        "vars": {
+         "m": "6"
+        }
+       },
+       {
+        "label": "7",
+        "vars": {
+         "m": "7"
+        }
+       },
+       {
+        "label": "8",
+        "vars": {
+         "m": "8"
+        }
+       },
+       {
+        "label": "9",
+        "vars": {
+         "m": "9"
+        }
+       },
+       {
+        "label": "10",
+        "vars": {
+         "m": "10"
+        }
+       },
+       {
+        "label": "11",
+        "vars": {
+         "m": "11"
+        }
+       },
+       {
+        "label": "12",
+        "vars": {
+         "m": "12"
+        }
+       },
+       {
+        "label": "13",
+        "vars": {
+         "m": "13"
+        }
+       },
+       {
+        "label": "14",
+        "vars": {
+         "m": "14"
+        }
+       },
+       {
+        "label": "15",
+        "vars": {
+         "m": "15"
+        }
+       },
+       {
+        "label": "16",
+        "vars": {
+         "m": "16"
+        }
+       },
+       {
+        "label": "17",
+        "vars": {
+         "m": "17"
+        }
+       },
+       {
+        "label": "18",
+        "vars": {
+         "m": "18"
+        }
+       },
+       {
+        "label": "19",
+        "vars": {
+         "m": "19"
+        }
+       },
+       {
+        "label": "20",
+        "vars": {
+         "m": "20"
+        }
+       }
+      ]
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "mx{m}Src",
+       "label": "source",
+       "as": "pick"
+      },
+      {
+       "k": "mx{m}Dst",
+       "label": "dest"
+      },
+      {
+       "k": "mx{m}Low",
+       "label": "low"
+      },
+      {
+       "k": "mx{m}Mid",
+       "label": "mid"
+      },
+      {
+       "k": "mx{m}High",
+       "label": "high"
+      },
+      {
+       "k": "mx{m}Slope",
+       "label": "slope"
+      },
+      {
+       "k": "mx{m}Glide",
+       "label": "glide"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
