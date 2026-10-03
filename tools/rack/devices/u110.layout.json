@@ -1,0 +1,373 @@
+{
+  "comment": "Same plugin-panel pattern as d110/jv1080. The U-110 edit buffer is the temporary PATCH: common (name in the name field, output mode, chorus/tremolo) + 6 parts. Every part group shares one select var {n} (select.shared = 'part', 'all' writes all six parts). Part groups follow the manual's Part Setting groups: basic (tone pick = media + number, output assign, receive channel, program change + map, key range), level (level, velocity, attack/release offsets, aftertouch), pitch (coarse/fine shift, bend range, detune, poly aftertouch), LFO (rate, auto delay/rise/depth, manual rise/depth, aftertouch). The tone is chosen as media (INT or card C01-C15) + number 1-99; names live in schema.tones (a 'tone' display keyed on toneLookup.mediaKey would show them).",
+  "rows": [
+    {
+      "id": "patch",
+      "groups": [
+        {
+          "title": "patch",
+          "controls": [
+            {
+              "k": "outputMode",
+              "label": "output mode",
+              "as": "pick"
+            },
+            {
+              "k": "chorusRate",
+              "label": "chorus rate"
+            },
+            {
+              "k": "chorusDepth",
+              "label": "chorus depth"
+            },
+            {
+              "k": "tremoloRate",
+              "label": "trem rate"
+            },
+            {
+              "k": "tremoloDepth",
+              "label": "trem depth"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "part",
+      "groups": [
+        {
+          "title": "part · tone",
+          "select": {
+            "label": "part",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "n": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "n": "4"
+                }
+              },
+              {
+                "label": "5",
+                "vars": {
+                  "n": "5"
+                }
+              },
+              {
+                "label": "6",
+                "vars": {
+                  "n": "6"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "part"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{n}ToneMedia",
+              "label": "source",
+              "as": "pick"
+            },
+            {
+              "k": "p{n}ToneNumber",
+              "label": "tone #"
+            },
+            {
+              "k": "p{n}OutputAssign",
+              "label": "output",
+              "as": "seg",
+              "labels": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "off"
+              ]
+            },
+            {
+              "k": "p{n}RxChannel",
+              "label": "midi ch",
+              "as": "pick"
+            },
+            {
+              "k": "p{n}PgmChange",
+              "label": "pgm chg",
+              "as": "toggle"
+            },
+            {
+              "k": "p{n}PgmMap",
+              "label": "map"
+            },
+            {
+              "k": "p{n}KeyLo",
+              "label": "key lo"
+            },
+            {
+              "k": "p{n}KeyHi",
+              "label": "key hi"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "levelpitch",
+      "groups": [
+        {
+          "title": "part · level",
+          "select": {
+            "label": "part",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "n": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "n": "4"
+                }
+              },
+              {
+                "label": "5",
+                "vars": {
+                  "n": "5"
+                }
+              },
+              {
+                "label": "6",
+                "vars": {
+                  "n": "6"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "part"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{n}Level",
+              "label": "level"
+            },
+            {
+              "k": "p{n}VeloSens",
+              "label": "velocity"
+            },
+            {
+              "k": "p{n}EnvAttack",
+              "label": "attack"
+            },
+            {
+              "k": "p{n}EnvRelease",
+              "label": "release"
+            },
+            {
+              "k": "p{n}LevelPressSens",
+              "label": "aftertouch"
+            }
+          ]
+        },
+        {
+          "title": "part · pitch",
+          "select": {
+            "label": "part",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "n": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "n": "4"
+                }
+              },
+              {
+                "label": "5",
+                "vars": {
+                  "n": "5"
+                }
+              },
+              {
+                "label": "6",
+                "vars": {
+                  "n": "6"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "part"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{n}ShiftCoarse",
+              "label": "coarse"
+            },
+            {
+              "k": "p{n}ShiftFine",
+              "label": "fine"
+            },
+            {
+              "k": "p{n}BendRange",
+              "label": "bend"
+            },
+            {
+              "k": "p{n}DetuneDepth",
+              "label": "detune"
+            },
+            {
+              "k": "p{n}PitchPolySens",
+              "label": "poly at",
+              "as": "pick"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lfo",
+      "groups": [
+        {
+          "title": "part · lfo",
+          "select": {
+            "label": "part",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "n": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "n": "4"
+                }
+              },
+              {
+                "label": "5",
+                "vars": {
+                  "n": "5"
+                }
+              },
+              {
+                "label": "6",
+                "vars": {
+                  "n": "6"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "part"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "p{n}LfoRate",
+              "label": "rate"
+            },
+            {
+              "k": "p{n}AutoDelay",
+              "label": "auto delay"
+            },
+            {
+              "k": "p{n}AutoRise",
+              "label": "auto rise"
+            },
+            {
+              "k": "p{n}AutoDepth",
+              "label": "auto depth"
+            },
+            {
+              "k": "p{n}ManRise",
+              "label": "wheel rise"
+            },
+            {
+              "k": "p{n}ManDepth",
+              "label": "wheel depth"
+            },
+            {
+              "k": "p{n}LfoChPressSens",
+              "label": "ch at"
+            },
+            {
+              "k": "p{n}LfoPolySens",
+              "label": "poly at"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

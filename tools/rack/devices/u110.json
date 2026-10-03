@@ -1,0 +1,4556 @@
+{
+  "id": "u110",
+  "name": "Roland U-110",
+  "transport": "roland",
+  "source": "Roland U-110 Owner's Manual (MIDI Implementation 'Version 1.00', printed pp.84-92: Roland exclusive format, 4.1 coarse map, 4.2.2 Individual Parameter address map, 4.3 Bulk Dump A-D; Setup mode pp.48-51; Patch Edit pp.53-65 incl. Output Modes p.56; Utility/bulk dump pp.66-67; Parameter Table pp.76-77; Preset Tone Table pp.78-79; Drums pp.80; Patch Setting Chart (factory) + Panel Descriptions pp.i-5), https://static.roland.com/assets/media/pdf/U-110_OM.pdf (scanned; read from 200-400 dpi renders). The manual gives NO layout for the bulk patch data; that layout (256 nibble bytes, low nibble first, bit-packed, 6 x 16-byte parts) is from Edisyn edisyn/synth/rolandu110/RolandU110.java (github.com/eclab/edisyn, Sean Luke 2022, reverse-engineered, librarianTested) and was checked against its RolandU110.init dump (name 'Init Patch', key hi 127, attack/release 8, coarse/fine 64, poly sens 8 all land on the modelled offsets). Card tone lists are Edisyn's.",
+  "roland": {
+    "manufacturerId": [
+      65
+    ],
+    "modelId": [
+      35
+    ],
+    "defaultDeviceId": 15,
+    "commands": {
+      "RQ1": 17,
+      "DT1": 18
+    },
+    "addressBytes": 3,
+    "sizeBytes": 3,
+    "checksum": "(128 - (sum of address + data bytes, or address + size bytes) % 128) % 128. Checked: RQ1 temp patch F0 41 0F 23 11 01 01 00 00 02 00 7C F7; RQ1 all patches F0 41 0F 23 11 02 00 00 01 00 00 7D F7 (same sums as Edisyn). The U-110 shows the correct checksum on its LCD when it receives a wrong one (manual 4.1).",
+    "messageFormat": {
+      "DT1": "F0 41 <dev> 23 12 <a1 a2 a3> <data...> <sum> F7",
+      "RQ1": "F0 41 <dev> 23 11 <a1 a2 a3> <s1 s2 s3> <sum> F7 -- answered with DT1(s). One-way only: no WSD/RQD/DAT handshake on the U-110 (manual p.66)."
+    },
+    "deviceId": "dev = CONTROL CHANNEL - 1 (00h-0Fh). The U-110 has no Exclusive Unit #: 'System exclusive messages are recognized or transmitted in only control channel' (manual p.88). Schema default 0Fh = control channel 16 (the value shown in the manual's SETUP example; the factory value is not stated).",
+    "addressing": "3 address bytes, 7 bits each. Coarse map (manual 4.1): 00 01 00 Individual Parameters (patch common), 00 1n 00 Individual Parameters of part n+1; 01 00 00 Setup (bulk, 00 00 20); 01 01 00 Temporary Patch (bulk, 00 02 00); 02 00 00 Patch 1-64 (bulk, 01 00 00); 06 00 00 Program Change Map 1-6 (bulk, 00 18 00). Bulk data travels as 128-byte packets (01 01 00 + 01 02 00; 02 00 00 ... 02 7F 00).",
+    "blocks": {
+      "patch": {
+        "base": [
+          1,
+          1,
+          0
+        ],
+        "size": 256,
+        "desc": "Temporary Patch (01 01 00, size 00 02 00) = THE edit buffer (6 parts + common). 256 SysEx bytes = 128 logical bytes, each as low nibble then high nibble. Nibble offsets: 00-07 padding; 08-1B name (10 chars); 1C-1D output mode; 1E/20/22/24 chorus rate/depth, tremolo rate/depth; 26-27 padding; part n (1-6) at 40 + 32(n-1) (28h, 48h, 68h, 88h, A8h, C8h), 32 nibbles each; E8-FF (24 nibbles) unknown -- kept from the last read by the driver mirror. Answered as 2 DT1 packets (01 01 00, 01 02 00). Receiving a DT1 here resets all controllers and mutes all sound (manual 4.3 B)."
+      }
+    },
+    "packages": {
+      "half1": {
+        "block": "patch",
+        "offset": 0,
+        "size": 128,
+        "rule": "live edit of a param in the first half re-sends nibbles 00-7F as one DT1 at 01 01 00 (a partial DT1 inside a bulk area is not documented; Edisyn only sends whole 128-byte packets here). Mutes sound; see driverNotes (2)."
+      },
+      "half2": {
+        "block": "patch",
+        "offset": 128,
+        "size": 128,
+        "rule": "second half (parts 3-6 from nibble 80) as one DT1 at 01 02 00"
+      }
+    },
+    "userMemory": {
+      "patch": {
+        "base": [
+          2,
+          0,
+          0
+        ],
+        "stride": 256,
+        "count": 64,
+        "size": 256,
+        "desc": "Patch memory P-01..P-64: patch n (0-63) at 02 (2n) 00, same 256-nibble layout as the temp patch. WRITE: DT1 256 bytes there (Edisyn sends 02 2n 00 + 02 2n+1 00, 128 each) with Memory Protect OFF -- no acknowledgement. READ: only all 64 at once (RQ1 02 00 00 size 01 00 00 -> 128 packets 02 00 00 .. 02 7F 00); a per-slot RQ1 is not answered (Edisyn)."
+      }
+    },
+    "requests": {
+      "editBuffer": "F0 41 0F 23 11 01 01 00 00 02 00 7C F7 (temp patch, 256 bytes in 2 DT1s)",
+      "allPatches": "F0 41 0F 23 11 02 00 00 01 00 00 7D F7 (64 x 256 = 16384 bytes, 128 DT1s)",
+      "setup": "F0 41 0F 23 11 01 00 00 00 00 20 5F F7 (32 bytes, layout undocumented: master tune, control channel, MIDI switches -- backup only)",
+      "programChangeMaps": "F0 41 0F 23 11 06 00 00 00 18 00 62 F7 (3072 bytes, 24 DT1s 06 00 00 .. 06 17 00, layout undocumented -- backup only)"
+    },
+    "liveName": {
+      "address": [
+        0,
+        1,
+        0
+      ],
+      "size": 20,
+      "encoding": "nibbleLE",
+      "desc": "individual-parameter patch name: 10 chars x (low nibble, high nibble); must be written/requested from 00 01 00 as one parameter"
+    },
+    "individualParameters": "Manual 4.2: DT1 changes one parameter (one plain byte, unpacked; name = 20 nibbles); an RQ1 returns just that parameter (the RQ1 size is 'ignored and regarded as proper length') and must start on the parameter's top address, else it is ignored. Common: 00 01 00 name, 00 01 18 output mode, 19 chorus rate, 1A chorus depth, 1B tremolo rate, 1C tremolo depth. Part n (0-5) 00 1n xx: 00 output assign, 01 rx ch, 02 tone media, 03 tone number, 04 bend range, 05 key lo, 06 key hi, 07 level, 08 velo sens, 09 level press sens, 0A attack, 0B release, 0C coarse, 0D fine, 0E LFO rate, 0F auto delay, 10 auto rise, 11 auto depth, 12 man rise, 13 man depth, 14 LFO ch press, 15 pgm change, 16 pgm map, 17 detune, 18 pitch poly press, 19 LFO poly press. Each param carries its address as 'live'. Example: part 1 level 127 = F0 41 0F 23 12 00 10 07 7F 6A F7.",
+    "encodings": {
+      "nibbleLE": "2 SysEx bytes at offset o, o+1 = low nibble, high nibble of one 8-bit value: value = (b[o] & 15) | ((b[o+1] & 15) << 4). NOT the JV 'nibble' order. Needs the driver change in driverNotes (1).",
+      "bits": "param.bits = {shift, width} inside ONE nibble byte (the patch's packed bytes split so each field falls inside a nibble): e.g. part byte 11 = map bits 0-2 + pgm change bit 3 (low nibble) / unused bit 4 + output assign bits 5-7 (high nibble -> shift 1 width 3).",
+      "plain": "0-15 fields that fill a whole nibble are plain 1-byte params at that nibble offset (e.g. rx channel = low nibble, bend range = high nibble of the same logical byte)."
+    },
+    "notes": "Program change 0-63 on the CONTROL channel selects patch P-01..P-64 (64-127 ignored) when SETUP: PGM CHANGE is ON; that loads the temp patch. PC on a part's own channel selects a TONE for that part via its PGM->TONE map (only if that part's PGM CHANGE is ON). No bank select. Edisyn: the U-110 won't change patch or answer requests while the panel is in EDIT mode -- stay in Play mode. Leave >= 20 ms between DT1s (manual one-way rule; Edisyn 25 ms per param, 100 ms after a whole patch, 300 ms between batch downloads). Master Tune is not in the address map: RPN 00 01 on the control channel (data entry MSB/LSB, 40 00 = 0 cent, 00 4A = -99, 7F 36 = +99).",
+    "maxDT1": 128
+  },
+  "gapMs": 25,
+  "noteOctaveBase": -1,
+  "toneMedia": [
+    {
+      "value": 0,
+      "label": "INT",
+      "name": "U-110 internal",
+      "count": 99
+    },
+    {
+      "value": 1,
+      "label": "C01",
+      "name": "SN-U110-01 Pipe Organ & Harpsichord",
+      "count": 21
+    },
+    {
+      "value": 2,
+      "label": "C02",
+      "name": "SN-U110-02 Latin & FX Percussion",
+      "count": 52
+    },
+    {
+      "value": 3,
+      "label": "C03",
+      "name": "SN-U110-03 Ethnic",
+      "count": 38
+    },
+    {
+      "value": 4,
+      "label": "C04",
+      "name": "SN-U110-04 Electric Grand & Clavi",
+      "count": 12
+    },
+    {
+      "value": 5,
+      "label": "C05",
+      "name": "SN-U110-05 Orchestral Strings",
+      "count": 12
+    },
+    {
+      "value": 6,
+      "label": "C06",
+      "name": "SN-U110-06 Orchestral Winds",
+      "count": 35
+    },
+    {
+      "value": 7,
+      "label": "C07",
+      "name": "SN-U110-07 Electric Guitar",
+      "count": 71
+    },
+    {
+      "value": 8,
+      "label": "C08",
+      "name": "SN-U110-08 Synthesizer",
+      "count": 28
+    },
+    {
+      "value": 9,
+      "label": "C09",
+      "name": "SN-U110-09 Guitar & Keyboards",
+      "count": 16
+    },
+    {
+      "value": 10,
+      "label": "C10",
+      "name": "SN-U110-10 Rock Drums",
+      "count": 2
+    },
+    {
+      "value": 11,
+      "label": "C11",
+      "name": "SN-U110-11 Sound Effects",
+      "count": 34
+    },
+    {
+      "value": 12,
+      "label": "C12",
+      "name": "SN-U110-12 Sax & Trombone",
+      "count": 20
+    },
+    {
+      "value": 13,
+      "label": "C13",
+      "name": "SN-U110-13 Super Strings",
+      "count": 12
+    },
+    {
+      "value": 14,
+      "label": "C14",
+      "name": "SN-U110-14 Super Acoustic Guitar",
+      "count": 19
+    },
+    {
+      "value": 15,
+      "label": "C15",
+      "name": "SN-U110-15 Super Brass",
+      "count": 13
+    }
+  ],
+  "toneMediaNote": "value of p{n}ToneMedia; the panel shows I-01..99 for INT and <card #>-01..99 for cards (manual p.77). The card is identified by type, not by slot.",
+  "tones": [
+    "INT-01 A. PIANO 1",
+    "INT-02 A. PIANO 2",
+    "INT-03 A. PIANO 3",
+    "INT-04 A. PIANO 4",
+    "INT-05 A. PIANO 5",
+    "INT-06 A. PIANO 6",
+    "INT-07 A. PIANO 7",
+    "INT-08 A. PIANO 8",
+    "INT-09 A. PIANO 9",
+    "INT-10 A. PIANO 10",
+    "INT-11 E. PIANO 1",
+    "INT-12 E. PIANO 2",
+    "INT-13 E. PIANO 3",
+    "INT-14 E. PIANO 4",
+    "INT-15 E. PIANO 5",
+    "INT-16 VIB 1",
+    "INT-17 VIB 2",
+    "INT-18 VIB 3",
+    "INT-19 BELL 1",
+    "INT-20 BELL 2",
+    "INT-21 BELL 3",
+    "INT-22 BELL 4",
+    "INT-23 MARIMBA",
+    "INT-24 A. GUITAR 1",
+    "INT-25 A. GUITAR 2",
+    "INT-26 A. GUITAR 3",
+    "INT-27 A. GUITAR 4",
+    "INT-28 A. GUITAR 5",
+    "INT-29 E. GUITAR 1",
+    "INT-30 E. GUITAR 2",
+    "INT-31 E. GUITAR 3",
+    "INT-32 E. GUITAR 4",
+    "INT-33 SLAP 1",
+    "INT-34 SLAP 2",
+    "INT-35 SLAP 3",
+    "INT-36 SLAP 4",
+    "INT-37 SLAP 5",
+    "INT-38 SLAP 6",
+    "INT-39 SLAP 7",
+    "INT-40 SLAP 8",
+    "INT-41 SLAP 9",
+    "INT-42 SLAP 10",
+    "INT-43 SLAP 11",
+    "INT-44 SLAP 12",
+    "INT-45 FINGERED 1",
+    "INT-46 FINGERED 2",
+    "INT-47 PICKED 1",
+    "INT-48 PICKED 2",
+    "INT-49 FRETLESS 1",
+    "INT-50 FRETLESS 2",
+    "INT-51 AC. BASS",
+    "INT-52 SYN. BASS 1",
+    "INT-53 SYN. BASS 2",
+    "INT-54 SYN. BASS 3",
+    "INT-55 CHOIR 1",
+    "INT-56 CHOIR 2",
+    "INT-57 CHOIR 3",
+    "INT-58 CHOIR 4",
+    "INT-59 STRINGS 1",
+    "INT-60 STRINGS 2",
+    "INT-61 STRINGS 3",
+    "INT-62 STRINGS 4",
+    "INT-63 E. ORGAN 1",
+    "INT-64 E. ORGAN 2",
+    "INT-65 E. ORGAN 3",
+    "INT-66 E. ORGAN 4",
+    "INT-67 E. ORGAN 5",
+    "INT-68 E. ORGAN 6",
+    "INT-69 E. ORGAN 7",
+    "INT-70 E. ORGAN 8",
+    "INT-71 E. ORGAN 9",
+    "INT-72 E. ORGAN 10",
+    "INT-73 E. ORGAN 11",
+    "INT-74 E. ORGAN 12",
+    "INT-75 E. ORGAN 13",
+    "INT-76 SOFT TP 1",
+    "INT-77 SOFT TP 2",
+    "INT-78 SOFT TP 3",
+    "INT-79 TP / TRB 1",
+    "INT-80 TP / TRB 2",
+    "INT-81 TP / TRB 3",
+    "INT-82 TP / TRB 4",
+    "INT-83 TP / TRB 5",
+    "INT-84 TP / TRB 6",
+    "INT-85 SAX 1",
+    "INT-86 SAX 2",
+    "INT-87 SAX 3",
+    "INT-88 SAX 4",
+    "INT-89 SAX 5",
+    "INT-90 BRASS 1",
+    "INT-91 BRASS 2",
+    "INT-92 BRASS 3",
+    "INT-93 BRASS 4",
+    "INT-94 BRASS 5",
+    "INT-95 FLUTE 1",
+    "INT-96 FLUTE 2",
+    "INT-97 SHAKU 1",
+    "INT-98 SHAKU 2",
+    "INT-99 DRUMS",
+    "C01-01 Harpsichord 1",
+    "C01-02 Harpsichord 2",
+    "C01-03 Harpsichord 3",
+    "C01-04 Harpsichord 4",
+    "C01-05 Harpsichord 5",
+    "C01-06 Harpsichord 6",
+    "C01-07 Positive 1",
+    "C01-08 Positive 2",
+    "C01-09 Positive 3",
+    "C01-10 Positive 4",
+    "C01-11 Positive 5",
+    "C01-12 Positive 6",
+    "C01-13 Church 1",
+    "C01-14 Church 2",
+    "C01-15 Church 3",
+    "C01-16 Church 4",
+    "C01-17 Church 5",
+    "C01-18 Church 6",
+    "C01-19 Church 7",
+    "C01-20 Church 8",
+    "C01-21 Church Reverb",
+    "C02-01 Latin 1 [SETUP]",
+    "C02-02 Latin 2 [SETUP]",
+    "C02-03 Latin 3 [SETUP]",
+    "C02-04 FX 1 [SETUP]",
+    "C02-05 FX 2 [SETUP]",
+    "C02-06 FX 3 [SETUP]",
+    "C02-07 FX 4 [SETUP]",
+    "C02-08 Conga 1",
+    "C02-09 Conga 2",
+    "C02-10 Conga 3",
+    "C02-11 Bongo",
+    "C02-12 Claves",
+    "C02-13 Timbale",
+    "C02-14 Tambourine",
+    "C02-15 Wood Block",
+    "C02-16 Whistle",
+    "C02-17 Triangle",
+    "C02-18 Belltree",
+    "C02-19 Jingle Bell",
+    "C02-20 Vibraslap",
+    "C02-21 Castanet",
+    "C02-22 Maracas",
+    "C02-23 Agogo 1",
+    "C02-24 Agogo 2",
+    "C02-25 Cuica 1",
+    "C02-26 Cuica 2",
+    "C02-27 Guiro 1",
+    "C02-28 Guiro 2",
+    "C02-29 Guiro 3",
+    "C02-30 Berimbau",
+    "C02-31 Shekele",
+    "C02-32 Steel Drum",
+    "C02-33 Log Drum",
+    "C02-34 Orch Hit",
+    "C02-35 Siren",
+    "C02-36 Type 1",
+    "C02-37 Type 2",
+    "C02-38 Clock",
+    "C02-39 Pinball",
+    "C02-40 Telephone",
+    "C02-41 Smsh Glass",
+    "C02-42 Rezno",
+    "C02-43 Eerie",
+    "C02-44 Ambia Jr",
+    "C02-45 Templ Blk",
+    "C02-46 Zing!",
+    "C02-47 Boing!",
+    "C02-48 Mod Zap",
+    "C02-49 Interface",
+    "C02-50 Scratch",
+    "C02-51 Stake",
+    "C02-52 Zappu",
+    "C03-01 Tabla",
+    "C03-02 Tabla-Ga",
+    "C03-03 Tabla-Te",
+    "C03-04 Tabla-Na",
+    "C03-05 Tabla-Trkt",
+    "C03-06 Tabla-Tun",
+    "C03-07 Tsuzumi 1",
+    "C03-08 Tsuzumi 2",
+    "C03-09 Tsuzumi 3",
+    "C03-10 Hyosigi",
+    "C03-11 Gender 1",
+    "C03-12 Gender 2",
+    "C03-13 Sanza 1",
+    "C03-14 Sanza 2",
+    "C03-15 Barafon 1",
+    "C03-16 Barafon 2",
+    "C03-17 Barafon 3",
+    "C03-18 Barafon 4",
+    "C03-19 Sitar 1",
+    "C03-20 Sitar 2",
+    "C03-21 Sitar 3",
+    "C03-22 Santur 1",
+    "C03-23 Santur 2",
+    "C03-24 Santur 3",
+    "C03-25 Koto 1",
+    "C03-26 Koto 2",
+    "C03-27 Koto 3",
+    "C03-28 Koto 4",
+    "C03-29 Koto 5",
+    "C03-30 Koto 6",
+    "C03-31 Koto 7",
+    "C03-32 Koto 8",
+    "C03-33 Koto Tremo",
+    "C03-34 Sicu 1",
+    "C03-35 Sicu 2",
+    "C03-36 Shanai 1",
+    "C03-37 Shanai 2",
+    "C03-38 Shanai 3",
+    "C04-01 Electric Grand 1",
+    "C04-02 Electric Grand 2",
+    "C04-03 Electric Grand 3",
+    "C04-04 Electric Grand 4",
+    "C04-05 Electric Grand 5",
+    "C04-06 Electric Grand 6",
+    "C04-07 Electric Grand 7",
+    "C04-08 Electric Grand 8",
+    "C04-09 Clavichord 1",
+    "C04-10 Clavichord 2",
+    "C04-11 Clavichord 3",
+    "C04-12 Clavichord 4",
+    "C05-01 Violin 1",
+    "C05-02 Violin 2",
+    "C05-03 Violin 3",
+    "C05-04 Cello 1",
+    "C05-05 Cello 2",
+    "C05-06 Cello 3",
+    "C05-07 Cello 4",
+    "C05-08 Cello / Violin",
+    "C05-09 Contrabass / Cello",
+    "C05-10 Pizzicato",
+    "C05-11 Harp 1",
+    "C05-12 Harp 2",
+    "C06-01 Oboe 1",
+    "C06-02 Oboe 2",
+    "C06-03 Oboe 3",
+    "C06-04 Oboe 4",
+    "C06-05 Oboe 5",
+    "C06-06 Oboe 6",
+    "C06-07 Bassoon 1",
+    "C06-08 Bassoon 2",
+    "C06-09 Bassoon 3",
+    "C06-10 Bassoon 4",
+    "C06-11 Bassoon 5",
+    "C06-12 Clarinet 1",
+    "C06-13 Clarinet 2",
+    "C06-14 Clarinet 3",
+    "C06-15 Clarinet 4",
+    "C06-16 Clarinet 5",
+    "C06-17 Clarinet 6",
+    "C06-18 Bass Clarinet 1",
+    "C06-19 Bass Clarinet 2",
+    "C06-20 Bass Clarinet 3",
+    "C06-21 Bass Clarinet 4",
+    "C06-22 Bass Clarinet 5",
+    "C06-23 French Horn 1",
+    "C06-24 French Horn 2",
+    "C06-25 French Horn 3",
+    "C06-26 French Horn 4",
+    "C06-27 French Horn 5",
+    "C06-28 French Horn 6",
+    "C06-29 Tuba 1",
+    "C06-30 Tuba 2",
+    "C06-31 Tuba 3",
+    "C06-32 Tuba 4",
+    "C06-33 Tuba 5",
+    "C06-34 Timpani 1",
+    "C06-35 Timpani 2",
+    "C07-01 Jazz Guitar SW 1",
+    "C07-02 Jazz Guitar SW 2",
+    "C07-03 Jazz Guitar SW 3",
+    "C07-04 Jazz Guitar P",
+    "C07-05 Jazz Guitar F",
+    "C07-06 Jazz Guitar DT P",
+    "C07-07 Jazz Guitar DT F",
+    "C07-08 Jazz Guitar OCT P1",
+    "C07-09 Jazz Guitar OCT P2",
+    "C07-10 Jazz Guitar OCT F1",
+    "C07-11 Jazz Guitar OCT F2",
+    "C07-12 Jazz Guitar SW S/F",
+    "C07-13 Jazz Guitar COMP 1",
+    "C07-14 Jazz Guitar COMP 1",
+    "C07-15 Jazz Guitar COMP 1",
+    "C07-16 Overdrive Guitar SW 1",
+    "C07-17 Overdrive Guitar SW 2",
+    "C07-18 Overdrive Guitar SW 3",
+    "C07-19 Overdrive Guitar SW 4",
+    "C07-20 Overdrive Guitar SW 5",
+    "C07-21 Overdrive Guitar SW HM",
+    "C07-22 Overdrive Guitar P",
+    "C07-23 Overdrive Guitar F",
+    "C07-24 Overdrive Guitar DT P",
+    "C07-25 Overdrive Guitar DT F",
+    "C07-26 Overdrive Guitar OCT P1",
+    "C07-27 Overdrive Guitar OCT P2",
+    "C07-28 Overdrive Guitar OCT F1",
+    "C07-29 Overdrive Guitar OCT F2",
+    "C07-30 Overdrive Guitar SW S/F",
+    "C07-31 Overdrive Guitar FB 1",
+    "C07-32 Overdrive Guitar FB 2",
+    "C07-33 Overdrive Guitar FB 3",
+    "C07-34 Overdrive Guitar FB 4",
+    "C07-35 Overdrive Guitar FB 5",
+    "C07-36 Overdrive Guitar FB 6",
+    "C07-37 Overdrive Guitar FB 7",
+    "C07-38 Overdrive Guitar FB 8",
+    "C07-39 Overdrive Guitar FB 9",
+    "C07-40 Overdrive Guitar FB 10",
+    "C07-41 Overdrive Guitar FB 11",
+    "C07-42 Overdrive Guitar FB 12",
+    "C07-43 Distortion Guitar SW 1",
+    "C07-44 Distortion Guitar SW 2",
+    "C07-45 Distortion Guitar SW 3",
+    "C07-46 Distortion Guitar SW 4",
+    "C07-47 Distortion Guitar SW 5",
+    "C07-48 Distortion Guitar SW HM",
+    "C07-49 Distortion Guitar P",
+    "C07-50 Distortion Guitar F",
+    "C07-51 Distortion Guitar DT",
+    "C07-52 Distortion Guitar +4TH 1",
+    "C07-53 Distortion Guitar +4TH 2",
+    "C07-54 Distortion Guitar -5TH 1",
+    "C07-55 Distortion Guitar -5TH 2",
+    "C07-56 Distortion Guitar OCT 1",
+    "C07-57 Distortion Guitar OCT 2",
+    "C07-58 Distortion Guitar SW S/F",
+    "C07-59 Distortion Guitar FB 1",
+    "C07-60 Distortion Guitar FB 2",
+    "C07-61 Distortion Guitar FB 3",
+    "C07-62 Distortion Guitar FB 4",
+    "C07-63 Distortion Guitar FB 5",
+    "C07-64 Distortion Guitar FB 6",
+    "C07-65 Distortion Guitar FB 7",
+    "C07-66 Distortion Guitar FB 8",
+    "C07-67 Distortion Guitar FB 9",
+    "C07-68 Distortion Guitar FB 10",
+    "C07-69 Distortion Guitar FB 11",
+    "C07-70 Distortion Guitar FB 12",
+    "C07-71 Picking Harmonics",
+    "C08-01 Fantasia",
+    "C08-02 Bell Pad",
+    "C08-03 Syn Choir",
+    "C08-04 Breath Vox",
+    "C08-05 L. Calliope",
+    "C08-06 Calliope",
+    "C08-07 Metal Hit",
+    "C08-08 Rich Brass",
+    "C08-09 Brass Strings",
+    "C08-10 String Pad 1",
+    "C08-11 String Pad 2",
+    "C08-12 Pizzagogo",
+    "C08-13 Fanta Bell",
+    "C08-14 Spect Bell",
+    "C08-15 Bell Drum",
+    "C08-16 Synth Harp",
+    "C08-17 Pulse Wave 1",
+    "C08-18 Pulse Wave 2",
+    "C08-19 Pulse Wave 3",
+    "C08-20 Saw Wave 1",
+    "C08-21 Saw Wave 2",
+    "C08-22 Pizz",
+    "C08-23 Metal",
+    "C08-24 Breath",
+    "C08-25 Nails",
+    "C08-26 Spectrum 1",
+    "C08-27 Spectrum 2",
+    "C08-28 N. Dance",
+    "C09-01 Bright EP 1",
+    "C09-02 Bright EP 2",
+    "C09-03 Syn. Vox 1",
+    "C09-04 Syn. Vox 2",
+    "C09-05 Syn. Bass 4",
+    "C09-06 Syn. Bass 5",
+    "C09-07 Syn. Bass 6",
+    "C09-08 Syn. Bass 7",
+    "C09-09 Syn. Bass 8",
+    "C09-10 Heavy EG 1",
+    "C09-11 Heavy EG 2",
+    "C09-12 JP. Strings",
+    "C09-13 JP. Brass 1",
+    "C09-14 JP. Brass 2",
+    "C09-15 R. Organ 1",
+    "C09-16 R. Organ 2",
+    "C10-01 Rock Drums [SETUP]",
+    "C10-02 Electronic Drums [SETUP]",
+    "C11-01 Creaking",
+    "C11-02 Door",
+    "C11-03 Footsteps",
+    "C11-04 Waterphone",
+    "C11-05 S-Strings",
+    "C11-06 Screaming",
+    "C11-07 Laughing",
+    "C11-08 Dog",
+    "C11-09 Wave",
+    "C11-10 Stream",
+    "C11-11 Bird",
+    "C11-12 Drop",
+    "C11-13 Rain",
+    "C11-14 Thunder",
+    "C11-15 Car Door",
+    "C11-16 Car Stop",
+    "C11-17 Car Crash",
+    "C11-18 Train",
+    "C11-19 Pistol",
+    "C11-20 Machine Gun",
+    "C11-21 Missile",
+    "C11-22 Explosion",
+    "C11-23 Big Foot",
+    "C11-24 Godzilla",
+    "C11-25 Telephone Call",
+    "C11-26 Chime",
+    "C11-27 Applause",
+    "C11-28 From Radio",
+    "C11-29 Bubble 1",
+    "C11-30 Bubble 2",
+    "C11-31 Toy",
+    "C11-32 Fantasy Hit",
+    "C11-33 S-Set",
+    "C11-34 C-Set",
+    "C12-01 Saxophone SW 1",
+    "C12-02 Saxophone SW 2",
+    "C12-03 Saxophone SW 3",
+    "C12-04 Saxophone SW 4",
+    "C12-05 Saxophone P 1",
+    "C12-06 Saxophone P 2",
+    "C12-07 Saxophone P 3",
+    "C12-08 Saxophone MF 1",
+    "C12-09 Saxophone MF 2",
+    "C12-10 Saxophone FF",
+    "C12-11 Trombone SW 1",
+    "C12-12 Trombone SW 2",
+    "C12-13 Trombone P",
+    "C12-14 Trombone MF",
+    "C12-15 Trombone FF",
+    "C12-16 TP/TRB SW 1",
+    "C12-17 TP/TRB SW 2",
+    "C12-18 TP/TRB P",
+    "C12-19 TP/TRB MF",
+    "C12-20 TP/TRB FF",
+    "C13-01 Super Strings 1",
+    "C13-02 Super Strings 1L",
+    "C13-03 Super Strings 1R",
+    "C13-04 Super Strings 2",
+    "C13-05 Super Strings 2L",
+    "C13-06 Super Strings 2R",
+    "C13-07 Super Strings 3",
+    "C13-08 Super Strings 3L",
+    "C13-09 Super Strings 3R",
+    "C13-10 Super Strings 4",
+    "C13-11 Super Strings 4L",
+    "C13-12 Super Strings 4R",
+    "C14-01 Steel Guitar 1",
+    "C14-02 Steel Soft",
+    "C14-03 Steel Hard",
+    "C14-04 Steel Guitar 2",
+    "C14-05 Steel (L)",
+    "C14-06 Steel (R)",
+    "C14-07 Nylon Guitar 1",
+    "C14-08 Nylon Soft",
+    "C14-09 Nylon Hard",
+    "C14-10 Nylon Guitar 2",
+    "C14-11 Nylon (L)",
+    "C14-12 Nylon (R)",
+    "C14-13 12-String Guitar 1",
+    "C14-14 12-String Guitar 2",
+    "C14-15 12-String Guitar 3",
+    "C14-16 12-String Guitar 4",
+    "C14-17 12-String Guitar 5",
+    "C14-18 Harmonics",
+    "C14-19 Squeak",
+    "C15-01 High Brass 1",
+    "C15-02 High Brass 2",
+    "C15-03 High Brass SF",
+    "C15-04 Low Brass 1",
+    "C15-05 Low Brass 2",
+    "C15-06 Low Brass SF",
+    "C15-07 Brass Combo 1",
+    "C15-08 Brass Combo 1L",
+    "C15-09 Brass Combo 1R",
+    "C15-10 Brass Combo 2",
+    "C15-11 Brass Combo 2L",
+    "C15-12 Brass Combo 2R",
+    "C15-13 Brass Combo SF"
+  ],
+  "tonesNote": "INT-01..99 from the manual's Preset Tone Table (pp.78-79; tone types SINGLE / DETUNE / DUAL / V-MIX / V-SW; 99 DRUMS = the drum-set tone, key map p.80). Cnn-mm lists are the SN-U110 PCM card tones as listed in Edisyn (not in the U-110 manual). Tone index for a part = its ToneNumber (0-based) within its ToneMedia.",
+  "factoryPatches": [
+    "Ac. Piano",
+    "Brt Piano",
+    "ff Piano",
+    "Wide Piano",
+    "Double A. P",
+    "Dtun Piano",
+    "E. Piano",
+    "Double E. P",
+    "Detune E. P",
+    "Hard E. P",
+    "Vibraphone",
+    "Hard Vib",
+    "Detune Bell",
+    "Marimba",
+    "A. Guitar",
+    "Double A. G",
+    "12str A. G",
+    "Mute Sw EG",
+    "Double E.G",
+    "Slap Bass",
+    "Detune Bass",
+    "V-Sw Slap",
+    "Fing Bass",
+    "Pick Bass",
+    "Fless Bass",
+    "Ac. Bass",
+    "Synth Bass",
+    "Choir",
+    "Oct Choir",
+    "Double Chr",
+    "Strings",
+    "Double Str",
+    "E. Organ",
+    "Double Org1",
+    "Double Org2",
+    "Soft Tp",
+    "Tp/Tromb",
+    "Oct Tp/Trb",
+    "Sax",
+    "Bright Sax",
+    "Detune Sax",
+    "Oct Sax",
+    "Brass",
+    "Oct Brass",
+    "Double Brs",
+    "Flute",
+    "Dtn Flute",
+    "Shakuhachi",
+    "Drums",
+    "Double Drm",
+    "Short Drm",
+    "Fantasy",
+    "Brs + Str",
+    "5th Br + Str",
+    "Choir + Str",
+    "Thick Bell",
+    "Guit > Piano",
+    "Tramp > Sax",
+    "Sax/Tp",
+    "Multi-Set1",
+    "Multi-Set2",
+    "Multi-Set3",
+    "Multi-Set4",
+    "Multi-Set5"
+  ],
+  "factoryPatchesNote": "Patch Setting Chart (Factory Preset): P-01..P-64. Factory patches mostly use part 1 on MIDI ch 1 with output mode 22; P-52..59 layer several parts on ch 1; P-60..64 'Multi-Set' put drums on ch 10 and parts 2-6 on ch 2..6-ish, output mode 49, all levels 127.",
+  "params": [
+    {
+      "key": "name1",
+      "name": "Patch Name Char 1",
+      "group": "common",
+      "block": "patch",
+      "offset": 8,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 73,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name2",
+      "name": "Patch Name Char 2",
+      "group": "common",
+      "block": "patch",
+      "offset": 10,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 110,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name3",
+      "name": "Patch Name Char 3",
+      "group": "common",
+      "block": "patch",
+      "offset": 12,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 105,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name4",
+      "name": "Patch Name Char 4",
+      "group": "common",
+      "block": "patch",
+      "offset": 14,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 116,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name5",
+      "name": "Patch Name Char 5",
+      "group": "common",
+      "block": "patch",
+      "offset": 16,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 32,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name6",
+      "name": "Patch Name Char 6",
+      "group": "common",
+      "block": "patch",
+      "offset": 18,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 80,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name7",
+      "name": "Patch Name Char 7",
+      "group": "common",
+      "block": "patch",
+      "offset": 20,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 97,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name8",
+      "name": "Patch Name Char 8",
+      "group": "common",
+      "block": "patch",
+      "offset": 22,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 116,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name9",
+      "name": "Patch Name Char 9",
+      "group": "common",
+      "block": "patch",
+      "offset": 24,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 99,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "name10",
+      "name": "Patch Name Char 10",
+      "group": "common",
+      "block": "patch",
+      "offset": 26,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 104,
+      "note": "ASCII byte as 2 nibbles, low first. Individual-parameter area: the whole 10-char name is ONE parameter, 20 nibbles at 00 01 00-00 01 13 (write it from 00 01 00, not mid-way)"
+    },
+    {
+      "key": "outputMode",
+      "name": "Output Mode",
+      "group": "common",
+      "block": "patch",
+      "offset": 28,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 49,
+      "display": "enum",
+      "options": [
+        "1  1:31",
+        "2  1:27 2:4",
+        "3  1:23 2:8",
+        "4  1:23 2:4 3:4",
+        "5  1:19 2:12",
+        "6  1:19 2:8 3:4",
+        "7  1:19 2:4 3:4 4:4",
+        "8  1:15 2:16",
+        "9  1:15 2:12 3:4",
+        "10 1:15 2:8 3:8",
+        "11 1:15 2:8 3:4 4:4",
+        "12 1:15 2:4 3:4 4:4 5:4",
+        "13 1:11 2:12 3:8",
+        "14 1:11 2:12 3:4 4:4",
+        "15 1:11 2:8 3:8 4:4",
+        "16 1:11 2:8 3:4 4:4 5:4",
+        "17 1:11 2:4 3:4 4:4 5:4 6:4",
+        "18 1:7 2:8 3:8 4:8",
+        "19 1:7 2:8 3:8 4:4 5:4",
+        "20 1:7 2:8 3:4 4:4 5:4 6:4",
+        "21 1-2:L31/R31",
+        "22 1-2:M31",
+        "23 1-2:L16/R16 3:15",
+        "24 1-2:M16 3:15",
+        "25 1-2:L16/R16 3:11 4:4",
+        "26 1-2:M16 3:11 4:4",
+        "27 1-2:L16/R16 3:7 4:8",
+        "28 1-2:M16 3:7 4:8",
+        "29 1-2:L16/R16 3:7 4:4 5:4",
+        "30 1-2:M16 3:7 4:4 5:4",
+        "31 1-2:L16/R16 3:3 4:4 5:4 6:4",
+        "32 1-2:M16 3:3 4:4 5:4 6:4",
+        "33 1-2:L8/R8 3:23",
+        "34 1-2:M8 3:23",
+        "35 1-2:L8/R8 3:19 4:4",
+        "36 1-2:M8 3:19 4:4",
+        "37 1-2:L8/R8 3:15 4:8",
+        "38 1-2:M8 3:15 4:8",
+        "39 1-2:L8/R8 3:15 4:4 5:4",
+        "40 1-2:M8 3:15 4:4 5:4",
+        "41 1-2:L8/R8 3:11 4:12",
+        "42 1-2:M8 3:11 4:12",
+        "43 1-2:L8/R8 3:11 4:8 5:4",
+        "44 1-2:M8 3:11 4:8 5:4",
+        "45 1-2:L8/R8 3:11 4:4 5:4 6:4",
+        "46 1-2:M8 3:11 4:4 5:4 6:4",
+        "47 1-2:L8/R8 3:7 4:8 5:8",
+        "48 1-2:M8 3:7 4:8 5:8",
+        "49 1-2:L8/R8 3:7 4:8 5:4 6:4",
+        "50 1-2:M8 3:7 4:8 5:4 6:4"
+      ],
+      "default": 21,
+      "norandom": true,
+      "live": [
+        0,
+        1,
+        24
+      ],
+      "note": "voice-group polyphony split (31 voices) across multi outs 1-6; 21-50: outs 1+2 are one stereo group, L/R = effect on (stereo), M = effect off (centre). Manual p.56; mode 10 misprinted in the manual. Changing it mutes all parts for a moment"
+    },
+    {
+      "key": "chorusRate",
+      "name": "Chorus Rate",
+      "group": "effect",
+      "block": "patch",
+      "offset": 30,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        1,
+        25
+      ],
+      "note": "0-15; low nibble of its byte (high nibble = 0). Applies to voice groups 1-2 in the L/R output modes (21, 23, ... 49)",
+      "size": 1
+    },
+    {
+      "key": "chorusDepth",
+      "name": "Chorus Depth",
+      "group": "effect",
+      "block": "patch",
+      "offset": 32,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        1,
+        26
+      ],
+      "note": "0-15; low nibble of its byte (high nibble = 0). Applies to voice groups 1-2 in the L/R output modes (21, 23, ... 49)",
+      "size": 1
+    },
+    {
+      "key": "tremoloRate",
+      "name": "Tremolo Rate",
+      "group": "effect",
+      "block": "patch",
+      "offset": 34,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        1,
+        27
+      ],
+      "note": "0-15; low nibble of its byte (high nibble = 0). Applies to voice groups 1-2 in the L/R output modes (21, 23, ... 49)",
+      "size": 1
+    },
+    {
+      "key": "tremoloDepth",
+      "name": "Tremolo Depth",
+      "group": "effect",
+      "block": "patch",
+      "offset": 36,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        1,
+        28
+      ],
+      "note": "0-15; low nibble of its byte (high nibble = 0). Applies to voice groups 1-2 in the L/R output modes (21, 23, ... 49)",
+      "size": 1
+    },
+    {
+      "key": "p1ToneMedia",
+      "name": "Part 1 Tone Media",
+      "group": "p1basic",
+      "block": "patch",
+      "offset": 40,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "INT (internal)",
+        "C01 Pipe Organ & Harpsichord",
+        "C02 Latin & FX Percussion",
+        "C03 Ethnic",
+        "C04 Electric Grand & Clavi",
+        "C05 Orchestral Strings",
+        "C06 Orchestral Winds",
+        "C07 Electric Guitar",
+        "C08 Synthesizer",
+        "C09 Guitar & Keyboards",
+        "C10 Rock Drums",
+        "C11 Sound Effects",
+        "C12 Sax & Trombone",
+        "C13 Super Strings",
+        "C14 Super Acoustic Guitar",
+        "C15 Super Brass"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        16,
+        2
+      ],
+      "note": "0 = INT, 1-31 = card C01-C31 (the card type, found in any of the 4 slots; 'No Card!' shows if absent). Bits 0-3 of patch byte (low nibble); bit 4 sits in bit 0 of the next nibble and is left as read (no card beyond C15 is known). See schema.toneMedia",
+      "size": 1
+    },
+    {
+      "key": "p1LfoPolySens",
+      "name": "Part 1 LFO Poly Pressure Sens",
+      "group": "p1lfo",
+      "block": "patch",
+      "offset": 41,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        25
+      ],
+      "note": "vibrato depth from polyphonic aftertouch (SETUP: POLY PRESS must be ON). Bits 5-7 of the tone-media byte",
+      "size": 1
+    },
+    {
+      "key": "p1ToneNumber",
+      "name": "Part 1 Tone Number",
+      "group": "p1basic",
+      "block": "patch",
+      "offset": 42,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 98,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "toneLookup": {
+        "mediaKey": "p1ToneMedia"
+      },
+      "live": [
+        0,
+        16,
+        3
+      ],
+      "note": "1-99. Name = schema.toneMedia[media] list (INT-01..99 or Cnn-..); a number beyond a card's tone count plays nothing"
+    },
+    {
+      "key": "p1RxChannel",
+      "name": "Part 1 MIDI Receive Channel",
+      "group": "p1basic",
+      "block": "patch",
+      "offset": 44,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        16,
+        1
+      ],
+      "note": "notes, CCs, program change (tone select via the map), pressure, bend for this part",
+      "size": 1
+    },
+    {
+      "key": "p1BendRange",
+      "name": "Part 1 Bend Range",
+      "group": "p1pitch",
+      "block": "patch",
+      "offset": 45,
+      "min": 0,
+      "max": 12,
+      "display": "int",
+      "default": 2,
+      "live": [
+        0,
+        16,
+        4
+      ],
+      "note": "0-12 semitones (also RPN 0 on the part channel)",
+      "size": 1
+    },
+    {
+      "key": "p1KeyLo",
+      "name": "Part 1 Key Range Low",
+      "group": "p1basic",
+      "block": "patch",
+      "offset": 46,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 0,
+      "norandom": true,
+      "live": [
+        0,
+        16,
+        5
+      ],
+      "note": "C-1..G9 (middle C = C4)"
+    },
+    {
+      "key": "p1KeyHi",
+      "name": "Part 1 Key Range High",
+      "group": "p1basic",
+      "block": "patch",
+      "offset": 48,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 127,
+      "norandom": true,
+      "live": [
+        0,
+        16,
+        6
+      ],
+      "note": "C-1..G9"
+    },
+    {
+      "key": "p1Level",
+      "name": "Part 1 Part Level",
+      "group": "p1level",
+      "block": "patch",
+      "offset": 50,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "int",
+      "default": 127,
+      "live": [
+        0,
+        16,
+        7
+      ],
+      "note": "0-127; CC7 on the part channel sets it too"
+    },
+    {
+      "key": "p1VeloSens",
+      "name": "Part 1 Velocity Sens",
+      "group": "p1level",
+      "block": "patch",
+      "offset": 52,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        8
+      ],
+      "note": "0-15",
+      "size": 1
+    },
+    {
+      "key": "p1LevelPressSens",
+      "name": "Part 1 Level Ch Pressure Sens",
+      "group": "p1level",
+      "block": "patch",
+      "offset": 53,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        9
+      ],
+      "note": "volume from channel aftertouch, 0-15 (SETUP: CH PRESSURE must be ON)",
+      "size": 1
+    },
+    {
+      "key": "p1EnvAttack",
+      "name": "Part 1 ENV Attack Rate",
+      "group": "p1level",
+      "block": "patch",
+      "offset": 54,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        16,
+        10
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p1EnvRelease",
+      "name": "Part 1 ENV Release Rate",
+      "group": "p1level",
+      "block": "patch",
+      "offset": 55,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        16,
+        11
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p1ShiftCoarse",
+      "name": "Part 1 Pitch Shift Coarse",
+      "group": "p1pitch",
+      "block": "patch",
+      "offset": 56,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 52,
+      "max": 76,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        16,
+        12
+      ],
+      "note": "52-76 = -12..+12 semitones"
+    },
+    {
+      "key": "p1ShiftFine",
+      "name": "Part 1 Pitch Shift Fine",
+      "group": "p1pitch",
+      "block": "patch",
+      "offset": 58,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 14,
+      "max": 114,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        16,
+        13
+      ],
+      "note": "14-114 = -50..+50 cents"
+    },
+    {
+      "key": "p1DetuneDepth",
+      "name": "Part 1 Detune Depth",
+      "group": "p1pitch",
+      "block": "patch",
+      "offset": 60,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        23
+      ],
+      "note": "0-15; only heard on DETUNE-type tones (see the Preset Tone Table)",
+      "size": 1
+    },
+    {
+      "key": "p1PitchPolySens",
+      "name": "Part 1 Pitch Poly Pressure Sens",
+      "group": "p1pitch",
+      "block": "patch",
+      "offset": 61,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "-24",
+        "-12",
+        "-7",
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0",
+        "+1",
+        "+2",
+        "+3",
+        "+4",
+        "+5",
+        "+7",
+        "+12"
+      ],
+      "default": 8,
+      "live": [
+        0,
+        16,
+        24
+      ],
+      "note": "semitones from polyphonic aftertouch: -24,-12,-7,-5..+5,+7,+12 (8 = 0)",
+      "size": 1
+    },
+    {
+      "key": "p1PgmMap",
+      "name": "Part 1 PGM->Tone Map",
+      "group": "p1basic",
+      "block": "patch",
+      "offset": 62,
+      "bits": {
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 5,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "live": [
+        0,
+        16,
+        22
+      ],
+      "note": "map 1-6 (SETUP: MAP) used to turn a program change on the part channel into a tone",
+      "size": 1
+    },
+    {
+      "key": "p1PgmChange",
+      "name": "Part 1 Program Change (tone select)",
+      "group": "p1basic",
+      "block": "patch",
+      "offset": 62,
+      "bits": {
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "OFF",
+        "ON"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        16,
+        21
+      ],
+      "note": "receive PC on the part channel as a tone change. Keep OFF on a part whose channel = the control channel, or a patch change also changes its tone",
+      "size": 1
+    },
+    {
+      "key": "p1OutputAssign",
+      "name": "Part 1 Output Assign",
+      "group": "p1basic",
+      "block": "patch",
+      "offset": 63,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "OFF"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        16,
+        0
+      ],
+      "note": "voice group 1-6 (polyphony per group set by Output Mode) = multi out; OFF mutes the part. Bits 5-7 of its byte (bit 4 unused)",
+      "size": 1
+    },
+    {
+      "key": "p1LfoRate",
+      "name": "Part 1 LFO Rate",
+      "group": "p1lfo",
+      "block": "patch",
+      "offset": 64,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        14
+      ],
+      "note": "MIDI implementation + Edisyn: 0-15 (read as a whole byte in case it is wider); the panel chapter and parameter table say 0-127 -- see uncertain"
+    },
+    {
+      "key": "p1AutoDepth",
+      "name": "Part 1 LFO Auto Depth",
+      "group": "p1lfo",
+      "block": "patch",
+      "offset": 66,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        17
+      ],
+      "note": "vibrato depth reached after note-on (delay + rise)",
+      "size": 1
+    },
+    {
+      "key": "p1ManDepth",
+      "name": "Part 1 LFO Manual Depth",
+      "group": "p1lfo",
+      "block": "patch",
+      "offset": 67,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        19
+      ],
+      "note": "vibrato depth from the mod wheel (CC1)",
+      "size": 1
+    },
+    {
+      "key": "p1AutoRise",
+      "name": "Part 1 LFO Auto Rise Time",
+      "group": "p1lfo",
+      "block": "patch",
+      "offset": 68,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        16
+      ],
+      "size": 1
+    },
+    {
+      "key": "p1ManRise",
+      "name": "Part 1 LFO Manual Rise Time",
+      "group": "p1lfo",
+      "block": "patch",
+      "offset": 69,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        18
+      ],
+      "size": 1
+    },
+    {
+      "key": "p1LfoChPressSens",
+      "name": "Part 1 LFO Ch Pressure Sens",
+      "group": "p1lfo",
+      "block": "patch",
+      "offset": 70,
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        20
+      ],
+      "note": "vibrato from channel aftertouch, 0-7",
+      "size": 1
+    },
+    {
+      "key": "p1AutoDelay",
+      "name": "Part 1 LFO Auto Delay Time",
+      "group": "p1lfo",
+      "block": "patch",
+      "offset": 71,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        16,
+        15
+      ],
+      "size": 1
+    },
+    {
+      "key": "p2ToneMedia",
+      "name": "Part 2 Tone Media",
+      "group": "p2basic",
+      "block": "patch",
+      "offset": 72,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "INT (internal)",
+        "C01 Pipe Organ & Harpsichord",
+        "C02 Latin & FX Percussion",
+        "C03 Ethnic",
+        "C04 Electric Grand & Clavi",
+        "C05 Orchestral Strings",
+        "C06 Orchestral Winds",
+        "C07 Electric Guitar",
+        "C08 Synthesizer",
+        "C09 Guitar & Keyboards",
+        "C10 Rock Drums",
+        "C11 Sound Effects",
+        "C12 Sax & Trombone",
+        "C13 Super Strings",
+        "C14 Super Acoustic Guitar",
+        "C15 Super Brass"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        17,
+        2
+      ],
+      "note": "0 = INT, 1-31 = card C01-C31 (the card type, found in any of the 4 slots; 'No Card!' shows if absent). Bits 0-3 of patch byte (low nibble); bit 4 sits in bit 0 of the next nibble and is left as read (no card beyond C15 is known). See schema.toneMedia",
+      "size": 1
+    },
+    {
+      "key": "p2LfoPolySens",
+      "name": "Part 2 LFO Poly Pressure Sens",
+      "group": "p2lfo",
+      "block": "patch",
+      "offset": 73,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        25
+      ],
+      "note": "vibrato depth from polyphonic aftertouch (SETUP: POLY PRESS must be ON). Bits 5-7 of the tone-media byte",
+      "size": 1
+    },
+    {
+      "key": "p2ToneNumber",
+      "name": "Part 2 Tone Number",
+      "group": "p2basic",
+      "block": "patch",
+      "offset": 74,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 98,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "toneLookup": {
+        "mediaKey": "p2ToneMedia"
+      },
+      "live": [
+        0,
+        17,
+        3
+      ],
+      "note": "1-99. Name = schema.toneMedia[media] list (INT-01..99 or Cnn-..); a number beyond a card's tone count plays nothing"
+    },
+    {
+      "key": "p2RxChannel",
+      "name": "Part 2 MIDI Receive Channel",
+      "group": "p2basic",
+      "block": "patch",
+      "offset": 76,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        17,
+        1
+      ],
+      "note": "notes, CCs, program change (tone select via the map), pressure, bend for this part",
+      "size": 1
+    },
+    {
+      "key": "p2BendRange",
+      "name": "Part 2 Bend Range",
+      "group": "p2pitch",
+      "block": "patch",
+      "offset": 77,
+      "min": 0,
+      "max": 12,
+      "display": "int",
+      "default": 2,
+      "live": [
+        0,
+        17,
+        4
+      ],
+      "note": "0-12 semitones (also RPN 0 on the part channel)",
+      "size": 1
+    },
+    {
+      "key": "p2KeyLo",
+      "name": "Part 2 Key Range Low",
+      "group": "p2basic",
+      "block": "patch",
+      "offset": 78,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 0,
+      "norandom": true,
+      "live": [
+        0,
+        17,
+        5
+      ],
+      "note": "C-1..G9 (middle C = C4)"
+    },
+    {
+      "key": "p2KeyHi",
+      "name": "Part 2 Key Range High",
+      "group": "p2basic",
+      "block": "patch",
+      "offset": 80,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 127,
+      "norandom": true,
+      "live": [
+        0,
+        17,
+        6
+      ],
+      "note": "C-1..G9"
+    },
+    {
+      "key": "p2Level",
+      "name": "Part 2 Part Level",
+      "group": "p2level",
+      "block": "patch",
+      "offset": 82,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "int",
+      "default": 127,
+      "live": [
+        0,
+        17,
+        7
+      ],
+      "note": "0-127; CC7 on the part channel sets it too"
+    },
+    {
+      "key": "p2VeloSens",
+      "name": "Part 2 Velocity Sens",
+      "group": "p2level",
+      "block": "patch",
+      "offset": 84,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        8
+      ],
+      "note": "0-15",
+      "size": 1
+    },
+    {
+      "key": "p2LevelPressSens",
+      "name": "Part 2 Level Ch Pressure Sens",
+      "group": "p2level",
+      "block": "patch",
+      "offset": 85,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        9
+      ],
+      "note": "volume from channel aftertouch, 0-15 (SETUP: CH PRESSURE must be ON)",
+      "size": 1
+    },
+    {
+      "key": "p2EnvAttack",
+      "name": "Part 2 ENV Attack Rate",
+      "group": "p2level",
+      "block": "patch",
+      "offset": 86,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        17,
+        10
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p2EnvRelease",
+      "name": "Part 2 ENV Release Rate",
+      "group": "p2level",
+      "block": "patch",
+      "offset": 87,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        17,
+        11
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p2ShiftCoarse",
+      "name": "Part 2 Pitch Shift Coarse",
+      "group": "p2pitch",
+      "block": "patch",
+      "offset": 88,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 52,
+      "max": 76,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        17,
+        12
+      ],
+      "note": "52-76 = -12..+12 semitones"
+    },
+    {
+      "key": "p2ShiftFine",
+      "name": "Part 2 Pitch Shift Fine",
+      "group": "p2pitch",
+      "block": "patch",
+      "offset": 90,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 14,
+      "max": 114,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        17,
+        13
+      ],
+      "note": "14-114 = -50..+50 cents"
+    },
+    {
+      "key": "p2DetuneDepth",
+      "name": "Part 2 Detune Depth",
+      "group": "p2pitch",
+      "block": "patch",
+      "offset": 92,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        23
+      ],
+      "note": "0-15; only heard on DETUNE-type tones (see the Preset Tone Table)",
+      "size": 1
+    },
+    {
+      "key": "p2PitchPolySens",
+      "name": "Part 2 Pitch Poly Pressure Sens",
+      "group": "p2pitch",
+      "block": "patch",
+      "offset": 93,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "-24",
+        "-12",
+        "-7",
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0",
+        "+1",
+        "+2",
+        "+3",
+        "+4",
+        "+5",
+        "+7",
+        "+12"
+      ],
+      "default": 8,
+      "live": [
+        0,
+        17,
+        24
+      ],
+      "note": "semitones from polyphonic aftertouch: -24,-12,-7,-5..+5,+7,+12 (8 = 0)",
+      "size": 1
+    },
+    {
+      "key": "p2PgmMap",
+      "name": "Part 2 PGM->Tone Map",
+      "group": "p2basic",
+      "block": "patch",
+      "offset": 94,
+      "bits": {
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 5,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "live": [
+        0,
+        17,
+        22
+      ],
+      "note": "map 1-6 (SETUP: MAP) used to turn a program change on the part channel into a tone",
+      "size": 1
+    },
+    {
+      "key": "p2PgmChange",
+      "name": "Part 2 Program Change (tone select)",
+      "group": "p2basic",
+      "block": "patch",
+      "offset": 94,
+      "bits": {
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "OFF",
+        "ON"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        17,
+        21
+      ],
+      "note": "receive PC on the part channel as a tone change. Keep OFF on a part whose channel = the control channel, or a patch change also changes its tone",
+      "size": 1
+    },
+    {
+      "key": "p2OutputAssign",
+      "name": "Part 2 Output Assign",
+      "group": "p2basic",
+      "block": "patch",
+      "offset": 95,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "OFF"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        17,
+        0
+      ],
+      "note": "voice group 1-6 (polyphony per group set by Output Mode) = multi out; OFF mutes the part. Bits 5-7 of its byte (bit 4 unused)",
+      "size": 1
+    },
+    {
+      "key": "p2LfoRate",
+      "name": "Part 2 LFO Rate",
+      "group": "p2lfo",
+      "block": "patch",
+      "offset": 96,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        14
+      ],
+      "note": "MIDI implementation + Edisyn: 0-15 (read as a whole byte in case it is wider); the panel chapter and parameter table say 0-127 -- see uncertain"
+    },
+    {
+      "key": "p2AutoDepth",
+      "name": "Part 2 LFO Auto Depth",
+      "group": "p2lfo",
+      "block": "patch",
+      "offset": 98,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        17
+      ],
+      "note": "vibrato depth reached after note-on (delay + rise)",
+      "size": 1
+    },
+    {
+      "key": "p2ManDepth",
+      "name": "Part 2 LFO Manual Depth",
+      "group": "p2lfo",
+      "block": "patch",
+      "offset": 99,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        19
+      ],
+      "note": "vibrato depth from the mod wheel (CC1)",
+      "size": 1
+    },
+    {
+      "key": "p2AutoRise",
+      "name": "Part 2 LFO Auto Rise Time",
+      "group": "p2lfo",
+      "block": "patch",
+      "offset": 100,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        16
+      ],
+      "size": 1
+    },
+    {
+      "key": "p2ManRise",
+      "name": "Part 2 LFO Manual Rise Time",
+      "group": "p2lfo",
+      "block": "patch",
+      "offset": 101,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        18
+      ],
+      "size": 1
+    },
+    {
+      "key": "p2LfoChPressSens",
+      "name": "Part 2 LFO Ch Pressure Sens",
+      "group": "p2lfo",
+      "block": "patch",
+      "offset": 102,
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        20
+      ],
+      "note": "vibrato from channel aftertouch, 0-7",
+      "size": 1
+    },
+    {
+      "key": "p2AutoDelay",
+      "name": "Part 2 LFO Auto Delay Time",
+      "group": "p2lfo",
+      "block": "patch",
+      "offset": 103,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        17,
+        15
+      ],
+      "size": 1
+    },
+    {
+      "key": "p3ToneMedia",
+      "name": "Part 3 Tone Media",
+      "group": "p3basic",
+      "block": "patch",
+      "offset": 104,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "INT (internal)",
+        "C01 Pipe Organ & Harpsichord",
+        "C02 Latin & FX Percussion",
+        "C03 Ethnic",
+        "C04 Electric Grand & Clavi",
+        "C05 Orchestral Strings",
+        "C06 Orchestral Winds",
+        "C07 Electric Guitar",
+        "C08 Synthesizer",
+        "C09 Guitar & Keyboards",
+        "C10 Rock Drums",
+        "C11 Sound Effects",
+        "C12 Sax & Trombone",
+        "C13 Super Strings",
+        "C14 Super Acoustic Guitar",
+        "C15 Super Brass"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        18,
+        2
+      ],
+      "note": "0 = INT, 1-31 = card C01-C31 (the card type, found in any of the 4 slots; 'No Card!' shows if absent). Bits 0-3 of patch byte (low nibble); bit 4 sits in bit 0 of the next nibble and is left as read (no card beyond C15 is known). See schema.toneMedia",
+      "size": 1
+    },
+    {
+      "key": "p3LfoPolySens",
+      "name": "Part 3 LFO Poly Pressure Sens",
+      "group": "p3lfo",
+      "block": "patch",
+      "offset": 105,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        25
+      ],
+      "note": "vibrato depth from polyphonic aftertouch (SETUP: POLY PRESS must be ON). Bits 5-7 of the tone-media byte",
+      "size": 1
+    },
+    {
+      "key": "p3ToneNumber",
+      "name": "Part 3 Tone Number",
+      "group": "p3basic",
+      "block": "patch",
+      "offset": 106,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 98,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "toneLookup": {
+        "mediaKey": "p3ToneMedia"
+      },
+      "live": [
+        0,
+        18,
+        3
+      ],
+      "note": "1-99. Name = schema.toneMedia[media] list (INT-01..99 or Cnn-..); a number beyond a card's tone count plays nothing"
+    },
+    {
+      "key": "p3RxChannel",
+      "name": "Part 3 MIDI Receive Channel",
+      "group": "p3basic",
+      "block": "patch",
+      "offset": 108,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        18,
+        1
+      ],
+      "note": "notes, CCs, program change (tone select via the map), pressure, bend for this part",
+      "size": 1
+    },
+    {
+      "key": "p3BendRange",
+      "name": "Part 3 Bend Range",
+      "group": "p3pitch",
+      "block": "patch",
+      "offset": 109,
+      "min": 0,
+      "max": 12,
+      "display": "int",
+      "default": 2,
+      "live": [
+        0,
+        18,
+        4
+      ],
+      "note": "0-12 semitones (also RPN 0 on the part channel)",
+      "size": 1
+    },
+    {
+      "key": "p3KeyLo",
+      "name": "Part 3 Key Range Low",
+      "group": "p3basic",
+      "block": "patch",
+      "offset": 110,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 0,
+      "norandom": true,
+      "live": [
+        0,
+        18,
+        5
+      ],
+      "note": "C-1..G9 (middle C = C4)"
+    },
+    {
+      "key": "p3KeyHi",
+      "name": "Part 3 Key Range High",
+      "group": "p3basic",
+      "block": "patch",
+      "offset": 112,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 127,
+      "norandom": true,
+      "live": [
+        0,
+        18,
+        6
+      ],
+      "note": "C-1..G9"
+    },
+    {
+      "key": "p3Level",
+      "name": "Part 3 Part Level",
+      "group": "p3level",
+      "block": "patch",
+      "offset": 114,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "int",
+      "default": 127,
+      "live": [
+        0,
+        18,
+        7
+      ],
+      "note": "0-127; CC7 on the part channel sets it too"
+    },
+    {
+      "key": "p3VeloSens",
+      "name": "Part 3 Velocity Sens",
+      "group": "p3level",
+      "block": "patch",
+      "offset": 116,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        8
+      ],
+      "note": "0-15",
+      "size": 1
+    },
+    {
+      "key": "p3LevelPressSens",
+      "name": "Part 3 Level Ch Pressure Sens",
+      "group": "p3level",
+      "block": "patch",
+      "offset": 117,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        9
+      ],
+      "note": "volume from channel aftertouch, 0-15 (SETUP: CH PRESSURE must be ON)",
+      "size": 1
+    },
+    {
+      "key": "p3EnvAttack",
+      "name": "Part 3 ENV Attack Rate",
+      "group": "p3level",
+      "block": "patch",
+      "offset": 118,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        18,
+        10
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p3EnvRelease",
+      "name": "Part 3 ENV Release Rate",
+      "group": "p3level",
+      "block": "patch",
+      "offset": 119,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        18,
+        11
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p3ShiftCoarse",
+      "name": "Part 3 Pitch Shift Coarse",
+      "group": "p3pitch",
+      "block": "patch",
+      "offset": 120,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 52,
+      "max": 76,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        18,
+        12
+      ],
+      "note": "52-76 = -12..+12 semitones"
+    },
+    {
+      "key": "p3ShiftFine",
+      "name": "Part 3 Pitch Shift Fine",
+      "group": "p3pitch",
+      "block": "patch",
+      "offset": 122,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 14,
+      "max": 114,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        18,
+        13
+      ],
+      "note": "14-114 = -50..+50 cents"
+    },
+    {
+      "key": "p3DetuneDepth",
+      "name": "Part 3 Detune Depth",
+      "group": "p3pitch",
+      "block": "patch",
+      "offset": 124,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        23
+      ],
+      "note": "0-15; only heard on DETUNE-type tones (see the Preset Tone Table)",
+      "size": 1
+    },
+    {
+      "key": "p3PitchPolySens",
+      "name": "Part 3 Pitch Poly Pressure Sens",
+      "group": "p3pitch",
+      "block": "patch",
+      "offset": 125,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "-24",
+        "-12",
+        "-7",
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0",
+        "+1",
+        "+2",
+        "+3",
+        "+4",
+        "+5",
+        "+7",
+        "+12"
+      ],
+      "default": 8,
+      "live": [
+        0,
+        18,
+        24
+      ],
+      "note": "semitones from polyphonic aftertouch: -24,-12,-7,-5..+5,+7,+12 (8 = 0)",
+      "size": 1
+    },
+    {
+      "key": "p3PgmMap",
+      "name": "Part 3 PGM->Tone Map",
+      "group": "p3basic",
+      "block": "patch",
+      "offset": 126,
+      "bits": {
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 5,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "live": [
+        0,
+        18,
+        22
+      ],
+      "note": "map 1-6 (SETUP: MAP) used to turn a program change on the part channel into a tone",
+      "size": 1
+    },
+    {
+      "key": "p3PgmChange",
+      "name": "Part 3 Program Change (tone select)",
+      "group": "p3basic",
+      "block": "patch",
+      "offset": 126,
+      "bits": {
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "OFF",
+        "ON"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        18,
+        21
+      ],
+      "note": "receive PC on the part channel as a tone change. Keep OFF on a part whose channel = the control channel, or a patch change also changes its tone",
+      "size": 1
+    },
+    {
+      "key": "p3OutputAssign",
+      "name": "Part 3 Output Assign",
+      "group": "p3basic",
+      "block": "patch",
+      "offset": 127,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "OFF"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        18,
+        0
+      ],
+      "note": "voice group 1-6 (polyphony per group set by Output Mode) = multi out; OFF mutes the part. Bits 5-7 of its byte (bit 4 unused)",
+      "size": 1
+    },
+    {
+      "key": "p3LfoRate",
+      "name": "Part 3 LFO Rate",
+      "group": "p3lfo",
+      "block": "patch",
+      "offset": 128,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        14
+      ],
+      "note": "MIDI implementation + Edisyn: 0-15 (read as a whole byte in case it is wider); the panel chapter and parameter table say 0-127 -- see uncertain"
+    },
+    {
+      "key": "p3AutoDepth",
+      "name": "Part 3 LFO Auto Depth",
+      "group": "p3lfo",
+      "block": "patch",
+      "offset": 130,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        17
+      ],
+      "note": "vibrato depth reached after note-on (delay + rise)",
+      "size": 1
+    },
+    {
+      "key": "p3ManDepth",
+      "name": "Part 3 LFO Manual Depth",
+      "group": "p3lfo",
+      "block": "patch",
+      "offset": 131,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        19
+      ],
+      "note": "vibrato depth from the mod wheel (CC1)",
+      "size": 1
+    },
+    {
+      "key": "p3AutoRise",
+      "name": "Part 3 LFO Auto Rise Time",
+      "group": "p3lfo",
+      "block": "patch",
+      "offset": 132,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        16
+      ],
+      "size": 1
+    },
+    {
+      "key": "p3ManRise",
+      "name": "Part 3 LFO Manual Rise Time",
+      "group": "p3lfo",
+      "block": "patch",
+      "offset": 133,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        18
+      ],
+      "size": 1
+    },
+    {
+      "key": "p3LfoChPressSens",
+      "name": "Part 3 LFO Ch Pressure Sens",
+      "group": "p3lfo",
+      "block": "patch",
+      "offset": 134,
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        20
+      ],
+      "note": "vibrato from channel aftertouch, 0-7",
+      "size": 1
+    },
+    {
+      "key": "p3AutoDelay",
+      "name": "Part 3 LFO Auto Delay Time",
+      "group": "p3lfo",
+      "block": "patch",
+      "offset": 135,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        18,
+        15
+      ],
+      "size": 1
+    },
+    {
+      "key": "p4ToneMedia",
+      "name": "Part 4 Tone Media",
+      "group": "p4basic",
+      "block": "patch",
+      "offset": 136,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "INT (internal)",
+        "C01 Pipe Organ & Harpsichord",
+        "C02 Latin & FX Percussion",
+        "C03 Ethnic",
+        "C04 Electric Grand & Clavi",
+        "C05 Orchestral Strings",
+        "C06 Orchestral Winds",
+        "C07 Electric Guitar",
+        "C08 Synthesizer",
+        "C09 Guitar & Keyboards",
+        "C10 Rock Drums",
+        "C11 Sound Effects",
+        "C12 Sax & Trombone",
+        "C13 Super Strings",
+        "C14 Super Acoustic Guitar",
+        "C15 Super Brass"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        19,
+        2
+      ],
+      "note": "0 = INT, 1-31 = card C01-C31 (the card type, found in any of the 4 slots; 'No Card!' shows if absent). Bits 0-3 of patch byte (low nibble); bit 4 sits in bit 0 of the next nibble and is left as read (no card beyond C15 is known). See schema.toneMedia",
+      "size": 1
+    },
+    {
+      "key": "p4LfoPolySens",
+      "name": "Part 4 LFO Poly Pressure Sens",
+      "group": "p4lfo",
+      "block": "patch",
+      "offset": 137,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        25
+      ],
+      "note": "vibrato depth from polyphonic aftertouch (SETUP: POLY PRESS must be ON). Bits 5-7 of the tone-media byte",
+      "size": 1
+    },
+    {
+      "key": "p4ToneNumber",
+      "name": "Part 4 Tone Number",
+      "group": "p4basic",
+      "block": "patch",
+      "offset": 138,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 98,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "toneLookup": {
+        "mediaKey": "p4ToneMedia"
+      },
+      "live": [
+        0,
+        19,
+        3
+      ],
+      "note": "1-99. Name = schema.toneMedia[media] list (INT-01..99 or Cnn-..); a number beyond a card's tone count plays nothing"
+    },
+    {
+      "key": "p4RxChannel",
+      "name": "Part 4 MIDI Receive Channel",
+      "group": "p4basic",
+      "block": "patch",
+      "offset": 140,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        19,
+        1
+      ],
+      "note": "notes, CCs, program change (tone select via the map), pressure, bend for this part",
+      "size": 1
+    },
+    {
+      "key": "p4BendRange",
+      "name": "Part 4 Bend Range",
+      "group": "p4pitch",
+      "block": "patch",
+      "offset": 141,
+      "min": 0,
+      "max": 12,
+      "display": "int",
+      "default": 2,
+      "live": [
+        0,
+        19,
+        4
+      ],
+      "note": "0-12 semitones (also RPN 0 on the part channel)",
+      "size": 1
+    },
+    {
+      "key": "p4KeyLo",
+      "name": "Part 4 Key Range Low",
+      "group": "p4basic",
+      "block": "patch",
+      "offset": 142,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 0,
+      "norandom": true,
+      "live": [
+        0,
+        19,
+        5
+      ],
+      "note": "C-1..G9 (middle C = C4)"
+    },
+    {
+      "key": "p4KeyHi",
+      "name": "Part 4 Key Range High",
+      "group": "p4basic",
+      "block": "patch",
+      "offset": 144,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 127,
+      "norandom": true,
+      "live": [
+        0,
+        19,
+        6
+      ],
+      "note": "C-1..G9"
+    },
+    {
+      "key": "p4Level",
+      "name": "Part 4 Part Level",
+      "group": "p4level",
+      "block": "patch",
+      "offset": 146,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "int",
+      "default": 127,
+      "live": [
+        0,
+        19,
+        7
+      ],
+      "note": "0-127; CC7 on the part channel sets it too"
+    },
+    {
+      "key": "p4VeloSens",
+      "name": "Part 4 Velocity Sens",
+      "group": "p4level",
+      "block": "patch",
+      "offset": 148,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        8
+      ],
+      "note": "0-15",
+      "size": 1
+    },
+    {
+      "key": "p4LevelPressSens",
+      "name": "Part 4 Level Ch Pressure Sens",
+      "group": "p4level",
+      "block": "patch",
+      "offset": 149,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        9
+      ],
+      "note": "volume from channel aftertouch, 0-15 (SETUP: CH PRESSURE must be ON)",
+      "size": 1
+    },
+    {
+      "key": "p4EnvAttack",
+      "name": "Part 4 ENV Attack Rate",
+      "group": "p4level",
+      "block": "patch",
+      "offset": 150,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        19,
+        10
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p4EnvRelease",
+      "name": "Part 4 ENV Release Rate",
+      "group": "p4level",
+      "block": "patch",
+      "offset": 151,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        19,
+        11
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p4ShiftCoarse",
+      "name": "Part 4 Pitch Shift Coarse",
+      "group": "p4pitch",
+      "block": "patch",
+      "offset": 152,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 52,
+      "max": 76,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        19,
+        12
+      ],
+      "note": "52-76 = -12..+12 semitones"
+    },
+    {
+      "key": "p4ShiftFine",
+      "name": "Part 4 Pitch Shift Fine",
+      "group": "p4pitch",
+      "block": "patch",
+      "offset": 154,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 14,
+      "max": 114,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        19,
+        13
+      ],
+      "note": "14-114 = -50..+50 cents"
+    },
+    {
+      "key": "p4DetuneDepth",
+      "name": "Part 4 Detune Depth",
+      "group": "p4pitch",
+      "block": "patch",
+      "offset": 156,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        23
+      ],
+      "note": "0-15; only heard on DETUNE-type tones (see the Preset Tone Table)",
+      "size": 1
+    },
+    {
+      "key": "p4PitchPolySens",
+      "name": "Part 4 Pitch Poly Pressure Sens",
+      "group": "p4pitch",
+      "block": "patch",
+      "offset": 157,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "-24",
+        "-12",
+        "-7",
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0",
+        "+1",
+        "+2",
+        "+3",
+        "+4",
+        "+5",
+        "+7",
+        "+12"
+      ],
+      "default": 8,
+      "live": [
+        0,
+        19,
+        24
+      ],
+      "note": "semitones from polyphonic aftertouch: -24,-12,-7,-5..+5,+7,+12 (8 = 0)",
+      "size": 1
+    },
+    {
+      "key": "p4PgmMap",
+      "name": "Part 4 PGM->Tone Map",
+      "group": "p4basic",
+      "block": "patch",
+      "offset": 158,
+      "bits": {
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 5,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "live": [
+        0,
+        19,
+        22
+      ],
+      "note": "map 1-6 (SETUP: MAP) used to turn a program change on the part channel into a tone",
+      "size": 1
+    },
+    {
+      "key": "p4PgmChange",
+      "name": "Part 4 Program Change (tone select)",
+      "group": "p4basic",
+      "block": "patch",
+      "offset": 158,
+      "bits": {
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "OFF",
+        "ON"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        19,
+        21
+      ],
+      "note": "receive PC on the part channel as a tone change. Keep OFF on a part whose channel = the control channel, or a patch change also changes its tone",
+      "size": 1
+    },
+    {
+      "key": "p4OutputAssign",
+      "name": "Part 4 Output Assign",
+      "group": "p4basic",
+      "block": "patch",
+      "offset": 159,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "OFF"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        19,
+        0
+      ],
+      "note": "voice group 1-6 (polyphony per group set by Output Mode) = multi out; OFF mutes the part. Bits 5-7 of its byte (bit 4 unused)",
+      "size": 1
+    },
+    {
+      "key": "p4LfoRate",
+      "name": "Part 4 LFO Rate",
+      "group": "p4lfo",
+      "block": "patch",
+      "offset": 160,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        14
+      ],
+      "note": "MIDI implementation + Edisyn: 0-15 (read as a whole byte in case it is wider); the panel chapter and parameter table say 0-127 -- see uncertain"
+    },
+    {
+      "key": "p4AutoDepth",
+      "name": "Part 4 LFO Auto Depth",
+      "group": "p4lfo",
+      "block": "patch",
+      "offset": 162,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        17
+      ],
+      "note": "vibrato depth reached after note-on (delay + rise)",
+      "size": 1
+    },
+    {
+      "key": "p4ManDepth",
+      "name": "Part 4 LFO Manual Depth",
+      "group": "p4lfo",
+      "block": "patch",
+      "offset": 163,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        19
+      ],
+      "note": "vibrato depth from the mod wheel (CC1)",
+      "size": 1
+    },
+    {
+      "key": "p4AutoRise",
+      "name": "Part 4 LFO Auto Rise Time",
+      "group": "p4lfo",
+      "block": "patch",
+      "offset": 164,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        16
+      ],
+      "size": 1
+    },
+    {
+      "key": "p4ManRise",
+      "name": "Part 4 LFO Manual Rise Time",
+      "group": "p4lfo",
+      "block": "patch",
+      "offset": 165,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        18
+      ],
+      "size": 1
+    },
+    {
+      "key": "p4LfoChPressSens",
+      "name": "Part 4 LFO Ch Pressure Sens",
+      "group": "p4lfo",
+      "block": "patch",
+      "offset": 166,
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        20
+      ],
+      "note": "vibrato from channel aftertouch, 0-7",
+      "size": 1
+    },
+    {
+      "key": "p4AutoDelay",
+      "name": "Part 4 LFO Auto Delay Time",
+      "group": "p4lfo",
+      "block": "patch",
+      "offset": 167,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        19,
+        15
+      ],
+      "size": 1
+    },
+    {
+      "key": "p5ToneMedia",
+      "name": "Part 5 Tone Media",
+      "group": "p5basic",
+      "block": "patch",
+      "offset": 168,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "INT (internal)",
+        "C01 Pipe Organ & Harpsichord",
+        "C02 Latin & FX Percussion",
+        "C03 Ethnic",
+        "C04 Electric Grand & Clavi",
+        "C05 Orchestral Strings",
+        "C06 Orchestral Winds",
+        "C07 Electric Guitar",
+        "C08 Synthesizer",
+        "C09 Guitar & Keyboards",
+        "C10 Rock Drums",
+        "C11 Sound Effects",
+        "C12 Sax & Trombone",
+        "C13 Super Strings",
+        "C14 Super Acoustic Guitar",
+        "C15 Super Brass"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        20,
+        2
+      ],
+      "note": "0 = INT, 1-31 = card C01-C31 (the card type, found in any of the 4 slots; 'No Card!' shows if absent). Bits 0-3 of patch byte (low nibble); bit 4 sits in bit 0 of the next nibble and is left as read (no card beyond C15 is known). See schema.toneMedia",
+      "size": 1
+    },
+    {
+      "key": "p5LfoPolySens",
+      "name": "Part 5 LFO Poly Pressure Sens",
+      "group": "p5lfo",
+      "block": "patch",
+      "offset": 169,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        25
+      ],
+      "note": "vibrato depth from polyphonic aftertouch (SETUP: POLY PRESS must be ON). Bits 5-7 of the tone-media byte",
+      "size": 1
+    },
+    {
+      "key": "p5ToneNumber",
+      "name": "Part 5 Tone Number",
+      "group": "p5basic",
+      "block": "patch",
+      "offset": 170,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 98,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "toneLookup": {
+        "mediaKey": "p5ToneMedia"
+      },
+      "live": [
+        0,
+        20,
+        3
+      ],
+      "note": "1-99. Name = schema.toneMedia[media] list (INT-01..99 or Cnn-..); a number beyond a card's tone count plays nothing"
+    },
+    {
+      "key": "p5RxChannel",
+      "name": "Part 5 MIDI Receive Channel",
+      "group": "p5basic",
+      "block": "patch",
+      "offset": 172,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        20,
+        1
+      ],
+      "note": "notes, CCs, program change (tone select via the map), pressure, bend for this part",
+      "size": 1
+    },
+    {
+      "key": "p5BendRange",
+      "name": "Part 5 Bend Range",
+      "group": "p5pitch",
+      "block": "patch",
+      "offset": 173,
+      "min": 0,
+      "max": 12,
+      "display": "int",
+      "default": 2,
+      "live": [
+        0,
+        20,
+        4
+      ],
+      "note": "0-12 semitones (also RPN 0 on the part channel)",
+      "size": 1
+    },
+    {
+      "key": "p5KeyLo",
+      "name": "Part 5 Key Range Low",
+      "group": "p5basic",
+      "block": "patch",
+      "offset": 174,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 0,
+      "norandom": true,
+      "live": [
+        0,
+        20,
+        5
+      ],
+      "note": "C-1..G9 (middle C = C4)"
+    },
+    {
+      "key": "p5KeyHi",
+      "name": "Part 5 Key Range High",
+      "group": "p5basic",
+      "block": "patch",
+      "offset": 176,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 127,
+      "norandom": true,
+      "live": [
+        0,
+        20,
+        6
+      ],
+      "note": "C-1..G9"
+    },
+    {
+      "key": "p5Level",
+      "name": "Part 5 Part Level",
+      "group": "p5level",
+      "block": "patch",
+      "offset": 178,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "int",
+      "default": 127,
+      "live": [
+        0,
+        20,
+        7
+      ],
+      "note": "0-127; CC7 on the part channel sets it too"
+    },
+    {
+      "key": "p5VeloSens",
+      "name": "Part 5 Velocity Sens",
+      "group": "p5level",
+      "block": "patch",
+      "offset": 180,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        8
+      ],
+      "note": "0-15",
+      "size": 1
+    },
+    {
+      "key": "p5LevelPressSens",
+      "name": "Part 5 Level Ch Pressure Sens",
+      "group": "p5level",
+      "block": "patch",
+      "offset": 181,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        9
+      ],
+      "note": "volume from channel aftertouch, 0-15 (SETUP: CH PRESSURE must be ON)",
+      "size": 1
+    },
+    {
+      "key": "p5EnvAttack",
+      "name": "Part 5 ENV Attack Rate",
+      "group": "p5level",
+      "block": "patch",
+      "offset": 182,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        20,
+        10
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p5EnvRelease",
+      "name": "Part 5 ENV Release Rate",
+      "group": "p5level",
+      "block": "patch",
+      "offset": 183,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        20,
+        11
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p5ShiftCoarse",
+      "name": "Part 5 Pitch Shift Coarse",
+      "group": "p5pitch",
+      "block": "patch",
+      "offset": 184,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 52,
+      "max": 76,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        20,
+        12
+      ],
+      "note": "52-76 = -12..+12 semitones"
+    },
+    {
+      "key": "p5ShiftFine",
+      "name": "Part 5 Pitch Shift Fine",
+      "group": "p5pitch",
+      "block": "patch",
+      "offset": 186,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 14,
+      "max": 114,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        20,
+        13
+      ],
+      "note": "14-114 = -50..+50 cents"
+    },
+    {
+      "key": "p5DetuneDepth",
+      "name": "Part 5 Detune Depth",
+      "group": "p5pitch",
+      "block": "patch",
+      "offset": 188,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        23
+      ],
+      "note": "0-15; only heard on DETUNE-type tones (see the Preset Tone Table)",
+      "size": 1
+    },
+    {
+      "key": "p5PitchPolySens",
+      "name": "Part 5 Pitch Poly Pressure Sens",
+      "group": "p5pitch",
+      "block": "patch",
+      "offset": 189,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "-24",
+        "-12",
+        "-7",
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0",
+        "+1",
+        "+2",
+        "+3",
+        "+4",
+        "+5",
+        "+7",
+        "+12"
+      ],
+      "default": 8,
+      "live": [
+        0,
+        20,
+        24
+      ],
+      "note": "semitones from polyphonic aftertouch: -24,-12,-7,-5..+5,+7,+12 (8 = 0)",
+      "size": 1
+    },
+    {
+      "key": "p5PgmMap",
+      "name": "Part 5 PGM->Tone Map",
+      "group": "p5basic",
+      "block": "patch",
+      "offset": 190,
+      "bits": {
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 5,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "live": [
+        0,
+        20,
+        22
+      ],
+      "note": "map 1-6 (SETUP: MAP) used to turn a program change on the part channel into a tone",
+      "size": 1
+    },
+    {
+      "key": "p5PgmChange",
+      "name": "Part 5 Program Change (tone select)",
+      "group": "p5basic",
+      "block": "patch",
+      "offset": 190,
+      "bits": {
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "OFF",
+        "ON"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        20,
+        21
+      ],
+      "note": "receive PC on the part channel as a tone change. Keep OFF on a part whose channel = the control channel, or a patch change also changes its tone",
+      "size": 1
+    },
+    {
+      "key": "p5OutputAssign",
+      "name": "Part 5 Output Assign",
+      "group": "p5basic",
+      "block": "patch",
+      "offset": 191,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "OFF"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        20,
+        0
+      ],
+      "note": "voice group 1-6 (polyphony per group set by Output Mode) = multi out; OFF mutes the part. Bits 5-7 of its byte (bit 4 unused)",
+      "size": 1
+    },
+    {
+      "key": "p5LfoRate",
+      "name": "Part 5 LFO Rate",
+      "group": "p5lfo",
+      "block": "patch",
+      "offset": 192,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        14
+      ],
+      "note": "MIDI implementation + Edisyn: 0-15 (read as a whole byte in case it is wider); the panel chapter and parameter table say 0-127 -- see uncertain"
+    },
+    {
+      "key": "p5AutoDepth",
+      "name": "Part 5 LFO Auto Depth",
+      "group": "p5lfo",
+      "block": "patch",
+      "offset": 194,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        17
+      ],
+      "note": "vibrato depth reached after note-on (delay + rise)",
+      "size": 1
+    },
+    {
+      "key": "p5ManDepth",
+      "name": "Part 5 LFO Manual Depth",
+      "group": "p5lfo",
+      "block": "patch",
+      "offset": 195,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        19
+      ],
+      "note": "vibrato depth from the mod wheel (CC1)",
+      "size": 1
+    },
+    {
+      "key": "p5AutoRise",
+      "name": "Part 5 LFO Auto Rise Time",
+      "group": "p5lfo",
+      "block": "patch",
+      "offset": 196,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        16
+      ],
+      "size": 1
+    },
+    {
+      "key": "p5ManRise",
+      "name": "Part 5 LFO Manual Rise Time",
+      "group": "p5lfo",
+      "block": "patch",
+      "offset": 197,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        18
+      ],
+      "size": 1
+    },
+    {
+      "key": "p5LfoChPressSens",
+      "name": "Part 5 LFO Ch Pressure Sens",
+      "group": "p5lfo",
+      "block": "patch",
+      "offset": 198,
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        20
+      ],
+      "note": "vibrato from channel aftertouch, 0-7",
+      "size": 1
+    },
+    {
+      "key": "p5AutoDelay",
+      "name": "Part 5 LFO Auto Delay Time",
+      "group": "p5lfo",
+      "block": "patch",
+      "offset": 199,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        20,
+        15
+      ],
+      "size": 1
+    },
+    {
+      "key": "p6ToneMedia",
+      "name": "Part 6 Tone Media",
+      "group": "p6basic",
+      "block": "patch",
+      "offset": 200,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "INT (internal)",
+        "C01 Pipe Organ & Harpsichord",
+        "C02 Latin & FX Percussion",
+        "C03 Ethnic",
+        "C04 Electric Grand & Clavi",
+        "C05 Orchestral Strings",
+        "C06 Orchestral Winds",
+        "C07 Electric Guitar",
+        "C08 Synthesizer",
+        "C09 Guitar & Keyboards",
+        "C10 Rock Drums",
+        "C11 Sound Effects",
+        "C12 Sax & Trombone",
+        "C13 Super Strings",
+        "C14 Super Acoustic Guitar",
+        "C15 Super Brass"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        21,
+        2
+      ],
+      "note": "0 = INT, 1-31 = card C01-C31 (the card type, found in any of the 4 slots; 'No Card!' shows if absent). Bits 0-3 of patch byte (low nibble); bit 4 sits in bit 0 of the next nibble and is left as read (no card beyond C15 is known). See schema.toneMedia",
+      "size": 1
+    },
+    {
+      "key": "p6LfoPolySens",
+      "name": "Part 6 LFO Poly Pressure Sens",
+      "group": "p6lfo",
+      "block": "patch",
+      "offset": 201,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        25
+      ],
+      "note": "vibrato depth from polyphonic aftertouch (SETUP: POLY PRESS must be ON). Bits 5-7 of the tone-media byte",
+      "size": 1
+    },
+    {
+      "key": "p6ToneNumber",
+      "name": "Part 6 Tone Number",
+      "group": "p6basic",
+      "block": "patch",
+      "offset": 202,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 98,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "toneLookup": {
+        "mediaKey": "p6ToneMedia"
+      },
+      "live": [
+        0,
+        21,
+        3
+      ],
+      "note": "1-99. Name = schema.toneMedia[media] list (INT-01..99 or Cnn-..); a number beyond a card's tone count plays nothing"
+    },
+    {
+      "key": "p6RxChannel",
+      "name": "Part 6 MIDI Receive Channel",
+      "group": "p6basic",
+      "block": "patch",
+      "offset": 204,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        21,
+        1
+      ],
+      "note": "notes, CCs, program change (tone select via the map), pressure, bend for this part",
+      "size": 1
+    },
+    {
+      "key": "p6BendRange",
+      "name": "Part 6 Bend Range",
+      "group": "p6pitch",
+      "block": "patch",
+      "offset": 205,
+      "min": 0,
+      "max": 12,
+      "display": "int",
+      "default": 2,
+      "live": [
+        0,
+        21,
+        4
+      ],
+      "note": "0-12 semitones (also RPN 0 on the part channel)",
+      "size": 1
+    },
+    {
+      "key": "p6KeyLo",
+      "name": "Part 6 Key Range Low",
+      "group": "p6basic",
+      "block": "patch",
+      "offset": 206,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 0,
+      "norandom": true,
+      "live": [
+        0,
+        21,
+        5
+      ],
+      "note": "C-1..G9 (middle C = C4)"
+    },
+    {
+      "key": "p6KeyHi",
+      "name": "Part 6 Key Range High",
+      "group": "p6basic",
+      "block": "patch",
+      "offset": 208,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "note",
+      "default": 127,
+      "norandom": true,
+      "live": [
+        0,
+        21,
+        6
+      ],
+      "note": "C-1..G9"
+    },
+    {
+      "key": "p6Level",
+      "name": "Part 6 Part Level",
+      "group": "p6level",
+      "block": "patch",
+      "offset": 210,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 127,
+      "display": "int",
+      "default": 127,
+      "live": [
+        0,
+        21,
+        7
+      ],
+      "note": "0-127; CC7 on the part channel sets it too"
+    },
+    {
+      "key": "p6VeloSens",
+      "name": "Part 6 Velocity Sens",
+      "group": "p6level",
+      "block": "patch",
+      "offset": 212,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        8
+      ],
+      "note": "0-15",
+      "size": 1
+    },
+    {
+      "key": "p6LevelPressSens",
+      "name": "Part 6 Level Ch Pressure Sens",
+      "group": "p6level",
+      "block": "patch",
+      "offset": 213,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        9
+      ],
+      "note": "volume from channel aftertouch, 0-15 (SETUP: CH PRESSURE must be ON)",
+      "size": 1
+    },
+    {
+      "key": "p6EnvAttack",
+      "name": "Part 6 ENV Attack Rate",
+      "group": "p6level",
+      "block": "patch",
+      "offset": 214,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        21,
+        10
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p6EnvRelease",
+      "name": "Part 6 ENV Release Rate",
+      "group": "p6level",
+      "block": "patch",
+      "offset": 215,
+      "min": 1,
+      "max": 15,
+      "display": "bipolar",
+      "valueOffset": -8,
+      "default": 8,
+      "live": [
+        0,
+        21,
+        11
+      ],
+      "note": "1-15 = -7..+7 (8 = 0); + is faster",
+      "size": 1
+    },
+    {
+      "key": "p6ShiftCoarse",
+      "name": "Part 6 Pitch Shift Coarse",
+      "group": "p6pitch",
+      "block": "patch",
+      "offset": 216,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 52,
+      "max": 76,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        21,
+        12
+      ],
+      "note": "52-76 = -12..+12 semitones"
+    },
+    {
+      "key": "p6ShiftFine",
+      "name": "Part 6 Pitch Shift Fine",
+      "group": "p6pitch",
+      "block": "patch",
+      "offset": 218,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 14,
+      "max": 114,
+      "display": "bipolar",
+      "valueOffset": -64,
+      "default": 64,
+      "live": [
+        0,
+        21,
+        13
+      ],
+      "note": "14-114 = -50..+50 cents"
+    },
+    {
+      "key": "p6DetuneDepth",
+      "name": "Part 6 Detune Depth",
+      "group": "p6pitch",
+      "block": "patch",
+      "offset": 220,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        23
+      ],
+      "note": "0-15; only heard on DETUNE-type tones (see the Preset Tone Table)",
+      "size": 1
+    },
+    {
+      "key": "p6PitchPolySens",
+      "name": "Part 6 Pitch Poly Pressure Sens",
+      "group": "p6pitch",
+      "block": "patch",
+      "offset": 221,
+      "min": 0,
+      "max": 15,
+      "display": "enum",
+      "options": [
+        "-24",
+        "-12",
+        "-7",
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0",
+        "+1",
+        "+2",
+        "+3",
+        "+4",
+        "+5",
+        "+7",
+        "+12"
+      ],
+      "default": 8,
+      "live": [
+        0,
+        21,
+        24
+      ],
+      "note": "semitones from polyphonic aftertouch: -24,-12,-7,-5..+5,+7,+12 (8 = 0)",
+      "size": 1
+    },
+    {
+      "key": "p6PgmMap",
+      "name": "Part 6 PGM->Tone Map",
+      "group": "p6basic",
+      "block": "patch",
+      "offset": 222,
+      "bits": {
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 5,
+      "display": "int",
+      "valueOffset": 1,
+      "norandom": true,
+      "live": [
+        0,
+        21,
+        22
+      ],
+      "note": "map 1-6 (SETUP: MAP) used to turn a program change on the part channel into a tone",
+      "size": 1
+    },
+    {
+      "key": "p6PgmChange",
+      "name": "Part 6 Program Change (tone select)",
+      "group": "p6basic",
+      "block": "patch",
+      "offset": 222,
+      "bits": {
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "OFF",
+        "ON"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        21,
+        21
+      ],
+      "note": "receive PC on the part channel as a tone change. Keep OFF on a part whose channel = the control channel, or a patch change also changes its tone",
+      "size": 1
+    },
+    {
+      "key": "p6OutputAssign",
+      "name": "Part 6 Output Assign",
+      "group": "p6basic",
+      "block": "patch",
+      "offset": 223,
+      "bits": {
+        "shift": 1,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "display": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "OFF"
+      ],
+      "norandom": true,
+      "live": [
+        0,
+        21,
+        0
+      ],
+      "note": "voice group 1-6 (polyphony per group set by Output Mode) = multi out; OFF mutes the part. Bits 5-7 of its byte (bit 4 unused)",
+      "size": 1
+    },
+    {
+      "key": "p6LfoRate",
+      "name": "Part 6 LFO Rate",
+      "group": "p6lfo",
+      "block": "patch",
+      "offset": 224,
+      "size": 2,
+      "encoding": "nibbleLE",
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        14
+      ],
+      "note": "MIDI implementation + Edisyn: 0-15 (read as a whole byte in case it is wider); the panel chapter and parameter table say 0-127 -- see uncertain"
+    },
+    {
+      "key": "p6AutoDepth",
+      "name": "Part 6 LFO Auto Depth",
+      "group": "p6lfo",
+      "block": "patch",
+      "offset": 226,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        17
+      ],
+      "note": "vibrato depth reached after note-on (delay + rise)",
+      "size": 1
+    },
+    {
+      "key": "p6ManDepth",
+      "name": "Part 6 LFO Manual Depth",
+      "group": "p6lfo",
+      "block": "patch",
+      "offset": 227,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        19
+      ],
+      "note": "vibrato depth from the mod wheel (CC1)",
+      "size": 1
+    },
+    {
+      "key": "p6AutoRise",
+      "name": "Part 6 LFO Auto Rise Time",
+      "group": "p6lfo",
+      "block": "patch",
+      "offset": 228,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        16
+      ],
+      "size": 1
+    },
+    {
+      "key": "p6ManRise",
+      "name": "Part 6 LFO Manual Rise Time",
+      "group": "p6lfo",
+      "block": "patch",
+      "offset": 229,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        18
+      ],
+      "size": 1
+    },
+    {
+      "key": "p6LfoChPressSens",
+      "name": "Part 6 LFO Ch Pressure Sens",
+      "group": "p6lfo",
+      "block": "patch",
+      "offset": 230,
+      "min": 0,
+      "max": 7,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        20
+      ],
+      "note": "vibrato from channel aftertouch, 0-7",
+      "size": 1
+    },
+    {
+      "key": "p6AutoDelay",
+      "name": "Part 6 LFO Auto Delay Time",
+      "group": "p6lfo",
+      "block": "patch",
+      "offset": 231,
+      "min": 0,
+      "max": 15,
+      "display": "int",
+      "live": [
+        0,
+        21,
+        15
+      ],
+      "size": 1
+    }
+  ],
+  "groups": [
+    {
+      "id": "common",
+      "name": "Patch common (name, output mode)"
+    },
+    {
+      "id": "effect",
+      "name": "Effect (chorus / tremolo on voice groups 1-2)"
+    },
+    {
+      "id": "p1basic",
+      "name": "Part 1 basic (tone, output, MIDI, key range)"
+    },
+    {
+      "id": "p1level",
+      "name": "Part 1 level"
+    },
+    {
+      "id": "p1pitch",
+      "name": "Part 1 pitch"
+    },
+    {
+      "id": "p1lfo",
+      "name": "Part 1 LFO (vibrato)"
+    },
+    {
+      "id": "p2basic",
+      "name": "Part 2 basic (tone, output, MIDI, key range)"
+    },
+    {
+      "id": "p2level",
+      "name": "Part 2 level"
+    },
+    {
+      "id": "p2pitch",
+      "name": "Part 2 pitch"
+    },
+    {
+      "id": "p2lfo",
+      "name": "Part 2 LFO (vibrato)"
+    },
+    {
+      "id": "p3basic",
+      "name": "Part 3 basic (tone, output, MIDI, key range)"
+    },
+    {
+      "id": "p3level",
+      "name": "Part 3 level"
+    },
+    {
+      "id": "p3pitch",
+      "name": "Part 3 pitch"
+    },
+    {
+      "id": "p3lfo",
+      "name": "Part 3 LFO (vibrato)"
+    },
+    {
+      "id": "p4basic",
+      "name": "Part 4 basic (tone, output, MIDI, key range)"
+    },
+    {
+      "id": "p4level",
+      "name": "Part 4 level"
+    },
+    {
+      "id": "p4pitch",
+      "name": "Part 4 pitch"
+    },
+    {
+      "id": "p4lfo",
+      "name": "Part 4 LFO (vibrato)"
+    },
+    {
+      "id": "p5basic",
+      "name": "Part 5 basic (tone, output, MIDI, key range)"
+    },
+    {
+      "id": "p5level",
+      "name": "Part 5 level"
+    },
+    {
+      "id": "p5pitch",
+      "name": "Part 5 pitch"
+    },
+    {
+      "id": "p5lfo",
+      "name": "Part 5 LFO (vibrato)"
+    },
+    {
+      "id": "p6basic",
+      "name": "Part 6 basic (tone, output, MIDI, key range)"
+    },
+    {
+      "id": "p6level",
+      "name": "Part 6 level"
+    },
+    {
+      "id": "p6pitch",
+      "name": "Part 6 pitch"
+    },
+    {
+      "id": "p6lfo",
+      "name": "Part 6 LFO (vibrato)"
+    }
+  ],
+  "programs": {
+    "banks": [
+      {
+        "label": "P",
+        "kind": "patch",
+        "count": 64,
+        "dump": false,
+        "write": true,
+        "memory": "patch",
+        "select": {
+          "type": "pc",
+          "channel": "control",
+          "offset": 0
+        },
+        "readVia": "select",
+        "bankDump": {
+          "address": [
+            2,
+            0,
+            0
+          ],
+          "size": [
+            1,
+            0,
+            0
+          ],
+          "packets": 128,
+          "slotBytes": 256
+        },
+        "note": "P-01..P-64 = PC 0-63 on the control channel (editor channel must = control channel). dump:false because a single slot can't be RQ1'd (see driverNotes (4)); names are read by selecting each patch. write works as a 256-byte DT1 to 02 (2n) 00 with Memory Protect OFF, but the Store dialog needs a slot read first."
+      }
+    ],
+    "note": "The only programs are the 64 patches (a patch = 6 parts, each pointing at a ROM/card tone plus level/pitch/LFO offsets). Tones are fixed PCM programs with no editable parameters and no SysEx address, so they are not banks; the per-part tone pick is ToneMedia + ToneNumber (see schema.tones). No card patch memory exists on the U-110.",
+    "bankCC": null
+  },
+  "backup": {
+    "areas": [
+      {
+        "what": "patch memory P-01..P-64",
+        "rq1": "02 00 00 size 01 00 00",
+        "packets": 128,
+        "bytes": 16384
+      },
+      {
+        "what": "temporary patch (edit buffer)",
+        "rq1": "01 01 00 size 00 02 00",
+        "packets": 2,
+        "bytes": 256
+      },
+      {
+        "what": "setup (except PC maps)",
+        "rq1": "01 00 00 size 00 00 20",
+        "packets": 1,
+        "bytes": 32
+      },
+      {
+        "what": "program change maps 1-6",
+        "rq1": "06 00 00 size 00 18 00",
+        "packets": 24,
+        "bytes": 3072
+      }
+    ],
+    "restore": "DT1 the saved packets back unchanged, >= 20 ms apart; patch memory needs Memory Protect OFF (PATCH > WRT > MEM. PROTECT). Receiving setup/temp data resets controllers (temp also mutes).",
+    "panelDump": "UTILITY > BULK > DUMP SETUP / TEMP PATCH / 1-64 PATCH sends the same packets from the panel (works even with EXCLUSIVE off)."
+  },
+  "setup": [
+    "[EDIT] > SETUP > MIDI > CTRL CHANNEL = 16. SysEx only works on the control channel and its device ID is control channel - 1 (this schema uses 0Fh). Set the editor's channel to 16 as well: patch program changes go out on it.",
+    "SETUP > MIDI > EXCLUSIVE = ON and PGM CHANGE = ON (both retained at power-off). Turn on CH PRESSURE / POLY PRESS / PITCH BENDER / CTRL CHANGE only if you use them.",
+    "Cable both ways: interface out -> U-110 MIDI IN, U-110 MIDI OUT -> interface in (RQ1 replies need the return path; MIDI THRU is not it).",
+    "Leave the panel in Play mode (EDIT indicator off) while the editor reads or changes patches. Edisyn found the U-110 ignores patch changes and dump requests while EDIT is lit.",
+    "To store: PATCH > WRT > MEM. PROTECT = OFF first, then back ON when done (manual p.64).",
+    "Auditioning: the editor's held note plays on PART 1's MIDI RCV. CH (read from the patch; factory = ch 1), not the control channel -- parts never listen on 16 unless set to. To hear another part alone, play it from your keyboard on that part's channel.",
+    "Live knob edits re-send half of the patch (128 bytes), which briefly mutes the unit (manual). Until the driver uses the individual-parameter addresses ('live'), expect a click on each change and prefer releasing a knob to dragging."
+  ],
+  "driverNotes": "REQUIRED (1 small change): the U-110 sends every patch byte as TWO NIBBLES, LOW NIBBLE FIRST, so every 8-bit value (name chars, output mode, tone number, key range, level, pitch shift, LFO rate) is a 2-byte little-endian nibble pair. The driver's size>1 'nibble' path is high-nibble-first (JV), so these params carry encoding \"nibbleLE\". In rolandDriver add, BEFORE the p.bits / size>1 branches: read(): if (p.encoding === \"nibbleLE\") return (data[off] & 15) | ((data[off + 1] & 15) << 4); write(): if (p.encoding === \"nibbleLE\") { data[o] = v & 15; data[o + 1] = (v >> 4) & 15; return; } width(): return 2 for \"nibbleLE\" as for \"d110pcm\". requestName() and requestSlotName(): build the string with read(p, r.data) instead of r.data[p.offset], and request Math.max(...ps.map((p) => p.offset + width(p))) bytes. Without this, names and ~43 params decode wrong; everything else (3-byte addresses/sizes, the one 256-byte edit-buffer block, bits fields, packages, userMemory base+stride, PC select) already fits unchanged. RECOMMENDED (not needed to read/edit): (2) LIVE EDITS: today sendParam goes through roland.packages (half1/half2): each knob move re-sends the 128-byte half of the temp patch that holds the param (01 01 00 or 01 02 00, exactly Edisyn's packets). That is valid, but per the manual every temp-patch DT1 resets controllers and MUTES ALL SOUND, so drags will stutter. Better: every param except the name chars carries \"live\": [a1,a2,a3] = its Individual Parameter address (00 01 18-1C common, 00 1n 00-19 part n-1); if p.live, sendParam should DT1 [value] (one plain unpacked byte, same numbering as the packed field) to p.live instead of the package, after updating the mirror. The name is one 20-byte parameter at roland.liveName (00 01 00): send all 10 chars as 20 low-first nibbles. decode() could map incoming DT1s at those live addresses back to params too (the U-110 transmits the displayed parameter when PART/JUMP is pressed in patch edit). (3) PACKET SIZE: sendPatch and writeProgram send the 256-byte block as ONE DT1. Roland's generic limit is 256 data bytes, but the U-110 itself (and Edisyn) always uses two 128-byte packets (01 01 00 + 01 02 00; 02 2n 00 + 02 2n+1 00) >= 20 ms apart. If a 256-byte DT1 is ignored, add R.maxDT1 = 128: dt1() splits data into 128-byte chunks at at + 128*k. (4) STORE / SLOT READS: a single stored patch can NOT be requested (Edisyn: RQ1 02 2n 00 gets no answer; the manual only documents RQ1 02 00 00 size 01 00 00 = all 64 = 128 DT1 packets, ~6 s at 31.25 kbaud). So bank.dump is false: slot names are read by stepping (PC, then requestName), and the Store dialog refuses because it can't back up the slot first. To enable Store + backup: honour bank.readVia = \"select\" in requestProgram (programChange(bi, prog), wait ~150 ms, return requestPatch() with data keyed by block -- changes the sound, like Edisyn) and/or bank.bankDump (RQ1 02 00 00 size 01 00 00, slot n = bytes 256n..256n+255) -- the latter needs rq1's 2500 ms hard timeout to scale with len (e.g. 2500 + len * 0.45 ms). writeProgram itself already works (256-byte DT1 to 02 (2n) 00, Memory Protect OFF; no acknowledgement). (5) DEVICE ID: the U-110 has no Unit #; SysEx is received/sent only on the CONTROL CHANNEL with dev = control channel - 1. The schema pins defaultDeviceId 15 (control ch 16) and defaultChannel 16. Optional R.deviceIdFromChannel = true would make hdr use getChannel() per message. (6) A short RQ1 at 01 01 00 (requestName/probe asks 28 bytes) may still be answered with the full 2-packet dump (the manual says RQ1 sizes are 'ignored and regarded as proper length'); the late 01 02 00 packet reaches decode() and just re-applies the same values -- harmless. If the U-110 instead ignores RQ1s whose size isn't 00 02 00, requestName must request b.size (flag: R.rq1Exact).",
+  "uncertain": [
+    "BULK PATCH LAYOUT is not in the Roland manual at all (Edisyn: 'Roland's sysex specification is missing almost everything'). Every packed offset, the nibble order (low first) and the bit packing come from Edisyn's reverse engineering. It was cross-checked only against Edisyn's own init file, not a real unit dump. Verify with one Get from a known factory patch (e.g. P-01 Ac. Piano: part 1 = INT A. PIANO 2, output 1, ch 1, C-1..G9, output mode 22; parts 2-6 output OFF).",
+    "The last 24 nibbles of a patch (E8-FF) are unknown ('seemingly gibberish', Edisyn); Edisyn writes zeros. The driver mirror keeps whatever the last read returned, which is the safer choice.",
+    "LFO Rate: MIDI implementation 00 1n 0E '0000 aaaa 0-15 (0-15)' and Edisyn say 0-15; the panel chapter (p.62: 'from 0 to 127', example display 64) and the Parameter Table (p.77: 0....127) say 0-127. Modelled 0-15 but read as a whole byte (nibbleLE) so a larger stored value would still show. Try >15 on the unit.",
+    "Tone Media is 0-31 in the manual (INT, C01-C31) but only 15 SN-U110 cards are known; modelled 0-15 in the low nibble. Media bit 4 (high nibble bit 0) is preserved, not edited.",
+    "Output Mode 10: the manual's table (p.56) shows only '15' for group 1; 1:15 2:8 3:8 is Edisyn's correction (credited to Istvan Kadar), consistent with 31 voices.",
+    "Control channel factory value is not printed; the manual's SETUP example shows 16. Device ID = control channel - 1 follows Roland's generic rule (p.84 'a value smaller by one than that of a basic channel'), Edisyn's use of the MIDI channel as device ID, and the p.88 statement that SysEx works only on the control channel. No Unit # exists.",
+    "Whether the U-110 accepts one 256-byte DT1 (driver sendPatch/writeProgram) rather than two 128-byte packets is untested. Roland's generic limit is 256 data bytes. Its own dumps and Edisyn use 128.",
+    "Whether a partial DT1 inside the bulk temp area (what live edits would be without packages) is accepted is undocumented, so packages re-send whole 128-byte halves. The documented live path is the individual-parameter area ('live' addresses).",
+    "Whether RQ1 01 01 00 with a size other than 00 02 00 (requestName/probe) is answered: the manual says RQ1 sizes are ignored for individual parameters. For bulk it only lists 00 02 00.",
+    "Per-slot patch reads: Edisyn reports RQ1 02 (2n) 00 is not answered, so slots are read by program change + temp request or via the whole-bank RQ1. Writes to 02 (2n) 00 work per Edisyn (librarianTested).",
+    "MIDI Volume (CC7) is printed 'vv = 00H-0FH (0-15)' on p.89 while part level is 0-127. Probably a misprint, irrelevant to SysEx.",
+    "Card tone lists are Edisyn's transcriptions. SN-U110-07 lists 'Jazz Guitar COMP 1' three times (probably COMP 1/2/3), and 12 'TP/TRB' is presumed trumpet/trombone. Card 08/09 content also exists in the U-220's internal ROM.",
+    "Factory patch 58 is printed 'Tramp > Sax' in the Patch Setting Chart (likely 'Trump'); kept as printed.",
+    "The setup (01 00 00, 32 bytes) and PGM->TONE map (06 00 00, 3072 bytes) layouts are undocumented, so no params are modelled; they are listed for raw backup only."
+  ],
+  "defaultChannel": 16,
+  "noteChannelParam": "p1RxChannel"
+}

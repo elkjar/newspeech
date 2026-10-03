@@ -1,0 +1,3649 @@
+{
+  "id": "tx81z",
+  "name": "Yamaha TX81Z",
+  "transport": "yamaha4op",
+  "source": "Yamaha TX81Z Owner's Manual (English, Patchman Music authorized scan TX81z_E-UM_HiQ.pdf, text layer read): pp.11-37 (store, edit, utility, Memory Protect p.27, Combine p.27, P.Change/Exclusive p.25-26, preset list p.4), pp.65-78 MIDI reception, 'SYSTEM EXCLUSIVE DATA FORMAT' (parameter change, bulk data, dump request, VCED/ACED/PCED/remote switch tables, VMEM/ACED/effect/PMEM/microtune/PC table/system bulk charts), specifications (480 x 282 x 45.2 mm). Cross-checked against Edisyn (github.com/eclab/edisyn, edisyn/synth/yamaha4op/Yamaha4Op.java: VCED/ACED/ACED2/ACED3/EFEDS param tables, VMEM pack/unpack, requests, 'TX81Z works'), Matt Gregory's TX81Z Programmer (github.com/mgregory22/tx81z-programmer: tx81z.h param/remote constants, tx81z_meta.c request strings + dump headers, txpack.c VMEM<->VCED/ACED and PMEM<->PCED bit maps, tx81z.c param-change framing, memory-protect handling, store-by-remote-switch, pacing, freqratios.c 64x16 ratio table) and KnobKraft-orm adaptations/Yamaha_TX81Z.py (v1.0 ACED checksum bug). Validated against the four factory voice banks A-D as real 4104-byte VMEM dumps (4OPHQ TX81Z_Presets.zip, tx81z_1..4.syx, via web.archive.org) and two real single-voice ACED+VCED dumps (the-all.org/tx81z/patches HollowBass.syx, Filter1.syx).",
+  "yamaha4op": {
+    "manufacturerId": [
+      67
+    ],
+    "channelNibble": "Every TX81Z SysEx carries the MIDI channel in the low nibble of byte 2: n = channel - 1. Received messages must match UTILITY > Midi Control > Receive Ch (the 'basic receive channel', which also receives program changes and plays in SINGLE mode); dumps the unit sends carry its Transmit Ch. There is no separate device number. Set both to the editor channel and match replies on any n.",
+    "statusBytes": {
+      "paramChange": "1n",
+      "bulkDump": "0n",
+      "dumpRequest": "2n"
+    },
+    "paramChange": {
+      "format": "F0 43 1n <0ggggghh> <pp> <dd> F7 (7 bytes)",
+      "groupByte": {
+        "VCED": 18,
+        "ACED": 19,
+        "PCED": 16,
+        "remoteSwitch": 19,
+        "sysEffMicroPcTable": 16
+      },
+      "groupByteNote": "ggggg = 4 for every voice/performance message; hh = subgroup: 0x12 = VCED (hh 2), 0x13 = ACED (hh 3), 0x13 = remote switch (pp 64-75, shares ACED's byte), 0x10 = PCED (hh 0). The manual prints PCED as hh = 11 (3); Edisyn and TX81Z Programmer both found it is 0x10 on the hardware.",
+      "voice": "p.block 'VCED' -> F0 43 1n 12 <p.pp> <value> F7; p.block 'ACED' -> F0 43 1n 13 <p.pp> <value> F7. The value is the plain parameter value (no packing, no offset); pp = the param's position in the VCED (0-92) / ACED (0-22) dump data.",
+      "opEnable": "F0 43 1n 12 5D <0-15> F7 (VCED pp 93): bit3 OP1, bit2 OP2, bit1 OP3, bit0 OP4, 1 = on. Not in any dump; resets to all-on when a voice is selected.",
+      "system": "F0 43 1n 10 7B <kk> <dd> F7, kk = system index (chart 'System Setup Bulk Data': 0 master tune 0-172, 1 receive ch 0-15/16 omni, 2 transmit ch, 3 P.Change 0 off/1 com/2 ind, 4 Cont.Change 0 off/1 norm/2-17 G1-16, 5 Pitch Bend same, 6 note on/off 0 all/1 odd/2 even, 7 Exclusive 0/1, 8 Memory Protect 0 off/1 on, 9 Combine 0/1, 10 AT->BC 0/1). Puts the unit in UTILITY mode.",
+      "effect": "F0 43 1n 10 7C <kk> <dd> F7 (effect data index 0-54: delay/pan/chord). Puts the unit in UTILITY mode.",
+      "microTune": "F0 43 1n 10 7D|7E <key> <note 13-108> <fine 0-63> F7 (7D octave, 7E full keyboard)",
+      "programChangeTable": "F0 43 1n 10 7F <pgm 0-127> <memHi 0-1> <memLo 0-127> F7, mem = 0-31 I01-I32, 32-63 A, 64-95 B, 96-127 C, 128-159 D, 160-183 PF01-PF24. Puts the unit in UTILITY mode.",
+      "remoteSwitch": {
+        "format": "F0 43 1n 13 <sw> <7F press | 00 release> F7",
+        "switches": {
+          "64": "POWER ON (reset)",
+          "65": "STORE",
+          "66": "UTILITY",
+          "67": "EDIT/COMPARE",
+          "68": "PLAY/PERFORM",
+          "69": "PARAMETER -1",
+          "70": "PARAMETER +1",
+          "71": "DATA ENTRY -1 (DEC, NO)",
+          "72": "DATA ENTRY +1 (INC, YES)",
+          "73": "MASTER VOLUME -1 / CURSOR left",
+          "74": "MASTER VOLUME +1 / CURSOR right",
+          "75": "CURSOR"
+        },
+        "note": "Labels from the manual; TX81Z Programmer names 73/74 cursor left/right (they are cursor keys when the CURSOR LED is on). A click = press then release."
+      },
+      "examples": {
+        "op2 output level 75 (ch 1)": "F0 43 10 12 17 4B F7  (VCED pp 23 = OP2 OUT)",
+        "algorithm 5 (raw 4)": "F0 43 10 12 34 04 F7",
+        "op1 waveform W3 (raw 2)": "F0 43 10 13 12 02 F7  (ACED pp 18)",
+        "op4 fixed on": "F0 43 10 13 00 01 F7",
+        "reverb rate 3": "F0 43 10 13 14 03 F7",
+        "mute OP2 (OP1,3,4 on)": "F0 43 10 12 5D 0B F7",
+        "memory protect off": "F0 43 10 10 7B 08 00 F7",
+        "press PLAY/PERFORM": "F0 43 10 13 44 7F F7 then F0 43 10 13 44 00 F7",
+        "PC table: PGM 128 -> D05 (mem 132)": "F0 43 10 10 7F 7F 01 04 F7"
+      }
+    },
+    "bulk": {
+      "checksum": "7-bit two's complement of the sum of every data byte = (128 - sum % 128) % 128, where the data is everything after the two byte-count bytes up to the checksum, INCLUDING the 10-char 'LM  ....' header of 7E-type dumps. Verified on the 4 factory VMEM banks and on real ACED+VCED singles.",
+      "byteCount": "2 bytes, 7 bits each (hi, lo) = number of data bytes (incl. the 'LM  ....' header). The manual prints the VMEM count as '10 00' (hex of 4096); the wire bytes are 20 00 (verified on factory dumps; Edisyn notes the same).",
+      "types": {
+        "VCED": {
+          "format": "F0 43 0n 03 00 5D <93 data> <sum> F7",
+          "bytes": 101,
+          "data": "VCED parameters 0-92 in parameter-number order (87-92 = DX21 pitch EG, unused: hold 99 99 99 50 50 50)"
+        },
+        "ACED": {
+          "format": "F0 43 0n 7E 00 21 'LM  8976AE' <23 data> <sum> F7",
+          "bytes": 41,
+          "data": "ACED parameters 0-22 in parameter-number order"
+        },
+        "VMEM": {
+          "format": "F0 43 0n 04 20 00 <32 x 128 data> <sum> F7",
+          "bytes": 4104,
+          "data": "32 voices x 128 bytes, packed (see vmemLayout); internal bank I only"
+        },
+        "PCED": {
+          "format": "F0 43 0n 7E 00 78 'LM  8976PE' <110 data> <sum> F7",
+          "bytes": 128,
+          "data": "performance edit buffer, PCED params 0-109 unpacked"
+        },
+        "PMEM": {
+          "format": "F0 43 0n 7E 13 0A 'LM  8976PM' <32 x 76 data> <sum> F7",
+          "bytes": 2450,
+          "data": "24 internal performances + 8 'initial' performances, 76 bytes each, packed (manual chart p.76)"
+        },
+        "SYS": {
+          "format": "F0 43 0n 7E 00 25 'LM  8976S0' <27 data> <sum> F7",
+          "bytes": 45,
+          "data": "system setup (27 bytes; firmware 1.0 sends 26 = 44-byte message without the AT byte)"
+        },
+        "PCTABLE": {
+          "format": "F0 43 0n 7E 02 0A 'LM  8976S1' <128 x 2> <sum> F7",
+          "bytes": 274
+        },
+        "EFFECT": {
+          "format": "F0 43 0n 7E 00 41 'LM  8976S2' <55 data> <sum> F7",
+          "bytes": 73
+        },
+        "MICROTUNE_OCT": {
+          "format": "F0 43 0n 7E 00 22 'LM  MCRTE0' <24 data> <sum> F7",
+          "bytes": 42
+        },
+        "MICROTUNE_FULL": {
+          "format": "F0 43 0n 7E 02 0A 'LM  MCRTE1' <256 data> <sum> F7",
+          "bytes": 274,
+          "note": "manual misprints the count as 00 22; 266 data bytes = 02 0A"
+        }
+      },
+      "vmemLayout": "Per voice 128 bytes. Operators stored OP4 (0-9), OP2 (10-19), OP3 (20-29), OP1 (30-39): +0 AR, +1 D1R, +2 D2R, +3 RR, +4 D1L, +5 LS, +6 AME(b6) EBS(b5-3) KVS(b2-0), +7 OUT, +8 CRS(b5-0), +9 RS(b4-3) DET(b2-0). 40 SY(b6) FB(b5-3) ALG(b2-0); 41 LFS; 42 LFD; 43 PMD; 44 AMD; 45 PMS(b6-4) AMS(b3-2) LFW(b1-0); 46 TRPS; 47 PBR; 48 CH(b4) MO(b3) SU(b2) PO(b1) PM(b0); 49 PORT; 50 FC VOL; 51 MW P; 52 MW A; 53 BC P; 54 BC A; 55 BC P BIAS; 56 BC E BIAS; 57-66 name; 67-72 DX21 pitch EG (set 99 99 99 50 50 50); 73+2k EGSFT(b5-4) FIX(b3) FIXRG(b2-0) and 74+2k OSW(b6-4) FINE(b3-0) for k = OP4, OP2, OP3, OP1; 81 REV(b2-0); 82 FC PITCH; 83 FC AMP; 84-127 zero on the TX81Z. Each param's 'vmem' {offset, shift, width} encodes this.",
+      "examples": {
+        "ACED of the init voice (ch 1)": "F0 43 00 7E 00 21 4C 4D 20 20 38 39 37 36 41 45 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 43 F7",
+        "VCED of the init voice (ch 1)": "F0 43 00 03 00 5D 1F 1F 00 0F 0F 00 00 00 00 00 00 04 03 1F 1F 00 0F 0F 00 00 00 00 00 00 04 03 1F 1F 00 0F 0F 00 00 00 00 00 00 04 03 1F 1F 00 0F 0F 00 00 00 00 00 5A 04 03 00 00 23 00 00 00 00 02 06 00 18 00 04 00 00 28 00 00 00 32 00 00 00 32 00 49 4E 49 54 20 56 4F 49 43 45 63 63 63 32 32 32 3E F7"
+      }
+    },
+    "dumpRequest": {
+      "editBufferVoice": "F0 43 2n 7E 4C 4D 20 20 38 39 37 36 41 45 F7  ('LM  8976AE') -> ACED (41 bytes) then VCED (101 bytes)",
+      "vcedOnly": "F0 43 2n 03 F7 -> VCED only",
+      "bankI": "F0 43 2n 04 F7 -> VMEM (4104 bytes) of internal bank I; there is no request for preset banks A-D",
+      "performanceEdit": "F0 43 2n 7E 'LM  8976PE' F7 -> PCED",
+      "performances": "F0 43 2n 7E 'LM  8976PM' F7 -> PMEM",
+      "system": "F0 43 2n 7E 'LM  8976S0' F7 (S1 = PC table, S2 = effects)",
+      "microTune": "F0 43 2n 7E 'LM  MCRTE0' F7 (MCRTE1 = full keyboard)",
+      "note": "No checksum or count in requests. n must equal the Receive Ch. Requests are ignored while Exclusive is off."
+    },
+    "editBufferSend": "Send ACED first, then VCED: 'If ACED is received alone the VCED edit buffer is unaffected; if VCED is received alone the ACED edit buffer is initialized.' Received in PLAY/EDIT, not while the unit sits in UTILITY (TX81Z Programmer). Accepted with Memory Protect on (it only guards internal memory).",
+    "memoryProtect": "Memory Protect ON blocks STORE and the reception of VMEM (32 voices) and PMEM (24 performances). It is set ON at every power-up AND after every bulk receive (manual p.27), so turn it off (system param 8 = 0, then a PLAY click to leave UTILITY) immediately before each bank write.",
+    "store": "There is no 'store voice n' SysEx. Two paths: (a) documented: read-modify-write the whole bank I as VMEM (request VMEM, replace one 128-byte slot, memory protect off, send 4104 bytes); (b) remote-switch macro used by TX81Z Programmer: protect off, PLAY, select the target slot (program change), resend ACED+VCED, STORE press, DATA +1 click, STORE release, DATA +1 (YES) click. (b) depends on the unit's LCD state; (a) is deterministic and verifiable by reading VMEM back.",
+    "programChange": "Program changes go through the 128-entry Program Change Table (needs UTILITY P.Change = com). After 'Init P.Ch.Tbl' PC 0-127 = I01-C32; D01-D32 and PF01-24 are reachable only through table entries. Robust select (Edisyn): write table entry PGM128 = target mem (F0 43 1n 10 7F 7F hi lo F7), click PLAY (the table write left the unit in UTILITY), then Cn 7F. That permanently re-points PGM128 (default C32).",
+    "pacing": {
+      "paramChangeMs": 70,
+      "slowParamMs": 250,
+      "afterProgramChangeMs": 100,
+      "afterVmemMs": 800,
+      "afterPmemMs": 400,
+      "note": "From TX81Z Programmer (70 ms default; 250 ms after OP level scaling, PCED voice number and effect pan range; 800 ms after a >4000-byte dump; 400 ms after >2000 bytes). Edisyn uses 50 ms per param and 100 ms after a patch change ('TX81Z fails if it's less than 50 or so'). The TX81Z is famously slow; faster bursts give 'MIDI Buffer Full'."
+    }
+  },
+  "freqTables": {
+    "ratio": [
+      [
+        "0.50",
+        "0.56",
+        "0.62",
+        "0.68",
+        "0.75",
+        "0.81",
+        "0.87",
+        "0.93",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        "0.71",
+        "0.79",
+        "0.88",
+        "0.96",
+        "1.05",
+        "1.14",
+        "1.23",
+        "1.32",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        "0.78",
+        "0.88",
+        "0.98",
+        "1.07",
+        "1.17",
+        "1.27",
+        "1.37",
+        "1.47",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        "0.87",
+        "0.97",
+        "1.08",
+        "1.18",
+        "1.29",
+        "1.40",
+        "1.51",
+        "1.62",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        "1.00",
+        "1.06",
+        "1.12",
+        "1.18",
+        "1.25",
+        "1.31",
+        "1.37",
+        "1.43",
+        "1.50",
+        "1.56",
+        "1.62",
+        "1.68",
+        "1.75",
+        "1.81",
+        "1.87",
+        "1.93"
+      ],
+      [
+        "1.41",
+        "1.49",
+        "1.58",
+        "1.67",
+        "1.76",
+        "1.85",
+        "1.93",
+        "2.02",
+        "2.11",
+        "2.20",
+        "2.29",
+        "2.37",
+        "2.46",
+        "2.55",
+        "2.64",
+        "2.73"
+      ],
+      [
+        "1.57",
+        "1.66",
+        "1.76",
+        "1.86",
+        "1.96",
+        "2.06",
+        "2.15",
+        "2.25",
+        "2.35",
+        "2.45",
+        "2.55",
+        "2.64",
+        "2.74",
+        "2.84",
+        "2.94",
+        "3.04"
+      ],
+      [
+        "1.73",
+        "1.83",
+        "1.94",
+        "2.05",
+        "2.16",
+        "2.27",
+        "2.37",
+        "2.48",
+        "2.59",
+        "2.70",
+        "2.81",
+        "2.91",
+        "3.02",
+        "3.13",
+        "3.24",
+        "3.35"
+      ],
+      [
+        "2.00",
+        "2.06",
+        "2.12",
+        "2.18",
+        "2.25",
+        "2.31",
+        "2.37",
+        "2.43",
+        "2.50",
+        "2.56",
+        "2.62",
+        "2.68",
+        "2.75",
+        "2.81",
+        "2.87",
+        "2.93"
+      ],
+      [
+        "2.82",
+        "2.90",
+        "2.99",
+        "3.08",
+        "3.17",
+        "3.26",
+        "3.34",
+        "3.43",
+        "3.52",
+        "3.61",
+        "3.70",
+        "3.78",
+        "3.87",
+        "3.96",
+        "4.05",
+        "4.14"
+      ],
+      [
+        "3.00",
+        "3.06",
+        "3.12",
+        "3.18",
+        "3.25",
+        "3.31",
+        "3.37",
+        "3.43",
+        "3.50",
+        "3.56",
+        "3.62",
+        "3.68",
+        "3.75",
+        "3.81",
+        "3.87",
+        "3.93"
+      ],
+      [
+        "3.14",
+        "3.23",
+        "3.33",
+        "3.43",
+        "3.53",
+        "3.63",
+        "3.72",
+        "3.82",
+        "3.92",
+        "4.02",
+        "4.12",
+        "4.21",
+        "4.31",
+        "4.41",
+        "4.51",
+        "4.61"
+      ],
+      [
+        "3.46",
+        "3.56",
+        "3.67",
+        "3.78",
+        "3.89",
+        "4.00",
+        "4.10",
+        "4.21",
+        "4.32",
+        "4.43",
+        "4.54",
+        "4.64",
+        "4.75",
+        "4.86",
+        "4.97",
+        "5.08"
+      ],
+      [
+        "4.00",
+        "4.06",
+        "4.12",
+        "4.18",
+        "4.25",
+        "4.31",
+        "4.37",
+        "4.43",
+        "4.50",
+        "4.56",
+        "4.62",
+        "4.68",
+        "4.75",
+        "4.81",
+        "4.87",
+        "4.93"
+      ],
+      [
+        "4.24",
+        "4.31",
+        "4.40",
+        "4.49",
+        "4.58",
+        "4.67",
+        "4.75",
+        "4.84",
+        "4.93",
+        "5.02",
+        "5.11",
+        "5.19",
+        "5.28",
+        "5.37",
+        "5.46",
+        "5.55"
+      ],
+      [
+        "4.71",
+        "4.80",
+        "4.90",
+        "5.00",
+        "5.10",
+        "5.20",
+        "5.29",
+        "5.39",
+        "5.49",
+        "5.59",
+        "5.69",
+        "5.78",
+        "5.88",
+        "5.98",
+        "6.08",
+        "6.18"
+      ],
+      [
+        "5.00",
+        "5.06",
+        "5.12",
+        "5.18",
+        "5.25",
+        "5.31",
+        "5.37",
+        "5.43",
+        "5.50",
+        "5.56",
+        "5.62",
+        "5.68",
+        "5.75",
+        "5.81",
+        "5.87",
+        "5.93"
+      ],
+      [
+        "5.19",
+        "5.29",
+        "5.40",
+        "5.51",
+        "5.62",
+        "5.73",
+        "5.83",
+        "5.94",
+        "6.05",
+        "6.16",
+        "6.27",
+        "6.37",
+        "6.48",
+        "6.59",
+        "6.70",
+        "6.81"
+      ],
+      [
+        "5.65",
+        "5.72",
+        "5.81",
+        "5.90",
+        "5.99",
+        "6.08",
+        "6.16",
+        "6.25",
+        "6.34",
+        "6.43",
+        "6.52",
+        "6.60",
+        "6.69",
+        "6.78",
+        "6.87",
+        "6.96"
+      ],
+      [
+        "6.00",
+        "6.06",
+        "6.12",
+        "6.18",
+        "6.25",
+        "6.31",
+        "6.37",
+        "6.43",
+        "6.50",
+        "6.56",
+        "6.62",
+        "6.68",
+        "6.75",
+        "6.81",
+        "6.87",
+        "6.93"
+      ],
+      [
+        "6.28",
+        "6.37",
+        "6.47",
+        "6.57",
+        "6.67",
+        "6.77",
+        "6.86",
+        "6.96",
+        "7.06",
+        "7.16",
+        "7.26",
+        "7.35",
+        "7.45",
+        "7.55",
+        "7.65",
+        "7.75"
+      ],
+      [
+        "6.92",
+        "7.02",
+        "7.13",
+        "7.24",
+        "7.35",
+        "7.46",
+        "7.56",
+        "7.67",
+        "7.78",
+        "7.89",
+        "8.00",
+        "8.10",
+        "8.21",
+        "8.32",
+        "8.43",
+        "8.54"
+      ],
+      [
+        "7.00",
+        "7.06",
+        "7.12",
+        "7.18",
+        "7.25",
+        "7.31",
+        "7.37",
+        "7.43",
+        "7.50",
+        "7.56",
+        "7.62",
+        "7.68",
+        "7.75",
+        "7.81",
+        "7.87",
+        "7.93"
+      ],
+      [
+        "7.07",
+        "7.13",
+        "7.22",
+        "7.31",
+        "7.40",
+        "7.49",
+        "7.57",
+        "7.66",
+        "7.75",
+        "7.84",
+        "7.93",
+        "8.01",
+        "8.10",
+        "8.19",
+        "8.28",
+        "8.37"
+      ],
+      [
+        "7.85",
+        "7.94",
+        "8.04",
+        "8.14",
+        "8.24",
+        "8.34",
+        "8.43",
+        "8.53",
+        "8.63",
+        "8.73",
+        "8.83",
+        "8.92",
+        "9.02",
+        "9.12",
+        "9.22",
+        "9.32"
+      ],
+      [
+        "8.00",
+        "8.06",
+        "8.12",
+        "8.18",
+        "8.25",
+        "8.31",
+        "8.37",
+        "8.43",
+        "8.50",
+        "8.56",
+        "8.62",
+        "8.68",
+        "8.75",
+        "8.81",
+        "8.87",
+        "8.93"
+      ],
+      [
+        "8.48",
+        "8.54",
+        "8.63",
+        "8.72",
+        "8.81",
+        "8.90",
+        "8.98",
+        "9.07",
+        "9.16",
+        "9.25",
+        "9.34",
+        "9.42",
+        "9.51",
+        "9.60",
+        "9.69",
+        "9.78"
+      ],
+      [
+        "8.65",
+        "8.75",
+        "8.86",
+        "8.97",
+        "9.08",
+        "9.19",
+        "9.29",
+        "9.40",
+        "9.51",
+        "9.62",
+        "9.73",
+        "9.83",
+        "9.94",
+        "10.05",
+        "10.16",
+        "10.27"
+      ],
+      [
+        "9.00",
+        "9.06",
+        "9.12",
+        "9.18",
+        "9.25",
+        "9.31",
+        "9.37",
+        "9.43",
+        "9.50",
+        "9.56",
+        "9.62",
+        "9.68",
+        "9.75",
+        "9.81",
+        "9.87",
+        "9.93"
+      ],
+      [
+        "9.42",
+        "9.51",
+        "9.61",
+        "9.71",
+        "9.81",
+        "9.91",
+        "10.00",
+        "10.10",
+        "10.20",
+        "10.30",
+        "10.40",
+        "10.49",
+        "10.59",
+        "10.69",
+        "10.79",
+        "10.89"
+      ],
+      [
+        "9.89",
+        "9.95",
+        "10.04",
+        "10.13",
+        "10.22",
+        "10.31",
+        "10.39",
+        "10.48",
+        "10.57",
+        "10.66",
+        "10.75",
+        "10.83",
+        "10.92",
+        "11.01",
+        "11.10",
+        "11.19"
+      ],
+      [
+        "10.00",
+        "10.06",
+        "10.12",
+        "10.18",
+        "10.25",
+        "10.31",
+        "10.37",
+        "10.43",
+        "10.50",
+        "10.56",
+        "10.62",
+        "10.68",
+        "10.75",
+        "10.81",
+        "10.87",
+        "10.93"
+      ],
+      [
+        "10.38",
+        "10.48",
+        "10.59",
+        "10.70",
+        "10.81",
+        "10.92",
+        "11.02",
+        "11.13",
+        "11.24",
+        "11.35",
+        "11.46",
+        "11.56",
+        "11.67",
+        "11.78",
+        "11.89",
+        "12.00"
+      ],
+      [
+        "10.99",
+        "11.08",
+        "11.18",
+        "11.28",
+        "11.38",
+        "11.48",
+        "11.57",
+        "11.67",
+        "11.77",
+        "11.87",
+        "11.97",
+        "12.06",
+        "12.16",
+        "12.26",
+        "12.36",
+        "12.46"
+      ],
+      [
+        "11.00",
+        "11.06",
+        "11.12",
+        "11.18",
+        "11.25",
+        "11.31",
+        "11.37",
+        "11.43",
+        "11.50",
+        "11.56",
+        "11.62",
+        "11.68",
+        "11.75",
+        "11.81",
+        "11.87",
+        "11.93"
+      ],
+      [
+        "11.30",
+        "11.36",
+        "11.45",
+        "11.54",
+        "11.63",
+        "11.72",
+        "11.80",
+        "11.89",
+        "11.98",
+        "12.07",
+        "12.16",
+        "12.24",
+        "12.33",
+        "12.42",
+        "12.51",
+        "12.60"
+      ],
+      [
+        "12.00",
+        "12.06",
+        "12.12",
+        "12.18",
+        "12.25",
+        "12.31",
+        "12.37",
+        "12.43",
+        "12.50",
+        "12.56",
+        "12.62",
+        "12.68",
+        "12.75",
+        "12.81",
+        "12.87",
+        "12.93"
+      ],
+      [
+        "12.11",
+        "12.21",
+        "12.32",
+        "12.43",
+        "12.54",
+        "12.65",
+        "12.75",
+        "12.86",
+        "12.97",
+        "13.08",
+        "13.19",
+        "13.29",
+        "13.40",
+        "13.51",
+        "13.62",
+        "13.73"
+      ],
+      [
+        "12.56",
+        "12.65",
+        "12.75",
+        "12.85",
+        "12.95",
+        "13.05",
+        "13.14",
+        "13.24",
+        "13.34",
+        "13.44",
+        "13.54",
+        "13.63",
+        "13.73",
+        "13.83",
+        "13.93",
+        "14.03"
+      ],
+      [
+        "12.72",
+        "12.77",
+        "12.86",
+        "12.95",
+        "13.04",
+        "13.13",
+        "13.21",
+        "13.30",
+        "13.39",
+        "13.48",
+        "13.57",
+        "13.65",
+        "13.74",
+        "13.83",
+        "13.92",
+        "14.01"
+      ],
+      [
+        "13.00",
+        "13.06",
+        "13.12",
+        "13.18",
+        "13.25",
+        "13.31",
+        "13.37",
+        "13.43",
+        "13.50",
+        "13.56",
+        "13.62",
+        "13.68",
+        "13.75",
+        "13.81",
+        "13.87",
+        "13.93"
+      ],
+      [
+        "13.84",
+        "13.94",
+        "14.05",
+        "14.16",
+        "14.27",
+        "14.38",
+        "14.48",
+        "14.59",
+        "14.70",
+        "14.81",
+        "14.92",
+        "15.02",
+        "15.13",
+        "15.24",
+        "15.35",
+        "15.46"
+      ],
+      [
+        "14.00",
+        "14.06",
+        "14.12",
+        "14.18",
+        "14.25",
+        "14.31",
+        "14.37",
+        "14.43",
+        "14.50",
+        "14.56",
+        "14.62",
+        "14.68",
+        "14.75",
+        "14.81",
+        "14.87",
+        "14.93"
+      ],
+      [
+        "14.10",
+        "14.18",
+        "14.27",
+        "14.36",
+        "14.45",
+        "14.54",
+        "14.62",
+        "14.71",
+        "14.80",
+        "14.89",
+        "14.98",
+        "15.06",
+        "15.15",
+        "15.24",
+        "15.33",
+        "15.42"
+      ],
+      [
+        "14.13",
+        "14.22",
+        "14.32",
+        "14.42",
+        "14.52",
+        "14.62",
+        "14.71",
+        "14.81",
+        "14.91",
+        "15.01",
+        "15.11",
+        "15.20",
+        "15.30",
+        "15.40",
+        "15.50",
+        "15.60"
+      ],
+      [
+        "15.00",
+        "15.06",
+        "15.12",
+        "15.18",
+        "15.25",
+        "15.31",
+        "15.37",
+        "15.43",
+        "15.50",
+        "15.56",
+        "15.62",
+        "15.68",
+        "15.75",
+        "15.81",
+        "15.87",
+        "15.93"
+      ],
+      [
+        "15.55",
+        "15.59",
+        "15.68",
+        "15.77",
+        "15.86",
+        "15.95",
+        "16.03",
+        "16.12",
+        "16.21",
+        "16.30",
+        "16.39",
+        "16.47",
+        "16.56",
+        "16.65",
+        "16.74",
+        "16.83"
+      ],
+      [
+        "15.57",
+        "15.67",
+        "15.78",
+        "15.89",
+        "16.00",
+        "16.11",
+        "16.21",
+        "16.32",
+        "16.43",
+        "16.54",
+        "16.65",
+        "16.75",
+        "16.86",
+        "16.97",
+        "17.08",
+        "17.19"
+      ],
+      [
+        "15.70",
+        "15.79",
+        "15.89",
+        "15.99",
+        "16.09",
+        "16.19",
+        "16.28",
+        "16.38",
+        "16.48",
+        "16.58",
+        "16.68",
+        "16.77",
+        "16.87",
+        "16.97",
+        "17.07",
+        "17.17"
+      ],
+      [
+        "16.96",
+        "17.00",
+        "17.09",
+        "17.18",
+        "17.27",
+        "17.36",
+        "17.44",
+        "17.53",
+        "17.62",
+        "17.71",
+        "17.80",
+        "17.88",
+        "17.97",
+        "18.06",
+        "18.15",
+        "18.24"
+      ],
+      [
+        "17.27",
+        "17.36",
+        "17.46",
+        "17.56",
+        "17.66",
+        "17.76",
+        "17.85",
+        "17.95",
+        "18.05",
+        "18.15",
+        "18.25",
+        "18.34",
+        "18.44",
+        "18.54",
+        "18.64",
+        "18.74"
+      ],
+      [
+        "17.30",
+        "17.40",
+        "17.51",
+        "17.62",
+        "17.73",
+        "17.84",
+        "17.94",
+        "18.05",
+        "18.16",
+        "18.27",
+        "18.38",
+        "18.48",
+        "18.59",
+        "18.70",
+        "18.81",
+        "18.92"
+      ],
+      [
+        "18.37",
+        "18.41",
+        "18.50",
+        "18.59",
+        "18.68",
+        "18.77",
+        "18.85",
+        "18.94",
+        "19.03",
+        "19.12",
+        "19.21",
+        "19.29",
+        "19.38",
+        "19.47",
+        "19.56",
+        "19.65"
+      ],
+      [
+        "18.84",
+        "18.93",
+        "19.03",
+        "19.13",
+        "19.23",
+        "19.33",
+        "19.42",
+        "19.52",
+        "19.62",
+        "19.72",
+        "19.82",
+        "19.91",
+        "20.01",
+        "20.11",
+        "20.21",
+        "20.31"
+      ],
+      [
+        "19.03",
+        "19.13",
+        "19.24",
+        "19.35",
+        "19.46",
+        "19.57",
+        "19.67",
+        "19.78",
+        "19.89",
+        "20.00",
+        "20.11",
+        "20.21",
+        "20.32",
+        "20.43",
+        "20.54",
+        "20.65"
+      ],
+      [
+        "19.78",
+        "19.82",
+        "19.91",
+        "20.00",
+        "20.09",
+        "20.18",
+        "20.26",
+        "20.35",
+        "20.44",
+        "20.53",
+        "20.62",
+        "20.70",
+        "20.79",
+        "20.88",
+        "20.97",
+        "21.06"
+      ],
+      [
+        "20.41",
+        "20.50",
+        "20.60",
+        "20.70",
+        "20.80",
+        "20.90",
+        "20.99",
+        "21.09",
+        "21.19",
+        "21.29",
+        "21.39",
+        "21.48",
+        "21.58",
+        "21.68",
+        "21.78",
+        "21.88"
+      ],
+      [
+        "20.76",
+        "20.86",
+        "20.97",
+        "21.08",
+        "21.19",
+        "21.30",
+        "21.40",
+        "21.51",
+        "21.62",
+        "21.73",
+        "21.84",
+        "21.94",
+        "22.05",
+        "22.16",
+        "22.27",
+        "22.38"
+      ],
+      [
+        "21.20",
+        "21.23",
+        "21.32",
+        "21.41",
+        "21.50",
+        "21.59",
+        "21.67",
+        "21.76",
+        "21.85",
+        "21.94",
+        "22.03",
+        "22.11",
+        "22.20",
+        "22.29",
+        "22.38",
+        "22.47"
+      ],
+      [
+        "21.98",
+        "22.07",
+        "22.17",
+        "22.27",
+        "22.37",
+        "22.47",
+        "22.56",
+        "22.66",
+        "22.76",
+        "22.86",
+        "22.96",
+        "23.05",
+        "23.15",
+        "23.25",
+        "23.35",
+        "23.45"
+      ],
+      [
+        "22.49",
+        "22.59",
+        "22.70",
+        "22.81",
+        "22.92",
+        "23.03",
+        "23.13",
+        "23.24",
+        "23.35",
+        "23.46",
+        "23.57",
+        "23.67",
+        "23.78",
+        "23.89",
+        "24.00",
+        "24.11"
+      ],
+      [
+        "23.55",
+        "23.64",
+        "23.74",
+        "23.84",
+        "23.94",
+        "24.04",
+        "24.13",
+        "24.23",
+        "24.33",
+        "24.43",
+        "24.53",
+        "24.62",
+        "24.72",
+        "24.82",
+        "24.92",
+        "25.02"
+      ],
+      [
+        "24.22",
+        "24.32",
+        "24.43",
+        "24.54",
+        "24.65",
+        "24.76",
+        "24.86",
+        "24.97",
+        "25.08",
+        "25.19",
+        "25.30",
+        "25.40",
+        "25.51",
+        "25.62",
+        "25.73",
+        "25.84"
+      ],
+      [
+        "25.95",
+        "26.05",
+        "26.16",
+        "26.27",
+        "26.38",
+        "26.49",
+        "26.59",
+        "26.70",
+        "26.81",
+        "26.92",
+        "27.03",
+        "27.13",
+        "27.24",
+        "27.35",
+        "27.46",
+        "27.57"
+      ]
+    ],
+    "ratioNote": "freqTables.ratio[crs][fine] = the ratio the LCD shows in ratio mode (TX81Z Programmer freqratios.c; fine 0 and fine-max columns checked against Edisyn FREQUENCY_RATIOS / FREQUENCY_RATIOS_MAX). null = invalid (crs 0-3 accept fine 0-7 only).",
+    "fixedHz": "(((crs & 0x3C) << 2) + fine + (crs < 4 ? 8 : 0)) << fixRange  (TX81Z Programmer VoiceDlg_FixedParamsToFreq); range 0 = 8-255 Hz in 1 Hz steps ... range 7 = 1024-32640 Hz in 128 Hz steps (manual p.17 table).",
+    "fixedRanges": [
+      "255Hz",
+      "510Hz",
+      "1kHz",
+      "2kHz",
+      "4kHz",
+      "8kHz",
+      "16kHz",
+      "32kHz"
+    ]
+  },
+  "waveNote": "Operator waveforms W1-W8 (manual p.18, harmonic content p.50). W1 is a sine; W2-W8 are the YM2414's shaped/rectified/half-period variants. Labels kept as the LCD names (W1-W8).",
+  "gapMs": 70,
+  "noteOctaveBase": 1,
+  "defaultChannel": 1,
+  "params": [
+    {
+      "key": "op1Ar",
+      "name": "OP1 Attack Rate",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 39,
+      "vmem": {
+        "offset": 30,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 31
+    },
+    {
+      "key": "op1D1r",
+      "name": "OP1 Decay 1 Rate",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 40,
+      "vmem": {
+        "offset": 31,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 31
+    },
+    {
+      "key": "op1D2r",
+      "name": "OP1 Decay 2 Rate",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 41,
+      "vmem": {
+        "offset": 32,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 0
+    },
+    {
+      "key": "op1Rr",
+      "name": "OP1 Release Rate",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 42,
+      "vmem": {
+        "offset": 33,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 1,
+      "max": 15,
+      "default": 15,
+      "note": "Manual data range 1-15 (0 is not a valid release rate)."
+    },
+    {
+      "key": "op1D1l",
+      "name": "OP1 Decay 1 Level",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 43,
+      "vmem": {
+        "offset": 34,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 15,
+      "default": 15
+    },
+    {
+      "key": "op1Ls",
+      "name": "OP1 Level Scaling",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 44,
+      "vmem": {
+        "offset": 35,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0,
+      "note": "TX81Z Programmer waits 250 ms after this parameter change: the unit is slow to apply it."
+    },
+    {
+      "key": "op1Rs",
+      "name": "OP1 Rate Scaling",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 45,
+      "vmem": {
+        "offset": 39,
+        "shift": 3,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "key": "op1Ebs",
+      "name": "OP1 EG Bias Sensitivity",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 46,
+      "vmem": {
+        "offset": 36,
+        "shift": 3,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "op1Ame",
+      "name": "OP1 Amp Mod Enable",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 47,
+      "vmem": {
+        "offset": 36,
+        "shift": 6,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op1Kvs",
+      "name": "OP1 Key Velocity Sens",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 48,
+      "vmem": {
+        "offset": 36,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "op1Out",
+      "name": "OP1 Output Level",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 49,
+      "vmem": {
+        "offset": 37,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 90
+    },
+    {
+      "key": "op1Crs",
+      "name": "OP1 Frequency Coarse",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 50,
+      "vmem": {
+        "offset": 38,
+        "shift": 0,
+        "width": 6
+      },
+      "min": 0,
+      "max": 63,
+      "default": 4,
+      "display": "tx81zFreqCoarse",
+      "note": "Ratio mode: ratio = freqTables.ratio[crs][fine] (crs 4 = 1.00). Fixed mode: Hz = (((crs & 0x3C) << 2) + fine + (crs < 4 ? 8 : 0)) << fixRange; only crs bits 2-5 matter (crs 0-3 behave as one step)."
+    },
+    {
+      "key": "op1Det",
+      "name": "OP1 Detune",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 51,
+      "vmem": {
+        "offset": 39,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "default": 3,
+      "valueOffset": -3,
+      "display": "bipolar",
+      "note": "Raw 0-6, centre 3 = 0 (shown -3..+3)."
+    },
+    {
+      "key": "op1Fix",
+      "name": "OP1 Fixed Frequency",
+      "group": "op1",
+      "op": 1,
+      "block": "ACED",
+      "pp": 15,
+      "vmem": {
+        "offset": 79,
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "ratio",
+        "fixed"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op1FixRange",
+      "name": "OP1 Fixed Freq Range",
+      "group": "op1",
+      "op": 1,
+      "block": "ACED",
+      "pp": 16,
+      "vmem": {
+        "offset": 79,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "255Hz",
+        "510Hz",
+        "1kHz",
+        "2kHz",
+        "4kHz",
+        "8kHz",
+        "16kHz",
+        "32kHz"
+      ],
+      "default": 0,
+      "note": "Only used in fixed mode. Manual table prints '1-7 0(250Hz) 7(32kHz)'; the edit chapter and factory data use 0-7 (8 ranges 255Hz-32kHz)."
+    },
+    {
+      "key": "op1Fine",
+      "name": "OP1 Frequency Fine",
+      "group": "op1",
+      "op": 1,
+      "block": "ACED",
+      "pp": 17,
+      "vmem": {
+        "offset": 80,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 15,
+      "default": 0,
+      "note": "With crs 0-3 (ratios < 1.00) only fine 0-7 are valid; Edisyn clamps to 7."
+    },
+    {
+      "key": "op1Wave",
+      "name": "OP1 Waveform",
+      "group": "op1",
+      "op": 1,
+      "block": "ACED",
+      "pp": 18,
+      "vmem": {
+        "offset": 80,
+        "shift": 4,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "W1 sine",
+        "W2",
+        "W3",
+        "W4",
+        "W5",
+        "W6",
+        "W7",
+        "W8"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op1Shift",
+      "name": "OP1 EG Shift",
+      "group": "op1",
+      "op": 1,
+      "block": "ACED",
+      "pp": 19,
+      "vmem": {
+        "offset": 79,
+        "shift": 4,
+        "width": 2
+      },
+      "min": 0,
+      "max": 0,
+      "display": "enum",
+      "options": [
+        "off (96dB)",
+        "48dB",
+        "24dB",
+        "12dB"
+      ],
+      "default": 0,
+      "note": "Manual: EG shift of operator 1 is fixed at off (all 128 factory voices have 0 here). Keep at 0."
+    },
+    {
+      "key": "op1On",
+      "name": "OP1 On",
+      "group": "op1",
+      "op": 1,
+      "block": "VCED",
+      "pp": 93,
+      "bits": {
+        "shift": 3,
+        "width": 1
+      },
+      "notInPatch": true,
+      "norandom": true,
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 1,
+      "note": "Edit-buffer mute only (VCED param 93 = op on/off bits; not in any dump). Send the whole byte: bit3 OP1, bit2 OP2, bit1 OP3, bit0 OP4 (TX81Z Programmer)."
+    },
+    {
+      "key": "op2Ar",
+      "name": "OP2 Attack Rate",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 13,
+      "vmem": {
+        "offset": 10,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 31
+    },
+    {
+      "key": "op2D1r",
+      "name": "OP2 Decay 1 Rate",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 14,
+      "vmem": {
+        "offset": 11,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 31
+    },
+    {
+      "key": "op2D2r",
+      "name": "OP2 Decay 2 Rate",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 15,
+      "vmem": {
+        "offset": 12,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 0
+    },
+    {
+      "key": "op2Rr",
+      "name": "OP2 Release Rate",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 16,
+      "vmem": {
+        "offset": 13,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 1,
+      "max": 15,
+      "default": 15,
+      "note": "Manual data range 1-15 (0 is not a valid release rate)."
+    },
+    {
+      "key": "op2D1l",
+      "name": "OP2 Decay 1 Level",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 17,
+      "vmem": {
+        "offset": 14,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 15,
+      "default": 15
+    },
+    {
+      "key": "op2Ls",
+      "name": "OP2 Level Scaling",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 18,
+      "vmem": {
+        "offset": 15,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0,
+      "note": "TX81Z Programmer waits 250 ms after this parameter change: the unit is slow to apply it."
+    },
+    {
+      "key": "op2Rs",
+      "name": "OP2 Rate Scaling",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 19,
+      "vmem": {
+        "offset": 19,
+        "shift": 3,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "key": "op2Ebs",
+      "name": "OP2 EG Bias Sensitivity",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 20,
+      "vmem": {
+        "offset": 16,
+        "shift": 3,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "op2Ame",
+      "name": "OP2 Amp Mod Enable",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 21,
+      "vmem": {
+        "offset": 16,
+        "shift": 6,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op2Kvs",
+      "name": "OP2 Key Velocity Sens",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 22,
+      "vmem": {
+        "offset": 16,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "op2Out",
+      "name": "OP2 Output Level",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 23,
+      "vmem": {
+        "offset": 17,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "op2Crs",
+      "name": "OP2 Frequency Coarse",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 24,
+      "vmem": {
+        "offset": 18,
+        "shift": 0,
+        "width": 6
+      },
+      "min": 0,
+      "max": 63,
+      "default": 4,
+      "display": "tx81zFreqCoarse",
+      "note": "Ratio mode: ratio = freqTables.ratio[crs][fine] (crs 4 = 1.00). Fixed mode: Hz = (((crs & 0x3C) << 2) + fine + (crs < 4 ? 8 : 0)) << fixRange; only crs bits 2-5 matter (crs 0-3 behave as one step)."
+    },
+    {
+      "key": "op2Det",
+      "name": "OP2 Detune",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 25,
+      "vmem": {
+        "offset": 19,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "default": 3,
+      "valueOffset": -3,
+      "display": "bipolar",
+      "note": "Raw 0-6, centre 3 = 0 (shown -3..+3)."
+    },
+    {
+      "key": "op2Fix",
+      "name": "OP2 Fixed Frequency",
+      "group": "op2",
+      "op": 2,
+      "block": "ACED",
+      "pp": 5,
+      "vmem": {
+        "offset": 75,
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "ratio",
+        "fixed"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op2FixRange",
+      "name": "OP2 Fixed Freq Range",
+      "group": "op2",
+      "op": 2,
+      "block": "ACED",
+      "pp": 6,
+      "vmem": {
+        "offset": 75,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "255Hz",
+        "510Hz",
+        "1kHz",
+        "2kHz",
+        "4kHz",
+        "8kHz",
+        "16kHz",
+        "32kHz"
+      ],
+      "default": 0,
+      "note": "Only used in fixed mode. Manual table prints '1-7 0(250Hz) 7(32kHz)'; the edit chapter and factory data use 0-7 (8 ranges 255Hz-32kHz)."
+    },
+    {
+      "key": "op2Fine",
+      "name": "OP2 Frequency Fine",
+      "group": "op2",
+      "op": 2,
+      "block": "ACED",
+      "pp": 7,
+      "vmem": {
+        "offset": 76,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 15,
+      "default": 0,
+      "note": "With crs 0-3 (ratios < 1.00) only fine 0-7 are valid; Edisyn clamps to 7."
+    },
+    {
+      "key": "op2Wave",
+      "name": "OP2 Waveform",
+      "group": "op2",
+      "op": 2,
+      "block": "ACED",
+      "pp": 8,
+      "vmem": {
+        "offset": 76,
+        "shift": 4,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "W1 sine",
+        "W2",
+        "W3",
+        "W4",
+        "W5",
+        "W6",
+        "W7",
+        "W8"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op2Shift",
+      "name": "OP2 EG Shift",
+      "group": "op2",
+      "op": 2,
+      "block": "ACED",
+      "pp": 9,
+      "vmem": {
+        "offset": 75,
+        "shift": 4,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "display": "enum",
+      "options": [
+        "off (96dB)",
+        "48dB",
+        "24dB",
+        "12dB"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op2On",
+      "name": "OP2 On",
+      "group": "op2",
+      "op": 2,
+      "block": "VCED",
+      "pp": 93,
+      "bits": {
+        "shift": 2,
+        "width": 1
+      },
+      "notInPatch": true,
+      "norandom": true,
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 1,
+      "note": "Edit-buffer mute only (VCED param 93 = op on/off bits; not in any dump). Send the whole byte: bit3 OP1, bit2 OP2, bit1 OP3, bit0 OP4 (TX81Z Programmer)."
+    },
+    {
+      "key": "op3Ar",
+      "name": "OP3 Attack Rate",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 26,
+      "vmem": {
+        "offset": 20,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 31
+    },
+    {
+      "key": "op3D1r",
+      "name": "OP3 Decay 1 Rate",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 27,
+      "vmem": {
+        "offset": 21,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 31
+    },
+    {
+      "key": "op3D2r",
+      "name": "OP3 Decay 2 Rate",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 28,
+      "vmem": {
+        "offset": 22,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 0
+    },
+    {
+      "key": "op3Rr",
+      "name": "OP3 Release Rate",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 29,
+      "vmem": {
+        "offset": 23,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 1,
+      "max": 15,
+      "default": 15,
+      "note": "Manual data range 1-15 (0 is not a valid release rate)."
+    },
+    {
+      "key": "op3D1l",
+      "name": "OP3 Decay 1 Level",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 30,
+      "vmem": {
+        "offset": 24,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 15,
+      "default": 15
+    },
+    {
+      "key": "op3Ls",
+      "name": "OP3 Level Scaling",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 31,
+      "vmem": {
+        "offset": 25,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0,
+      "note": "TX81Z Programmer waits 250 ms after this parameter change: the unit is slow to apply it."
+    },
+    {
+      "key": "op3Rs",
+      "name": "OP3 Rate Scaling",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 32,
+      "vmem": {
+        "offset": 29,
+        "shift": 3,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "key": "op3Ebs",
+      "name": "OP3 EG Bias Sensitivity",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 33,
+      "vmem": {
+        "offset": 26,
+        "shift": 3,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "op3Ame",
+      "name": "OP3 Amp Mod Enable",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 34,
+      "vmem": {
+        "offset": 26,
+        "shift": 6,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op3Kvs",
+      "name": "OP3 Key Velocity Sens",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 35,
+      "vmem": {
+        "offset": 26,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "op3Out",
+      "name": "OP3 Output Level",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 36,
+      "vmem": {
+        "offset": 27,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "op3Crs",
+      "name": "OP3 Frequency Coarse",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 37,
+      "vmem": {
+        "offset": 28,
+        "shift": 0,
+        "width": 6
+      },
+      "min": 0,
+      "max": 63,
+      "default": 4,
+      "display": "tx81zFreqCoarse",
+      "note": "Ratio mode: ratio = freqTables.ratio[crs][fine] (crs 4 = 1.00). Fixed mode: Hz = (((crs & 0x3C) << 2) + fine + (crs < 4 ? 8 : 0)) << fixRange; only crs bits 2-5 matter (crs 0-3 behave as one step)."
+    },
+    {
+      "key": "op3Det",
+      "name": "OP3 Detune",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 38,
+      "vmem": {
+        "offset": 29,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "default": 3,
+      "valueOffset": -3,
+      "display": "bipolar",
+      "note": "Raw 0-6, centre 3 = 0 (shown -3..+3)."
+    },
+    {
+      "key": "op3Fix",
+      "name": "OP3 Fixed Frequency",
+      "group": "op3",
+      "op": 3,
+      "block": "ACED",
+      "pp": 10,
+      "vmem": {
+        "offset": 77,
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "ratio",
+        "fixed"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op3FixRange",
+      "name": "OP3 Fixed Freq Range",
+      "group": "op3",
+      "op": 3,
+      "block": "ACED",
+      "pp": 11,
+      "vmem": {
+        "offset": 77,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "255Hz",
+        "510Hz",
+        "1kHz",
+        "2kHz",
+        "4kHz",
+        "8kHz",
+        "16kHz",
+        "32kHz"
+      ],
+      "default": 0,
+      "note": "Only used in fixed mode. Manual table prints '1-7 0(250Hz) 7(32kHz)'; the edit chapter and factory data use 0-7 (8 ranges 255Hz-32kHz)."
+    },
+    {
+      "key": "op3Fine",
+      "name": "OP3 Frequency Fine",
+      "group": "op3",
+      "op": 3,
+      "block": "ACED",
+      "pp": 12,
+      "vmem": {
+        "offset": 78,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 15,
+      "default": 0,
+      "note": "With crs 0-3 (ratios < 1.00) only fine 0-7 are valid; Edisyn clamps to 7."
+    },
+    {
+      "key": "op3Wave",
+      "name": "OP3 Waveform",
+      "group": "op3",
+      "op": 3,
+      "block": "ACED",
+      "pp": 13,
+      "vmem": {
+        "offset": 78,
+        "shift": 4,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "W1 sine",
+        "W2",
+        "W3",
+        "W4",
+        "W5",
+        "W6",
+        "W7",
+        "W8"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op3Shift",
+      "name": "OP3 EG Shift",
+      "group": "op3",
+      "op": 3,
+      "block": "ACED",
+      "pp": 14,
+      "vmem": {
+        "offset": 77,
+        "shift": 4,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "display": "enum",
+      "options": [
+        "off (96dB)",
+        "48dB",
+        "24dB",
+        "12dB"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op3On",
+      "name": "OP3 On",
+      "group": "op3",
+      "op": 3,
+      "block": "VCED",
+      "pp": 93,
+      "bits": {
+        "shift": 1,
+        "width": 1
+      },
+      "notInPatch": true,
+      "norandom": true,
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 1,
+      "note": "Edit-buffer mute only (VCED param 93 = op on/off bits; not in any dump). Send the whole byte: bit3 OP1, bit2 OP2, bit1 OP3, bit0 OP4 (TX81Z Programmer)."
+    },
+    {
+      "key": "op4Ar",
+      "name": "OP4 Attack Rate",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 0,
+      "vmem": {
+        "offset": 0,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 31
+    },
+    {
+      "key": "op4D1r",
+      "name": "OP4 Decay 1 Rate",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 1,
+      "vmem": {
+        "offset": 1,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 31
+    },
+    {
+      "key": "op4D2r",
+      "name": "OP4 Decay 2 Rate",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 2,
+      "vmem": {
+        "offset": 2,
+        "shift": 0,
+        "width": 5
+      },
+      "min": 0,
+      "max": 31,
+      "default": 0
+    },
+    {
+      "key": "op4Rr",
+      "name": "OP4 Release Rate",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 3,
+      "vmem": {
+        "offset": 3,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 1,
+      "max": 15,
+      "default": 15,
+      "note": "Manual data range 1-15 (0 is not a valid release rate)."
+    },
+    {
+      "key": "op4D1l",
+      "name": "OP4 Decay 1 Level",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 4,
+      "vmem": {
+        "offset": 4,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 15,
+      "default": 15
+    },
+    {
+      "key": "op4Ls",
+      "name": "OP4 Level Scaling",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 5,
+      "vmem": {
+        "offset": 5,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0,
+      "note": "TX81Z Programmer waits 250 ms after this parameter change: the unit is slow to apply it."
+    },
+    {
+      "key": "op4Rs",
+      "name": "OP4 Rate Scaling",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 6,
+      "vmem": {
+        "offset": 9,
+        "shift": 3,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "key": "op4Ebs",
+      "name": "OP4 EG Bias Sensitivity",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 7,
+      "vmem": {
+        "offset": 6,
+        "shift": 3,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "op4Ame",
+      "name": "OP4 Amp Mod Enable",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 8,
+      "vmem": {
+        "offset": 6,
+        "shift": 6,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op4Kvs",
+      "name": "OP4 Key Velocity Sens",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 9,
+      "vmem": {
+        "offset": 6,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "op4Out",
+      "name": "OP4 Output Level",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 10,
+      "vmem": {
+        "offset": 7,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "op4Crs",
+      "name": "OP4 Frequency Coarse",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 11,
+      "vmem": {
+        "offset": 8,
+        "shift": 0,
+        "width": 6
+      },
+      "min": 0,
+      "max": 63,
+      "default": 4,
+      "display": "tx81zFreqCoarse",
+      "note": "Ratio mode: ratio = freqTables.ratio[crs][fine] (crs 4 = 1.00). Fixed mode: Hz = (((crs & 0x3C) << 2) + fine + (crs < 4 ? 8 : 0)) << fixRange; only crs bits 2-5 matter (crs 0-3 behave as one step)."
+    },
+    {
+      "key": "op4Det",
+      "name": "OP4 Detune",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 12,
+      "vmem": {
+        "offset": 9,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 6,
+      "default": 3,
+      "valueOffset": -3,
+      "display": "bipolar",
+      "note": "Raw 0-6, centre 3 = 0 (shown -3..+3)."
+    },
+    {
+      "key": "op4Fix",
+      "name": "OP4 Fixed Frequency",
+      "group": "op4",
+      "op": 4,
+      "block": "ACED",
+      "pp": 0,
+      "vmem": {
+        "offset": 73,
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "ratio",
+        "fixed"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op4FixRange",
+      "name": "OP4 Fixed Freq Range",
+      "group": "op4",
+      "op": 4,
+      "block": "ACED",
+      "pp": 1,
+      "vmem": {
+        "offset": 73,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "255Hz",
+        "510Hz",
+        "1kHz",
+        "2kHz",
+        "4kHz",
+        "8kHz",
+        "16kHz",
+        "32kHz"
+      ],
+      "default": 0,
+      "note": "Only used in fixed mode. Manual table prints '1-7 0(250Hz) 7(32kHz)'; the edit chapter and factory data use 0-7 (8 ranges 255Hz-32kHz)."
+    },
+    {
+      "key": "op4Fine",
+      "name": "OP4 Frequency Fine",
+      "group": "op4",
+      "op": 4,
+      "block": "ACED",
+      "pp": 2,
+      "vmem": {
+        "offset": 74,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 15,
+      "default": 0,
+      "note": "With crs 0-3 (ratios < 1.00) only fine 0-7 are valid; Edisyn clamps to 7."
+    },
+    {
+      "key": "op4Wave",
+      "name": "OP4 Waveform",
+      "group": "op4",
+      "op": 4,
+      "block": "ACED",
+      "pp": 3,
+      "vmem": {
+        "offset": 74,
+        "shift": 4,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "W1 sine",
+        "W2",
+        "W3",
+        "W4",
+        "W5",
+        "W6",
+        "W7",
+        "W8"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op4Shift",
+      "name": "OP4 EG Shift",
+      "group": "op4",
+      "op": 4,
+      "block": "ACED",
+      "pp": 4,
+      "vmem": {
+        "offset": 73,
+        "shift": 4,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "display": "enum",
+      "options": [
+        "off (96dB)",
+        "48dB",
+        "24dB",
+        "12dB"
+      ],
+      "default": 0
+    },
+    {
+      "key": "op4On",
+      "name": "OP4 On",
+      "group": "op4",
+      "op": 4,
+      "block": "VCED",
+      "pp": 93,
+      "bits": {
+        "shift": 0,
+        "width": 1
+      },
+      "notInPatch": true,
+      "norandom": true,
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 1,
+      "note": "Edit-buffer mute only (VCED param 93 = op on/off bits; not in any dump). Send the whole byte: bit3 OP1, bit2 OP2, bit1 OP3, bit0 OP4 (TX81Z Programmer)."
+    },
+    {
+      "key": "algorithm",
+      "name": "Algorithm",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 52,
+      "vmem": {
+        "offset": 40,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "1: 4>3>2>1",
+        "2: (3+4)>2>1",
+        "3: (3>2)+4>1",
+        "4: 2+(4>3)>1",
+        "5: 2>1 + 4>3",
+        "6: 4>1,2,3",
+        "7: 4>3 + 2 + 1",
+        "8: 1+2+3+4"
+      ],
+      "default": 0,
+      "note": "Raw 0-7 = ALG 1-8. Feedback is always on OP4."
+    },
+    {
+      "key": "feedback",
+      "name": "Feedback",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 53,
+      "vmem": {
+        "offset": 40,
+        "shift": 3,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 0
+    },
+    {
+      "key": "lfoSpeed",
+      "name": "LFO Speed",
+      "group": "lfo",
+      "op": null,
+      "block": "VCED",
+      "pp": 54,
+      "vmem": {
+        "offset": 41,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 35
+    },
+    {
+      "key": "lfoDelay",
+      "name": "LFO Delay",
+      "group": "lfo",
+      "op": null,
+      "block": "VCED",
+      "pp": 55,
+      "vmem": {
+        "offset": 42,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "lfoPmd",
+      "name": "LFO Pitch Mod Depth",
+      "group": "lfo",
+      "op": null,
+      "block": "VCED",
+      "pp": 56,
+      "vmem": {
+        "offset": 43,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "lfoAmd",
+      "name": "LFO Amp Mod Depth",
+      "group": "lfo",
+      "op": null,
+      "block": "VCED",
+      "pp": 57,
+      "vmem": {
+        "offset": 44,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "lfoSync",
+      "name": "LFO Sync",
+      "group": "lfo",
+      "op": null,
+      "block": "VCED",
+      "pp": 58,
+      "vmem": {
+        "offset": 40,
+        "shift": 6,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "note": "VMEM byte 40 bit 6 (manual chart; Edisyn). TX81Z Programmer's table says bit 7, which cannot exist in a 7-bit byte; 13 factory voices have bit 6 set."
+    },
+    {
+      "key": "lfoWave",
+      "name": "LFO Wave",
+      "group": "lfo",
+      "op": null,
+      "block": "VCED",
+      "pp": 59,
+      "vmem": {
+        "offset": 45,
+        "shift": 0,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "display": "enum",
+      "options": [
+        "saw up",
+        "square",
+        "triangle",
+        "S/Hold"
+      ],
+      "default": 2
+    },
+    {
+      "key": "pms",
+      "name": "Pitch Mod Sensitivity",
+      "group": "lfo",
+      "op": null,
+      "block": "VCED",
+      "pp": 60,
+      "vmem": {
+        "offset": 45,
+        "shift": 4,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "default": 6
+    },
+    {
+      "key": "ams",
+      "name": "Amp Mod Sensitivity",
+      "group": "lfo",
+      "op": null,
+      "block": "VCED",
+      "pp": 61,
+      "vmem": {
+        "offset": 45,
+        "shift": 2,
+        "width": 2
+      },
+      "min": 0,
+      "max": 3,
+      "default": 0
+    },
+    {
+      "key": "transpose",
+      "name": "Transpose (Middle C)",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 62,
+      "vmem": {
+        "offset": 46,
+        "shift": 0,
+        "width": 6
+      },
+      "min": 0,
+      "max": 48,
+      "display": "note",
+      "default": 24,
+      "note": "0-48 = C1-C5, 24 = C3 (no transpose). Display uses noteOctaveBase 1."
+    },
+    {
+      "key": "polyMode",
+      "name": "Poly/Mono",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 63,
+      "vmem": {
+        "offset": 48,
+        "shift": 3,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "poly",
+        "mono"
+      ],
+      "default": 0,
+      "note": "Voice Function param: follows the voice only while Utility 'Combine' is on."
+    },
+    {
+      "key": "pbRange",
+      "name": "Pitch Bend Range",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 64,
+      "vmem": {
+        "offset": 47,
+        "shift": 0,
+        "width": 4
+      },
+      "min": 0,
+      "max": 12,
+      "default": 4
+    },
+    {
+      "key": "portaMode",
+      "name": "Portamento Mode",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 65,
+      "vmem": {
+        "offset": 48,
+        "shift": 0,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "full time",
+        "fingered"
+      ],
+      "default": 0,
+      "note": "0 = full time, 1 = fingered (fingered only in mono). Edisyn shows it as an inverted 'Full Time Portamento' checkbox."
+    },
+    {
+      "key": "portaTime",
+      "name": "Portamento Time",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 66,
+      "vmem": {
+        "offset": 49,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "fcVolume",
+      "name": "Foot Ctrl Volume",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 67,
+      "vmem": {
+        "offset": 50,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 40
+    },
+    {
+      "key": "sustain",
+      "name": "Sustain (switch state)",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 68,
+      "vmem": {
+        "offset": 48,
+        "shift": 2,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "norandom": true,
+      "note": "No LCD page on the TX81Z; stored bit only (118 of 128 factory voices have it set). Not shown on the faceplate."
+    },
+    {
+      "key": "portamento",
+      "name": "Portamento (switch state)",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 69,
+      "vmem": {
+        "offset": 48,
+        "shift": 1,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "norandom": true,
+      "note": "No LCD page; stored bit only. Not shown on the faceplate."
+    },
+    {
+      "key": "chorus",
+      "name": "Chorus (unused)",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 70,
+      "vmem": {
+        "offset": 48,
+        "shift": 4,
+        "width": 1
+      },
+      "min": 0,
+      "max": 1,
+      "display": "enum",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "norandom": true,
+      "note": "Manual: 'Set 0'. DX21 chorus switch; unused on the TX81Z."
+    },
+    {
+      "key": "mwPitch",
+      "name": "Mod Wheel Pitch",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 71,
+      "vmem": {
+        "offset": 51,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 50
+    },
+    {
+      "key": "mwAmp",
+      "name": "Mod Wheel Amplitude",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 72,
+      "vmem": {
+        "offset": 52,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "bcPitch",
+      "name": "Breath Ctrl Pitch",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 73,
+      "vmem": {
+        "offset": 53,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "bcAmp",
+      "name": "Breath Ctrl Amplitude",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 74,
+      "vmem": {
+        "offset": 54,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "bcPitchBias",
+      "name": "Breath Ctrl Pitch Bias",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 75,
+      "vmem": {
+        "offset": 55,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "valueOffset": -50,
+      "display": "bipolar",
+      "default": 50,
+      "note": "Raw 0-99, centre 50 = 0 (shown -50..+49)."
+    },
+    {
+      "key": "bcEgBias",
+      "name": "Breath Ctrl EG Bias",
+      "group": "control",
+      "op": null,
+      "block": "VCED",
+      "pp": 76,
+      "vmem": {
+        "offset": 56,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "name1",
+      "name": "Voice Name Char 1",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 77,
+      "vmem": {
+        "offset": 57,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 73,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name2",
+      "name": "Voice Name Char 2",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 78,
+      "vmem": {
+        "offset": 58,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 78,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name3",
+      "name": "Voice Name Char 3",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 79,
+      "vmem": {
+        "offset": 59,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 73,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name4",
+      "name": "Voice Name Char 4",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 80,
+      "vmem": {
+        "offset": 60,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 84,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name5",
+      "name": "Voice Name Char 5",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 81,
+      "vmem": {
+        "offset": 61,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 32,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name6",
+      "name": "Voice Name Char 6",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 82,
+      "vmem": {
+        "offset": 62,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 86,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name7",
+      "name": "Voice Name Char 7",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 83,
+      "vmem": {
+        "offset": 63,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 79,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name8",
+      "name": "Voice Name Char 8",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 84,
+      "vmem": {
+        "offset": 64,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 73,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name9",
+      "name": "Voice Name Char 9",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 85,
+      "vmem": {
+        "offset": 65,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 67,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "name10",
+      "name": "Voice Name Char 10",
+      "group": "voice",
+      "op": null,
+      "block": "VCED",
+      "pp": 86,
+      "vmem": {
+        "offset": 66,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 32,
+      "max": 127,
+      "display": "ascii",
+      "default": 69,
+      "note": "ASCII 32-127, space padded."
+    },
+    {
+      "key": "reverbRate",
+      "name": "Reverb Rate",
+      "group": "voice",
+      "op": null,
+      "block": "ACED",
+      "pp": 20,
+      "vmem": {
+        "offset": 81,
+        "shift": 0,
+        "width": 3
+      },
+      "min": 0,
+      "max": 7,
+      "display": "enum",
+      "options": [
+        "off",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "default": 0,
+      "note": "Pseudo-reverb: slows all release rates once OP1's EG falls to -18 dB. 1 = long, 7 = short."
+    },
+    {
+      "key": "fcPitch",
+      "name": "Foot Ctrl Pitch",
+      "group": "control",
+      "op": null,
+      "block": "ACED",
+      "pp": 21,
+      "vmem": {
+        "offset": 82,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    },
+    {
+      "key": "fcAmp",
+      "name": "Foot Ctrl Amplitude",
+      "group": "control",
+      "op": null,
+      "block": "ACED",
+      "pp": 22,
+      "vmem": {
+        "offset": 83,
+        "shift": 0,
+        "width": 7
+      },
+      "min": 0,
+      "max": 99,
+      "default": 0
+    }
+  ],
+  "groups": [
+    {
+      "id": "voice",
+      "name": "Voice (algorithm, feedback, transpose, reverb rate, name)"
+    },
+    {
+      "id": "lfo",
+      "name": "LFO (wave, speed, delay, sync, depths, sensitivities)"
+    },
+    {
+      "id": "control",
+      "name": "Voice function (poly/mono, bend, portamento, MW/BC/FC routing)"
+    },
+    {
+      "id": "op1",
+      "name": "Operator 1"
+    },
+    {
+      "id": "op2",
+      "name": "Operator 2"
+    },
+    {
+      "id": "op3",
+      "name": "Operator 3"
+    },
+    {
+      "id": "op4",
+      "name": "Operator 4 (feedback operator)"
+    }
+  ],
+  "programs": {
+    "banks": [
+      {
+        "label": "voices I (internal)",
+        "kind": "voice",
+        "count": 32,
+        "firstNumber": "I01",
+        "dump": true,
+        "write": true,
+        "bankDump": {
+          "request": "F0 43 2n 04 F7",
+          "type": "VMEM",
+          "slotBytes": 128
+        },
+        "select": {
+          "type": "pcTable",
+          "memBase": 0
+        },
+        "note": "Read: one VMEM request returns all 32 (cache it). Write: VMEM read-modify-write with Memory Protect off (see yamaha4op.store)."
+      },
+      {
+        "label": "voices A (preset)",
+        "kind": "voice",
+        "count": 32,
+        "firstNumber": "A01",
+        "dump": false,
+        "write": false,
+        "loadable": true,
+        "select": {
+          "type": "pcTable",
+          "memBase": 32
+        },
+        "note": "ROM. No dump request exists: select it, then request the edit buffer (ACED+VCED). (UTILITY 'Voice Transmit' can send A-D as VMEM but only from the panel or a remote-switch macro.)"
+      },
+      {
+        "label": "voices B (preset)",
+        "kind": "voice",
+        "count": 32,
+        "firstNumber": "B01",
+        "dump": false,
+        "write": false,
+        "loadable": true,
+        "select": {
+          "type": "pcTable",
+          "memBase": 64
+        },
+        "note": "ROM, as bank A."
+      },
+      {
+        "label": "voices C (preset)",
+        "kind": "voice",
+        "count": 32,
+        "firstNumber": "C01",
+        "dump": false,
+        "write": false,
+        "loadable": true,
+        "select": {
+          "type": "pcTable",
+          "memBase": 96
+        },
+        "note": "ROM, as bank A."
+      },
+      {
+        "label": "voices D (preset)",
+        "kind": "voice",
+        "count": 32,
+        "firstNumber": "D01",
+        "dump": false,
+        "write": false,
+        "loadable": true,
+        "select": {
+          "type": "pcTable",
+          "memBase": 128
+        },
+        "note": "ROM. Not reachable by the initialised PC table (PGM1-128 = I01-C32): needs the table-entry select."
+      },
+      {
+        "label": "performances PF",
+        "kind": "performance",
+        "count": 24,
+        "firstNumber": "PF01",
+        "dump": true,
+        "write": true,
+        "backupOnly": true,
+        "bankDump": {
+          "request": "F0 43 2n 7E 4C 4D 20 20 38 39 37 36 50 4D F7",
+          "type": "PMEM",
+          "slotBytes": 76,
+          "slots": 32
+        },
+        "select": {
+          "type": "pcTable",
+          "memBase": 160
+        },
+        "note": "8-part multitimbral setups. PMEM = 24 performances + 8 initial ones; raw backup/restore only (restore needs Memory Protect off). Performances reference voices by number (I01-D32), so restore voices first. Edit buffer = PCED."
+      }
+    ],
+    "bankCC": null,
+    "note": "No bank select CCs. programChange(bank, prog): mem = bank.select.memBase + prog. If mem < 128 and the table is initialised, Cn <mem> works; otherwise (and always for D/PF) set PC-table entry 127 to mem, click PLAY, send Cn 7F. Selecting a voice in PLAY SINGLE loads it into the edit buffer (edits are lost; UTILITY 'Recall Edit' restores) and, with Exclusive on, the unit transmits that voice's ACED+VCED."
+  },
+  "backup": {
+    "areas": [
+      {
+        "what": "internal voices I01-I32",
+        "request": "F0 43 2n 04 F7",
+        "bytes": 4104
+      },
+      {
+        "what": "performances PF01-24 (+8 initial)",
+        "request": "F0 43 2n 7E 'LM  8976PM' F7",
+        "bytes": 2450
+      },
+      {
+        "what": "system setup",
+        "request": "F0 43 2n 7E 'LM  8976S0' F7",
+        "bytes": 45
+      },
+      {
+        "what": "program change table",
+        "request": "F0 43 2n 7E 'LM  8976S1' F7",
+        "bytes": 274
+      },
+      {
+        "what": "effects (delay, pan, chord)",
+        "request": "F0 43 2n 7E 'LM  8976S2' F7",
+        "bytes": 73
+      },
+      {
+        "what": "micro tune octave / full",
+        "request": "F0 43 2n 7E 'LM  MCRTE0' F7 / 'LM  MCRTE1'",
+        "bytes": "42 / 274"
+      }
+    ],
+    "restore": "Send each dump back unchanged, >= 800 ms after VMEM and >= 400 ms after PMEM. Turn Memory Protect off before EACH of VMEM and PMEM (it switches back on after every bulk receive). Voices before performances. A received SYS dump also overwrites Receive/Transmit Ch, Exclusive and Memory Protect."
+  },
+  "setup": [
+    "Firmware: the startup screen shows the version. v1.0 has an ACED checksum bug (ACED sent to it shows an error and its extra params are not applied; VCED part is fine) and sends a 44-byte system dump; later versions (1.1-1.6) are fine.",
+    "[UTILITY] > Midi Control? YES > Receive Ch = the editor channel (SysEx and program changes are received on it; 'omn' also works).",
+    "Same page: Transmit Ch = the same channel (dumps come back on it).",
+    "Same page: Exclusive = on (off = no SysEx in or out). P. Change = com (common) so program changes use the Program Change Table.",
+    "[UTILITY] > Init P. Ch. Tbl. = YES (PC 1-128 = I01-C32), unless the user relies on a custom table; the editor re-points PGM 128 to reach D01-D32 and PF01-24.",
+    "[UTILITY] > Memory Protect = off before storing (it is ON after every power-up and after every bulk receive; the editor can switch it off over SysEx each time).",
+    "[UTILITY] > Combine = on (power-up default) so each voice's function data (bend range, porta, MW/BC/FC) is used.",
+    "Be in PLAY SINGLE mode (press PLAY/PERFORM until the voice name shows). Dumps are not received while the unit sits in UTILITY.",
+    "Cable both ways: interface out -> TX81Z MIDI IN, TX81Z MIDI OUT -> interface in."
+  ],
+  "driverNotes": "Needs a NEW transport 'yamaha4op'; yamahaDriver cannot be reused by schema switches alone. Why: (1) yamahaDriver hard-codes the AWM2 'LM  8103' header + 26-byte header layout, 14-bit 11-byte param changes (F0 43 1n 35 G S H P V1 V2 F7) and a 521-byte element image; the TX81Z uses 7-byte param changes F0 43 1n <12|13|10> pp dd F7 with three different group bytes. (2) One voice is TWO messages (ACED 7E/'LM  8976AE' then VCED 03), with different headers, and the request returns both. (3) Stored voices exist only inside the packed 32-voice VMEM (bit fields, op order 4-2-3-1), there is no per-slot request, and storing needs memory-protect handling. (4) The channel nibble is the MIDI receive channel, not a device number. (5) Program change goes through a remappable table. Shared helpers worth factoring: checksum (same 7-bit two's complement), fetch-with-timeout. Driver sketch: sendParam(p,v): if p.bits -> keep a local opEnable byte (start 0x0F, reset to 0x0F after any program change or patch load), set bit, send F0 43 1n 12 5D <byte> F7; else F0 43 1n (p.block === 'ACED' ? 0x13 : 0x12) p.pp v F7; n = channel-1; pace 70 ms (250 ms after op*Ls). sendPatch(values): build vced[93] (87-92 = 99 99 99 50 50 50) and aced[23] from params (data index = p.pp), send ACED message then VCED message (checksums incl. 'LM  8976AE'), 70 ms apart. requestPatch(): send the 'LM  8976AE' request, collect the next ACED (41 bytes) and VCED (101 bytes) from F0 43 0x (any x), verify count+checksum (on firmware 1.0 tolerate a bad ACED checksum: keep VCED, flag ACED), decode values[p.key] = data[p.pp]; return {values, syx: aced+vced}. probe(): VCED-only request F0 43 2n 03 F7 within 900 ms; if silent, sweep n 0-15 once and remember the channel that answers. programChange(bi, prog): mem = bank.select.memBase + prog; if mem < 128 and prefs say the table is initialised send Cn mem; else send F0 43 1n 10 7F 7F (mem>>7) (mem&7F) F7, wait 70 ms, PLAY click (F0 43 1n 13 44 7F F7, F0 43 1n 13 44 00 F7), wait 70 ms, Cn 7F; then wait 100 ms and swallow (or adopt) the spontaneous ACED+VCED the unit sends for the new voice. requestBank(I): F0 43 2n 04 F7, wait up to ~3 s for 4104 bytes, verify, slice 32 x 128, decode each slot via p.vmem {offset, shift, width} (value = (byte >> shift) & ((1<<width)-1)); name = bytes 57-66; cache a few seconds (raw dump on slot 0 for backups). requestProgram(I, prog) = requestBank slot; for A-D (loadable, dump false) the editor selects + requestPatch. requestSlotName via the bank cache. writeProgram(I, prog, values): take the cached/fresh VMEM, rebuild slot prog by clearing then OR-ing every param's bits (keep bytes 67-72 and unknown bits from the read), send memory-protect-off F0 43 1n 10 7B 08 00 F7, wait 70 ms, PLAY click, wait 100 ms, send F0 43 0n 04 20 00 <4096> <sum> F7, wait >= 800 ms, re-request VMEM and compare (sameProgram on modelled fields). PMEM/system/effects/PC table/microtune: raw backup only. decode(ev): the TX81Z does not transmit parameter changes for panel edits; with Exclusive on it transmits ACED+VCED whenever a voice is selected in PLAY SINGLE (panel or PC) and PCED in PERFORMANCE: decode an unsolicited ACED+VCED pair into all voice values (ignore while our own request is in flight). Parameter changes put the unit in SINGLE EDIT; system/effect/PC-table changes put it in UTILITY (send PLAY to leave). Expect 'MIDI Buffer Full' on the LCD when changing patches (harmless; a key press clears it).",
+  "uncertain": [
+    "Operator order in VCED/ACED parameter numbers: the manual's VCED and ACED tables label the 13/5-param blocks OP4, OP3, OP2, OP1, but its VMEM chart orders them OP4, OP2, OP3, OP1, and both hardware-tested editors (Edisyn, TX81Z Programmer) use OP4, OP2, OP3, OP1 for parameter changes and dumps. Schema follows the editors (supported by factory data: EG shift, 'fixed off' for OP1, is 0 in the OP1 slot of all 128 presets). Confirm: send F0 43 10 12 17 00 F7 (should silence OP2 OUT on the OP edit page).",
+    "PCED parameter-change group byte: manual says hh = 11 (0x13), both editors use 0x10; schema uses 0x10 (performance params are not modelled anyway).",
+    "Op enable bit order (VCED pp 93): manual only says 'Operator 4-1 On/Off (bits 0-3)'; bit3 = OP1 ... bit0 = OP4 is from TX81Z Programmer's checkbox wiring. Untested here.",
+    "Remote switches 67, 73, 74: manual = EDIT, MASTER VOLUME -1/+1; TX81Z Programmer = COMPARE, CURSOR left/right (same physical keys, mode-dependent). Only 65 STORE, 68 PLAY and 72 DATA+1 are needed by the store/select macros.",
+    "Whether a voice selected by a MIDI program change (not the panel) also triggers the spontaneous ACED+VCED transmission: the manual says 'when a voice is selected while in PLAY SINGLE mode'; drivers should request the edit buffer anyway.",
+    "Whether VMEM is received while the unit is in SINGLE EDIT (vs PLAY) and whether a VMEM write reloads the voice now playing: not documented. The macro clicks PLAY first; re-request the edit buffer after a bank write.",
+    "Store by remote-switch macro (TX81Z Programmer): sequence STORE press, DATA+1, STORE release, DATA+1 implies the target is pre-selected by the program change; depends on LCD state and was not tested here. The VMEM read-modify-write path is the recommended one.",
+    "Fixed-frequency formula and the 64x16 ratio table come from TX81Z Programmer (the manual gives only ranges and step sizes). They agree with the manual's ranges (8-255 Hz ... 1024-32640 Hz) and with Edisyn's per-coarse min/max ratios except one cell: crs 2 fine 7 = 1.47 (TX81Z Programmer, fits that row's ~0.098 step) vs Edisyn max 1.37 (looks like a typo). Kept 1.47.",
+    "Waveforms W2-W8 have no official names; labelled W1 sine, W2-W8.",
+    "Detune magnitude (manual: about +/-2.6 cents at C3 for the full range) and LFO speed/delay times are approximate (manual).",
+    "Pacing values are from third-party editors, not Yamaha. 70 ms per param change is conservative; Edisyn uses 50 ms.",
+    "VMEM bytes 84-127 are zero in every factory voice (DX11/V50 fields: aftertouch, effects); preserved from the last read, never edited.",
+    "The task brief called the TX81Z a half-rack: the manual gives 480 x 282 x 45.2 mm, a full-width 19-inch 1U unit, and the photos agree; the drawing is 320 x 29 like the D-110."
+  ]
+}

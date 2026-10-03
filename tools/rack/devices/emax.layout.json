@@ -1,0 +1,451 @@
+{
+  "comment": "Emax I faceplate, following the panel's own split: PRESET DEFINITION (preset-wide) and ANALOG PROCESSING (per voice). The Emax has no edit buffer: the current preset is edited in RAM, and a voice is addressed by KEY + layer, exactly like the panel's 'Current Voice' (AP 00: Select Lo Voice / Hi Voice, Pri / Sec / Both). 'edit lo' is the key whose voice is read; 'edit lo'..'edit hi' is the range every voice write covers (set lo = A-1, hi = C7 to process the whole keyboard). The layer select is shared across groups (pri / sec / both = one #1A with level 2). Envelopes are AHDSR (not DADSR), so plain knobs rather than the env graph. Edits are heard on the next note, not on held notes. See emax.json driverNotes 2.",
+  "rows": [
+    {
+      "id": "preset",
+      "groups": [
+        {
+          "title": "preset",
+          "controls": [
+            {
+              "k": "editLo",
+              "label": "edit lo",
+              "as": "pick"
+            },
+            {
+              "k": "editHi",
+              "label": "edit hi",
+              "as": "pick"
+            },
+            {
+              "k": "bendRange",
+              "label": "bend",
+              "as": "seg",
+              "labels": [
+                "1",
+                "2",
+                "3",
+                "4"
+              ]
+            },
+            {
+              "k": "velCurve",
+              "label": "vel curve",
+              "as": "pick"
+            },
+            {
+              "k": "leftWheelDest",
+              "label": "l.wheel",
+              "as": "pick"
+            },
+            {
+              "k": "rightWheelDest",
+              "label": "r.wheel",
+              "as": "pick"
+            },
+            {
+              "k": "arpOn",
+              "label": "arp",
+              "as": "toggle"
+            }
+          ]
+        },
+        {
+          "title": "voice · zone",
+          "select": {
+            "label": "layer",
+            "options": [
+              {
+                "label": "pri",
+                "vars": {
+                  "l": "p"
+                }
+              },
+              {
+                "label": "sec",
+                "vars": {
+                  "l": "s"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "layer"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{l}LoKey",
+              "label": "lo key",
+              "as": "pick"
+            },
+            {
+              "k": "{l}HiKey",
+              "label": "hi key",
+              "as": "pick"
+            },
+            {
+              "k": "{l}OrigKey",
+              "label": "orig key",
+              "as": "pick"
+            },
+            {
+              "k": "{l}Tuning",
+              "label": "tune"
+            },
+            {
+              "k": "{l}Attenuation",
+              "label": "atten"
+            },
+            {
+              "k": "{l}Delay",
+              "label": "delay"
+            },
+            {
+              "k": "{l}NonTranspose",
+              "label": "non-trans",
+              "as": "toggle"
+            }
+          ]
+        },
+        {
+          "title": "sample · loop",
+          "select": {
+            "label": "layer",
+            "options": [
+              {
+                "label": "pri",
+                "vars": {
+                  "l": "p"
+                }
+              },
+              {
+                "label": "sec",
+                "vars": {
+                  "l": "s"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "layer"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{l}SampleRate",
+              "label": "rate",
+              "as": "pick"
+            },
+            {
+              "k": "{l}LoopOn",
+              "label": "loop",
+              "as": "toggle"
+            },
+            {
+              "k": "{l}LoopInRelease",
+              "label": "in rel",
+              "as": "toggle"
+            },
+            {
+              "k": "{l}Backwards",
+              "label": "reverse",
+              "as": "toggle"
+            },
+            {
+              "k": "{l}SusStart",
+              "label": "loop st"
+            },
+            {
+              "k": "{l}SusEnd",
+              "label": "loop end"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "filter",
+      "groups": [
+        {
+          "title": "filter",
+          "select": {
+            "label": "layer",
+            "options": [
+              {
+                "label": "pri",
+                "vars": {
+                  "l": "p"
+                }
+              },
+              {
+                "label": "sec",
+                "vars": {
+                  "l": "s"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "layer"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{l}Cutoff",
+              "label": "cutoff"
+            },
+            {
+              "k": "{l}Q",
+              "label": "q"
+            },
+            {
+              "k": "{l}EnvAmt",
+              "label": "env"
+            },
+            {
+              "k": "{l}KeyTrack",
+              "label": "key trk"
+            },
+            {
+              "k": "{l}VelFc",
+              "label": "vel→fc"
+            },
+            {
+              "k": "{l}VelQ",
+              "label": "vel→q"
+            }
+          ]
+        },
+        {
+          "title": "filter env",
+          "select": {
+            "label": "layer",
+            "options": [
+              {
+                "label": "pri",
+                "vars": {
+                  "l": "p"
+                }
+              },
+              {
+                "label": "sec",
+                "vars": {
+                  "l": "s"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "layer"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{l}VcfAttack",
+              "label": "attack"
+            },
+            {
+              "k": "{l}VcfHold",
+              "label": "hold"
+            },
+            {
+              "k": "{l}VcfDecay",
+              "label": "decay"
+            },
+            {
+              "k": "{l}VcfSustain",
+              "label": "sustain"
+            },
+            {
+              "k": "{l}VcfRelease",
+              "label": "release"
+            },
+            {
+              "k": "{l}VelFiltAttack",
+              "label": "vel→atk"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "amp",
+      "groups": [
+        {
+          "title": "amp env",
+          "select": {
+            "label": "layer",
+            "options": [
+              {
+                "label": "pri",
+                "vars": {
+                  "l": "p"
+                }
+              },
+              {
+                "label": "sec",
+                "vars": {
+                  "l": "s"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "layer"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{l}VcaAttack",
+              "label": "attack"
+            },
+            {
+              "k": "{l}VcaHold",
+              "label": "hold"
+            },
+            {
+              "k": "{l}VcaDecay",
+              "label": "decay"
+            },
+            {
+              "k": "{l}VcaSustain",
+              "label": "sustain"
+            },
+            {
+              "k": "{l}VcaRelease",
+              "label": "release"
+            },
+            {
+              "k": "{l}VelAttack",
+              "label": "vel→atk"
+            }
+          ]
+        },
+        {
+          "title": "lfo",
+          "select": {
+            "label": "layer",
+            "options": [
+              {
+                "label": "pri",
+                "vars": {
+                  "l": "p"
+                }
+              },
+              {
+                "label": "sec",
+                "vars": {
+                  "l": "s"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "layer"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{l}LfoRate",
+              "label": "rate"
+            },
+            {
+              "k": "{l}LfoDelay",
+              "label": "delay"
+            },
+            {
+              "k": "{l}LfoVariation",
+              "label": "vari"
+            },
+            {
+              "k": "{l}Vibrato",
+              "label": "→ pitch"
+            },
+            {
+              "k": "{l}LfoFc",
+              "label": "→ filter"
+            },
+            {
+              "k": "{l}Tremolo",
+              "label": "→ amp"
+            },
+            {
+              "k": "{l}LfoPan",
+              "label": "→ pan"
+            }
+          ]
+        },
+        {
+          "title": "velocity · output",
+          "select": {
+            "label": "layer",
+            "options": [
+              {
+                "label": "pri",
+                "vars": {
+                  "l": "p"
+                }
+              },
+              {
+                "label": "sec",
+                "vars": {
+                  "l": "s"
+                }
+              }
+            ],
+            "all": "both",
+            "shared": "layer"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{l}VelLevel",
+              "label": "vel→lvl"
+            },
+            {
+              "k": "{l}VelPitch",
+              "label": "vel→pit"
+            },
+            {
+              "k": "{l}VelPan",
+              "label": "vel→pan"
+            },
+            {
+              "k": "{l}Pan",
+              "label": "pan"
+            },
+            {
+              "k": "{l}Chorus",
+              "label": "chorus",
+              "as": "toggle"
+            },
+            {
+              "k": "{l}Solo",
+              "label": "solo",
+              "as": "toggle"
+            },
+            {
+              "k": "{l}LoChannel",
+              "label": "out lo",
+              "as": "pick"
+            },
+            {
+              "k": "{l}HiChannel",
+              "label": "out hi",
+              "as": "pick"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

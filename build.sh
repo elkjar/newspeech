@@ -28,5 +28,7 @@ cp -r fonts _site/fonts
 if [ -d assets ]; then
   cp -r assets _site/assets
 fi
+# edit — the hardware synth editor (tools/rack), unlisted at /edit/
+node tools/build-edit.mjs
 mkdir -p _site/sequencer
 cp -r sequencer/public/samples _site/sequencer/samples
