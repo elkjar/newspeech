@@ -342,8 +342,12 @@ async function getFromSynth() {
   } catch (e) { status(e.message + " — check both MIDI cables, the channel, and sysex on the synth", true); }
 }
 
-function noteOn(n) { if (heldNote != null) midi.noteOff(channel(), heldNote); heldNote = n; midi.noteOn(channel(), n, 100); $("#hold").classList.add("on"); }
-function noteOff() { if (heldNote != null) midi.noteOff(channel(), heldNote); heldNote = null; $("#hold").classList.remove("on"); }
+// test notes go to the editor channel, unless the schema names a param holding a part's receive
+// channel (U-110: ch 16 is control-only, part 1 listens on its own RCV CH)
+const noteChannel = () => { const k = schema.noteChannelParam; return k && values[k] != null ? values[k] : channel(); };
+let heldCh = 0;
+function noteOn(n) { if (heldNote != null) midi.noteOff(heldCh, heldNote); heldNote = n; heldCh = noteChannel(); midi.noteOn(heldCh, n, 100); $("#hold").classList.add("on"); }
+function noteOff() { if (heldNote != null) midi.noteOff(heldCh, heldNote); heldNote = null; $("#hold").classList.remove("on"); }
 
 // ---------- setup ----------
 function fillPorts() {
