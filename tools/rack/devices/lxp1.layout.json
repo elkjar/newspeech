@@ -1,0 +1,348 @@
+{
+ "comment": "Half-rack LXP-1. The front panel has three analogue pots (INPUT/MIX/OUTPUT, not in MIDI), a 16-position Program selector and two parameter knobs, DECAY (param 0) and DELAY (param 1), whose meaning depends on the running algorithm (Program ID). Rows follow that panel: program (algorithm + effects level, the one param every algorithm shares), then one group per algorithm family with its DECAY and DELAY knobs first and the SysEx-only params after them, then the Dynamic MIDI patches and the live/system params (input level is reset to max on every recall; setup number = the Program knob, 128-143 = presets). Params 0-9 share wire numbers across algorithms, so only the group matching the current Program ID is live; the others are dimmed by meaning, not by the editor. Patch offsets (read-only) are not shown; the name is edited in the name field (name1-16).",
+ "rows": [
+  {
+   "id": "program",
+   "groups": [
+    {
+     "title": "program selector",
+     "controls": [
+      {
+       "k": "programId",
+       "label": "algorithm",
+       "as": "pick"
+      },
+      {
+       "k": "fxLevel",
+       "label": "fx level"
+      }
+     ]
+    },
+    {
+     "title": "rooms · halls · plates (1, 2)",
+     "controls": [
+      {
+       "k": "rvDecay",
+       "label": "decay"
+      },
+      {
+       "k": "rvPredelay",
+       "label": "delay"
+      },
+      {
+       "k": "rvSize",
+       "label": "size"
+      },
+      {
+       "k": "rvBassMult",
+       "label": "bass x"
+      },
+      {
+       "k": "rvHiCut",
+       "label": "hi cut"
+      },
+      {
+       "k": "rvPdFbk",
+       "label": "pdly fbk"
+      },
+      {
+       "k": "rvDiffusion",
+       "label": "diffusion"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "reverbfx",
+   "groups": [
+    {
+     "title": "inverse (6)",
+     "controls": [
+      {
+       "k": "invSize",
+       "label": "decay"
+      },
+      {
+       "k": "invPredelay",
+       "label": "delay"
+      },
+      {
+       "k": "invSlope",
+       "label": "slope"
+      },
+      {
+       "k": "invHiCut",
+       "label": "hi cut"
+      },
+      {
+       "k": "invPdFbk",
+       "label": "pdly fbk"
+      },
+      {
+       "k": "invDiffusion",
+       "label": "diffusion"
+      }
+     ]
+    },
+    {
+     "title": "gate (7)",
+     "controls": [
+      {
+       "k": "gtTime",
+       "label": "decay"
+      },
+      {
+       "k": "gtPredelay",
+       "label": "delay"
+      },
+      {
+       "k": "gtSlope",
+       "label": "slope"
+      },
+      {
+       "k": "gtHiCut",
+       "label": "hi cut"
+      },
+      {
+       "k": "gtPdFbk",
+       "label": "pdly fbk"
+      },
+      {
+       "k": "gtDiffusion",
+       "label": "diffusion"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "modulation",
+   "groups": [
+    {
+     "title": "chorus 1 · stereo flange (3)",
+     "controls": [
+      {
+       "k": "flNegFbk",
+       "label": "decay"
+      },
+      {
+       "k": "flDepth",
+       "label": "delay"
+      },
+      {
+       "k": "flRate",
+       "label": "rate"
+      },
+      {
+       "k": "flShape",
+       "label": "shape"
+      },
+      {
+       "k": "flLeftDly",
+       "label": "l delay"
+      },
+      {
+       "k": "flLeftFbk",
+       "label": "l fbk"
+      },
+      {
+       "k": "flRightDly",
+       "label": "r delay"
+      },
+      {
+       "k": "flRightFbk",
+       "label": "r fbk"
+      }
+     ]
+    },
+    {
+     "title": "delay 1 · 6-voice chorus (8)",
+     "controls": [
+      {
+       "k": "d1Fbk",
+       "label": "decay"
+      },
+      {
+       "k": "d1GroupDly",
+       "label": "delay"
+      },
+      {
+       "k": "d1Spread2",
+       "label": "spread 2"
+      },
+      {
+       "k": "d1Spread3",
+       "label": "spread 3"
+      },
+      {
+       "k": "d1Fbk3",
+       "label": "d3 fbk"
+      },
+      {
+       "k": "d1Rate",
+       "label": "rate"
+      },
+      {
+       "k": "d1HiCut",
+       "label": "hi cut"
+      },
+      {
+       "k": "d1Diffusion",
+       "label": "diffusion"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "delay",
+   "groups": [
+    {
+     "title": "delay 2 · 4-tap bounce (4)",
+     "controls": [
+      {
+       "k": "d2PosFbk",
+       "label": "decay"
+      },
+      {
+       "k": "d2Spacing",
+       "label": "delay"
+      },
+      {
+       "k": "d2Fbk",
+       "label": "feedback"
+      },
+      {
+       "k": "d2LeftDly",
+       "label": "l delay"
+      },
+      {
+       "k": "d2RightDly",
+       "label": "r delay"
+      },
+      {
+       "k": "d2HiCut",
+       "label": "hi cut"
+      },
+      {
+       "k": "d2Diffusion",
+       "label": "diffusion"
+      }
+     ]
+    },
+    {
+     "title": "chorus 2 · resonator (5)",
+     "controls": [
+      {
+       "k": "rsMasterRes",
+       "label": "decay"
+      },
+      {
+       "k": "rsFineTune",
+       "label": "delay"
+      },
+      {
+       "k": "rsTuning",
+       "label": "tuning"
+      },
+      {
+       "k": "rsResFbk",
+       "label": "res fbk"
+      },
+      {
+       "k": "rsSlope",
+       "label": "slope"
+      },
+      {
+       "k": "rsRichness",
+       "label": "richness"
+      },
+      {
+       "k": "rsShimmer",
+       "label": "shimmer"
+      },
+      {
+       "k": "rsPredelay",
+       "label": "strum"
+      },
+      {
+       "k": "rsLoCut",
+       "label": "lo cut"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "patch",
+   "groups": [
+    {
+     "title": "dynamic midi patch",
+     "select": {
+      "label": "patch",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "n": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "n": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "n": "3"
+        }
+       },
+       {
+        "label": "4",
+        "vars": {
+         "n": "4"
+        }
+       }
+      ]
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "p{n}Source",
+       "label": "source",
+       "as": "pick"
+      },
+      {
+       "k": "p{n}Dest",
+       "label": "dest",
+       "as": "pick"
+      },
+      {
+       "k": "p{n}Scale",
+       "label": "scale"
+      }
+     ]
+    },
+    {
+     "title": "live (not stored)",
+     "controls": [
+      {
+       "k": "inLevel",
+       "label": "input"
+      },
+      {
+       "k": "setup",
+       "label": "setup #",
+       "as": "pick"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
