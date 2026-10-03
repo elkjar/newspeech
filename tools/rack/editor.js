@@ -364,8 +364,8 @@ function fillPorts() {
 }
 
 async function selectDevice(id) {
-  schema = await (await fetch(`/devices/${id}.json`)).json();
-  const lr = await fetch(`/devices/${id}.layout.json`);
+  schema = await (await fetch(`devices/${id}.json`)).json();
+  const lr = await fetch(`devices/${id}.layout.json`);
   byKey = new Map(schema.params.map((p) => [p.key, p]));
   layout = lr.ok ? await lr.json() : autoLayout();
   lsSet("device", id);
@@ -400,8 +400,11 @@ async function boot() {
     for (const { param, value } of driver.decode(ev)) setValue(param, value, { send: false, from: "synth" });
   });
 
-  // skip files that don't parse yet (a device being written right now)
-  devices = (await (await fetch("/api/devices")).json()).filter((d) => !d.error);
+  // skip files that don't parse yet (a device being written right now).
+  // no api → the static site build: its devices.json stands in
+  try { const r = await fetch("api/devices"); if (r.ok && r.headers.get("content-type")?.includes("json")) { devices = await r.json(); LOCAL = true; } } catch {}
+  if (!LOCAL) devices = await (await fetch("devices.json")).json();
+  devices = devices.filter((d) => !d.error);
   $("#in").onchange = $("#out").onchange = usePorts;
   $("#back").onclick = disconnect;
   $("#recheck").onclick = () => renderRack({ force: true });
@@ -581,7 +584,7 @@ let devices = [], view = "rack";
 // line drawing of each unit (devices/<id>.svg), inlined so it takes the page colour
 const artCache = new Map();
 async function art(id) {
-  if (!artCache.has(id)) artCache.set(id, fetch(`/devices/${id}.svg`).then((r) => (r.ok ? r.text() : "")).catch(() => ""));
+  if (!artCache.has(id)) artCache.set(id, fetch(`devices/${id}.svg`).then((r) => (r.ok ? r.text() : "")).catch(() => ""));
   const el = h("div", { class: "art" }); el.innerHTML = await artCache.get(id);
   const svg = el.querySelector("svg"); if (svg) { const hi = svg.cloneNode(true); hi.classList.add("hi"); el.append(hi); } // for the checking sweep
   return el;
@@ -603,7 +606,7 @@ async function renderRack({ force = false } = {}) {
     const inName = midi.access && midi.access.inputs.get(ports.in)?.name;
     let last = "no backup yet";
     try {
-      const { backups } = await (await fetch(`/api/backups/${d.id}`)).json();
+      const { backups } = await listBackups(d.id);
       if (backups[0]) last = "backed up " + new Date(backups[0].at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     } catch {}
     const supported = TRANSPORTS.includes(d.transport);
@@ -674,7 +677,7 @@ async function probeRack(cards, { force = false } = {}) {
     c.card.classList.add("probing");
     let ok = false;
     try {
-      const sch = await (await fetch(`/devices/${c.d.id}.json`)).json();
+      const sch = await (await fetch(`devices/${c.d.id}.json`)).json();
       midi.gapMs = sch.gapMs ?? 2;
       midi.usePorts(c.d.id, c.ports.in, c.ports.out);
       const ch = () => Number(lsGet(`${c.d.id}.ch`, String(sch.defaultChannel ?? 1))) - 1;
@@ -894,9 +897,10 @@ async function createBackup() {
   if (!finished) return status(`backup stopped at ${n}/${total} — nothing written`, true);
   const at = new Date();
   const stamp = `${schema.name} ${localStamp(at)}`;
-  const r = await fetch(`/api/backups/${schema.id}`, { method: "PUT", body: JSON.stringify({ stamp, at: at.toISOString(), slots, failed, syx }) });
-  if (!r.ok) return status("writing the backup failed: " + (await r.text()), true);
-  status(`backed up ${slots.length} programs${failed ? ` (${failed} didn't answer)` : ""} → ${(await r.json()).file}`, !!failed);
+  let file;
+  try { file = await saveBackup(schema.id, { stamp, at: at.toISOString(), slots, failed, syx }); }
+  catch (e) { return status(e.message, true); }
+  status(`backed up ${slots.length} programs${failed ? ` (${failed} didn't answer)` : ""} → ${file}`, !!failed);
   refreshBackups();
 }
 
@@ -914,9 +918,8 @@ async function captureBackup() {
     got.names.forEach((nm, i) => { if (user >= 0) known[slotKey(user, i)] = nm || "(unnamed)"; });
     lsSet(`${schema.id}.names`, JSON.stringify(known)); if (user >= 0) namesStamp(user);
     const at = new Date();
-    const r = await fetch(`/api/backups/${schema.id}`, { method: "PUT", body: JSON.stringify({ stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots: got.names.map((n, i) => ({ bank: "user", program: i + 1, name: n })), failed: 0, syx: got.syx }) });
-    if (!r.ok) throw new Error("writing the backup failed: " + (await r.text()));
-    status(`captured ${got.names.length} presets → ${(await r.json()).file}`);
+    const file = await saveBackup(schema.id, { stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots: got.names.map((n, i) => ({ bank: "user", program: i + 1, name: n })), failed: 0, syx: got.syx });
+    status(`captured ${got.names.length} presets → ${file}`);
     refreshBackups(); renderProgramList(); pickBank = null; renderProgPick();
   } catch (e) { status(e.message, true); }
   capturing = false; btn.classList.remove("running"); label.textContent = "capture bank";
@@ -929,8 +932,49 @@ function localStamp(d = new Date()) {
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}${p2(d.getMinutes())}`;
 }
 
+// ---------- backups ----------
+// run locally (server.mjs) they're written into the Dropbox rack folder. on
+// the site there's no server: they download, and this browser keeps a list
+let LOCAL = false;
+const backupLog = (id) => { try { return JSON.parse(lsGet(`${id}.backups`, "[]")); } catch { return []; } };
+function download(name, bytes, type = "application/octet-stream") {
+  const a = h("a", { href: URL.createObjectURL(new Blob([bytes], { type })), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+const fileSafe = (s) => String(s).replace(/[^\w .\-()+#]/g, "_").trim().slice(0, 80) || "untitled";
+
+async function listBackups(id) {
+  if (LOCAL) return (await fetch(`api/backups/${id}`)).json();
+  return { dir: "on the web, backups download to this computer — the list is what this browser saved", backups: backupLog(id) };
+}
+
+// whole memory: every slot's dump in one .syx (any sysex tool can send it back)
+async function saveBackup(id, body) {
+  if (LOCAL) {
+    const r = await fetch(`api/backups/${id}`, { method: "PUT", body: JSON.stringify(body) });
+    if (!r.ok) throw new Error("writing the backup failed: " + (await r.text()));
+    return (await r.json()).file;
+  }
+  const file = fileSafe(body.stamp) + ".syx";
+  download(file, new Uint8Array(body.syx));
+  lsSet(`${id}.backups`, JSON.stringify([{ file, at: body.at, count: body.slots.length, failed: body.failed }, ...backupLog(id)].slice(0, 20)));
+  return file + " (downloaded)";
+}
+
+// one slot, just before store overwrites it
+async function saveSlotBackup(id, name, body) {
+  if (LOCAL) {
+    const r = await fetch(`api/backup/${id}/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(body) });
+    if (!r.ok) throw new Error("backup failed: " + (await r.text()));
+    return;
+  }
+  if (body.syx?.length) download(fileSafe(name) + ".syx", new Uint8Array(body.syx));
+  else download(fileSafe(name) + ".json", JSON.stringify(body, null, 2), "application/json");
+}
+
 async function refreshBackups() {
-  const { dir, backups } = await (await fetch(`/api/backups/${schema.id}`)).json();
+  const { dir, backups } = await listBackups(schema.id);
   $("#backupdir").textContent = dir;
   $("#backups").replaceChildren(...(backups.length ? backups.map((b) =>
     h("li", {}, b.file, h("span", { class: "dim" }, ` · ${b.count} programs${b.failed ? ` · ${b.failed} missing` : ""}`)))
@@ -982,9 +1026,8 @@ async function doStore() {
   $("#st-go").disabled = true;
   try {
     $("#st-msg").textContent = "backing up the old program…";
-    const r = await fetch(`/api/backup/${schema.id}/${encodeURIComponent(`${localStamp()} slot ${banks()[bank].label}-${pad3(prog)} ${stOld.name}`)}`, {
-      method: "PUT", body: JSON.stringify({ device: schema.id, slot: { bank, prog }, name: stOld.name, values: stOld.values, syx: stOld.syx }) });
-    if (!r.ok) throw new Error("backup failed: " + (await r.text()));
+    await saveSlotBackup(schema.id, `${localStamp()} slot ${banks()[bank].label}-${pad3(prog)} ${stOld.name}`,
+      { device: schema.id, slot: { bank, prog }, name: stOld.name, values: stOld.values, syx: stOld.syx });
 
     $("#st-msg").textContent = `writing ${where}…`;
     const sent = await driver.writeProgram(bank, prog, values);
