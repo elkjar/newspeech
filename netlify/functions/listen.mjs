@@ -79,10 +79,11 @@ export default async (req) => {
   const rel = RELEASES[release];
   if (!rel) return json(400, { ok: false, error: "release" });
 
+  // the link (and the email's logo) point back at whichever deploy asked —
+  // production or a preview
+  const base = ALLOWED_ORIGIN.test(url.origin) || LOCAL.test(url.origin) ? url.origin : "https://www.newspeechsound.com";
   let link;
   try {
-    // the link points back at whichever deploy asked (production or a preview)
-    const base = ALLOWED_ORIGIN.test(url.origin) || LOCAL.test(url.origin) ? url.origin : "https://www.newspeechsound.com";
     link = `${base}/api/listen?k=${sign("link", release, LINK_DAYS)}`;
   } catch (e) {
     console.error("listen:", e.message);
@@ -130,6 +131,7 @@ export default async (req) => {
         `— ${rel.artist}`,
       ].join("\n"),
       html: `<!doctype html><html><body style="margin:0;padding:32px 24px;background:#ffffff;color:#111111;font:14px/1.6 Menlo,Consolas,monospace">
+<img src="${base}/assets/email/ns-wordmark-black.png" width="240" height="19" alt="NEWSPEECH" style="display:block;border:0;outline:none;margin:0 0 32px">
 <p style="margin:0 0 20px">here's your link to hear <b>${rel.title}</b> before it's out:</p>
 <p style="margin:0 0 24px"><a href="${link}" style="display:inline-block;padding:8px 18px;border:1px solid #111111;color:#111111;text-decoration:none">listen →</a></p>
 <p style="margin:0 0 20px;color:#555555">it opens the record in this browser and works for ${LINK_DAYS} days. it's meant for you — please don't pass it around.</p>
