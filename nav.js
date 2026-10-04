@@ -29,7 +29,8 @@
   const src = (document.currentScript && document.currentScript.getAttribute("src")) || "nav.js";
   const ROOT = src.slice(0, src.lastIndexOf("nav.js"));
 
-  // wordmark | links — links drive straight into the pages; sequence is the
+  // wordmark | links — links drive straight into the pages ("music" is the
+  // current record's page, dead-ocean.html, until there's more than one); sequence is the
   // one exception (no standalone page yet — it anchors to its homepage
   // vignette). "tools" is the index (tools.html) of the browser tools, the
   // sample library and the visualizers, and stays lit on every one of them. socials are icons (no data-ns-link — the
@@ -40,6 +41,7 @@
   const ICON_YT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z" fill="currentColor" stroke="none"/></svg>`;
   const ICON_DC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M7.4 6.1Q12 5 16.6 6.1Q20.2 10.4 20.5 16.4Q18.6 17.9 16.1 18.6L15.1 16.9Q12 17.7 8.9 16.9L7.9 18.6Q5.4 17.9 3.5 16.4Q3.8 10.4 7.4 6.1Z"/><ellipse cx="9.2" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/><ellipse cx="14.8" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/></svg>`;
   const PAGES =
+    `<a href="${ROOT}dead-ocean.html"${here("dead-ocean.html")} data-ns-link>music</a>` +
     `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
     `<a href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}" data-ns-link>sequence</a>` +
     `<a href="${ROOT}tools.html"${IN_TOOLS ? " class=\"current\"" : ""} data-ns-link>tools</a>` +
@@ -257,6 +259,7 @@
     `<button class="ov-close" aria-label="close">×</button>` +
     `<div class="ov-pane ov-pane-main">` +
     `<div class="ov-list">` +
+    `<a class="ov-link${cur("dead-ocean.html")}" href="${ROOT}dead-ocean.html">music</a>` +
     `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link" href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}">sequence</a>` +
     `<a class="ov-link${IN_TOOLS ? " current" : ""}" href="${ROOT}tools.html">tools</a>` +
