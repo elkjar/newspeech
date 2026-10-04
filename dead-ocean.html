@@ -86,7 +86,11 @@
   #album.locked #tracks li:not(.current) .num:hover::before { content: attr(data-n); }
   #album.locked #tracks li.current:not(.loading) .dur { visibility: visible; }
   #album.locked #tracks .meta { color: #444; }
-  #album.locked #tracks .meta::after { content: "locked"; color: #333; letter-spacing: 0.12em; }
+  /* a small padlock in the row's own (dimmed) colour */
+  #album.locked #tracks .meta::after {
+    content: ""; width: 10px; height: 12px; align-self: center; background: #555;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M3.2 6.5V4.2a2.8 2.8 0 0 1 5.6 0v2.3' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Crect x='1' y='6.5' width='10' height='7.5' rx='1'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M3.2 6.5V4.2a2.8 2.8 0 0 1 5.6 0v2.3' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Crect x='1' y='6.5' width='10' height='7.5' rx='1'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
   #album.locked #scrub { display: none !important; }
   @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } #album .cover { max-width: 420px; } }
 
