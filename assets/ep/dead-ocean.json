@@ -1,5 +1,5 @@
 {
-  "title": "night school",
+  "title": "dead ocean",
   "cover": "assets/ep/cover.jpg",
   "releaseDate": "mid october 2026",
   "artist": "newspeech",
@@ -37,6 +37,10 @@
     ]
   },
   "audioBase": "assets/ep/",
+  "private": {
+    "release": "dead-ocean",
+    "note": "pre-release: stream only, behind the email link. delete this block (and point audioBase at the public files) on release day."
+  },
   "quiet": {
     "dim": 0.5,
     "haze": 0.35,
@@ -47,9 +51,9 @@
   "default": "16-network",
   "tracks": [
     {
-      "slug": "zeus-faber",
-      "title": "zeus faber",
-      "file": "zeus-faber.flac",
+      "slug": "2-degrees",
+      "title": "2 degrees",
+      "file": "2-degrees.flac",
       "duration": 238.18,
       "bpm": 132,
       "beat": false,
@@ -60,9 +64,9 @@
       "source": "MIXES/20260911_ZEUS_2.wav (192k master → 48k)"
     },
     {
-      "slug": "piper-maru",
-      "title": "piper maru",
-      "file": "piper-maru.flac",
+      "slug": "kiidkyaas",
+      "title": "kiidk'yaas",
+      "file": "kiidkyaas.flac",
       "duration": 332.41,
       "bpm": 112,
       "beat": false,
@@ -73,9 +77,9 @@
       "source": "MIXES/20260916_PIPER_3.wav"
     },
     {
-      "slug": "black-eyes",
-      "title": "black eyes",
-      "file": "black-eyes.flac",
+      "slug": "policy-as-a-suicide-pact",
+      "title": "policy as a suicide pact",
+      "file": "policy-as-a-suicide-pact.flac",
       "duration": 300.46,
       "bpm": 131,
       "beat": false,

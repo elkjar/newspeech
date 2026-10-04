@@ -467,7 +467,7 @@
     _bandOnset.low = _bandOnset.mid = _bandOnset.high = false;
   }
 
-  // ---- external analyser (used by night-school.html: the listening room
+  // ---- external analyser (used by dead-ocean.html: the listening room
   // owns the <audio> element + AudioContext and hands this page's core.js the
   // AnalyserNode, so tickAudio/intensity/bandLevel/onset run exactly as they
   // do for the mic — no feature duplication on the parent side). same-origin

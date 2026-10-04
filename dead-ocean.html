@@ -4,24 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
-<title>NEWSPEECH // night school</title>
+<title>NEWSPEECH // dead ocean</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="robots" content="noindex, nofollow">
-<meta name="description" content="newspeech — night school. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
-<meta property="og:title" content="NEWSPEECH // night school">
-<meta property="og:description" content="newspeech — night school. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
+<meta name="description" content="newspeech — dead ocean. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
+<meta property="og:title" content="NEWSPEECH // dead ocean">
+<meta property="og:description" content="newspeech — dead ocean. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://www.newspeechsound.com/night-school.html">
+<meta property="og:url" content="https://www.newspeechsound.com/dead-ocean.html">
 <meta property="og:site_name" content="NEWSPEECH">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://www.newspeechsound.com/assets/ep/cover.jpg">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1400">
 <meta property="og:image:height" content="1400">
-<meta property="og:image:alt" content="NEWSPEECH // NIGHT SCHOOL">
+<meta property="og:image:alt" content="NEWSPEECH // DEAD OCEAN">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NEWSPEECH // night school">
-<meta name="twitter:description" content="newspeech — night school. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
+<meta name="twitter:title" content="NEWSPEECH // dead ocean">
+<meta name="twitter:description" content="newspeech — dead ocean. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/assets/ep/cover.jpg">
 <style>
   @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
@@ -212,10 +212,11 @@
   #share .row { flex-wrap: wrap; justify-content: center; }
   #share .win-body button { padding: 6px 12px; }
 
-  /* the gate: an email for your copy, same door as the plugins */
-  #gate-wrap { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(5,5,5,.55); }
-  #gate-wrap[hidden] { display: none; }
-  #gate { width: min(440px, calc(100vw - 32px)); }
+  /* the gates: an email for your copy (same door as the plugins), and before
+     release an email for the private listening link */
+  #gate-wrap, #listen-wrap { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(5,5,5,.55); }
+  #gate-wrap[hidden], #listen-wrap[hidden] { display: none; }
+  #gate, #listen { width: min(440px, calc(100vw - 32px)); }
 
 
   /* transport: lives INSIDE the current track's row, under its name —
@@ -429,6 +430,20 @@
       </div>
     </form>
   </div>
+  <div id="listen-wrap" hidden>
+    <form id="listen" class="win" novalidate>
+      <div class="win-bar"><span class="win-idx">//</span><span class="win-title">listen early</span><button type="button" class="win-close" id="listen-close" aria-label="close">×</button></div>
+      <div class="win-body">
+        <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+        <label class="lbl" for="listen-email" id="listen-lbl"></label>
+        <div class="row">
+          <input id="listen-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+          <button type="submit" id="listen-go">send link</button>
+        </div>
+        <span class="msg" id="listen-msg" hidden></span>
+      </div>
+    </form>
+  </div>
   <div id="toast"></div>
 
 <script src="nav.js"></script>
@@ -439,7 +454,7 @@
   const viz = $("viz");
   const SR = 48000; // everything runs at one rate: decode, live, print
 
-  const EP_URL = new URLSearchParams(location.search).get("ep") || "assets/ep/night-school.json";
+  const EP_URL = new URLSearchParams(location.search).get("ep") || "assets/ep/dead-ocean.json";
   const ep = await (await fetch(EP_URL)).json();
   let cur = -1; // current track index
 
@@ -513,26 +528,59 @@
   // the worklet is the player (see ruin-worklet.js), so the whole file has to
   // be in memory before the first note. the track row shows the fetch.
   const decoded = new Map(); // slug → AudioBuffer (keep two: current + last)
+  // read a response body, reporting each chunk's size as it lands
+  async function readBody(res, onBytes) {
+    if (!res.body) { const b = new Uint8Array(await res.arrayBuffer()); if (onBytes) onBytes(b.length); return b; }
+    const reader = res.body.getReader();
+    const chunks = []; let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      if (onBytes) onBytes(value.length);
+    }
+    const bytes = new Uint8Array(got); let o = 0;
+    for (const c of chunks) { bytes.set(c, o); o += c.length; }
+    return bytes;
+  }
+  // before release the audio isn't a public file: it comes from /api/stream in
+  // parts, only for a browser holding the listen cookie (netlify/lib/listen.mjs)
+  const PRIVATE = ep.private && ep.private.release;
+  class Locked extends Error {}
+  let manifest = null;
+  async function fetchPrivate(t, onProgress) {
+    const base = `/api/stream/${PRIVATE}`;
+    if (!manifest) {
+      const r = await fetch(`${base}/manifest`, { cache: "no-store" });
+      if (r.status === 401) throw new Locked("locked");
+      if (!r.ok) throw new Error(`${r.status} fetching the manifest`);
+      manifest = await r.json();
+    }
+    const info = manifest.tracks[t.slug];
+    if (!info) throw new Error(`${t.slug} isn't uploaded`);
+    // the upload stamp keys the parts, so a re-upload never mixes with cached ones
+    const v = encodeURIComponent(manifest.made || "");
+    const out = new Uint8Array(info.bytes); let o = 0;
+    for (let i = 0; i < info.parts; i++) {
+      const r = await fetch(`${base}/${t.slug}/${i}?v=${v}`);
+      if (r.status === 401) throw new Locked("locked");
+      if (!r.ok) throw new Error(`${r.status} fetching ${t.slug} part ${i}`);
+      const b = await readBody(r, (n) => { if (onProgress) onProgress(Math.min(1, (o + n) / info.bytes)); o += n; });
+      out.set(b, o - b.length);
+    }
+    return out.buffer;
+  }
   async function loadTrack(t, onProgress) {
     if (decoded.has(t.slug)) return decoded.get(t.slug);
-    const res = await fetch(audioUrl(t));
-    if (!res.ok) throw new Error(`${res.status} fetching ${t.file}`);
-    const total = +res.headers.get("content-length") || 0;
     let bytes;
-    if (res.body && total) {
-      const reader = res.body.getReader();
-      const chunks = []; let got = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value); got += value.length;
-        if (onProgress) onProgress(got / total);
-      }
-      bytes = new Uint8Array(got); let o = 0;
-      for (const c of chunks) { bytes.set(c, o); o += c.length; }
-      bytes = bytes.buffer;
+    if (PRIVATE) {
+      bytes = await fetchPrivate(t, onProgress);
     } else {
-      bytes = await res.arrayBuffer();
+      const res = await fetch(audioUrl(t));
+      if (!res.ok) throw new Error(`${res.status} fetching ${t.file}`);
+      const total = +res.headers.get("content-length") || 0;
+      let got = 0;
+      bytes = (await readBody(res, (n) => { got += n; if (onProgress && total) onProgress(got / total); })).buffer;
     }
     const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const buf = await new Ctx(2, 1, SR).decodeAudioData(bytes); // resamples to SR
@@ -656,6 +704,8 @@
   async function play(i) {
     const t = ep.tracks[i];
     if (!t) return;
+    // not unlocked yet: the play button asks for an email instead
+    if (PRIVATE && !decoded.has(t.slug) && !(await unlockedP)) { openListen(); return; }
     await ensureGraph();
     await actx.resume();
     if (i !== cur || !decoded.has(t.slug)) {
@@ -669,7 +719,12 @@
       try {
         buf = await loadTrack(t, (f) => { d.textContent = `${Math.round(f * 100)}%`; scrubBuf.style.width = `${f * 100}%`; });
       } catch (err) {
-        console.error(err); d.textContent = "failed"; loadingSlug = null; markCurrent(); toast(`couldn't load ${t.title}`); return;
+        loadingSlug = null;
+        if (err instanceof Locked) { // the cookie ran out mid-session
+          unlockedP = Promise.resolve(false); d.textContent = t.duration ? fmt(t.duration) : ""; scrubBuf.style.width = "0%";
+          markCurrent(); openListen(); return;
+        }
+        console.error(err); d.textContent = "failed"; markCurrent(); toast(`couldn't load ${t.title}`); return;
       }
       if (cur !== i) return; // someone moved on while we were loading
       loadingSlug = null;
@@ -725,6 +780,9 @@
   const V = { ruin: $("v-ruin"), speed: $("v-speed"), verb: $("v-verb") };
   const seedEl = $("ruin-seed"), stateEl = $("ruin-state"), keepBtn = $("ruin-keep");
   const R = { ruin: $("r-ruin"), speed: $("r-speed"), verb: $("r-verb") };
+  // before release the record is stream-only: a print at ruin 0.01 is a clean
+  // copy, so downloads wait for release day
+  if (PRIVATE) keepBtn.hidden = true;
 
   function pushSet() {
     const t = ep.tracks[cur < 0 ? 0 : cur];
@@ -758,7 +816,7 @@
     if (knobs.speed !== 1) q.set("speed", knobs.speed.toFixed(3));
     if (knobs.verb > 0) q.set("verb", knobs.verb.toFixed(2));
     if (knobs.ruin > 0 || knobs.verb > 0) q.set("seed", knobs.seed);
-    if (EP_URL !== "assets/ep/night-school.json") q.set("ep", EP_URL);
+    if (EP_URL !== "assets/ep/dead-ocean.json") q.set("ep", EP_URL);
     const qs = q.toString();
     history.replaceState(null, "", location.pathname + (qs ? `?${qs}` : ""));
   }
@@ -891,7 +949,7 @@
     return ab;
   }
   // ---- the gate: an email before the copy, the same door as the plugins -----------
-  // POST /api/subscribe (Resend) with source night-school + the track slug; the
+  // POST /api/subscribe (Resend) with source dead-ocean + the track slug; the
   // email is remembered (shared key with the plugin pages) so the second copy
   // doesn't ask again — it still posts, so the track property stays current.
   const EMAIL_KEY = "newspeech.email";
@@ -901,7 +959,7 @@
   async function postGate(email, slug) {
     const res = await fetch("/api/subscribe", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, source: "night-school", track: slug, "bot-field": gate.querySelector('[name="bot-field"]').value }),
+      body: JSON.stringify({ email, source: "dead-ocean", track: slug, "bot-field": gate.querySelector('[name="bot-field"]').value }),
     });
     if (!res.ok) throw new Error(String(res.status));
     try { localStorage.setItem(EMAIL_KEY, email); } catch (_) {}
@@ -942,6 +1000,46 @@
     return openGate("", null);
   }
 
+  // ---- listen early: before release, an email gets a private link to the stream ----
+  // POST /api/listen mails a signed link; opening it sets a cookie and lands
+  // back here with ?listen=1. the page asks /api/listen whether this browser
+  // holds one; /api/stream refuses the audio without it.
+  const listenWrap = $("listen-wrap"), listenForm = $("listen"), listenEmail = $("listen-email"), listenMsg = $("listen-msg"), listenGo = $("listen-go");
+  let unlockedP = Promise.resolve(true);
+  if (PRIVATE) {
+    unlockedP = fetch(`/api/listen?r=${encodeURIComponent(PRIVATE)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { unlocked: false })).then((j) => !!j.unlocked).catch(() => false);
+    $("listen-lbl").textContent = `${ep.title} isn't out yet. leave an email and we'll send you a private link to hear it first.`;
+  }
+  function listenSay(text, err) { listenMsg.hidden = !text; listenMsg.textContent = text || ""; listenMsg.classList.toggle("err", !!err); }
+  function openListen(note, err) {
+    if (!listenEmail.value) listenEmail.value = remembered();
+    listenSay(note, err); listenGo.disabled = false; listenWrap.hidden = false;
+    setTimeout(() => listenEmail.focus(), 0);
+  }
+  const closeListen = () => { listenWrap.hidden = true; };
+  $("listen-close").addEventListener("click", closeListen);
+  listenWrap.addEventListener("click", (e) => { if (e.target === listenWrap) closeListen(); });
+  listenForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!listenEmail.checkValidity()) { listenSay(listenEmail.value.trim() ? "that doesn't look like an email" : "an email goes here first", true); listenEmail.focus(); return; }
+    listenGo.disabled = true; listenSay("");
+    try {
+      const email = listenEmail.value.trim();
+      const res = await fetch("/api/listen", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, release: PRIVATE, "bot-field": listenForm.querySelector('[name="bot-field"]').value }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      try { localStorage.setItem(EMAIL_KEY, email); } catch (_) {}
+      const j = await res.json().catch(() => ({}));
+      if (j.dev_link) { location.href = j.dev_link; return; } // local dry run: no email, straight through
+      listenSay("sent — the link in your inbox opens the record here");
+    } catch (_) {
+      listenGo.disabled = false; listenSay("transmission failed — try again", true);
+    }
+  });
+
   let printing = false;
   keepBtn.addEventListener("click", async () => {
     if (printing || keepBtn.disabled) return;
@@ -970,7 +1068,7 @@
     }
   });
   // test hook — headless checks call this to prove print determinism
-  window.__nightSchool = { renderTake, loadTrack, knobs, tracks: ep.tracks, makeImpulse, verbParams };
+  window.__deadOcean = { renderTake, loadTrack, knobs, tracks: ep.tracks, makeImpulse, verbParams };
 
   let toastTimer = null;
   function toast(msg) {
@@ -980,8 +1078,8 @@
 
   function onKey(e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === "Escape") { if (!gateWrap.hidden) closeGate(false); return; }
-    if (!gateWrap.hidden) return; // the gate has the keyboard
+    if (e.key === "Escape") { if (!gateWrap.hidden) closeGate(false); if (!listenWrap.hidden) closeListen(); return; }
+    if (!gateWrap.hidden || !listenWrap.hidden) return; // the gate has the keyboard
     if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.key !== " ") return;
     switch (e.key) {
       case " ": e.preventDefault(); togglePlay(); break;
@@ -1003,6 +1101,15 @@
     knobs.verb = Math.max(0, Math.min(1, parseFloat(q.get("verb")) || 0));
     showKnobs();
     loadFrame(ep.tracks[cur]); markCurrent();
+    // back from the emailed link
+    const listen = q.get("listen");
+    if (PRIVATE && listen) {
+      syncUrl();
+      unlockedP.then((ok) => {
+        if (ok) toast("you're in — press play");
+        else openListen(listen === "expired" ? "that link has run out — we'll send a fresh one" : "that link didn't open the record here — send another", true);
+      });
+    }
   }
 
   // ---- scores: inline each exported composition svg and animate it ----------

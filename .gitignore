@@ -54,3 +54,6 @@ assets/hero/hero-clean.*
 # filenames, delete this rule, commit once — they are served from the repo
 # and never updated (Chris, 2026-09-20).
 assets/ep/*.flac
+
+# private pre-release stream copies (tools/release-audio) — uploaded to Netlify Blobs, never committed
+tools/release-audio/out/

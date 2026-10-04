@@ -32,9 +32,9 @@
       "images": ["assets/shop/_placeholder/tee-front.jpg", "assets/shop/_placeholder/tee-back.jpg", "assets/shop/_placeholder/tee-detail.jpg"]
     },
     {
-      "id": "night-school-tape",
+      "id": "dead-ocean-tape",
       "kind": "music",
-      "name": "NIGHT SCHOOL — cassette",
+      "name": "DEAD OCEAN — cassette",
       "price": 1200,
       "blurb": "placeholder — three tracks, chrome tape, with a download.",
       "options": [],
@@ -44,7 +44,7 @@
       "images": ["assets/shop/_placeholder/tape-front.jpg", "assets/shop/_placeholder/tape-shell.jpg"],
       "link": {
         "label": "listen to the EP",
-        "href": "night-school.html"
+        "href": "dead-ocean.html"
       }
     }
   ]

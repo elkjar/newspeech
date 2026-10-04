@@ -12,15 +12,18 @@
 //                                 the free plan allows 3 segments, so these get
 //                                 made by hand (dashboard or API) after upgrading,
 //                                 then backfilled from the <plugin> property
-//              Night School       kept a ruined copy of the EP — USED IF PRESENT,
-//                                 never created (same cap)
+//              Dead Ocean         asked for the EP's private stream or kept a
+//                                 ruined copy — USED IF PRESENT, never created
+//                                 (same cap)
 //              Sequence Waitlist  joined the sequence app waitlist — USED IF PRESENT,
 //                                 never created (same cap); backfill from `waitlist`
-//   properties source             first touch: "homepage" | "plugins" | "night-school" | "tools" | "shop" | "sequence" | "footer"
+//   properties source             first touch: "homepage" | "plugins" | "dead-ocean" | "tools" | "shop" | "sequence" | "footer"
 //              waitlist           "sequence" — set on every waitlist signup, known
 //                                 contacts included (source is first touch only)
 //              <plugin>           version string of the build they downloaded
-//              night-school       slug of the last track they printed a ruin of
+//              dead-ocean         "stream" when they asked for the private
+//                                 listening link, else the slug of the last
+//                                 track they printed a ruin of
 //              tool               browser tool whose export nudge they signed up
 //                                 from (tools source) — General segment only
 //              shop               shop.json id of the last thing they bought
@@ -31,7 +34,7 @@
 
 const API = "https://api.resend.com";
 export const PLUGINS = ["vibe", "saturate", "slice", "glitch"];
-export const SOURCES = ["homepage", "plugins", "night-school", "tools", "shop", "sequence", "footer"];
+export const SOURCES = ["homepage", "plugins", "dead-ocean", "tools", "shop", "sequence", "footer"];
 export const TOOLS = ["texture", "slice", "decay", "drone", "glitch", "stretch", "samples"];
 export const TRACK_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
@@ -104,7 +107,8 @@ export function client(key) {
 
   // Upsert one contact and file it into its segments. `plugin`/`version` are
   // optional (homepage subscribe passes neither); `track` is the EP listening
-  // room's gate (night-school source); `tool` is the browser tools' export
+  // room's gate (dead-ocean source: a track slug, or "stream" for the
+  // pre-release listening link); `tool` is the browser tools' export
   // nudge (tools source); `shop` is the product a buyer took (shop source);
   // the sequence source is the app waitlist (homepage vignette).
   const subscribe = async ({ email, source, plugin, version, track, tool, shop }) => {
@@ -117,7 +121,7 @@ export function client(key) {
 
     const props = {};
     if (plugin) props[plugin] = String(version || "1");
-    if (track) props["night-school"] = track;
+    if (track) props["dead-ocean"] = track;
     if (tool) props.tool = tool;
     if (shop) props.shop = shop;
     if (source === "sequence") props.waitlist = "sequence";
@@ -141,7 +145,7 @@ export function client(key) {
 
     const wanted = [["General", false]];
     if (plugin) wanted.push(["Plugins", false], [`plugin-${plugin}`, true]);
-    if (source === "night-school") wanted.push(["Night School", true]);
+    if (source === "dead-ocean") wanted.push(["Dead Ocean", true]);
     if (source === "sequence") wanted.push(["Sequence Waitlist", true]);
     const filed = [];
     for (const [name, optional] of wanted) {
@@ -158,5 +162,8 @@ export function client(key) {
     return { created, segments: filed, properties: props };
   };
 
-  return { req, subscribe, getContact, ensureSegment, ensureProperty };
+  // one transactional email (the private listening link) — not a broadcast
+  const send = ({ from, to, subject, text, html }) => req("POST", "/emails", { from, to: [to], subject, text, html });
+
+  return { req, subscribe, send, getContact, ensureSegment, ensureProperty };
 }

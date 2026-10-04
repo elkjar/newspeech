@@ -5,10 +5,10 @@
 // (the same {page, state:{params}} shape reel-render segments use). This
 // turns each track into a single-segment timeline the length of the track and
 // prints the render.mjs command that muxes the FLAC under it, so the video of
-// a track is exactly what night-school.html shows while it plays.
+// a track is exactly what dead-ocean.html shows while it plays.
 //
 // Usage:
-//   node ep-timeline.mjs [--ep assets/ep/night-school.json] [--track <slug>]
+//   node ep-timeline.mjs [--ep assets/ep/dead-ocean.json] [--track <slug>]
 //                        [--out out/] [--width 1920 --height 1080] [--fps 30]
 //   → out/<slug>.timeline.json per track + one render command per track
 //
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
 
-const a = { ep: 'assets/ep/night-school.json', track: null, out: 'out', width: 1920, height: 1080, fps: 30 };
+const a = { ep: 'assets/ep/dead-ocean.json', track: null, out: 'out', width: 1920, height: 1080, fps: 30 };
 const argv = process.argv;
 for (let i = 2; i < argv.length; i++) {
   const k = argv[i], v = argv[i + 1];

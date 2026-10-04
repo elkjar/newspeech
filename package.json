@@ -1,0 +1,8 @@
+{
+  "name": "newspeech-site",
+  "private": true,
+  "description": "dependencies for netlify/functions only — the site itself has no build step",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.3"
+  }
+}
