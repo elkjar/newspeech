@@ -61,7 +61,7 @@
       "state": {
         "params": {}
       },
-      "source": "MIXES/20260911_ZEUS_2.wav (192k master → 48k)"
+      "source": "EP MIX REF/01_20260923_ZUES_FABER_1.wav (192k → 48k)"
     },
     {
       "slug": "kiidkyaas",
@@ -74,20 +74,20 @@
       "state": {
         "params": {}
       },
-      "source": "MIXES/20260916_PIPER_3.wav"
+      "source": "EP MIX REF/02_20260923_PIPER_MARU_1.wav (192k → 48k)"
     },
     {
       "slug": "policy-as-a-suicide-pact",
       "title": "policy as a suicide pact",
       "file": "policy-as-a-suicide-pact.flac",
-      "duration": 300.46,
+      "duration": 448.85,
       "bpm": 131,
       "beat": false,
       "page": "6-grid",
       "state": {
         "params": {}
       },
-      "source": "DEMOS/131_black-eyes-ALL-MUSIC.wav — placeholder until a mix exists"
+      "source": "EP MIX REF/03_20260929_BLACKEYES_2.wav (192k → 48k)"
     }
   ]
 }
