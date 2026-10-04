@@ -1,9 +1,9 @@
 {
   "title": "dead ocean",
   "cover": "assets/ep/cover.jpg",
-  "releaseDate": "october 20, 2026",
+  "releaseDate": "november 20, 2026",
   "artist": "newspeech",
-  "buyLabel": "available oct 20 on",
+  "buyLabel": "available nov 20 on",
   "buy": [
     {
       "label": "subvert",
@@ -17,7 +17,7 @@
     }
   ],
   "streaming": {
-    "date": "november 20, 2026",
+    "date": "december 20, 2026",
     "note": "streaming everywhere one month after release",
     "services": [
       {
