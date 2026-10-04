@@ -37,7 +37,7 @@
   #album {
     position: relative; z-index: 3; max-width: 1280px; margin: 0 auto; min-height: 100vh; box-sizing: border-box;
     padding: calc(40px + var(--ns-nav-h, 0px)) var(--ns-gutter, 40px) 48px;
-    display: grid; grid-template-columns: minmax(240px, 420px) 1fr; gap: 56px; align-items: center; align-content: center;
+    display: grid; grid-template-columns: minmax(240px, min(500px, 45%)) 1fr; gap: 56px; /* 500px ≈ 7.5% taller than the locked text stack */ align-items: center; align-content: center;
   }
   #album .cover { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border: 1px solid #1c1c1c; background: #0a0a0a; }
   #album .artist { color: #666; letter-spacing: 0.18em; margin: 0 0 6px; }
@@ -92,7 +92,7 @@
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M3.2 6.5V4.2a2.8 2.8 0 0 1 5.6 0v2.3' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Crect x='1' y='6.5' width='10' height='7.5' rx='1'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M3.2 6.5V4.2a2.8 2.8 0 0 1 5.6 0v2.3' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Crect x='1' y='6.5' width='10' height='7.5' rx='1'/%3E%3C/svg%3E") center / contain no-repeat;
   }
   #album.locked #scrub { display: none !important; }
-  @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } #album .cover { max-width: 420px; } }
+  @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } #album .cover { max-width: 500px; } }
 
   /* the room is the hero: one viewport tall, the visualizer lives inside it
      and scrolls away with it; the record keeps playing underneath the page */
