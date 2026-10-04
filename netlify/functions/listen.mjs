@@ -48,7 +48,7 @@ export default async (req) => {
         return redirect(`${(RELEASES[r] || {}).page || "/"}?listen=expired`);
       }
       console.log(`listen: opened ${p.r}`);
-      return redirect(`${RELEASES[p.r].page}?listen=1`, { "Set-Cookie": setCookie(req, p.r, p.e) });
+      return redirect(`${RELEASES[p.r].page}?listen=1`, { "Set-Cookie": setCookie(req, p.r) });
     }
     // status
     const r = url.searchParams.get("r");
@@ -83,7 +83,7 @@ export default async (req) => {
   try {
     // the link points back at whichever deploy asked (production or a preview)
     const base = ALLOWED_ORIGIN.test(url.origin) || LOCAL.test(url.origin) ? url.origin : "https://www.newspeechsound.com";
-    link = `${base}/api/listen?k=${sign("link", release, email, LINK_DAYS)}`;
+    link = `${base}/api/listen?k=${sign("link", release, LINK_DAYS)}`;
   } catch (e) {
     console.error("listen:", e.message);
     return json(503, { ok: false, error: "not configured" });

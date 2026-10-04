@@ -37,9 +37,11 @@ function secret() {
 }
 const sig = (body) => createHmac("sha256", secret()).update(body).digest("base64url");
 
-// kind keeps a link from being replayed as a cookie and vice versa
-export function sign(kind, release, email, days) {
-  const body = b64(JSON.stringify({ k: kind, r: release, e: email, x: Math.floor(Date.now() / 1000) + days * DAY }));
+// kind keeps a link from being replayed as a cookie and vice versa. the body
+// is only encoded, not encrypted — anyone holding a link can read it — so it
+// carries nothing personal: kind, release, expiry.
+export function sign(kind, release, days) {
+  const body = b64(JSON.stringify({ k: kind, r: release, x: Math.floor(Date.now() / 1000) + days * DAY }));
   return `${body}.${sig(kind + "." + body)}`;
 }
 
@@ -70,9 +72,9 @@ export function readCookie(req, name) {
 
 // the cookie rides only on /api requests (status + stream); Secure everywhere
 // except plain-http local dev
-export function setCookie(req, release, email) {
+export function setCookie(req, release) {
   const secure = new URL(req.url).protocol === "https:" ? "; Secure" : "";
-  const val = sign("cookie", release, email, COOKIE_DAYS);
+  const val = sign("cookie", release, COOKIE_DAYS);
   return `${cookieName(release)}=${val}; Path=/api; Max-Age=${COOKIE_DAYS * DAY}; HttpOnly; SameSite=Lax${secure}`;
 }
 
