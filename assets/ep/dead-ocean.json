@@ -39,8 +39,9 @@
   "audioBase": "assets/ep/",
   "private": {
     "release": "dead-ocean",
-    "note": "pre-release: stream only, behind the email link. delete this block (and point audioBase at the public files) on release day."
+    "note": "pre-release preview: stream only, behind the email link. release day (bandcamp/subvert): delete this block AND \"ruin\": false, drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at the public files."
   },
+  "ruin": false,
   "quiet": {
     "dim": 0.5,
     "haze": 0.35,
