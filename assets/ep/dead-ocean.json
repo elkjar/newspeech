@@ -3,6 +3,7 @@
   "cover": "assets/ep/cover.jpg",
   "releaseDate": "october 20, 2026",
   "artist": "newspeech",
+  "buyLabel": "available oct 20 on",
   "buy": [
     {
       "label": "subvert",
@@ -39,7 +40,7 @@
   "audioBase": "assets/ep/",
   "private": {
     "release": "dead-ocean",
-    "note": "pre-release preview: stream only, behind the email link. release day (bandcamp/subvert): delete this block AND \"ruin\": false, drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at the public files."
+    "note": "pre-release preview: stream only, behind the email link. release day (bandcamp/subvert): delete this block AND \"ruin\": false, drop \"buyLabel\", drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at the public files."
   },
   "ruin": false,
   "quiet": {

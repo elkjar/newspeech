@@ -348,7 +348,7 @@
     </form>
     <div id="album-player"></div>
     <dl class="avail">
-      <dt>available on</dt>
+      <dt id="avail-now-dt">available on</dt>
       <dd id="avail-now"></dd>
       <dt class="soon-dt">coming soon to</dt>
       <dd id="avail-soon" class="soon"></dd>
@@ -537,6 +537,7 @@
     if (total) parts.push(fmt(total));
     if (ep.releaseDate) parts.push(`<b>${ep.releaseDate}</b>`);
     $("album-facts").innerHTML = parts.join(" · ");
+    if (ep.buyLabel) $("avail-now-dt").textContent = ep.buyLabel; // e.g. "available oct 20 on" before release
     const now = Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : [];
     now.forEach((b) => $("avail-now").appendChild(serviceEl(b)));
     const soon = (ep.streaming && ep.streaming.services) || [];
