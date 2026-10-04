@@ -2,7 +2,7 @@
 //
 // A release is private while it's listed in RELEASES. The flow:
 //   1. the album page posts an email to /api/listen
-//   2. Resend mails a link: /api/listen?k=<token>  (signed, 30 days)
+//   2. Resend mails a link: /api/listen?k=<token>  (signed, LINK_DAYS)
 //   3. opening it sets an HttpOnly cookie for that release and lands on the page
 //   4. the page pulls the audio from /api/stream/<release>/…, which checks the cookie
 //
@@ -23,8 +23,8 @@ export const RELEASES = {
   "dead-ocean": { title: "dead ocean", artist: "newspeech", page: "/dead-ocean.html" },
 };
 
-export const LINK_DAYS = 30;
-export const COOKIE_DAYS = 30;
+export const LINK_DAYS = 90;
+export const COOKIE_DAYS = 90;
 const DAY = 86400;
 
 const b64 = (s) => Buffer.from(s).toString("base64url");
