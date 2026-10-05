@@ -71,12 +71,16 @@
   .toggle.on { color: #fff; background: none; }
 
   /* library */
-  #tables { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-  .trow { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
-  .trow .seglabel { color: #555; width: 92px; flex: none; }
-  .trow button { padding: 3px 8px; border-color: #222; color: #777; letter-spacing: 0.05em; }
-  .trow button:hover { color: #fff; border-color: #666; }
-  .trow button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  /* table tabs: one uniform grid per category — equal cells, names clipped */
+  #tables { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+  .tcat { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: #555; margin-bottom: 5px; }
+  .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px; }
+  .tgrid button {
+    padding: 5px 8px; border-color: #222; color: #777; letter-spacing: 0.04em;
+    font-size: 11px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tgrid button:hover { color: #fff; border-color: #666; }
+  .tgrid button.on { background: #ddd; color: #050505; border-color: #ddd; }
   #wavegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 4px; }
   #wavegrid canvas { width: 100%; height: 36px; display: block; background: #0a0a0a; border: 1px solid #1a1a1a; cursor: pointer; }
   #wavegrid canvas:hover { border-color: #888; }
@@ -92,7 +96,8 @@
   @media (max-width: 720px) {
     .row2 { flex-direction: column; align-items: stretch; }
     .row2 > .kdivider { width: auto; height: 1px; margin: 12px 0; align-self: auto; }
-    .trow .seglabel { width: 100%; }
+    .tgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tgrid button { font-size: 10px; letter-spacing: 0; padding: 5px 6px; }
     #keys { height: 80px; }
   }
 </style>
@@ -143,6 +148,13 @@
 </div>
 
 <div class="group">
+  <h2>LIBRARY</h2>
+  <div id="tables"></div>
+  <div id="wavegrid"></div>
+  <p class="hint" style="margin:10px 0 0">click a wave to put it on the selected step (selection moves on) · shift-click to insert after it</p>
+</div>
+
+<div class="group">
   <h2>PLAY</h2>
   <div id="kbbar">
     <button class="toggle" id="hold" title="latch notes — press a held note again to release it">○ hold</button>
@@ -150,13 +162,6 @@
     <span class="hint" id="kbhint"></span>
   </div>
   <div id="keys"></div>
-</div>
-
-<div class="group">
-  <h2>LIBRARY</h2>
-  <div id="tables"></div>
-  <div id="wavegrid"></div>
-  <p class="hint" style="margin:10px 0 0">click a wave to put it on the selected step (selection moves on) · shift-click to insert after it</p>
 </div>
 
 <script>
@@ -676,21 +681,22 @@ async function openLibTable(id) {
 function buildLibrary() {
   const wrap = document.getElementById('tables');
   for (const cat of ['pads', 'instruments', 'bass']) {
-    const row = document.createElement('div');
-    row.className = 'trow';
-    const lab = document.createElement('span');
-    lab.className = 'seglabel';
+    const sec = document.createElement('div');
+    const lab = document.createElement('div');
+    lab.className = 'tcat';
     lab.textContent = cat;
-    row.appendChild(lab);
+    const row = document.createElement('div');
+    row.className = 'tgrid';
+    sec.append(lab, row);
     for (const r of library.filter((x) => x.cat === cat)) {
       const b = document.createElement('button');
-      b.textContent = r.id;
+      b.textContent = r.id.replace(/[-_]/g, ' ');
       b.dataset.t = r.id;
-      b.title = 'from ' + r.src;
+      b.title = `${r.id} — from ${r.src}`;
       b.onclick = () => openLibTable(r.id);
       row.appendChild(b);
     }
-    wrap.appendChild(row);
+    wrap.appendChild(sec);
   }
 }
 
