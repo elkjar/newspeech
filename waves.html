@@ -93,12 +93,24 @@
   #keys div span { position: absolute; bottom: 3px; left: 0; right: 0; text-align: center; font-size: 9px; color: #444; pointer-events: none; }
   #kbbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
+  /* print */
+  #printrow { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #printrow .seg { margin: 0; }
+  #kitname {
+    font: inherit; font-size: 12px; background: #050505; color: #fff;
+    border: 1px solid rgba(255,255,255,0.45); padding: 7px 12px; height: 34px; width: 200px;
+  }
+  #kitname:focus { outline: none; border-color: rgba(255,255,255,0.8); }
+  #printgo { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  #print:disabled { opacity: 0.4; cursor: default; }
+
   @media (max-width: 720px) {
     .row2 { flex-direction: column; align-items: stretch; }
     .row2 > .kdivider { width: auto; height: 1px; margin: 12px 0; align-self: auto; }
     .tgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .tgrid button { font-size: 10px; letter-spacing: 0; padding: 5px 6px; }
     #keys { height: 80px; }
+    #kitname { font-size: 16px; width: 100%; }
   }
 </style>
 </head>
@@ -162,6 +174,32 @@
     <span class="hint" id="kbhint"></span>
   </div>
   <div id="keys"></div>
+</div>
+
+<div class="group">
+  <h2>PRINT</h2>
+  <div id="printrow">
+    <input id="kitname" type="text" spellcheck="false" autocomplete="off" placeholder="kit name" aria-label="kit name">
+    <div class="seg" id="plen">
+      <span class="seglabel">hold</span>
+      <button data-v="4">4s</button>
+      <button data-v="8" class="on">8s</button>
+      <button data-v="16">16s</button>
+      <button data-v="30">30s</button>
+    </div>
+    <div class="seg" id="ptakes">
+      <span class="seglabel">takes</span>
+      <button data-v="1">1</button>
+      <button data-v="2" class="on">2</button>
+      <button data-v="3">3</button>
+      <button data-v="4">4</button>
+    </div>
+    <button class="toggle" id="pverb" title="print the reverb into the samples (stereo) — off = dry mono, for a sampler with its own space">○ reverb</button>
+  </div>
+  <div id="printgo">
+    <button id="print">PRINT KIT</button>
+    <span class="hint" id="printinfo"></span>
+  </div>
 </div>
 
 <script>
@@ -295,6 +333,7 @@ function buildKnob(spec) {
     ui[spec.k] = v;
     draw();
     if (spec.live) spec.live(); else pushParams();
+    printEstimate(); // tail length follows release / reverb
     save();
   }
   // knobs with a costly side (the reverb impulse) rebuild once the gesture ends
@@ -810,8 +849,9 @@ const ptrUp = (e) => {
 keysEl.addEventListener('pointerup', ptrUp);
 keysEl.addEventListener('pointercancel', ptrUp);
 
+const typing = (e) => e.target instanceof HTMLInputElement;
 addEventListener('keydown', (e) => {
-  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || typing(e)) return;
   const k = e.key.toLowerCase();
   if (k === 'z' || k === 'x') {
     releaseAll();
@@ -825,6 +865,7 @@ addEventListener('keydown', (e) => {
   if (i >= 0) noteOn(12 * (octave + 1) + i);
 });
 addEventListener('keyup', (e) => {
+  if (typing(e)) return;
   const i = KEYMAP.indexOf(e.key.toLowerCase());
   if (i >= 0) noteOff(12 * (octave + 1) + i);
 });
@@ -860,6 +901,194 @@ midiBtn.onclick = async () => {
   }
 };
 
+// --- print: the patch as a multisampled instrument -------------------------------
+// Every root is its own offline render — its own jitter rolls, its own drift —
+// and TAKES renders each root again, so the sampler round-robins between
+// performances instead of replaying one. Roots follow the kit convention
+// (C / E / G# per octave, C1–C6, `<kit>-Gs2.wav`), so the zip unpacks
+// straight into the Sequence samples folder. kit.seqkit lists the takes as
+// round-robin files; the .sfz maps the same set for other samplers.
+const PRINT_SR = 48000;
+const print = { hold: 8, takes: 2, verb: false };
+const NOTE_NAMES = ['C', 'Cs', 'D', 'Ds', 'E', 'F', 'Fs', 'G', 'Gs', 'A', 'As', 'B'];
+const noteName = (m) => NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
+const PRINT_ROOTS = (() => {
+  const r = [];
+  for (let oct = 1; oct <= 5; oct++) for (const o of [0, 4, 8]) r.push(12 * (oct + 1) + o);
+  r.push(84); // C6
+  return r;
+})();
+const slug = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const kitName = () => slug(document.getElementById('kitname').value) || 'waves-' + slug(steps[0] ? steps[0].t : 'kit');
+
+function tailSecs() {
+  // amp release falls ~80 dB in ≈1.85 × RELEASE; a printed reverb adds its tail
+  return releaseS(ui.release) * 1.85 + (print.verb ? verbParams(ui.verb).decay : 0) + 0.05;
+}
+function printEstimate() {
+  const secs = print.hold + tailSecs();
+  const bytes = PRINT_ROOTS.length * print.takes * secs * PRINT_SR * 3 * (print.verb ? 2 : 1);
+  const mb = bytes / 1e6;
+  document.getElementById('printinfo').textContent =
+    `${PRINT_ROOTS.length} notes × ${print.takes} take${print.takes > 1 ? 's' : ''} · ` +
+    `${print.verb ? 'stereo' : 'mono'} 24-bit · up to ~${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB → ${kitName()}.zip`;
+}
+
+let jszipReady = null;
+function loadJSZip() {
+  return jszipReady || (jszipReady = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js';
+    sc.onload = () => res(window.JSZip);
+    sc.onerror = rej;
+    document.head.appendChild(sc);
+  }));
+}
+
+async function renderRoot(note, waves, idx, ir) {
+  const frames = Math.ceil((print.hold + tailSecs()) * PRINT_SR);
+  const oc = new OfflineAudioContext(print.verb ? 2 : 1, frames, PRINT_SR);
+  await oc.audioWorklet.addModule('waves-worklet.js');
+  const n = new AudioWorkletNode(oc, 'waves', { numberOfInputs: 0, outputChannelCount: [2] });
+  if (print.verb) {
+    const p = verbParams(ui.verb);
+    const dg = oc.createGain(), wg = oc.createGain(), c = oc.createConvolver();
+    c.normalize = false;
+    c.buffer = ir;
+    dg.gain.value = p.dry;
+    wg.gain.value = p.wet;
+    n.connect(dg); n.connect(c); c.connect(wg);
+    dg.connect(oc.destination); wg.connect(oc.destination);
+  } else n.connect(oc.destination);
+  const ready = new Promise((res) => { n.port.onmessage = (e) => { if (e.data.type === 'pong') res(); }; });
+  n.port.postMessage({ type: 'bank-add', waves });
+  n.port.postMessage({ type: 'steps', steps: idx });
+  n.port.postMessage({ type: 'params', p: workletParams() });
+  n.port.postMessage({ type: 'on', note, vel: 0.9, pan: 0, dur: print.hold });
+  // port messages arrive in order — the pong means the note landed
+  n.port.postMessage({ type: 'ping' });
+  await ready;
+  return oc.startRendering();
+}
+
+function encodeWav24(chans, len) {
+  const nCh = chans.length, bytes = len * nCh * 3;
+  const ab = new ArrayBuffer(44 + bytes), dv = new DataView(ab);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + bytes, true); str(8, 'WAVE');
+  str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, nCh, true);
+  dv.setUint32(24, PRINT_SR, true); dv.setUint32(28, PRINT_SR * nCh * 3, true);
+  dv.setUint16(32, nCh * 3, true); dv.setUint16(34, 24, true);
+  str(36, 'data'); dv.setUint32(40, bytes, true);
+  let o = 44;
+  for (let i = 0; i < len; i++) for (let c = 0; c < nCh; c++) {
+    const v = Math.round(Math.max(-1, Math.min(1, chans[c][i])) * 8388607);
+    dv.setUint8(o, v & 255); dv.setUint8(o + 1, (v >> 8) & 255); dv.setUint8(o + 2, (v >> 16) & 255);
+    o += 3;
+  }
+  return ab;
+}
+
+function sfzText(name, roots) {
+  const lines = [`// ${name} — printed by newspeech waves (newspeechsound.com)`, '<control> default_path=./', '<global> ampeg_release=0.3', ''];
+  roots.forEach((r, i) => {
+    const lo = i === 0 ? 0 : Math.floor((roots[i - 1].midi + r.midi) / 2) + 1;
+    const hi = i === roots.length - 1 ? 127 : Math.floor((r.midi + roots[i + 1].midi) / 2);
+    r.files.forEach((f, t) => {
+      const rr = r.files.length > 1
+        ? ` lorand=${(t / r.files.length).toFixed(3)} hirand=${((t + 1) / r.files.length).toFixed(3)}` : '';
+      lines.push(`<region> sample=${f} pitch_keycenter=${r.midi} lokey=${lo} hikey=${hi}${rr}`);
+    });
+  });
+  return lines.join('\n') + '\n';
+}
+
+let printing = false;
+async function printKit() {
+  if (printing || !steps.length) return;
+  printing = true;
+  const btn = document.getElementById('print'), info = document.getElementById('printinfo');
+  btn.disabled = true;
+  try {
+    const name = kitName();
+    // this sequence's waves, once — every render gets the same bank
+    const keys = [], waves = [], idx = [];
+    for (const s of steps) {
+      const key = s.t + ':' + s.w;
+      let k = keys.indexOf(key);
+      if (k < 0) { k = keys.push(key) - 1; waves.push(mipLevels(waveOf(s.t, s.w))); }
+      idx.push(k);
+    }
+    const ir = print.verb ? makeImpulse(new OfflineAudioContext(2, 1, PRINT_SR), verbParams(ui.verb).decay, VERB_SEED) : null;
+    const total = PRINT_ROOTS.length * print.takes;
+    const renders = [];
+    for (const midi of PRINT_ROOTS) {
+      for (let t = 0; t < print.takes; t++) {
+        info.textContent = `printing ${noteName(midi)}${print.takes > 1 ? ' take ' + (t + 1) : ''} · ${renders.length + 1}/${total}`;
+        const buf = await renderRoot(midi, waves, idx, ir);
+        renders.push({ midi, t, chans: Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c)) });
+      }
+    }
+    // one gain for the whole kit (peak → −1 dBFS) keeps notes level with each other
+    let peak = 0;
+    for (const r of renders) for (const ch of r.chans) for (let i = 0; i < ch.length; i++) { const a = Math.abs(ch[i]); if (a > peak) peak = a; }
+    const g = peak > 0 ? 0.891 / peak : 1;
+    info.textContent = 'zipping…';
+    const JSZip = await loadJSZip();
+    const zip = new JSZip();
+    const dir = zip.folder(name);
+    const roots = PRINT_ROOTS.map((midi) => ({ midi, files: [] }));
+    for (const r of renders) {
+      for (const ch of r.chans) for (let i = 0; i < ch.length; i++) ch[i] *= g;
+      // trim the silent tail (below −80 dBFS), 5ms fade on the cut
+      let end = r.chans[0].length;
+      while (end > 1 && r.chans.every((ch) => Math.abs(ch[end - 1]) < 1e-4)) end--;
+      const fade = Math.min(end, Math.round(PRINT_SR * 0.005));
+      for (const ch of r.chans) for (let i = 0; i < fade; i++) ch[end - 1 - i] *= i / fade;
+      const file = `${name}-${noteName(r.midi)}${print.takes > 1 ? '-' + (r.t + 1) : ''}.wav`;
+      dir.file(file, encodeWav24(r.chans, end));
+      roots.find((x) => x.midi === r.midi).files.push(file);
+    }
+    dir.file('kit.seqkit', JSON.stringify({ name, voices: { [name]: { label: name, gain: 0.7, roots } } }, null, 2) + '\n');
+    dir.file(name + '.sfz', sfzText(name, roots));
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name + '.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    info.textContent = `printed ${name}.zip · ${(blob.size / 1e6).toFixed(1)} MB`;
+  } catch (err) {
+    info.textContent = 'print failed — ' + (err && err.message ? err.message : err);
+    throw err;
+  } finally {
+    printing = false;
+    btn.disabled = false;
+  }
+}
+
+function segPick(id, key) {
+  const el = document.getElementById(id);
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    print[key] = +b.dataset.v;
+    el.querySelectorAll('button[data-v]').forEach((x) => x.classList.toggle('on', x === b));
+    printEstimate();
+  });
+}
+segPick('plen', 'hold');
+segPick('ptakes', 'takes');
+const pverb = document.getElementById('pverb');
+pverb.onclick = () => {
+  print.verb = !print.verb;
+  pverb.classList.toggle('on', print.verb);
+  pverb.textContent = (print.verb ? '● ' : '○ ') + 'reverb';
+  printEstimate();
+};
+document.getElementById('kitname').addEventListener('input', printEstimate);
+document.getElementById('print').onclick = () => printKit();
+
 // --- boot ---------------------------------------------------------------------------
 (async () => {
   for (const spec of KNOB_SPECS) document.getElementById(spec.group).appendChild(buildKnob(spec));
@@ -874,11 +1103,12 @@ midiBtn.onclick = async () => {
   await Promise.all([...new Set(steps.map((s) => s.t))].map(loadTable));
   if (!had) await fillFrom(openTable, 8); else stepsChanged();
   openLibTable(openTable);
+  printEstimate();
   requestAnimationFrame(frame);
 })();
 
 // test / future-MIDI hook
-window.waves = { ui, get steps() { return steps; }, noteOn, noteOff, fillFrom, randomize };
+window.waves = { ui, print, get steps() { return steps; }, noteOn, noteOff, fillFrom, randomize, printKit };
 </script>
 </body>
 </html>

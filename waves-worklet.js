@@ -18,7 +18,10 @@
 //               the bank only grows, so a steps message can never point at
 //               a wave this side hasn't received
 //               steps {steps:[bankIndex…]} · params {p} · on {note, vel}
-//               off {note} · panic
+//               off {note} · panic · ping (→ pong; offline prints wait on
+//               it so every message has landed before rendering starts)
+//               on may carry pan (−1..1, else random ±0.35) and dur (seconds
+//               held before an automatic release — offline prints)
 // messages out: viz {voices:[{note, idx, frac, env}]} at ~30 Hz
 
 const FRAMES = 2048;
@@ -31,7 +34,7 @@ function makeVoice() {
     active: false, note: 0, vel: 0, freq: 0, phase: 0,
     gate: false, env: 0, stage: 0, age: 0,
     idx: 0, stepPos: 0, stepLen: 1, rate: 1,
-    panL: 0.7, panR: 0.7, ic1: 0, ic2: 0, lvl: 0,
+    panL: 0.7, panR: 0.7, ic1: 0, ic2: 0, lvl: 0, holdLeft: -1,
   };
 }
 
@@ -56,7 +59,8 @@ class WavesProcessor extends AudioWorkletProcessor {
     if (m.type === 'bank-add') this.bank.push(...m.waves);
     else if (m.type === 'steps') this.steps = m.steps;
     else if (m.type === 'params') Object.assign(this.p, m.p);
-    else if (m.type === 'on') this.noteOn(m.note, m.vel ?? 0.8);
+    else if (m.type === 'on') this.noteOn(m.note, m.vel ?? 0.8, m.pan, m.dur);
+    else if (m.type === 'ping') this.port.postMessage({ type: 'pong' });
     else if (m.type === 'off') this.noteOff(m.note);
     else if (m.type === 'panic') for (const v of this.voices) { v.active = false; v.gate = false; }
   }
@@ -68,7 +72,7 @@ class WavesProcessor extends AudioWorkletProcessor {
     v.stepPos = 0;
   }
 
-  noteOn(note, vel) {
+  noteOn(note, vel, panArg, dur) {
     // Free voice, else the quietest releasing one, else the oldest.
     let v = this.voices.find((x) => !x.active);
     if (!v) {
@@ -86,7 +90,8 @@ class WavesProcessor extends AudioWorkletProcessor {
       freq: 440 * Math.pow(2, (note - 69) / 12), phase: Math.random(),
       idx: 0, rate: Math.pow(2, d * (2 * Math.random() - 1)),
     });
-    const pan = (Math.random() * 2 - 1) * 0.35;
+    v.holdLeft = dur > 0 ? Math.round(dur * sampleRate) : -1;
+    const pan = panArg ?? (Math.random() * 2 - 1) * 0.35;
     v.panL = Math.cos((pan + 1) * Math.PI / 4);
     v.panR = Math.sin((pan + 1) * Math.PI / 4);
     // Richest mip level whose top harmonic stays under Nyquist at this pitch.
@@ -122,6 +127,7 @@ class WavesProcessor extends AudioWorkletProcessor {
       for (const v of this.voices) {
         if (!v.active) continue;
         if (v.idx >= nSteps) v.idx %= nSteps;
+        if (v.holdLeft >= 0 && v.gate && (v.holdLeft -= n) <= 0) { v.gate = false; v.stage = 3; }
         const inc = v.freq / sampleRate, lvl = v.lvl, amp = v.vel;
         // Locals for the hot loop; written back after the block.
         let env = v.env, stage = v.stage, phase = v.phase, ic1 = v.ic1, ic2 = v.ic2;
