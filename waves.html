@@ -134,6 +134,11 @@
       <h2>VOICE</h2>
       <div class="krow" id="voice-knobs"></div>
     </div>
+    <div class="kdivider"></div>
+    <div class="subgroup">
+      <h2>SPACE</h2>
+      <div class="krow" id="space-knobs"></div>
+    </div>
   </div>
 </div>
 
@@ -188,6 +193,7 @@ const ui = {
   cutoff: Math.log(150) / Math.log(450), // 6k
   res: 0.2,
   level: 0.55,
+  verb: 0.5, // ~4s tail
 };
 
 function workletParams() {
@@ -219,6 +225,8 @@ const KNOB_SPECS = [
   { group: 'voice-knobs', k: 'res', label: 'res', fmt: () => pct('res'),
     title: 'lowpass resonance — self-oscillates at the top' },
   { group: 'voice-knobs', k: 'level', label: 'level', fmt: () => Math.round(ui.level * 150) + '' },
+  { group: 'space-knobs', k: 'verb', label: 'reverb', fmt: () => ui.verb > 0 ? verbParams(ui.verb).decay.toFixed(1) + 's' : 'dry',
+    title: 'the dead ocean / decay reverb — one knob: more = longer tail + wetter', live: () => applyVerb(true), settle: () => applyVerb() },
 ];
 
 // --- knobs: same anatomy as texture.html / the app's Knob.tsx ----------------
@@ -281,20 +289,24 @@ function buildKnob(spec) {
     if (v === ui[spec.k]) return;
     ui[spec.k] = v;
     draw();
-    pushParams();
+    if (spec.live) spec.live(); else pushParams();
     save();
   }
+  // knobs with a costly side (the reverb impulse) rebuild once the gesture ends
+  let settleTimer = 0;
+  const settle = () => { if (spec.settle) { clearTimeout(settleTimer); settleTimer = setTimeout(spec.settle, 200); } };
   svg.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     const y0 = e.clientY, v0 = ui[spec.k];
     const move = (ev) => setValue(v0 + (y0 - ev.clientY) / 100);
-    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); settle(); };
     addEventListener('pointermove', move);
     addEventListener('pointerup', up);
   });
   svg.addEventListener('wheel', (e) => {
     e.preventDefault();
     setValue(ui[spec.k] + (e.deltaY > 0 ? -0.05 : 0.05));
+    settle();
   }, { passive: false });
   knobs[spec.k] = { draw };
   draw();
@@ -384,6 +396,46 @@ const bankIndex = new Map(); // 't:w' → worklet bank index (append-only)
 let bankSize = 0;
 
 let actx = null, node = null, vizVoices = [], audioReady = null;
+let conv = null, dryGain = null, wetGain = null;
+
+// --- reverb: the dead ocean ruin-room reverb, verbatim — a seeded noise
+// impulse in a ConvolverNode, darkening along its tail, energy-normalised so
+// the wet level holds steady across tail lengths. One knob drives tail + mix.
+const VERB_SEED = 'waves';
+const verbParams = (r) => ({ decay: 1.2 + r * r * 11, wet: r * 0.9, dry: 1 - 0.35 * r }); // tail 1.2s → 12.2s
+function makeImpulse(ctx, seconds, seedStr) {
+  const SR = ctx.sampleRate;
+  const n = Math.max(1, Math.round(seconds * SR));
+  const ir = ctx.createBuffer(2, n, SR);
+  let s = 0x811c9dc5; for (let i = 0; i < seedStr.length; i++) { s ^= seedStr.charCodeAt(i); s = Math.imul(s, 0x01000193) >>> 0; }
+  const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      const env = Math.exp(-6.5 * t) * (1 - t);           // ~-56 dB at the end, then to zero
+      const k = 0.9 - 0.75 * t;                           // one-pole darkening along the tail
+      lp += ((rnd() * 2 - 1) - lp) * k;
+      d[i] = lp * env * (i < 480 ? i / 480 : 1);          // 10ms fade-in: no click on the direct
+    }
+  }
+  let e = 0; const d0 = ir.getChannelData(0); for (let i = 0; i < n; i++) e += d0[i] * d0[i];
+  const g = 0.35 / Math.sqrt(e + 1e-9);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < n; i++) d[i] *= g; }
+  return ir;
+}
+let irKey = '';
+// Mix follows the knob live; the impulse (tail length) rebuilds when it settles.
+function applyVerb(mixOnly = false) {
+  if (!conv) return;
+  const p = verbParams(ui.verb);
+  const t = actx.currentTime;
+  dryGain.gain.setTargetAtTime(p.dry, t, 0.03);
+  wetGain.gain.setTargetAtTime(p.wet, t, 0.03);
+  const key = `${p.decay.toFixed(2)}|${VERB_SEED}`;
+  if (!mixOnly && key !== irKey) { irKey = key; conv.buffer = makeImpulse(actx, p.decay, VERB_SEED); }
+}
 
 function ensureAudio() {
   return audioReady || (audioReady = startAudio());
@@ -392,7 +444,17 @@ async function startAudio() {
   actx = new AudioContext();
   await actx.audioWorklet.addModule('waves-worklet.js');
   node = new AudioWorkletNode(actx, 'waves', { numberOfInputs: 0, outputChannelCount: [2] });
-  node.connect(actx.destination);
+  // node → dry ─┬→ out;  node → convolver → wet ─┘
+  dryGain = actx.createGain();
+  wetGain = actx.createGain();
+  conv = actx.createConvolver();
+  conv.normalize = false;
+  node.connect(dryGain);
+  node.connect(conv);
+  conv.connect(wetGain);
+  dryGain.connect(actx.destination);
+  wetGain.connect(actx.destination);
+  applyVerb();
   node.port.onmessage = (e) => { if (e.data.type === 'viz') vizVoices = e.data.voices; };
   bankIndex.clear();
   bankSize = 0;
