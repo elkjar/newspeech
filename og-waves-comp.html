@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  canvas { position: absolute; inset: 0; }
+</style>
+</head>
+<body data-ready="0">
+<canvas id="c" width="1200" height="630"></canvas>
+<script>
+// og-waves comp — six stacked waveforms, no type (share images carry none).
+// Real library waves: six cycles across the life of the plucks table, so the
+// stack reads top → bottom as one sound walking its steps (busy attack →
+// bare sine). ?t=<table> and ?w=a,b,c,d,e,f swap the source for auditioning.
+const q = new URLSearchParams(location.search);
+const TABLE = q.get('t') || 'plucks';
+const PICKS = (q.get('w') || '0,6,12,18,24,31').split(',').map(Number);
+const FRAMES = 2048;
+const c = document.getElementById('c').getContext('2d');
+const X0 = 170, X1 = 1030, Y0 = 85, Y1 = 545;
+
+(async () => {
+  const buf = await (await fetch(`waves/${TABLE}.wav`)).arrayBuffer();
+  const dv = new DataView(buf);
+  let o = 12, data = 0;
+  while (o + 8 <= dv.byteLength) {
+    const tag = String.fromCharCode(dv.getUint8(o), dv.getUint8(o + 1), dv.getUint8(o + 2), dv.getUint8(o + 3));
+    const size = dv.getUint32(o + 4, true);
+    if (tag === 'data') { data = o + 8; break; }
+    o += 8 + size + (size & 1);
+  }
+  const wave = (w) => Float32Array.from({ length: FRAMES }, (_, i) => dv.getInt16(data + (w * FRAMES + i) * 2, true) / 32768);
+
+  const n = PICKS.length;
+  const lane = (Y1 - Y0) / n;
+  const amp = lane * 0.42;
+  c.lineWidth = 2;
+  c.lineJoin = 'round';
+  PICKS.forEach((w, k) => {
+    const x = wave(w);
+    let pk = 0;
+    for (const v of x) pk = Math.max(pk, Math.abs(v));
+    const cy = Y0 + lane * (k + 0.5);
+    c.strokeStyle = 'rgba(255,255,255,0.08)';
+    c.lineWidth = 1;
+    c.beginPath(); c.moveTo(X0, cy); c.lineTo(X1, cy); c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.85)';
+    c.lineWidth = 2.5;
+    c.beginPath();
+    for (let i = 0; i <= X1 - X0; i++) {
+      const v = x[Math.min(FRAMES - 1, Math.floor((i / (X1 - X0)) * FRAMES))] / (pk || 1);
+      const y = cy - v * amp;
+      if (i) c.lineTo(X0 + i, y); else c.moveTo(X0, y);
+    }
+    c.stroke();
+  });
+  document.body.dataset.ready = '1';
+})();
+</script>
+</body>
+</html>
