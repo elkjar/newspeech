@@ -5,6 +5,7 @@
 //   2. Resend mails a link: /api/listen?k=<token>  (signed, LINK_DAYS)
 //   3. opening it sets an HttpOnly cookie for that release and lands on the page
 //   4. the page pulls the audio from /api/stream/<release>/…, which checks the cookie
+//      (except the 15s previews, which anyone can play)
 //
 // The audio never touches git (the repo is public): tools/release-audio.sh
 // encodes stream copies, splits them into parts and uploads them to the
