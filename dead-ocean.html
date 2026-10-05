@@ -46,6 +46,7 @@
   #album .avail { display: grid; grid-template-columns: max-content 1fr; gap: 12px 28px; align-items: baseline; }
   #album .avail dt { color: #555; letter-spacing: 0.12em; }
   #album .avail dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  #album .avail [hidden] { display: none; } /* rows ship hidden; the config reveals the ones it fills */
   #album .svc { display: inline-flex; align-items: center; gap: 8px; color: #ccc; text-decoration: none; letter-spacing: 0.06em; white-space: nowrap; }
   #album .svc svg { width: 16px; height: 16px; fill: currentColor; display: block; }
   /* a bitmap mark used as a mask so it takes the text colour like the svgs */
@@ -349,10 +350,10 @@
     </form>
     <div id="album-player"></div>
     <dl class="avail">
-      <dt id="avail-now-dt">available on</dt>
-      <dd id="avail-now"></dd>
-      <dt class="soon-dt">coming soon to</dt>
-      <dd id="avail-soon" class="soon"></dd>
+      <dt id="avail-now-dt" hidden>available on</dt>
+      <dd id="avail-now" hidden></dd>
+      <dt id="avail-soon-dt" hidden>coming soon to</dt>
+      <dd id="avail-soon" class="soon" hidden></dd>
     </dl>
   </div>
 </section>
@@ -395,7 +396,7 @@
       <div class="seedrow">
         <span>seed <span class="seed" id="ruin-seed"></span></span>
         <button class="reseed" id="ruin-reseed" title="another wreck at the same settings">⟳</button>
-        <button id="ruin-keep" title="print the whole track through these settings and download it">download ↓</button>
+        <button id="ruin-keep" title="print the whole track through these settings and download it" hidden>download ↓</button>
         <span class="state" id="ruin-state"></span>
       </div>
     </div>
@@ -544,9 +545,10 @@
     if (ep.buyLabel) $("avail-now-dt").textContent = ep.buyLabel; // e.g. "available oct 20 on" before release
     const now = Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : [];
     now.forEach((b) => $("avail-now").appendChild(serviceEl(b)));
+    if (now.length) $("avail-now-dt").hidden = $("avail-now").hidden = false;
     const soon = (ep.streaming && ep.streaming.services) || [];
-    if (soon.length) soon.forEach((b) => $("avail-soon").appendChild(serviceEl(b, true)));
-    else { $("avail-soon").remove(); document.querySelector(".soon-dt").remove(); }
+    soon.forEach((b) => $("avail-soon").appendChild(serviceEl(b, true)));
+    if (soon.length) $("avail-soon-dt").hidden = $("avail-soon").hidden = false;
   }
 
   // ---- buy / streaming ---------------------------------------------------------
@@ -843,8 +845,8 @@
   const seedEl = $("ruin-seed"), stateEl = $("ruin-state"), keepBtn = $("ruin-keep");
   const R = { ruin: $("r-ruin"), speed: $("r-speed"), verb: $("r-verb") };
   // before release the record is stream-only: a print at ruin 0.01 is a clean
-  // copy, so downloads wait for release day
-  if (PRIVATE) keepBtn.hidden = true;
+  // copy, so the download ships hidden and only appears once the record is public
+  if (!PRIVATE) keepBtn.hidden = false;
 
   function pushSet() {
     const t = ep.tracks[cur < 0 ? 0 : cur];
