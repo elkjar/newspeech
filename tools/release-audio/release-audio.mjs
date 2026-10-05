@@ -4,7 +4,7 @@
 //   node tools/release-audio/release-audio.mjs [assets/ep/dead-ocean.json] [--upload]
 //
 // For every track in the EP config: encode <audioBase><file> to 256k AAC
-// (48k — the rate the room decodes at; never the masters), cut it into 2 MiB
+// (48k — the rate the page decodes at; never the masters), cut it into 2 MiB
 // parts, and cut a 15s preview — the public taste before the email. The
 // preview starts at the track's `previewStart` (seconds) in the config, or
 // else at the loudest 15s of the track. Everything lands under

@@ -54,7 +54,7 @@
   #album a.svc:hover { color: #fff; }
   #album .svc.pending { color: #555; pointer-events: none; }
   #album .soon dd .svc { color: #666; }
-  /* with the room off (ep.ruin false) the player lives here, under the facts */
+  /* with the ruin section off (ep.ruin false) the player lives here, under the facts */
   #album-player { max-width: 560px; margin: 0 0 34px; }
   #album-player:empty { display: none; }
   /* before release: the email form sits above the record, which stays locked
@@ -95,16 +95,16 @@
   }
   @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } #album .cover { max-width: 520px; } }
 
-  /* the room is the hero: one viewport tall, the visualizer lives inside it
+  /* the ruin section: one viewport tall, the visualizer lives inside it
      and scrolls away with it; the record keeps playing underneath the page */
-  #hero { position: relative; min-height: 100vh; overflow: hidden; }
-  #hero[hidden] { display: none; }
+  #ruin-section { position: relative; min-height: 100vh; overflow: hidden; }
+  #ruin-section[hidden] { display: none; }
   /* the section rule: the same 1px line the .sec blocks carry, kept to the
-     nav column, for the two full-bleed sections (hero, scores) */
+     nav column, for the two full-bleed sections (ruin, scores) */
   .ruled { position: relative; }
   .ruled::before { content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: min(1280px, 100%); height: 1px; background: #1c1c1c; z-index: 4; }
 
-  /* the visualizer: a real N-*.html page in a frame. the room hands its core.js
+  /* the visualizer: a real N-*.html page in a frame. the ruin section hands its core.js
      the AnalyserNode so the page reacts to the EP exactly as it would to a mic. */
   #viz { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; z-index: 0; background: #050505; }
 
@@ -119,13 +119,13 @@
       linear-gradient(0deg, rgba(5,5,5,.7) 0%, rgba(5,5,5,0) 14%);
   }
 
-  /* the room overlays the frame; only the controls take the pointer so the
+  /* the ruin layout overlays the frame; only the controls take the pointer so the
      page underneath still gets mouse movement everywhere else */
-  /* the room is laid out, not pinned: a flex row in the nav's 1280px column,
+  /* the ruin layout is laid out, not pinned: a flex row in the nav's 1280px column,
      centred in the viewport; below ~1100px it stacks (player first) and the
-     hero grows past one screen if the stack needs it. pointer-events pass
+     section grows past one screen if the stack needs it. pointer-events pass
      through the empty parts so the visualizer still sees the mouse. */
-  #room {
+  #ruin-layout {
     position: relative; z-index: 2; min-height: 100vh; pointer-events: none;
     display: flex; align-items: center;
     padding: 48px 0 56px;
@@ -281,7 +281,7 @@
   }
   #toast.on { opacity: 1; }
 
-  /* ---- sections below the hero: the nav's column, tool-page type ---- */
+  /* ---- sections below the ruin section: the nav's column, tool-page type ---- */
   .sec { max-width: 1280px; margin: 0 auto; padding: 72px var(--ns-gutter, 40px) 84px; border-top: 1px solid #1c1c1c; }
   .sec h2 { font-weight: 400; font-size: 14px; letter-spacing: 0.2em; color: #eee; margin: 0 0 6px; }
   .sec .lede { color: #777; margin: 0 0 40px; max-width: 60ch; }
@@ -357,13 +357,13 @@
     </dl>
   </div>
 </section>
-<!-- hidden until the EP config turns the room on (ep.ruin) — off by default so a slow
+<!-- the ruin section: hidden until the EP config turns it on (ep.ruin) — off by default so a slow
      config fetch never flashes the knobs -->
-<section id="hero" class="ruled" hidden>
+<section id="ruin-section" class="ruled" hidden>
 <iframe id="viz" title="visualizer" allow="midi"></iframe>
 <div id="scrim"></div>
 
-<div id="room">
+<div id="ruin-layout">
   <div id="col">
   <div id="sleeve">
     <h1><span data-link>ruin this ep</span></h1>
@@ -511,11 +511,11 @@
     list.appendChild(li);
   });
   const durEl = (i) => list.querySelector(`li[data-i="${i}"] .dur`);
-  // ep.ruin false: no room — the record plays from the top section and the
-  // hero (visualizer, ruin knobs, share) stays hidden and never loads. the
-  // hero ships hidden, so it only ever appears, never flashes and vanishes
+  // ep.ruin false: no ruin section — the record plays from the top section and
+  // the ruin section (visualizer, ruin knobs, share) stays hidden and never
+  // loads. it ships hidden, so it only ever appears, never flashes and vanishes
   const RUIN = ep.ruin !== false;
-  if (RUIN) $("hero").hidden = false; else $("album-player").appendChild(list);
+  if (RUIN) $("ruin-section").hidden = false; else $("album-player").appendChild(list);
 
   // ---- album: cover + facts + where to get it -----------------------------------
   const ICONS = {"bandcamp": "M0 18.75l7.437-13.5H24l-7.438 13.5H0z", "applemusic": "M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026-.747.043-1.49.123-2.193.4-1.336.53-2.3 1.452-2.865 2.78-.192.448-.292.925-.363 1.408-.056.392-.088.785-.1 1.18 0 .032-.007.062-.01.093v12.223c.01.14.017.283.027.424.05.815.154 1.624.497 2.373.65 1.42 1.738 2.353 3.234 2.801.42.127.856.187 1.293.228.555.053 1.11.06 1.667.06h11.03a12.5 12.5 0 001.57-.1c.822-.106 1.596-.35 2.295-.81a5.046 5.046 0 001.88-2.207c.186-.42.293-.87.37-1.324.113-.675.138-1.358.137-2.04-.002-3.8 0-7.595-.003-11.393zm-6.423 3.99v5.712c0 .417-.058.827-.244 1.206-.29.59-.76.962-1.388 1.14-.35.1-.706.157-1.07.173-.95.045-1.773-.6-1.943-1.536a1.88 1.88 0 011.038-2.022c.323-.16.67-.25 1.018-.324.378-.082.758-.153 1.134-.24.274-.063.457-.23.51-.516a.904.904 0 00.02-.193c0-1.815 0-3.63-.002-5.443a.725.725 0 00-.026-.185c-.04-.15-.15-.243-.304-.234-.16.01-.318.035-.475.066-.76.15-1.52.303-2.28.456l-2.325.47-1.374.278c-.016.003-.032.01-.048.013-.277.077-.377.203-.39.49-.002.042 0 .086 0 .13-.002 2.602 0 5.204-.003 7.805 0 .42-.047.836-.215 1.227-.278.64-.77 1.04-1.434 1.233-.35.1-.71.16-1.075.172-.96.036-1.755-.6-1.92-1.544-.14-.812.23-1.685 1.154-2.075.357-.15.73-.232 1.108-.31.287-.06.575-.116.86-.177.383-.083.583-.323.6-.714v-.15c0-2.96 0-5.922.002-8.882 0-.123.013-.25.042-.37.07-.285.273-.448.546-.518.255-.066.515-.112.774-.165.733-.15 1.466-.296 2.2-.444l2.27-.46c.67-.134 1.34-.27 2.01-.403.22-.043.442-.088.663-.106.31-.025.523.17.554.482.008.073.012.148.012.223.002 1.91.002 3.822 0 5.732z", "youtubemusic": "M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.332c-3.432 0-6.228 2.796-6.228 6.228S8.568 18.228 12 18.228s6.228-2.796 6.228-6.228S15.432 5.772 12 5.772zM9.684 15.54V8.46L15.816 12l-6.132 3.54z", "tidal": "M12.012 3.992L8.008 7.996 4.004 3.992 0 7.996 4.004 12l4.004-4.004L12.012 12l-4.004 4.004 4.004 4.004 4.004-4.004L12.012 12l4.004-4.004-4.004-4.004zM16.042 7.996l3.979-3.979L24 7.996l-3.979 3.979z"};
@@ -706,13 +706,13 @@
       el.dispatchEvent(new Event("change", { bubbles: true }));
     }
     if (t.beat && t.bpm && NS.setBpm) NS.setBpm(t.bpm); else if (NS.clearBpm) NS.clearBpm();
-    // the room is a listening surface first: start with the page's params
+    // the ruin section is a listening surface first: start with the page's params
     // panel closed ([0] in the frame still opens it — it's hidden, not removed)
     const panel = doc.getElementById("panel");
     if (panel) panel.hidden = true;
     applyQuiet(doc, NS);
     attach();
-    // the frame owns the keyboard once clicked — mirror the room's keys back
+    // the frame owns the keyboard once clicked — mirror the page's keys back
     viz.contentWindow.addEventListener("keydown", onKey);
   });
   // quiet layer: the visualizers were built to hold a screen alone; behind a
@@ -720,7 +720,7 @@
   // globals are applied for this load only (persist=false) so a visitor's own
   // haze/grain/data-points settings survive; the telemetry HUD is hidden by
   // style rather than toggled, for the same reason. all values live in the
-  // EP config so the room and the rendered videos agree.
+  // EP config so the ruin section and the rendered videos agree.
   const quiet = ep.quiet || {};
   if (quiet.dim != null) viz.style.opacity = String(quiet.dim);
   function applyQuiet(doc, NS) {
@@ -729,7 +729,7 @@
     if (quiet.dataPoints != null && NS.setDataPoints) NS.setDataPoints(quiet.dataPoints, false);
     const st = doc.createElement("style");
     // the visualizer pages hide the cursor (they're fullscreen instruments);
-    // the room is a page with controls, so the pointer stays
+    // the ruin section has controls, so the pointer stays
     st.textContent = "html,body{cursor:auto !important}" + (quiet.telemetry === false ? "#hud-overlay{display:none !important}" : "");
     doc.head.appendChild(st);
   }
@@ -896,7 +896,7 @@
   K.verb.addEventListener("input", () => { knobs.verb = +K.verb.value; showKnobs(); if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed, true); syncUrl(); });
   K.verb.addEventListener("change", () => { if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed); });
   $("ruin-reseed").addEventListener("click", () => { knobs.seed = randomSeed(); showKnobs(); pushSet(); if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed); syncUrl(); });
-  // ---- // share: the room's url, which carries the take when one is dialled in --
+  // ---- // share: the page's url, which carries the take when one is dialled in --
   function shareText() {
     const t = ep.tracks[cur < 0 ? 0 : cur];
     const touched = knobs.ruin > 0 || knobs.speed !== 1 || knobs.verb > 0;

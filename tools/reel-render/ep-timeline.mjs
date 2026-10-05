@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ep-timeline — the EP listening room and the EP videos read ONE config.
+// ep-timeline — the EP page's ruin section and the EP videos read ONE config.
 //
 // assets/ep/<ep>.json pairs each track with a visualizer page + tuned params
 // (the same {page, state:{params}} shape reel-render segments use). This
@@ -46,11 +46,11 @@ for (const t of tracks) {
   if (!t.duration) { console.error(`${t.slug}: no duration in config — ffprobe the flac and add it`); continue; }
   const state = { ...(t.state || {}) };
   // the page's tempo clock is a global (localStorage) in core.js; carry it into
-  // the render only when the listening room would also run it.
+  // the render only when the ruin section would also run it.
   if (t.beat && t.bpm) state.localStorage = { ...(state.localStorage || {}), 'newspeech.bpm': String(t.bpm) };
-  // the room's quiet layer, as the page globals reel-render can set (its
+  // the ruin section's quiet layer, as the page globals reel-render can set (its
   // headless profile is throwaway, so persisting there is fine). dim is frame
-  // opacity in the room — not representable here; darken the mp4 in post or
+  // opacity in the ruin section — not representable here; darken the mp4 in post or
   // fold it into the params if a pairing needs it.
   const q = ep.quiet || {};
   const ls = { ...(state.localStorage || {}) };

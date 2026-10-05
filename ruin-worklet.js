@@ -1,4 +1,4 @@
-// ruin-worklet — the EP listening room's player + "ruin" stage.
+// ruin-worklet — the EP ruin section's player + "ruin" stage.
 //
 // The worklet PLAYS the record itself from a decoded buffer (like glitch and
 // decay do) rather than sitting on an <audio> element: that is what makes

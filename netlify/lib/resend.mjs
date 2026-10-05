@@ -107,7 +107,7 @@ export function client(key) {
 
   // Upsert one contact and file it into its segments. `plugin`/`version` are
   // optional (homepage subscribe passes neither); `track` is the EP listening
-  // room's gate (dead-ocean source: a track slug, or "stream" for the
+  // ruin section's download gate (dead-ocean source: a track slug, or "stream" for the
   // pre-release listening link); `tool` is the browser tools' export
   // nudge (tools source); `shop` is the product a buyer took (shop source);
   // the sequence source is the app waitlist (homepage vignette).
