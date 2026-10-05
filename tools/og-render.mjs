@@ -47,7 +47,7 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const BASE = `http://127.0.0.1:${server.address().port}/`;
 
 const jobs = [];
-for (const t of ["decay", "drone", "glitch", "slice", "stretch", "plugins"]) {
+for (const t of ["decay", "drone", "glitch", "slice", "stretch", "plugins", "waves"]) {
   jobs.push({ name: `comp:${t}`, url: `og-${t}-comp.html`, out: `og-${t}.png`, wait: 400 });
 }
 // miniatures animate — give them a few seconds to get going
@@ -92,6 +92,8 @@ for (const j of todo) {
   await page.evaluate(() => document.fonts && document.fonts.ready);
   if (j.hide) await page.addStyleTag({ content: HIDE });
   if (j.sourced) await page.evaluate((u) => window.__loadSourceUrl(u), BASE + "assets/hero/hero-clean.mp4");
+  // a comp that loads data async marks <body data-ready="0"> until it has drawn
+  await page.waitForFunction(() => !document.body || document.body.dataset.ready !== "0");
   await page.waitForTimeout(j.wait);
   const jpg = j.out.endsWith(".jpg");
   await page.screenshot({ path: join(ROOT, j.out), type: jpg ? "jpeg" : "png", ...(jpg ? { quality: 84 } : {}) });
