@@ -1,0 +1,219 @@
+[
+ {
+  "id": "distant-pad-databent",
+  "cat": "pads",
+  "src": "pads/distant-pad-databent/distant-pad-databent-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "dx7-glaswerks",
+  "cat": "pads",
+  "src": "pads/dx7-glaswerks/dx7-glaswerks-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "encounter",
+  "cat": "pads",
+  "src": "pads/encounter/encounter_C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "monolith",
+  "cat": "pads",
+  "src": "pads/monolith/monolith-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "monolith-databent",
+  "cat": "pads",
+  "src": "pads/monolith-databent/monolith-databent-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "nasa-databent",
+  "cat": "pads",
+  "src": "pads/nasa-databent/nasa-databent-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "pad-high-databent",
+  "cat": "pads",
+  "src": "pads/pad-high-databent/pad-high-databent-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "pulsed",
+  "cat": "pads",
+  "src": "pads/pulsed/pulsed_C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "sinewaves-at-the-scope",
+  "cat": "pads",
+  "src": "pads/sinewaves-at-the-scope/sinewaves_C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "broken",
+  "cat": "instruments",
+  "src": "instruments/broken/broken-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "dark-omen",
+  "cat": "instruments",
+  "src": "instruments/dark-omen/dark-omen-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "dreams",
+  "cat": "instruments",
+  "src": "instruments/dreams/dreams-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "dx7-bells",
+  "cat": "instruments",
+  "src": "instruments/dx7-bells/dx7-bells-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "dx7-forest-house",
+  "cat": "instruments",
+  "src": "instruments/dx7-forest-house/dx7-forest-house-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "grand-piano-ss",
+  "cat": "instruments",
+  "src": "instruments/grand-piano-ss/grand-piano-ss-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "grind",
+  "cat": "instruments",
+  "src": "instruments/grind/grind-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "haunted",
+  "cat": "instruments",
+  "src": "instruments/haunted/haunted-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "hydrasynth_plaits",
+  "cat": "instruments",
+  "src": "instruments/hydrasynth_plaits/hp-E3-1.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "invasion",
+  "cat": "instruments",
+  "src": "instruments/invasion/invasion-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "plaits-soft-rev",
+  "cat": "instruments",
+  "src": "instruments/plaits-soft-rev/plaits-soft-rev-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "plucks",
+  "cat": "instruments",
+  "src": "instruments/plucks/plucks-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "poly6",
+  "cat": "instruments",
+  "src": "instruments/poly6/poly6-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "wave-grid",
+  "cat": "instruments",
+  "src": "instruments/wave-grid/wave-grid-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "wave-sub",
+  "cat": "instruments",
+  "src": "instruments/wave-sub/wave-sub-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "heat-death",
+  "cat": "bass",
+  "src": "bass/heat-death/heat-death-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "mini-moog",
+  "cat": "bass",
+  "src": "bass/mini-moog/mini-moog_C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "peavish",
+  "cat": "bass",
+  "src": "bass/peavish/peavish-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "pro-bass",
+  "cat": "bass",
+  "src": "bass/pro-bass/pro-bass-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "saw",
+  "cat": "bass",
+  "src": "bass/saw/saw-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "shitsaw",
+  "cat": "bass",
+  "src": "bass/shitsaw/shitsaw-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ },
+ {
+  "id": "triangle",
+  "cat": "bass",
+  "src": "bass/triangle/triangle-C2.wav",
+  "windows": 32,
+  "frames": 2048
+ }
+]

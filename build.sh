@@ -25,6 +25,8 @@ if [ -d news ]; then
   cp feed.xml _site/
 fi
 cp -r fonts _site/fonts
+# waves.html's wave library (tools/wave-harvest.mjs)
+cp -r waves _site/waves
 if [ -d assets ]; then
   cp -r assets _site/assets
 fi
