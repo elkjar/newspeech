@@ -15,6 +15,7 @@ import { getStore } from "@netlify/blobs";
 import { createHash } from "node:crypto";
 import { client, normalizeEmail } from "../lib/resend.mjs";
 import { RELEASES, LINK_DAYS, sign, verify, setCookie, listener } from "../lib/listen.mjs";
+import { manifest } from "../lib/r2.mjs";
 
 export const config = { path: "/api/listen" };
 
@@ -82,9 +83,10 @@ export default async (req) => {
   // the link (and the email's logo) point back at whichever deploy asked —
   // production or a preview
   const base = ALLOWED_ORIGIN.test(url.origin) || LOCAL.test(url.origin) ? url.origin : "https://www.newspeechsound.com";
-  let link;
+  let link, token;
   try {
-    link = `${base}/api/listen?k=${sign("link", release, LINK_DAYS)}`;
+    token = sign("link", release, LINK_DAYS);
+    link = `${base}/api/listen?k=${token}`;
   } catch (e) {
     console.error("listen:", e.message);
     return json(503, { ok: false, error: "not configured" });
@@ -115,6 +117,18 @@ export default async (req) => {
   }
   resend ||= client(process.env.RESEND_API_KEY);
 
+  // the full-res zips, straight from the email: the same signed token opens
+  // /api/stream's download route. listed from the uploaded manifest, so the
+  // email only ever offers what's in the bucket; no manifest → no list.
+  let zips = [];
+  try {
+    const m = await manifest(release);
+    zips = Object.entries((m && m.downloads) || {}).map(([id, d]) => ({
+      label: d.label, size: `${Math.round(d.bytes / 1048576)} MB`,
+      href: `${base}/api/stream/${release}/download/${id}?k=${token}`,
+    }));
+  } catch (e) { console.error("listen: manifest:", e.message); }
+
   try {
     await resend.subscribe({ email, source: release, track: "stream" });
     await resend.send({
@@ -128,6 +142,7 @@ export default async (req) => {
         "",
         `it opens the record in this browser and works for ${LINK_DAYS} days. it's meant for you — please don't pass it around.`,
         "",
+        ...(zips.length ? ["download the whole ep (zip, full res):", "", ...zips.flatMap((z) => [`${z.label} · ${z.size}`, z.href, ""])] : []),
         `— ${rel.artist}`,
       ].join("\n"),
       html: `<!doctype html><html><body style="margin:0;padding:32px 24px;background:#ffffff;color:#111111;font:14px/1.6 Menlo,Consolas,monospace">
@@ -135,7 +150,9 @@ export default async (req) => {
 <p style="margin:0 0 20px">here's your link to hear <b>${rel.title}</b> before it's out:</p>
 <p style="margin:0 0 24px"><a href="${link}" style="display:inline-block;padding:8px 18px;border:1px solid #111111;color:#111111;text-decoration:none">listen →</a></p>
 <p style="margin:0 0 20px;color:#555555">it opens the record in this browser and works for ${LINK_DAYS} days. it's meant for you — please don't pass it around.</p>
-<p style="margin:0;color:#555555">— ${rel.artist}</p>
+${zips.length ? `<p style="margin:0 0 10px">download the whole ep (zip, full res):</p>
+<p style="margin:0 0 24px">${zips.map((z) => `<a href="${z.href}" style="color:#111111">${z.label}</a> <span style="color:#555555">· ${z.size}</span>`).join("<br>")}</p>
+` : ""}<p style="margin:0;color:#555555">— ${rel.artist}</p>
 </body></html>`,
     });
     if (sent) { try { await sent.set(key, String(Math.floor(Date.now() / 1000))); } catch (_) {} }

@@ -47,6 +47,24 @@
   #album .avail dt { color: #555; letter-spacing: 0.12em; }
   #album .avail dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
   #album .avail [hidden] { display: none; } /* rows ship hidden; the config reveals the ones it fills */
+  /* the full-res zips — bandcamp's menu: pick a format, get the zip. only a
+     browser holding the listen cookie sees the row */
+  #album .avail dd.dl { gap: 12px; align-items: center; }
+  #album .dl select {
+    -webkit-appearance: none; appearance: none; background: transparent; border: 1px solid rgba(255,255,255,.45); border-radius: 0; color: #eee;
+    font: inherit; font-size: 12px; line-height: 18px; letter-spacing: 0.04em; padding: 7px 30px 7px 12px; cursor: pointer; outline: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 11px center; background-size: 9px 6px;
+  }
+  #album .dl select:focus { border-color: rgba(255,255,255,.9); }
+  #album .dl select option { background: #111; color: #eee; }
+  #album .dl button {
+    background: transparent; border: 1px solid rgba(255,255,255,.7); color: #eee; font: inherit; font-size: 12px; line-height: 18px;
+    letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; white-space: nowrap; min-width: 9ch;
+  }
+  #album .dl button:hover { background: rgba(255,255,255,.08); }
+  #album .dl button:disabled { opacity: .6; cursor: default; }
+  @media (max-width: 640px) { #album .dl select { font-size: 16px; } }
   #album .svc { display: inline-flex; align-items: center; gap: 8px; color: #ccc; text-decoration: none; letter-spacing: 0.06em; white-space: nowrap; }
   #album .svc svg { width: 16px; height: 16px; fill: currentColor; display: block; }
   /* a bitmap mark used as a mask so it takes the text colour like the svgs */
@@ -350,6 +368,8 @@
     </form>
     <div id="album-player"></div>
     <dl class="avail">
+      <dt id="dl-dt" hidden>download</dt>
+      <dd id="dl" class="dl" hidden><select id="dl-fmt" aria-label="format"></select><button type="button" id="dl-go">get ↓</button></dd>
       <dt id="avail-now-dt" hidden>available on</dt>
       <dd id="avail-now" hidden></dd>
       <dt id="avail-soon-dt" hidden>coming soon to</dt>
@@ -587,32 +607,30 @@
     for (const c of chunks) { bytes.set(c, o); o += c.length; }
     return bytes;
   }
-  // before release the audio isn't a public file: it comes from /api/stream in
-  // parts, only for a browser holding the listen cookie (netlify/lib/listen.mjs)
+  // before release the audio isn't a public file: /api/stream checks the listen
+  // cookie and redirects to a short-lived signed link in the R2 bucket
+  // (netlify/lib/listen.mjs, r2.mjs)
   const PRIVATE = ep.private && ep.private.release;
   class Locked extends Error {}
   let manifest = null;
-  async function fetchPrivate(t, onProgress) {
-    const base = `/api/stream/${PRIVATE}`;
+  async function getManifest() {
     if (!manifest) {
-      const r = await fetch(`${base}/manifest`, { cache: "no-store" });
+      const r = await fetch(`/api/stream/${PRIVATE}/manifest`, { cache: "no-store" });
       if (r.status === 401) throw new Locked("locked");
       if (!r.ok) throw new Error(`${r.status} fetching the manifest`);
       manifest = await r.json();
     }
+    return manifest;
+  }
+  async function fetchPrivate(t, onProgress) {
+    await getManifest();
     const info = manifest.tracks[t.slug];
     if (!info) throw new Error(`${t.slug} isn't uploaded`);
-    // the upload stamp keys the parts, so a re-upload never mixes with cached ones
-    const v = encodeURIComponent(manifest.made || "");
-    const out = new Uint8Array(info.bytes); let o = 0;
-    for (let i = 0; i < info.parts; i++) {
-      const r = await fetch(`${base}/${t.slug}/${i}?v=${v}`);
-      if (r.status === 401) throw new Locked("locked");
-      if (!r.ok) throw new Error(`${r.status} fetching ${t.slug} part ${i}`);
-      const b = await readBody(r, (n) => { if (onProgress) onProgress(Math.min(1, (o + n) / info.bytes)); o += n; });
-      out.set(b, o - b.length);
-    }
-    return out.buffer;
+    const r = await fetch(`/api/stream/${PRIVATE}/${t.slug}`);
+    if (r.status === 401) throw new Locked("locked");
+    if (!r.ok) throw new Error(`${r.status} fetching ${t.slug}`);
+    let got = 0;
+    return (await readBody(r, (n) => { got += n; if (onProgress) onProgress(Math.min(1, got / info.bytes)); })).buffer;
   }
   // the 15s previews: one small public file each, played while the record is locked
   const keyFor = (t, preview) => (preview ? "preview:" : "") + t.slug;
@@ -1077,8 +1095,29 @@
     setLocked(true); // most visitors are; a cookie holder sees it for one round trip
     unlockedP = fetch(`/api/listen?r=${encodeURIComponent(PRIVATE)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { unlocked: false })).then((j) => !!j.unlocked).catch(() => false);
-    unlockedP.then((ok) => setLocked(!ok));
+    unlockedP.then((ok) => { setLocked(!ok); if (ok) offerDownloads(); });
   }
+
+  // ---- the full-res zips: one per format (tools/release-audio builds them
+  // from the masters). /api/stream checks the cookie and redirects to the zip
+  // in R2, stored with its filename — the browser saves it like any download.
+  const dlRow = $("dl"), dlFmt = $("dl-fmt"), dlGo = $("dl-go");
+  const mb = (b) => `${Math.round(b / 1048576)} MB`;
+  async function offerDownloads() {
+    let m;
+    try { m = await getManifest(); } catch (_) { return; }
+    const ds = Object.entries(m.downloads || {});
+    if (!ds.length) return;
+    dlFmt.innerHTML = "";
+    for (const [id, d] of ds) dlFmt.add(new Option(`${d.label} · ${mb(d.bytes)}`, id));
+    dlRow.hidden = $("dl-dt").hidden = false;
+  }
+  dlGo.addEventListener("click", () => {
+    const d = manifest && manifest.downloads && manifest.downloads[dlFmt.value];
+    if (!d) return;
+    location.href = `/api/stream/${PRIVATE}/download/${encodeURIComponent(dlFmt.value)}`;
+    toast(`${d.name} (${mb(d.bytes)}) — your browser takes it from here`);
+  });
   function earlySay(text, err) { earlyMsg.hidden = !text; earlyMsg.textContent = text || ""; earlyMsg.classList.toggle("err", !!err); }
   function askEarly(note, err) {
     setLocked(true); earlySay(note, err); earlyGo.disabled = false;

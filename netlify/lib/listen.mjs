@@ -7,10 +7,11 @@
 //   4. the page pulls the audio from /api/stream/<release>/…, which checks the cookie
 //      (except the 15s previews, which anyone can play)
 //
-// The audio never touches git (the repo is public): tools/release-audio.sh
-// encodes stream copies, splits them into parts and uploads them to the
-// "releases" Netlify Blobs store. Parts keep every response small and quick —
-// no streamed-function size or duration limit to hit on a slow connection.
+// The audio never touches git (the repo is public): tools/release-audio
+// encodes stream copies, previews and the full-res zips and uploads them to a
+// private R2 bucket; /api/stream hands out short-lived signed links to them
+// (see r2.mjs). The emailed link opens the record AND downloads the zips —
+// the same signed token works on /api/stream/<release>/download/<format>.
 //
 // Going public on release day: delete the release from RELEASES and the
 // `private` block from its EP config, and point the config at public files.
@@ -59,6 +60,9 @@ export function verify(kind, token, release) {
   if (!(p.x > Date.now() / 1000)) return null;
   return p;
 }
+
+// a download format id as the manifest names them (flac, alac, wav, mp3)
+export const DOWNLOAD_ID = /^[a-z0-9]{1,8}$/;
 
 export const cookieName = (release) => `ns_listen_${release}`;
 
