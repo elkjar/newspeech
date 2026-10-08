@@ -107,7 +107,7 @@ if (dl) {
     ep.tracks.forEach((t, i) => {
       const n = String(i + 1).padStart(2, "0");
       const file = path.join(stage, `${artist} - ${album} - ${n} ${t.name || t.title}.${f.ext}`);
-      const tags = { title: t.name || t.title, artist, album_artist: artist, album, date: String(dl.year || ""), comment: "newspeechsound.com" };
+      const tags = { title: t.name || t.title, artist, album_artist: artist, album, date: String(dl.year || ""), genre: dl.genre || "", comment: "newspeechsound.com" };
       // vorbis comments want the number and the total apart; the others take n/total
       if (id === "flac") Object.assign(tags, { TRACKNUMBER: String(i + 1), TRACKTOTAL: String(ep.tracks.length) });
       else tags.track = `${i + 1}/${ep.tracks.length}`;
