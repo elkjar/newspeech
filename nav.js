@@ -43,6 +43,7 @@
   const PAGES =
     `<a href="${ROOT}dead-ocean.html"${here("dead-ocean.html")} data-ns-link>music</a>` +
     `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
+    `<a href="${ROOT}about.html"${here("about.html")} data-ns-link>about</a>` +
     `<a href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}" data-ns-link>sequence</a>` +
     `<a href="${ROOT}tools.html"${IN_TOOLS ? " class=\"current\"" : ""} data-ns-link>tools</a>` +
     `<a href="${ROOT}plugins.html"${here("plugins.html")} data-ns-link>plugins</a>` +
@@ -261,6 +262,7 @@
     `<div class="ov-list">` +
     `<a class="ov-link${cur("dead-ocean.html")}" href="${ROOT}dead-ocean.html">music</a>` +
     `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
+    `<a class="ov-link${cur("about.html")}" href="${ROOT}about.html">about</a>` +
     `<a class="ov-link" href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}">sequence</a>` +
     `<a class="ov-link${IN_TOOLS ? " current" : ""}" href="${ROOT}tools.html">tools</a>` +
     `<a class="ov-link${cur("plugins.html")}" href="${ROOT}plugins.html">plugins</a>` +
