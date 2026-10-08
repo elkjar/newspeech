@@ -1155,7 +1155,7 @@
       if (j.unlocked) { // the email couldn't go out (quota / outage) — the server let this browser in instead
         unlockedP = Promise.resolve(true); setLocked(false); offerDownloads();
         earlyGo.disabled = false;
-        toast("you're in — the email couldn't go out right now, so this browser is unlocked. press play", 7000);
+        toast("the email couldn't go out - whoops. oh well, enjoy the download here", 7000);
         return;
       }
       earlySay("sent — the link in your inbox opens the record here");
