@@ -82,11 +82,10 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   .s.lead h1 {
     font-family: "zxx-sans", ui-monospace, monospace;
     font-weight: normal;
-    font-size: clamp(54px, 9.35vw, 143px);
+    font-size: clamp(44px, 7vw, 108px);
     line-height: 0.95;
     letter-spacing: 0.01em;
     margin: 0 0 36px;
-    white-space: nowrap; /* per-letter spans would otherwise break mid-word */
     user-select: none;
   }
   .s h2 {
@@ -125,6 +124,7 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   .wrap { will-change: transform; }
   .chroma { filter: drop-shadow(-1.5px 0 0 rgba(0, 255, 255, 0.8)) drop-shadow(1.5px 0 0 rgba(255, 0, 255, 0.8)); }
   [data-wear] span { display: inline-block; }
+  [data-wear] .w { white-space: nowrap; } /* a heading wraps between words, never inside one (about.js) */
 
   /* the end of the record */
   .end { padding: 4vh 0 8vh; }
@@ -132,6 +132,7 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   .end .src { margin: 0; max-width: 64ch; font-size: 11px; line-height: 1.7; color: rgba(255, 255, 255, 0.4); }
 
   @media (max-width: 900px) {
+    .grid { column-gap: 0; } /* everything spans the row here; 11 gaps alone outgrow a 320px phone */
     .s .in, .s.p-right .in, .s.p-wide .in { grid-column: 1 / 13; }
     .s { padding: 16vh 0; }
   }

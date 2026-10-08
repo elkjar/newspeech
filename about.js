@@ -159,16 +159,24 @@
     }
   }
 
-  // headings (the lead h1 + the section h2s): wrap for scrambles + drift
+  // headings (the lead h1 + the section h2s): wrap for scrambles + drift.
+  // letters are inline-blocks, which a line may break between — so each
+  // word's letters sit in a no-break wrapper and only the real spaces
+  // between words can wrap (a long heading folds onto lines on a phone)
   for (const el of document.querySelectorAll("[data-wear]")) {
-    const txt = el.textContent;
+    const words = el.textContent.trim().split(/\s+/);
     el.textContent = "";
-    for (const ch of txt) {
-      const s = document.createElement("span");
-      s.textContent = ch === " " ? " " : ch;
-      s.dataset.o = s.textContent;
-      el.appendChild(s);
-    }
+    words.forEach((word, i) => {
+      if (i) el.appendChild(document.createTextNode(" "));
+      const w = document.createElement("span");
+      w.className = "w";
+      for (const ch of word) {
+        const s = document.createElement("span");
+        s.textContent = s.dataset.o = ch;
+        w.appendChild(s);
+      }
+      el.appendChild(w);
+    });
   }
   for (const sec of sections) sec._chars = charSpans(sec.querySelector(".copy"));
   // measure once the fonts have settled (positions shift as zxx loads)
@@ -179,7 +187,7 @@
   // ================= live: the reading line =================
   // heading scrambles, faster + wider as it warms
   for (const el of document.querySelectorAll("[data-wear]")) {
-    const live = [...el.children].filter((s) => s.dataset.o.trim());
+    const live = [...el.querySelectorAll("[data-o]")];
     poisson(() => 0.2 + 9 * Math.pow(wear(), 1.3), () => {
       const n = 1 + Math.floor(Math.pow(wear(), 1.2) * live.length);
       const hit = [...live].sort(() => Math.random() - 0.5).slice(0, n);

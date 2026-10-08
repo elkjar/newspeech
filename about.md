@@ -28,7 +28,7 @@ you can answer, flagged inline below with [?]:
 the page is public and in the top nav (third, after news) since 10-07.
 -->
 
-## newspeech
+## hello, world.
 
 i'm chris elkjar. newspeech is a collection of things i've made. this started as a music project, which turned into a software project, which ended up as a plugin project. i can't wait to see what comes next.  i've always loved creating and releasing things for free, removing the commerce side of music and focusing on the parts that excited me. the tools are released the same way the music is: use them on anything, commercial or not, no credit needed.
 
