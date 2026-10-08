@@ -2,7 +2,9 @@
 //
 //   POST {email, release, bot-field}  file the email in Resend (source = the
 //                                     release, property "stream") and mail a
-//                                     signed listening link
+//                                     signed listening link — or, if the mail
+//                                     can't go out (quota, outage), set the
+//                                     cookie right here: {unlocked: true}
 //   GET  ?k=<token>                   the link from that email: set the
 //                                     release's cookie, land on its page
 //   GET  ?r=<release>                 {unlocked} — does this browser hold a
@@ -162,6 +164,16 @@ ${zips.length ? `<p style="margin:0 0 10px">download the whole ep (zip, full res
     return json(200, { ok: true });
   } catch (e) {
     console.error("listen:", e.message);
+    // the email couldn't go out — Resend over quota / rate limited (429),
+    // down (5xx) or unreachable. the address is already filed, and the gate
+    // is there to collect it, not to guard the record: let this browser in
+    // now rather than strand the listener. a 4xx about the address itself
+    // (422 etc.) stays an error, so a typo still gets caught.
+    const status = e && e.status;
+    if (!status || status === 429 || status >= 500) {
+      console.log(`listen: unlocked ${release} without the email (${status || "no response"})`);
+      return json(200, { ok: true, unlocked: true }, { "Set-Cookie": setCookie(req, release) });
+    }
     return json(502, { ok: false, error: "upstream" });
   }
 };

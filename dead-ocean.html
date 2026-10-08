@@ -1152,6 +1152,12 @@
       try { localStorage.setItem(EMAIL_KEY, email); } catch (_) {}
       const j = await res.json().catch(() => ({}));
       if (j.dev_link) { location.href = j.dev_link; return; } // local dry run: no email, straight through
+      if (j.unlocked) { // the email couldn't go out (quota / outage) — the server let this browser in instead
+        unlockedP = Promise.resolve(true); setLocked(false); offerDownloads();
+        earlyGo.disabled = false;
+        toast("the email couldn't go out - whoops. oh well, enjoy the download here", 7000);
+        return;
+      }
       earlySay("sent — the link in your inbox opens the record here");
       earlyGo.disabled = false;
     } catch (_) {
@@ -1190,9 +1196,9 @@
   window.__deadOcean = { renderTake, loadTrack, knobs, tracks: ep.tracks, makeImpulse, verbParams };
 
   let toastTimer = null;
-  function toast(msg) {
+  function toast(msg, ms = 2800) {
     const el = $("toast"); el.textContent = msg; el.classList.add("on");
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("on"), 2800);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("on"), ms);
   }
 
   function onKey(e) {
