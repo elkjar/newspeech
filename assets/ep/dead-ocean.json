@@ -1,7 +1,6 @@
 {
   "title": "dead ocean",
   "cover": "assets/ep/cover.jpg",
-  "releaseDate": "november 20, 2026",
   "artist": "newspeech",
   "download": {
     "note": "the full-res zips, Bandcamp-style: tools/release-audio builds one per format from the 24/48 masters in audioBase — files + tags use the proper-case names below, the page keeps its lowercase titles",
