@@ -39,7 +39,6 @@
     display: grid; grid-template-columns: minmax(240px, min(520px, 45%)) 1fr; gap: 56px; /* 520px ≈ 7.5% taller than the locked text stack (483px) */ align-items: center; align-content: center;
   }
   #album .cover { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border: 1px solid #1c1c1c; background: #0a0a0a; }
-  #album .artist { color: #666; letter-spacing: 0.18em; margin: 0 0 6px; }
   #album .name { font-family: "zxx-sans", ui-monospace, monospace; font-weight: 400; font-size: clamp(26px, 3vw, 38px); line-height: 1.1; letter-spacing: 0.05em; color: #eee; margin: 0 0 12px; }
   #album .facts { color: #777; margin: 0 0 34px; }
   #album .facts b { color: #ccc; font-weight: 400; }
@@ -73,14 +72,14 @@
   #album .svc.pending { color: #555; pointer-events: none; }
   #album .soon dd .svc { color: #666; }
   /* with the ruin section off (ep.ruin false) the player lives here, under the facts */
-  #album-player { max-width: 560px; margin: 0 0 34px; }
+  #album-player { margin: 0 0 34px; }
   #album-player:empty { display: none; }
   /* before release: the email form sits above the record, which stays locked
      (dimmed, unplayable) until the emailed link sets the cookie */
-  #album .early { margin: 0 0 26px; max-width: 560px; }
+  #album .early { margin: 0 0 26px; }
   #album .early[hidden] { display: none; }
   #album .early .hp { display: none; }
-  #album .early .lbl { display: block; color: #999; margin: 0 0 12px; max-width: 52ch; }
+  #album .early .lbl { display: block; color: #999; margin: 0 0 12px; }
   #album .early .row { display: flex; flex-wrap: wrap; gap: 12px; }
   #album .early input[type="email"] {
     background: transparent; border: 1px solid rgba(255,255,255,.45); color: #eee; font: inherit; font-size: 12px; line-height: 18px;
@@ -354,7 +353,6 @@
 <section id="album">
   <img class="cover" id="cover" alt="" width="1400" height="1400">
   <div class="info">
-    <p class="artist" id="album-artist"></p>
     <h1 class="name" id="album-name"></h1>
     <p class="facts" id="album-facts"></p>
     <form id="early" class="early" novalidate hidden>
@@ -554,7 +552,6 @@
   }
   {
     if (ep.cover) { $("cover").src = ep.cover; $("cover").alt = `${ep.title} — cover`; } else $("cover").remove();
-    $("album-artist").textContent = ep.artist || "";
     $("album-name").textContent = ep.title || "";
     const n = ep.tracks.length;
     const total = ep.tracks.reduce((s, t) => s + (t.duration || 0), 0);
@@ -562,13 +559,16 @@
     if (total) parts.push(fmt(total));
     if (ep.releaseDate) parts.push(`<b>${ep.releaseDate}</b>`);
     $("album-facts").innerHTML = parts.join(" · ");
-    if (ep.buyLabel) $("avail-now-dt").textContent = ep.buyLabel; // e.g. "available oct 20 on" before release
-    const now = Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : [];
-    now.forEach((b) => $("avail-now").appendChild(serviceEl(b)));
-    if (now.length) $("avail-now-dt").hidden = $("avail-now").hidden = false;
-    const soon = (ep.streaming && ep.streaming.services) || [];
-    soon.forEach((b) => $("avail-soon").appendChild(serviceEl(b, true)));
-    if (soon.length) $("avail-soon-dt").hidden = $("avail-soon").hidden = false;
+    // "platforms": false keeps the buy/streaming rows off until the record is out there
+    if (ep.platforms !== false) {
+      if (ep.buyLabel) $("avail-now-dt").textContent = ep.buyLabel; // e.g. "available oct 20 on" before release
+      const now = Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : [];
+      now.forEach((b) => $("avail-now").appendChild(serviceEl(b)));
+      if (now.length) $("avail-now-dt").hidden = $("avail-now").hidden = false;
+      const soon = (ep.streaming && ep.streaming.services) || [];
+      soon.forEach((b) => $("avail-soon").appendChild(serviceEl(b, true)));
+      if (soon.length) $("avail-soon-dt").hidden = $("avail-soon").hidden = false;
+    }
   }
 
   // ---- buy / streaming ---------------------------------------------------------

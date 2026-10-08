@@ -16,6 +16,7 @@
       "mp3"
     ]
   },
+  "platforms": false,
   "buyLabel": "available nov 20 on",
   "buy": [
     {
@@ -53,7 +54,7 @@
   "audioBase": "assets/ep/",
   "private": {
     "release": "dead-ocean",
-    "note": "pre-release preview: stream only, behind the email link. release day (bandcamp/subvert): delete this block AND \"ruin\": false, drop \"buyLabel\", drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at the public files. the full-res zips ride the same cookie, so they go away with it — decide then whether they stay (public files) or not."
+    "note": "pre-release preview: stream only, behind the email link. release day (bandcamp/subvert): delete this block AND \"ruin\": false, drop \"buyLabel\" and \"platforms\": false, drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at the public files. the full-res zips ride the same cookie, so they go away with it — decide then whether they stay (public files) or not."
   },
   "ruin": false,
   "quiet": {
