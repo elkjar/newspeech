@@ -1,0 +1,1129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<meta name="robots" content="noindex">
+<title>NEWSPEECH // waves</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — wave sequencer. Polyphonic, off the clock.">
+<meta property="og:title" content="NEWSPEECH // waves">
+<meta property="og:description" content="newspeech — wave sequencer. Every voice keeps its own time.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/waves.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-waves.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="waves — six single-cycle waveforms stacked, one sound across its life">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // waves">
+<meta name="twitter:description" content="newspeech — wave sequencer. Every voice keeps its own time.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-waves.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0 0 4px; }
+  .sub { color: #666; margin: 0 0 20px; }
+
+  button {
+    font: inherit; background: none; color: #ccc; border: 1px solid #444;
+    padding: 8px 22px; cursor: pointer; letter-spacing: 0.15em;
+  }
+  button:hover { border-color: #999; color: #fff; }
+  button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .hint { color: #555; }
+
+  /* the morph display — every sounding voice's current wave, overlaid */
+  #display { position: relative; height: 200px; background: #0a0a0a; border: 1px solid #1c1c1c; margin-bottom: 14px; }
+  #scope { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #dispinfo {
+    position: absolute; top: 8px; left: 10px; color: #777;
+    background: rgba(5,5,5,0.6); padding: 1px 6px; pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .group { border: 1px solid #1c1c1c; padding: 14px 16px 12px; margin-bottom: 14px; }
+  .group h2 { font-size: 11px; font-weight: 400; letter-spacing: 0.25em; color: #999; margin: 0 0 12px; }
+  .ghead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+  .ghead h2 { margin: 0; }
+  .ghead .count { color: #666; font-variant-numeric: tabular-nums; }
+
+  /* sequence strip: one canvas (cells + live voice markers) */
+  #strip { display: block; width: 100%; cursor: pointer; touch-action: manipulation; }
+  .seg { display: flex; gap: 4px; margin: 10px 0 0; flex-wrap: wrap; align-items: center; }
+  .seg button { padding: 4px 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.1em; }
+  .seg button:hover { color: #fff; border-color: #777; }
+  .seg button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  .seg .seglabel { color: #666; padding: 0 4px 0 0; }
+
+  /* knobs (texture.html anatomy) */
+  .row2 { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  .krow { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .kdivider { align-self: stretch; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px; }
+  .kcol {
+    display: flex; flex-direction: column; align-items: center; gap: 2px; width: 58px;
+    user-select: none; -webkit-user-select: none;
+  }
+  .kcol svg { cursor: ns-resize; touch-action: none; display: block; }
+  .kcol svg:hover .kring { stroke-opacity: 0.22; }
+  .kcol .klabel { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: rgba(255,255,255,0.7); text-align: center; }
+  .kcol .kval { font-size: 10px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+
+  /* modifier toggles: labeled-circle text-only */
+  .toggle { background: none; border: none; padding: 2px 6px; color: #777; cursor: pointer; letter-spacing: 0.1em; }
+  .toggle:hover { color: #fff; border: none; }
+  .toggle.on { color: #fff; background: none; }
+
+  /* library */
+  /* table tabs: one uniform grid per category — equal cells, names clipped */
+  #tables { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+  .tcat { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: #555; margin-bottom: 5px; }
+  .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px; }
+  .tgrid button {
+    padding: 5px 8px; border-color: #222; color: #777; letter-spacing: 0.04em;
+    font-size: 11px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tgrid button:hover { color: #fff; border-color: #666; }
+  .tgrid button.on { background: #ddd; color: #050505; border-color: #ddd; }
+  #wavegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 4px; }
+  #wavegrid canvas { width: 100%; height: 36px; display: block; background: #0a0a0a; border: 1px solid #1a1a1a; cursor: pointer; }
+  #wavegrid canvas:hover { border-color: #888; }
+
+  /* keyboard */
+  #keys { position: relative; display: flex; gap: 2px; height: 72px; margin-top: 8px; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #keys div { flex: 1; border: 1px solid #2a2a2a; background: #121212; position: relative; }
+  #keys div.blk { position: absolute; top: 0; height: 60%; background: #050505; border-color: #3a3a3a; z-index: 1; }
+  #keys div.down { background: #ddd; border-color: #ddd; }
+  #keys div span { position: absolute; bottom: 3px; left: 0; right: 0; text-align: center; font-size: 9px; color: #444; pointer-events: none; }
+  #kbbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  /* print */
+  #printrow { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #printrow .seg { margin: 0; }
+  #kitname {
+    font: inherit; font-size: 12px; background: #050505; color: #fff;
+    border: 1px solid rgba(255,255,255,0.45); padding: 7px 12px; height: 34px; width: 200px;
+  }
+  #kitname:focus { outline: none; border-color: rgba(255,255,255,0.8); }
+  #printgo { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  #print:disabled { opacity: 0.4; cursor: default; }
+
+  @media (max-width: 720px) {
+    .row2 { flex-direction: column; align-items: stretch; }
+    .row2 > .kdivider { width: auto; height: 1px; margin: 12px 0; align-self: auto; }
+    .tgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tgrid button { font-size: 10px; letter-spacing: 0; padding: 5px 6px; }
+    #keys { height: 80px; }
+    #kitname { font-size: 16px; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<script src="nav.js"></script>
+<script src="grain.js"></script>
+
+<h1>// WAVES</h1>
+<p class="sub">wave sequencer — every voice keeps its own time</p>
+
+<div id="display">
+  <canvas id="scope"></canvas>
+  <div id="dispinfo"></div>
+</div>
+
+<div class="group">
+  <div class="ghead">
+    <h2>SEQUENCE</h2>
+    <span class="count" id="count"></span>
+  </div>
+  <canvas id="strip"></canvas>
+  <div class="seg">
+    <button id="addstep" title="add a step after the selected one">+ STEP</button>
+    <button id="delstep" title="remove the selected step [backspace]">− STEP</button>
+    <button id="fill" title="spread the open table across every step — its life, start to end">FILL</button>
+    <button id="random" title="every step a random wave from anywhere in the library">RANDOM</button>
+  </div>
+</div>
+
+<div class="group">
+  <div class="row2">
+    <div class="subgroup">
+      <h2>MOTION</h2>
+      <div class="krow" id="seq-knobs"></div>
+    </div>
+    <div class="kdivider"></div>
+    <div class="subgroup">
+      <h2>VOICE</h2>
+      <div class="krow" id="voice-knobs"></div>
+    </div>
+    <div class="kdivider"></div>
+    <div class="subgroup">
+      <h2>SPACE</h2>
+      <div class="krow" id="space-knobs"></div>
+    </div>
+  </div>
+</div>
+
+<div class="group">
+  <h2>LIBRARY</h2>
+  <div id="tables"></div>
+  <div id="wavegrid"></div>
+  <p class="hint" style="margin:10px 0 0">click a wave to put it on the selected step (selection moves on) · shift-click to insert after it</p>
+</div>
+
+<div class="group">
+  <h2>PLAY</h2>
+  <div id="kbbar">
+    <button class="toggle" id="hold" title="latch notes — press a held note again to release it">○ hold</button>
+    <button class="toggle" id="midi" title="play from any connected MIDI keyboard">○ midi</button>
+    <span class="hint" id="kbhint"></span>
+  </div>
+  <div id="keys"></div>
+</div>
+
+<div class="group">
+  <h2>PRINT</h2>
+  <div id="printrow">
+    <input id="kitname" type="text" spellcheck="false" autocomplete="off" placeholder="kit name" aria-label="kit name">
+    <div class="seg" id="plen">
+      <span class="seglabel">hold</span>
+      <button data-v="4">4s</button>
+      <button data-v="8" class="on">8s</button>
+      <button data-v="16">16s</button>
+      <button data-v="30">30s</button>
+    </div>
+    <div class="seg" id="ptakes">
+      <span class="seglabel">takes</span>
+      <button data-v="1">1</button>
+      <button data-v="2" class="on">2</button>
+      <button data-v="3">3</button>
+      <button data-v="4">4</button>
+    </div>
+    <button class="toggle" id="pverb" title="print the reverb into the samples (stereo) — off = dry mono, for a sampler with its own space">○ reverb</button>
+  </div>
+  <div id="printgo">
+    <button id="print">PRINT KIT</button>
+    <span class="hint" id="printinfo"></span>
+  </div>
+</div>
+
+<script>
+// waves.html — browser prototype of a wave-sequencing voice (Wavestation
+// lineage, newspeech rules). DSP in waves-worklet.js. The library is
+// waves/*.wav: WINDOWS × 2048-frame single cycles per table, harvested from
+// the site's sample kits by tools/wave-harvest.mjs — the same layout the
+// Sequence app's wavetable voice (and the Polyend Tracker) reads, so a
+// sequence written here is (table, window) pairs the app can resolve later.
+//
+// Timing is deliberately ungridded: step lengths are ms, rolled per step
+// (jitter) and per voice (drift); there is no tempo anywhere on the page.
+
+const FRAMES = 2048;
+const LEVELS = 11;
+const STORE = 'newspeech.waves.v1';
+
+// --- knob space → values --------------------------------------------------
+const stepMs = (k) => 2 * Math.pow(4000, k);
+const attackS = (k) => 0.001 * Math.pow(3000, k);
+const releaseS = (k) => 0.005 * Math.pow(2000, k);
+const cutoffHz = (k) => 40 * Math.pow(450, k);
+const fmtMs = (ms) => ms >= 1000 ? (ms / 1000).toFixed(2) + 's' : ms >= 10 ? Math.round(ms) + 'ms' : ms.toFixed(1) + 'ms';
+const fmtHz = (hz) => hz >= 1000 ? (hz / 1000).toFixed(1) + 'k' : Math.round(hz) + 'Hz';
+const pct = (k) => Math.round(ui[k] * 100) + '';
+
+const ui = {
+  step: Math.log(90) / Math.log(4000), // 180ms
+  jitter: 0.35,
+  xfade: 0.5,
+  drift: 0.3,
+  attack: Math.log(10) / Math.log(3000), // 10ms
+  release: Math.log(120) / Math.log(2000), // 600ms
+  cutoff: Math.log(150) / Math.log(450), // 6k
+  res: 0.2,
+  level: 0.55,
+  verb: 0.5, // ~4s tail
+};
+
+function workletParams() {
+  return {
+    stepMs: stepMs(ui.step),
+    jitter: ui.jitter,
+    xfade: ui.xfade,
+    drift: ui.drift,
+    attack: attackS(ui.attack),
+    release: releaseS(ui.release),
+    cutoff: cutoffHz(ui.cutoff),
+    res: ui.res,
+    level: ui.level * 1.5,
+  };
+}
+
+const KNOB_SPECS = [
+  { group: 'seq-knobs', k: 'step', label: 'step', fmt: () => fmtMs(stepMs(ui.step)),
+    title: 'base step length, 2ms–8s — no tempo; the bottom of the range is audio-rate timbre switching' },
+  { group: 'seq-knobs', k: 'jitter', label: 'jitter', fmt: () => pct('jitter'),
+    title: 'every step rolls its own length — full = ⅓× to 3× the base' },
+  { group: 'seq-knobs', k: 'xfade', label: 'xfade', fmt: () => pct('xfade'),
+    title: 'how much of each step morphs into the next — 0 = hard steps, full = always moving' },
+  { group: 'seq-knobs', k: 'drift', label: 'drift', fmt: () => pct('drift'),
+    title: 'per-voice clock spread — each note runs the sequence up to 2× faster or slower than the next' },
+  { group: 'voice-knobs', k: 'attack', label: 'attack', fmt: () => fmtMs(attackS(ui.attack) * 1000) },
+  { group: 'voice-knobs', k: 'release', label: 'release', fmt: () => fmtMs(releaseS(ui.release) * 1000) },
+  { group: 'voice-knobs', k: 'cutoff', label: 'cutoff', fmt: () => fmtHz(cutoffHz(ui.cutoff)) },
+  { group: 'voice-knobs', k: 'res', label: 'res', fmt: () => pct('res'),
+    title: 'lowpass resonance — self-oscillates at the top' },
+  { group: 'voice-knobs', k: 'level', label: 'level', fmt: () => Math.round(ui.level * 150) + '' },
+  { group: 'space-knobs', k: 'verb', label: 'reverb', fmt: () => ui.verb > 0 ? verbParams(ui.verb).decay.toFixed(1) + 's' : 'dry',
+    title: 'the dead ocean / decay reverb — one knob: more = longer tail + wetter', live: () => applyVerb(true), settle: () => applyVerb() },
+];
+
+// --- knobs: same anatomy as texture.html / the app's Knob.tsx ----------------
+const SVGNS = 'http://www.w3.org/2000/svg';
+const KNOB_SIZE = 40;
+const knobs = {};
+
+function buildKnob(spec) {
+  const col = document.createElement('div');
+  col.className = 'kcol';
+  col.dataset.kn = spec.k;
+  const s = KNOB_SIZE, cx = s / 2, cy = s / 2, ringR = s * 0.36;
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('width', s);
+  svg.setAttribute('height', s);
+  svg.setAttribute('viewBox', `0 0 ${s} ${s}`);
+  if (spec.title) {
+    const t = document.createElementNS(SVGNS, 'title');
+    t.textContent = spec.title;
+    svg.appendChild(t);
+  }
+  const ring = document.createElementNS(SVGNS, 'circle');
+  ring.setAttribute('cx', cx); ring.setAttribute('cy', cy); ring.setAttribute('r', ringR);
+  ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', 'white');
+  ring.setAttribute('stroke-opacity', '0.12'); ring.setAttribute('stroke-width', '1');
+  ring.setAttribute('class', 'kring');
+  const arc = document.createElementNS(SVGNS, 'path');
+  arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', 'white');
+  arc.setAttribute('stroke-opacity', '0.7'); arc.setAttribute('stroke-width', '1.75');
+  arc.setAttribute('stroke-linecap', 'round');
+  const tick = document.createElementNS(SVGNS, 'line');
+  tick.setAttribute('stroke', 'white'); tick.setAttribute('stroke-opacity', '0.9');
+  tick.setAttribute('stroke-width', '1.75'); tick.setAttribute('stroke-linecap', 'round');
+  svg.append(ring, arc, tick);
+  const label = document.createElement('span');
+  label.className = 'klabel';
+  label.textContent = spec.label;
+  const val = document.createElement('span');
+  val.className = 'kval';
+  col.append(svg, label, val);
+
+  function draw() {
+    const v = Math.min(1, Math.max(0, ui[spec.k]));
+    const ang = ((-135 + 270 * v) * Math.PI) / 180;
+    const ti = s * 0.17;
+    tick.setAttribute('x1', cx + ti * Math.sin(ang)); tick.setAttribute('y1', cy - ti * Math.cos(ang));
+    tick.setAttribute('x2', cx + ringR * Math.sin(ang)); tick.setAttribute('y2', cy - ringR * Math.cos(ang));
+    if (v > 0) {
+      const st = (-135 * Math.PI) / 180;
+      const large = 270 * v > 180 ? 1 : 0;
+      arc.setAttribute('d',
+        `M ${cx + ringR * Math.sin(st)} ${cy - ringR * Math.cos(st)} ` +
+        `A ${ringR} ${ringR} 0 ${large} 1 ${cx + ringR * Math.sin(ang)} ${cy - ringR * Math.cos(ang)}`);
+      arc.setAttribute('visibility', 'visible');
+    } else arc.setAttribute('visibility', 'hidden');
+    val.textContent = spec.fmt();
+  }
+  function setValue(next) {
+    const v = Math.min(1, Math.max(0, next));
+    if (v === ui[spec.k]) return;
+    ui[spec.k] = v;
+    draw();
+    if (spec.live) spec.live(); else pushParams();
+    printEstimate(); // tail length follows release / reverb
+    save();
+  }
+  // knobs with a costly side (the reverb impulse) rebuild once the gesture ends
+  let settleTimer = 0;
+  const settle = () => { if (spec.settle) { clearTimeout(settleTimer); settleTimer = setTimeout(spec.settle, 200); } };
+  svg.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const y0 = e.clientY, v0 = ui[spec.k];
+    const move = (ev) => setValue(v0 + (y0 - ev.clientY) / 100);
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); settle(); };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+  });
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    setValue(ui[spec.k] + (e.deltaY > 0 ? -0.05 : 0.05));
+    settle();
+  }, { passive: false });
+  knobs[spec.k] = { draw };
+  draw();
+  return col;
+}
+
+// --- fft (radix-2, in place) — mip levels for the worklet -------------------
+function fft(re, im, inv) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const a = (inv ? 2 : -2) * Math.PI / len, wr = Math.cos(a), wi = Math.sin(a);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const h = i + k + len / 2;
+        const vr = re[h] * cr - im[h] * ci, vi = re[h] * ci + im[h] * cr;
+        re[h] = re[i + k] - vr; im[h] = im[i + k] - vi;
+        re[i + k] += vr; im[i + k] += vi;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+  if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+
+// Level i keeps harmonics ≤ 1024 >> i (level 0 drops only Nyquist).
+function mipLevels(w) {
+  const re0 = Float64Array.from(w), im0 = new Float64Array(FRAMES);
+  fft(re0, im0, false);
+  const levels = [];
+  for (let l = 0; l < LEVELS; l++) {
+    const H = Math.min(FRAMES / 2 - 1, 1024 >> l);
+    const re = new Float64Array(FRAMES), im = new Float64Array(FRAMES);
+    for (let h = 1; h <= H; h++) {
+      re[h] = re0[h]; im[h] = im0[h];
+      re[FRAMES - h] = re0[FRAMES - h]; im[FRAMES - h] = im0[FRAMES - h];
+    }
+    fft(re, im, true);
+    levels.push(Float32Array.from(re));
+  }
+  return { levels };
+}
+
+// --- library ------------------------------------------------------------------
+let library = []; // index.json rows
+const tables = new Map(); // id → Float32Array (windows × FRAMES)
+const pending = new Map();
+
+function loadTable(id) {
+  if (tables.has(id)) return Promise.resolve(tables.get(id));
+  if (pending.has(id)) return pending.get(id);
+  // Parsed by hand, not decodeAudioData: decoding resamples to the context
+  // rate, which would smear the 2048-frame cycle grid.
+  const p = fetch(`waves/${id}.wav`).then((r) => r.arrayBuffer()).then((buf) => {
+    const dv = new DataView(buf);
+    let o = 12, data = null;
+    while (o + 8 <= dv.byteLength) {
+      const tag = String.fromCharCode(dv.getUint8(o), dv.getUint8(o + 1), dv.getUint8(o + 2), dv.getUint8(o + 3));
+      const size = dv.getUint32(o + 4, true);
+      if (tag === 'data') { data = [o + 8, size]; break; }
+      o += 8 + size + (size & 1);
+    }
+    const n = data[1] / 2, x = new Float32Array(n);
+    for (let i = 0; i < n; i++) x[i] = dv.getInt16(data[0] + i * 2, true) / 32768;
+    tables.set(id, x);
+    pending.delete(id);
+    return x;
+  });
+  pending.set(id, p);
+  return p;
+}
+
+const waveOf = (t, w) => tables.get(t).subarray(w * FRAMES, (w + 1) * FRAMES);
+const tableInfo = (id) => library.find((r) => r.id === id);
+
+// --- sequence + worklet bank ----------------------------------------------------
+let steps = []; // [{t, w}]
+let sel = 0;
+let openTable = null;
+const bankIndex = new Map(); // 't:w' → worklet bank index (append-only)
+let bankSize = 0;
+
+let actx = null, node = null, vizVoices = [], audioReady = null;
+let conv = null, dryGain = null, wetGain = null;
+
+// --- reverb: the dead ocean ruin-room reverb, verbatim — a seeded noise
+// impulse in a ConvolverNode, darkening along its tail, energy-normalised so
+// the wet level holds steady across tail lengths. One knob drives tail + mix.
+const VERB_SEED = 'waves';
+const verbParams = (r) => ({ decay: 1.2 + r * r * 11, wet: r * 0.9, dry: 1 - 0.35 * r }); // tail 1.2s → 12.2s
+function makeImpulse(ctx, seconds, seedStr) {
+  const SR = ctx.sampleRate;
+  const n = Math.max(1, Math.round(seconds * SR));
+  const ir = ctx.createBuffer(2, n, SR);
+  let s = 0x811c9dc5; for (let i = 0; i < seedStr.length; i++) { s ^= seedStr.charCodeAt(i); s = Math.imul(s, 0x01000193) >>> 0; }
+  const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      const env = Math.exp(-6.5 * t) * (1 - t);           // ~-56 dB at the end, then to zero
+      const k = 0.9 - 0.75 * t;                           // one-pole darkening along the tail
+      lp += ((rnd() * 2 - 1) - lp) * k;
+      d[i] = lp * env * (i < 480 ? i / 480 : 1);          // 10ms fade-in: no click on the direct
+    }
+  }
+  let e = 0; const d0 = ir.getChannelData(0); for (let i = 0; i < n; i++) e += d0[i] * d0[i];
+  const g = 0.35 / Math.sqrt(e + 1e-9);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < n; i++) d[i] *= g; }
+  return ir;
+}
+let irKey = '';
+// Mix follows the knob live; the impulse (tail length) rebuilds when it settles.
+function applyVerb(mixOnly = false) {
+  if (!conv) return;
+  const p = verbParams(ui.verb);
+  const t = actx.currentTime;
+  dryGain.gain.setTargetAtTime(p.dry, t, 0.03);
+  wetGain.gain.setTargetAtTime(p.wet, t, 0.03);
+  const key = `${p.decay.toFixed(2)}|${VERB_SEED}`;
+  if (!mixOnly && key !== irKey) { irKey = key; conv.buffer = makeImpulse(actx, p.decay, VERB_SEED); }
+}
+
+function ensureAudio() {
+  return audioReady || (audioReady = startAudio());
+}
+async function startAudio() {
+  actx = new AudioContext();
+  await actx.audioWorklet.addModule('waves-worklet.js');
+  node = new AudioWorkletNode(actx, 'waves', { numberOfInputs: 0, outputChannelCount: [2] });
+  // node → dry ─┬→ out;  node → convolver → wet ─┘
+  dryGain = actx.createGain();
+  wetGain = actx.createGain();
+  conv = actx.createConvolver();
+  conv.normalize = false;
+  node.connect(dryGain);
+  node.connect(conv);
+  conv.connect(wetGain);
+  dryGain.connect(actx.destination);
+  wetGain.connect(actx.destination);
+  applyVerb();
+  node.port.onmessage = (e) => { if (e.data.type === 'viz') vizVoices = e.data.voices; };
+  bankIndex.clear();
+  bankSize = 0;
+  pushParams();
+  pushSteps();
+}
+
+function pushParams() {
+  if (node) node.port.postMessage({ type: 'params', p: workletParams() });
+}
+
+// New waves go over first (bank-add), then the step list as bank indices.
+function pushSteps() {
+  if (!node) return;
+  const add = [];
+  for (const s of steps) {
+    const key = s.t + ':' + s.w;
+    if (bankIndex.has(key) || !tables.has(s.t)) continue;
+    bankIndex.set(key, bankSize++);
+    add.push(mipLevels(waveOf(s.t, s.w)));
+  }
+  if (add.length) node.port.postMessage({ type: 'bank-add', waves: add });
+  const idx = steps.filter((s) => bankIndex.has(s.t + ':' + s.w)).map((s) => bankIndex.get(s.t + ':' + s.w));
+  node.port.postMessage({ type: 'steps', steps: idx });
+}
+
+function stepsChanged() {
+  sel = Math.max(0, Math.min(sel, steps.length - 1));
+  document.getElementById('count').textContent = `${steps.length} step${steps.length === 1 ? '' : 's'}`;
+  pushSteps();
+  save();
+}
+
+async function fillFrom(id, n) {
+  await loadTable(id);
+  const W = tableInfo(id).windows;
+  steps = Array.from({ length: n }, (_, i) => ({ t: id, w: Math.round((i * (W - 1)) / Math.max(1, n - 1)) }));
+  stepsChanged();
+}
+
+async function randomize(n) {
+  const picks = Array.from({ length: n }, () => {
+    const r = library[(Math.random() * library.length) | 0];
+    return { t: r.id, w: (Math.random() * r.windows) | 0 };
+  });
+  await Promise.all([...new Set(picks.map((p) => p.t))].map(loadTable));
+  steps = picks;
+  stepsChanged();
+}
+
+// --- persistence (per-viewer convenience) ----------------------------------------
+let saveTimer = 0;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(STORE, JSON.stringify({ steps, ui, openTable })); } catch (_) {}
+  }, 300);
+}
+function restore() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE));
+    if (!s) return false;
+    Object.assign(ui, s.ui || {});
+    if (Array.isArray(s.steps) && s.steps.length) steps = s.steps.filter((x) => tableInfo(x.t));
+    if (s.openTable && tableInfo(s.openTable)) openTable = s.openTable;
+    return steps.length > 0;
+  } catch (_) { return false; }
+}
+
+// --- drawing helpers ------------------------------------------------------------
+function sizeCanvas(c, cssH) {
+  const dpr = devicePixelRatio || 1;
+  const w = c.clientWidth;
+  if (cssH) c.style.height = cssH + 'px';
+  const h = cssH || c.clientHeight;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+  }
+  return dpr;
+}
+
+function traceWave(ctx, w, x, y, wd, ht, gain = 1) {
+  ctx.beginPath();
+  const n = Math.max(2, Math.floor(wd));
+  for (let i = 0; i <= n; i++) {
+    const v = w[Math.min(FRAMES - 1, Math.floor((i / n) * FRAMES))] * gain;
+    const py = y + ht / 2 - v * (ht / 2) * 0.92;
+    if (i) ctx.lineTo(x + i * (wd / n), py); else ctx.moveTo(x, py);
+  }
+  ctx.stroke();
+}
+
+function thumb(c, w) {
+  const dpr = sizeCanvas(c);
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, c.clientWidth, c.clientHeight);
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 1;
+  traceWave(ctx, w, 2, 3, c.clientWidth - 4, c.clientHeight - 6, 1.6);
+}
+
+// --- strip: cells wrap into rows; voices ride under them ---------------------------
+const strip = document.getElementById('strip');
+const CELL_W = 64, CELL_H = 40, LANE_H = 22, GAP = 4;
+let stripCols = 1;
+
+function cellRect(i) {
+  const col = i % stripCols, row = Math.floor(i / stripCols);
+  return { x: col * (CELL_W + GAP), y: row * (CELL_H + LANE_H) };
+}
+
+function drawStrip() {
+  const W = strip.clientWidth;
+  stripCols = Math.max(1, Math.floor((W + GAP) / (CELL_W + GAP)));
+  const rows = Math.ceil((steps.length + 1) / stripCols);
+  const dpr = sizeCanvas(strip, rows * (CELL_H + LANE_H));
+  const ctx = strip.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, strip.clientHeight);
+  steps.forEach((s, i) => {
+    const r = cellRect(i);
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(r.x, r.y, CELL_W, CELL_H);
+    ctx.strokeStyle = i === sel ? '#ddd' : '#1f1f1f';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(r.x + 0.5, r.y + 0.5, CELL_W - 1, CELL_H - 1);
+    if (tables.has(s.t)) {
+      ctx.strokeStyle = i === sel ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)';
+      traceWave(ctx, waveOf(s.t, s.w), r.x + 3, r.y + 4, CELL_W - 6, CELL_H - 8, 1.6);
+    }
+    ctx.fillStyle = '#444';
+    ctx.font = '9px "SF Mono", Menlo, monospace';
+    ctx.fillText(String(i + 1), r.x + 3, r.y + 10);
+  });
+  // "+" cell
+  const r = cellRect(steps.length);
+  ctx.strokeStyle = '#222';
+  ctx.setLineDash([3, 3]);
+  ctx.strokeRect(r.x + 0.5, r.y + 0.5, CELL_W - 1, CELL_H - 1);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#555';
+  ctx.font = '14px "SF Mono", Menlo, monospace';
+  ctx.fillText('+', r.x + CELL_W / 2 - 4, r.y + CELL_H / 2 + 5);
+  // voices: one tick per sounding note, at its own position in its own step
+  const vs = [...vizVoices].sort((a, b) => a.note - b.note);
+  vs.forEach((v, k) => {
+    if (v.idx >= steps.length) return;
+    const c = cellRect(v.idx);
+    const x = c.x + v.frac * CELL_W;
+    const y = c.y + CELL_H + 3 + (k % 5) * 3.6;
+    ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.65 * v.env})`;
+    ctx.fillRect(x - 1, y, 3, 2.4);
+  });
+}
+
+function stepAt(e) {
+  const b = strip.getBoundingClientRect();
+  const x = e.clientX - b.left, y = e.clientY - b.top;
+  const col = Math.floor(x / (CELL_W + GAP)), row = Math.floor(y / (CELL_H + LANE_H));
+  if (col >= stripCols || x - col * (CELL_W + GAP) > CELL_W) return -1;
+  return row * stripCols + col;
+}
+
+strip.addEventListener('click', (e) => {
+  const i = stepAt(e);
+  if (i < 0) return;
+  if (i === steps.length) addStep();
+  else if (i < steps.length) sel = i;
+});
+
+function addStep() {
+  const src = steps[sel] || (openTable && { t: openTable, w: 0 });
+  if (!src) return;
+  steps.splice(sel + 1, 0, { ...src });
+  sel = Math.min(steps.length - 1, sel + 1);
+  stepsChanged();
+}
+function delStep() {
+  if (steps.length <= 1) return;
+  steps.splice(sel, 1);
+  stepsChanged();
+}
+
+document.getElementById('addstep').onclick = addStep;
+document.getElementById('delstep').onclick = delStep;
+document.getElementById('fill').onclick = () => openTable && fillFrom(openTable, steps.length || 8);
+document.getElementById('random').onclick = () => randomize(steps.length || 8);
+
+// --- library ui ------------------------------------------------------------------
+async function openLibTable(id) {
+  openTable = id;
+  document.querySelectorAll('#tables button').forEach((b) => b.classList.toggle('on', b.dataset.t === id));
+  const x = await loadTable(id);
+  if (openTable !== id) return;
+  const grid = document.getElementById('wavegrid');
+  grid.textContent = '';
+  const n = tableInfo(id).windows;
+  for (let w = 0; w < n; w++) {
+    const c = document.createElement('canvas');
+    c.title = `${id} · ${w + 1}/${n}`;
+    grid.appendChild(c);
+    thumb(c, x.subarray(w * FRAMES, (w + 1) * FRAMES));
+    c.addEventListener('click', (e) => {
+      if (e.shiftKey || !steps.length) {
+        steps.splice(steps.length ? sel + 1 : 0, 0, { t: id, w });
+        sel = steps.length === 1 ? 0 : sel + 1;
+      } else {
+        steps[sel] = { t: id, w };
+        sel = (sel + 1) % steps.length;
+      }
+      stepsChanged();
+    });
+  }
+  save();
+}
+
+function buildLibrary() {
+  const wrap = document.getElementById('tables');
+  for (const cat of ['pads', 'instruments', 'bass']) {
+    const sec = document.createElement('div');
+    const lab = document.createElement('div');
+    lab.className = 'tcat';
+    lab.textContent = cat;
+    const row = document.createElement('div');
+    row.className = 'tgrid';
+    sec.append(lab, row);
+    for (const r of library.filter((x) => x.cat === cat)) {
+      const b = document.createElement('button');
+      b.textContent = r.id.replace(/[-_]/g, ' ');
+      b.dataset.t = r.id;
+      b.title = `${r.id} — from ${r.src}`;
+      b.onclick = () => openLibTable(r.id);
+      row.appendChild(b);
+    }
+    wrap.appendChild(sec);
+  }
+}
+
+// --- main display ----------------------------------------------------------------
+const scope = document.getElementById('scope');
+const dispinfo = document.getElementById('dispinfo');
+const blend = new Float32Array(FRAMES);
+
+function drawScope() {
+  const dpr = sizeCanvas(scope);
+  const ctx = scope.getContext('2d');
+  const W = scope.clientWidth, H = scope.clientHeight;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+  const ok = (i) => steps[i] && tables.has(steps[i].t);
+  const vs = vizVoices.filter((v) => v.idx < steps.length && ok(v.idx));
+  if (vs.length) {
+    ctx.lineWidth = 1.25;
+    for (const v of vs) {
+      const a = waveOf(steps[v.idx].t, steps[v.idx].w);
+      const nx = (v.idx + 1) % steps.length;
+      const b = ok(nx) ? waveOf(steps[nx].t, steps[nx].w) : a;
+      for (let i = 0; i < FRAMES; i++) blend[i] = a[i] + (b[i] - a[i]) * v.mix;
+      ctx.strokeStyle = `rgba(255,255,255,${(0.2 + 0.7 * v.env) / Math.sqrt(vs.length)})`;
+      traceWave(ctx, blend, 0, 10, W, H - 20, 1.5);
+    }
+    dispinfo.textContent = `${vs.length} voice${vs.length === 1 ? '' : 's'}`;
+  } else if (ok(sel)) {
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    traceWave(ctx, waveOf(steps[sel].t, steps[sel].w), 0, 10, W, H - 20, 1.5);
+    const s = steps[sel];
+    dispinfo.textContent = `step ${sel + 1} · ${s.t} ${s.w + 1}/${tableInfo(s.t).windows}`;
+  }
+}
+
+function frame() {
+  drawScope();
+  drawStrip();
+  requestAnimationFrame(frame);
+}
+
+// --- playing ------------------------------------------------------------------------
+const KEYMAP = 'awsedftgyhujkolp;'; // C .. E, an octave and a third
+let octave = 3; // a = C3 (midi 48)
+let hold = false;
+const sounding = new Set();
+
+async function noteOn(n, vel = 0.8) {
+  await ensureAudio();
+  if (actx.state !== 'running') await actx.resume();
+  if (hold && sounding.has(n)) { noteOff(n, true); return; }
+  if (sounding.has(n)) node.port.postMessage({ type: 'off', note: n });
+  sounding.add(n);
+  node.port.postMessage({ type: 'on', note: n, vel });
+  paintKeys();
+}
+function noteOff(n, force) {
+  if (hold && !force) return;
+  if (!sounding.delete(n)) return;
+  if (node) node.port.postMessage({ type: 'off', note: n });
+  paintKeys();
+}
+function releaseAll() {
+  for (const n of [...sounding]) noteOff(n, true);
+}
+
+const keysEl = document.getElementById('keys');
+function kbBase() { return 12 * (octave + 1); } // on-screen starts where the qwerty row does
+const isBlack = (n) => [1, 3, 6, 8, 10].includes(n % 12);
+function buildKeys() {
+  keysEl.textContent = '';
+  // Two octaves on desktop, one on phones. White keys flex; each black key
+  // straddles the boundary after the white key below it.
+  const count = innerWidth < 720 ? 13 : 25;
+  const notes = Array.from({ length: count }, (_, i) => kbBase() + i);
+  const whites = notes.filter((n) => !isBlack(n)).length;
+  let w = 0;
+  for (const n of notes) {
+    const d = document.createElement('div');
+    d.dataset.n = n;
+    if (isBlack(n)) {
+      d.className = 'blk';
+      d.style.left = `calc(${(w / whites) * 100}% - ${(0.6 / whites) * 50}%)`;
+      d.style.width = `${(0.6 / whites) * 100}%`;
+    } else w++;
+    if (n % 12 === 0) { const s = document.createElement('span'); s.textContent = 'C' + (Math.floor(n / 12) - 1); d.appendChild(s); }
+    keysEl.appendChild(d);
+  }
+  paintKeys();
+  document.getElementById('kbhint').textContent = `[a–;] play C${octave} up · [z/x] octave · [esc] silence`;
+}
+function paintKeys() {
+  keysEl.querySelectorAll('div').forEach((d) => d.classList.toggle('down', sounding.has(+d.dataset.n)));
+}
+let ptrNote = new Map();
+keysEl.addEventListener('pointerdown', (e) => {
+  const d = e.target.closest('div[data-n]');
+  if (!d) return;
+  keysEl.setPointerCapture(e.pointerId);
+  ptrNote.set(e.pointerId, +d.dataset.n);
+  noteOn(+d.dataset.n);
+});
+const ptrUp = (e) => {
+  if (!ptrNote.has(e.pointerId)) return;
+  noteOff(ptrNote.get(e.pointerId));
+  ptrNote.delete(e.pointerId);
+};
+keysEl.addEventListener('pointerup', ptrUp);
+keysEl.addEventListener('pointercancel', ptrUp);
+
+const typing = (e) => e.target instanceof HTMLInputElement;
+addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || typing(e)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' || k === 'x') {
+    releaseAll();
+    octave = Math.max(1, Math.min(7, octave + (k === 'x' ? 1 : -1)));
+    buildKeys();
+    return;
+  }
+  if (e.key === 'Escape') { sounding.clear(); paintKeys(); node && node.port.postMessage({ type: 'panic' }); return; }
+  if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); delStep(); return; }
+  const i = KEYMAP.indexOf(k);
+  if (i >= 0) noteOn(12 * (octave + 1) + i);
+});
+addEventListener('keyup', (e) => {
+  if (typing(e)) return;
+  const i = KEYMAP.indexOf(e.key.toLowerCase());
+  if (i >= 0) noteOff(12 * (octave + 1) + i);
+});
+
+const holdBtn = document.getElementById('hold');
+holdBtn.onclick = () => {
+  hold = !hold;
+  holdBtn.classList.toggle('on', hold);
+  holdBtn.textContent = (hold ? '● ' : '○ ') + 'hold';
+  if (!hold) releaseAll();
+};
+
+const midiBtn = document.getElementById('midi');
+midiBtn.onclick = async () => {
+  if (midiBtn.classList.contains('on')) return;
+  if (!navigator.requestMIDIAccess) { midiBtn.textContent = '○ midi (unsupported)'; return; }
+  try {
+    const access = await navigator.requestMIDIAccess();
+    const bind = () => access.inputs.forEach((inp) => {
+      inp.onmidimessage = (m) => {
+        const [st, d1, d2] = m.data;
+        const cmd = st & 0xf0;
+        if (cmd === 0x90 && d2 > 0) noteOn(d1, 0.25 + 0.75 * (d2 / 127));
+        else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) noteOff(d1);
+      };
+    });
+    bind();
+    access.onstatechange = bind;
+    midiBtn.classList.add('on');
+    midiBtn.textContent = `● midi (${access.inputs.size})`;
+  } catch (_) {
+    midiBtn.textContent = '○ midi (blocked)';
+  }
+};
+
+// --- print: the patch as a multisampled instrument -------------------------------
+// Every root is its own offline render — its own jitter rolls, its own drift —
+// and TAKES renders each root again, so the sampler round-robins between
+// performances instead of replaying one. Roots follow the kit convention
+// (C / E / G# per octave, C1–C6, `<kit>-Gs2.wav`), so the zip unpacks
+// straight into the Sequence samples folder. kit.seqkit lists the takes as
+// round-robin files; the .sfz maps the same set for other samplers.
+const PRINT_SR = 48000;
+const print = { hold: 8, takes: 2, verb: false };
+const NOTE_NAMES = ['C', 'Cs', 'D', 'Ds', 'E', 'F', 'Fs', 'G', 'Gs', 'A', 'As', 'B'];
+const noteName = (m) => NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
+const PRINT_ROOTS = (() => {
+  const r = [];
+  for (let oct = 1; oct <= 5; oct++) for (const o of [0, 4, 8]) r.push(12 * (oct + 1) + o);
+  r.push(84); // C6
+  return r;
+})();
+const slug = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const kitName = () => slug(document.getElementById('kitname').value) || 'waves-' + slug(steps[0] ? steps[0].t : 'kit');
+
+function tailSecs() {
+  // amp release falls ~80 dB in ≈1.85 × RELEASE; a printed reverb adds its tail
+  return releaseS(ui.release) * 1.85 + (print.verb ? verbParams(ui.verb).decay : 0) + 0.05;
+}
+function printEstimate() {
+  const secs = print.hold + tailSecs();
+  const bytes = PRINT_ROOTS.length * print.takes * secs * PRINT_SR * 3 * (print.verb ? 2 : 1);
+  const mb = bytes / 1e6;
+  document.getElementById('printinfo').textContent =
+    `${PRINT_ROOTS.length} notes × ${print.takes} take${print.takes > 1 ? 's' : ''} · ` +
+    `${print.verb ? 'stereo' : 'mono'} 24-bit · up to ~${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB → ${kitName()}.zip`;
+}
+
+let jszipReady = null;
+function loadJSZip() {
+  return jszipReady || (jszipReady = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js';
+    sc.onload = () => res(window.JSZip);
+    sc.onerror = rej;
+    document.head.appendChild(sc);
+  }));
+}
+
+async function renderRoot(note, waves, idx, ir) {
+  const frames = Math.ceil((print.hold + tailSecs()) * PRINT_SR);
+  const oc = new OfflineAudioContext(print.verb ? 2 : 1, frames, PRINT_SR);
+  await oc.audioWorklet.addModule('waves-worklet.js');
+  const n = new AudioWorkletNode(oc, 'waves', { numberOfInputs: 0, outputChannelCount: [2] });
+  if (print.verb) {
+    const p = verbParams(ui.verb);
+    const dg = oc.createGain(), wg = oc.createGain(), c = oc.createConvolver();
+    c.normalize = false;
+    c.buffer = ir;
+    dg.gain.value = p.dry;
+    wg.gain.value = p.wet;
+    n.connect(dg); n.connect(c); c.connect(wg);
+    dg.connect(oc.destination); wg.connect(oc.destination);
+  } else n.connect(oc.destination);
+  const ready = new Promise((res) => { n.port.onmessage = (e) => { if (e.data.type === 'pong') res(); }; });
+  n.port.postMessage({ type: 'bank-add', waves });
+  n.port.postMessage({ type: 'steps', steps: idx });
+  n.port.postMessage({ type: 'params', p: workletParams() });
+  n.port.postMessage({ type: 'on', note, vel: 0.9, pan: 0, dur: print.hold });
+  // port messages arrive in order — the pong means the note landed
+  n.port.postMessage({ type: 'ping' });
+  await ready;
+  return oc.startRendering();
+}
+
+function encodeWav24(chans, len) {
+  const nCh = chans.length, bytes = len * nCh * 3;
+  const ab = new ArrayBuffer(44 + bytes), dv = new DataView(ab);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + bytes, true); str(8, 'WAVE');
+  str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, nCh, true);
+  dv.setUint32(24, PRINT_SR, true); dv.setUint32(28, PRINT_SR * nCh * 3, true);
+  dv.setUint16(32, nCh * 3, true); dv.setUint16(34, 24, true);
+  str(36, 'data'); dv.setUint32(40, bytes, true);
+  let o = 44;
+  for (let i = 0; i < len; i++) for (let c = 0; c < nCh; c++) {
+    const v = Math.round(Math.max(-1, Math.min(1, chans[c][i])) * 8388607);
+    dv.setUint8(o, v & 255); dv.setUint8(o + 1, (v >> 8) & 255); dv.setUint8(o + 2, (v >> 16) & 255);
+    o += 3;
+  }
+  return ab;
+}
+
+function sfzText(name, roots) {
+  const lines = [`// ${name} — printed by newspeech waves (newspeechsound.com)`, '<control> default_path=./', '<global> ampeg_release=0.3', ''];
+  roots.forEach((r, i) => {
+    const lo = i === 0 ? 0 : Math.floor((roots[i - 1].midi + r.midi) / 2) + 1;
+    const hi = i === roots.length - 1 ? 127 : Math.floor((r.midi + roots[i + 1].midi) / 2);
+    r.files.forEach((f, t) => {
+      const rr = r.files.length > 1
+        ? ` lorand=${(t / r.files.length).toFixed(3)} hirand=${((t + 1) / r.files.length).toFixed(3)}` : '';
+      lines.push(`<region> sample=${f} pitch_keycenter=${r.midi} lokey=${lo} hikey=${hi}${rr}`);
+    });
+  });
+  return lines.join('\n') + '\n';
+}
+
+let printing = false;
+async function printKit() {
+  if (printing || !steps.length) return;
+  printing = true;
+  const btn = document.getElementById('print'), info = document.getElementById('printinfo');
+  btn.disabled = true;
+  try {
+    const name = kitName();
+    // this sequence's waves, once — every render gets the same bank
+    const keys = [], waves = [], idx = [];
+    for (const s of steps) {
+      const key = s.t + ':' + s.w;
+      let k = keys.indexOf(key);
+      if (k < 0) { k = keys.push(key) - 1; waves.push(mipLevels(waveOf(s.t, s.w))); }
+      idx.push(k);
+    }
+    const ir = print.verb ? makeImpulse(new OfflineAudioContext(2, 1, PRINT_SR), verbParams(ui.verb).decay, VERB_SEED) : null;
+    const total = PRINT_ROOTS.length * print.takes;
+    const renders = [];
+    for (const midi of PRINT_ROOTS) {
+      for (let t = 0; t < print.takes; t++) {
+        info.textContent = `printing ${noteName(midi)}${print.takes > 1 ? ' take ' + (t + 1) : ''} · ${renders.length + 1}/${total}`;
+        const buf = await renderRoot(midi, waves, idx, ir);
+        renders.push({ midi, t, chans: Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c)) });
+      }
+    }
+    // one gain for the whole kit (peak → −1 dBFS) keeps notes level with each other
+    let peak = 0;
+    for (const r of renders) for (const ch of r.chans) for (let i = 0; i < ch.length; i++) { const a = Math.abs(ch[i]); if (a > peak) peak = a; }
+    const g = peak > 0 ? 0.891 / peak : 1;
+    info.textContent = 'zipping…';
+    const JSZip = await loadJSZip();
+    const zip = new JSZip();
+    const dir = zip.folder(name);
+    const roots = PRINT_ROOTS.map((midi) => ({ midi, files: [] }));
+    for (const r of renders) {
+      for (const ch of r.chans) for (let i = 0; i < ch.length; i++) ch[i] *= g;
+      // trim the silent tail (below −80 dBFS), 5ms fade on the cut
+      let end = r.chans[0].length;
+      while (end > 1 && r.chans.every((ch) => Math.abs(ch[end - 1]) < 1e-4)) end--;
+      const fade = Math.min(end, Math.round(PRINT_SR * 0.005));
+      for (const ch of r.chans) for (let i = 0; i < fade; i++) ch[end - 1 - i] *= i / fade;
+      const file = `${name}-${noteName(r.midi)}${print.takes > 1 ? '-' + (r.t + 1) : ''}.wav`;
+      dir.file(file, encodeWav24(r.chans, end));
+      roots.find((x) => x.midi === r.midi).files.push(file);
+    }
+    dir.file('kit.seqkit', JSON.stringify({ name, voices: { [name]: { label: name, gain: 0.7, roots } } }, null, 2) + '\n');
+    dir.file(name + '.sfz', sfzText(name, roots));
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name + '.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    info.textContent = `printed ${name}.zip · ${(blob.size / 1e6).toFixed(1)} MB`;
+  } catch (err) {
+    info.textContent = 'print failed — ' + (err && err.message ? err.message : err);
+    throw err;
+  } finally {
+    printing = false;
+    btn.disabled = false;
+  }
+}
+
+function segPick(id, key) {
+  const el = document.getElementById(id);
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]');
+    if (!b) return;
+    print[key] = +b.dataset.v;
+    el.querySelectorAll('button[data-v]').forEach((x) => x.classList.toggle('on', x === b));
+    printEstimate();
+  });
+}
+segPick('plen', 'hold');
+segPick('ptakes', 'takes');
+const pverb = document.getElementById('pverb');
+pverb.onclick = () => {
+  print.verb = !print.verb;
+  pverb.classList.toggle('on', print.verb);
+  pverb.textContent = (print.verb ? '● ' : '○ ') + 'reverb';
+  printEstimate();
+};
+document.getElementById('kitname').addEventListener('input', printEstimate);
+document.getElementById('print').onclick = () => printKit();
+
+// --- boot ---------------------------------------------------------------------------
+(async () => {
+  for (const spec of KNOB_SPECS) document.getElementById(spec.group).appendChild(buildKnob(spec));
+  library = await (await fetch('waves/index.json')).json();
+  let wasNarrow = innerWidth < 720;
+  addEventListener('resize', () => { if ((innerWidth < 720) !== wasNarrow) { wasNarrow = !wasNarrow; buildKeys(); } });
+  buildLibrary();
+  buildKeys();
+  const had = restore();
+  for (const k in knobs) knobs[k].draw();
+  if (!openTable) openTable = 'monolith';
+  await Promise.all([...new Set(steps.map((s) => s.t))].map(loadTable));
+  if (!had) await fillFrom(openTable, 8); else stepsChanged();
+  openLibTable(openTable);
+  printEstimate();
+  requestAnimationFrame(frame);
+})();
+
+// test / future-MIDI hook
+window.waves = { ui, print, get steps() { return steps; }, noteOn, noteOff, fillFrom, randomize, printKit };
+</script>
+</body>
+</html>
