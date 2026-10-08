@@ -152,7 +152,7 @@ ${sections.map((s, i) => `  <section class="s ${PLACES[i % PLACES.length]}${i ==
   </section>`).join("\n")}
   <div class="end">
     <div class="grid"><div class="in">
-      <p class="src">the stripes: NOAA NCEI global land + ocean surface temperature, one band per year, brightness = the annual anomaly against the 20th-century mean.</p>
+      <p class="src" hidden>the stripes: NOAA NCEI global land + ocean surface temperature, one band per year, brightness = the annual anomaly against the 20th-century mean.</p>
     </div></div>
   </div>
 </div>

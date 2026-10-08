@@ -28,7 +28,7 @@
       ["slice", "plugins.html#slice"], ["glitch", "plugins.html#glitch"],
     ]],
     ["site", null, [
-      ["news", "news.html"], ["sequence", "index.html#v-sequence"], ["rss", "feed.xml"],
+      ["news", "news.html"], ["about", "about.html"], ["sequence", "index.html#v-sequence"], ["rss", "feed.xml"],
     ]],
     ["follow", null, [
       ["instagram", "https://www.instagram.com/newspeechsound"],

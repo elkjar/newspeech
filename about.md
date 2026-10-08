@@ -1,7 +1,7 @@
 ---
 title: about
-dek: newspeech is an audio/video project by chris elkjar — records, instruments, and the wear between them.
-og_description: newspeech — an audio/video project by chris elkjar. records, instruments, and the climate record they're starting to answer to.
+dek: newspeech is a collection of things chris elkjar has made — a music project that turned into a software project, which ended up as a plugin project.
+og_description: newspeech is chris elkjar — musician, designer, toolmaker. records, instruments and plugins, released for free: use them on anything, no credit needed.
 ---
 
 <!--
