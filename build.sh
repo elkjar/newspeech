@@ -17,6 +17,9 @@ node tools/build-news.mjs
 # generate the product pages (shop.json → shop/<id>.html)
 node tools/build-shop.mjs
 
+# generate the about page (about.md → about.html)
+node tools/build-about.mjs
+
 cp *.html *.js *.css *.svg *.png *.jpg *.txt _site/
 cp samples-manifest.json shop.json _site/
 cp -r shop _site/shop

@@ -4,24 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
-<title>NEWSPEECH // night school</title>
+<title>NEWSPEECH // dead ocean</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<meta name="robots" content="noindex, nofollow">
-<meta name="description" content="newspeech — night school. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
-<meta property="og:title" content="NEWSPEECH // night school">
-<meta property="og:description" content="newspeech — night school. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
+<meta name="description" content="newspeech — dead ocean. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
+<meta property="og:title" content="NEWSPEECH // dead ocean">
+<meta property="og:description" content="newspeech — dead ocean. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://www.newspeechsound.com/night-school.html">
+<meta property="og:url" content="https://www.newspeechsound.com/dead-ocean.html">
 <meta property="og:site_name" content="NEWSPEECH">
 <meta property="og:locale" content="en_US">
 <meta property="og:image" content="https://www.newspeechsound.com/assets/ep/cover.jpg">
-<meta property="og:image:type" content="image/png">
+<meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1400">
 <meta property="og:image:height" content="1400">
-<meta property="og:image:alt" content="NEWSPEECH // NIGHT SCHOOL">
+<meta property="og:image:alt" content="NEWSPEECH // DEAD OCEAN">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="NEWSPEECH // night school">
-<meta name="twitter:description" content="newspeech — night school. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
+<meta name="twitter:title" content="NEWSPEECH // dead ocean">
+<meta name="twitter:description" content="newspeech — dead ocean. the EP, played through the visualizers. ruin it, slow it, keep your copy.">
 <meta name="twitter:image" content="https://www.newspeechsound.com/assets/ep/cover.jpg">
 <style>
   @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
@@ -37,16 +36,34 @@
   #album {
     position: relative; z-index: 3; max-width: 1280px; margin: 0 auto; min-height: 100vh; box-sizing: border-box;
     padding: calc(40px + var(--ns-nav-h, 0px)) var(--ns-gutter, 40px) 48px;
-    display: grid; grid-template-columns: minmax(240px, 420px) 1fr; gap: 56px; align-items: center; align-content: center;
+    display: grid; grid-template-columns: minmax(240px, min(520px, 45%)) 1fr; gap: 56px; /* 520px ≈ 7.5% taller than the locked text stack (483px) */ align-items: center; align-content: center;
   }
   #album .cover { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border: 1px solid #1c1c1c; background: #0a0a0a; }
-  #album .artist { color: #666; letter-spacing: 0.18em; margin: 0 0 6px; }
   #album .name { font-family: "zxx-sans", ui-monospace, monospace; font-weight: 400; font-size: clamp(26px, 3vw, 38px); line-height: 1.1; letter-spacing: 0.05em; color: #eee; margin: 0 0 12px; }
   #album .facts { color: #777; margin: 0 0 34px; }
   #album .facts b { color: #ccc; font-weight: 400; }
   #album .avail { display: grid; grid-template-columns: max-content 1fr; gap: 12px 28px; align-items: baseline; }
   #album .avail dt { color: #555; letter-spacing: 0.12em; }
   #album .avail dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  #album .avail [hidden] { display: none; } /* rows ship hidden; the config reveals the ones it fills */
+  /* the full-res zips — bandcamp's menu: pick a format, get the zip. only a
+     browser holding the listen cookie sees the row */
+  #album .avail dd.dl { gap: 12px; align-items: center; }
+  #album .dl select {
+    -webkit-appearance: none; appearance: none; background: transparent; border: 1px solid rgba(255,255,255,.45); border-radius: 0; color: #eee;
+    font: inherit; font-size: 12px; line-height: 18px; letter-spacing: 0.04em; padding: 7px 30px 7px 12px; cursor: pointer; outline: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 11px center; background-size: 9px 6px;
+  }
+  #album .dl select:focus { border-color: rgba(255,255,255,.9); }
+  #album .dl select option { background: #111; color: #eee; }
+  #album .dl button {
+    background: transparent; border: 1px solid rgba(255,255,255,.7); color: #eee; font: inherit; font-size: 12px; line-height: 18px;
+    letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; white-space: nowrap; min-width: 9ch;
+  }
+  #album .dl button:hover { background: rgba(255,255,255,.08); }
+  #album .dl button:disabled { opacity: .6; cursor: default; }
+  @media (max-width: 640px) { #album .dl select { font-size: 16px; } }
   #album .svc { display: inline-flex; align-items: center; gap: 8px; color: #ccc; text-decoration: none; letter-spacing: 0.06em; white-space: nowrap; }
   #album .svc svg { width: 16px; height: 16px; fill: currentColor; display: block; }
   /* a bitmap mark used as a mask so it takes the text colour like the svgs */
@@ -54,17 +71,57 @@
   #album a.svc:hover { color: #fff; }
   #album .svc.pending { color: #555; pointer-events: none; }
   #album .soon dd .svc { color: #666; }
-  @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } #album .cover { max-width: 420px; } }
+  /* with the ruin section off (ep.ruin false) the player lives here, under the facts */
+  #album-player { margin: 0 0 34px; }
+  #album-player:empty { display: none; }
+  /* before release: the email form sits above the record, which stays locked
+     (dimmed, unplayable) until the emailed link sets the cookie */
+  #album .early { margin: 0 0 26px; }
+  #album .early[hidden] { display: none; }
+  #album .early .hp { display: none; }
+  #album .early .lbl { display: block; color: #999; margin: 0 0 12px; }
+  #album .early .row { display: flex; flex-wrap: wrap; gap: 12px; }
+  #album .early input[type="email"] {
+    background: transparent; border: 1px solid rgba(255,255,255,.45); color: #eee; font: inherit; font-size: 12px; line-height: 18px;
+    letter-spacing: 0.04em; padding: 7px 12px; width: 260px; max-width: 100%; border-radius: 0; outline: none;
+  }
+  #album .early input[type="email"]:focus { border-color: rgba(255,255,255,.9); }
+  #album .early input[type="email"]::placeholder { color: rgba(255,255,255,.3); }
+  #album .early button {
+    background: transparent; border: 1px solid rgba(255,255,255,.7); color: #eee; font: inherit; font-size: 12px; line-height: 18px;
+    letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; white-space: nowrap;
+  }
+  #album .early button:hover { background: rgba(255,255,255,.08); }
+  #album .early button:disabled { opacity: .4; cursor: default; }
+  #album .early .msg { display: block; margin-top: 10px; color: #ccc; letter-spacing: 0.06em; }
+  #album .early .msg.err { color: #777; }
+  #album .early .msg[hidden] { display: none; }
+  @media (max-width: 640px) { #album .early input[type="email"] { font-size: 16px; } } /* <16px zooms iOS Safari on focus */
+  /* locked rows still play — each one's 15s preview — so they dim but keep
+     their hover; the transport appears once a preview is playing */
+  #album.locked #tracks li, #album.locked #tracks li.current, #album.locked #tracks li.current .num { color: #666; }
+  #album.locked.previewing #tracks li.current, #album.locked.previewing #tracks li.current .num { color: #eee; }
+  #album.locked #tracks li.current:not(.loading) .dur { visibility: visible; }
+  #album.locked:not(.previewing) #scrub { display: none !important; }
+  #album.locked #scrub .t::after { content: " · preview"; color: #444; }
+  #album.locked #tracks .meta { color: #444; }
+  /* a small padlock in the row's own (dimmed) colour */
+  #album.locked #tracks .meta::after {
+    content: ""; width: 10px; height: 12px; align-self: center; background: #555;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M3.2 6.5V4.2a2.8 2.8 0 0 1 5.6 0v2.3' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Crect x='1' y='6.5' width='10' height='7.5' rx='1'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M3.2 6.5V4.2a2.8 2.8 0 0 1 5.6 0v2.3' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Crect x='1' y='6.5' width='10' height='7.5' rx='1'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } #album .cover { max-width: 520px; } }
 
-  /* the room is the hero: one viewport tall, the visualizer lives inside it
+  /* the ruin section: one viewport tall, the visualizer lives inside it
      and scrolls away with it; the record keeps playing underneath the page */
-  #hero { position: relative; min-height: 100vh; overflow: hidden; }
+  #ruin-section { position: relative; min-height: 100vh; overflow: hidden; }
+  #ruin-section[hidden] { display: none; }
   /* the section rule: the same 1px line the .sec blocks carry, kept to the
-     nav column, for the two full-bleed sections (hero, scores) */
+     nav column, for the two full-bleed sections (ruin, scores) */
   .ruled { position: relative; }
   .ruled::before { content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: min(1280px, 100%); height: 1px; background: #1c1c1c; z-index: 4; }
 
-  /* the visualizer: a real N-*.html page in a frame. the room hands its core.js
+  /* the visualizer: a real N-*.html page in a frame. the ruin section hands its core.js
      the AnalyserNode so the page reacts to the EP exactly as it would to a mic. */
   #viz { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; z-index: 0; background: #050505; }
 
@@ -79,13 +136,13 @@
       linear-gradient(0deg, rgba(5,5,5,.7) 0%, rgba(5,5,5,0) 14%);
   }
 
-  /* the room overlays the frame; only the controls take the pointer so the
+  /* the ruin layout overlays the frame; only the controls take the pointer so the
      page underneath still gets mouse movement everywhere else */
-  /* the room is laid out, not pinned: a flex row in the nav's 1280px column,
+  /* the ruin layout is laid out, not pinned: a flex row in the nav's 1280px column,
      centred in the viewport; below ~1100px it stacks (player first) and the
-     hero grows past one screen if the stack needs it. pointer-events pass
+     section grows past one screen if the stack needs it. pointer-events pass
      through the empty parts so the visualizer still sees the mouse. */
-  #room {
+  #ruin-layout {
     position: relative; z-index: 2; min-height: 100vh; pointer-events: none;
     display: flex; align-items: center;
     padding: 48px 0 56px;
@@ -241,23 +298,23 @@
   }
   #toast.on { opacity: 1; }
 
-  /* ---- sections below the hero: the nav's column, tool-page type ---- */
+  /* ---- sections below the ruin section: the nav's column, tool-page type ---- */
   .sec { max-width: 1280px; margin: 0 auto; padding: 72px var(--ns-gutter, 40px) 84px; border-top: 1px solid #1c1c1c; }
   .sec h2 { font-weight: 400; font-size: 14px; letter-spacing: 0.2em; color: #eee; margin: 0 0 6px; }
   .sec .lede { color: #777; margin: 0 0 40px; max-width: 60ch; }
 
-  /* scores: three composition figures, full-bleed, each half the viewport
-     wide, stacked and stepped left → centre → right. no text — just the
+  /* scores: three composition figures in the nav's column, each half its
+     width, stacked and stepped left → centre → right. no text — just the
      figures, each drawing and erasing itself on a loop. */
   #scores { padding: 0; }
-  #scores .grid { display: flex; flex-direction: column; }
-  .score { display: block; width: 50vw; color: inherit; text-decoration: none; cursor: default; }
+  #scores .grid { display: flex; flex-direction: column; max-width: 1280px; margin: 0 auto; padding: 0 var(--ns-gutter, 40px); box-sizing: border-box; }
+  .score { display: block; width: 50%; color: inherit; text-decoration: none; cursor: default; }
   .score:nth-child(1) { align-self: flex-start; }
   .score:nth-child(2) { align-self: center; }
   .score:nth-child(3) { align-self: flex-end; }
   .score .fig { position: relative; width: 100%; aspect-ratio: 1; }
   /* textbook caption: fig. 01 — zeus faber */
-  .score .cap { display: block; padding: 0 var(--ns-gutter, 40px) 28px; color: #666; font-size: 11px; letter-spacing: 0.12em; }
+  .score .cap { display: block; padding: 0 0 28px; color: #666; font-size: 11px; letter-spacing: 0.12em; }
   .score .cap .n { color: #999; }
   .score .cap .t { font-family: "zxx-sans", ui-monospace, monospace; font-size: 12px; letter-spacing: 0.08em; color: #aaa; }
   .score .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 1; transform-origin: 50% 50%; animation: score-spin 140s linear infinite paused; }
@@ -266,7 +323,7 @@
   .score.live .fig svg { animation-play-state: running; }
   @keyframes score-spin { to { transform: rotate(360deg); } }
 
-  @media (max-width: 720px) { .score { width: 80vw; } }
+  @media (max-width: 720px) { .score { width: 80%; } }
 
   /* credits: liner notes — a label column and the names */
   #credits h2 { margin-bottom: 28px; }
@@ -289,6 +346,7 @@
   @media (max-width: 720px) {
     #tracks li { grid-template-columns: 22px 1fr; }
     #tracks .meta { grid-column: 2; }
+    #tracks .title { font-size: 14px; }
   }
 </style>
 </head>
@@ -296,22 +354,35 @@
 <section id="album">
   <img class="cover" id="cover" alt="" width="1400" height="1400">
   <div class="info">
-    <p class="artist" id="album-artist"></p>
     <h1 class="name" id="album-name"></h1>
     <p class="facts" id="album-facts"></p>
+    <form id="early" class="early" novalidate hidden>
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <label class="lbl" for="early-email" id="early-lbl"></label>
+      <div class="row">
+        <input id="early-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+        <button type="submit" id="early-go">send link</button>
+      </div>
+      <span class="msg" id="early-msg" hidden></span>
+    </form>
+    <div id="album-player"></div>
     <dl class="avail">
-      <dt>available on</dt>
-      <dd id="avail-now"></dd>
-      <dt class="soon-dt">coming soon to</dt>
-      <dd id="avail-soon" class="soon"></dd>
+      <dt id="dl-dt" hidden>download</dt>
+      <dd id="dl" class="dl" hidden><select id="dl-fmt" aria-label="format"></select><button type="button" id="dl-go">get ↓</button></dd>
+      <dt id="avail-now-dt" hidden>available on</dt>
+      <dd id="avail-now" hidden></dd>
+      <dt id="avail-soon-dt" hidden>coming soon to</dt>
+      <dd id="avail-soon" class="soon" hidden></dd>
     </dl>
   </div>
 </section>
-<section id="hero" class="ruled">
+<!-- the ruin section: hidden until the EP config turns it on (ep.ruin) — off by default so a slow
+     config fetch never flashes the knobs -->
+<section id="ruin-section" class="ruled" hidden>
 <iframe id="viz" title="visualizer" allow="midi"></iframe>
 <div id="scrim"></div>
 
-<div id="room">
+<div id="ruin-layout">
   <div id="col">
   <div id="sleeve">
     <h1><span data-link>ruin this ep</span></h1>
@@ -344,7 +415,7 @@
       <div class="seedrow">
         <span>seed <span class="seed" id="ruin-seed"></span></span>
         <button class="reseed" id="ruin-reseed" title="another wreck at the same settings">⟳</button>
-        <button id="ruin-keep" title="print the whole track through these settings and download it">download ↓</button>
+        <button id="ruin-keep" title="print the whole track through these settings and download it" hidden>download ↓</button>
         <span class="state" id="ruin-state"></span>
       </div>
     </div>
@@ -411,7 +482,7 @@
     <dd><span class="note">ampsamps, breakfast audio, red panda, old blood noise</span></dd>
     <div class="gap"></div>
     <dt>thanks</dt>
-    <dd><span class="note">britt e, tony w, derek c, misha m, troy vl, david c</span></dd>
+    <dd><span class="note">britt e, tony w, derek c, misha m, troy vl, david c, rick f, naomi m</span></dd>
   </dl>
 </section>
 
@@ -439,7 +510,7 @@
   const viz = $("viz");
   const SR = 48000; // everything runs at one rate: decode, live, print
 
-  const EP_URL = new URLSearchParams(location.search).get("ep") || "assets/ep/night-school.json";
+  const EP_URL = new URLSearchParams(location.search).get("ep") || "assets/ep/dead-ocean.json";
   const ep = await (await fetch(EP_URL)).json();
   let cur = -1; // current track index
 
@@ -459,6 +530,11 @@
     list.appendChild(li);
   });
   const durEl = (i) => list.querySelector(`li[data-i="${i}"] .dur`);
+  // ep.ruin false: no ruin section — the record plays from the top section and
+  // the ruin section (visualizer, ruin knobs, share) stays hidden and never
+  // loads. it ships hidden, so it only ever appears, never flashes and vanishes
+  const RUIN = ep.ruin !== false;
+  if (RUIN) $("ruin-section").hidden = false; else $("album-player").appendChild(list);
 
   // ---- album: cover + facts + where to get it -----------------------------------
   const ICONS = {"bandcamp": "M0 18.75l7.437-13.5H24l-7.438 13.5H0z", "applemusic": "M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043a5.022 5.022 0 00-1.877-.726 10.496 10.496 0 00-1.564-.15c-.04-.003-.083-.01-.124-.013H5.986c-.152.01-.303.017-.455.026-.747.043-1.49.123-2.193.4-1.336.53-2.3 1.452-2.865 2.78-.192.448-.292.925-.363 1.408-.056.392-.088.785-.1 1.18 0 .032-.007.062-.01.093v12.223c.01.14.017.283.027.424.05.815.154 1.624.497 2.373.65 1.42 1.738 2.353 3.234 2.801.42.127.856.187 1.293.228.555.053 1.11.06 1.667.06h11.03a12.5 12.5 0 001.57-.1c.822-.106 1.596-.35 2.295-.81a5.046 5.046 0 001.88-2.207c.186-.42.293-.87.37-1.324.113-.675.138-1.358.137-2.04-.002-3.8 0-7.595-.003-11.393zm-6.423 3.99v5.712c0 .417-.058.827-.244 1.206-.29.59-.76.962-1.388 1.14-.35.1-.706.157-1.07.173-.95.045-1.773-.6-1.943-1.536a1.88 1.88 0 011.038-2.022c.323-.16.67-.25 1.018-.324.378-.082.758-.153 1.134-.24.274-.063.457-.23.51-.516a.904.904 0 00.02-.193c0-1.815 0-3.63-.002-5.443a.725.725 0 00-.026-.185c-.04-.15-.15-.243-.304-.234-.16.01-.318.035-.475.066-.76.15-1.52.303-2.28.456l-2.325.47-1.374.278c-.016.003-.032.01-.048.013-.277.077-.377.203-.39.49-.002.042 0 .086 0 .13-.002 2.602 0 5.204-.003 7.805 0 .42-.047.836-.215 1.227-.278.64-.77 1.04-1.434 1.233-.35.1-.71.16-1.075.172-.96.036-1.755-.6-1.92-1.544-.14-.812.23-1.685 1.154-2.075.357-.15.73-.232 1.108-.31.287-.06.575-.116.86-.177.383-.083.583-.323.6-.714v-.15c0-2.96 0-5.922.002-8.882 0-.123.013-.25.042-.37.07-.285.273-.448.546-.518.255-.066.515-.112.774-.165.733-.15 1.466-.296 2.2-.444l2.27-.46c.67-.134 1.34-.27 2.01-.403.22-.043.442-.088.663-.106.31-.025.523.17.554.482.008.073.012.148.012.223.002 1.91.002 3.822 0 5.732z", "youtubemusic": "M12 0C5.376 0 0 5.376 0 12s5.376 12 12 12 12-5.376 12-12S18.624 0 12 0zm0 19.104c-3.924 0-7.104-3.18-7.104-7.104S8.076 4.896 12 4.896s7.104 3.18 7.104 7.104-3.18 7.104-7.104 7.104zm0-13.332c-3.432 0-6.228 2.796-6.228 6.228S8.568 18.228 12 18.228s6.228-2.796 6.228-6.228S15.432 5.772 12 5.772zM9.684 15.54V8.46L15.816 12l-6.132 3.54z", "tidal": "M12.012 3.992L8.008 7.996 4.004 3.992 0 7.996 4.004 12l4.004-4.004L12.012 12l-4.004 4.004 4.004 4.004 4.004-4.004L12.012 12l4.004-4.004-4.004-4.004zM16.042 7.996l3.979-3.979L24 7.996l-3.979 3.979z"};
@@ -477,7 +553,6 @@
   }
   {
     if (ep.cover) { $("cover").src = ep.cover; $("cover").alt = `${ep.title} — cover`; } else $("cover").remove();
-    $("album-artist").textContent = ep.artist || "";
     $("album-name").textContent = ep.title || "";
     const n = ep.tracks.length;
     const total = ep.tracks.reduce((s, t) => s + (t.duration || 0), 0);
@@ -485,11 +560,16 @@
     if (total) parts.push(fmt(total));
     if (ep.releaseDate) parts.push(`<b>${ep.releaseDate}</b>`);
     $("album-facts").innerHTML = parts.join(" · ");
-    const now = Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : [];
-    now.forEach((b) => $("avail-now").appendChild(serviceEl(b)));
-    const soon = (ep.streaming && ep.streaming.services) || [];
-    if (soon.length) soon.forEach((b) => $("avail-soon").appendChild(serviceEl(b, true)));
-    else { $("avail-soon").remove(); document.querySelector(".soon-dt").remove(); }
+    // "platforms": false keeps the buy/streaming rows off until the record is out there
+    if (ep.platforms !== false) {
+      if (ep.buyLabel) $("avail-now-dt").textContent = ep.buyLabel; // e.g. "available oct 20 on" before release
+      const now = Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : [];
+      now.forEach((b) => $("avail-now").appendChild(serviceEl(b)));
+      if (now.length) $("avail-now-dt").hidden = $("avail-now").hidden = false;
+      const soon = (ep.streaming && ep.streaming.services) || [];
+      soon.forEach((b) => $("avail-soon").appendChild(serviceEl(b, true)));
+      if (soon.length) $("avail-soon-dt").hidden = $("avail-soon").hidden = false;
+    }
   }
 
   // ---- buy / streaming ---------------------------------------------------------
@@ -513,42 +593,94 @@
   // the worklet is the player (see ruin-worklet.js), so the whole file has to
   // be in memory before the first note. the track row shows the fetch.
   const decoded = new Map(); // slug → AudioBuffer (keep two: current + last)
-  async function loadTrack(t, onProgress) {
-    if (decoded.has(t.slug)) return decoded.get(t.slug);
-    const res = await fetch(audioUrl(t));
-    if (!res.ok) throw new Error(`${res.status} fetching ${t.file}`);
-    const total = +res.headers.get("content-length") || 0;
+  // read a response body, reporting each chunk's size as it lands
+  async function readBody(res, onBytes) {
+    if (!res.body) { const b = new Uint8Array(await res.arrayBuffer()); if (onBytes) onBytes(b.length); return b; }
+    const reader = res.body.getReader();
+    const chunks = []; let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      if (onBytes) onBytes(value.length);
+    }
+    const bytes = new Uint8Array(got); let o = 0;
+    for (const c of chunks) { bytes.set(c, o); o += c.length; }
+    return bytes;
+  }
+  // before release the audio isn't a public file: /api/stream checks the listen
+  // cookie and redirects to a short-lived signed link in the R2 bucket
+  // (netlify/lib/listen.mjs, r2.mjs)
+  const PRIVATE = ep.private && ep.private.release;
+  class Locked extends Error {}
+  let manifest = null;
+  async function getManifest() {
+    if (!manifest) {
+      const r = await fetch(`/api/stream/${PRIVATE}/manifest`, { cache: "no-store" });
+      if (r.status === 401) throw new Locked("locked");
+      if (!r.ok) throw new Error(`${r.status} fetching the manifest`);
+      manifest = await r.json();
+    }
+    return manifest;
+  }
+  async function fetchPrivate(t, onProgress) {
+    await getManifest();
+    const info = manifest.tracks[t.slug];
+    if (!info) throw new Error(`${t.slug} isn't uploaded`);
+    const r = await fetch(`/api/stream/${PRIVATE}/${t.slug}`);
+    if (r.status === 401) throw new Locked("locked");
+    if (!r.ok) throw new Error(`${r.status} fetching ${t.slug}`);
+    let got = 0;
+    return (await readBody(r, (n) => { got += n; if (onProgress) onProgress(Math.min(1, got / info.bytes)); })).buffer;
+  }
+  // the 15s previews: one small public file each, played while the record is locked
+  const keyFor = (t, preview) => (preview ? "preview:" : "") + t.slug;
+  async function loadTrack(t, onProgress, preview = false) {
+    const key = keyFor(t, preview);
+    if (decoded.has(key)) return decoded.get(key);
     let bytes;
-    if (res.body && total) {
-      const reader = res.body.getReader();
-      const chunks = []; let got = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value); got += value.length;
-        if (onProgress) onProgress(got / total);
-      }
-      bytes = new Uint8Array(got); let o = 0;
-      for (const c of chunks) { bytes.set(c, o); o += c.length; }
-      bytes = bytes.buffer;
+    if (preview) {
+      const res = await fetch(`/api/stream/${PRIVATE}/preview/${t.slug}`);
+      if (!res.ok) throw new Error(`${res.status} fetching the ${t.slug} preview`);
+      const total = +res.headers.get("content-length") || 0;
+      let got = 0;
+      bytes = (await readBody(res, (n) => { got += n; if (onProgress && total) onProgress(got / total); })).buffer;
+    } else if (PRIVATE) {
+      bytes = await fetchPrivate(t, onProgress);
     } else {
-      bytes = await res.arrayBuffer();
+      const res = await fetch(audioUrl(t));
+      if (!res.ok) throw new Error(`${res.status} fetching ${t.file}`);
+      const total = +res.headers.get("content-length") || 0;
+      let got = 0;
+      bytes = (await readBody(res, (n) => { got += n; if (onProgress && total) onProgress(got / total); })).buffer;
     }
     const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
     const buf = await new Ctx(2, 1, SR).decodeAudioData(bytes); // resamples to SR
     for (const k of [...decoded.keys()].slice(0, -1)) decoded.delete(k);
-    decoded.set(t.slug, buf);
+    decoded.set(key, buf);
     return buf;
   }
 
   // ---- audio graph: worklet(player+ruin) → [dry] + [convolver → wet] → analyser → out ----
   let actx = null, analyser = null, node = null, conv = null, dryGain = null, wetGain = null, graphReady = null;
   let playing = false, posFrame = 0, lenFrames = 0;
+  let loadedKey = null, previewing = false; // what the worklet holds: "<slug>" or "preview:<slug>"
+  // iOS: call this FIRST in a tap handler, before any await. the context
+  // has to be created/resumed inside the gesture or it stays silent, and the
+  // page declares itself media playback so the ring/silent switch doesn't
+  // mute it (web audio is "ambient" by default there; iOS 16.4+)
+  function unlockAudio() {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (_) {}
+    if (!actx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      try { actx = new Ctx({ sampleRate: SR }); } catch (_) { actx = new Ctx(); }
+    }
+    if (actx.state !== "running") actx.resume().catch(() => {});
+  }
   function ensureGraph() {
     if (graphReady) return graphReady;
     graphReady = (async () => {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      try { actx = new Ctx({ sampleRate: SR }); } catch (_) { actx = new Ctx(); }
+      unlockAudio();
       await actx.audioWorklet.addModule("ruin-worklet.js");
       node = new AudioWorkletNode(actx, "ruin", { numberOfInputs: 0, outputChannelCount: [2] });
       analyser = actx.createAnalyser();
@@ -563,7 +695,11 @@
       node.port.onmessage = (e) => {
         const m = e.data;
         if (m.type === "pos") posFrame = m.frame;
-        else if (m.type === "ended") { playing = false; markCurrent(); if (cur + 1 < ep.tracks.length) play(cur + 1); }
+        else if (m.type === "ended") {
+          playing = false; markCurrent();
+          if (cur + 1 < ep.tracks.length) play(cur + 1);
+          else if (previewing) askEarly("that's the taste — leave an email to hear all of it");
+        }
       };
       applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed);
       pushSet();
@@ -581,6 +717,7 @@
   // ---- the visualizer frame ---------------------------------------------------
   function pageFor(t) { return t.page || ep.default || "16-network"; }
   function loadFrame(t) {
+    if (!RUIN) return;
     viz.src = `${pageFor(t)}.html`;
   }
   viz.addEventListener("load", () => {
@@ -599,13 +736,13 @@
       el.dispatchEvent(new Event("change", { bubbles: true }));
     }
     if (t.beat && t.bpm && NS.setBpm) NS.setBpm(t.bpm); else if (NS.clearBpm) NS.clearBpm();
-    // the room is a listening surface first: start with the page's params
+    // the ruin section is a listening surface first: start with the page's params
     // panel closed ([0] in the frame still opens it — it's hidden, not removed)
     const panel = doc.getElementById("panel");
     if (panel) panel.hidden = true;
     applyQuiet(doc, NS);
     attach();
-    // the frame owns the keyboard once clicked — mirror the room's keys back
+    // the frame owns the keyboard once clicked — mirror the page's keys back
     viz.contentWindow.addEventListener("keydown", onKey);
   });
   // quiet layer: the visualizers were built to hold a screen alone; behind a
@@ -613,7 +750,7 @@
   // globals are applied for this load only (persist=false) so a visitor's own
   // haze/grain/data-points settings survive; the telemetry HUD is hidden by
   // style rather than toggled, for the same reason. all values live in the
-  // EP config so the room and the rendered videos agree.
+  // EP config so the ruin section and the rendered videos agree.
   const quiet = ep.quiet || {};
   if (quiet.dim != null) viz.style.opacity = String(quiet.dim);
   function applyQuiet(doc, NS) {
@@ -622,7 +759,7 @@
     if (quiet.dataPoints != null && NS.setDataPoints) NS.setDataPoints(quiet.dataPoints, false);
     const st = doc.createElement("style");
     // the visualizer pages hide the cursor (they're fullscreen instruments);
-    // the room is a page with controls, so the pointer stays
+    // the ruin section has controls, so the pointer stays
     st.textContent = "html,body{cursor:auto !important}" + (quiet.telemetry === false ? "#hud-overlay{display:none !important}" : "");
     doc.head.appendChild(st);
   }
@@ -654,26 +791,39 @@
     scrub.classList.toggle("paused", !playing);
   }
   async function play(i) {
+    unlockAudio();
     const t = ep.tracks[i];
     if (!t) return;
+    // not unlocked yet: the play button asks for an email instead
+    // not unlocked yet: play the track's 15s preview instead
+    const pv = !!PRIVATE && !(await unlockedP);
+    const key = keyFor(t, pv);
     await ensureGraph();
     await actx.resume();
-    if (i !== cur || !decoded.has(t.slug)) {
+    if (i !== cur || loadedKey !== key) {
       const switching = i !== cur;
       cur = i;
       if (switching) { loadFrame(t); posFrame = 0; lenFrames = 0; }
       node.port.postMessage({ type: "play", on: false }); playing = false;
+      previewing = pv; $("album").classList.toggle("previewing", pv);
       loadingSlug = t.slug; markCurrent(); syncUrl();
       const d = durEl(i);
       let buf;
       try {
-        buf = await loadTrack(t, (f) => { d.textContent = `${Math.round(f * 100)}%`; scrubBuf.style.width = `${f * 100}%`; });
+        buf = await loadTrack(t, (f) => { d.textContent = `${Math.round(f * 100)}%`; scrubBuf.style.width = `${f * 100}%`; }, pv);
       } catch (err) {
-        console.error(err); d.textContent = "failed"; loadingSlug = null; markCurrent(); toast(`couldn't load ${t.title}`); return;
+        loadingSlug = null;
+        if (err instanceof Locked) { // the cookie ran out mid-session
+          unlockedP = Promise.resolve(false); d.textContent = t.duration ? fmt(t.duration) : ""; scrubBuf.style.width = "0%";
+          markCurrent(); askEarly("your access ran out — send a fresh link", true); return;
+        }
+        console.error(err); d.textContent = t.duration ? fmt(t.duration) : "failed"; markCurrent(); toast(`couldn't load ${pv ? "the preview of " : ""}${t.title}`); return;
       }
       if (cur !== i) return; // someone moved on while we were loading
       loadingSlug = null;
-      d.textContent = fmt(buf.duration);
+      loadedKey = key;
+      // a preview keeps the row showing the whole track's length
+      d.textContent = pv && t.duration ? fmt(t.duration) : fmt(buf.duration);
       scrubBuf.style.width = "100%";
       lenFrames = buf.length;
       { const l = buf.getChannelData(0).slice(), r = (buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0)).slice();
@@ -685,7 +835,8 @@
     markCurrent();
   }
   async function togglePlay() {
-    if (cur < 0 || !decoded.has(ep.tracks[cur].slug)) return play(cur < 0 ? 0 : cur);
+    unlockAudio();
+    if (cur < 0 || !loadedKey || loadedKey.replace(/^preview:/, "") !== ep.tracks[cur].slug) return play(cur < 0 ? 0 : cur);
     await ensureGraph();
     await actx.resume();
     playing = !playing;
@@ -725,6 +876,9 @@
   const V = { ruin: $("v-ruin"), speed: $("v-speed"), verb: $("v-verb") };
   const seedEl = $("ruin-seed"), stateEl = $("ruin-state"), keepBtn = $("ruin-keep");
   const R = { ruin: $("r-ruin"), speed: $("r-speed"), verb: $("r-verb") };
+  // before release the record is stream-only: a print at ruin 0.01 is a clean
+  // copy, so the download ships hidden and only appears once the record is public
+  if (!PRIVATE) keepBtn.hidden = false;
 
   function pushSet() {
     const t = ep.tracks[cur < 0 ? 0 : cur];
@@ -758,7 +912,7 @@
     if (knobs.speed !== 1) q.set("speed", knobs.speed.toFixed(3));
     if (knobs.verb > 0) q.set("verb", knobs.verb.toFixed(2));
     if (knobs.ruin > 0 || knobs.verb > 0) q.set("seed", knobs.seed);
-    if (EP_URL !== "assets/ep/night-school.json") q.set("ep", EP_URL);
+    if (EP_URL !== "assets/ep/dead-ocean.json") q.set("ep", EP_URL);
     const qs = q.toString();
     history.replaceState(null, "", location.pathname + (qs ? `?${qs}` : ""));
   }
@@ -774,7 +928,7 @@
   K.verb.addEventListener("input", () => { knobs.verb = +K.verb.value; showKnobs(); if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed, true); syncUrl(); });
   K.verb.addEventListener("change", () => { if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed); });
   $("ruin-reseed").addEventListener("click", () => { knobs.seed = randomSeed(); showKnobs(); pushSet(); if (actx) applyVerb(actx, conv, dryGain, wetGain, knobs.verb, knobs.seed); syncUrl(); });
-  // ---- // share: the room's url, which carries the take when one is dialled in --
+  // ---- // share: the page's url, which carries the take when one is dialled in --
   function shareText() {
     const t = ep.tracks[cur < 0 ? 0 : cur];
     const touched = knobs.ruin > 0 || knobs.speed !== 1 || knobs.verb > 0;
@@ -891,7 +1045,7 @@
     return ab;
   }
   // ---- the gate: an email before the copy, the same door as the plugins -----------
-  // POST /api/subscribe (Resend) with source night-school + the track slug; the
+  // POST /api/subscribe (Resend) with source dead-ocean + the track slug; the
   // email is remembered (shared key with the plugin pages) so the second copy
   // doesn't ask again — it still posts, so the track property stays current.
   const EMAIL_KEY = "newspeech.email";
@@ -901,7 +1055,7 @@
   async function postGate(email, slug) {
     const res = await fetch("/api/subscribe", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, source: "night-school", track: slug, "bot-field": gate.querySelector('[name="bot-field"]').value }),
+      body: JSON.stringify({ email, source: "dead-ocean", track: slug, "bot-field": gate.querySelector('[name="bot-field"]').value }),
     });
     if (!res.ok) throw new Error(String(res.status));
     try { localStorage.setItem(EMAIL_KEY, email); } catch (_) {}
@@ -942,6 +1096,69 @@
     return openGate("", null);
   }
 
+  // ---- listen early: before release, an email gets a private link to the stream ----
+  // POST /api/listen mails a signed link; opening it sets a cookie and lands
+  // back here with ?listen=1. the page asks /api/listen whether this browser
+  // holds one; /api/stream refuses the audio without it.
+  const early = $("early"), earlyEmail = $("early-email"), earlyMsg = $("early-msg"), earlyGo = $("early-go"), album = $("album");
+  let unlockedP = Promise.resolve(true);
+  function setLocked(on) { album.classList.toggle("locked", on); early.hidden = !on; }
+  if (PRIVATE) {
+    $("early-lbl").textContent = `${ep.title} will land on bandcamp / subvert and streaming in the near future, but for now it's just for us here. share this with anyone you'd like - toss in your email for a link to unlock this page as well as the option to download the EP directly.`;
+    earlyEmail.value = remembered();
+    setLocked(true); // most visitors are; a cookie holder sees it for one round trip
+    unlockedP = fetch(`/api/listen?r=${encodeURIComponent(PRIVATE)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { unlocked: false })).then((j) => !!j.unlocked).catch(() => false);
+    unlockedP.then((ok) => { setLocked(!ok); if (ok) offerDownloads(); });
+  }
+
+  // ---- the full-res zips: one per format (tools/release-audio builds them
+  // from the masters). /api/stream checks the cookie and redirects to the zip
+  // in R2, stored with its filename — the browser saves it like any download.
+  const dlRow = $("dl"), dlFmt = $("dl-fmt"), dlGo = $("dl-go");
+  const mb = (b) => `${Math.round(b / 1048576)} MB`;
+  async function offerDownloads() {
+    let m;
+    try { m = await getManifest(); } catch (_) { return; }
+    const ds = Object.entries(m.downloads || {});
+    if (!ds.length) return;
+    dlFmt.innerHTML = "";
+    for (const [id, d] of ds) dlFmt.add(new Option(`${d.label} · ${mb(d.bytes)}`, id));
+    dlRow.hidden = $("dl-dt").hidden = false;
+  }
+  dlGo.addEventListener("click", () => {
+    const d = manifest && manifest.downloads && manifest.downloads[dlFmt.value];
+    if (!d) return;
+    location.href = `/api/stream/${PRIVATE}/download/${encodeURIComponent(dlFmt.value)}`;
+    toast(`${d.name} (${mb(d.bytes)}) — your browser takes it from here`);
+  });
+  function earlySay(text, err) { earlyMsg.hidden = !text; earlyMsg.textContent = text || ""; earlyMsg.classList.toggle("err", !!err); }
+  function askEarly(note, err) {
+    setLocked(true); earlySay(note, err); earlyGo.disabled = false;
+    early.scrollIntoView({ block: "center", behavior: "smooth" });
+    earlyEmail.focus({ preventScroll: true });
+  }
+  early.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!earlyEmail.checkValidity()) { earlySay(earlyEmail.value.trim() ? "that doesn't look like an email" : "an email goes here first", true); earlyEmail.focus(); return; }
+    earlyGo.disabled = true; earlySay("");
+    try {
+      const email = earlyEmail.value.trim();
+      const res = await fetch("/api/listen", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, release: PRIVATE, "bot-field": early.querySelector('[name="bot-field"]').value }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      try { localStorage.setItem(EMAIL_KEY, email); } catch (_) {}
+      const j = await res.json().catch(() => ({}));
+      if (j.dev_link) { location.href = j.dev_link; return; } // local dry run: no email, straight through
+      earlySay("sent — the link in your inbox opens the record here");
+      earlyGo.disabled = false;
+    } catch (_) {
+      earlyGo.disabled = false; earlySay("transmission failed — try again", true);
+    }
+  });
+
   let printing = false;
   keepBtn.addEventListener("click", async () => {
     if (printing || keepBtn.disabled) return;
@@ -970,7 +1187,7 @@
     }
   });
   // test hook — headless checks call this to prove print determinism
-  window.__nightSchool = { renderTake, loadTrack, knobs, tracks: ep.tracks, makeImpulse, verbParams };
+  window.__deadOcean = { renderTake, loadTrack, knobs, tracks: ep.tracks, makeImpulse, verbParams };
 
   let toastTimer = null;
   function toast(msg) {
@@ -1001,8 +1218,18 @@
     knobs.ruin = Math.max(0, Math.min(1, parseFloat(q.get("ruin")) || 0));
     knobs.speed = Math.max(0.125, Math.min(2, parseFloat(q.get("speed")) || 1));
     knobs.verb = Math.max(0, Math.min(1, parseFloat(q.get("verb")) || 0));
+    if (!RUIN) { knobs.ruin = 0; knobs.speed = 1; knobs.verb = 0; }
     showKnobs();
     loadFrame(ep.tracks[cur]); markCurrent();
+    // back from the emailed link
+    const listen = q.get("listen");
+    if (PRIVATE && listen) {
+      syncUrl();
+      unlockedP.then((ok) => {
+        if (ok) toast("you're in — press play");
+        else askEarly(listen === "expired" ? "that link has run out — we'll send a fresh one" : "that link didn't open the record here — send another", true);
+      });
+    }
   }
 
   // ---- scores: inline each exported composition svg and animate it ----------

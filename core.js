@@ -467,7 +467,7 @@
     _bandOnset.low = _bandOnset.mid = _bandOnset.high = false;
   }
 
-  // ---- external analyser (used by night-school.html: the listening room
+  // ---- external analyser (used by dead-ocean.html: the ruin section
   // owns the <audio> element + AudioContext and hands this page's core.js the
   // AnalyserNode, so tickAudio/intensity/bandLevel/onset run exactly as they
   // do for the mic — no feature duplication on the parent side). same-origin
@@ -2479,7 +2479,7 @@
       if (isFinite(v)) _globalHaze = Math.max(0, Math.min(2, v));
     } catch (_) {}
   }
-  // persist=false: apply for this page load only (the EP listening room quiets
+  // persist=false: apply for this page load only (the EP page's ruin section quiets
   // its frame without overwriting the visitor's site-wide setting)
   function setHaze(v, persist = true) {
     _globalHaze = Math.max(0, Math.min(2, +v || 0));

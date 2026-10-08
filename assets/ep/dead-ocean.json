@@ -1,0 +1,111 @@
+{
+  "title": "dead ocean",
+  "cover": "assets/ep/cover.jpg",
+  "artist": "newspeech",
+  "download": {
+    "note": "the full-res zips, Bandcamp-style: tools/release-audio builds one per format from the 24/48 masters in audioBase — files + tags use the proper-case names below, the page keeps its lowercase titles",
+    "name": "Dead Ocean",
+    "year": 2026,
+    "genre": "noise noise noise",
+    "cover": "assets/ep/cover-3000.jpg",
+    "formats": [
+      "flac",
+      "alac",
+      "wav",
+      "mp3"
+    ]
+  },
+  "platforms": false,
+  "buyLabel": "available nov 20 on",
+  "buy": [
+    {
+      "label": "subvert",
+      "url": "",
+      "img": "assets/ep/subvert.png"
+    },
+    {
+      "label": "bandcamp",
+      "url": "",
+      "icon": "bandcamp"
+    }
+  ],
+  "streaming": {
+    "date": "december 20, 2026",
+    "note": "streaming everywhere one month after release",
+    "services": [
+      {
+        "label": "apple music",
+        "url": "",
+        "icon": "applemusic"
+      },
+      {
+        "label": "youtube music",
+        "url": "",
+        "icon": "youtubemusic"
+      },
+      {
+        "label": "tidal",
+        "url": "",
+        "icon": "tidal"
+      }
+    ]
+  },
+  "audioBase": "assets/ep/",
+  "private": {
+    "release": "dead-ocean",
+    "note": "pre-release preview: stream only, behind the email link. release day (bandcamp/subvert): delete this block AND \"ruin\": false, drop \"buyLabel\" and \"platforms\": false, drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at the public files. the full-res zips ride the same cookie, so they go away with it — decide then whether they stay (public files) or not."
+  },
+  "ruin": false,
+  "quiet": {
+    "dim": 0.5,
+    "haze": 0.35,
+    "grain": 0,
+    "dataPoints": 0,
+    "telemetry": false
+  },
+  "default": "16-network",
+  "tracks": [
+    {
+      "slug": "2-degrees",
+      "title": "2 degrees",
+      "name": "2 Degrees",
+      "file": "2-degrees.flac",
+      "duration": 238.18,
+      "bpm": 132,
+      "beat": false,
+      "page": "17-flare",
+      "state": {
+        "params": {}
+      },
+      "source": "EP MIX REF/1_2DEGREES_20261006_V4_1.wav (192k → 48k, 2ms fade-in)"
+    },
+    {
+      "slug": "kiidkyaas",
+      "title": "kiidk'yaas",
+      "name": "Kiidk'Yaas",
+      "file": "kiidkyaas.flac",
+      "duration": 332.41,
+      "bpm": 112,
+      "beat": false,
+      "page": "7-ridges",
+      "state": {
+        "params": {}
+      },
+      "source": "EP MIX REF/2_KIIDKYAAS_20261006_V7_1.wav (192k → 48k, 2ms fade-in)"
+    },
+    {
+      "slug": "policy-as-a-suicide-pact",
+      "title": "policy as a suicide pact",
+      "name": "Policy as a Suicide Pact",
+      "file": "policy-as-a-suicide-pact.flac",
+      "duration": 448.85,
+      "bpm": 131,
+      "beat": false,
+      "page": "6-grid",
+      "state": {
+        "params": {}
+      },
+      "source": "EP MIX REF/3_POLICY_20261006_V4_1.wav (192k → 48k, 2ms fade-in)"
+    }
+  ]
+}

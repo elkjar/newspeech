@@ -7,6 +7,9 @@
 
 # /api/subscribe — Resend contact capture (netlify/functions/subscribe.mjs);
 # needs RESEND_API_KEY in the site env
+# /api/listen + /api/stream — private pre-release streams (netlify/lib/listen.mjs);
+# need LISTEN_SECRET + R2_* too (netlify/lib/r2.mjs), and the audio in the R2
+# bucket via tools/release-audio
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
@@ -50,6 +53,12 @@
 [[redirects]]
   from = "/plugins-886ad9.html"
   to = "/plugins.html"
+  status = 301
+
+# the EP was renamed night school → dead ocean (2026-10-03)
+[[redirects]]
+  from = "/night-school.html"
+  to = "/dead-ocean.html"
   status = 301
 
 # live.html (the strudel repl) retired 2026-09-25 — old links land home

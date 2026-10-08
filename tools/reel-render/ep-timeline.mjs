@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// ep-timeline — the EP listening room and the EP videos read ONE config.
+// ep-timeline — the EP page's ruin section and the EP videos read ONE config.
 //
 // assets/ep/<ep>.json pairs each track with a visualizer page + tuned params
 // (the same {page, state:{params}} shape reel-render segments use). This
 // turns each track into a single-segment timeline the length of the track and
 // prints the render.mjs command that muxes the FLAC under it, so the video of
-// a track is exactly what night-school.html shows while it plays.
+// a track is exactly what dead-ocean.html shows while it plays.
 //
 // Usage:
-//   node ep-timeline.mjs [--ep assets/ep/night-school.json] [--track <slug>]
+//   node ep-timeline.mjs [--ep assets/ep/dead-ocean.json] [--track <slug>]
 //                        [--out out/] [--width 1920 --height 1080] [--fps 30]
 //   → out/<slug>.timeline.json per track + one render command per track
 //
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
 
-const a = { ep: 'assets/ep/night-school.json', track: null, out: 'out', width: 1920, height: 1080, fps: 30 };
+const a = { ep: 'assets/ep/dead-ocean.json', track: null, out: 'out', width: 1920, height: 1080, fps: 30 };
 const argv = process.argv;
 for (let i = 2; i < argv.length; i++) {
   const k = argv[i], v = argv[i + 1];
@@ -46,11 +46,11 @@ for (const t of tracks) {
   if (!t.duration) { console.error(`${t.slug}: no duration in config — ffprobe the flac and add it`); continue; }
   const state = { ...(t.state || {}) };
   // the page's tempo clock is a global (localStorage) in core.js; carry it into
-  // the render only when the listening room would also run it.
+  // the render only when the ruin section would also run it.
   if (t.beat && t.bpm) state.localStorage = { ...(state.localStorage || {}), 'newspeech.bpm': String(t.bpm) };
-  // the room's quiet layer, as the page globals reel-render can set (its
+  // the ruin section's quiet layer, as the page globals reel-render can set (its
   // headless profile is throwaway, so persisting there is fine). dim is frame
-  // opacity in the room — not representable here; darken the mp4 in post or
+  // opacity in the ruin section — not representable here; darken the mp4 in post or
   // fold it into the params if a pairing needs it.
   const q = ep.quiet || {};
   const ls = { ...(state.localStorage || {}) };
