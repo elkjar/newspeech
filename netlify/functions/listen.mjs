@@ -20,6 +20,8 @@ import { manifest } from "../lib/r2.mjs";
 export const config = { path: "/api/listen" };
 
 const FROM = "newspeech <listen@newspeechsound.com>";
+// Chris's copy (10-07)
+const INTRO = (title) => `Thanks so much for your interest in ${title} / this project in general. it honestly means the world to me. the state of the music industry right now is kind of a mess and this type of direct support is absolutely incredible. you can listen or download the music below. please share this however you'd like.`;
 const RESEND_AFTER_S = 120; // one email per address per release per two minutes
 const ALLOWED_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*(newspeechsound\.com|netlify\.app)$/i;
 const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -139,20 +141,17 @@ export default async (req) => {
       to: email,
       subject: `${rel.title} — your private listen`,
       text: [
-        `here's your link to hear ${rel.title} before it's out:`,
+        INTRO(rel.title),
         "",
-        link,
-        "",
-        `it opens the record in this browser and works for ${LINK_DAYS} days. it's meant for you — please don't pass it around.`,
+        `listen: ${link}`,
         "",
         ...(zips.length ? ["download the whole ep (zip, full res):", "", ...zips.flatMap((z) => [`${z.label} · ${z.size}`, z.href, ""])] : []),
         `— ${rel.artist}`,
       ].join("\n"),
       html: `<!doctype html><html><body style="margin:0;padding:32px 24px;background:#ffffff;color:#111111;font:14px/1.6 Menlo,Consolas,monospace">
 <img src="${base}/assets/email/ns-wordmark-black.png" width="240" height="19" alt="NEWSPEECH" style="display:block;border:0;outline:none;margin:0 0 32px">
-<p style="margin:0 0 20px">here's your link to hear <b>${rel.title}</b> before it's out:</p>
+<p style="margin:0 0 20px">${INTRO(`<b>${rel.title}</b>`)}</p>
 <p style="margin:0 0 24px"><a href="${link}" style="display:inline-block;padding:8px 18px;border:1px solid #111111;color:#111111;text-decoration:none">listen →</a></p>
-<p style="margin:0 0 20px;color:#555555">it opens the record in this browser and works for ${LINK_DAYS} days. it's meant for you — please don't pass it around.</p>
 ${zips.length ? `<p style="margin:0 0 10px">download the whole ep (zip, full res):</p>
 <p style="margin:0 0 24px">${zips.map((z) => `<a href="${z.href}" style="color:#111111">${z.label}</a> <span style="color:#555555">· ${z.size}</span>`).join("<br>")}</p>
 ` : ""}<p style="margin:0;color:#555555">— ${rel.artist}</p>
