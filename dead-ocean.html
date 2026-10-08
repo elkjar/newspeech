@@ -1090,7 +1090,7 @@
   let unlockedP = Promise.resolve(true);
   function setLocked(on) { album.classList.toggle("locked", on); early.hidden = !on; }
   if (PRIVATE) {
-    $("early-lbl").textContent = `${ep.title} isn't out yet. press play for 15 seconds of each track, or leave an email and we'll send you a private link to hear all of it first.`;
+    $("early-lbl").textContent = `${ep.title} will land on bandcamp / subvert and streaming in the near future, but for now it's just for us here. share this with anyone you'd like - toss in your email for a link to unlock this page as well as the option to download the EP directly.`;
     earlyEmail.value = remembered();
     setLocked(true); // most visitors are; a cookie holder sees it for one round trip
     unlockedP = fetch(`/api/listen?r=${encodeURIComponent(PRIVATE)}`, { cache: "no-store" })
