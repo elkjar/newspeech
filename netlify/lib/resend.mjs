@@ -21,13 +21,16 @@
 //              waitlist           "sequence" — set on every waitlist signup, known
 //                                 contacts included (source is first touch only)
 //              <plugin>           version string of the build they downloaded
-//              dead-ocean         "stream" when they asked for the private
+//              dead_ocean         "stream" when they asked for the private
 //                                 listening link, else the slug of the last
 //                                 track they printed a ruin of
 //              tool               browser tool whose export nudge they signed up
 //                                 from (tools source) — General segment only
 //              shop               shop.json id of the last thing they bought
 //                                 (shop source, via the Stripe webhook)
+//
+// Property keys may only hold letters, digits and underscores (Resend 422s
+// anything else) — hence dead_ocean, though the source value is "dead-ocean".
 //
 // Segments + properties are created on demand and cached for the life of the
 // function instance, so the only config is RESEND_API_KEY.
@@ -121,7 +124,7 @@ export function client(key) {
 
     const props = {};
     if (plugin) props[plugin] = String(version || "1");
-    if (track) props["dead-ocean"] = track;
+    if (track) props.dead_ocean = track;
     if (tool) props.tool = tool;
     if (shop) props.shop = shop;
     if (source === "sequence") props.waitlist = "sequence";

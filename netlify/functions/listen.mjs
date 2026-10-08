@@ -130,7 +130,10 @@ export default async (req) => {
   } catch (e) { console.error("listen: manifest:", e.message); }
 
   try {
-    await resend.subscribe({ email, source: release, track: "stream" });
+    // filing the contact is for us; the link is for them — a Resend hiccup
+    // on the contact side never costs a listener their email
+    try { await resend.subscribe({ email, source: release, track: "stream" }); }
+    catch (e) { console.error("listen: subscribe:", e.message); }
     await resend.send({
       from: FROM,
       to: email,
