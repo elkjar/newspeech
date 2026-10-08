@@ -139,7 +139,7 @@ export default async (req) => {
     await resend.send({
       from: FROM,
       to: email,
-      subject: `${rel.title} — your private listen`,
+      subject: "your download links",
       text: [
         INTRO(rel.title),
         "",
