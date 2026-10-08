@@ -346,6 +346,7 @@
   @media (max-width: 720px) {
     #tracks li { grid-template-columns: 22px 1fr; }
     #tracks .meta { grid-column: 2; }
+    #tracks .title { font-size: 14px; }
   }
 </style>
 </head>
@@ -664,11 +665,22 @@
   let actx = null, analyser = null, node = null, conv = null, dryGain = null, wetGain = null, graphReady = null;
   let playing = false, posFrame = 0, lenFrames = 0;
   let loadedKey = null, previewing = false; // what the worklet holds: "<slug>" or "preview:<slug>"
+  // iOS: call this FIRST in a tap handler, before any await. the context
+  // has to be created/resumed inside the gesture or it stays silent, and the
+  // page declares itself media playback so the ring/silent switch doesn't
+  // mute it (web audio is "ambient" by default there; iOS 16.4+)
+  function unlockAudio() {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (_) {}
+    if (!actx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      try { actx = new Ctx({ sampleRate: SR }); } catch (_) { actx = new Ctx(); }
+    }
+    if (actx.state !== "running") actx.resume().catch(() => {});
+  }
   function ensureGraph() {
     if (graphReady) return graphReady;
     graphReady = (async () => {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      try { actx = new Ctx({ sampleRate: SR }); } catch (_) { actx = new Ctx(); }
+      unlockAudio();
       await actx.audioWorklet.addModule("ruin-worklet.js");
       node = new AudioWorkletNode(actx, "ruin", { numberOfInputs: 0, outputChannelCount: [2] });
       analyser = actx.createAnalyser();
@@ -779,6 +791,7 @@
     scrub.classList.toggle("paused", !playing);
   }
   async function play(i) {
+    unlockAudio();
     const t = ep.tracks[i];
     if (!t) return;
     // not unlocked yet: the play button asks for an email instead
@@ -822,6 +835,7 @@
     markCurrent();
   }
   async function togglePlay() {
+    unlockAudio();
     if (cur < 0 || !loadedKey || loadedKey.replace(/^preview:/, "") !== ep.tracks[cur].slug) return play(cur < 0 ? 0 : cur);
     await ensureGraph();
     await actx.resume();
