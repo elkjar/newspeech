@@ -93,7 +93,11 @@ jobs:
           git -C /c/JUCE fetch -q --depth 1 https://github.com/juce-framework/JUCE.git "$JUCE_SHA"
           git -C /c/JUCE checkout -q FETCH_HEAD
 
+      # x64 MSBuild: under the default 32-bit one, JUCE's post-build sees an x86
+      # host and skips the VST3 moduleinfo.json manifest.
       - uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
 
       - name: Build
         run: msbuild "vst/${{ matrix.plugin }}/juce/${{ matrix.dir }}/Builds/VisualStudio2022/${{ matrix.name }}.sln" /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64
@@ -107,6 +111,7 @@ jobs:
           OUT="vst/${{ matrix.plugin }}/juce/${{ matrix.dir }}/Builds/VisualStudio2022/x64/Release"
           STAGE="stage/${{ matrix.name }}-$VERSION-win"
           mkdir -p "$STAGE"
+          [ -f "$OUT/VST3/${{ matrix.name }}.vst3/Contents/Resources/moduleinfo.json" ] || { echo "::error::no VST3 moduleinfo.json"; exit 1; }
           cp -R "$OUT/VST3/${{ matrix.name }}.vst3" "$STAGE/"
           cp "$OUT/Standalone Plugin/${{ matrix.name }}.exe" "$STAGE/${{ matrix.name }} (standalone).exe"
           sed "s/{NAME}/${{ matrix.name }}/g; s/{VERSION}/$VERSION/g" vst/common/dist/README-windows.txt > "$STAGE/README.txt"
