@@ -216,9 +216,10 @@
       <div class="gate-row">
         <input id="gate-vibe" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
         <button type="submit" class="cta">download vibe for macos</button>
+        <button type="submit" class="cta" data-platform="win">windows</button>
       </div>
     </form>
-    <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/vibe" target="_blank" rel="noopener noreferrer">source</a></div>
+    <div class="aux">macos 6.4 mb · au + vst3 · windows 6.0 mb · vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/vibe" target="_blank" rel="noopener noreferrer">source</a></div>
   </div>
   <div class="shot">
     <img src="assets/plugins/vibe.png" width="1100" height="744" alt="vibe — tape, repeat, reverb and out sections in the newspeech plugin ui" loading="lazy">
@@ -239,9 +240,10 @@
       <div class="gate-row">
         <input id="gate-saturate" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
         <button type="submit" class="cta">download saturate for macos</button>
+        <button type="submit" class="cta" data-platform="win">windows</button>
       </div>
     </form>
-    <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/saturate" target="_blank" rel="noopener noreferrer">source</a></div>
+    <div class="aux">macos 6.4 mb · au + vst3 · windows 6.0 mb · vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/saturate" target="_blank" rel="noopener noreferrer">source</a></div>
   </div>
   <div class="shot">
     <img src="assets/plugins/saturate.png" width="1100" height="744" alt="saturate — loop, destroy, filter and out sections in the newspeech plugin ui" loading="lazy">
@@ -262,9 +264,10 @@
       <div class="gate-row">
         <input id="gate-slice" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
         <button type="submit" class="cta">download slice for macos</button>
+        <button type="submit" class="cta" data-platform="win">windows</button>
       </div>
     </form>
-    <div class="aux">6.4 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/slice" target="_blank" rel="noopener noreferrer">source</a></div>
+    <div class="aux">macos 6.4 mb · au + vst3 · windows 5.9 mb · vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/slice" target="_blank" rel="noopener noreferrer">source</a></div>
   </div>
   <div class="shot">
     <img src="assets/plugins/slice.png" width="1968" height="1226" alt="slice — pattern, clock, shape, source, capture and mangle sections in the newspeech plugin ui" loading="lazy">
@@ -284,9 +287,10 @@
       <div class="gate-row">
         <input id="gate-glitch" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
         <button type="submit" class="cta">download glitch for macos</button>
+        <button type="submit" class="cta" data-platform="win">windows</button>
       </div>
     </form>
-    <div class="aux">6.5 mb zip · au + vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/glitch" target="_blank" rel="noopener noreferrer">source</a></div>
+    <div class="aux">macos 6.5 mb · au + vst3 · windows 6.0 mb · vst3 · <a href="https://github.com/elkjar/newspeech/tree/main/vst/glitch" target="_blank" rel="noopener noreferrer">source</a></div>
   </div>
   <div class="shot">
     <img src="assets/plugins/glitch.png" width="1968" height="1372" alt="glitch — clock, seed, pattern lanes, stage, lane, block and out sections in the newspeech plugin ui" loading="lazy">
@@ -300,10 +304,12 @@
     <div>
       <h4>install</h4>
       <p>unzip, then copy the <code>.component</code> to <code>~/Library/Audio/Plug-Ins/Components</code> and the <code>.vst3</code> to <code>~/Library/Audio/Plug-Ins/VST3</code>. restart your daw — logic may need a moment to rescan.</p>
+      <p>windows: unzip, copy the <code>.vst3</code> folder to <code>C:\Program Files\Common Files\VST3</code> and rescan. the zip also has a standalone <code>.exe</code>.</p>
     </div>
     <div>
       <h4>compatibility</h4>
       <p>au covers logic + garageband; vst3 covers ableton, reaper, bitwig, fl studio, studio one, cubase. no aax — pro tools users can wrap them with blue cat patchwork. signed + notarized, so macos opens them without complaint.</p>
+      <p>windows builds are 64-bit vst3, unsigned — daws load them fine; windows may warn the first time you open the standalone.</p>
     </div>
     <div>
       <h4>license</h4>
@@ -326,8 +332,10 @@
     if (remembered && !input.value) input.value = remembered;
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const btn = form.querySelector("button");
+      const btns = form.querySelectorAll("button");
       const plugin = form.dataset.plugin;
+      // which button sent it: the windows one goes to /dl/<plugin>-win
+      const win = e.submitter && e.submitter.dataset.platform === "win";
       const old = form.querySelector(".gate-msg");
       if (old) old.remove();
       const msg = document.createElement("span");
@@ -340,7 +348,7 @@
         input.focus();
         return;
       }
-      btn.disabled = true;
+      btns.forEach((b) => { b.disabled = true; });
       try {
         const res = await fetch("/api/subscribe", {
           method: "POST",
@@ -358,10 +366,10 @@
         document.querySelectorAll('form.gate input[type="email"]').forEach((i) => { if (!i.value) i.value = input.value; });
         msg.textContent = "signal received — your download is starting";
         form.appendChild(msg);
-        window.location.href = "/dl/" + plugin;
-        setTimeout(() => { btn.disabled = false; }, 4000);
+        window.location.href = "/dl/" + plugin + (win ? "-win" : "");
+        setTimeout(() => { btns.forEach((b) => { b.disabled = false; }); }, 4000);
       } catch (err) {
-        btn.disabled = false;
+        btns.forEach((b) => { b.disabled = false; });
         msg.classList.add("err");
         msg.textContent = "transmission failed — try again";
         form.appendChild(msg);
