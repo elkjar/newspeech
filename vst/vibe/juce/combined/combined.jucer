@@ -41,8 +41,8 @@
     <XCODE_MAC targetFolder="Builds/MacOSX" extraCompilerFlags="-I /usr/local/include/ -I $(SRCROOT)/../../../../../common/ui -DNVOICES=NUM_VOICES -DFAUSTFLOAT=float"
                extraDefs="">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="Vibe"/>
-        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="Vibe"/>
+        <CONFIGURATION name="Debug" macOSDeploymentTarget="12.0" isDebug="1" optimisation="1" targetName="Vibe"/>
+        <CONFIGURATION name="Release" macOSDeploymentTarget="12.0" isDebug="0" optimisation="3" targetName="Vibe"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_utils" path="/Users/chriselkjar/JUCE/modules"/>
