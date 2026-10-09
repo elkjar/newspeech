@@ -10,7 +10,8 @@
 // Usage:
 //   node textscan.mjs [--pool ~/Documents/newspeech-visuals] [--list]
 //   (--list prints every flagged clip with what was read)
-// recipe.mjs calls scanPool() itself when a recipe sets base.noText.
+//   node textscan.mjs --ok <clip.mp4>...   mark clips reviewed-and-fine
+// recipe.mjs calls scanPool() itself and skips unreviewed text clips (base.allowText opts out).
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFile, writeFile, readdir, mkdtemp, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -23,13 +24,16 @@ export const DEFAULT_POOL = join(homedir(), 'Documents', 'newspeech-visuals');
 
 // A clip "has text" when any sampled frame reads ≥3 letters/digits at
 // confidence ≥0.5 — deliberately inclusive (signs, newspapers count too).
-export const hasText = (entry) => entry.hits.length > 0;
+// Chris reviews the flagged clips: real typography gets deleted from the pool,
+// and the rest are marked "ok": true in the cache, so recipes stop skipping them.
+export const hasText = (entry) => entry.hits.length > 0 && !entry.ok;
 const isHit = (t) => t.c >= 0.5 && (t.s.match(/[A-Za-z0-9]/g) || []).length >= 3;
 
 export async function scanPool(pool = DEFAULT_POOL, { log = console.log } = {}) {
   const cachePath = join(pool, '_text-scan.json');
   const cache = existsSync(cachePath) ? JSON.parse(await readFile(cachePath, 'utf8')) : {};
   const clips = (await readdir(pool)).filter((f) => /\.mp4$/i.test(f) && !f.startsWith('_')).sort();
+  for (const f of Object.keys(cache)) if (!clips.includes(f)) delete cache[f]; // deleted from the pool
   const todo = clips.filter((f) => !cache[f]);
   if (todo.length) {
     log(`  textscan: scanning ${todo.length} clip(s) for on-screen text…`);
@@ -52,9 +56,9 @@ export async function scanPool(pool = DEFAULT_POOL, { log = console.log } = {}) 
       }
     }
     for (const f of todo) cache[f] = { hits: [...new Set(byClip[f])] };
-    await writeFile(cachePath, JSON.stringify(cache, null, 1) + '\n');
     await rm(dir, { recursive: true, force: true });
   }
+  await writeFile(cachePath, JSON.stringify(cache, null, 1) + '\n');
   return cache;
 }
 
@@ -62,7 +66,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const i = process.argv.indexOf('--pool');
   const pool = i > 0 ? process.argv[i + 1].replace(/^~/, homedir()) : DEFAULT_POOL;
   const cache = await scanPool(pool);
+  const okAt = process.argv.indexOf('--ok');
+  if (okAt > 0) {
+    for (const f of process.argv.slice(okAt + 1).filter((x) => !x.startsWith('--'))) if (cache[f]) cache[f].ok = true;
+    await writeFile(join(pool, '_text-scan.json'), JSON.stringify(cache, null, 1) + '\n');
+  }
   const flagged = Object.entries(cache).filter(([, e]) => hasText(e));
-  console.log(`${flagged.length}/${Object.keys(cache).length} clips have on-screen text`);
+  console.log(`${flagged.length}/${Object.keys(cache).length} clips have unreviewed on-screen text`);
   if (process.argv.includes('--list')) for (const [f, e] of flagged) console.log(`  ${f}: ${e.hits.slice(0, 6).join(' | ')}`);
 }
