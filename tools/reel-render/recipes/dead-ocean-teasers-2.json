@@ -1,0 +1,35 @@
+{
+  "outDir": "~/Desktop/DEAD OCEAN TEASERS/VIDEO",
+  "avoid": ["dead-ocean-teasers.json"],
+  "exclude": ["snap_7444.mp4", "rust_10cd.mp4", "welt_3696.mp4", "warp_4102.mp4", "churn_4bd8.mp4"],
+  "base": {
+    "fps": 30, "scale": 2, "seed": 11,
+    "globals": { "grain": 0.75, "contrast": 2.5, "haze": 1.31, "gridOpacity": 0.27, "dataPoints": 0, "telemetry": "random" }
+  },
+  "reels": [
+    { "name": "2DEG_TEASE_04", "audio": "~/Desktop/DEAD OCEAN TEASERS/2 Degrees D - 1.24.wav",
+      "page": "14-blockshuffle", "params": { "blockSize": 109, "freezeRate": 6, "freezeDuration": 1.4, "misalignRate": 10, "misalignAmount": 56, "audioBoost": 8.8 },
+      "segments": 2, "cuts": "auto" },
+    { "name": "2DEG_TEASE_05", "audio": "~/Desktop/DEAD OCEAN TEASERS/2 Degrees E - 3.26.wav",
+      "page": "25-dither", "params": { "pump": 1.7 }, "segments": 2, "cuts": "auto" },
+    { "name": "2DEG_TEASE_06", "audio": "~/Desktop/DEAD OCEAN TEASERS/2 Degrees F - 0.30.wav",
+      "page": "19-feed", "params": { "zoom": 1, "pulse": 0.5, "sweepRate": 2.5, "sweepGlow": 0.6, "vhs": 0.6, "dropouts": 3 },
+      "segments": 3, "cuts": "auto" },
+
+    { "name": "KIIDK_TEASE_04", "audio": "~/Desktop/DEAD OCEAN TEASERS/Kiidk'Yaas D - 1.54.wav",
+      "page": "20-repeat", "params": { "loopLen": 8, "engageRate": 1.6, "holdTime": 0.3, "ratchet": 0.8, "audioBoost": 8 },
+      "segments": 3, "cuts": "auto" },
+    { "name": "KIIDK_TEASE_05", "audio": "~/Desktop/DEAD OCEAN TEASERS/Kiidk'Yaas E - 2.32.wav",
+      "page": "22-timeshear", "params": { "audioAmount": 3.4 }, "segments": 2, "cuts": "auto" },
+    { "name": "KIIDK_TEASE_06", "audio": "~/Desktop/DEAD OCEAN TEASERS/Kiidk'Yaas F - 3.40.wav",
+      "page": "21-mosh", "params": { "audioAmt": 0.85 }, "segments": 3, "cuts": "auto" },
+
+    { "name": "POLICY_TEASE_04", "audio": "~/Desktop/DEAD OCEAN TEASERS/Policy D - 1.48.wav",
+      "page": "23-smear", "params": { "rate": 1.5, "hold": 2.5, "coverage": 0.35, "drift": 18, "orientation": 0.5, "audioBoost": 8.9 },
+      "segments": 3, "cuts": "auto" },
+    { "name": "POLICY_TEASE_05", "audio": "~/Desktop/DEAD OCEAN TEASERS/Policy E - 3.05.wav",
+      "page": "13-pixelsort", "params": { "audioBoost": 8.5 }, "segments": 2, "cuts": "auto" },
+    { "name": "POLICY_TEASE_06", "audio": "~/Desktop/DEAD OCEAN TEASERS/Policy F - 0.28.wav",
+      "page": "24-melt", "params": { "audioAmt": 2.5 }, "segments": 2, "cuts": "auto" }
+  ]
+}

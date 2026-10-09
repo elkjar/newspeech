@@ -1,0 +1,29 @@
+{
+  "outDir": "~/Desktop/DEAD OCEAN TEASERS/VIDEO",
+  "base": {
+    "fps": 30, "scale": 2, "seed": 7,
+    "globals": { "grain": 0.75, "contrast": 2.5, "haze": 1.31, "gridOpacity": 0.27, "dataPoints": 0, "telemetry": "random" }
+  },
+  "reels": [
+    { "name": "2DEG_TEASE_01-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/2 Degrees A - 0.52.wav",
+      "page": "13-pixelsort", "params": { "audioBoost": 8.5 }, "segments": 2, "cuts": "auto" },
+    { "name": "2DEG_TEASE_02-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/2 Degrees B - 1.49.wav",
+      "page": "24-melt", "params": { "audioAmt": 2.5 }, "segments": 3, "cuts": "auto" },
+    { "name": "2DEG_TEASE_03-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/2 Degrees C - 3.00.wav",
+      "page": "21-mosh", "params": { "audioAmt": 0.85 }, "segments": 3, "cuts": [5, 10] },
+
+    { "name": "KIIDK_TEASE_01-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/Kiidk'Yaas A - 1.00.wav",
+      "page": "26-topo", "params": { "audioShift": 100 }, "segments": 2, "cuts": "auto" },
+    { "name": "KIIDK_TEASE_02-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/Kiidk'Yaas B - 3.23.wav",
+      "page": "22-timeshear", "params": { "audioAmount": 3.4 }, "segments": 3, "cuts": "auto" },
+    { "name": "KIIDK_TEASE_03-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/Kiidk'Yaas C - 4.59.wav",
+      "page": "10-edges", "params": { "particleMul": 3, "edgeWeight": 3, "overlay": 0.35 }, "segments": 3, "cuts": [5, 10] },
+
+    { "name": "POLICY_TEASE_01-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/Policy A - 0.43.wav",
+      "page": "25-dither", "params": { "pump": 1.7 }, "segments": 3, "cuts": "auto" },
+    { "name": "POLICY_TEASE_02-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/Policy B - 2.25.wav",
+      "page": "12-edgemask", "params": { "audioBoost": 0.85 }, "segments": 3, "cuts": "auto" },
+    { "name": "POLICY_TEASE_03-alt", "audio": "~/Desktop/DEAD OCEAN TEASERS/Policy C - 4.22.wav",
+      "page": "15-ascii", "params": { "charset": 0, "contrast": 2, "cellSize": 12, "charScale": 1.3 }, "segments": 2, "cuts": "auto" }
+  ]
+}
