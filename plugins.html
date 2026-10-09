@@ -176,8 +176,9 @@
     .plugin .inner .copy { order: 2; }
     #notes { padding-top: 48px; padding-bottom: 80px; }
     #notes .grid { grid-template-columns: 1fr; gap: 28px; }
-    /* gate: input and button each take the full column */
-    .gate-row input[type="email"], .gate-row .cta { flex: 1 1 100%; max-width: none; width: 100%; justify-content: center; }
+    /* gate: input takes the full column, macos + windows split the row below */
+    .gate-row input[type="email"] { flex: 1 1 100%; max-width: none; width: 100%; }
+    .gate-row .cta { flex: 1 1 0; justify-content: center; }
     .gate-row input[type="email"] { font-size: 16px; } /* <16px zooms iOS Safari on focus */
   }
 </style>
