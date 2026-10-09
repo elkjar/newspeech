@@ -26,4 +26,12 @@ public:
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
 
     juce::Font getLabelFont (juce::Label&) override;
+
+private:
+   #if ! JUCE_MAC
+    // Embedded mono face, registered with the OS by family name for as long as
+    // this Ptr lives (see monoFamily). A member, never a static — a static
+    // typeface outlives JUCE's font teardown and aborts at process exit.
+    juce::Typeface::Ptr monoTypeface;
+   #endif
 };

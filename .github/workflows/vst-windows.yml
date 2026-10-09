@@ -1,0 +1,125 @@
+# Windows VST3 builds of the plugin suite (vst/<plugin>).
+#
+# Two stages, because the generated sources only come from macOS tooling:
+#   prepare (macOS)   — faust2juce + build.sh's sed patches + Projucer --resave,
+#                       via `PREPARE_ONLY=1 bash vst/<plugin>/build.sh`. Writes the
+#                       VS2022 solution, JuceLibraryCode/ and FaustPluginProcessor.cpp
+#                       (all gitignored) and hands them over as an artifact.
+#   build (Windows)   — msbuild the VS2022 solution against JUCE at C:\JUCE (the
+#                       Projucer default Windows module path the .jucer files use),
+#                       zip <Name>.vst3 + the standalone .exe per plugin.
+#
+# Unsigned: DAWs load unsigned VST3s. The zips land as run artifacts (sign in to
+# GitHub to download).
+name: vst-windows
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "vst/**"
+      - ".github/workflows/vst-windows.yml"
+
+env:
+  # The JUCE commit the macOS builds use (~/JUCE). Bump both together.
+  JUCE_SHA: 501c07674e1ad693085a7e7c398f205c2677f5da
+
+jobs:
+  prepare:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch JUCE
+        run: |
+          git init -q ~/JUCE
+          git -C ~/JUCE fetch -q --depth 1 https://github.com/juce-framework/JUCE.git "$JUCE_SHA"
+          git -C ~/JUCE checkout -q FETCH_HEAD
+
+      - name: Cache Projucer
+        id: projucer
+        uses: actions/cache@v4
+        with:
+          path: ~/JUCE/extras/Projucer/Builds/MacOSX/build/Release/Projucer.app
+          key: projucer-macos-${{ env.JUCE_SHA }}
+
+      - name: Build Projucer
+        if: steps.projucer.outputs.cache-hit != 'true'
+        run: xcodebuild -project ~/JUCE/extras/Projucer/Builds/MacOSX/Projucer.xcodeproj -configuration Release -quiet
+
+      - name: Install Faust
+        run: brew install faust && faust --version | head -1
+
+      - name: Generate sources + projects
+        run: |
+          for p in vibe saturate slice glitch; do
+            echo "::group::$p"
+            PREPARE_ONLY=1 bash "vst/$p/build.sh"
+            echo "::endgroup::"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vst-prepared
+          if-no-files-found: error
+          path: |
+            vst/*/juce/*/Builds/VisualStudio2022
+            vst/*/juce/*/JuceLibraryCode
+            vst/*/juce/*/FaustPluginProcessor.cpp
+
+  build:
+    needs: prepare
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { plugin: vibe,     dir: combined, name: Vibe }
+          - { plugin: saturate, dir: saturate, name: Saturate }
+          - { plugin: slice,    dir: slice,    name: Slice }
+          - { plugin: glitch,   dir: glitch,   name: Glitch }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vst-prepared
+          path: vst
+
+      - name: Fetch JUCE
+        shell: bash
+        run: |
+          git init -q /c/JUCE
+          git -C /c/JUCE fetch -q --depth 1 https://github.com/juce-framework/JUCE.git "$JUCE_SHA"
+          git -C /c/JUCE checkout -q FETCH_HEAD
+
+      # x64 MSBuild: under the default 32-bit one, JUCE's post-build sees an x86
+      # host and skips the VST3 moduleinfo.json manifest.
+      - uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Build
+        run: msbuild "vst/${{ matrix.plugin }}/juce/${{ matrix.dir }}/Builds/VisualStudio2022/${{ matrix.name }}.sln" /m /nologo /v:minimal /p:Configuration=Release /p:Platform=x64
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          JUCER="$(ls vst/${{ matrix.plugin }}/juce/*/*.jucer | head -1)"
+          VERSION="$(sed -nE 's/.*<JUCERPROJECT[^>]* version="([^"]+)".*/\1/p' "$JUCER" | head -1)"
+          OUT="vst/${{ matrix.plugin }}/juce/${{ matrix.dir }}/Builds/VisualStudio2022/x64/Release"
+          STAGE="stage/${{ matrix.name }}-$VERSION-win"
+          mkdir -p "$STAGE"
+          [ -f "$OUT/VST3/${{ matrix.name }}.vst3/Contents/Resources/moduleinfo.json" ] || { echo "::error::no VST3 moduleinfo.json"; exit 1; }
+          cp -R "$OUT/VST3/${{ matrix.name }}.vst3" "$STAGE/"
+          cp "$OUT/Standalone Plugin/${{ matrix.name }}.exe" "$STAGE/${{ matrix.name }} (standalone).exe"
+          sed "s/{NAME}/${{ matrix.name }}/g; s/{VERSION}/$VERSION/g" vst/common/dist/README-windows.txt > "$STAGE/README.txt"
+          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+          ls -R "$STAGE"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-win
+          path: ${{ env.STAGE }}
+          if-no-files-found: error

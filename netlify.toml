@@ -27,12 +27,26 @@
   status = 302
 # dl:vibe end
 
+# dl:vibe-win begin — Windows VST3 (unsigned, CI-built; asset on the v1.0.0 release)
+[[redirects]]
+  from = "/dl/vibe-win"
+  to = "https://github.com/elkjar/newspeech/releases/download/vibe-v1.0.0/Vibe-1.0.0-win.zip"
+  status = 302
+# dl:vibe-win end
+
 # dl:saturate begin — managed by vst/release.sh
 [[redirects]]
   from = "/dl/saturate"
   to = "https://github.com/elkjar/newspeech/releases/download/saturate-v1.0.0/Saturate-1.0.0.zip"
   status = 302
 # dl:saturate end
+
+# dl:saturate-win begin — Windows VST3 (unsigned, CI-built; asset on the v1.0.0 release)
+[[redirects]]
+  from = "/dl/saturate-win"
+  to = "https://github.com/elkjar/newspeech/releases/download/saturate-v1.0.0/Saturate-1.0.0-win.zip"
+  status = 302
+# dl:saturate-win end
 
 # dl:slice begin — managed by vst/release.sh
 [[redirects]]
@@ -41,12 +55,26 @@
   status = 302
 # dl:slice end
 
+# dl:slice-win begin — Windows VST3 (unsigned, CI-built; asset on the v1.0.0 release)
+[[redirects]]
+  from = "/dl/slice-win"
+  to = "https://github.com/elkjar/newspeech/releases/download/slice-v1.0.0/Slice-1.0.0-win.zip"
+  status = 302
+# dl:slice-win end
+
 # dl:glitch begin — managed by vst/release.sh
 [[redirects]]
   from = "/dl/glitch"
   to = "https://github.com/elkjar/newspeech/releases/download/glitch-v1.0.0/Glitch-1.0.0.zip"
   status = 302
 # dl:glitch end
+
+# dl:glitch-win begin — Windows VST3 (unsigned, CI-built; asset on the v1.0.0 release)
+[[redirects]]
+  from = "/dl/glitch-win"
+  to = "https://github.com/elkjar/newspeech/releases/download/glitch-v1.0.0/Glitch-1.0.0-win.zip"
+  status = 302
+# dl:glitch-win end
 
 # the plugins page launched from its unlisted hash url 2026-09-29 — the
 # invite links already out there land on the public page
