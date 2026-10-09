@@ -1,0 +1,40 @@
+{
+  "outDir": "~/Desktop/DEAD OCEAN TEASERS/VIDEO",
+  "avoid": ["policy-full.json"],
+  "exclude": ["snap_7444.mp4", "rust_10cd.mp4", "welt_3696.mp4", "warp_4102.mp4", "churn_4bd8.mp4"],
+  "base": {
+    "fps": 30, "scale": 2, "seed": 7, "width": 1920, "height": 1080, "minLuma": 70,
+    "globals": { "grain": 0.75, "contrast": 2.5, "haze": 1.31, "gridOpacity": 0.27, "dataPoints": 0, "telemetry": false }
+  },
+  "reels": [
+    { "name": "2DEG_FULL_16x9", "audio": "../../../assets/ep/2-degrees.flac",
+      "page": "14-blockshuffle",
+      "params": { "blockSize": 109, "freezeRate": 6, "freezeDuration": 1.4, "misalignRate": 10, "misalignAmount": 56, "audioBoost": 8.8 },
+      "segments": "auto", "maxSegment": 8, "minJump": 4,
+      "sections": [
+        { "from": 0,   "params": { "blockSize": 120, "freezeRate": 2,  "freezeDuration": 3,   "misalignRate": 3,  "misalignAmount": 20 } },
+        { "from": 56,  "params": { "blockSize": 109, "freezeRate": 6,  "freezeDuration": 1.4, "misalignRate": 10, "misalignAmount": 56 } },
+        { "from": 103, "params": { "blockSize": 60,  "freezeRate": 1,  "freezeDuration": 4,   "misalignRate": 2,  "misalignAmount": 10 } },
+        { "from": 115, "params": { "blockSize": 80,  "freezeRate": 14, "freezeDuration": 0.8, "misalignRate": 25, "misalignAmount": 70 } },
+        { "from": 165, "params": { "blockSize": 40,  "freezeRate": 20, "freezeDuration": 0.6, "misalignRate": 35, "misalignAmount": 80 } },
+        { "from": 213, "page": "12-edgemask", "params": { "threshold": 0.18, "gamma": 0.7, "floor": 0.08, "trailFade": 1, "audioBoost": 0.7 } }
+      ] },
+
+    { "name": "KIIDK_FULL_16x9", "audio": "../../../assets/ep/kiidkyaas.flac",
+      "page": "22-timeshear",
+      "params": { "bands": 12, "spread": 48, "pattern": 0.5, "rerollRate": 1.5, "audioAmount": 3.4 },
+      "segments": "auto", "maxSegment": 8, "minJump": 4,
+      "sections": [
+        { "from": 0,   "params": { "bands": 6,  "spread": 12, "rerollRate": 0.5, "audioAmount": 1.5 } },
+        { "from": 25,  "params": { "bands": 12, "spread": 28, "rerollRate": 1.5, "audioAmount": 3 } },
+        { "from": 67,  "params": { "bands": 24, "spread": 50, "rerollRate": 3,   "audioAmount": 3.4 } },
+        { "from": 120, "params": { "bands": 4,  "spread": 70, "rerollRate": 0.3, "audioAmount": 2 } },
+        { "from": 124, "params": { "bands": 32, "spread": 60, "rerollRate": 4,   "audioAmount": 3.4 } },
+        { "from": 158, "params": { "bands": 8,  "spread": 20, "rerollRate": 1,   "pattern": 0.8, "audioAmount": 2.5 } },
+        { "from": 209, "params": { "bands": 20, "spread": 45, "rerollRate": 2.5, "pattern": 0.5, "audioAmount": 3.4 } },
+        { "from": 227, "params": { "bands": 32, "spread": 60, "rerollRate": 4,   "audioAmount": 3.4 } },
+        { "from": 280, "params": { "bands": 48, "spread": 90, "rerollRate": 7,   "audioAmount": 4 } },
+        { "from": 315, "page": "25-dither", "params": { "cell": 8, "threshold": 0.5, "pump": 0.8 } }
+      ] }
+  ]
+}

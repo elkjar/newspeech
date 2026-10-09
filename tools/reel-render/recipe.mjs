@@ -134,9 +134,17 @@ function autoCuts(audio, seconds, n) {
 // Open-ended cuts for long audio: every change of at least minJump dB (2.5s
 // apart), then any gap still longer than maxSegment gets split at its strongest
 // change — steady stretches keep moving without cutting off the beat entirely.
-function musicCuts(audio, seconds, { minJump = 4, maxSegment = 8, minGap = 2.5 } = {}) {
+// `forced` times (section starts) always get a cut, snapped to the strongest
+// change within ±1s — the sections ARE the song's structure.
+function musicCuts(audio, seconds, { minJump = 4, maxSegment = 8, minGap = 2.5, forced = [] } = {}) {
   const scored = changeScores(audio, seconds);
   const cuts = [];
+  for (const f of forced) {
+    let best = null;
+    for (const c of scored) if (Math.abs(c.t - f) <= 1 && (!best || c.jump > best.jump)) best = c;
+    const t = best ? best.t : f;
+    if (t > minGap && t < seconds - minGap && cuts.every((x) => Math.abs(x - t) >= minGap)) cuts.push(t);
+  }
   for (const c of [...scored].sort((a, b) => b.jump - a.jump)) {
     if (c.jump < minJump) break;
     if (cuts.every((t) => Math.abs(t - c.t) >= minGap)) cuts.push(c.t);
@@ -153,15 +161,22 @@ function musicCuts(audio, seconds, { minJump = 4, maxSegment = 8, minGap = 2.5 }
   }
 }
 
-// Mean luma per sampled frame over [0, seconds) of a clip, looping like the
-// renderer does — rejects clips that are black (or blown out to white) where the
-// segment would use them.
+// Mean luma per sampled frame (2/s) of a clip, measured once per clip and cached;
+// a segment reads the first `seconds` of it, looping like the renderer does.
+const lumaCache = new Map();
+function clipLuma(clip) {
+  if (!lumaCache.has(clip)) {
+    const out = execFileSync('ffmpeg', ['-v', 'error', '-i', clip,
+      '-vf', 'fps=2,scale=64:-2,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-'], { maxBuffer: 1 << 24 }).toString();
+    lumaCache.set(clip, [...out.matchAll(/YAVG=([\d.]+)/g)].map((m) => parseFloat(m[1])));
+  }
+  return lumaCache.get(clip);
+}
+// Rejects clips that are black (or blown out to white) where the segment would use them.
 function lumaOK(clip, seconds, minMean = 35) {
-  const dur = probeDuration(clip);
-  const out = execFileSync('ffmpeg', ['-v', 'error', '-stream_loop', String(Math.ceil(seconds / dur)), '-t', String(seconds), '-i', clip,
-    '-vf', 'fps=2,scale=64:-2,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-'], { maxBuffer: 1 << 24 }).toString();
-  const ys = [...out.matchAll(/YAVG=([\d.]+)/g)].map((m) => parseFloat(m[1]));
-  if (!ys.length) return false;
+  const all = clipLuma(clip);
+  if (!all.length) return false;
+  const ys = Array.from({ length: Math.max(1, Math.ceil(seconds * 2)) }, (_, i) => all[i % all.length]);
   const dark = ys.filter((y) => y < 20).length / ys.length;
   const blown = ys.filter((y) => y > 215).length / ys.length;
   const mean = ys.reduce((s, y) => s + y, 0) / ys.length;
@@ -169,23 +184,32 @@ function lumaOK(clip, seconds, minMean = 35) {
 }
 
 let poolClips = null;
-const used = new Set(); // pool clips already placed — no repeats across the whole recipe
-for (const name of recipe.exclude || []) used.add(join(POOL, name));
-// …or across sibling recipes: their rendered timelines sit in the shared work root.
+const banned = new Set((recipe.exclude || []).map((name) => join(POOL, name))); // never picked
+const used = new Set(); // clips already placed — avoided while fresh ones remain
+// …including clips sibling recipes placed: their rendered timelines sit in the shared work root.
 for (const other of recipe.avoid || []) {
   const dir = join(tmpdir(), 'reel-recipe', basename(other, '.json'));
   const files = existsSync(dir) ? (await readdir(dir)).filter((f) => f.endsWith('.timeline.json')) : [];
   if (!files.length) console.warn(`  avoid: no rendered timelines for ${other} (render it first) — not excluding its clips`);
   for (const f of files) for (const seg of JSON.parse(await readFile(join(dir, f), 'utf8')).segments) if (seg.state?.source) used.add(seg.state.source);
 }
-async function pickSource(rand, seconds, used) {
+// Fresh clips first. Once the pool's usable clips run out (full songs need ~90),
+// reuse one — but never one from the same reel's last 12 segments.
+let reused = 0;
+async function pickSource(rand, seconds, recent) {
   poolClips ??= (await readdir(POOL)).filter((f) => /\.mp4$/i.test(f) && !f.startsWith('_')).sort().map((f) => join(POOL, f));
-  for (let tries = 0; tries < 60; tries++) {
-    const clip = poolClips[Math.floor(rand() * poolClips.length)];
-    if (used.has(clip)) continue;
-    if (lumaOK(clip, seconds, base.minLuma)) { used.add(clip); return clip; }
+  const near = new Set(recent.slice(-12));
+  for (const fresh of [true, false]) {
+    for (let tries = 0; tries < 400; tries++) {
+      const clip = poolClips[Math.floor(rand() * poolClips.length)];
+      if (banned.has(clip) || near.has(clip) || (fresh && used.has(clip))) continue;
+      if (lumaOK(clip, seconds, base.minLuma)) {
+        if (!fresh) reused++;
+        used.add(clip); recent.push(clip); return clip;
+      }
+    }
   }
-  throw new Error('no usable (non-black) pool clip found in 60 tries');
+  throw new Error('no usable pool clip (check minLuma / exclude)');
 }
 
 const TELEMETRY_TYPES = ['scope', 'hex', 'coords', 'tunnel', 'profile', 'events', 'radar', 'bands', 'xfer', 'waveform', 'vector'];
@@ -213,7 +237,7 @@ async function buildTimeline(reel, idx) {
   const audio = expand(reel.audio);
   const seconds = reel.seconds ?? probeDuration(audio);
   let bounds;
-  if (reel.segments === 'auto') bounds = musicCuts(audio, seconds, reel);
+  if (reel.segments === 'auto') bounds = musicCuts(audio, seconds, { ...reel, forced: (reel.sections || []).map((x) => x.from).filter((t) => t > 0) });
   const count = bounds ? bounds.length + 1 : reel.segments;
   const segs = (typeof count === 'number' ? Array.from({ length: count }, () => ({ source: 'random' })) : reel.segments || [])
     .map((s) => ({ page: reel.page, ...s, own: s.params || {}, params: { ...(reel.params || {}), ...(s.params || {}) } }));
@@ -233,6 +257,7 @@ async function buildTimeline(reel, idx) {
   const globals = { ...(base.globals || {}) };
   if (globals.telemetry === 'random') globals.telemetry = randomTelemetry(rand);
   const segments = [];
+  const recent = []; // this reel's clips, newest last
   const sections = (reel.sections || []).slice().sort((a, b) => a.from - b.from);
   let start = 0;
   for (const [i, s] of segs.entries()) {
@@ -248,7 +273,7 @@ async function buildTimeline(reel, idx) {
     const state = structuredClone(look?.state || {});
     state.params = { ...(state.params || {}), ...(s.params || {}) };
     state.localStorage = { ...(state.localStorage || {}), ...globalsToLocalStorage({ ...globals, ...(s.globals || {}) }) };
-    if (s.source === 'random') state.source = await pickSource(rand, lengths[i], used);
+    if (s.source === 'random') state.source = await pickSource(rand, lengths[i], recent);
     else if (s.source) state.source = expand(s.source);
     segments.push({ page: s.page || look?.page, seconds: lengths[i], state });
   }
@@ -292,6 +317,7 @@ for (const [i, reel] of (recipe.reels || []).entries()) {
   console.log(`${reel.name}: ${desc}`);
   plans.push({ reel, tl });
 }
+if (reused) console.log(`  (${reused} clip(s) reused — the usable pool ran out of fresh ones)`);
 if (args.dry) process.exit(0);
 
 let next = 0, failed = 0;
