@@ -1,0 +1,27 @@
+{
+  "outDir": "~/Desktop/DEAD OCEAN TEASERS/VIDEO",
+  "exclude": ["snap_7444.mp4", "rust_10cd.mp4", "welt_3696.mp4", "warp_4102.mp4", "churn_4bd8.mp4"],
+  "base": {
+    "fps": 30, "scale": 2, "seed": 7, "width": 1920, "height": 1080, "minLuma": 70,
+    "globals": { "grain": 0.75, "contrast": 2.5, "haze": 1.31, "gridOpacity": 0.27, "dataPoints": 0, "telemetry": false }
+  },
+  "reels": [
+    { "name": "POLICY_FULL_16x9", "audio": "../../../assets/ep/policy-as-a-suicide-pact.flac",
+      "page": "23-smear",
+      "params": { "rate": 1.5, "hold": 2.5, "coverage": 0.35, "drift": 18, "orientation": 0.5, "audioBoost": 8.9 },
+      "segments": "auto", "maxSegment": 8, "minJump": 4,
+      "sections": [
+        { "from": 0,   "params": { "rate": 0.8, "hold": 3.5, "coverage": 0.25, "drift": 10, "orientation": 0.15 } },
+        { "from": 35,  "params": { "rate": 1.5, "hold": 1.5, "coverage": 0.35, "drift": 18, "orientation": 0.5 } },
+        { "from": 59,  "params": { "rate": 2.5, "hold": 2,   "coverage": 0.5,  "drift": 30, "orientation": 0.5 } },
+        { "from": 113, "params": { "rate": 0.8, "hold": 3,   "coverage": 0.25, "drift": 12, "orientation": 1 } },
+        { "from": 122, "params": { "rate": 3,   "hold": 1.5, "coverage": 0.6,  "drift": 40, "orientation": 0.7 } },
+        { "from": 158, "params": { "rate": 1,   "hold": 3,   "coverage": 0.3,  "drift": 12, "orientation": 0.2 } },
+        { "from": 191, "params": { "rate": 2.5, "hold": 2,   "coverage": 0.5,  "drift": 30, "orientation": 0.5 } },
+        { "from": 230, "params": { "rate": 3,   "hold": 1.8, "coverage": 0.6,  "drift": 45, "orientation": 0.9 } },
+        { "from": 269, "params": { "rate": 1.2, "hold": 4,   "coverage": 0.45, "drift": 50, "orientation": 1 } },
+        { "from": 347, "page": "26-topo", "params": { "levels": 8, "detail": 140, "crawl": 6, "weight": 2, "audioShift": 60 } },
+        { "from": 400, "page": "26-topo", "params": { "levels": 6, "detail": 120, "crawl": 3, "weight": 1.6, "audioShift": 30 } }
+      ] }
+  ]
+}

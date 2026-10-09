@@ -3,7 +3,7 @@
 //
 // A recipe lists reels (audio + a visual plan); each becomes a timeline that
 // render.mjs renders. One file lands in outDir per reel (<name>.mp4, H.264 +
-// AAC — Instagram-safe); timelines + contact sheets (to check a reel without
+// AAC — Instagram-safe; never overwritten — a re-render becomes <name>-v2.mp4); timelines + contact sheets (to check a reel without
 // opening it) go to a work dir in $TMPDIR, printed at the end.
 //
 // Usage:
@@ -13,6 +13,8 @@
 // {
 //   "outDir": "~/Desktop/reels",
 //   "base": { "fps": 30, "scale": 2, "seed": 7, "gain": 1, "width": 1080, "height": 1920,
+//             "minLuma": 35,        // random clips' mean luma floor (0–255); raise it
+//                                   // (~70) under high contrast, which crushes dim clips
 //             "globals": { "haze": 0.35, "grain": 0, ... } },   // site-wide panel globals
 //   "avoid": ["dead-ocean-teasers.json"],  // optional: don't reuse source clips another
 //                                          // recipe (rendered on this machine) placed
@@ -25,8 +27,15 @@
 //     "cuts": "auto" | [5.2, 9.8],   // optional: segment boundaries. "auto" = the
 //                                    // N-1 biggest loudness jumps for N segments
 //     "page": "21-mosh", "params": {...},  // defaults for every segment below
-//     "segments": 3 | [{             // a number = that many segments of the reel's
-//                                    // page, each on its own random source clip
+//     "sections": [{ "from": 60, "page"?: "26-topo", "params": {...} }],  // by song position —
+//                                    // a segment takes the last section starting
+//                                    // at or before its own start (full songs)
+//     "segments": "auto" | 3 | [{    // a number = that many segments of the reel's
+//                                    // page, each on its own random source clip;
+//                                    // "auto" = cut on every loudness change of at
+//                                    // least minJump dB (default 4), then fill so no
+//                                    // segment runs past maxSegment s (default 8 =
+//                                    // a pool clip, so nothing visibly loops)
 //       "page": "17-flare",          // or "look": "<name from looks.json>"
 //       "params": { "audioBoost": 1.4 },
 //       "globals": { "gridStyle": "dots" },   // per-segment overrides of base.globals
@@ -102,13 +111,16 @@ function loudness(audio, seconds) {
 // The n biggest loudness changes (mean of the next 0.5s vs the previous 1s) —
 // hits AND drop-outs — at least 2.5s apart and 2s from either end, so cuts land
 // where the music turns. Rises outrank equal-sized drops.
-function autoCuts(audio, seconds, n) {
-  if (n <= 0) return [];
+function changeScores(audio, seconds) {
   const db = loudness(audio, seconds);
   const mean = (a, b) => { let s = 0, c = 0; for (let i = Math.max(0, a); i < Math.min(db.length, b); i++) { s += db[i]; c++; } return c ? s / c : -90; };
   const scored = [];
   for (let i = 40; i < db.length - 40; i++) { const d = mean(i, i + 10) - mean(i - 20, i); scored.push({ t: i / 20, jump: d > 0 ? d : -d * 0.8 }); }
-  scored.sort((a, b) => b.jump - a.jump);
+  return scored;
+}
+function autoCuts(audio, seconds, n) {
+  if (n <= 0) return [];
+  const scored = changeScores(audio, seconds).sort((a, b) => b.jump - a.jump);
   const picked = [];
   for (const c of scored) {
     if (picked.length === n) break;
@@ -119,10 +131,32 @@ function autoCuts(audio, seconds, n) {
   return picked.map((p) => p.t).sort((a, b) => a - b);
 }
 
+// Open-ended cuts for long audio: every change of at least minJump dB (2.5s
+// apart), then any gap still longer than maxSegment gets split at its strongest
+// change — steady stretches keep moving without cutting off the beat entirely.
+function musicCuts(audio, seconds, { minJump = 4, maxSegment = 8, minGap = 2.5 } = {}) {
+  const scored = changeScores(audio, seconds);
+  const cuts = [];
+  for (const c of [...scored].sort((a, b) => b.jump - a.jump)) {
+    if (c.jump < minJump) break;
+    if (cuts.every((t) => Math.abs(t - c.t) >= minGap)) cuts.push(c.t);
+  }
+  for (;;) {
+    const edges = [0, ...cuts.sort((a, b) => a - b), seconds];
+    let gap = -1;
+    for (let i = 1; i < edges.length; i++) if (edges[i] - edges[i - 1] > maxSegment) { gap = i; break; }
+    if (gap < 0) return cuts;
+    const [a, b] = [edges[gap - 1], edges[gap]];
+    let best = null;
+    for (const c of scored) if (c.t > a + minGap && c.t < b - minGap && (!best || c.jump > best.jump)) best = c;
+    cuts.push(best ? best.t : (a + b) / 2);
+  }
+}
+
 // Mean luma per sampled frame over [0, seconds) of a clip, looping like the
 // renderer does — rejects clips that are black (or blown out to white) where the
 // segment would use them.
-function lumaOK(clip, seconds) {
+function lumaOK(clip, seconds, minMean = 35) {
   const dur = probeDuration(clip);
   const out = execFileSync('ffmpeg', ['-v', 'error', '-stream_loop', String(Math.ceil(seconds / dur)), '-t', String(seconds), '-i', clip,
     '-vf', 'fps=2,scale=64:-2,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-', '-f', 'null', '-'], { maxBuffer: 1 << 24 }).toString();
@@ -131,7 +165,7 @@ function lumaOK(clip, seconds) {
   const dark = ys.filter((y) => y < 20).length / ys.length;
   const blown = ys.filter((y) => y > 215).length / ys.length;
   const mean = ys.reduce((s, y) => s + y, 0) / ys.length;
-  return dark <= 0.2 && blown <= 0.2 && mean > 35 && mean < 190;
+  return dark <= 0.2 && blown <= 0.2 && mean > minMean && mean < 190;
 }
 
 let poolClips = null;
@@ -146,12 +180,12 @@ for (const other of recipe.avoid || []) {
 }
 async function pickSource(rand, seconds, used) {
   poolClips ??= (await readdir(POOL)).filter((f) => /\.mp4$/i.test(f) && !f.startsWith('_')).sort().map((f) => join(POOL, f));
-  for (let tries = 0; tries < 25; tries++) {
+  for (let tries = 0; tries < 60; tries++) {
     const clip = poolClips[Math.floor(rand() * poolClips.length)];
     if (used.has(clip)) continue;
-    if (lumaOK(clip, seconds)) { used.add(clip); return clip; }
+    if (lumaOK(clip, seconds, base.minLuma)) { used.add(clip); return clip; }
   }
-  throw new Error('no usable (non-black) pool clip found in 25 tries');
+  throw new Error('no usable (non-black) pool clip found in 60 tries');
 }
 
 const TELEMETRY_TYPES = ['scope', 'hex', 'coords', 'tunnel', 'profile', 'events', 'radar', 'bands', 'xfer', 'waveform', 'vector'];
@@ -178,12 +212,15 @@ const looks = existsSync(looksPath) ? JSON.parse(await readFile(looksPath, 'utf8
 async function buildTimeline(reel, idx) {
   const audio = expand(reel.audio);
   const seconds = reel.seconds ?? probeDuration(audio);
-  const segs = (typeof reel.segments === 'number' ? Array.from({ length: reel.segments }, () => ({ source: 'random' })) : reel.segments || [])
-    .map((s) => ({ page: reel.page, ...s, params: { ...(reel.params || {}), ...(s.params || {}) } }));
+  let bounds;
+  if (reel.segments === 'auto') bounds = musicCuts(audio, seconds, reel);
+  const count = bounds ? bounds.length + 1 : reel.segments;
+  const segs = (typeof count === 'number' ? Array.from({ length: count }, () => ({ source: 'random' })) : reel.segments || [])
+    .map((s) => ({ page: reel.page, ...s, own: s.params || {}, params: { ...(reel.params || {}), ...(s.params || {}) } }));
   if (!segs.length) throw new Error(`${reel.name}: no segments`);
 
-  let bounds;
-  if (reel.cuts === 'auto') bounds = autoCuts(audio, seconds, segs.length - 1);
+  if (bounds) { /* "segments": "auto" placed them */ }
+  else if (reel.cuts === 'auto') bounds = autoCuts(audio, seconds, segs.length - 1);
   else if (Array.isArray(reel.cuts)) bounds = reel.cuts;
   if (bounds && bounds.length !== segs.length - 1) throw new Error(`${reel.name}: ${segs.length} segments need ${segs.length - 1} cuts`);
   // Snap cuts to frames so segment frame counts sum exactly to the reel.
@@ -196,7 +233,16 @@ async function buildTimeline(reel, idx) {
   const globals = { ...(base.globals || {}) };
   if (globals.telemetry === 'random') globals.telemetry = randomTelemetry(rand);
   const segments = [];
+  const sections = (reel.sections || []).slice().sort((a, b) => a.from - b.from);
+  let start = 0;
   for (const [i, s] of segs.entries()) {
+    const sec = sections.filter((x) => x.from <= start + 1e-6).pop();
+    // A section can switch effect; the reel's params belong to the reel's page,
+    // so a different page starts from its own defaults.
+    // Precedence: segment's own params > section > reel.
+    if (sec?.page && sec.page !== s.page) { s.page = sec.page; s.params = { ...(sec.params || {}), ...s.own }; }
+    else if (sec) s.params = { ...s.params, ...(sec.params || {}), ...s.own };
+    start += lengths[i];
     const look = s.look ? looks.find((l) => l.name === s.look) : null;
     if (s.look && !look) throw new Error(`${reel.name}: no look named "${s.look}" in looks.json`);
     const state = structuredClone(look?.state || {});
@@ -210,17 +256,29 @@ async function buildTimeline(reel, idx) {
 }
 
 // ---- render ------------------------------------------------------------------
+// Never overwrite a delivered reel — Chris edits from earlier versions. A re-render
+// lands as <name>-v2.mp4, -v3, … (the first stays <name>.mp4).
+function nextFree(name) {
+  if (!existsSync(join(outDir, `${name}.mp4`))) return name;
+  for (let v = 2; ; v++) if (!existsSync(join(outDir, `${name}-v${v}.mp4`))) return `${name}-v${v}`;
+}
+
 async function renderReel(reel, tl) {
-  const tlPath = join(work, `${reel.name}.timeline.json`);
+  const name = nextFree(reel.name);
+  const tlPath = join(work, `${name}.timeline.json`);
   await writeFile(tlPath, JSON.stringify({ segments: tl.segments }, null, 2) + '\n');
-  const mp4 = join(work, `${reel.name}.alac.mp4`);
+  const mp4 = join(work, `${name}.alac.mp4`);
   await run('node', [join(HERE, 'render.mjs'), '--timeline', tlPath, '--audio', tl.audio, '--out', mp4,
     '--fps', String(base.fps), '--scale', String(base.scale), '--seed', String(base.seed), '--gain', String(base.gain),
     '--width', String(base.width), '--height', String(base.height), '--jpeg'], { quiet: args.jobs > 1 });
   // render.mjs muxes ALAC, which Instagram may reject — deliver AAC.
-  await run('ffmpeg', ['-v', 'error', '-y', '-i', mp4, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', join(outDir, `${reel.name}.mp4`)]);
-  // Contact sheet: 10 evenly spaced frames, 5×2.
-  await run('ffmpeg', ['-v', 'error', '-y', '-i', mp4, '-vf', `fps=10/${tl.seconds},scale=216:-2,tile=5x2:padding=4`, '-frames:v', '1', join(work, `${reel.name}-sheet.jpg`)]);
+  await run('ffmpeg', ['-v', 'error', '-y', '-i', mp4, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', join(outDir, `${name}.mp4`)]);
+  // Contact sheet: 10 evenly spaced frames (5×2) for a short reel; for long
+  // ones roughly one per 7.5s, up to 60 (10 across).
+  const n = Math.min(60, Math.max(10, Math.round(tl.seconds / 7.5)));
+  const cols = n <= 10 ? 5 : 10;
+  await run('ffmpeg', ['-v', 'error', '-y', '-i', mp4, '-vf', `fps=${n}/${tl.seconds},scale=216:-2,tile=${cols}x${Math.ceil(n / cols)}:padding=4`, '-frames:v', '1', join(work, `${name}-sheet.jpg`)]);
+  return name;
 }
 
 // Plan every reel even under --only, so random source picks (seeded per reel,
@@ -242,7 +300,7 @@ await Promise.all(Array.from({ length: Math.min(args.jobs, plans.length) }, asyn
   while (next < plans.length) {
     const { reel, tl } = plans[next++];
     const s = Date.now();
-    try { await renderReel(reel, tl); console.log(`  ✓ ${reel.name} (${((Date.now() - s) / 1000).toFixed(0)}s)`); }
+    try { const name = await renderReel(reel, tl); console.log(`  ✓ ${name} (${((Date.now() - s) / 1000).toFixed(0)}s)`); }
     catch (e) { failed++; console.error(`  ✗ ${reel.name}: ${e.message}`); }
   }
 }));
