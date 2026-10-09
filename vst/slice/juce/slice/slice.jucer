@@ -80,8 +80,8 @@
     <XCODE_MAC targetFolder="Builds/MacOSX" extraCompilerFlags="-I $(SRCROOT)/../../../../../common/ui -I $(SRCROOT)/../../Source"
                extraDefs="">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="Slice"/>
-        <CONFIGURATION name="Release" isDebug="0" optimisation="3" targetName="Slice"/>
+        <CONFIGURATION name="Debug" macOSDeploymentTarget="12.0" isDebug="1" optimisation="1" targetName="Slice"/>
+        <CONFIGURATION name="Release" macOSDeploymentTarget="12.0" isDebug="0" optimisation="3" targetName="Slice"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_utils" path="/Users/chriselkjar/JUCE/modules"/>
