@@ -144,6 +144,11 @@ grep -q "return float(\*fZone);" "$JUCE_PROJECT_DIR/FaustPluginProcessor.cpp" ||
 echo "▸ Projucer --resave..."
 "$PROJUCER" --resave "$JUCE_PROJECT_DIR/saturate.jucer" --fix-missing-dependencies >/dev/null
 
+# PREPARE_ONLY=1 stops here: sources generated + patched, Xcode and VS2022
+# projects written. CI uses it to hand the Visual Studio build to a Windows
+# runner (.github/workflows/vst-windows.yml).
+if [ "${PREPARE_ONLY:-0}" = "1" ]; then echo "✓ Prepared (PREPARE_ONLY=1)"; exit 0; fi
+
 XCODEPROJ="$JUCE_PROJECT_DIR/Builds/MacOSX/Saturate.xcodeproj"
 [ -d "$XCODEPROJ" ] || { echo "ERROR: Projucer didn't produce $XCODEPROJ"; exit 1; }
 

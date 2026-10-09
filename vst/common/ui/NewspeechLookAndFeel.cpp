@@ -5,6 +5,11 @@ using namespace newspeech::colors;
 
 NewspeechLookAndFeel::NewspeechLookAndFeel()
 {
+   #if ! JUCE_MAC
+    monoTypeface = juce::Typeface::createSystemTypefaceFor (BinaryData::JetBrainsMonoNLRegular_ttf,
+                                                            BinaryData::JetBrainsMonoNLRegular_ttfSize);
+   #endif
+
     setColour (juce::Label::textColourId,         white (alpha::label));
     setColour (juce::Label::backgroundColourId,   juce::Colours::transparentBlack);
     setColour (juce::Slider::backgroundColourId,  juce::Colours::transparentBlack);

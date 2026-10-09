@@ -48,10 +48,18 @@ namespace type {
     constexpr float crumbTracking   = 0.12f;
 }
 
-// ui-monospace → SF Mono on macOS; JUCE falls back to the system mono if missing.
+// ui-monospace → SF Mono on macOS. Windows has no SF Mono (and an unknown
+// family falls back to a proportional face), so there the kit embeds JetBrains
+// Mono NL (common/fonts, OFL) — NewspeechLookAndFeel registers it by family name.
+#if JUCE_MAC
+inline constexpr const char* monoFamily = "SF Mono";
+#else
+inline constexpr const char* monoFamily = "JetBrains Mono NL";
+#endif
+
 inline juce::Font monoFont (float heightPx, float letterSpacingEm = 0.0f) noexcept
 {
-    juce::Font f { "SF Mono", heightPx, juce::Font::plain };
+    juce::Font f { monoFamily, heightPx, juce::Font::plain };
     if (letterSpacingEm != 0.0f)
         f = f.withExtraKerningFactor (letterSpacingEm);
     return f;
