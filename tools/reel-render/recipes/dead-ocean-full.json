@@ -181,12 +181,13 @@
     },
     {
      "from": 158,
+     "page": "26-topo",
      "params": {
-      "rate": 1,
-      "hold": 3,
-      "coverage": 0.3,
-      "drift": 12,
-      "orientation": 0.2
+      "levels": 8,
+      "detail": 140,
+      "crawl": 6,
+      "weight": 2,
+      "audioShift": 60
      }
     },
     {
@@ -221,13 +222,12 @@
     },
     {
      "from": 315,
-     "page": "26-topo",
      "params": {
-      "levels": 8,
-      "detail": 140,
-      "crawl": 6,
-      "weight": 2,
-      "audioShift": 60
+      "rate": 0.8,
+      "hold": 3.5,
+      "coverage": 0.25,
+      "drift": 10,
+      "orientation": 0.15
      }
     }
    ]
