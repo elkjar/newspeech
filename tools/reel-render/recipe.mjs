@@ -13,6 +13,8 @@
 // {
 //   "outDir": "~/Desktop/reels",
 //   "base": { "fps": 30, "scale": 2, "seed": 7, "gain": 1, "width": 1080, "height": 1920,
+//             "allowText": false,   // true = also pick clips with on-screen text
+//                                   // (textscan.mjs; skipped by default)
 //             "minLuma": 35,        // random clips' mean luma floor (0–255); raise it
 //                                   // (~70) under high contrast, which crushes dim clips
 //             "globals": { "haze": 0.35, "grain": 0, ... } },   // site-wide panel globals
@@ -55,6 +57,7 @@ import { existsSync } from 'node:fs';
 import { resolve, dirname, join, basename } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { scanPool, hasText } from './textscan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -197,7 +200,12 @@ for (const other of recipe.avoid || []) {
 // reuse one — but never one from the same reel's last 12 segments.
 let reused = 0;
 async function pickSource(rand, seconds, recent) {
-  poolClips ??= (await readdir(POOL)).filter((f) => /\.mp4$/i.test(f) && !f.startsWith('_')).sort().map((f) => join(POOL, f));
+  if (!poolClips) {
+    // Clips with on-screen text never get picked (Chris sets typography over these);
+    // new pool clips are scanned on first use. base.allowText opts out.
+    const scan = base.allowText ? {} : await scanPool(POOL);
+    poolClips = (await readdir(POOL)).filter((f) => /\.mp4$/i.test(f) && !f.startsWith('_') && !(scan[f] && hasText(scan[f]))).sort().map((f) => join(POOL, f));
+  }
   const near = new Set(recent.slice(-12));
   for (const fresh of [true, false]) {
     for (let tries = 0; tries < 400; tries++) {
@@ -261,7 +269,8 @@ async function buildTimeline(reel, idx) {
   const sections = (reel.sections || []).slice().sort((a, b) => a.from - b.from);
   let start = 0;
   for (const [i, s] of segs.entries()) {
-    const sec = sections.filter((x) => x.from <= start + 1e-6).pop();
+    // +1s: a section's cut can snap up to 1s early onto the music (musicCuts).
+    const sec = sections.filter((x) => x.from <= start + 1.001).pop();
     // A section can switch effect; the reel's params belong to the reel's page,
     // so a different page starts from its own defaults.
     // Precedence: segment's own params > section > reel.

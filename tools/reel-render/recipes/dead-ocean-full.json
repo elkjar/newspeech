@@ -1,40 +1,366 @@
 {
-  "outDir": "~/Desktop/DEAD OCEAN TEASERS/VIDEO",
-  "avoid": ["policy-full.json"],
-  "exclude": ["snap_7444.mp4", "rust_10cd.mp4", "welt_3696.mp4", "warp_4102.mp4", "churn_4bd8.mp4"],
-  "base": {
-    "fps": 30, "scale": 2, "seed": 7, "width": 1920, "height": 1080, "minLuma": 70,
-    "globals": { "grain": 0.75, "contrast": 2.5, "haze": 1.31, "gridOpacity": 0.27, "dataPoints": 0, "telemetry": false }
+ "outDir": "~/Desktop/DEAD OCEAN TEASERS/VIDEO",
+ "exclude": [
+  "rust_10cd.mp4",
+  "welt_3696.mp4",
+  "warp_4102.mp4",
+  "churn_4bd8.mp4"
+ ],
+ "base": {
+  "fps": 30,
+  "scale": 2,
+  "seed": 7,
+  "width": 1920,
+  "height": 1080,
+  "minLuma": 70,
+  "globals": {
+   "grain": 0.75,
+   "contrast": 2.5,
+   "haze": 1.31,
+   "gridOpacity": 0.27,
+   "dataPoints": 0,
+   "telemetry": false
+  }
+ },
+ "reels": [
+  {
+   "name": "2DEG_FULL_16x9",
+   "audio": "../../../assets/ep/2-degrees.flac",
+   "page": "23-smear",
+   "params": {
+    "rate": 1.5,
+    "hold": 2.5,
+    "coverage": 0.35,
+    "drift": 18,
+    "orientation": 0.5,
+    "audioBoost": 8.9
+   },
+   "segments": "auto",
+   "maxSegment": 8,
+   "minJump": 4,
+   "sections": [
+    {
+     "from": 0,
+     "params": {
+      "rate": 0.8,
+      "hold": 3.5,
+      "coverage": 0.25,
+      "drift": 10,
+      "orientation": 0.15
+     }
+    },
+    {
+     "from": 56,
+     "params": {
+      "rate": 1.5,
+      "hold": 1.5,
+      "coverage": 0.35,
+      "drift": 18,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 103,
+     "params": {
+      "rate": 0.8,
+      "hold": 3,
+      "coverage": 0.25,
+      "drift": 12,
+      "orientation": 1
+     }
+    },
+    {
+     "from": 115,
+     "params": {
+      "rate": 2.5,
+      "hold": 2,
+      "coverage": 0.5,
+      "drift": 30,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 165,
+     "params": {
+      "rate": 3,
+      "hold": 1.5,
+      "coverage": 0.6,
+      "drift": 45,
+      "orientation": 0.8
+     }
+    },
+    {
+     "from": 213,
+     "page": "26-topo",
+     "params": {
+      "levels": 8,
+      "detail": 140,
+      "crawl": 6,
+      "weight": 2,
+      "audioShift": 60
+     }
+    },
+    {
+     "from": 226,
+     "page": "26-topo",
+     "params": {
+      "levels": 6,
+      "detail": 120,
+      "crawl": 3,
+      "weight": 1.6,
+      "audioShift": 30
+     }
+    }
+   ]
   },
-  "reels": [
-    { "name": "2DEG_FULL_16x9", "audio": "../../../assets/ep/2-degrees.flac",
-      "page": "14-blockshuffle",
-      "params": { "blockSize": 109, "freezeRate": 6, "freezeDuration": 1.4, "misalignRate": 10, "misalignAmount": 56, "audioBoost": 8.8 },
-      "segments": "auto", "maxSegment": 8, "minJump": 4,
-      "sections": [
-        { "from": 0,   "params": { "blockSize": 120, "freezeRate": 2,  "freezeDuration": 3,   "misalignRate": 3,  "misalignAmount": 20 } },
-        { "from": 56,  "params": { "blockSize": 109, "freezeRate": 6,  "freezeDuration": 1.4, "misalignRate": 10, "misalignAmount": 56 } },
-        { "from": 103, "params": { "blockSize": 60,  "freezeRate": 1,  "freezeDuration": 4,   "misalignRate": 2,  "misalignAmount": 10 } },
-        { "from": 115, "params": { "blockSize": 80,  "freezeRate": 14, "freezeDuration": 0.8, "misalignRate": 25, "misalignAmount": 70 } },
-        { "from": 165, "params": { "blockSize": 40,  "freezeRate": 20, "freezeDuration": 0.6, "misalignRate": 35, "misalignAmount": 80 } },
-        { "from": 213, "page": "12-edgemask", "params": { "threshold": 0.18, "gamma": 0.7, "floor": 0.08, "trailFade": 1, "audioBoost": 0.7 } }
-      ] },
-
-    { "name": "KIIDK_FULL_16x9", "audio": "../../../assets/ep/kiidkyaas.flac",
-      "page": "22-timeshear",
-      "params": { "bands": 12, "spread": 48, "pattern": 0.5, "rerollRate": 1.5, "audioAmount": 3.4 },
-      "segments": "auto", "maxSegment": 8, "minJump": 4,
-      "sections": [
-        { "from": 0,   "params": { "bands": 6,  "spread": 12, "rerollRate": 0.5, "audioAmount": 1.5 } },
-        { "from": 25,  "params": { "bands": 12, "spread": 28, "rerollRate": 1.5, "audioAmount": 3 } },
-        { "from": 67,  "params": { "bands": 24, "spread": 50, "rerollRate": 3,   "audioAmount": 3.4 } },
-        { "from": 120, "params": { "bands": 4,  "spread": 70, "rerollRate": 0.3, "audioAmount": 2 } },
-        { "from": 124, "params": { "bands": 32, "spread": 60, "rerollRate": 4,   "audioAmount": 3.4 } },
-        { "from": 158, "params": { "bands": 8,  "spread": 20, "rerollRate": 1,   "pattern": 0.8, "audioAmount": 2.5 } },
-        { "from": 209, "params": { "bands": 20, "spread": 45, "rerollRate": 2.5, "pattern": 0.5, "audioAmount": 3.4 } },
-        { "from": 227, "params": { "bands": 32, "spread": 60, "rerollRate": 4,   "audioAmount": 3.4 } },
-        { "from": 280, "params": { "bands": 48, "spread": 90, "rerollRate": 7,   "audioAmount": 4 } },
-        { "from": 315, "page": "25-dither", "params": { "cell": 8, "threshold": 0.5, "pump": 0.8 } }
-      ] }
-  ]
+  {
+   "name": "KIIDK_FULL_16x9",
+   "audio": "../../../assets/ep/kiidkyaas.flac",
+   "page": "23-smear",
+   "params": {
+    "rate": 1.5,
+    "hold": 2.5,
+    "coverage": 0.35,
+    "drift": 18,
+    "orientation": 0.5,
+    "audioBoost": 8.9
+   },
+   "segments": "auto",
+   "maxSegment": 8,
+   "minJump": 4,
+   "sections": [
+    {
+     "from": 0,
+     "params": {
+      "rate": 0.8,
+      "hold": 3.5,
+      "coverage": 0.25,
+      "drift": 10,
+      "orientation": 0.15
+     }
+    },
+    {
+     "from": 25,
+     "params": {
+      "rate": 1.5,
+      "hold": 1.5,
+      "coverage": 0.35,
+      "drift": 18,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 67,
+     "params": {
+      "rate": 2.5,
+      "hold": 2,
+      "coverage": 0.5,
+      "drift": 30,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 120,
+     "params": {
+      "rate": 0.8,
+      "hold": 3,
+      "coverage": 0.25,
+      "drift": 12,
+      "orientation": 1
+     }
+    },
+    {
+     "from": 124,
+     "params": {
+      "rate": 3,
+      "hold": 1.5,
+      "coverage": 0.6,
+      "drift": 40,
+      "orientation": 0.7
+     }
+    },
+    {
+     "from": 158,
+     "params": {
+      "rate": 1,
+      "hold": 3,
+      "coverage": 0.3,
+      "drift": 12,
+      "orientation": 0.2
+     }
+    },
+    {
+     "from": 209,
+     "params": {
+      "rate": 2.5,
+      "hold": 2,
+      "coverage": 0.5,
+      "drift": 30,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 227,
+     "params": {
+      "rate": 3,
+      "hold": 1.5,
+      "coverage": 0.6,
+      "drift": 40,
+      "orientation": 0.7
+     }
+    },
+    {
+     "from": 280,
+     "params": {
+      "rate": 3.5,
+      "hold": 1.2,
+      "coverage": 0.7,
+      "drift": 55,
+      "orientation": 0.6
+     }
+    },
+    {
+     "from": 315,
+     "page": "26-topo",
+     "params": {
+      "levels": 8,
+      "detail": 140,
+      "crawl": 6,
+      "weight": 2,
+      "audioShift": 60
+     }
+    }
+   ]
+  },
+  {
+   "name": "POLICY_FULL_16x9-v3",
+   "audio": "../../../assets/ep/policy-as-a-suicide-pact.flac",
+   "page": "23-smear",
+   "params": {
+    "rate": 1.5,
+    "hold": 2.5,
+    "coverage": 0.35,
+    "drift": 18,
+    "orientation": 0.5,
+    "audioBoost": 8.9
+   },
+   "segments": "auto",
+   "maxSegment": 8,
+   "minJump": 4,
+   "sections": [
+    {
+     "from": 0,
+     "params": {
+      "rate": 0.8,
+      "hold": 3.5,
+      "coverage": 0.25,
+      "drift": 10,
+      "orientation": 0.15
+     }
+    },
+    {
+     "from": 35,
+     "params": {
+      "rate": 1.5,
+      "hold": 1.5,
+      "coverage": 0.35,
+      "drift": 18,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 59,
+     "params": {
+      "rate": 2.5,
+      "hold": 2,
+      "coverage": 0.5,
+      "drift": 30,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 113,
+     "params": {
+      "rate": 0.8,
+      "hold": 3,
+      "coverage": 0.25,
+      "drift": 12,
+      "orientation": 1
+     }
+    },
+    {
+     "from": 122,
+     "params": {
+      "rate": 3,
+      "hold": 1.5,
+      "coverage": 0.6,
+      "drift": 40,
+      "orientation": 0.7
+     }
+    },
+    {
+     "from": 158,
+     "params": {
+      "rate": 1,
+      "hold": 3,
+      "coverage": 0.3,
+      "drift": 12,
+      "orientation": 0.2
+     }
+    },
+    {
+     "from": 191,
+     "params": {
+      "rate": 2.5,
+      "hold": 2,
+      "coverage": 0.5,
+      "drift": 30,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 230,
+     "params": {
+      "rate": 3,
+      "hold": 1.8,
+      "coverage": 0.6,
+      "drift": 45,
+      "orientation": 0.9
+     }
+    },
+    {
+     "from": 269,
+     "params": {
+      "rate": 1.2,
+      "hold": 4,
+      "coverage": 0.45,
+      "drift": 50,
+      "orientation": 1
+     }
+    },
+    {
+     "from": 347,
+     "page": "26-topo",
+     "params": {
+      "levels": 8,
+      "detail": 140,
+      "crawl": 6,
+      "weight": 2,
+      "audioShift": 60
+     }
+    },
+    {
+     "from": 400,
+     "page": "26-topo",
+     "params": {
+      "levels": 6,
+      "detail": 120,
+      "crawl": 3,
+      "weight": 1.6,
+      "audioShift": 30
+     }
+    }
+   ]
+  }
+ ]
 }
