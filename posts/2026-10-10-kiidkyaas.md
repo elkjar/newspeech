@@ -16,8 +16,6 @@ Below is a giant list for you to read, probably only if you're mad at this and w
 
 Anyways, the sources are below. These links will send you out to the sites that I pulled them from. If you have a concern about my reading of any of this please feel free to reach out.
 
-### the count
-
 > IN THE U.S., FROM 1980 TO 2024,
 > THERE WERE NINE BILLION-DOLLAR
 > DISASTERS A YEAR, ON AVERAGE.
@@ -52,8 +50,6 @@ Anyways, the sources are below. These links will send you out to the sites that 
 
 - [Scripps News, "NOAA says it will discontinue its billion-dollar disaster database"](https://scrippsnews.com/science-and-tech/climate-change/noaa-says-it-will-discontinue-its-billion-dollar-disaster-database) — announced May 8, 2025; 2024 is the last year NOAA published.
 - [AP, "The federal government used to keep track of extreme weather disasters. Now it's up to a nonprofit"](https://krdo.com/news/2025/10/22/the-federal-government-used-to-keep-track-of-extreme-weather-disasters-now-its-up-to-a-nonprofit/) — in October 2025 the database's former NOAA lead, Adam Smith, relaunched it at [Climate Central](https://www.climatecentral.org/billion-dollar-disasters) using the same methods.
-
-### the bill
 
 > HOME INSURANCE PREMIUMS ROSE
 > BY A THIRD FROM 2020 TO 2023.
@@ -90,8 +86,6 @@ Anyways, the sources are below. These links will send you out to the sites that 
 
 - [Kotz et al., "Climate extremes, food price spikes, and their wider societal risks", Environmental Research Letters 20 081001 (2025)](https://publications.pik-potsdam.de/rest/items/item_33452_1/component/file_33453/content) — 16 food price spikes in 18 countries, 2022–2024, each following heat, drought or heavy rain (e.g. onions and potatoes in India up more than 80% after the May 2024 heatwave, olive oil up 50% after drought in Spain and Italy, cocoa roughly tripling). The cases are prominent examples, not a complete count. [Carbon Brief's map of all 16](https://www.carbonbrief.org/mapped-16-times-extreme-weather-drove-higher-food-prices-since-2022/).
 
-### uprooted
-
 > IN 2024, DISASTERS FORCED
 > PEOPLE FROM THEIR HOMES
 > 45.8 MILLION TIMES. A RECORD.
@@ -110,8 +104,6 @@ Anyways, the sources are below. These links will send you out to the sites that 
 > ABOUT 8 MILLION WERE DISPLACED.
 
 - [World Bank, Pakistan floods post-disaster needs assessment (October 2022)](https://www.worldbank.org/en/news/press-release/2022/10/28/pakistan-flood-damages-and-economic-losses-over-usd-30-billion-and-reconstruction-needs-over-usd-16-billion-new-assessme) — 33 million people affected, more than 1,700 killed, about 8 million displaced; over USD 30 billion in damage and economic losses.
-
-### lives
 
 > CLIMATE CHANGE ACCOUNTS FOR
 > AN ESTIMATED $143 BILLION A YEAR
@@ -138,8 +130,6 @@ Anyways, the sources are below. These links will send you out to the sites that 
 > MORE THAN DOUBLED SINCE 1999.
 
 - [Howard et al., "Trends of Heat-Related Deaths in the US, 1999–2023", JAMA (2024)](https://doi.org/10.1001/jama.2024.16386) — CDC death certificates: 1,069 heat-related deaths in 1999, 2,325 in 2023 (+117%), the highest in the series. The authors note death certificates likely undercount heat.
-
-### hunger and poverty
 
 > DROUGHTS AND FLOODS PUSHED
 > 96 MILLION PEOPLE INTO FOOD CRISIS
@@ -174,8 +164,6 @@ Anyways, the sources are below. These links will send you out to the sites that 
 
 - [The Lancet Countdown, 2025 report](https://lancetcountdown.org/2025-report/) — heat-related loss of labour capacity cost an estimated USD 1.09 trillion in potential income in 2024.
 
-### children
-
 > WEATHER DISASTERS DISPLACED
 > CHILDREN 43 MILLION TIMES
 > IN SIX YEARS. 20,000 A DAY.
@@ -185,8 +173,6 @@ Anyways, the sources are below. These links will send you out to the sites that 
 > IN THE NEXT 30 YEARS.
 
 - [UNICEF, "Children Displaced in a Changing Climate" (October 2023)](https://www.unicef.org/reports/children-displaced-changing-climate) — 43.1 million child displacements from floods, storms, drought and wildfire across 44 countries, 2016–2021, about 20,000 a day; riverine floods could displace nearly 96 million children over the next 30 years. [UN News summary](https://news.un.org/en/node/1141947).
-
-### the last three
 
 > EVERY NUMBER HERE IS A BILL.
 > SOMEONE PAYS IT.
