@@ -1,20 +1,22 @@
 ---
-title: kiidk'yaas
+title: kiidk'yaas - is this how instrumental lyric videos work?
 date: 2026-10-10
-dek: TODO — one line. a video for kiidk'yaas, and every number in it, sourced.
+dek: Everyone puts out lyric videos for their singles - how do we do that with instrumental music?
 ---
 
-TODO — opening. what the video is: kiidk'yaas from dead ocean, public-domain FEMA + NASA footage under the smear, supers telling the story of what climate change costs. why the numbers.
+One of the biggest questions when starting this project revolves around my obsession with focusing in on a clear reason for existing. Why make this music? What message is it trying to convey? who is it for? why are you making it? This point of view feels difficult sometimes - this is even more complex when you remove the idea of lyrics carrying the meaning. My solution is as follows. Newspeech will release lyric videos the same way everyone else does - but ours will be the direct messaging of the concerns that caused the creation of this music. The guitar playing sounds like an alarm on this song because it fucking is.
 
 <!-- TODO — video embed once it's up (YouTube, minimal params):
 <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/VIDEO_ID?controls=0&rel=0&iv_load_policy=3&fs=0&color=white&playsinline=1" title="kiidk'yaas" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
 -->
 
-TODO — how the supers were made, if you want it: the order (the count → the bill → uprooted → lives → hunger), widening from the US to the world, the last line.
+Below is a giant list for you to read, probably only if you're mad at this and want to try to discredit it. The sources are real, the numbers are cited below. We all know what is happening here and we're choosing to ignore it, or to give ourselves some grace, we're being put into a position in society where the weight of this burden is placed on the people who have the least ability to do something about it. Government and corporations ask us to use paper grocery bags while we overpay for everything and they fly private on their way to the yacht in mykonos.
+
+[get dead ocean](../dead-ocean.html)
 
 ## sources
 
-TODO — one line intro, e.g. "every super in the video, in order, with where the number comes from."
+Anyways, the sources are below. These links will send you out to the sites that I pulled them from. If you have a concern about my reading of any of this please feel free to reach out.
 
 ### the count
 
@@ -89,10 +91,6 @@ TODO — one line intro, e.g. "every super in the video, in order, with where th
 > IN JUST TWO YEARS.
 
 - [Kotz et al., "Climate extremes, food price spikes, and their wider societal risks", Environmental Research Letters 20 081001 (2025)](https://publications.pik-potsdam.de/rest/items/item_33452_1/component/file_33453/content) — 16 food price spikes in 18 countries, 2022–2024, each following heat, drought or heavy rain (e.g. onions and potatoes in India up more than 80% after the May 2024 heatwave, olive oil up 50% after drought in Spain and Italy, cocoa roughly tripling). The cases are prominent examples, not a complete count. [Carbon Brief's map of all 16](https://www.carbonbrief.org/mapped-16-times-extreme-weather-drove-higher-food-prices-since-2022/).
-
-<!-- if the cocoa super stays instead (COCOA PRICES ROSE 136% / IN UNDER TWO YEARS. / HEAT WAS PART OF IT.):
-- [Climate Central, "Climate change and cocoa" (Feb 2025)](https://www.climatecentral.org/climate-matters/climate-and-cocoa-2025) — cocoa up 136% from July 2022 to February 2024; heat "partly to blame".
--->
 
 ### uprooted
 
@@ -201,7 +199,7 @@ TODO — one line intro, e.g. "every super in the video, in order, with where th
 > THE PEOPLE PAYING THE MOST
 > DID THE LEAST TO CAUSE IT.
 
-TODO — these are yours, no data claim. optional: a line pointing at the hunger/poverty/children sources above as the support for the last one.
+Yeah, you're right, these are editorial. Please feel free to attempt to argue this point though.
 
 ## footage
 
@@ -243,7 +241,3 @@ All footage is public domain: works of the US federal government (17 U.S.C. §10
 - [Additional Views of Hurricane Helene from the International Space Station](https://images.nasa.gov/details/jsc2024m000168-Additional_Views_of_Hurricane_Helene_from_the_International_Space_Station) — NASA JSC
 - [FireSense mission b-roll package (B-200 King Air)](https://images.nasa.gov/details/V2-B200_FIRESENSE_PREP_TAXI%20Copy%2001) — NASA AFRC
 - [Expedition 68 International Space Station Flyover of Tropical Storm Ian - Sept. 29, 2022](https://images.nasa.gov/details/iss068m262721811_Expedition_68_Tropical_Storm_Ian_Flyover_220929) — NASA JSC
-
-TODO — closing. the record link, maybe.
-
-[get dead ocean](../dead-ocean.html)
