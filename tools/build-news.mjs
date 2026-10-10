@@ -99,7 +99,8 @@ const SHARED_CSS = `
 const POST_CSS = `
   @font-face { font-family: "zxx-sans"; src: url("../fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
 ${SHARED_CSS}
-  .post-head { max-width: 960px; margin: 0 auto; }
+  /* bottom margin spaces image-less posts; collapses into .featured's 32px top when there is one */
+  .post-head { max-width: 960px; margin: 0 auto 32px; }
   .post-head .title {
     font-family: "zxx-sans", monospace;
     font-size: clamp(28px, 4.6vw, 48px);
