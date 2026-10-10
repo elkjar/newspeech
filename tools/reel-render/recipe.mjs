@@ -15,6 +15,7 @@
 //   "base": { "fps": 30, "scale": 2, "seed": 7, "gain": 1, "width": 1080, "height": 1920,
 //             "allowText": false,   // true = also pick clips with on-screen text
 //                                   // (textscan.mjs; skipped by default)
+//             "pool": "~/Documents/newspeech-visuals-real",  // optional: another clip pool
 //             "minLuma": 35,        // random clips' mean luma floor (0–255); raise it
 //                                   // (~70) under high contrast, which crushes dim clips
 //             "globals": { "haze": 0.35, "grain": 0, ... } },   // site-wide panel globals
@@ -29,7 +30,9 @@
 //     "cuts": "auto" | [5.2, 9.8],   // optional: segment boundaries. "auto" = the
 //                                    // N-1 biggest loudness jumps for N segments
 //     "page": "21-mosh", "params": {...},  // defaults for every segment below
-//     "sections": [{ "from": 60, "page"?: "26-topo", "params": {...} }],  // by song position —
+//     "sections": [{ "from": 60, "page"?: "26-topo", "prefer"?: "-ia-", "params": {...} }],  // by song position —
+//                                    // ("prefer": regex on the clip's source id in the
+//                                    // pool's _pool-manifest.tsv; falls back to any clip)
 //                                    // a segment takes the last section starting
 //                                    // at or before its own start (full songs)
 //     "segments": "auto" | 3 | [{    // a number = that many segments of the reel's
@@ -61,7 +64,6 @@ import { scanPool, hasText } from './textscan.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
-const POOL = join(homedir(), 'Documents', 'newspeech-visuals');
 
 const args = { recipe: null, only: null, jobs: 2, dry: false };
 for (let i = 2; i < process.argv.length; i++) {
@@ -79,6 +81,9 @@ const expand = (p) => resolve(recipeDir, p.replace(/^~(?=\/|$)/, homedir()));
 const recipe = JSON.parse(await readFile(recipePath, 'utf8'));
 const base = { fps: 30, scale: 2, seed: 7, gain: 1, width: 1080, height: 1920, ...(recipe.base || {}) };
 const outDir = expand(recipe.outDir || '~/Desktop/reels');
+// Source-clip pool: Chris's library by default; base.pool points a recipe at another
+// (e.g. ~/Documents/newspeech-visuals-real, the public-domain disaster footage).
+const POOL = base.pool ? expand(base.pool) : join(homedir(), 'Documents', 'newspeech-visuals');
 const work = join(tmpdir(), 'reel-recipe', basename(recipePath, '.json'));
 await mkdir(outDir, { recursive: true });
 await mkdir(work, { recursive: true });
@@ -199,7 +204,15 @@ for (const other of recipe.avoid || []) {
 // Fresh clips first. Once the pool's usable clips run out (full songs need ~90),
 // reuse one — but never one from the same reel's last 12 segments.
 let reused = 0;
-async function pickSource(rand, seconds, recent) {
+// Where each pool clip came from (<pool>/_pool-manifest.tsv: chunk → source id), so
+// a section can "prefer" footage from matching sources (regex on the source id).
+const sourceOf = {};
+try {
+  for (const line of (await readFile(join(POOL, '_pool-manifest.tsv'), 'utf8')).trim().split('\n').slice(1)) {
+    const [chunk, source] = line.split('\t'); sourceOf[join(POOL, chunk)] = source || '';
+  }
+} catch { /* no manifest: "prefer" is a no-op */ }
+async function pickSource(rand, seconds, recent, prefer) {
   if (!poolClips) {
     // Clips with on-screen text never get picked (Chris sets typography over these);
     // new pool clips are scanned on first use. base.allowText opts out.
@@ -207,9 +220,13 @@ async function pickSource(rand, seconds, recent) {
     poolClips = (await readdir(POOL)).filter((f) => /\.mp4$/i.test(f) && !f.startsWith('_') && !(scan[f] && hasText(scan[f]))).sort().map((f) => join(POOL, f));
   }
   const near = new Set(recent.slice(-12));
-  for (const fresh of [true, false]) {
+  const re = prefer ? new RegExp(prefer, 'i') : null;
+  const preferred = re ? poolClips.filter((c) => re.test(sourceOf[c] || '')) : [];
+  // Preferred sources first (fresh, then reused), then the whole pool.
+  const passes = [...(preferred.length ? [[preferred, true], [preferred, false]] : []), [poolClips, true], [poolClips, false]];
+  for (const [list, fresh] of passes) {
     for (let tries = 0; tries < 400; tries++) {
-      const clip = poolClips[Math.floor(rand() * poolClips.length)];
+      const clip = list[Math.floor(rand() * list.length)];
       if (banned.has(clip) || near.has(clip) || (fresh && used.has(clip))) continue;
       if (lumaOK(clip, seconds, base.minLuma)) {
         if (!fresh) reused++;
@@ -274,6 +291,7 @@ async function buildTimeline(reel, idx) {
     // A section can switch effect; the reel's params belong to the reel's page,
     // so a different page starts from its own defaults.
     // Precedence: segment's own params > section > reel.
+    if (sec?.prefer && !s.prefer) s.prefer = sec.prefer;
     if (sec?.page && sec.page !== s.page) { s.page = sec.page; s.params = { ...(sec.params || {}), ...s.own }; }
     else if (sec) s.params = { ...s.params, ...(sec.params || {}), ...s.own };
     start += lengths[i];
@@ -282,7 +300,7 @@ async function buildTimeline(reel, idx) {
     const state = structuredClone(look?.state || {});
     state.params = { ...(state.params || {}), ...(s.params || {}) };
     state.localStorage = { ...(state.localStorage || {}), ...globalsToLocalStorage({ ...globals, ...(s.globals || {}) }) };
-    if (s.source === 'random') state.source = await pickSource(rand, lengths[i], recent);
+    if (s.source === 'random') state.source = await pickSource(rand, lengths[i], recent, s.prefer);
     else if (s.source) state.source = expand(s.source);
     segments.push({ page: s.page || look?.page, seconds: lengths[i], state });
   }

@@ -1,0 +1,159 @@
+{
+ "outDir": "~/Desktop/DEAD OCEAN TEASERS/VIDEO",
+ "exclude": [
+  "crest_449b.mp4",
+  "wake_0503.mp4",
+  "gale_5c97.mp4",
+  "flare_49be.mp4",
+  "flood_58e0.mp4",
+  "rubble_2c3d.mp4",
+  "flare_7b78.mp4",
+  "flood_76c0.mp4"
+ ],
+ "base": {
+  "fps": 30,
+  "scale": 2,
+  "seed": 7,
+  "width": 1920,
+  "height": 1080,
+  "minLuma": 45,
+  "pool": "~/Documents/newspeech-visuals-real",
+  "globals": {
+   "grain": 0.75,
+   "contrast": 2.5,
+   "haze": 1.31,
+   "gridOpacity": 0.27,
+   "dataPoints": 0,
+   "telemetry": false
+  }
+ },
+ "reels": [
+  {
+   "name": "KIIDK_FULL_16x9-real-v2",
+   "audio": "../../../assets/ep/kiidkyaas.flac",
+   "page": "23-smear",
+   "params": {
+    "rate": 0.5,
+    "hold": 1.5,
+    "coverage": 0.13,
+    "drift": 18,
+    "orientation": 0.5,
+    "audioBoost": 2
+   },
+   "segments": "auto",
+   "maxSegment": 8,
+   "minJump": 4,
+   "sections": [
+    {
+     "from": 0,
+     "params": {
+      "rate": 0.3,
+      "hold": 2.5,
+      "coverage": 0.1,
+      "drift": 10,
+      "orientation": 0.15
+     },
+     "prefer": "-nasa-"
+    },
+    {
+     "from": 25,
+     "params": {
+      "rate": 0.5,
+      "hold": 1.5,
+      "coverage": 0.13,
+      "drift": 18,
+      "orientation": 0.5
+     },
+     "prefer": "-nasa-"
+    },
+    {
+     "from": 67,
+     "params": {
+      "rate": 0.6,
+      "hold": 1.5,
+      "coverage": 0.15,
+      "drift": 20,
+      "orientation": 0.5
+     }
+    },
+    {
+     "from": 120,
+     "params": {
+      "rate": 0.3,
+      "hold": 2.5,
+      "coverage": 0.1,
+      "drift": 12,
+      "orientation": 1
+     },
+     "prefer": "-ia-"
+    },
+    {
+     "from": 124,
+     "params": {
+      "rate": 0.75,
+      "hold": 1.5,
+      "coverage": 0.18,
+      "drift": 30,
+      "orientation": 0.7
+     },
+     "prefer": "-ia-"
+    },
+    {
+     "from": 158,
+     "page": "26-topo",
+     "prefer": "-ia-",
+     "params": {
+      "levels": 8,
+      "detail": 140,
+      "crawl": 6,
+      "weight": 2,
+      "audioShift": 60
+     }
+    },
+    {
+     "from": 209,
+     "params": {
+      "rate": 0.6,
+      "hold": 1.5,
+      "coverage": 0.15,
+      "drift": 20,
+      "orientation": 0.5
+     },
+     "prefer": "-ia-"
+    },
+    {
+     "from": 227,
+     "params": {
+      "rate": 0.75,
+      "hold": 1.5,
+      "coverage": 0.18,
+      "drift": 30,
+      "orientation": 0.7
+     },
+     "prefer": "-ia-"
+    },
+    {
+     "from": 280,
+     "params": {
+      "rate": 0.9,
+      "hold": 1.2,
+      "coverage": 0.22,
+      "drift": 40,
+      "orientation": 0.6
+     }
+    },
+    {
+     "from": 315,
+     "params": {
+      "rate": 0.3,
+      "hold": 2.5,
+      "coverage": 0.1,
+      "drift": 10,
+      "orientation": 0.15
+     },
+     "prefer": "-ia-"
+    }
+   ]
+  }
+ ]
+}
