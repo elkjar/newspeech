@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>supers overlay</title>
+<!--
+  supers.html — burned-in supers for a video, rendered by reel-render with
+  --alpha (transparent ProRes 4444) to sit on a track above the footage.
+  The type matches Chris's Resolve supers (DIN Condensed Bold 96, centered,
+  tight leading); the wear is the about page's (about.js): characters rot to
+  ghosts, letters drift, lines slip, plus live glyph flips, zxx font swaps,
+  strip tears, mono chroma ghosts and jolts — all growing with the song.
+
+  Data comes in through localStorage (render.mjs injects state.localStorage):
+    supers.data  — JSON [{ t, dur, lines: [..], wear? }]  (seconds; wear 0..1 overrides)
+    supers.wear  — JSON { start, end, curve }  wear ramps 0→1 from start→end (s)
+  Everything runs off performance.now() + Math.random(), which the renderer
+  pins to a virtual clock + seeded PRNG, so renders are deterministic.
+-->
+<style>
+  @font-face { font-family: "zxx-sans"; src: url("/fonts/zxx-sans.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-noise"; src: url("/fonts/zxx-noise.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-camo"; src: url("/fonts/zxx-camo.woff2") format("woff2"); }
+  @font-face { font-family: "zxx-xed"; src: url("/fonts/zxx-xed.woff2") format("woff2"); }
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .block { position: relative; text-align: center; color: #fff;
+    font-family: "DIN Condensed", "DINCondensed-Bold", sans-serif; font-weight: 700;
+    font-size: 96px; line-height: 84px; letter-spacing: 0; white-space: nowrap; will-change: transform; }
+  .line { display: block; will-change: transform; }
+  .ch { display: inline-block; white-space: pre; }
+  .ch.rot { opacity: 0.45; }
+  .ch.gone { opacity: 0.16; }
+  .tear { position: absolute; left: 0; top: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<!-- warm the zxx faces so the first swap doesn't flash a fallback -->
+<div aria-hidden="true" style="position:absolute;left:-9999px;top:0;opacity:0"><span style="font-family:zxx-sans">A#</span><span style="font-family:zxx-noise">A#</span><span style="font-family:zxx-camo">A#</span><span style="font-family:zxx-xed">A#</span><span style="font-family:'DIN Condensed';font-weight:700">A#</span></div>
+<script>
+(() => {
+  const stage = document.getElementById("stage");
+  const read = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } };
+  const SUPERS = read("supers.data", []);
+  const W = Object.assign({ start: 8, end: 308, curve: 1.2, max: 0.8 }, read("supers.wear", {}));
+  const FONTS = ["zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+  const GLYPHS = "#*/\\_+=~<>.,:;|?!@$%^&-";
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp01 = (x) => Math.max(0, Math.min(1, x));
+  // wear tops out at W.max: even the last super has to read between bursts (about page lesson)
+  const wearAt = (t, s) => W.max * ((s && s.wear != null) ? s.wear : Math.pow(clamp01((t - W.start) / (W.end - W.start)), W.curve));
+
+  let cur = null;      // { s, block, lines:[el], chars:[el], k }
+  let events = [];     // live glitches: { until, undo }
+
+  function build(s, t) {
+    stage.textContent = "";
+    events = [];
+    const block = document.createElement("div");
+    block.className = "block";
+    // the text lives in .content; tears are siblings that clone ONLY .content
+    // (cloning the block would copy live tears into new ones and grow without bound)
+    const content = document.createElement("div");
+    content.className = "content";
+    block.appendChild(content);
+    const lines = [], chars = [];
+    for (const text of s.lines) {
+      const line = document.createElement("span");
+      line.className = "line";
+      for (const c of text) {
+        const sp = document.createElement("span");
+        sp.className = "ch";
+        sp.textContent = sp.dataset.o = c;
+        sp._t = Math.random();                  // this char's fate (rot/gone thresholds)
+        sp._dx = rand(-1, 1); sp._dy = rand(-1, 1); sp._r = rand(-1, 1);
+        line.appendChild(sp);
+        if (c !== " ") chars.push(sp);
+      }
+      content.appendChild(line);
+      lines.push(line);
+    }
+    stage.appendChild(block);
+    // built-in damage, fixed for the life of this super, by the wear at its start
+    const k = wearAt(t, s);
+    lines.forEach((ln, j) => {
+      const dx = (j % 2 ? 1 : -1) * k * rand(10, 46);              // lines slip, alternating
+      ln.style.transform = `translateX(${dx.toFixed(1)}px)`;
+    });
+    for (const sp of chars) {
+      const d = Math.pow(k, 1.4);
+      sp.style.transform = `translate(${(d * sp._dx * 10).toFixed(1)}px, ${(d * sp._dy * 16).toFixed(1)}px) rotate(${(d * sp._r * 10).toFixed(1)}deg)`;
+      sp.classList.toggle("rot", sp._t < k * 0.12);
+      sp.classList.toggle("gone", sp._t < k * 0.025);
+    }
+    cur = { s, block, content, lines, chars, k };
+  }
+
+  // one hazard check per frame: P(fire) = 1 - exp(-rate · dt)
+  const hit = (rate, dt) => Math.random() < 1 - Math.exp(-rate * dt);
+  function glitch(now, dt) {
+    const w = cur.k, { chars, block, content } = cur;
+    // glyph flips
+    if (hit(0.3 + 6 * Math.pow(w, 1.6), dt)) {
+      const n = 1 + ((Math.random() * (2 + 6 * w)) | 0);
+      const sel = Array.from({ length: n }, () => chars[(Math.random() * chars.length) | 0]);
+      for (const sp of sel) sp.textContent = GLYPHS[(Math.random() * GLYPHS.length) | 0];
+      events.push({ until: now + rand(60, 200), undo: () => sel.forEach((sp) => (sp.textContent = sp.dataset.o)) });
+    }
+    // zxx font swaps
+    if (hit(0.2 + 5 * Math.pow(w, 1.3), dt)) {
+      const n = 1 + Math.floor(Math.pow(w, 1.2) * chars.length * 0.22);
+      const sel = [...chars].sort(() => Math.random() - 0.5).slice(0, n);
+      for (const sp of sel) sp.style.fontFamily = `"${FONTS[(Math.random() * FONTS.length) | 0]}", monospace`;
+      events.push({ until: now + rand(70, 290), undo: () => sel.forEach((sp) => (sp.style.fontFamily = "")) });
+    }
+    // strip tears: clipped clones of the block jump sideways
+    if (hit(0.06 + 3 * Math.pow(Math.max(0, w - 0.1), 1.3), dt)) {
+      const h = block.offsetHeight, made = [];
+      const strips = 1 + ((Math.random() * (1 + 4 * w)) | 0);
+      for (let i = 0; i < strips; i++) {
+        const top = rand(0, h * 0.92), sh = rand(6, 12 + 40 * w);
+        const c = content.cloneNode(true);
+        c.classList.add("tear");
+        c.style.clipPath = `inset(${top.toFixed(0)}px 0 ${Math.max(0, h - top - sh).toFixed(0)}px 0)`;
+        c.style.transform = `translateX(${((Math.random() < 0.5 ? -1 : 1) * rand(16, 40 + 260 * w)).toFixed(0)}px)`;
+        block.appendChild(c);
+        made.push(c);
+      }
+      events.push({ until: now + rand(70, 250), undo: () => made.forEach((c) => c.remove()) });
+    }
+    // chroma — monochrome: grey ghosts either side
+    if (hit(0.1 + 3.5 * Math.pow(w, 1.6), dt)) {
+      const o = (1.5 + 7 * w).toFixed(1);
+      block.style.filter = `drop-shadow(-${o}px 0 0 rgba(255,255,255,0.45)) drop-shadow(${o}px 0 0 rgba(160,160,160,0.45))`;
+      events.push({ until: now + rand(60, 180), undo: () => (block.style.filter = "") });
+    }
+    // jolts: the whole super shifts, then snaps back
+    if (hit(0.02 + 2.5 * Math.pow(Math.max(0, w - 0.25), 1.5), dt)) {
+      const dx = (Math.random() < 0.5 ? -1 : 1) * rand(4, 8 + 60 * w), dy = rand(-10, 10) * w;
+      block.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+      events.push({ until: now + rand(50, 140), undo: () => (block.style.transform = "") });
+    }
+  }
+
+  let last = performance.now();
+  function frame() {
+    const now = performance.now(), t = now / 1000, dt = Math.max(0, Math.min(0.25, (now - last) / 1000));
+    last = now;
+    const s = SUPERS.find((x) => t >= x.t && t < x.t + x.dur) || null;
+    if (!s) { if (cur) { stage.textContent = ""; cur = null; events = []; } }
+    else {
+      if (!cur || cur.s !== s) build(s, t);
+      events = events.filter((e) => (now >= e.until ? (e.undo(), false) : true));
+      glitch(now, dt);
+    }
+    requestAnimationFrame(frame);
+  }
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => requestAnimationFrame(frame));
+})();
+</script>
+</body>
+</html>

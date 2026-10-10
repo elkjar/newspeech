@@ -33,7 +33,7 @@ const DEFAULT_H = 1920;
 
 // ---- args ----------------------------------------------------------------
 function parseArgs(argv) {
-  const a = { page: '1-streaks', seconds: 8, fps: 30, seed: 1, scale: 2, width: DEFAULT_W, height: DEFAULT_H, out: 'reel.mp4', audio: null, gain: 1, state: null, preset: 'veryfast', jpeg: false, keepFrames: false, sourceAudio: false };
+  const a = { page: '1-streaks', seconds: 8, fps: 30, seed: 1, scale: 2, width: DEFAULT_W, height: DEFAULT_H, out: 'reel.mp4', audio: null, gain: 1, state: null, preset: 'veryfast', jpeg: false, alpha: false, keepFrames: false, sourceAudio: false };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     const v = argv[i + 1];
@@ -53,6 +53,9 @@ function parseArgs(argv) {
     else if (k === '--source-audio') { a.sourceAudio = true; }
     else if (k === '--preset') { a.preset = v; i++; }
     else if (k === '--jpeg') { a.jpeg = true; }
+    // --alpha: transparent page background → ProRes 4444 with alpha (.mov), for
+    // overlays (e.g. supers) that sit on a track above other footage in an NLE.
+    else if (k === '--alpha') { a.alpha = true; }
     else if (k === '--keep-frames') { a.keepFrames = true; }
   }
   a.page = a.page.replace(/\.html$/, '');
@@ -193,8 +196,10 @@ function startFfmpegPipe(a, outPath, seconds, audioPath) {
     // Crop-to-even guard: fractional --scale × custom --width/--height can
     // land odd pixel dimensions, which yuv420p rejects. 1px trim at most.
     '-vf', 'crop=trunc(iw/2)*2:trunc(ih/2)*2',
-    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', a.preset || 'veryfast',
-    '-movflags', '+faststart', outPath,
+    ...(a.alpha
+      ? ['-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0']
+      : ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', a.preset || 'veryfast', '-movflags', '+faststart']),
+    outPath,
   );
   const proc = spawn('ffmpeg', args, { stdio: ['pipe', 'inherit', 'inherit'] });
   proc.stdin.on('error', () => {}); // ignore EPIPE if ffmpeg exits early
@@ -350,7 +355,9 @@ async function main() {
         { tMs, feat, due },
       );
       const buf = await page.screenshot(
-        a.jpeg
+        a.alpha
+          ? { type: 'png', omitBackground: true, clip: { x: 0, y: 0, width: logicalW, height: logicalH } }
+          : a.jpeg
           ? { type: 'jpeg', quality: 92, clip: { x: 0, y: 0, width: logicalW, height: logicalH } }
           : { clip: { x: 0, y: 0, width: logicalW, height: logicalH } },
       );
