@@ -6,13 +6,11 @@ dek: Everyone puts out lyric videos for their singles - how do we do that with i
 
 One of the biggest questions when starting this project revolves around my obsession with focusing in on a clear reason for existing. Why make this music? What message is it trying to convey? who is it for? why are you making it? This point of view feels difficult sometimes - this is even more complex when you remove the idea of lyrics carrying the meaning. My solution is as follows. Newspeech will release lyric videos the same way everyone else does - but ours will be the direct messaging of the concerns that caused the creation of this music. The guitar playing sounds like an alarm on this song because it fucking is.
 
-<!-- TODO — video embed once it's up (YouTube, minimal params):
-<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/VIDEO_ID?controls=0&rel=0&iv_load_policy=3&fs=0&color=white&playsinline=1" title="kiidk'yaas" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
--->
+<div class="video"><iframe src="https://www.youtube-nocookie.com/embed/XQP3pM0XNww?controls=0&rel=0&iv_load_policy=3&fs=0&color=white&playsinline=1" title="kiidk'yaas" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
 
 Below is a giant list for you to read, probably only if you're mad at this and want to try to discredit it. The sources are real, the numbers are cited below. We all know what is happening here and we're choosing to ignore it, or to give ourselves some grace, we're being put into a position in society where the weight of this burden is placed on the people who have the least ability to do something about it. Government and corporations ask us to use paper grocery bags while we overpay for everything and they fly private on their way to the yacht in mykonos.
 
-[get dead ocean](../dead-ocean.html)
+[download the 'dead ocean' ep](../dead-ocean.html)
 
 ## sources
 
