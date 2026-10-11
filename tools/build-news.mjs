@@ -99,7 +99,8 @@ const SHARED_CSS = `
 const POST_CSS = `
   @font-face { font-family: "zxx-sans"; src: url("../fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
 ${SHARED_CSS}
-  .post-head { max-width: 960px; margin: 0 auto; }
+  /* bottom margin spaces image-less posts; collapses into .featured's 32px top when there is one */
+  .post-head { max-width: 960px; margin: 0 auto 32px; }
   .post-head .title {
     font-family: "zxx-sans", monospace;
     font-size: clamp(28px, 4.6vw, 48px);
@@ -355,7 +356,7 @@ const INDEX_CSS = `${SHARED_CSS}
 // posts without an image keep an empty bordered slot so rows stay aligned.
 function postRowHtml(p) {
   const thumb = p.meta.image
-    ? `<span class="thumb"><img src="${new URL(p.meta.image, "https://x/news/").pathname.slice(1)}" alt="" loading="lazy"></span>`
+    ? `<span class="thumb"><img src="${/^https?:/.test(p.meta.image) ? p.meta.image : new URL(p.meta.image, "https://x/news/").pathname.slice(1)}" alt="" loading="lazy"></span>`
     : `<span class="thumb"></span>`;
   return `    <a class="post-row" href="news/${p.slug}.html">
       ${thumb}
@@ -426,6 +427,22 @@ const posts = files.map((f) => {
   const slug = f.replace(/\.md$/, "").replace(/^\d{4}-\d{2}-\d{2}-/, "");
   return { slug, meta, html: mdToHtml(body) };
 });
+
+// a video post with no `image` borrows its YouTube thumbnail for the share
+// preview + index card (never shown in the article: the embed is right there).
+// maxresdefault only exists for HD uploads once YouTube has processed them;
+// hqdefault always exists (4:3 letterboxed, but share cards crop to the 16:9
+// middle). Checked at build time, so a later deploy picks up maxres.
+for (const p of posts) {
+  const id = !p.meta.image && p.html.match(/youtube(?:-nocookie)?\.com\/embed\/([\w-]{11})/)?.[1];
+  if (!id) continue;
+  p.meta.image = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+  try {
+    const r = await fetch(`https://i.ytimg.com/vi/${id}/maxresdefault.jpg`, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+    if (r.ok) p.meta.image = `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
+  } catch { /* offline build: keep hqdefault */ }
+  p.meta.image_in_post = "false";
+}
 posts.sort((a, b) => b.meta.date.localeCompare(a.meta.date) || a.slug.localeCompare(b.slug));
 
 fs.rmSync(OUT_DIR, { recursive: true, force: true });
