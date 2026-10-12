@@ -1023,6 +1023,14 @@ pub struct MasterState {
   gate_enabled: AtomicBool,
   gate_threshold_base: AtomicU32,
   gate_threshold: AtomicU32,
+  // Inflator (last stage, after trim). No LFO routes yet → single atomics.
+  infl_on: AtomicBool,
+  infl_input: AtomicU32,
+  infl_effect: AtomicU32,
+  infl_curve: AtomicU32,
+  infl_clip: AtomicBool,
+  infl_split: AtomicBool,
+  infl_output: AtomicU32,
   bypass: AtomicBool,
 }
 
@@ -1059,6 +1067,13 @@ impl MasterState {
       gate_enabled: AtomicBool::new(false),
       gate_threshold_base,
       gate_threshold,
+      infl_on: AtomicBool::new(false),
+      infl_input: AtomicU32::new((1.0_f32 / 3.0).to_bits()), // 0 dB
+      infl_effect: AtomicU32::new(1.0_f32.to_bits()),
+      infl_curve: AtomicU32::new(0.5_f32.to_bits()),
+      infl_clip: AtomicBool::new(true),
+      infl_split: AtomicBool::new(false),
+      infl_output: AtomicU32::new(1.0_f32.to_bits()), // 0 dB
       bypass: AtomicBool::new(false),
     }
   }
@@ -1098,6 +1113,25 @@ impl MasterState {
     let t = threshold.to_bits();
     self.gate_threshold_base.store(t, Ordering::Release);
     self.gate_threshold.store(t, Ordering::Release);
+  }
+  #[allow(clippy::too_many_arguments)]
+  fn ipc_set_inflator(
+    &self,
+    on: bool,
+    input: f32,
+    effect: f32,
+    curve: f32,
+    clip: bool,
+    split: bool,
+    output: f32,
+  ) {
+    self.infl_input.store(input.to_bits(), Ordering::Release);
+    self.infl_effect.store(effect.to_bits(), Ordering::Release);
+    self.infl_curve.store(curve.to_bits(), Ordering::Release);
+    self.infl_output.store(output.to_bits(), Ordering::Release);
+    self.infl_clip.store(clip, Ordering::Release);
+    self.infl_split.store(split, Ordering::Release);
+    self.infl_on.store(on, Ordering::Release);
   }
   fn input_base(&self) -> f32 {
     f32::from_bits(self.input_base.load(Ordering::Relaxed))
@@ -1417,6 +1451,354 @@ const MASTER_GATE_RELEASE_MS: f32 = 30.0;
 // Bypass crossfade ramp — 5ms linear slew of the wet/dry mix so toggling
 // doesn't click. Equal-power (sin/cos) cross at the actual sample.
 const MASTER_BYPASS_RAMP_MS: f32 = 5.0;
+
+// Inflator — Sonnox Oxford Inflator behaviour, after the community JSFX
+// clone (RCInflator / JS Inflator). A memoryless polynomial that's unity
+// at 0 and ±1 and flat at ±1, so it lifts everything below full scale
+// (loudness / density) while the 0 dB clip holds the ceiling. Band split
+// shapes three bands (240 Hz / 2.4 kHz one-pole TPT split) separately.
+// Last stage of the master — after trim, before the bypass crossfade.
+const MASTER_INFL_SPLIT_LO_HZ: f32 = 240.0;
+const MASTER_INFL_SPLIT_HI_HZ: f32 = 2400.0;
+// Param smoothing (input/effect/curve/output) so MIDI knob sweeps don't zipper.
+const MASTER_INFL_SMOOTH_MS: f32 = 20.0;
+
+// `input` 0..1 → −6..+12 dB (the Oxford range).
+#[inline]
+fn master_infl_input_linear(v: f32) -> f32 {
+  let db = -6.0 + v.clamp(0.0, 1.0) * 18.0;
+  10.0_f32.powf(db / 20.0)
+}
+
+// `output` 0..1 → −12..0 dB.
+#[inline]
+fn master_infl_output_linear(v: f32) -> f32 {
+  let db = -12.0 + v.clamp(0.0, 1.0) * 12.0;
+  10.0_f32.powf(db / 20.0)
+}
+
+// Curve polynomial coefficients. `curve` 0..1 ↔ Oxford −50..+50; cp is
+// that as a fraction (−0.5..0.5). cp=0 → 1.5x − 0.5x³ (classic cubic);
+// +50 → 2x − x² (most lift); −50 → gentlest. Every setting is unity
+// with zero slope at |x|=1, so the clip point never kinks.
+#[inline]
+fn master_infl_curve_coefs(curve: f32) -> (f32, f32, f32, f32) {
+  let cp = curve.clamp(0.0, 1.0) - 0.5;
+  (1.5 + cp, -2.0 * cp, cp - 0.5, 0.0625 - 0.25 * cp + 0.25 * cp * cp)
+}
+
+// The shaper on |x|, sign restored. 1..2 folds back down (2s − s²) and
+// ≥2 is silence — only reachable with clip off (input clamps to ±2).
+#[inline]
+fn master_infl_shape(x: f32, a: f32, b: f32, c: f32, d: f32) -> f32 {
+  let s = x.abs();
+  let y = if s < 1.0 {
+    let s2 = s * s;
+    let s3 = s2 * s;
+    a * s + b * s2 + c * s3 - d * (s2 - 2.0 * s3 + s2 * s2)
+  } else if s < 2.0 {
+    2.0 * s - s * s
+  } else {
+    0.0
+  };
+  y.copysign(x)
+}
+
+// One-pole lowpass, trapezoidal (TPT) form. Coefficient g/(1+g),
+// g = tan(π·fc/sr).
+#[inline]
+fn tpt_one_pole_coef(fc: f32, sample_rate: f32) -> f32 {
+  let g = (std::f32::consts::PI * fc / sample_rate).tan();
+  g / (1.0 + g)
+}
+
+#[inline]
+fn tpt_one_pole_lp(state: &mut f32, coef: f32, x: f32) -> f32 {
+  let y = *state + coef * (x - *state);
+  *state = 2.0 * y - *state;
+  y
+}
+
+// Block-constant targets read from MasterState; smoothed per sample inside.
+#[derive(Clone, Copy)]
+struct InflatorParams {
+  on: bool,
+  input_gain: f32,
+  effect: f32,
+  curve: f32,
+  clip: bool,
+  split: bool,
+  output_gain: f32,
+}
+
+// 2× oversampling around the whole stage (gain → clip → shaper → mix), so
+// the clip corners and the split's three shapers don't alias back into the
+// audio band. Linear-phase Kaiser halfband FIR, same filter up and down:
+// passband flat to ~19 kHz at 48k, ~70 dB stopband. Latency = 23 base-rate
+// samples (~0.5 ms @ 48k) and only while the stage is on. Dry and wet are
+// both inside the 2× domain, so the effect blend stays phase-aligned; only
+// the 5 ms on/off fade mixes the undelayed input against the delayed stage.
+const MASTER_INFL_OS_TAPS: usize = 47;
+const MASTER_INFL_OS_PHASE_TAPS: usize = (MASTER_INFL_OS_TAPS + 1) / 2;
+const MASTER_INFL_OS_KAISER_BETA: f64 = 7.0;
+
+fn bessel_i0(x: f64) -> f64 {
+  let mut sum = 1.0;
+  let mut term = 1.0;
+  let q = x * x * 0.25;
+  for k in 1..40 {
+    term *= q / (k * k) as f64;
+    sum += term;
+    if term < sum * 1e-12 {
+      break;
+    }
+  }
+  sum
+}
+
+// Halfband lowpass at a quarter of the 2× rate (= the base Nyquist),
+// normalised to unity DC gain. Every other side tap is exactly zero.
+fn master_infl_halfband() -> [f32; MASTER_INFL_OS_TAPS] {
+  let m = (MASTER_INFL_OS_TAPS - 1) as f64 / 2.0;
+  let mut h = [0.0f64; MASTER_INFL_OS_TAPS];
+  let norm = bessel_i0(MASTER_INFL_OS_KAISER_BETA);
+  let mut sum = 0.0;
+  for (k, tap) in h.iter_mut().enumerate() {
+    let t = (k as f64 - m) / 2.0;
+    let sinc = if t == 0.0 {
+      1.0
+    } else {
+      (std::f64::consts::PI * t).sin() / (std::f64::consts::PI * t)
+    };
+    let r = (k as f64 - m) / m;
+    let w = bessel_i0(MASTER_INFL_OS_KAISER_BETA * (1.0 - r * r).max(0.0).sqrt()) / norm;
+    *tap = 0.5 * sinc * w;
+    sum += *tap;
+  }
+  let mut out = [0.0f32; MASTER_INFL_OS_TAPS];
+  for (o, v) in out.iter_mut().zip(h.iter()) {
+    *o = (v / sum) as f32;
+  }
+  out
+}
+
+// Per-channel state. Histories are doubled rings (each sample written at
+// pos and pos+LEN) so the newest LEN samples are always one contiguous
+// slice starting at pos — the FIR is a plain dot product.
+struct InflatorChannel {
+  up_hist: [f32; 2 * MASTER_INFL_OS_PHASE_TAPS],
+  up_pos: usize,
+  dn_hist: [f32; 2 * MASTER_INFL_OS_TAPS],
+  dn_pos: usize,
+  lp_lo: f32,
+  lp_hi: f32,
+}
+
+impl InflatorChannel {
+  fn new() -> Self {
+    Self {
+      up_hist: [0.0; 2 * MASTER_INFL_OS_PHASE_TAPS],
+      up_pos: 0,
+      dn_hist: [0.0; 2 * MASTER_INFL_OS_TAPS],
+      dn_pos: 0,
+      lp_lo: 0.0,
+      lp_hi: 0.0,
+    }
+  }
+
+  // Base-rate sample in → the two 2×-rate samples (polyphase interpolator,
+  // ×2 gain makes up for the zero-stuffing).
+  #[inline]
+  fn upsample(&mut self, x: f32, even: &[f32], odd: &[f32]) -> (f32, f32) {
+    const L: usize = MASTER_INFL_OS_PHASE_TAPS;
+    self.up_pos = if self.up_pos == 0 { L - 1 } else { self.up_pos - 1 };
+    self.up_hist[self.up_pos] = x;
+    self.up_hist[self.up_pos + L] = x;
+    let h = &self.up_hist[self.up_pos..self.up_pos + L];
+    let mut a = 0.0;
+    let mut b = 0.0;
+    for j in 0..L {
+      a += even[j] * h[j];
+      b += odd[j] * h[j];
+    }
+    (a, b)
+  }
+
+  #[inline]
+  fn push_dn(&mut self, u: f32) {
+    const L: usize = MASTER_INFL_OS_TAPS;
+    self.dn_pos = if self.dn_pos == 0 { L - 1 } else { self.dn_pos - 1 };
+    self.dn_hist[self.dn_pos] = u;
+    self.dn_hist[self.dn_pos + L] = u;
+  }
+
+  // Two 2×-rate samples in → one base-rate sample out. The output is
+  // taken on the even phase (after u0, before u1) so the round trip is a
+  // whole number of base samples (23) rather than 22.5.
+  #[inline]
+  fn downsample(&mut self, u0: f32, u1: f32, taps: &[f32]) -> f32 {
+    const L: usize = MASTER_INFL_OS_TAPS;
+    self.push_dn(u0);
+    let h = &self.dn_hist[self.dn_pos..self.dn_pos + L];
+    let mut acc = 0.0;
+    for k in 0..L {
+      acc += taps[k] * h[k];
+    }
+    self.push_dn(u1);
+    acc
+  }
+
+  fn reset(&mut self) {
+    *self = Self::new();
+  }
+
+  fn probe(&self) -> f32 {
+    self.lp_lo + self.lp_hi + self.dn_hist.iter().sum::<f32>()
+  }
+}
+
+struct MasterInflator {
+  // 0 → stage idle (bit-exact passthrough), 1 → fully in. Slewed over the
+  // bypass ramp so the toggle doesn't click.
+  on_mix: f32,
+  on_slew: f32,
+  smooth_coef: f32,
+  input_gain: f32,
+  effect: f32,
+  curve: f32,
+  output_gain: f32,
+  // Split coefficients are for the 2× rate — the split runs oversampled.
+  split_coef_lo: f32,
+  split_coef_hi: f32,
+  // Mid band is normalised by this into the shaper and back out after, so
+  // its peak sits at unity like the low/high bands.
+  split_mid_gain: f32,
+  os_taps: [f32; MASTER_INFL_OS_TAPS],
+  os_up_even: [f32; MASTER_INFL_OS_PHASE_TAPS],
+  os_up_odd: [f32; MASTER_INFL_OS_PHASE_TAPS],
+  ch: [InflatorChannel; 2],
+}
+
+impl MasterInflator {
+  fn new(sr: f32) -> Self {
+    let os_sr = sr * 2.0;
+    let c_lo = tpt_one_pole_coef(MASTER_INFL_SPLIT_LO_HZ, os_sr);
+    let c_hi = tpt_one_pole_coef(MASTER_INFL_SPLIT_HI_HZ, os_sr);
+    let os_taps = master_infl_halfband();
+    let mut os_up_even = [0.0f32; MASTER_INFL_OS_PHASE_TAPS];
+    let mut os_up_odd = [0.0f32; MASTER_INFL_OS_PHASE_TAPS];
+    for (k, &h) in os_taps.iter().enumerate() {
+      if k % 2 == 0 {
+        os_up_even[k / 2] = 2.0 * h;
+      } else {
+        os_up_odd[k / 2] = 2.0 * h;
+      }
+    }
+    Self {
+      on_mix: 0.0,
+      on_slew: 1.0 / (MASTER_BYPASS_RAMP_MS * 0.001 * sr).max(1.0),
+      smooth_coef: one_pole_coef(MASTER_INFL_SMOOTH_MS, sr),
+      input_gain: 1.0,
+      effect: 1.0,
+      curve: 0.5,
+      output_gain: 1.0,
+      split_coef_lo: c_lo,
+      split_coef_hi: c_hi,
+      split_mid_gain: c_hi * (1.0 - c_lo) / (c_hi - c_lo),
+      os_taps,
+      os_up_even,
+      os_up_odd,
+      ch: [InflatorChannel::new(), InflatorChannel::new()],
+    }
+  }
+
+  fn reset_state(&mut self) {
+    self.ch[0].reset();
+    self.ch[1].reset();
+  }
+
+  fn state_probe(&self) -> f32 {
+    self.ch[0].probe() + self.ch[1].probe() + self.on_mix
+  }
+
+  // Once per frame, before the per-channel calls. Returns false when the
+  // stage is fully off — caller skips process_channel (passthrough). While
+  // idle the smoothers snap to target so switching on doesn't glide, and
+  // the filter histories are cleared so the fade-in starts clean.
+  #[inline]
+  fn advance(&mut self, p: &InflatorParams) -> bool {
+    let target = if p.on { 1.0 } else { 0.0 };
+    if self.on_mix != target {
+      let delta = (target - self.on_mix).clamp(-self.on_slew, self.on_slew);
+      self.on_mix = (self.on_mix + delta).clamp(0.0, 1.0);
+    }
+    if self.on_mix <= 0.0 {
+      self.input_gain = p.input_gain;
+      self.effect = p.effect;
+      self.curve = p.curve;
+      self.output_gain = p.output_gain;
+      self.reset_state();
+      return false;
+    }
+    let k = self.smooth_coef;
+    self.input_gain += k * (p.input_gain - self.input_gain);
+    self.effect += k * (p.effect - self.effect);
+    self.curve += k * (p.curve - self.curve);
+    self.output_gain += k * (p.output_gain - self.output_gain);
+    if !p.split {
+      for c in &mut self.ch {
+        c.lp_lo = 0.0;
+        c.lp_hi = 0.0;
+      }
+    }
+    true
+  }
+
+  // One 2×-rate sample through gain → clip → shaper (→ split) → effect
+  // blend → output gain.
+  #[inline]
+  #[allow(clippy::too_many_arguments)]
+  fn core(
+    &self,
+    lp_lo: &mut f32,
+    lp_hi: &mut f32,
+    x: f32,
+    p: &InflatorParams,
+    coefs: (f32, f32, f32, f32),
+  ) -> f32 {
+    let (a, b, c, d) = coefs;
+    let lim = if p.clip { 1.0 } else { 2.0 };
+    let v = (x * self.input_gain).clamp(-lim, lim);
+    let mut wet = if p.split {
+      let lo = tpt_one_pole_lp(lp_lo, self.split_coef_lo, v);
+      let below_hi = tpt_one_pole_lp(lp_hi, self.split_coef_hi, v);
+      let g = self.split_mid_gain;
+      master_infl_shape(lo, a, b, c, d)
+        + master_infl_shape((below_hi - lo) * g, a, b, c, d) / g
+        + master_infl_shape(v - below_hi, a, b, c, d)
+    } else {
+      master_infl_shape(v, a, b, c, d)
+    };
+    if p.clip {
+      wet = wet.clamp(-1.0, 1.0);
+    }
+    (wet * self.effect + v * (1.0 - self.effect)) * self.output_gain
+  }
+
+  #[inline]
+  fn process_channel(&mut self, ch: usize, x: f32, p: &InflatorParams) -> f32 {
+    let coefs = master_infl_curve_coefs(self.curve);
+    let (u0, u1) = self.ch[ch].upsample(x, &self.os_up_even, &self.os_up_odd);
+    let (mut lp_lo, mut lp_hi) = (self.ch[ch].lp_lo, self.ch[ch].lp_hi);
+    let y0 = self.core(&mut lp_lo, &mut lp_hi, u0, p, coefs);
+    let y1 = self.core(&mut lp_lo, &mut lp_hi, u1, p, coefs);
+    let c = &mut self.ch[ch];
+    c.lp_lo = lp_lo;
+    c.lp_hi = lp_hi;
+    let y = c.downsample(y0, y1, &self.os_taps);
+    x + (y - x) * self.on_mix
+  }
+}
 
 #[inline]
 fn master_gate_threshold_db(v: f32) -> f32 {
@@ -2636,6 +3018,7 @@ struct MasterStage {
   // each sample to avoid clicks on toggle.
   bypass_wet: f32,
   bypass_slew_per_sample: f32,
+  inflator: MasterInflator,
 }
 
 impl MasterStage {
@@ -2699,6 +3082,7 @@ impl MasterStage {
       gate_peak_release_coef: one_pole_coef(MASTER_GATE_PEAK_RELEASE_MS, sr),
       bypass_wet: 1.0,
       bypass_slew_per_sample: 1.0 / (MASTER_BYPASS_RAMP_MS * 0.001 * sr).max(1.0),
+      inflator: MasterInflator::new(sr),
     }
   }
 
@@ -2738,6 +3122,7 @@ impl MasterStage {
     self.gate_peak_env_l = 0.0;
     self.gate_peak_env_r = 0.0;
     self.gate_smoothed_gain = 1.0;
+    self.inflator.reset_state();
   }
 
   // True when any running state has gone non-finite (NaN/inf from a
@@ -2769,7 +3154,8 @@ impl MasterStage {
       + self.dist_post_lp_r
       + self.gate_peak_env_l
       + self.gate_peak_env_r
-      + self.gate_smoothed_gain;
+      + self.gate_smoothed_gain
+      + self.inflator.state_probe();
     !probe.is_finite()
   }
 
@@ -2866,8 +3252,8 @@ impl MasterStage {
   // Processes buf channels 0+1 in place. Mono-out devices (n_ch == 1)
   // get only the L pipeline (compressor detector still uses L only).
   // Chain: input gain → DC block → lo-cut → COMPRESSOR → pre-emph →
-  // DISTORTION (4 modes) → de-emph → wet/dry mix → hi-cut → trim →
-  // tail EQ. Gate slots between de-emph mix and hi-cut later.
+  // DISTORTION (4 modes) → de-emph → wet/dry mix → hi-cut → GATE → trim →
+  // tail EQ → INFLATOR.
   #[allow(clippy::too_many_arguments)]
   fn process_block(
     &mut self,
@@ -2885,6 +3271,7 @@ impl MasterStage {
     dist_mix: f32,
     gate_enabled: bool,
     gate_threshold_norm: f32,
+    inflator: InflatorParams,
     bypass: bool,
   ) {
     if n_ch == 0 {
@@ -3052,6 +3439,9 @@ impl MasterStage {
         s = s * trim_gain;
         s = self.out_dc_l.process(s);
         s = self.tail_l.process(s);
+        if self.inflator.advance(&inflator) {
+          s = self.inflator.process_channel(0, s, &inflator);
+        }
         // Bypass crossfade — slew `bypass_wet` toward target each
         // sample, equal-power mix of dry input vs processed output.
         if self.bypass_wet != bypass_target {
@@ -3244,6 +3634,10 @@ impl MasterStage {
       r = self.out_dc_r.process(r);
       l = self.tail_l.process(l);
       r = self.tail_r.process(r);
+      if self.inflator.advance(&inflator) {
+        l = self.inflator.process_channel(0, l, &inflator);
+        r = self.inflator.process_channel(1, r, &inflator);
+      }
 
       // Bypass crossfade — slew `bypass_wet` toward target each
       // sample, equal-power mix per channel.
@@ -5054,6 +5448,30 @@ impl AudioEngine {
   // maps to -30..0 dB.
   pub fn set_master_gate(&self, enabled: bool, threshold: f32) {
     master_state().ipc_set_gate(enabled, threshold.clamp(0.0, 1.0));
+  }
+
+  // Inflator — last master stage. Normalized 0..1 knobs; dB/curve
+  // mapping happens on the audio thread (master_infl_*).
+  #[allow(clippy::too_many_arguments)]
+  pub fn set_master_inflator(
+    &self,
+    on: bool,
+    input: f32,
+    effect: f32,
+    curve: f32,
+    clip: bool,
+    split: bool,
+    output: f32,
+  ) {
+    master_state().ipc_set_inflator(
+      on,
+      input.clamp(0.0, 1.0),
+      effect.clamp(0.0, 1.0),
+      curve.clamp(0.0, 1.0),
+      clip,
+      split,
+      output.clamp(0.0, 1.0),
+    );
   }
 
   // Master bypass (phase 7e-5). Smoothly crossfades the master output
@@ -9166,6 +9584,20 @@ fn build_stream(
           let gate_enabled = ms.gate_enabled.load(Ordering::Relaxed);
           let gate_threshold_norm =
             f32::from_bits(ms.gate_threshold.load(Ordering::Relaxed));
+          let inflator = InflatorParams {
+            on: ms.infl_on.load(Ordering::Relaxed),
+            input_gain: master_infl_input_linear(f32::from_bits(
+              ms.infl_input.load(Ordering::Relaxed),
+            )),
+            effect: f32::from_bits(ms.infl_effect.load(Ordering::Relaxed))
+              .clamp(0.0, 1.0),
+            curve: f32::from_bits(ms.infl_curve.load(Ordering::Relaxed)),
+            clip: ms.infl_clip.load(Ordering::Relaxed),
+            split: ms.infl_split.load(Ordering::Relaxed),
+            output_gain: master_infl_output_linear(f32::from_bits(
+              ms.infl_output.load(Ordering::Relaxed),
+            )),
+          };
           let master_bypass = ms.bypass.load(Ordering::Relaxed);
           master_stage.update_filters(lo_cut_idx, hi_cut_hz);
           master_stage.process_block(
@@ -9183,6 +9615,7 @@ fn build_stream(
             dist_mix,
             gate_enabled,
             gate_threshold_norm,
+            inflator,
             master_bypass,
           );
           // 5.6) Safety limiter — the last thing before the recorder tap and
@@ -9892,6 +10325,21 @@ pub fn audio_set_master_gate(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn audio_set_master_inflator(
+  on: bool,
+  input: f32,
+  effect: f32,
+  curve: f32,
+  clip: bool,
+  split: bool,
+  output: f32,
+) -> Result<(), String> {
+  engine().set_master_inflator(on, input, effect, curve, clip, split, output);
+  Ok(())
+}
+
+#[tauri::command]
 pub fn audio_set_master_bypass(bypass: bool) -> Result<(), String> {
   engine().set_master_bypass(bypass);
   Ok(())
@@ -10344,5 +10792,161 @@ mod safety_limiter_tests {
     let out1 = run(&mut lim1, &mono, 1);
     let peak1 = out1.iter().fold(0.0f32, |m, s| m.max(s.abs()));
     assert!(peak1 <= c + 1e-6, "mono peak {peak1}");
+  }
+}
+
+#[cfg(test)]
+mod inflator_tests {
+  use super::*;
+
+  fn params(on: bool, split: bool) -> InflatorParams {
+    InflatorParams {
+      on,
+      input_gain: 1.0,
+      effect: 1.0,
+      curve: 0.5,
+      clip: true,
+      split,
+      output_gain: 1.0,
+    }
+  }
+
+  #[test]
+  fn curve_is_unity_and_flat_at_full_scale() {
+    for i in 0..=20 {
+      let curve = i as f32 / 20.0;
+      let (a, b, c, d) = master_infl_curve_coefs(curve);
+      let y1 = master_infl_shape(1.0 - 1e-6, a, b, c, d);
+      assert!((y1 - 1.0).abs() < 1e-4, "curve {curve}: f(1)={y1}");
+      let slope = (y1 - master_infl_shape(0.999, a, b, c, d)) / (1.0 - 1e-6 - 0.999);
+      assert!(slope.abs() < 0.02, "curve {curve}: f'(1)={slope}");
+      assert_eq!(master_infl_shape(0.0, a, b, c, d), 0.0);
+      // Odd symmetry.
+      let y = master_infl_shape(0.4, a, b, c, d);
+      assert_eq!(master_infl_shape(-0.4, a, b, c, d), -y);
+      // It inflates: never quieter than the input below full scale.
+      assert!(y >= 0.4 - 1e-6, "curve {curve}: f(0.4)={y}");
+    }
+  }
+
+  // Off → advance() says skip every frame, so process_block never touches
+  // the sample and old songs stay bit-identical.
+  #[test]
+  fn off_stays_idle() {
+    let mut inf = MasterInflator::new(48_000.0);
+    let p = params(false, true);
+    for _ in 0..1000 {
+      assert!(!inf.advance(&p));
+    }
+    assert_eq!(inf.on_mix, 0.0);
+  }
+
+  #[test]
+  fn clip_holds_ceiling_split_and_full() {
+    for split in [false, true] {
+      let mut inf = MasterInflator::new(48_000.0);
+      let p = params(true, split);
+      let mut peak = 0.0f32;
+      for n in 0..48_000 {
+        let t = n as f32 / 48_000.0;
+        let x = 3.0 * ((t * 80.0 * std::f32::consts::TAU).sin()
+          + 0.5 * (t * 5000.0 * std::f32::consts::TAU).sin());
+        inf.advance(&p);
+        let l = inf.process_channel(0, x, &p);
+        let r = inf.process_channel(1, -x, &p);
+        assert!(l.is_finite() && r.is_finite());
+        if n > 1000 {
+          peak = peak.max(l.abs()).max(r.abs());
+        }
+      }
+      // Clip runs at 2×, so the downsampling filter's ringing can put the
+      // base-rate peak a little over 0 dBFS (same as any oversampled clipper).
+      assert!(peak <= 1.12, "split={split} peak {peak}");
+    }
+  }
+
+  #[test]
+  fn zero_effect_split_reconstructs_delayed_input() {
+    // With effect 0 only the dry path remains: the input, delayed by the
+    // oversampler's group delay (23 base samples), passband-flat.
+    let mut inf = MasterInflator::new(48_000.0);
+    let mut p = params(true, true);
+    p.effect = 0.0;
+    inf.effect = 0.0;
+    inf.on_mix = 1.0;
+    let delay = (MASTER_INFL_OS_TAPS - 1) / 2;
+    let xs: Vec<f32> =
+      (0..4800).map(|n| 0.5 * (n as f32 * 2.0 * std::f32::consts::PI * 1000.0 / 48_000.0).sin()).collect();
+    let ys: Vec<f32> = xs
+      .iter()
+      .map(|&x| {
+        inf.advance(&p);
+        inf.process_channel(0, x, &p)
+      })
+      .collect();
+    for n in 200..4800 {
+      assert!((ys[n] - xs[n - delay]).abs() < 1e-3, "n={n} {} vs {}", ys[n], xs[n - delay]);
+    }
+  }
+
+  fn goertzel_db(xs: &[f32], hz: f32, sr: f32) -> f32 {
+    let w = 2.0 * std::f32::consts::PI * hz / sr;
+    let c = 2.0 * w.cos();
+    let (mut s1, mut s2) = (0.0f64, 0.0f64);
+    for &x in xs {
+      let s0 = x as f64 + c as f64 * s1 - s2;
+      s2 = s1;
+      s1 = s0;
+    }
+    let pw = s1 * s1 + s2 * s2 - c as f64 * s1 * s2;
+    10.0 * ((pw / (xs.len() as f64 * xs.len() as f64 / 4.0)) + 1e-30).log10() as f32
+  }
+
+  #[test]
+  fn oversampling_cuts_aliasing() {
+    // 7 kHz slammed into the 0 dB clip: its 5th harmonic (35 kHz) folds to
+    // 13 kHz at 1×. At 2× it lands in the halfband stopband instead.
+    let sr = 48_000.0;
+    let mut inf = MasterInflator::new(sr);
+    let p = params(true, false);
+    inf.on_mix = 1.0;
+    let n = 48_000;
+    let xs: Vec<f32> =
+      (0..n).map(|i| 2.0 * (i as f32 * 2.0 * std::f32::consts::PI * 7000.0 / sr).sin()).collect();
+    let os: Vec<f32> = xs
+      .iter()
+      .map(|&x| {
+        inf.advance(&p);
+        inf.process_channel(0, x, &p)
+      })
+      .collect();
+    let coefs = master_infl_curve_coefs(0.5);
+    let (mut a, mut b) = (0.0, 0.0);
+    let one_x: Vec<f32> = xs.iter().map(|&x| inf.core(&mut a, &mut b, x, &p, coefs)).collect();
+    let alias_1x = goertzel_db(&one_x[4800..], 13_000.0, sr);
+    let alias_2x = goertzel_db(&os[4800..], 13_000.0, sr);
+    assert!(alias_2x < alias_1x - 30.0, "1x {alias_1x:.1} dB, 2x {alias_2x:.1} dB");
+    println!("13 kHz alias: 1x {alias_1x:.1} dB, 2x {alias_2x:.1} dB");
+  }
+
+  #[test]
+  fn oversampler_passband_is_flat() {
+    // A 15 kHz tone through the dry path (effect 0) keeps level; the
+    // halfband shouldn't sag in the audible band.
+    let mut inf = MasterInflator::new(48_000.0);
+    let mut p = params(true, false);
+    p.effect = 0.0;
+    inf.effect = 0.0;
+    inf.on_mix = 1.0;
+    let mut peak = 0.0f32;
+    for n in 0..9600 {
+      let x = 0.5 * (n as f32 * 2.0 * std::f32::consts::PI * 15_000.0 / 48_000.0).sin();
+      inf.advance(&p);
+      let y = inf.process_channel(0, x, &p);
+      if n > 400 {
+        peak = peak.max(y.abs());
+      }
+    }
+    assert!((peak - 0.5).abs() < 0.01, "15k peak {peak}");
   }
 }

@@ -1,7 +1,8 @@
 // Master stage — final-pass tone-shaping unit at the chain end, modeled on
 // the OTO BOUM. Param shape, defaults, presets, and label math only; the
 // DSP lives in Rust (audio.rs master stages), pushed via
-// nativeEngine.setMasterFilters / setMasterComp / setMasterDist / setMasterGate.
+// nativeEngine.setMasterFilters / setMasterComp / setMasterDist / setMasterGate /
+// setMasterInflator.
 
 export interface MasterParams {
   // 0..1 → −12..+18 dB
@@ -32,6 +33,20 @@ export interface MasterParams {
   gateEnabled: boolean;
   // 0..1 → −60..0 dB. Higher = more chopping (more of the signal gets gated).
   gateThreshold: number;
+  // Inflator (Oxford Inflator clone) — the last stage, after trim.
+  inflate: boolean;
+  // Hard clip at 0 dB into (and out of) the shaper; off lets ±1..2 fold back
+  inflClip: boolean;
+  // Shape low/mid/high (240 Hz / 2.4 kHz) separately
+  inflSplit: boolean;
+  // 0..1 → −6..+12 dB
+  inflInput: number;
+  // 0..1 → curve −50..+50 (0.5 = 0)
+  inflCurve: number;
+  // 0..1 — linear dry/wet of the shaper ("effect %")
+  inflEffect: number;
+  // 0..1 → −12..0 dB
+  inflOutput: number;
   // Full-unit bypass; dry tap with no processing
   bypass: boolean;
 }
@@ -55,6 +70,15 @@ export const DEFAULT_MASTER_PARAMS: MasterParams = {
   trim: 0.725,        // −6.6 dB
   gateEnabled: false,
   gateThreshold: 0.80, // −6 dB
+  // Off by default so every existing .seq sounds identical; switching it on
+  // lands at 100% effect so the change is obvious straight away.
+  inflate: false,
+  inflClip: true,
+  inflSplit: false,
+  inflInput: 1 / 3,   // 0 dB
+  inflCurve: 0.5,     // 0
+  inflEffect: 1,      // 100%
+  inflOutput: 1,      // 0 dB
   bypass: false,
 };
 
@@ -168,6 +192,13 @@ export const MASTER_PRESETS: Record<string, MasterParams> = {
     trim: 1.0,           // 0 dB
     gateEnabled: false,
     gateThreshold: 0.80, // −6 dB
+    inflate: false,
+    inflClip: true,
+    inflSplit: false,
+    inflInput: 1 / 3,
+    inflCurve: 0.5,
+    inflEffect: 1,
+    inflOutput: 1,
     bypass: false,
   },
 };

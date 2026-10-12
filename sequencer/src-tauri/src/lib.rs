@@ -402,6 +402,7 @@ pub fn shared_builder() -> tauri::Builder<tauri::Wry> {
       audio::audio_set_master_comp,
       audio::audio_set_master_dist,
       audio::audio_set_master_gate,
+      audio::audio_set_master_inflator,
       audio::audio_set_master_bypass,
       audio::audio_set_safety_limiter,
       audio::audio_safety_limiter_gr,

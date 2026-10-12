@@ -935,6 +935,20 @@ export async function setMasterGate(opts: {
   });
 }
 
+// Master inflator — Oxford Inflator clone, the last master stage (after
+// trim). All knobs 0..1; dB / curve mapping happens Rust-side.
+export async function setMasterInflator(opts: {
+  on: boolean;
+  input: number;
+  effect: number;
+  curve: number;
+  clip: boolean;
+  split: boolean;
+  output: number;
+}): Promise<void> {
+  await invoke<void>('audio_set_master_inflator', opts);
+}
+
 // Master full-unit bypass (phase 7e-5). Crossfades the master output
 // toward the dry input over ~5ms. The internal chain (comp / dist /
 // gate envelopes etc.) keeps running so toggling back finds its state

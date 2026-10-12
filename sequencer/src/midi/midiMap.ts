@@ -189,6 +189,13 @@ export type FxKnobTargetName =
   | 'master.trim'
   | 'master.gateEnabled'
   | 'master.gateThreshold'
+  | 'master.inflate'
+  | 'master.inflClip'
+  | 'master.inflSplit'
+  | 'master.inflInput'
+  | 'master.inflCurve'
+  | 'master.inflEffect'
+  | 'master.inflOutput'
   | 'master.bypass';
 
 export type MidiTarget =
@@ -247,6 +254,13 @@ export const FX_KNOB_TARGETS: FxKnobTargetName[] = [
   'master.trim',
   'master.gateEnabled',
   'master.gateThreshold',
+  'master.inflate',
+  'master.inflClip',
+  'master.inflSplit',
+  'master.inflInput',
+  'master.inflCurve',
+  'master.inflEffect',
+  'master.inflOutput',
   'master.bypass',
 ];
 
@@ -436,6 +450,27 @@ function dispatchTarget(target: string, value01: number): void {
       case 'master.gateThreshold':
         s.setMaster({ gateThreshold: value01 });
         return;
+      case 'master.inflate':
+        s.setMaster({ inflate: !s.master.inflate });
+        return;
+      case 'master.inflClip':
+        s.setMaster({ inflClip: !s.master.inflClip });
+        return;
+      case 'master.inflSplit':
+        s.setMaster({ inflSplit: !s.master.inflSplit });
+        return;
+      case 'master.inflInput':
+        s.setMaster({ inflInput: value01 });
+        return;
+      case 'master.inflCurve':
+        s.setMaster({ inflCurve: value01 });
+        return;
+      case 'master.inflEffect':
+        s.setMaster({ inflEffect: value01 });
+        return;
+      case 'master.inflOutput':
+        s.setMaster({ inflOutput: value01 });
+        return;
       case 'master.bypass':
         s.setMaster({ bypass: !s.master.bypass });
         return;
@@ -521,6 +556,9 @@ const MOMENTARY_EXACT = new Set<string>([
   'fx:master.compRelease',
   'fx:master.mode',
   'fx:master.gateEnabled',
+  'fx:master.inflate',
+  'fx:master.inflClip',
+  'fx:master.inflSplit',
   'fx:master.bypass',
 ]);
 

@@ -690,6 +690,19 @@ export function FXPanel({ section = 'all' }: { section?: 'fx' | 'master' | 'all'
           <MasterKnob field="trim" label="trim" lfoKnob="masterTrim" midiTarget="fx:master.trim" />
           <MasterToggle field="gateEnabled" label="gate" midiTarget="fx:master.gateEnabled" />
           <MasterKnob field="gateThreshold" label="gate thr" lfoKnob="masterGateThreshold" midiTarget="fx:master.gateThreshold" />
+        </FXGroup>
+        <Divider />
+        <FXGroup label="inflate">
+          <MasterToggle field="inflate" label="inflate" midiTarget="fx:master.inflate" />
+          <MasterToggle field="inflClip" label="clip 0dB" midiTarget="fx:master.inflClip" />
+          <MasterToggle field="inflSplit" label="split" midiTarget="fx:master.inflSplit" />
+          <MasterKnob field="inflInput" label="input" midiTarget="fx:master.inflInput" />
+          <MasterKnob field="inflCurve" label="curve" midiTarget="fx:master.inflCurve" />
+          <MasterKnob field="inflEffect" label="effect" midiTarget="fx:master.inflEffect" />
+          <MasterKnob field="inflOutput" label="output" midiTarget="fx:master.inflOutput" />
+        </FXGroup>
+        <Divider />
+        <FXGroup label="master">
           <MasterToggle field="bypass" label="bypass" midiTarget="fx:master.bypass" />
         </FXGroup>
       </div>

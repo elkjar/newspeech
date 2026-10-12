@@ -956,6 +956,13 @@ export function hydrateMaster(v: unknown): MasterParams {
         ? m.gateEnabled
         : DEFAULT_MASTER_PARAMS.gateEnabled,
     gateThreshold: clamp01(m.gateThreshold, DEFAULT_MASTER_PARAMS.gateThreshold),
+    inflate: typeof m.inflate === 'boolean' ? m.inflate : DEFAULT_MASTER_PARAMS.inflate,
+    inflClip: typeof m.inflClip === 'boolean' ? m.inflClip : DEFAULT_MASTER_PARAMS.inflClip,
+    inflSplit: typeof m.inflSplit === 'boolean' ? m.inflSplit : DEFAULT_MASTER_PARAMS.inflSplit,
+    inflInput: clamp01(m.inflInput, DEFAULT_MASTER_PARAMS.inflInput),
+    inflCurve: clamp01(m.inflCurve, DEFAULT_MASTER_PARAMS.inflCurve),
+    inflEffect: clamp01(m.inflEffect, DEFAULT_MASTER_PARAMS.inflEffect),
+    inflOutput: clamp01(m.inflOutput, DEFAULT_MASTER_PARAMS.inflOutput),
     bypass: typeof m.bypass === 'boolean' ? m.bypass : DEFAULT_MASTER_PARAMS.bypass,
   };
 }

@@ -25,6 +25,7 @@ import {
   setMasterComp,
   setMasterDist,
   setMasterGate,
+  setMasterInflator,
   setMasterBypass,
   type TrackFilterUpdate,
 } from '../audio/nativeEngine';
@@ -121,6 +122,7 @@ export function installParamPush(): () => void {
     enabled: boolean;
     threshold: number;
   } | null = null;
+  let lastMasterInflator: string | null = null;
   let lastMasterBypass: boolean | null = null;
   const tick = () => {
     const state = useSequencerStore.getState();
@@ -373,6 +375,23 @@ export function installParamPush(): () => void {
         enabled: masterGateEnabled,
         threshold: masterGateThreshold,
       });
+    }
+
+    // Master inflator. No LFO routes, so a plain value-key compare.
+    const m = state.master;
+    const masterInflator = {
+      on: m.inflate,
+      input: m.inflInput,
+      effect: m.inflEffect,
+      curve: m.inflCurve,
+      clip: m.inflClip,
+      split: m.inflSplit,
+      output: m.inflOutput,
+    };
+    const masterInflatorKey = JSON.stringify(masterInflator);
+    if (lastMasterInflator !== masterInflatorKey) {
+      lastMasterInflator = masterInflatorKey;
+      void setMasterInflator(masterInflator);
     }
 
     // Master full-unit bypass (phase 7e-5). Discrete toggle, no
