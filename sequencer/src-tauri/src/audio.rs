@@ -459,6 +459,11 @@ pub struct TrackParams {
   // snapshot it at creation into Voice.rec_track so the per-track dry tap
   // reads a plain field on the hot path. 0 the rest of the time — no cost.
   rec_track: AtomicU32,
+  // Channel-strip bus slot (1-based; 0 = no bus → the voice writes straight
+  // to the outputs/sends like before). Assigned once at creation, first come
+  // first served, never reused — track ids are stable (t1..t16), so the
+  // MAX_BUSES cap is never close.
+  bus_slot: u8,
 }
 
 // Cutoff mapping mirrors src/audio/nativeEngine.ts cutoffNormToHz.
@@ -478,7 +483,7 @@ fn resonance_norm_to_q(norm: f32) -> f32 {
 }
 
 impl TrackParams {
-  fn new() -> Self {
+  fn new(bus_slot: u8) -> Self {
     Self {
       cutoff_norm_base: AtomicU32::new(1.0_f32.to_bits()),
       cutoff_hz_eff: AtomicU32::new(CUTOFF_MAX_HZ.to_bits()),
@@ -497,6 +502,7 @@ impl TrackParams {
       finetune_mod_semis: AtomicU32::new(0.0_f32.to_bits()),
       wt_pos_mod: AtomicU32::new(0.0_f32.to_bits()),
       rec_track: AtomicU32::new(0),
+      bus_slot,
     }
   }
   fn rec_track(&self) -> u8 {
@@ -645,9 +651,12 @@ fn track_params_registry() -> &'static Mutex<HashMap<String, Arc<TrackParams>>> 
 
 fn get_or_create_track_params(track_id: &str) -> Arc<TrackParams> {
   let mut reg = track_params_registry().lock().expect("track params lock");
+  // Entries are never removed, so the registry size is the slot counter.
+  let next = reg.len() + 1;
+  let slot = if next <= MAX_BUSES { next as u8 } else { 0 };
   reg
     .entry(track_id.to_string())
-    .or_insert_with(|| Arc::new(TrackParams::new()))
+    .or_insert_with(|| Arc::new(TrackParams::new(slot)))
     .clone()
 }
 
@@ -4623,6 +4632,31 @@ impl Default for Voice {
 
 // Section codes — match `VoiceSection` in the JS bridge. Kept as u8 in
 // the IPC + Voice to avoid string overhead on every trigger.
+// Channel-strip buses (P0 of docs/channel-strip.md). Each track's voices sum
+// into one stereo bus (post voice filter/env/gain/pan, pre-send); after the
+// voice loop each touched bus feeds the sends, section/stem taps and its
+// output channels. P0 is a pure null refactor — no processing yet; the strip
+// (EQ → FAT) slots in at the top of the per-bus pass.
+const MAX_BUSES: usize = 32;
+
+// Per-block routing snapshot for one bus, taken from the first voice that
+// touches it (sends are TrackParams-wide; section/routing are per track).
+#[derive(Clone, Copy, Default)]
+struct BusMeta {
+  touched: bool,
+  fx_send: f32,
+  reverb_send: f32,
+  delay_send: f32,
+  rec_track: u8,
+  section: u8,
+  out_first: usize,
+  out_stereo: bool,
+  // Routed to a single (mono) output this block. Such a track ignores pan:
+  // its voices enter the bus centre-panned, so the output fold is exactly
+  // the old unpanned 0.5·(L+R)·gain and the sends hear it centred too.
+  mono_out: bool,
+}
+
 const SECTION_NONE: u8 = 0;
 const SECTION_DRUM: u8 = 1;
 const SECTION_MELODIC: u8 = 2;
@@ -6809,6 +6843,11 @@ fn build_stream(
   let mut delay_send_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut delay_out_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
   let mut delay_out_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  // Channel-strip bus scratch (~2 MB). Only touched slots are cleared and
+  // processed each block, so idle slots cost nothing.
+  let mut bus_l: Vec<Vec<f32>> = (0..MAX_BUSES).map(|_| vec![0.0; REVERB_SCRATCH]).collect();
+  let mut bus_r: Vec<Vec<f32>> = (0..MAX_BUSES).map(|_| vec![0.0; REVERB_SCRATCH]).collect();
+  let mut bus_meta: [BusMeta; MAX_BUSES] = [BusMeta::default(); MAX_BUSES];
   let mut tape_buffer = TapeBuffer::new(sample_rate);
   let mut glitch_machine = GlitchMachine::new(sample_rate);
   let mut master_stage = MasterStage::new(sample_rate);
@@ -7878,6 +7917,13 @@ fn build_stream(
             }
           }
         }
+        // Buses only run when the whole block fits the scratch (always, at
+        // real device buffer sizes); otherwise every voice takes the direct
+        // path for this block.
+        let bus_ok = frames <= REVERB_SCRATCH;
+        for m in bus_meta.iter_mut() {
+          m.touched = false;
+        }
 
         // 3) Voices — per-voice routing.
         //   • Stereo voice: writes interpolated L/R to out_first / out_first+1
@@ -7918,6 +7964,37 @@ fn build_stream(
             (s.frames.as_slice(), s.channels, s.frame_count())
           };
           let track_params_ref = v.track_params.as_ref();
+          // Channel-strip bus for this voice (None → direct path). The first
+          // voice to touch a bus this block snapshots its routing + live sends
+          // and clears its scratch.
+          let bus_slot: Option<usize> = if bus_ok {
+            track_params_ref
+              .map(|tp| tp.bus_slot as usize)
+              .filter(|&s| s >= 1 && s <= MAX_BUSES)
+              .map(|s| s - 1)
+          } else {
+            None
+          };
+          if let (Some(slot), Some(tp)) = (bus_slot, track_params_ref) {
+            let m = &mut bus_meta[slot];
+            if !m.touched {
+              *m = BusMeta {
+                touched: true,
+                fx_send: if fx_bypass_now { 0.0 } else { tp.fx_send() },
+                reverb_send: tp.reverb_send(),
+                delay_send: tp.delay_send(),
+                rec_track: tp.rec_track(),
+                section: v.section,
+                out_first: v.out_first,
+                out_stereo: v.out_stereo,
+                mono_out: multi_out_now
+                  && !v.out_stereo
+                  && v.out_first < n_ch,
+              };
+              bus_l[slot][..frames].fill(0.0);
+              bus_r[slot][..frames].fill(0.0);
+            }
+          }
           // Catmull-Rom read at an arbitrary fractional position. Captures
           // frames_slice (an immutable borrow of v.sample, disjoint from the
           // v.position/env mutations below) so it can serve both the primary
@@ -8602,123 +8679,137 @@ fn build_stream(
               ls *= scale;
               rs *= scale;
             }
-            // Section split tap — post-pan, post-filter, post-envelope,
-            // pre-FX-bus. Drum voices land in rhythm_l/r; melodic in
-            // melody_l/r; click (SECTION_CLICK) lands in BOTH so the
-            // count-in serves as a DAW alignment marker in either
-            // split file. Matches the web `samplePlayer.trigger`
-            // busHead → rhythm/melodyBus tap point.
-            if frame < REVERB_SCRATCH && v.section != SECTION_NONE {
-              let s_l = ls * v.gain * v.pan_left;
-              let s_r = rs * v.gain * v.pan_right;
-              match v.section {
-                SECTION_DRUM => {
-                  rhythm_l[frame] += s_l;
-                  rhythm_r[frame] += s_r;
-                }
-                SECTION_MELODIC => {
-                  melody_l[frame] += s_l;
-                  melody_r[frame] += s_r;
-                }
-                SECTION_CLICK => {
-                  rhythm_l[frame] += s_l;
-                  rhythm_r[frame] += s_r;
-                  melody_l[frame] += s_l;
-                  melody_r[frame] += s_r;
-                }
-                _ => {}
-              }
-            }
-            // Wet/dry crossfade: fx_send=0 → pure dry, no FX bus
-            // contribution. fx_send=0.5 → 50/50 dry+wet. fx_send=1.0 →
-            // pure wet (no dry voice in the output, only the FX bus
-            // return). FX bypass collapses fx_send to 0 (dry only) so
-            // the wet bus stays silent; voice's stored fx_send is
-            // preserved in TrackParams so turning bypass off restores
-            // the prior amount with no discontinuity.
-            let raw_fx_send = match v.frozen_params {
-              Some((_, _, fx, _, _)) => fx,
-              None => track_params_ref.map(|p| p.fx_send()).unwrap_or(0.0),
-            };
-            let fx_send = if fx_bypass_now { 0.0 } else { raw_fx_send };
-            let dry_scale = 1.0 - fx_send;
-            // Per-track dry stem tap — the voice's actual dry contribution to
-            // the master (ls·gain·pan·dry_scale, identical to the buf write
-            // below). Sends are additive, so Σ(track stems) + fx + reverb +
-            // delay reconstructs the pre-master mix exactly. Gated by
-            // `stems_recording` so a voice carrying a stale rec_track (set on a
-            // prior take, not yet overwritten) can't accumulate into an
-            // un-cleared, un-pushed scratch after the take ends.
-            if stems_recording && v.rec_track > 0 && frame < REVERB_SCRATCH {
-              let idx = (v.rec_track - 1) as usize;
-              if idx < MAX_STEMS {
-                stem_l[idx][frame] += ls * v.gain * v.pan_left * dry_scale;
-                stem_r[idx][frame] += rs * v.gain * v.pan_right * dry_scale;
-              }
-            }
-            // Mangler bus input is post-gain + post-pan so the wet bus
-            // matches the dry path's positioning.
-            if fx_send > 0.0 && frame < REVERB_SCRATCH {
-              let wet_l = ls * v.gain * v.pan_left * fx_send;
-              let wet_r = rs * v.gain * v.pan_right * fx_send;
-              fxbus_l[frame] += wet_l;
-              fxbus_r[frame] += wet_r;
-            }
-            // Reverb send — ADDITIVE: taps the voice's full post-gain/pan
-            // signal (NOT scaled by dry_scale), so dialing reverb in doesn't
-            // thin the dry. Independent of fx_send and fx_bypass; the parallel
-            // reverb return sums these below. Reverb mono-sums L+R internally,
-            // so pan only sets relative wet level, not tail placement.
-            let raw_reverb_send = match v.frozen_params {
-              Some((_, _, _, rev, _)) => rev,
-              None => track_params_ref.map(|p| p.reverb_send()).unwrap_or(0.0),
-            };
-            if raw_reverb_send > 0.0 && frame < REVERB_SCRATCH {
-              rev_send_l[frame] += ls * v.gain * v.pan_left * raw_reverb_send;
-              rev_send_r[frame] += rs * v.gain * v.pan_right * raw_reverb_send;
-            }
-            // Delay send — same additive aux as reverb (taps the full voice
-            // signal, dry untouched), into the global ping-pong delay.
-            let raw_delay_send = match v.frozen_params {
-              Some((_, _, _, _, dly)) => dly,
-              None => track_params_ref.map(|p| p.delay_send()).unwrap_or(0.0),
-            };
-            if raw_delay_send > 0.0 && frame < REVERB_SCRATCH {
-              delay_send_l[frame] += ls * v.gain * v.pan_left * raw_delay_send;
-              delay_send_r[frame] += rs * v.gain * v.pan_right * raw_delay_send;
-            }
-            // Voice routing — multi_out OFF collapses everything to
-            // channels 0+1 stereo (graceful headphone fold). Per-voice
-            // out_* config is preserved in voice state for when
-            // multi_out flips back on.
-            //
-            // Also fold to 0/1 when the voice's assigned channel pair
-            // falls off the end of the current device (e.g., user
-            // swapped from an 8ch interface to 2ch and a track was
-            // routed to ch 4). Without this fallback the voice would
-            // silently drop; the existing `< n_ch` guards below would
-            // still bounds-check but no audio reaches any output. The
-            // UI surfaces the misrouting separately.
-            let needed_channels = if v.out_stereo { 2 } else { 1 };
-            let voice_in_range =
-              v.out_first.saturating_add(needed_channels) <= n_ch;
-            let (route_first, route_stereo) = if multi_out_now && voice_in_range {
-              (v.out_first, v.out_stereo)
+            if let Some(slot) = bus_slot {
+              // Channel-strip bus: the track's sends/taps/outputs are applied
+              // once per bus after the voice loop (3b).
+              let (pl, pr) = if bus_meta[slot].mono_out {
+                (std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2)
+              } else {
+                (v.pan_left, v.pan_right)
+              };
+              bus_l[slot][frame] += ls * v.gain * pl;
+              bus_r[slot][frame] += rs * v.gain * pr;
             } else {
-              (0usize, true)
-            };
-            if route_stereo {
-              let l_idx = route_first;
-              let r_idx = route_first + 1;
-              if l_idx < n_ch {
-                buf[frame * n_ch + l_idx] += ls * v.gain * v.pan_left * dry_scale;
+              // No bus (clicks, previews, oversized blocks): the voice feeds
+              // the taps, sends and outputs directly.
+              // Section split tap — post-pan, post-filter, post-envelope,
+              // pre-FX-bus. Drum voices land in rhythm_l/r; melodic in
+              // melody_l/r; click (SECTION_CLICK) lands in BOTH so the
+              // count-in serves as a DAW alignment marker in either
+              // split file. Matches the web `samplePlayer.trigger`
+              // busHead → rhythm/melodyBus tap point.
+              if frame < REVERB_SCRATCH && v.section != SECTION_NONE {
+                let s_l = ls * v.gain * v.pan_left;
+                let s_r = rs * v.gain * v.pan_right;
+                match v.section {
+                  SECTION_DRUM => {
+                    rhythm_l[frame] += s_l;
+                    rhythm_r[frame] += s_r;
+                  }
+                  SECTION_MELODIC => {
+                    melody_l[frame] += s_l;
+                    melody_r[frame] += s_r;
+                  }
+                  SECTION_CLICK => {
+                    rhythm_l[frame] += s_l;
+                    rhythm_r[frame] += s_r;
+                    melody_l[frame] += s_l;
+                    melody_r[frame] += s_r;
+                  }
+                  _ => {}
+                }
               }
-              if r_idx < n_ch {
-                buf[frame * n_ch + r_idx] += rs * v.gain * v.pan_right * dry_scale;
+              // Wet/dry crossfade: fx_send=0 → pure dry, no FX bus
+              // contribution. fx_send=0.5 → 50/50 dry+wet. fx_send=1.0 →
+              // pure wet (no dry voice in the output, only the FX bus
+              // return). FX bypass collapses fx_send to 0 (dry only) so
+              // the wet bus stays silent; voice's stored fx_send is
+              // preserved in TrackParams so turning bypass off restores
+              // the prior amount with no discontinuity.
+              let raw_fx_send = match v.frozen_params {
+                Some((_, _, fx, _, _)) => fx,
+                None => track_params_ref.map(|p| p.fx_send()).unwrap_or(0.0),
+              };
+              let fx_send = if fx_bypass_now { 0.0 } else { raw_fx_send };
+              let dry_scale = 1.0 - fx_send;
+              // Per-track dry stem tap — the voice's actual dry contribution to
+              // the master (ls·gain·pan·dry_scale, identical to the buf write
+              // below). Sends are additive, so Σ(track stems) + fx + reverb +
+              // delay reconstructs the pre-master mix exactly. Gated by
+              // `stems_recording` so a voice carrying a stale rec_track (set on a
+              // prior take, not yet overwritten) can't accumulate into an
+              // un-cleared, un-pushed scratch after the take ends.
+              if stems_recording && v.rec_track > 0 && frame < REVERB_SCRATCH {
+                let idx = (v.rec_track - 1) as usize;
+                if idx < MAX_STEMS {
+                  stem_l[idx][frame] += ls * v.gain * v.pan_left * dry_scale;
+                  stem_r[idx][frame] += rs * v.gain * v.pan_right * dry_scale;
+                }
               }
-            } else if route_first < n_ch {
-              let mono = 0.5 * (ls + rs);
-              buf[frame * n_ch + route_first] += mono * v.gain * dry_scale;
+              // Mangler bus input is post-gain + post-pan so the wet bus
+              // matches the dry path's positioning.
+              if fx_send > 0.0 && frame < REVERB_SCRATCH {
+                let wet_l = ls * v.gain * v.pan_left * fx_send;
+                let wet_r = rs * v.gain * v.pan_right * fx_send;
+                fxbus_l[frame] += wet_l;
+                fxbus_r[frame] += wet_r;
+              }
+              // Reverb send — ADDITIVE: taps the voice's full post-gain/pan
+              // signal (NOT scaled by dry_scale), so dialing reverb in doesn't
+              // thin the dry. Independent of fx_send and fx_bypass; the parallel
+              // reverb return sums these below. Reverb mono-sums L+R internally,
+              // so pan only sets relative wet level, not tail placement.
+              let raw_reverb_send = match v.frozen_params {
+                Some((_, _, _, rev, _)) => rev,
+                None => track_params_ref.map(|p| p.reverb_send()).unwrap_or(0.0),
+              };
+              if raw_reverb_send > 0.0 && frame < REVERB_SCRATCH {
+                rev_send_l[frame] += ls * v.gain * v.pan_left * raw_reverb_send;
+                rev_send_r[frame] += rs * v.gain * v.pan_right * raw_reverb_send;
+              }
+              // Delay send — same additive aux as reverb (taps the full voice
+              // signal, dry untouched), into the global ping-pong delay.
+              let raw_delay_send = match v.frozen_params {
+                Some((_, _, _, _, dly)) => dly,
+                None => track_params_ref.map(|p| p.delay_send()).unwrap_or(0.0),
+              };
+              if raw_delay_send > 0.0 && frame < REVERB_SCRATCH {
+                delay_send_l[frame] += ls * v.gain * v.pan_left * raw_delay_send;
+                delay_send_r[frame] += rs * v.gain * v.pan_right * raw_delay_send;
+              }
+              // Voice routing — multi_out OFF collapses everything to
+              // channels 0+1 stereo (graceful headphone fold). Per-voice
+              // out_* config is preserved in voice state for when
+              // multi_out flips back on.
+              //
+              // Also fold to 0/1 when the voice's assigned channel pair
+              // falls off the end of the current device (e.g., user
+              // swapped from an 8ch interface to 2ch and a track was
+              // routed to ch 4). Without this fallback the voice would
+              // silently drop; the existing `< n_ch` guards below would
+              // still bounds-check but no audio reaches any output. The
+              // UI surfaces the misrouting separately.
+              let needed_channels = if v.out_stereo { 2 } else { 1 };
+              let voice_in_range =
+                v.out_first.saturating_add(needed_channels) <= n_ch;
+              let (route_first, route_stereo) = if multi_out_now && voice_in_range {
+                (v.out_first, v.out_stereo)
+              } else {
+                (0usize, true)
+              };
+              if route_stereo {
+                let l_idx = route_first;
+                let r_idx = route_first + 1;
+                if l_idx < n_ch {
+                  buf[frame * n_ch + l_idx] += ls * v.gain * v.pan_left * dry_scale;
+                }
+                if r_idx < n_ch {
+                  buf[frame * n_ch + r_idx] += rs * v.gain * v.pan_right * dry_scale;
+                }
+              } else if route_first < n_ch {
+                let mono = 0.5 * (ls + rs);
+                buf[frame * n_ch + route_first] += mono * v.gain * dry_scale;
+              }
             }
             // Granular advances its own in-grain read head above; the base
             // position is mod-swept, not playback-advanced, so skip the normal
@@ -8772,6 +8863,79 @@ fn build_stream(
             v.active = false;
             v.sample = None;
             v.track_params = None;
+          }
+        }
+
+        // 3b) Channel-strip buses. Each touched bus feeds exactly what its
+        // voices used to feed one by one: section tap (post-pan, pre-send),
+        // stem tap (× dry_scale), mangler (× fx_send crossfade), reverb and
+        // delay (additive), then its output channels (× dry_scale). Sends are
+        // linear and TrackParams-wide, so this is the same mix. Mono-routed
+        // tracks ignore pan (centred bus, see BusMeta::mono_out); the ×√½
+        // fold makes their output exactly the old unpanned 0.5·(L+R)·gain.
+        for slot in 0..MAX_BUSES {
+          let m = bus_meta[slot];
+          if !m.touched {
+            continue;
+          }
+          let dry_scale = 1.0 - m.fx_send;
+          let needed_channels = if m.out_stereo { 2 } else { 1 };
+          let in_range = m.out_first.saturating_add(needed_channels) <= n_ch;
+          let (route_first, route_stereo) = if multi_out_now && in_range {
+            (m.out_first, m.out_stereo)
+          } else {
+            (0usize, true)
+          };
+          for frame in 0..frames {
+            let l = bus_l[slot][frame];
+            let r = bus_r[slot][frame];
+            match m.section {
+              SECTION_DRUM => {
+                rhythm_l[frame] += l;
+                rhythm_r[frame] += r;
+              }
+              SECTION_MELODIC => {
+                melody_l[frame] += l;
+                melody_r[frame] += r;
+              }
+              SECTION_CLICK => {
+                rhythm_l[frame] += l;
+                rhythm_r[frame] += r;
+                melody_l[frame] += l;
+                melody_r[frame] += r;
+              }
+              _ => {}
+            }
+            if stems_recording && m.rec_track > 0 {
+              let idx = (m.rec_track - 1) as usize;
+              if idx < MAX_STEMS {
+                stem_l[idx][frame] += l * dry_scale;
+                stem_r[idx][frame] += r * dry_scale;
+              }
+            }
+            if m.fx_send > 0.0 {
+              fxbus_l[frame] += l * m.fx_send;
+              fxbus_r[frame] += r * m.fx_send;
+            }
+            if m.reverb_send > 0.0 {
+              rev_send_l[frame] += l * m.reverb_send;
+              rev_send_r[frame] += r * m.reverb_send;
+            }
+            if m.delay_send > 0.0 {
+              delay_send_l[frame] += l * m.delay_send;
+              delay_send_r[frame] += r * m.delay_send;
+            }
+            if route_stereo {
+              if route_first < n_ch {
+                buf[frame * n_ch + route_first] += l * dry_scale;
+              }
+              if route_first + 1 < n_ch {
+                buf[frame * n_ch + route_first + 1] += r * dry_scale;
+              }
+            } else if route_first < n_ch {
+              buf[frame * n_ch + route_first] +=
+                (l + r) * std::f32::consts::FRAC_1_SQRT_2 * dry_scale;
+            }
           }
         }
 
