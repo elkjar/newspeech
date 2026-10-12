@@ -129,6 +129,152 @@ pub fn scope_frame() -> ScopeFrame {
   ScopeFrame { wave, bands }
 }
 
+// --- channel-strip analyser (P2: spectrum behind the EQ curve) ---
+//
+// One bus at a time — the eq tab's focused track — is tapped pre- and
+// post-strip (mono) into two atomic rings, same no-lock shape as the scope.
+// `STRIP_AN_SLOT` = bus slot + 1, 0 = off (no audio-thread cost). The lib.rs
+// emitter turns the newest window into `audio:strip-spectrum` at ~30 Hz.
+pub const STRIP_AN_RING: usize = 4096;
+pub const STRIP_AN_FFT: usize = 2048;
+pub const STRIP_AN_BINS: usize = 96;
+static STRIP_AN_SLOT: AtomicU32 = AtomicU32::new(0);
+static STRIP_AN_PRE: [AtomicU32; STRIP_AN_RING] = [const { AtomicU32::new(0) }; STRIP_AN_RING];
+static STRIP_AN_POST: [AtomicU32; STRIP_AN_RING] = [const { AtomicU32::new(0) }; STRIP_AN_RING];
+static STRIP_AN_HEAD: AtomicUsize = AtomicUsize::new(0);
+static STRIP_AN_SR: AtomicU32 = AtomicU32::new(48_000);
+
+pub fn strip_analyser_on() -> bool {
+  STRIP_AN_SLOT.load(Ordering::Relaxed) != 0
+}
+
+// Audio thread: append one block (pre, post) to the rings.
+fn strip_an_push(pre_l: &[f32], pre_r: &[f32], post_l: Option<(&[f32], &[f32])>) {
+  let head = STRIP_AN_HEAD.load(Ordering::Relaxed);
+  for i in 0..pre_l.len() {
+    let idx = head.wrapping_add(i) % STRIP_AN_RING;
+    STRIP_AN_PRE[idx].store((0.5 * (pre_l[i] + pre_r[i])).to_bits(), Ordering::Relaxed);
+    let post = match post_l {
+      Some((l, r)) => 0.5 * (l[i] + r[i]),
+      None => 0.5 * (pre_l[i] + pre_r[i]),
+    };
+    STRIP_AN_POST[idx].store(post.to_bits(), Ordering::Relaxed);
+  }
+  STRIP_AN_HEAD.store(head.wrapping_add(pre_l.len()), Ordering::Release);
+}
+
+fn strip_an_push_silence(frames: usize) {
+  let head = STRIP_AN_HEAD.load(Ordering::Relaxed);
+  for i in 0..frames {
+    let idx = head.wrapping_add(i) % STRIP_AN_RING;
+    STRIP_AN_PRE[idx].store(0, Ordering::Relaxed);
+    STRIP_AN_POST[idx].store(0, Ordering::Relaxed);
+  }
+  STRIP_AN_HEAD.store(head.wrapping_add(frames), Ordering::Release);
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct StripSpectrum {
+  // STRIP_AN_BINS dBFS values (full-scale sine ≈ 0), log-spaced 20 Hz → 20 kHz.
+  pub pre: Vec<f32>,
+  pub post: Vec<f32>,
+}
+
+// Emitter-thread state: window, twiddles, per-bin smoothing.
+pub struct StripAnalyser {
+  win: Vec<f32>,
+  tw_re: Vec<f32>,
+  tw_im: Vec<f32>,
+  pre_db: Vec<f32>,
+  post_db: Vec<f32>,
+}
+
+impl StripAnalyser {
+  pub fn new() -> Self {
+    let n = STRIP_AN_FFT;
+    Self {
+      win: (0..n)
+        .map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / n as f32).cos())
+        .collect(),
+      tw_re: (0..n / 2).map(|k| (std::f32::consts::TAU * k as f32 / n as f32).cos()).collect(),
+      tw_im: (0..n / 2).map(|k| -(std::f32::consts::TAU * k as f32 / n as f32).sin()).collect(),
+      pre_db: vec![-120.0; STRIP_AN_BINS],
+      post_db: vec![-120.0; STRIP_AN_BINS],
+    }
+  }
+
+  // In-place iterative radix-2 FFT; returns power per bin 0..n/2.
+  fn power(&self, x: &[f32]) -> Vec<f32> {
+    let n = STRIP_AN_FFT;
+    let mut re: Vec<f32> = x.iter().zip(&self.win).map(|(a, w)| a * w).collect();
+    let mut im = vec![0f32; n];
+    let bits = n.trailing_zeros();
+    for i in 0..n {
+      let j = i.reverse_bits() >> (usize::BITS - bits);
+      if j > i {
+        re.swap(i, j);
+      }
+    }
+    let mut len = 2;
+    while len <= n {
+      let step = n / len;
+      for start in (0..n).step_by(len) {
+        for k in 0..len / 2 {
+          let (wr, wi) = (self.tw_re[k * step], self.tw_im[k * step]);
+          let (a, b) = (start + k, start + k + len / 2);
+          let tr = re[b] * wr - im[b] * wi;
+          let ti = re[b] * wi + im[b] * wr;
+          re[b] = re[a] - tr;
+          im[b] = im[a] - ti;
+          re[a] += tr;
+          im[a] += ti;
+        }
+      }
+      len <<= 1;
+    }
+    (0..=n / 2).map(|k| re[k] * re[k] + im[k] * im[k]).collect()
+  }
+
+  // Log-spaced bins: the strongest FFT bin inside each band (or the nearest
+  // one where bands are narrower than the FFT resolution). Fast attack,
+  // ~300 ms release at 30 Hz.
+  fn fold(&self, p: &[f32], sr: f32, out: &mut [f32]) {
+    let n = STRIP_AN_FFT as f32;
+    // Hann coherent gain 0.5 → a full-scale sine peaks at (n/4)².
+    let norm = (n / 4.0) * (n / 4.0);
+    let (lo, hi) = (20f32, 20_000f32.min(sr * 0.5));
+    for (b, o) in out.iter_mut().enumerate() {
+      let f0 = lo * (hi / lo).powf(b as f32 / STRIP_AN_BINS as f32);
+      let f1 = lo * (hi / lo).powf((b + 1) as f32 / STRIP_AN_BINS as f32);
+      let k0 = (f0 / sr * n).floor() as usize;
+      let k1 = ((f1 / sr * n).ceil() as usize).max(k0 + 1).min(p.len());
+      let peak = p[k0.min(p.len() - 1)..k1].iter().cloned().fold(0f32, f32::max);
+      let db = 10.0 * (peak / norm + 1e-14).log10();
+      *o = if db > *o { db } else { *o + (db - *o) * 0.12 };
+    }
+  }
+
+  pub fn frame(&mut self) -> StripSpectrum {
+    let head = STRIP_AN_HEAD.load(Ordering::Acquire);
+    let start = head.wrapping_sub(STRIP_AN_FFT);
+    let read = |ring: &[AtomicU32; STRIP_AN_RING]| -> Vec<f32> {
+      (0..STRIP_AN_FFT)
+        .map(|i| f32::from_bits(ring[start.wrapping_add(i) % STRIP_AN_RING].load(Ordering::Relaxed)))
+        .collect()
+    };
+    let sr = STRIP_AN_SR.load(Ordering::Relaxed).max(8_000) as f32;
+    let pre_p = self.power(&read(&STRIP_AN_PRE));
+    let post_p = self.power(&read(&STRIP_AN_POST));
+    let mut pre = std::mem::take(&mut self.pre_db);
+    let mut post = std::mem::take(&mut self.post_db);
+    self.fold(&pre_p, sr, &mut pre);
+    self.fold(&post_p, sr, &mut post);
+    self.pre_db = pre.clone();
+    self.post_db = post.clone();
+    StripSpectrum { pre, post }
+  }
+}
+
 // --- engine sample clock ---
 //
 // Monotonic frame counter for the open cpal stream — the app's master
@@ -464,6 +610,12 @@ pub struct TrackParams {
   // first served, never reused — track ids are stable (t1..t16), so the
   // MAX_BUSES cap is never close.
   bus_slot: u8,
+  // Channel-strip settings, a seqlock: the IPC writer bumps `strip_ver` odd,
+  // stores the words, bumps it even; the audio thread re-reads only when the
+  // version moved (once per bus per block, at first touch). Layout: see
+  // `EqBandParams::from_words`.
+  strip_ver: AtomicU32,
+  strip_words: [AtomicU32; STRIP_WORDS],
 }
 
 // Cutoff mapping mirrors src/audio/nativeEngine.ts cutoffNormToHz.
@@ -503,7 +655,34 @@ impl TrackParams {
       wt_pos_mod: AtomicU32::new(0.0_f32.to_bits()),
       rec_track: AtomicU32::new(0),
       bus_slot,
+      strip_ver: AtomicU32::new(0),
+      strip_words: std::array::from_fn(|_| AtomicU32::new(0)),
     }
+  }
+  fn write_strip(&self, words: &[u32; STRIP_WORDS]) {
+    let _guard = STRIP_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let v = self.strip_ver.load(Ordering::Relaxed);
+    self.strip_ver.store(v.wrapping_add(1), Ordering::Relaxed);
+    std::sync::atomic::fence(Ordering::Release);
+    for (slot, &w) in self.strip_words.iter().zip(words.iter()) {
+      slot.store(w, Ordering::Relaxed);
+    }
+    self.strip_ver.store(v.wrapping_add(2), Ordering::Release);
+  }
+  // Audio thread. Some((ver, words)) when a consistent snapshot newer than
+  // `seen` is available; None when unchanged or mid-write (retry next block).
+  fn read_strip(&self, seen: u32) -> Option<(u32, [u32; STRIP_WORDS])> {
+    let v1 = self.strip_ver.load(Ordering::Acquire);
+    if v1 == seen || v1 & 1 == 1 {
+      return None;
+    }
+    let words: [u32; STRIP_WORDS] =
+      std::array::from_fn(|i| self.strip_words[i].load(Ordering::Relaxed));
+    std::sync::atomic::fence(Ordering::Acquire);
+    if self.strip_ver.load(Ordering::Relaxed) != v1 {
+      return None;
+    }
+    Some((v1, words))
   }
   fn rec_track(&self) -> u8 {
     self.rec_track.load(Ordering::Relaxed) as u8
@@ -4657,6 +4836,298 @@ struct BusMeta {
   mono_out: bool,
 }
 
+// --- channel strip: EQ (P1) ---
+//
+// Six bands: [0] HP, [1] LP (12/24 dB), [2..5] parametric bell / low-shelf /
+// high-shelf / notch. Simper/Cytomic trapezoidal SVFs, not biquads: stable
+// and zipper-free under fast drags, and fine in f32 down at 20 Hz (where
+// f32 biquads drift — see the master lo-cut DC note). Params are smoothed
+// and coefficients recomputed every EQ_SUB frames; a band's on/off is a
+// short crossfade. The JS curve (channelStrip.ts) uses the same math.
+const EQ_BANDS: usize = 6;
+const EQ_WORDS_PER_BAND: usize = 6;
+// + 1 trailing word: whole-strip bypass.
+const STRIP_BYPASS_WORD: usize = EQ_BANDS * EQ_WORDS_PER_BAND;
+const STRIP_WORDS: usize = STRIP_BYPASS_WORD + 1;
+const EQ_SUB: usize = 16;
+const EQ_SMOOTH_MS: f32 = 20.0;
+const EQ_FADE_MS: f32 = 10.0;
+// How long a bus keeps running its EQ after its last voice ends, so a
+// resonant band or a steep low HP rings out instead of being cut.
+const STRIP_TAIL_SECS: f32 = 1.0;
+const EQ_KIND_HP: u32 = 0;
+const EQ_KIND_LP: u32 = 1;
+const EQ_KIND_BELL: u32 = 2;
+const EQ_KIND_LOWSHELF: u32 = 3;
+const EQ_KIND_HIGHSHELF: u32 = 4;
+// 5 = notch (the match default).
+
+static STRIP_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Clone, Copy, Default, PartialEq)]
+struct EqBandParams {
+  on: bool,
+  kind: u32,
+  freq: f32,
+  gain_db: f32,
+  q: f32,
+  slope24: bool,
+}
+
+impl EqBandParams {
+  fn to_words(self) -> [u32; EQ_WORDS_PER_BAND] {
+    [
+      self.on as u32,
+      self.kind,
+      self.freq.to_bits(),
+      self.gain_db.to_bits(),
+      self.q.to_bits(),
+      self.slope24 as u32,
+    ]
+  }
+  fn from_words(w: &[u32]) -> Self {
+    let f = |i: usize, lo: f32, hi: f32, d: f32| {
+      let v = f32::from_bits(w[i]);
+      if v.is_finite() { v.clamp(lo, hi) } else { d }
+    };
+    Self {
+      on: w[0] != 0,
+      kind: w[1].min(5),
+      freq: f(2, 20.0, 20_000.0, 1000.0),
+      gain_db: f(3, -18.0, 18.0, 0.0),
+      q: f(4, 0.1, 18.0, 0.707),
+      slope24: w[5] != 0,
+    }
+  }
+}
+
+#[derive(Clone, Copy, Default)]
+struct SvfCoefs {
+  a1: f32,
+  a2: f32,
+  a3: f32,
+  m0: f32,
+  m1: f32,
+  m2: f32,
+}
+
+// Stage count for a band: 24 dB HP/LP cascade two 2nd-order sections.
+#[inline]
+fn eq_stages(kind: u32, slope24: bool) -> usize {
+  if (kind == EQ_KIND_HP || kind == EQ_KIND_LP) && slope24 { 2 } else { 1 }
+}
+
+fn svf_coefs(kind: u32, freq: f32, gain_db: f32, q: f32, slope24: bool, stage: usize, sr: f32) -> SvfCoefs {
+  let fc = freq.clamp(20.0, sr * 0.49);
+  let mut g = (std::f32::consts::PI * fc / sr).tan();
+  let a = 10.0_f32.powf(gain_db / 40.0);
+  let q = q.max(0.1);
+  let (k, m0, m1, m2);
+  match kind {
+    EQ_KIND_HP | EQ_KIND_LP => {
+      // 4th-order Butterworth = Q 0.5412 + 1.3066; the band's Q scales the
+      // resonant stage (0.707 → flat Butterworth).
+      let sq = if slope24 {
+        if stage == 0 { 0.5412 } else { 1.3066 * (q / std::f32::consts::FRAC_1_SQRT_2) }
+      } else {
+        q
+      };
+      k = 1.0 / sq;
+      if kind == EQ_KIND_HP {
+        (m0, m1, m2) = (1.0, -k, -1.0);
+      } else {
+        (m0, m1, m2) = (0.0, 0.0, 1.0);
+      }
+    }
+    EQ_KIND_BELL => {
+      k = 1.0 / (q * a);
+      (m0, m1, m2) = (1.0, k * (a * a - 1.0), 0.0);
+    }
+    EQ_KIND_LOWSHELF => {
+      g /= a.sqrt();
+      k = 1.0 / q;
+      (m0, m1, m2) = (1.0, k * (a - 1.0), a * a - 1.0);
+    }
+    EQ_KIND_HIGHSHELF => {
+      g *= a.sqrt();
+      k = 1.0 / q;
+      (m0, m1, m2) = (a * a, k * (1.0 - a) * a, 1.0 - a * a);
+    }
+    _ => {
+      // notch
+      k = 1.0 / q;
+      (m0, m1, m2) = (1.0, -k, 0.0);
+    }
+  }
+  let a1 = 1.0 / (1.0 + g * (g + k));
+  let a2 = g * a1;
+  let a3 = g * a2;
+  SvfCoefs { a1, a2, a3, m0, m1, m2 }
+}
+
+#[inline]
+fn svf_tick(c: &SvfCoefs, ic: &mut [f32; 2], v0: f32) -> f32 {
+  let v3 = v0 - ic[1];
+  let v1 = c.a1 * ic[0] + c.a2 * v3;
+  let v2 = ic[1] + c.a2 * ic[0] + c.a3 * v3;
+  ic[0] = 2.0 * v1 - ic[0];
+  ic[1] = 2.0 * v2 - ic[1];
+  c.m0 * v0 + c.m1 * v1 + c.m2 * v2
+}
+
+struct EqBandRt {
+  target: EqBandParams,
+  // Smoothed (log-freq, dB, log-Q).
+  lf: f32,
+  gain: f32,
+  lq: f32,
+  fade: f32,
+  kind: u32,
+  slope24: bool,
+  coefs: [SvfCoefs; 2],
+  dirty: bool,
+  // [stage][channel] integrator states.
+  ic: [[[f32; 2]; 2]; 2],
+}
+
+impl EqBandRt {
+  fn new() -> Self {
+    Self {
+      target: EqBandParams::default(),
+      lf: 1000.0_f32.ln(),
+      gain: 0.0,
+      lq: 0.707_f32.ln(),
+      fade: 0.0,
+      kind: EQ_KIND_BELL,
+      slope24: false,
+      coefs: [SvfCoefs::default(); 2],
+      dirty: true,
+      ic: [[[0.0; 2]; 2]; 2],
+    }
+  }
+  fn reset_state(&mut self) {
+    self.ic = [[[0.0; 2]; 2]; 2];
+  }
+  #[inline]
+  fn live(&self) -> bool {
+    self.target.on || self.fade > 0.0
+  }
+}
+
+struct BusEq {
+  bands: [EqBandRt; EQ_BANDS],
+  seen_ver: u32,
+  sr: f32,
+  smooth: f32,
+  fade_step: f32,
+}
+
+impl BusEq {
+  fn new(sr: f32) -> Self {
+    Self {
+      bands: std::array::from_fn(|_| EqBandRt::new()),
+      seen_ver: 0,
+      sr,
+      smooth: 1.0 - (-(EQ_SUB as f32) / (EQ_SMOOTH_MS * 0.001 * sr)).exp(),
+      fade_step: EQ_SUB as f32 / (EQ_FADE_MS * 0.001 * sr).max(1.0),
+    }
+  }
+
+  fn reset_state(&mut self) {
+    for b in &mut self.bands {
+      b.reset_state();
+    }
+  }
+
+  fn active(&self) -> bool {
+    self.bands.iter().any(|b| b.live())
+  }
+
+  fn set_targets(&mut self, words: &[u32; STRIP_WORDS]) {
+    // Bypass = every band's target off: they fade out over EQ_FADE_MS with
+    // their settings kept, and fade back in (from a clean state) on release.
+    let bypass = words[STRIP_BYPASS_WORD] != 0;
+    for (i, b) in self.bands.iter_mut().enumerate() {
+      let mut p = EqBandParams::from_words(&words[i * EQ_WORDS_PER_BAND..(i + 1) * EQ_WORDS_PER_BAND]);
+      p.on &= !bypass;
+      // A band switching on from silence starts AT its target (no glide in
+      // from stale values) with clean state.
+      if p.on && !b.live() {
+        b.lf = p.freq.ln();
+        b.gain = p.gain_db;
+        b.lq = p.q.ln();
+        b.reset_state();
+        b.dirty = true;
+      }
+      if p.kind != b.kind || p.slope24 != b.slope24 {
+        b.dirty = true;
+      }
+      b.target = p;
+    }
+  }
+
+  // In place on the bus scratch.
+  fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
+    let n = l.len().min(r.len());
+    let sr = self.sr;
+    let k = self.smooth;
+    let fade_step = self.fade_step;
+    for b in self.bands.iter_mut() {
+      if !b.live() {
+        continue;
+      }
+      let mut start = 0;
+      while start < n {
+        let end = (start + EQ_SUB).min(n);
+        // Advance smoothing once per sub-block; recompute coefs if moved.
+        let t = &b.target;
+        let (tlf, tlq) = (t.freq.ln(), t.q.ln());
+        let mut moved = b.dirty;
+        for (cur, tgt, eps) in [(&mut b.lf, tlf, 1e-4f32), (&mut b.gain, t.gain_db, 1e-3), (&mut b.lq, tlq, 1e-4)] {
+          let d = tgt - *cur;
+          if d.abs() > eps {
+            *cur += d * k;
+            moved = true;
+          } else if d != 0.0 {
+            *cur = tgt;
+            moved = true;
+          }
+        }
+        b.kind = t.kind;
+        b.slope24 = t.slope24;
+        let stages = eq_stages(b.kind, b.slope24);
+        if moved {
+          for st in 0..stages {
+            b.coefs[st] = svf_coefs(b.kind, b.lf.exp(), b.gain, b.lq.exp(), b.slope24, st, sr);
+          }
+          b.dirty = false;
+        }
+        let f0 = b.fade;
+        let f1 = if t.on { (f0 + fade_step).min(1.0) } else { (f0 - fade_step).max(0.0) };
+        let inv = 1.0 / (end - start) as f32;
+        for (ch, buf) in [&mut *l, &mut *r].into_iter().enumerate() {
+          for (j, x) in buf[start..end].iter_mut().enumerate() {
+            let mut y = *x;
+            for st in 0..stages {
+              y = svf_tick(&b.coefs[st], &mut b.ic[st][ch], y);
+            }
+            let f = f0 + (f1 - f0) * (j as f32 + 1.0) * inv;
+            *x += (y - *x) * f;
+          }
+        }
+        b.fade = f1;
+        start = end;
+      }
+      // Non-finite guard: a poisoned input would otherwise latch NaN in the
+      // integrators forever.
+      let probe: f32 = b.ic.iter().flatten().flatten().sum();
+      if !probe.is_finite() {
+        b.reset_state();
+      }
+    }
+  }
+}
+
 const SECTION_NONE: u8 = 0;
 const SECTION_DRUM: u8 = 1;
 const SECTION_MELODIC: u8 = 2;
@@ -6848,6 +7319,13 @@ fn build_stream(
   let mut bus_l: Vec<Vec<f32>> = (0..MAX_BUSES).map(|_| vec![0.0; REVERB_SCRATCH]).collect();
   let mut bus_r: Vec<Vec<f32>> = (0..MAX_BUSES).map(|_| vec![0.0; REVERB_SCRATCH]).collect();
   let mut bus_meta: [BusMeta; MAX_BUSES] = [BusMeta::default(); MAX_BUSES];
+  let mut bus_eq: Vec<BusEq> = (0..MAX_BUSES).map(|_| BusEq::new(sample_rate as f32)).collect();
+  // Frames each bus keeps running its strip after its last voice (tails).
+  let mut bus_hang: [usize; MAX_BUSES] = [0; MAX_BUSES];
+  let strip_tail_frames = (STRIP_TAIL_SECS * sample_rate as f32) as usize;
+  let mut strip_an_pre_scratch_l: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  let mut strip_an_pre_scratch_r: Vec<f32> = vec![0.0; REVERB_SCRATCH];
+  STRIP_AN_SR.store(sample_rate, Ordering::Relaxed);
   let mut tape_buffer = TapeBuffer::new(sample_rate);
   let mut glitch_machine = GlitchMachine::new(sample_rate);
   let mut master_stage = MasterStage::new(sample_rate);
@@ -7391,6 +7869,9 @@ fn build_stream(
               // detector envelopes, leaving the output dead even after the
               // FX buses are cleared. Coefficients are untouched.
               master_stage.reset_state();
+              for e in bus_eq.iter_mut() {
+                e.reset_state();
+              }
               // Panic also drops a held resample loop — it's a sounding
               // source like any other.
               loop_active = false;
@@ -7993,6 +8474,10 @@ fn build_stream(
               };
               bus_l[slot][..frames].fill(0.0);
               bus_r[slot][..frames].fill(0.0);
+              if let Some((ver, words)) = tp.read_strip(bus_eq[slot].seen_ver) {
+                bus_eq[slot].set_targets(&words);
+                bus_eq[slot].seen_ver = ver;
+              }
             }
           }
           // Catmull-Rom read at an arbitrary fractional position. Captures
@@ -8873,10 +9358,43 @@ fn build_stream(
         // linear and TrackParams-wide, so this is the same mix. Mono-routed
         // tracks ignore pan (centred bus, see BusMeta::mono_out); the ×√½
         // fold makes their output exactly the old unpanned 0.5·(L+R)·gain.
+        let an_slot = STRIP_AN_SLOT.load(Ordering::Relaxed) as usize;
+        let mut an_written = false;
         for slot in 0..MAX_BUSES {
           let m = bus_meta[slot];
-          if !m.touched {
+          // An untouched bus keeps running (on silence) while its strip has
+          // a tail to ring out; routing/sends stay as of its last touch.
+          let strip_on = bus_eq[slot].active();
+          if m.touched {
+            bus_hang[slot] = strip_tail_frames;
+          } else if strip_on && bus_hang[slot] > 0 && bus_ok {
+            bus_hang[slot] = bus_hang[slot].saturating_sub(frames);
+            bus_l[slot][..frames].fill(0.0);
+            bus_r[slot][..frames].fill(0.0);
+          } else {
             continue;
+          }
+          let tap = an_slot == slot + 1;
+          if tap && strip_on {
+            // Keep the pre-strip signal for the faint "before" trace.
+            strip_an_pre_scratch_l[..frames].copy_from_slice(&bus_l[slot][..frames]);
+            strip_an_pre_scratch_r[..frames].copy_from_slice(&bus_r[slot][..frames]);
+          }
+          if strip_on {
+            let (l, r) = (&mut bus_l[slot][..frames], &mut bus_r[slot][..frames]);
+            bus_eq[slot].process(l, r);
+          }
+          if tap {
+            if strip_on {
+              strip_an_push(
+                &strip_an_pre_scratch_l[..frames],
+                &strip_an_pre_scratch_r[..frames],
+                Some((&bus_l[slot][..frames], &bus_r[slot][..frames])),
+              );
+            } else {
+              strip_an_push(&bus_l[slot][..frames], &bus_r[slot][..frames], None);
+            }
+            an_written = true;
           }
           let dry_scale = 1.0 - m.fx_send;
           let needed_channels = if m.out_stereo { 2 } else { 1 };
@@ -8937,6 +9455,12 @@ fn build_stream(
                 (l + r) * std::f32::consts::FRAC_1_SQRT_2 * dry_scale;
             }
           }
+        }
+
+        // The analysed track was silent this block: feed the rings silence so
+        // the display falls instead of freezing on the last frame.
+        if an_slot != 0 && !an_written {
+          strip_an_push_silence(frames.min(STRIP_AN_RING));
         }
 
         // 4) Mangler FX bus (tape → glitch → drive) + parallel reverb
@@ -10356,6 +10880,58 @@ pub fn audio_set_track_filter(
 }
 
 #[derive(serde::Deserialize)]
+pub struct EqBandUpdate {
+  pub on: bool,
+  pub kind: u32,
+  pub freq: f32,
+  pub gain_db: f32,
+  pub q: f32,
+  pub slope24: bool,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChannelStripUpdate {
+  pub track_id: String,
+  #[serde(default)]
+  pub bypass: bool,
+  pub eq: Vec<EqBandUpdate>,
+}
+
+// Whole strips for the tracks whose strip changed (paramPush diff).
+#[tauri::command]
+pub fn audio_set_channel_strips_bulk(updates: Vec<ChannelStripUpdate>) -> Result<(), String> {
+  for u in updates {
+    let mut words = [0u32; STRIP_WORDS];
+    for (i, b) in u.eq.iter().take(EQ_BANDS).enumerate() {
+      let p = EqBandParams {
+        on: b.on,
+        kind: b.kind.min(5),
+        freq: b.freq,
+        gain_db: b.gain_db,
+        q: b.q,
+        slope24: b.slope24,
+      };
+      words[i * EQ_WORDS_PER_BAND..(i + 1) * EQ_WORDS_PER_BAND].copy_from_slice(&p.to_words());
+    }
+    words[STRIP_BYPASS_WORD] = u.bypass as u32;
+    get_or_create_track_params(&u.track_id).write_strip(&words);
+  }
+  Ok(())
+}
+
+// Point the strip analyser at a track's bus (the eq tab's focused track), or
+// switch it off with None.
+#[tauri::command]
+pub fn audio_set_strip_analyser(track_id: Option<String>) -> Result<(), String> {
+  let slot = match track_id {
+    Some(id) => get_or_create_track_params(&id).bus_slot as u32,
+    None => 0,
+  };
+  STRIP_AN_SLOT.store(slot, Ordering::Relaxed);
+  Ok(())
+}
+
+#[derive(serde::Deserialize)]
 pub struct TrackFilterUpdate {
   pub track_id: String,
   // Phase 6: was cutoff_hz; now normalized 0..1 so LFO modulation
@@ -11112,5 +11688,116 @@ mod inflator_tests {
       }
     }
     assert!((peak - 0.5).abs() < 0.01, "15k peak {peak}");
+  }
+}
+
+#[cfg(test)]
+mod channel_strip_eq_tests {
+  use super::*;
+
+  const SR: f32 = 48_000.0;
+
+  fn eq_with(band: usize, p: EqBandParams) -> BusEq {
+    let mut words = [0u32; STRIP_WORDS];
+    words[band * EQ_WORDS_PER_BAND..(band + 1) * EQ_WORDS_PER_BAND].copy_from_slice(&p.to_words());
+    let mut eq = BusEq::new(SR);
+    eq.set_targets(&words);
+    eq
+  }
+
+  // Steady-state gain (dB) of a sine at `hz` through the EQ.
+  fn gain_db(eq: &mut BusEq, hz: f32) -> f32 {
+    let n = 48_000;
+    let mut l: Vec<f32> =
+      (0..n).map(|i| (i as f32 * 2.0 * std::f32::consts::PI * hz / SR).sin() * 0.25).collect();
+    let mut r = l.clone();
+    for c in (0..n).step_by(512) {
+      let e = (c + 512).min(n);
+      eq.process(&mut l[c..e], &mut r[c..e]);
+    }
+    let peak = l[n / 2..].iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    20.0 * (peak / 0.25).log10()
+  }
+
+  fn band(kind: u32, freq: f32, gain_db: f32, q: f32, slope24: bool) -> EqBandParams {
+    EqBandParams { on: true, kind, freq, gain_db, q, slope24 }
+  }
+
+  #[test]
+  fn flat_strip_is_inactive() {
+    let eq = BusEq::new(SR);
+    assert!(!eq.active());
+  }
+
+  #[test]
+  fn responses_match_their_types() {
+    let cases: &[(usize, EqBandParams, f32, f32, f32)] = &[
+      // (band slot, params, test hz, expected dB, tolerance)
+      (3, band(EQ_KIND_BELL, 1000.0, 6.0, 1.0, false), 1000.0, 6.0, 0.2),
+      (3, band(EQ_KIND_BELL, 1000.0, -12.0, 4.0, false), 1000.0, -12.0, 0.3),
+      (3, band(EQ_KIND_BELL, 1000.0, 6.0, 1.0, false), 50.0, 0.0, 0.2),
+      (0, band(EQ_KIND_HP, 100.0, 0.0, 0.707, false), 100.0, -3.01, 0.2),
+      (0, band(EQ_KIND_HP, 100.0, 0.0, 0.707, false), 2000.0, 0.0, 0.1),
+      (0, band(EQ_KIND_HP, 100.0, 0.0, 0.707, true), 100.0, -3.01, 0.3),
+      (0, band(EQ_KIND_HP, 100.0, 0.0, 0.707, true), 25.0, -48.0, 2.0),
+      (1, band(EQ_KIND_LP, 2000.0, 0.0, 0.707, false), 2000.0, -3.01, 0.2),
+      (2, band(EQ_KIND_LOWSHELF, 200.0, -6.0, 0.707, false), 30.0, -6.0, 0.4),
+      (2, band(EQ_KIND_LOWSHELF, 200.0, -6.0, 0.707, false), 5000.0, 0.0, 0.2),
+      (5, band(EQ_KIND_HIGHSHELF, 1000.0, 6.0, 0.707, false), 15000.0, 6.0, 0.4),
+      (5, band(EQ_KIND_HIGHSHELF, 1000.0, 6.0, 0.707, false), 60.0, 0.0, 0.2),
+      (4, band(5, 1000.0, 0.0, 2.0, false), 1000.0, -60.0, 30.0),
+    ];
+    for &(slot, p, hz, want, tol) in cases {
+      let mut eq = eq_with(slot, p);
+      let got = gain_db(&mut eq, hz);
+      assert!((got - want).abs() <= tol, "kind {} @ {hz} Hz: got {got:.2} dB, want {want} ±{tol}", p.kind);
+    }
+  }
+
+  #[test]
+  fn extreme_settings_stay_finite() {
+    // +18 dB, Q 18 bell at 20 Hz and a resonant 24 dB HP at 20 Hz.
+    let mut words = [0u32; STRIP_WORDS];
+    let a = band(EQ_KIND_HP, 20.0, 0.0, 18.0, true);
+    let b = band(EQ_KIND_BELL, 20.0, 18.0, 18.0, false);
+    words[0..6].copy_from_slice(&a.to_words());
+    words[12..18].copy_from_slice(&b.to_words());
+    let mut eq = BusEq::new(SR);
+    eq.set_targets(&words);
+    let mut l: Vec<f32> = (0..96_000).map(|i| if i % 4800 == 0 { 1.0 } else { 0.0 }).collect();
+    let mut r = l.clone();
+    for c in (0..l.len()).step_by(256) {
+      let e = (c + 256).min(l.len());
+      eq.process(&mut l[c..e], &mut r[c..e]);
+    }
+    assert!(l.iter().all(|v| v.is_finite()));
+    // The impulse tails decay rather than run away.
+    let late = l[90_000..].iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    assert!(late < 50.0, "late peak {late}");
+  }
+
+  #[test]
+  fn analyser_reads_a_full_scale_sine_near_0db() {
+    let an = StripAnalyser::new();
+    let x: Vec<f32> =
+      (0..STRIP_AN_FFT).map(|i| (i as f32 * 2.0 * std::f32::consts::PI * 1000.0 / SR).sin()).collect();
+    let p = an.power(&x);
+    let mut out = vec![-120.0f32; STRIP_AN_BINS];
+    an.fold(&p, SR, &mut out);
+    let (best, db) = out.iter().enumerate().fold((0, -999.0f32), |m, (i, &d)| if d > m.1 { (i, d) } else { m });
+    let f_lo = 20.0 * (1000.0f32).powf(best as f32 / STRIP_AN_BINS as f32);
+    assert!((db).abs() < 1.5, "peak {db:.2} dB");
+    assert!(f_lo > 700.0 && f_lo < 1100.0, "peak band starts at {f_lo:.0} Hz");
+  }
+
+  #[test]
+  fn seqlock_round_trip() {
+    let tp = TrackParams::new(1);
+    let mut words = [0u32; STRIP_WORDS];
+    words[..6].copy_from_slice(&band(EQ_KIND_HP, 80.0, 0.0, 0.707, true).to_words());
+    tp.write_strip(&words);
+    let (ver, got) = tp.read_strip(0).expect("fresh snapshot");
+    assert_eq!(got, words);
+    assert!(tp.read_strip(ver).is_none());
   }
 }

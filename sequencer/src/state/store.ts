@@ -42,6 +42,11 @@ import type { ReverbParams } from '../audio/reverb';
 import { DEFAULT_DELAY_PARAMS, type DelayParams } from '../audio/delay';
 import type { SaturationParams } from '../audio/saturation';
 import { MASTER_PRESETS, type MasterParams } from '../audio/master';
+import {
+  defaultChannelStrip,
+  type ChannelStrip,
+  type EqBand,
+} from '../audio/channelStrip';
 import type { ChordVoicing } from '../audio/chords';
 import { resetChordContext } from '../audio/chordContext';
 
@@ -51,7 +56,7 @@ export type EditMode = 'live' | 'velocity' | 'chance' | 'ratchet' | 'timing' | '
 // persisted) — mirrors editMode. ROLL = focused-channel piano roll (default),
 // LFO/FX/MASTER = the relocated control panels, PARAMS/AUTOMATION = the
 // focused voice's instrument editor (the two halves of the old modal editor).
-export type ScreenMode = 'roll' | 'lfo' | 'fx' | 'master' | 'params' | 'automation' | 'perform' | 'loops' | 'noise';
+export type ScreenMode = 'roll' | 'lfo' | 'eq' | 'fx' | 'master' | 'params' | 'automation' | 'perform' | 'loops' | 'noise';
 
 export interface StepSelection {
   trackId: string;
@@ -924,6 +929,12 @@ export interface SequencerState {
   master: MasterParams;
   setMaster: (patch: Partial<MasterParams>) => void;
   setMasterPreset: (name: string) => void;
+  // Channel strips (per track SLOT, saved in the .seq outside Track so bank
+  // swaps never change the mix). A missing entry = flat.
+  channelStrips: Record<string, ChannelStrip>;
+  setEqBand: (trackId: string, band: number, patch: Partial<EqBand>) => void;
+  setStripBypass: (trackId: string, bypass: boolean) => void;
+  setChannelStrips: (strips: Record<string, ChannelStrip>) => void;
   setDensity: (v: number) => void;
   setChaos: (v: number) => void;
   setMotion: (v: number) => void;
@@ -1536,6 +1547,21 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       if (!preset) return {};
       return { master: { ...preset } };
     }),
+  channelStrips: {},
+  setEqBand: (trackId, band, patch) =>
+    set((state) => {
+      const cur = state.channelStrips[trackId] ?? defaultChannelStrip();
+      const bands = cur.eq.bands.map((b, i) => (i === band ? { ...b, ...patch } : b));
+      return {
+        channelStrips: { ...state.channelStrips, [trackId]: { ...cur, eq: { bands } } },
+      };
+    }),
+  setStripBypass: (trackId, bypass) =>
+    set((state) => {
+      const cur = state.channelStrips[trackId] ?? defaultChannelStrip();
+      return { channelStrips: { ...state.channelStrips, [trackId]: { ...cur, bypass } } };
+    }),
+  setChannelStrips: (channelStrips) => set({ channelStrips }),
   setDensity: (v) => {
     // Notify ghost that the user touched density so its per-frame smoother
     // backs off for ~2 bars (lets the user hold the knob at a value without
@@ -1675,6 +1701,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       docPath: null,
       docDirty: false,
       tracks: state.tracks.map(blankTrack),
+      channelStrips: {},
       lfos: defaultLFOs(),
       density: 0.5,
       chaos: 0.5,

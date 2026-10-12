@@ -178,6 +178,7 @@ function applyGlobalFx(fx: SeqGlobalFx | null | undefined): void {
   s.setTape(fx.tape);
   s.setGlitch(fx.glitch);
   s.setSaturation(fx.saturation);
+  s.setChannelStrips(fx.channelStrips);
   // NOISE unit: knobs + level restore, so a bed saved with the unit open
   // comes back sounding — the same restore a .seq open does in Sequence.
   applyNoiseSettings(fx.noise);
@@ -233,6 +234,7 @@ function recordFx(): SeqGlobalFx {
     reverb: DEFAULT_REVERB_PARAMS,
     delay: DEFAULT_DELAY_PARAMS,
     saturation: DEFAULT_SATURATION_PARAMS,
+    channelStrips: {},
     noise: {},
   };
 }

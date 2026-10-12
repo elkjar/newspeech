@@ -403,6 +403,8 @@ pub fn shared_builder() -> tauri::Builder<tauri::Wry> {
       audio::audio_set_master_dist,
       audio::audio_set_master_gate,
       audio::audio_set_master_inflator,
+      audio::audio_set_channel_strips_bulk,
+      audio::audio_set_strip_analyser,
       audio::audio_set_master_bypass,
       audio::audio_set_safety_limiter,
       audio::audio_safety_limiter_gr,
@@ -493,8 +495,15 @@ pub fn lock_content_aspect(window: &tauri::WebviewWindow, w: f64, h: f64) {
 // Daemon thread (no shutdown plumbing) — OS reaps on app exit.
 pub fn spawn_level_emitter(app_handle: tauri::AppHandle) {
   use tauri::Emitter;
+  let mut strip_analyser = audio::StripAnalyser::new();
   std::thread::spawn(move || loop {
     std::thread::sleep(std::time::Duration::from_millis(33));
+    // Channel-strip spectrum — only while the eq tab has the analyser on.
+    if audio::strip_analyser_on() {
+      if let Err(e) = app_handle.emit("audio:strip-spectrum", strip_analyser.frame()) {
+        log::warn!("[audio:strip-spectrum emit] {}", e);
+      }
+    }
     let level = audio::audio_output_level();
     if let Err(e) = app_handle.emit("audio:level", level) {
       log::warn!("[audio:level emit] {}", e);

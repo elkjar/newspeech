@@ -35,6 +35,7 @@ import { DEFAULT_REVERB_PARAMS, type ReverbParams } from '../audio/reverb';
 import { DEFAULT_DELAY_PARAMS, DELAY_DIVISIONS, type DelayParams } from '../audio/delay';
 import { DEFAULT_SATURATION_PARAMS, type SaturationParams } from '../audio/saturation';
 import { DEFAULT_MASTER_PARAMS, type MasterParams } from '../audio/master';
+import { hydrateChannelStrips, type ChannelStrip } from '../audio/channelStrip';
 import {
   applyLoopSettings,
   loopParamValues,
@@ -78,6 +79,9 @@ interface PersistedState {
   delay?: DelayParams;
   saturation?: SaturationParams;
   master?: MasterParams;
+  // Per-track channel strips (2026-10-12), keyed by track id. Optional —
+  // missing = every track flat, so older files sound identical.
+  channelStrips?: Record<string, ChannelStrip>;
   // Loop + NOISE unit knob settings (2026-08-29) — the mangle/patch only,
   // never the captured audio (the units always load empty). Optional so
   // older `.seq` files load with the units at defaults. Global like the
@@ -146,6 +150,7 @@ export function exportProject(): string {
     delay: s.delay,
     saturation: s.saturation,
     master: s.master,
+    channelStrips: s.channelStrips,
     loop: loopParamValues(),
     noise: noiseSettingsValues(),
     banks: topBanks,
@@ -547,6 +552,7 @@ export interface SeqGlobalFx {
   delay: DelayParams;
   saturation: SaturationParams;
   master: MasterParams;
+  channelStrips: Record<string, ChannelStrip>;
   // NOISE unit knobs, raw — applyNoiseSettings hydrates + applies in one go
   // (same call importProject makes). The loop unit is deliberately left out:
   // its settings without its capture mean nothing (Chris 2026-09-08).
@@ -568,6 +574,7 @@ export function parseGlobalFxFromSeq(json: string): SeqGlobalFx | null {
     delay: hydrateDelay(data.delay),
     saturation: hydrateSaturation(data.saturation),
     master: hydrateMaster(data.master),
+    channelStrips: hydrateChannelStrips(data.channelStrips),
     noise: data.noise,
   };
 }
@@ -1035,6 +1042,7 @@ export function importProject(json: string): boolean {
     delay: hydrateDelay(data.delay),
     saturation: hydrateSaturation(data.saturation),
     master: hydrateMaster(data.master),
+    channelStrips: hydrateChannelStrips(data.channelStrips),
     banks,
     activeBank,
     pendingBank: null,

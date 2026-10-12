@@ -1,6 +1,6 @@
 # Channel strip: track bus + EQ + FAT saturator
 
-Status: P0 (null bus) SHIPPED 2026-10-12 — null check max |diff| 7e-7 over ~100 s of a dense song, shadow path removed. Design 2026-10-04. Chosen over a Wavestation-style wave-sequencing
+Status: P1 (EQ) + P2 (spectrum) + strip bypass SHIPPED 2026-10-12. Next: P3 FAT (pre-EQ default, pre/post toggle). P0 (null bus) SHIPPED 2026-10-12 — null check max |diff| 7e-7 over ~100 s of a dense song, shadow path removed. Design 2026-10-04. Chosen over a Wavestation-style wave-sequencing
 voice. Wave sequencing is parked: hardware route = a Wavestation SR via
 `tools/rack`; software route = a "stepped" scan mode on the existing wavetable
 voice.
@@ -21,8 +21,14 @@ doesn't apply). Per-track BOUM compression comes after; see Later.
   bank swap never changes the mix.
 - **Sends post-strip.** Reverb/delay/mangler hear the EQ'd, saturated track.
 - **Stems post-strip.** Per-track stems record what you hear.
-- **Fixed order, no reorder UI:** voice → (per-voice filter, unchanged) →
-  track bus → EQ → FAT → sends / stems / output.
+- **Order:** voice → (per-voice filter, unchanged) → track bus → FAT ⇄ EQ →
+  sends / stems / output. **FAT defaults BEFORE the EQ, with a pre/post
+  toggle** (Chris, 2026-10-12: "it would make sense to have the saturation
+  sit before this as well — or have an option for pre-post"; the EQ then
+  shapes the saturated sound, like the instrument drive he already sees in
+  the spectrum).
+- **Whole-strip bypass** (2026-10-12): `ChannelStrip.bypass`, one button in
+  the eq tab; fades the strip out with all settings kept.
 
 ## Engine today (what changes)
 
@@ -98,6 +104,34 @@ The risky refactor. It ships alone, with no processing.
   - **Monochrome**, per the sequencer UI rule: bright-white curve,
     outlined-circle nodes, filled when selected, no per-band colours. Text
     labels on every control while building.
+
+### P1 as built (2026-10-12)
+
+- Rust: `BusEq` per bus slot (6 × `EqBandRt`, Cytomic SVF), params smoothed
+  and coefficients recomputed every 16 frames, 10 ms band on/off crossfade.
+  Strip settings live on `TrackParams` as a seqlock (`strip_ver` +
+  `strip_words`), read at a bus's first touch each block. IPC
+  `audio_set_channel_strips_bulk` (whole strip per changed track; paramPush
+  diffs by object identity).
+- Tails: a bus whose strip is on keeps running for 1 s after its last voice
+  (`STRIP_TAIL_SECS`) so resonant bands / steep low HPs ring out.
+- Band layout: [0] HP, [1] LP (12/24 dB; Q = resonance, 24 dB = Butterworth
+  pair with Q scaling the resonant stage), [2..5] bell/low-shelf/high-shelf/
+  notch. Ranges: 20 Hz–20 kHz, ±18 dB, Q 0.1–18.
+- UI: `eq` tab (`EqPanel.tsx`), focused track. Strips are global per .seq
+  like the master (BROADCAST applies them at song swap); init clears them.
+
+### P2 as built (2026-10-12, alongside P1 — Chris asked to see the audio)
+
+- Rust: `STRIP_AN_SLOT` picks one bus; the bus pass writes its mono pre- and
+  post-strip signal into two atomic rings (`strip_an_push`), silence when the
+  track is idle. lib.rs level emitter runs `StripAnalyser::frame()` (2048-pt
+  radix-2 FFT, Hann, 96 log bins 20 Hz–20 kHz, peak-per-band, fast attack /
+  ~300 ms release) → `audio:strip-spectrum` at ~30 Hz, only while on.
+- IPC `audio_set_strip_analyser(trackId | null)`, driven by EqPanel's
+  mount + focused track.
+- UI: canvas under the curve — post-strip soft fill + line, pre-strip dashed
+  line; own scale −84..0 dBFS with a +4.5 dB/oct tilt around 1 kHz.
 
 ## P2: spectrum behind the curve
 

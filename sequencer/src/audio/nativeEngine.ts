@@ -3,6 +3,7 @@
 // master chain, recording. This is the app's ONLY audio path (the Web Audio
 // engine was removed 2026-07-05); it grows alongside src-tauri/src/audio.rs.
 
+import type { ChannelStrip, EqType } from './channelStrip';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
 export interface NativeDeviceInfo {
@@ -723,6 +724,44 @@ export interface TrackFilterUpdate {
   // center for the trackTune / trackFineTune destinations.
   tuneNorm: number;
   finetuneNorm: number;
+}
+
+// Channel strips (P1: EQ) for the tracks whose strip changed. Each update
+// carries the whole strip; Rust swaps it in atomically per track. Band
+// `kind`: 0 hp, 1 lp, 2 bell, 3 lowshelf, 4 highshelf, 5 notch.
+const EQ_KIND: Record<EqType, number> = {
+  hp: 0,
+  lp: 1,
+  bell: 2,
+  lowshelf: 3,
+  highshelf: 4,
+  notch: 5,
+};
+export async function setChannelStripsBulk(
+  updates: { trackId: string; strip: ChannelStrip }[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  await invoke<void>('audio_set_channel_strips_bulk', {
+    updates: updates.map((u) => ({
+      track_id: u.trackId,
+      bypass: u.strip.bypass,
+      eq: u.strip.eq.bands.map((b) => ({
+        on: b.on,
+        kind: EQ_KIND[b.type],
+        freq: b.freq,
+        gain_db: b.gainDb,
+        q: b.q,
+        slope24: b.slope === 24,
+      })),
+    })),
+  });
+}
+
+// Point the channel-strip analyser at one track's bus (the eq tab's focused
+// track) or switch it off. While on, Rust emits `audio:strip-spectrum`
+// ({ pre, post }: STRIP_AN_BINS dBFS values, log 20 Hz → 20 kHz) at ~30 Hz.
+export async function setStripAnalyser(trackId: string | null): Promise<void> {
+  await invoke<void>('audio_set_strip_analyser', { trackId });
 }
 
 export async function setTrackFiltersBulk(

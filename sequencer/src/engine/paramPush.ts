@@ -1,6 +1,7 @@
 // Extracted verbatim from App.tsx (Phase 0 of the broadcast runner,
 // docs/broadcast-set.md). No behavior change: each install* function is the
 // body of the former useEffect and returns the same cleanup.
+import { defaultChannelStrip, type ChannelStrip } from '../audio/channelStrip';
 import { useSequencerStore } from '../state/store';
 import {
   performDelaySend,
@@ -26,6 +27,7 @@ import {
   setMasterDist,
   setMasterGate,
   setMasterInflator,
+  setChannelStripsBulk,
   setMasterBypass,
   type TrackFilterUpdate,
 } from '../audio/nativeEngine';
@@ -123,6 +125,10 @@ export function installParamPush(): () => void {
     threshold: number;
   } | null = null;
   let lastMasterInflator: string | null = null;
+  // Store setters replace a strip object on any change, so identity is the
+  // change test. Seeded empty: the first tick pushes every saved strip.
+  let lastStrips: Record<string, ChannelStrip> = {};
+  const FLAT_STRIP = defaultChannelStrip();
   let lastMasterBypass: boolean | null = null;
   const tick = () => {
     const state = useSequencerStore.getState();
@@ -392,6 +398,20 @@ export function installParamPush(): () => void {
     if (lastMasterInflator !== masterInflatorKey) {
       lastMasterInflator = masterInflatorKey;
       void setMasterInflator(masterInflator);
+    }
+
+    // Channel strips — push the tracks whose strip object changed. A strip
+    // removed from the map (init / load) is pushed back to flat.
+    if (state.channelStrips !== lastStrips) {
+      const changed: { trackId: string; strip: ChannelStrip }[] = [];
+      for (const [trackId, strip] of Object.entries(state.channelStrips)) {
+        if (lastStrips[trackId] !== strip) changed.push({ trackId, strip });
+      }
+      for (const trackId of Object.keys(lastStrips)) {
+        if (!(trackId in state.channelStrips)) changed.push({ trackId, strip: FLAT_STRIP });
+      }
+      lastStrips = state.channelStrips;
+      void setChannelStripsBulk(changed);
     }
 
     // Master full-unit bypass (phase 7e-5). Discrete toggle, no

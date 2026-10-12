@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useSequencerStore, type ScreenMode } from '../state/store';
 import { LFOPanel } from './LFOPanel';
 import { FXPanel } from './FXPanel';
+import { EqPanel } from './EqPanel';
 import { StepInspector } from './StepInspector';
 import { PianoRoll } from './PianoRoll';
 import { InstrumentEditor } from './InstrumentEditor';
@@ -9,7 +10,7 @@ import { PerformPanel } from './PerformPanel';
 import { LoopsPanel } from './LoopsPanel';
 import { NoisePanel } from './NoisePanel';
 
-// The top multi-mode "screen" — ROLL / LFO / FX / MASTER / PARAMS /
+// The top multi-mode "screen" — ROLL / LFO / EQ / FX / MASTER / PARAMS /
 // AUTOMATION / PERFORM.
 // The mode tabs (`ScreenModeTabs`) live in the app title row beside the logo;
 // `ChannelScreen` is just the body. PARAMS + AUTOMATION are the focused voice's
@@ -21,6 +22,7 @@ const MODES: { id: ScreenMode; label: string }[] = [
   { id: 'automation', label: 'automation' },
   { id: 'roll', label: 'roll' },
   { id: 'lfo', label: 'lfo' },
+  { id: 'eq', label: 'eq' },
   { id: 'fx', label: 'fx' },
   { id: 'master', label: 'master' },
   { id: 'perform', label: 'perform' },
@@ -91,6 +93,7 @@ export function ChannelScreen() {
             <LFOPanel />
           </div>
         )}
+        {screenMode === 'eq' && <EqPanel />}
         {screenMode === 'fx' && (
           <div className="h-full flex items-center justify-center">
             <FXPanel section="fx" />
