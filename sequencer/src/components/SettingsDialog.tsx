@@ -16,6 +16,7 @@ import { InstrumentLibraryPane } from './InstrumentLibraryPane';
 import { SampleLibraryPane } from './SampleLibraryPane';
 import { NativeAudioPanel } from './NativeAudioPanel';
 import { runUpdateCheck } from '../updater';
+import { useSequencerStore } from '../state/store';
 import pkg from '../../package.json';
 
 const NATIVE = isTauri();
@@ -42,6 +43,8 @@ export function SettingsDialog({
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [view, setView] = useState<'main' | 'instruments' | 'samples'>('main');
+  const liveMasterOff = useSequencerStore((s) => s.liveMasterOff);
+  const setLiveMasterOff = useSequencerStore((s) => s.setLiveMasterOff);
 
   // Reset to main view whenever the dialog closes so reopening always
   // lands on the top-level sections.
@@ -256,6 +259,25 @@ export function SettingsDialog({
                 )}
               </Section>
             )}
+
+            <Section label="live">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-[10px] uppercase tracking-widest text-white/55">master processing disable</span>
+                  <button
+                    type="button"
+                    aria-pressed={liveMasterOff}
+                    onClick={() => setLiveMasterOff(!liveMasterOff)}
+                    className="px-2 py-0.5 text-[10px] uppercase tracking-widest text-white/60 hover:text-white transition-colors"
+                  >
+                    {liveMasterOff ? '● on' : '○ off'}
+                  </button>
+                </div>
+                <div className="text-white/40 text-[11px]">
+                  bypass the master section for every song — bus processing runs outboard after the rack. songs keep their own master settings.
+                </div>
+              </div>
+            </Section>
 
             <Section label="midi">
               <MidiBar />

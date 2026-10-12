@@ -338,6 +338,31 @@ const LS_EXTERNAL_MIXER_PROFILE = 'newspeech.sequencer.externalMixerProfile';
 // the user disabled.
 const EXTERNAL_MIXER_PROFILE_OFF = 'off';
 
+// Live mode: master section off for every song (bus processing runs on
+// outboard gear after the rack's sum). Rig setting like the mixer port —
+// persisted across launches, never in .seq, so it overrides whatever a
+// loaded song's own master bypass says.
+const LS_LIVE_MASTER_OFF = 'newspeech.sequencer.liveMasterOff';
+
+function readPersistedLiveMasterOff(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    return localStorage.getItem(LS_LIVE_MASTER_OFF) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writePersistedLiveMasterOff(v: boolean): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (v) localStorage.setItem(LS_LIVE_MASTER_OFF, '1');
+    else localStorage.removeItem(LS_LIVE_MASTER_OFF);
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
 function readPersistedExternalMixerPort(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
@@ -844,6 +869,9 @@ export interface SequencerState {
   setExternalMixerProfileId: (id: string | null) => void;
   externalMixerPort: string | null;
   setExternalMixerPort: (port: string | null) => void;
+  // Global live-mode master off (see LS_LIVE_MASTER_OFF).
+  liveMasterOff: boolean;
+  setLiveMasterOff: (off: boolean) => void;
   viewSection: TrackSection;
   density: number;
   chaos: number;
@@ -1417,6 +1445,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   clockFollowLocked: false,
   externalMixerProfileId: readPersistedExternalMixerProfile(),
   externalMixerPort: readPersistedExternalMixerPort(),
+  liveMasterOff: readPersistedLiveMasterOff(),
   midiRecInputPort: null,
   songTitle: null,
   docPath: null,
@@ -1565,6 +1594,10 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setExternalMixerProfileId: (externalMixerProfileId) => {
     writePersistedExternalMixerProfile(externalMixerProfileId);
     set({ externalMixerProfileId });
+  },
+  setLiveMasterOff: (liveMasterOff) => {
+    writePersistedLiveMasterOff(liveMasterOff);
+    set({ liveMasterOff });
   },
   setExternalMixerPort: (externalMixerPort) => {
     writePersistedExternalMixerPort(externalMixerPort);

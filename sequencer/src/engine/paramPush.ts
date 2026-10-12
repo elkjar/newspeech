@@ -396,7 +396,8 @@ export function installParamPush(): () => void {
 
     // Master full-unit bypass (phase 7e-5). Discrete toggle, no
     // modulation — Rust handles the smooth crossfade internally.
-    const masterBypass = state.master.bypass;
+    // Live mode (settings) forces it off for every song.
+    const masterBypass = state.master.bypass || state.liveMasterOff;
     if (lastMasterBypass !== masterBypass) {
       lastMasterBypass = masterBypass;
       void setMasterBypass(masterBypass);

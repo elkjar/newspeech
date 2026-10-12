@@ -529,6 +529,17 @@ function MasterToggle<F extends BooleanKeys<MasterParams>>({
   );
 }
 
+// The song's bypass toggle, relabelled while live mode (settings) holds the
+// whole master off regardless of it.
+function MasterBypassGroup() {
+  const liveOff = useSequencerStore((s) => s.liveMasterOff);
+  return (
+    <FXGroup label={liveOff ? 'master disabled' : 'master'}>
+      <MasterToggle field="bypass" label="bypass" midiTarget="fx:master.bypass" />
+    </FXGroup>
+  );
+}
+
 function MasterPresetSelect() {
   // Selector returns the matched preset name (or null) — a primitive, so
   // it only re-renders when active preset identity changes, not on every
@@ -702,9 +713,7 @@ export function FXPanel({ section = 'all' }: { section?: 'fx' | 'master' | 'all'
           <MasterKnob field="inflOutput" label="output" midiTarget="fx:master.inflOutput" />
         </FXGroup>
         <Divider />
-        <FXGroup label="master">
-          <MasterToggle field="bypass" label="bypass" midiTarget="fx:master.bypass" />
-        </FXGroup>
+        <MasterBypassGroup />
       </div>
       )}
     </div>
