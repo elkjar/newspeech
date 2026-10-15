@@ -333,7 +333,8 @@ function flash(el) { el.classList.remove("rx"); void el.offsetWidth; el.classLis
 async function getFromSynth() {
   try {
     status("asking the synth for its edit buffer…");
-    const { values: v } = await driver.requestPatch();
+    const { values: v, at } = await driver.requestPatch();
+    if (at) setCurrent(at.bank, at.prog); // units that report which slot is playing (PRO-800)
     const before = snapshot();
     saved = { ...v };
     applyAll(v, { send: false });
@@ -440,7 +441,7 @@ async function boot() {
   $("#store").onclick = openStore;
   $("#st-cancel").onclick = () => $("#storedlg").close();
   $("#st-go").onclick = doStore;
-  $("#st-prog").onchange = () => { stTarget.prog = Math.max(0, Math.min(banks()[stTarget.bank].count - 1, Number($("#st-prog").value) - 1)); readTarget(); };
+  $("#st-prog").onchange = () => { stTarget.prog = Math.max(0, Math.min(banks()[stTarget.bank].count - 1, Number($("#st-prog").value) - progBase())); readTarget(); };
   $("#libtoggle").onclick = openSetup;
   $("#pname").oninput = (e) => setName(e.target.value);
 
@@ -452,7 +453,9 @@ async function boot() {
 // ---------- programs on the synth ----------
 // schema.programs.banks: [{ label, msb?, lsb?, count, dump?, write? }] — dump =
 // readable over sysex (backups, names, store's read-first), write = storable
-const pad3 = (n) => String(n + 1).padStart(3, "0");
+// slot numbers as the unit shows them: 001-128 by default, 00-99 where it counts from zero (PRO-800)
+const progBase = () => (schema?.programs?.zeroBased ? 0 : 1);
+const pad3 = (n) => (schema?.programs?.zeroBased ? String(n).padStart(2, "0") : String(n + 1).padStart(3, "0"));
 const slotKey = (b, p) => `${b}-${p}`;
 const banks = () => schema.programs?.banks || [];
 // banks you can play/step through (patch/timbre memories on the D-110 are backup-only)
@@ -732,7 +735,8 @@ async function runConnect() {
     // 1 — is it there?
     const s1 = step(`talking to the ${schema.name}…`);
     try {
-      const { values: v } = await driver.requestPatch();
+      const { values: v, at } = await driver.requestPatch();
+      if (at) setCurrent(at.bank, at.prog);
       saved = { ...v }; applyAll(v, { send: false });
       rememberProbe(schema.id, true);
       s1.ok(`${schema.name} is answering${nameParams().length ? ` — “${nameString()}” in the edit buffer` : ""}`);
@@ -823,7 +827,8 @@ function stepProgram(dir) {
 // the synth announced a bank/program change from its own panel: CC0/CC32 latch, PC lands
 let latched = {};
 function followProgram(ev) {
-  if (ev.type === "cc" && (ev.num === 0 || ev.num === 32)) { latched[ev.num] = ev.val; return true; }
+  // bankCCs: units that use CC32 for a sound parameter (PRO-800 VCF velocity) select banks with CC0 alone
+  if (ev.type === "cc" && (schema.programs.bankCCs ?? [0, 32]).includes(ev.num)) { latched[ev.num] = ev.val; return true; }
   if (ev.type !== "program") return false;
   const bs = banks();
   let bi = bs.findIndex((b) => !b.backupOnly && (b.msb == null || b.msb === (latched[0] ?? b.msb)) && (b.lsb == null || b.lsb === (latched[32] ?? b.lsb)));
@@ -1000,9 +1005,9 @@ function openStore() {
 async function readTarget() {
   const my = ++stSeq;
   document.querySelectorAll("#st-banks button").forEach((b) => b.classList.toggle("on", Number(b.dataset.b) === stTarget.bank));
-  $("#st-prog").value = stTarget.prog + 1;
+  $("#st-prog").value = stTarget.prog + progBase();
   $("#st-go").disabled = true; stOld = null;
-  $("#st-prog").max = banks()[stTarget.bank].count;
+  $("#st-prog").min = progBase(); $("#st-prog").max = banks()[stTarget.bank].count - 1 + progBase();
   const where = slotName(stTarget.bank, stTarget.prog);
   $("#st-msg").textContent = `reading what's in ${where}…`;
   try {

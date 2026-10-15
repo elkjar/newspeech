@@ -37,7 +37,7 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite", "pro800"];
 
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
@@ -49,6 +49,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "yamaha4op") return yamaha4opDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "oberheim") return oberheimDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "tclite") return tcLiteDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "pro800") return pro800Driver(schema, midi, getChannel);
   if (schema.transport === "korg") return schema.korg.modelId === 0x28 ? wavestationDriver(schema, midi, getChannel, prefs) : korgDwDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
@@ -1337,6 +1338,131 @@ function wavestationDriver(schema, midi, getChannel, prefs) {
       if (Number.isNaN(v)) return [];
       write(p, v, mirror);
       return [{ param: p, value: v }];
+    },
+  };
+}
+
+// Behringer PRO-800 — community-mapped SysEx (no official spec): F0 00 20 32 00
+// 01 24 00 <cmd> … F7. 77 lo hi asks for slot n = bank*100 + prog (7-bit halves),
+// 78 lo hi <packed> answers — and, sent back, writes the slot. Same MS-bit packing
+// as DSI. There is no edit-buffer request: "what's playing" = the system dump's
+// current-patch number (77 7E 03 → 78 7E 03, decoded bytes 5-6, LSB first), then
+// that slot. Live edits are CCs: continuous params as 14-bit MSB/LSB pairs, the
+// panel's 0-999; patch bytes hold them as 16-bit LE. Switches send fixed CC values
+// (p.ccValues, one per option). Patch format 0x6F (fw 1.3.6+) has a fixed 16-byte
+// name at 150 and more params after it; 0x6D/0x6E end in a 0-terminated name.
+function pro800Driver(schema, midi, getChannel) {
+  const HDR = [0xf0, 0x00, 0x20, 0x32, 0x00, 0x01, 0x24, 0x00];
+  const ch = () => getChannel() & 15;
+  const isMsg = (...cmd) => (d) => HDR.every((b, i) => d[i] === b) && cmd.every((b, i) => d[8 + i] === b);
+  const NAME = 150, FIXED = 0x6f;
+  const ccParams = schema.params.filter((p) => p.cc != null);
+  const byCc = new Map(ccParams.map((p) => [p.cc, p]));
+  const byLsb = new Map(ccParams.filter((p) => p.ccLsb != null).map((p) => [p.ccLsb, p]));
+  const lastMsb = new Map();
+
+  const to999 = (u16) => Math.round((u16 * 999) / 65535);
+  const from999 = (v) => Math.round((v * 65535) / 999);
+  const inData = (p, data) => p.off + (p.bytes || 1) <= data.length && (data[4] >= FIXED || p.off < NAME);
+  const nameEnd = (data) => { const z = data.indexOf(0, NAME); return z < 0 ? data.length : z; };
+
+  function read(p, data) {
+    if (p.display === "char") {
+      const i = p.off - NAME, end = data[4] >= FIXED ? NAME + 16 : nameEnd(data), c = NAME + i < end ? data[NAME + i] : 32;
+      return c >= 32 && c < 127 ? c : 32;
+    }
+    if (!inData(p, data)) return undefined;
+    const b = data[p.off];
+    if (p.bytes === 2) return to999(b | (data[p.off + 1] << 8));
+    if (p.bit != null) return (b >> p.bit) & 1;
+    if (p.maskValues) { const i = p.maskValues.indexOf(b & p.mask); return i < 0 ? 0 : i; }
+    return Math.min(b, p.max);
+  }
+  const toValues = (data) => Object.fromEntries(schema.params.map((p) => [p.key, read(p, data)]).filter(([, v]) => v != null));
+
+  // edits land on the last dump read, so unmodelled bytes (unison chord, per-note
+  // tuning, sequencer data) and the exact 16-bit values of untouched knobs survive
+  let lastData = null;
+  function toData(values) {
+    if (!lastData) throw new Error("read a program from the PRO-800 first — there's nothing to write onto");
+    let data = [...lastData];
+    for (const p of schema.params) {
+      const v = values[p.key];
+      if (v == null || p.display === "char" || !inData(p, data)) continue;
+      if (p.bytes === 2) { if (read(p, data) !== v) { const u = from999(v); data[p.off] = u & 255; data[p.off + 1] = u >> 8; } }
+      else if (p.bit != null) data[p.off] = (data[p.off] & ~(1 << p.bit)) | ((v & 1) << p.bit);
+      else if (p.maskValues) data[p.off] = (data[p.off] & ~p.mask) | p.maskValues[v];
+      else data[p.off] = v;
+    }
+    const name = schema.params.filter((p) => p.display === "char").map((p) => values[p.key] ?? 32);
+    const chars = String.fromCharCode(...name).trimEnd().split("").map((c) => c.charCodeAt(0));
+    if (data[4] >= FIXED) chars.concat(new Array(16).fill(0)).slice(0, 16).forEach((c, i) => { data[NAME + i] = c; });
+    else data = [...data.slice(0, NAME), ...chars, ...data.slice(nameEnd(data))]; // keeps the 0 terminator + what follows
+    return data;
+  }
+
+  async function request(n) {
+    const lo = n & 127, hi = n >> 7;
+    const reply = midi.waitSysex(isMsg(0x78, lo, hi));
+    midi.send([...HDR, 0x77, lo, hi, 0xf7]);
+    const d = await reply;
+    const data = dsiUnpack([...d.slice(11, d.length - 1)]);
+    if (data[0] !== 0xa5) throw new Error("the PRO-800 sent a program in an unknown format");
+    return { data, syx: [...d] };
+  }
+  const slot = (bi, prog) => bi * 100 + prog;
+  const named = ({ data, syx }) => {
+    const values = toValues(data);
+    const name = schema.params.filter((p) => p.display === "char").map((p) => String.fromCharCode(values[p.key])).join("").trim();
+    return { values, data, syx, name };
+  };
+
+  return {
+    sendParam(p, v) {
+      if (p.cc == null) return; // name, and params with no CC: they go out with store
+      if (p.ccLsb != null) { const c = Math.round((v * 16383) / 999); midi.cc(ch(), p.cc, c >> 7); midi.cc(ch(), p.ccLsb, c & 127); }
+      else midi.cc(ch(), p.cc, p.ccValues[v] ?? 0);
+    },
+    // no edit-buffer dump: the whole sound goes out as CCs (name + no-CC params wait for store)
+    sendPatch(values) { for (const p of ccParams) if (values[p.key] != null) this.sendParam(p, values[p.key]); },
+
+    async probe() {
+      const reply = midi.waitSysex(isMsg(0x09), 900);
+      midi.send([...HDR, 0x08, 0x00, 0xf7]);
+      await reply; return true;
+    },
+
+    async requestPatch() {
+      const reply = midi.waitSysex(isMsg(0x78, 0x7e, 0x03));
+      midi.send([...HDR, 0x77, 0x7e, 0x03, 0xf7]);
+      const sys = dsiUnpack([...(await reply).slice(11, -1)]);
+      const n = sys[5] | (sys[6] << 8);
+      if (!(n >= 0 && n < 400)) throw new Error(`the PRO-800 reported program ${n}`);
+      const got = await request(n);
+      lastData = got.data;
+      return { values: toValues(got.data), syx: got.syx, at: { bank: Math.floor(n / 100), prog: n % 100 } };
+    },
+
+    programChange(bi, prog) { selectProgram(midi, ch(), schema.programs.banks[bi], prog); },
+    // its edit buffer is the stored slot until you turn something: read the slot itself
+    async adoptSlot(bi, prog) { const got = await request(slot(bi, prog)); lastData = got.data; return named(got); },
+    async requestProgram(bi, prog) { return named(await request(slot(bi, prog))); },
+
+    writeProgram(bi, prog, values) {
+      const n = slot(bi, prog), data = toData(values);
+      midi.send([...HDR, 0x78, n & 127, n >> 7, ...dsiPack(data), 0xf7]);
+      return data;
+    },
+    sameProgram(a, b) { const va = toValues(a), vb = toValues(b); return schema.params.every((p) => va[p.key] === vb[p.key]); },
+
+    decode(ev) {
+      if (ev.type !== "cc" || ev.ch !== ch()) return [];
+      let p = byCc.get(ev.num);
+      if (p?.ccLsb != null) { lastMsb.set(p.key, ev.val); return [{ param: p, value: Math.round(((ev.val << 7) * 999) / 16383) }]; }
+      if (p) { let i = 0; p.ccValues.forEach((x, j) => { if (ev.val >= x) i = j; }); return [{ param: p, value: i }]; }
+      p = byLsb.get(ev.num);
+      if (p && lastMsb.has(p.key)) return [{ param: p, value: Math.round((((lastMsb.get(p.key) << 7) | ev.val) * 999) / 16383) }];
+      return [];
     },
   };
 }
