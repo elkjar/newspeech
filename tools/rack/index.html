@@ -36,8 +36,9 @@
   body.state-edit #rackview, body.state-edit #connectview,
   body.state-connect #rackview, body.state-rack #connectview { display: none !important; }
   #synthname { color: #fff; letter-spacing: .22em; }
-  #rackcards { display: grid; grid-template-columns: repeat(auto-fill, 340px); gap: 18px 22px; }
-  .rackcard { width: 340px; min-height: 250px; display: flex; flex-direction: column; cursor: grab; }
+  /* fluid cards: 4 across on a 13" laptop (1280–1440px), more on wider screens */
+  #rackcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px 22px; }
+  .rackcard { min-height: 250px; display: flex; flex-direction: column; cursor: grab; }
   .rackcard.dragging { opacity: .35; }
   .rackcard .art { height: 110px; display: flex; align-items: center; justify-content: center; margin: 4px 0 12px; }
   .rackcard .art svg { max-height: 100%; width: 100%; }
