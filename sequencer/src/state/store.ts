@@ -46,6 +46,8 @@ import {
   defaultChannelStrip,
   type ChannelStrip,
   type EqBand,
+  type FatSettings,
+  type CompSettings,
 } from '../audio/channelStrip';
 import type { ChordVoicing } from '../audio/chords';
 import { resetChordContext } from '../audio/chordContext';
@@ -56,7 +58,7 @@ export type EditMode = 'live' | 'velocity' | 'chance' | 'ratchet' | 'timing' | '
 // persisted) — mirrors editMode. ROLL = focused-channel piano roll (default),
 // LFO/FX/MASTER = the relocated control panels, PARAMS/AUTOMATION = the
 // focused voice's instrument editor (the two halves of the old modal editor).
-export type ScreenMode = 'roll' | 'lfo' | 'eq' | 'fx' | 'master' | 'params' | 'automation' | 'perform' | 'loops' | 'noise';
+export type ScreenMode = 'roll' | 'lfo' | 'channel' | 'fx' | 'master' | 'params' | 'automation' | 'perform' | 'loops' | 'noise';
 
 export interface StepSelection {
   trackId: string;
@@ -934,6 +936,8 @@ export interface SequencerState {
   channelStrips: Record<string, ChannelStrip>;
   setEqBand: (trackId: string, band: number, patch: Partial<EqBand>) => void;
   setStripBypass: (trackId: string, bypass: boolean) => void;
+  setFat: (trackId: string, patch: Partial<FatSettings>) => void;
+  setComp: (trackId: string, patch: Partial<CompSettings>) => void;
   setChannelStrips: (strips: Record<string, ChannelStrip>) => void;
   setDensity: (v: number) => void;
   setChaos: (v: number) => void;
@@ -1560,6 +1564,20 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set((state) => {
       const cur = state.channelStrips[trackId] ?? defaultChannelStrip();
       return { channelStrips: { ...state.channelStrips, [trackId]: { ...cur, bypass } } };
+    }),
+  setFat: (trackId, patch) =>
+    set((state) => {
+      const cur = state.channelStrips[trackId] ?? defaultChannelStrip();
+      return {
+        channelStrips: { ...state.channelStrips, [trackId]: { ...cur, fat: { ...cur.fat, ...patch } } },
+      };
+    }),
+  setComp: (trackId, patch) =>
+    set((state) => {
+      const cur = state.channelStrips[trackId] ?? defaultChannelStrip();
+      return {
+        channelStrips: { ...state.channelStrips, [trackId]: { ...cur, comp: { ...cur.comp, ...patch } } },
+      };
     }),
   setChannelStrips: (channelStrips) => set({ channelStrips }),
   setDensity: (v) => {

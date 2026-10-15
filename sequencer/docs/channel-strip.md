@@ -1,6 +1,6 @@
 # Channel strip: track bus + EQ + FAT saturator
 
-Status: P1 (EQ) + P2 (spectrum) + strip bypass SHIPPED 2026-10-12. Next: P3 FAT (pre-EQ default, pre/post toggle). P0 (null bus) SHIPPED 2026-10-12 — null check max |diff| 7e-7 over ~100 s of a dense song, shadow path removed. Design 2026-10-04. Chosen over a Wavestation-style wave-sequencing
+Status: P3 (FAT) + per-track COMP built 2026-10-12, released in 0.20.0 (2026-10-15). P1 (EQ) + P2 (spectrum) + strip bypass SHIPPED 2026-10-12. P0 (null bus) SHIPPED 2026-10-12 — null check max |diff| 7e-7 over ~100 s of a dense song, shadow path removed. Design 2026-10-04. Chosen over a Wavestation-style wave-sequencing
 voice. Wave sequencing is parked: hardware route = a Wavestation SR via
 `tools/rack`; software route = a "stepped" scan mode on the existing wavetable
 voice.
@@ -21,8 +21,10 @@ doesn't apply). Per-track BOUM compression comes after; see Later.
   bank swap never changes the mix.
 - **Sends post-strip.** Reverb/delay/mangler hear the EQ'd, saturated track.
 - **Stems post-strip.** Per-track stems record what you hear.
-- **Order:** voice → (per-voice filter, unchanged) → track bus → FAT ⇄ EQ →
-  sends / stems / output. **FAT defaults BEFORE the EQ, with a pre/post
+- **Order:** voice → (per-voice filter, unchanged) → track bus → COMP →
+  FAT ⇄ EQ → sends / stems / output. (COMP added 2026-10-12, Chris: "should
+  we also add a compressor at the start of this?" — so each note hits FAT at
+  a more even level.) **FAT defaults BEFORE the EQ, with a pre/post
   toggle** (Chris, 2026-10-12: "it would make sense to have the saturation
   sit before this as well — or have an option for pre-post"; the EQ then
   shapes the saturated sound, like the instrument drive he already sees in
@@ -170,6 +172,87 @@ mix is last:
 
 State: `ChannelStrip.fat = { on, drive, fuzz, color, turbo, mix }`, off by
 default. UI goes in the same `eq` tab, as a labelled knob row under the curve.
+
+### P3 as built (2026-10-12)
+
+- Both passes in one go (Chris: "let's roll those together"). Color is the
+  defining control (Chris: "the key feature … is the specific frequency
+  selector") — drawn as a dotted `fat` marker on the EQ curve.
+- `BusFat` per bus: color bells at 1×, drive (asymmetric tanh, bias 0.2) +
+  fuzz (2 kHz HP, hard clip) at 2× via the shared `Halfband2x` (factored out
+  of the master inflator), de-bell, 10 Hz DC block, stereo-linked RMS restore,
+  turbo Haas, equal-power mix with the dry delayed 23 samples. **The track is
+  23 samples (~0.5 ms) late while FAT is on.**
+- Restore deviates from the plan: it may cut as far as the drive boosts (+12
+  dB spare), not ±12 dB, and rises in 3 ms, not 40 — both were needed for the
+  "keeps dynamics at full drive" test (24 dB burst/bed ratio in, within 3 dB
+  out). Boost is still capped at +12 dB.
+- **Retuned the same day for "girth"** (Chris: "this sounds very fizzy" →
+  "heavily increasing harmonic overtones and a feeling of girth vs just
+  adding high end hiss"). Faturator's internals aren't published, so the
+  target became the description. Changes, each measured with the ignored
+  `fizz_report` test (`cargo test --lib fizz_report -- --ignored
+  --nocapture`): lopsided tanh (neg ceiling 0.55) + envelope bias shift
+  INTO the lopsided side (keeps the 2nd harmonic at any drive), only the
+  shaper's added residual low-passed at 6× color (12 dB/oct), drive taper
+  ^1.5, restore boost range = drive + 12 dB. 1 kHz-at-color default drive
+  went from h3 −4 / h5 −10 / h7 −17 dB (fizz) to h2 −6 / h3 −11 / h5 −32 /
+  h7 −43 dB; bass 110 Hz heavy: h2 −11, h3 −15.
+- **Blown zone** (Chris: "I'd like this to be able to absolutely blow out a
+  signal", was running drive at 40 dB): drive now 0–60 dB, 40 dB at 0.8 of
+  the knob (taper 1.817). Past 40 dB: bias shift ×1..2.3, residual LP opens
+  6× → 16× color, RMS windows 10 → 150 ms (dynamics flatten). The residual is
+  now taken against the shaped wave LEVEL-MATCHED to the input by envelope —
+  scaling by 1/drive collapsed at high drive into a clean filtered copy.
+  Boosting the residual was tried and dropped (cancels the fundamental).
+  Full drive: bass 110 Hz h2 −6, h5 −18; 1 kHz-at-color h2 0, h5 −5.
+  UI drive readout shows dB and "· blown" above 40.
+- **Split before the shaper** (Chris, still "pretty fizzy"): sine-ladder
+  tests missed it — real fizz is intermodulation (bass × hats → sum/diff
+  tones across the top). Now only the signal below the girth cutoff (2.5×
+  color, 24 dB/oct) is shaped; highs bypass it, and the residual low-pass is
+  the same cutoff at 24 dB/oct, added onto the delay-aligned input. Blown
+  opens the cutoff only 2.5× → 3×. New ignored `imd_report` test (80 Hz +
+  5.2 kHz, spray above 2 kHz): default −21.7 → −50.2 dB, 40 dB −13.5 →
+  −28.6, full −9.7 → −24.5. Bass octave at full drive still −7 dB.
+  Caveat: a high color (≥ 4 kHz) puts the cutoff ≥ 10 kHz, so highs get
+  shaped again — color is the focus, by design.
+- **Redesigned around a focus band** (Chris: "the novelty of the faturator
+  was that it would focus the explosive distortion around a specific
+  frequency even if there was very little signal there. With what we've
+  built it has to be focused around the core of the sound or else it does
+  nothing"). The color bell + split are gone. Now: band-pass around color
+  (two SVF stages, Q 0.9) → lifted to the track's level by envelope (≤ +30
+  dB, not below −80 dBFS) → lopsided + bias-shift shaper (2×) → only the
+  added part (level-matched, low-passed at 6× color, 24 dB/oct) is added
+  onto the untouched track → level restore. Test
+  `color_erupts_even_where_the_signal_is_faint`: a 2 kHz partial 30 dB
+  under a 100 Hz body → its h2+h3 −13 dB vs the body with color on it, −92
+  dB with color at 100 Hz. Trade-off: the lift also lifts leakage into the
+  band, so `imd_report` spray sits between the original and the split
+  version (default −31.6, 40 dB −22.2).
+- Strip words: FAT block after the bypass word (`FAT_WORDS_START`); bypass
+  fades FAT out too. `ChannelStrip.fat`, off by default, drive 0.35 when
+  switched on.
+
+### COMP as built (2026-10-12)
+
+- The master's BOUM compressor, extracted from `MasterStage` into
+  `BoumComp` + `BoumCompBlock` (same maths, same order). The master is
+  **bit-identical**: `master_comp_golden` (ignored tests `write_golden` /
+  `matches_golden`, golden file in the session scratchpad) rendered ~368k
+  samples across four comp settings, stereo + mono, before and after.
+- `BusComp` per bus: on (10 ms fade), amount, attack/release indices into
+  the master tables; defaults amount 0.5, 10 ms, 300 ms. Strip words: COMP
+  block after FAT (`COMP_WORDS_START`). Bypass covers it.
+- Gain-reduction meter: the analysed bus writes `STRIP_AN_COMP_GR`, carried
+  in `audio:strip-spectrum` as `comp_gr`.
+- UI: the tab is now **channel** (was eq, briefly strip) — comp column |
+  curve + band controls | FAT column. The screen tabs are grouped (Chris,
+  2026-10-12): params automation roll channel | lfo fx master loops noise |
+  perform — per-track | global | performance.
+- Threshold is absolute (BOUM's −0..−30 dB over the knob), so a quiet
+  track needs more amount before it bites — watch the GR meter.
 
 ## Later (filed, not designed here)
 

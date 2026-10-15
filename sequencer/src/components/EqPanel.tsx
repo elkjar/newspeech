@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { setStripAnalyser } from '../audio/nativeEngine';
+import {
+  compAttackLabel,
+  compReleaseLabel,
+  COMP_ATTACK_COUNT,
+  COMP_RELEASE_COUNT,
+} from '../audio/master';
 import { useSequencerStore } from '../state/store';
 import { Knob } from './Knob';
 import { sourceLabel } from '../instruments/library';
@@ -20,11 +26,18 @@ import {
   normToFreq,
   normToQ,
   qToNorm,
+  colorToNorm,
+  normToColor,
+  DEFAULT_FAT,
+  DEFAULT_COMP,
+  type CompSettings,
   type ChannelStrip,
   type EqBand,
+  type FatSettings,
 } from '../audio/channelStrip';
 
-// Channel-strip EQ for the FOCUSED track (P1). The curve is drawn in JS from
+// Channel strip for the FOCUSED track: COMP → FAT ⇄ EQ (P1/P3 + comp).
+// Channel-strip EQ (P1). The curve is drawn in JS from
 // the same SVF math the engine runs — no audio data needed. Monochrome per
 // the sequencer UI rule: white curve, outlined nodes, filled when selected.
 //
@@ -52,6 +65,7 @@ const binFreq = (b: number) => 20 * Math.pow(1000, (b + 0.5) / SPEC_BINS);
 interface StripSpectrum {
   pre: number[];
   post: number[];
+  comp_gr: number;
 }
 
 const xOfFreq = (hz: number, w: number) => freqToNorm(hz) * w;
@@ -61,16 +75,17 @@ const dbOfY = (y: number) => ((CURVE_H / 2 - y) / (CURVE_H / 2)) * DB_RANGE;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const hasGain = (b: EqBand) => b.type === 'bell' || b.type === 'lowshelf' || b.type === 'highshelf';
 
-// The focused track, else the first track playing a Sequence voice (the
-// strip only shapes Sequence's own audio — MIDI/hardware tracks have none).
+// Same rule as the params tab: the focused track if it's a voice (respect the
+// focus — don't swap to another track), else the first voice track so the tab
+// isn't empty before anything is focused. The strip only shapes Sequence's own
+// audio, so a focused MIDI / empty track gets the empty state.
 function useFocusedTrack(): { id: string; label: string; hasAudio: boolean } | null {
   const focusedId = useSequencerStore((s) => s.focusedTrackId);
   const tracks = useSequencerStore((s) => s.tracks);
   return useMemo(() => {
-    const t =
-      (focusedId && tracks.find((t) => t.id === focusedId)) ||
-      tracks.find((t) => t.source.kind === 'voice') ||
-      tracks[0];
+    const t = focusedId
+      ? tracks.find((t) => t.id === focusedId)
+      : tracks.find((t) => t.source.kind === 'voice');
     if (!t) return null;
     const idx = tracks.findIndex((x) => x.id === t.id);
     const name = t.source.kind === 'empty' ? 'empty' : sourceLabel(t.source);
@@ -85,6 +100,18 @@ export function EqPanel() {
   );
   const setEqBand = useSequencerStore((s) => s.setEqBand);
   const setStripBypass = useSequencerStore((s) => s.setStripBypass);
+  const setFatStore = useSequencerStore((s) => s.setFat);
+  const setCompStore = useSequencerStore((s) => s.setComp);
+  const fat: FatSettings = strip.fat ?? DEFAULT_FAT;
+  const comp: CompSettings = strip.comp ?? DEFAULT_COMP;
+  // Gain-reduction meter, fed by the spectrum event (see EqCurve).
+  const grRef = useRef<HTMLDivElement>(null);
+  const grTextRef = useRef<HTMLSpanElement>(null);
+  const onCompGr = useCallback((gr: number) => {
+    const pct = Math.min(1, gr / 24) * 100;
+    if (grRef.current) grRef.current.style.width = `${pct}%`;
+    if (grTextRef.current) grTextRef.current.textContent = `-${gr.toFixed(1)} db`;
+  }, []);
   const [selected, setSelected] = useState(3);
   const bands = strip.eq.bands;
 
@@ -95,8 +122,26 @@ export function EqPanel() {
     [setEqBand, track],
   );
 
-  if (!track) {
-    return <div className="h-full flex items-center justify-center text-white/40 text-xs">no track</div>;
+  const setFat = useCallback(
+    (patch: Partial<FatSettings>) => {
+      if (track) setFatStore(track.id, patch);
+    },
+    [setFatStore, track],
+  );
+
+  const setComp = useCallback(
+    (patch: Partial<CompSettings>) => {
+      if (track) setCompStore(track.id, patch);
+    },
+    [setCompStore, track],
+  );
+
+  if (!track || !track.hasAudio) {
+    return (
+      <div className="h-full flex items-center justify-center text-[11px] uppercase tracking-widest text-white/30 px-6 text-center">
+        focus a voice track to edit its channel
+      </div>
+    );
   }
 
   return (
@@ -116,24 +161,25 @@ export function EqPanel() {
         >
           bypass
         </button>
-        <span className="text-white/40">eq</span>
+        <span className="text-white/40">channel</span>
         <span className="text-white/80 normal-case tracking-normal text-[12px]">{track.label}</span>
-        {!track.hasAudio && (
-          <span className="text-white/40 normal-case tracking-normal text-[11px]">
-            no sequence audio on this track — the eq shapes sequence voices only
-          </span>
-        )}
       </div>
       <div className="flex gap-4 min-h-0">
+        <CompControls comp={comp} onSet={setComp} grRef={grRef} grTextRef={grTextRef} />
+        <div className="w-px bg-white/10 self-stretch" />
         <EqCurve
+          onCompGr={onCompGr}
           trackId={track.id}
           bands={bands}
           bypassed={strip.bypass}
+          fat={fat}
           selected={selected}
           onSelect={setSelected}
           onSet={set}
         />
         <BandControls band={bands[selected]} index={selected} onSet={set} />
+        <div className="w-px bg-white/10 self-stretch" />
+        <FatControls fat={fat} onSet={setFat} />
       </div>
       <div className="flex gap-1.5">
         {bands.map((b, i) => (
@@ -157,16 +203,20 @@ export function EqPanel() {
 }
 
 function EqCurve({
+  onCompGr,
   trackId,
   bands,
   bypassed,
+  fat,
   selected,
   onSelect,
   onSet,
 }: {
+  onCompGr: (gr: number) => void;
   trackId: string;
   bands: EqBand[];
   bypassed: boolean;
+  fat: FatSettings;
   selected: number;
   onSelect: (i: number) => void;
   onSet: (i: number, patch: Partial<EqBand>) => void;
@@ -192,7 +242,10 @@ function EqCurve({
     void setStripAnalyser(trackId);
     let unlisten: (() => void) | null = null;
     let disposed = false;
-    void listen<StripSpectrum>('audio:strip-spectrum', (e) => drawSpectrum(e.payload)).then((u) => {
+    void listen<StripSpectrum>('audio:strip-spectrum', (e) => {
+      drawSpectrum(e.payload);
+      onCompGr(e.payload.comp_gr ?? 0);
+    }).then((u) => {
       if (disposed) u();
       else unlisten = u;
     });
@@ -201,7 +254,7 @@ function EqCurve({
       unlisten?.();
       void setStripAnalyser(null);
     };
-  }, [trackId]);
+  }, [trackId, onCompGr]);
 
   const drawSpectrum = (spec: StripSpectrum) => {
     const c = canvasRef.current;
@@ -340,6 +393,28 @@ function EqCurve({
           <line key={db} x1={0} x2={w} y1={yOfDb(db)} y2={yOfDb(db)} stroke="white" strokeOpacity={0.06} />
         ))}
         <line x1={0} x2={w} y1={yOfDb(0)} y2={yOfDb(0)} stroke="white" strokeOpacity={0.2} />
+        {fat.on && (
+          <g>
+            <line
+              x1={xOfFreq(fat.color, w)}
+              x2={xOfFreq(fat.color, w)}
+              y1={12}
+              y2={CURVE_H}
+              stroke="white"
+              strokeOpacity={bypassed ? 0.2 : 0.5}
+              strokeDasharray="1 3"
+            />
+            <text
+              x={xOfFreq(fat.color, w) + 3}
+              y={10}
+              fontSize={9}
+              fill="white"
+              fillOpacity={bypassed ? 0.3 : 0.6}
+            >
+              fat
+            </text>
+          </g>
+        )}
         <path d={path} fill="none" stroke="white" strokeWidth={1.5} strokeOpacity={bypassed ? 0.3 : 1} />
         {bands.map((b, i) =>
           b.on ? (
@@ -460,6 +535,134 @@ function LabeledValueKnob({
       <Knob size={40} value={value} onChange={onChange} bipolar={bipolar} title={`${label} · ${text}`} />
       <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">{label}</span>
       <span className="text-[10px] tabular-nums text-white/50">{text}</span>
+    </div>
+  );
+}
+
+// FAT saturator column. Toggle first (modifier ○/●), mix last.
+function FatControls({
+  fat,
+  onSet,
+}: {
+  fat: FatSettings;
+  onSet: (patch: Partial<FatSettings>) => void;
+}) {
+  const turboMs = Math.abs(fat.turbo) * 12;
+  return (
+    <div className="flex flex-col gap-2 shrink-0" style={{ width: 216 }}>
+      <div className="flex items-center gap-3 text-[10px] uppercase tracking-widest">
+        <button
+          type="button"
+          onClick={() => onSet({ on: !fat.on })}
+          className="text-white/70 hover:text-white"
+          title="fat saturator on/off"
+        >
+          {fat.on ? '●' : '○'} fat
+        </button>
+        <button
+          type="button"
+          onClick={() => onSet({ post: !fat.post })}
+          className="px-2 py-0.5 border border-white/15 hover:border-white text-white/70 hover:text-white"
+          title="run the saturator before or after the eq (click to toggle)"
+        >
+          {fat.post ? 'post eq' : 'pre eq'}
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-x-3 gap-y-1">
+        <LabeledValueKnob
+          label="color"
+          value={colorToNorm(fat.color)}
+          text={`${freqLabel(fat.color)} hz`}
+          onChange={(v) => onSet({ color: Math.round(normToColor(v)) })}
+        />
+        <LabeledValueKnob
+          label="drive"
+          value={fat.drive}
+          // Mirrors audio.rs FAT_DRIVE_TAPER / FAT_DRIVE_DB.
+          text={`${(Math.pow(fat.drive, 1.817) * 60).toFixed(1)} db`}
+          onChange={(v) => onSet({ drive: v })}
+        />
+        <LabeledValueKnob
+          label="fuzz"
+          value={fat.fuzz}
+          text={`${Math.round(fat.fuzz * 100)}%`}
+          onChange={(v) => onSet({ fuzz: v })}
+        />
+        <LabeledValueKnob
+          label="turbo"
+          value={(fat.turbo + 1) / 2}
+          bipolar
+          text={fat.turbo === 0 ? 'off' : `${turboMs.toFixed(1)}ms ${fat.turbo > 0 ? 'r' : 'l'}`}
+          onChange={(v) => onSet({ turbo: Math.round((v * 2 - 1) * 100) / 100 })}
+        />
+        <LabeledValueKnob
+          label="mix"
+          value={fat.mix}
+          text={`${Math.round(fat.mix * 100)}%`}
+          onChange={(v) => onSet({ mix: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
+// COMP column (first in the strip). Toggle first, the one amount knob, then
+// attack / release cycles and the gain-reduction meter.
+function CompControls({
+  comp,
+  onSet,
+  grRef,
+  grTextRef,
+}: {
+  comp: CompSettings;
+  onSet: (patch: Partial<CompSettings>) => void;
+  grRef: React.RefObject<HTMLDivElement>;
+  grTextRef: React.RefObject<HTMLSpanElement>;
+}) {
+  const cycle = (key: 'attack' | 'release', count: number) =>
+    onSet({ [key]: (comp[key] + 1) % count } as Partial<CompSettings>);
+  return (
+    <div className="flex flex-col gap-2 shrink-0" style={{ width: 112 }}>
+      <button
+        type="button"
+        onClick={() => onSet({ on: !comp.on })}
+        className="self-start text-[10px] uppercase tracking-widest text-white/70 hover:text-white"
+        title="compressor on/off"
+      >
+        {comp.on ? '●' : '○'} comp
+      </button>
+      <LabeledValueKnob
+        label="amount"
+        value={comp.amount}
+        text={`${Math.round(comp.amount * 100)}%`}
+        onChange={(v) => onSet({ amount: v })}
+      />
+      <div className="flex flex-col gap-1 text-[10px] uppercase tracking-widest">
+        <button
+          type="button"
+          onClick={() => cycle('attack', COMP_ATTACK_COUNT)}
+          className="px-1.5 py-0.5 border border-white/15 hover:border-white text-white/70 hover:text-white text-left"
+          title="attack (click to cycle)"
+        >
+          atk {compAttackLabel(comp.attack)}
+        </button>
+        <button
+          type="button"
+          onClick={() => cycle('release', COMP_RELEASE_COUNT)}
+          className="px-1.5 py-0.5 border border-white/15 hover:border-white text-white/70 hover:text-white text-left"
+          title="release (click to cycle)"
+        >
+          rel {compReleaseLabel(comp.release)}
+        </button>
+      </div>
+      <div className="flex flex-col gap-0.5" title="gain reduction">
+        <div className="h-1.5 border border-white/20 relative overflow-hidden">
+          <div ref={grRef} className="absolute inset-y-0 left-0 bg-white" style={{ width: '0%' }} />
+        </div>
+        <span ref={grTextRef} className="text-[10px] tabular-nums text-white/50">
+          -0.0 db
+        </span>
+      </div>
     </div>
   );
 }

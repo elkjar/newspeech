@@ -753,6 +753,8 @@ export async function setChannelStripsBulk(
         q: b.q,
         slope24: b.slope === 24,
       })),
+      fat: u.strip.fat ?? null,
+      comp: u.strip.comp ?? null,
     })),
   });
 }

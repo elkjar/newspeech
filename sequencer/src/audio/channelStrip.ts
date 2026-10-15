@@ -20,12 +20,55 @@ export interface EqBand {
   slope: 12 | 24;
 }
 
+// FAT saturator (P3), Faturator-shaped. Runs before the EQ unless `post`.
+export interface FatSettings {
+  on: boolean;
+  post: boolean;
+  // Hz, 80..8000 — the frequency the saturation focuses on
+  color: number;
+  // 0..1 → 0..40 dB
+  drive: number;
+  // 0..1 — hard-clipped high-frequency fuzz blended in
+  fuzz: number;
+  // -1..1 — Haas width, one wet side delayed up to 12 ms (sign = side)
+  turbo: number;
+  // 0..1 — equal-power dry/wet
+  mix: number;
+}
+
+// Compressor (first in the strip) — the master's BOUM comp, per track.
+export interface CompSettings {
+  on: boolean;
+  // 0..1 one-knob amount (threshold + ratio + makeup; negative ratio > 0.9)
+  amount: number;
+  // indices into the master's attack / release tables
+  attack: number;
+  release: number;
+}
+
+export const DEFAULT_COMP: CompSettings = { on: false, amount: 0.5, attack: 4, release: 2 };
+
 export interface ChannelStrip {
   // Whole-strip bypass (settings kept; the engine fades the strip out).
   bypass: boolean;
+  comp: CompSettings;
   // Always 6: [0] = HP, [1] = LP, [2..5] = parametric (bell/shelf/notch).
   eq: { bands: EqBand[] };
+  fat: FatSettings;
 }
+
+export const FAT_COLOR_MIN = 80;
+export const FAT_COLOR_MAX = 8000;
+// Off by default; switching on lands at an obviously audible drive.
+export const DEFAULT_FAT: FatSettings = {
+  on: false,
+  post: false,
+  color: 1000,
+  drive: 0.35,
+  fuzz: 0,
+  turbo: 0,
+  mix: 1,
+};
 
 export const EQ_BAND_COUNT = 6;
 export const EQ_FREQ_MIN = 20;
@@ -45,7 +88,12 @@ const DEFAULT_BANDS: EqBand[] = [
 ];
 
 export function defaultChannelStrip(): ChannelStrip {
-  return { bypass: false, eq: { bands: DEFAULT_BANDS.map((b) => ({ ...b })) } };
+  return {
+    bypass: false,
+    comp: { ...DEFAULT_COMP },
+    eq: { bands: DEFAULT_BANDS.map((b) => ({ ...b })) },
+    fat: { ...DEFAULT_FAT },
+  };
 }
 
 export function bandLabel(i: number): string {
@@ -76,11 +124,35 @@ function hydrateBand(v: unknown, i: number): EqBand {
 }
 
 export function hydrateChannelStrip(v: unknown): ChannelStrip {
-  const s = (v && typeof v === 'object' ? v : {}) as { bypass?: unknown; eq?: { bands?: unknown[] } };
+  const s = (v && typeof v === 'object' ? v : {}) as {
+    bypass?: unknown;
+    eq?: { bands?: unknown[] };
+    fat?: Partial<FatSettings>;
+    comp?: Partial<CompSettings>;
+  };
+  const c = s.comp && typeof s.comp === 'object' ? s.comp : {};
+  const idx = (v: unknown, d: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(5, Math.round(v))) : d;
+  const f = s.fat && typeof s.fat === 'object' ? s.fat : {};
   const raw = Array.isArray(s.eq?.bands) ? s.eq!.bands! : [];
   return {
     bypass: s.bypass === true,
+    comp: {
+      on: typeof c.on === 'boolean' ? c.on : DEFAULT_COMP.on,
+      amount: num(c.amount, 0, 1, DEFAULT_COMP.amount),
+      attack: idx(c.attack, DEFAULT_COMP.attack),
+      release: idx(c.release, DEFAULT_COMP.release),
+    },
     eq: { bands: Array.from({ length: EQ_BAND_COUNT }, (_, i) => hydrateBand(raw[i], i)) },
+    fat: {
+      on: typeof f.on === 'boolean' ? f.on : DEFAULT_FAT.on,
+      post: typeof f.post === 'boolean' ? f.post : DEFAULT_FAT.post,
+      color: num(f.color, FAT_COLOR_MIN, FAT_COLOR_MAX, DEFAULT_FAT.color),
+      drive: num(f.drive, 0, 1, DEFAULT_FAT.drive),
+      fuzz: num(f.fuzz, 0, 1, DEFAULT_FAT.fuzz),
+      turbo: num(f.turbo, -1, 1, DEFAULT_FAT.turbo),
+      mix: num(f.mix, 0, 1, DEFAULT_FAT.mix),
+    },
   };
 }
 
@@ -94,6 +166,11 @@ export function hydrateChannelStrips(v: unknown): Record<string, ChannelStrip> {
   }
   return out;
 }
+
+export const colorToNorm = (hz: number) =>
+  Math.log(hz / FAT_COLOR_MIN) / Math.log(FAT_COLOR_MAX / FAT_COLOR_MIN);
+export const normToColor = (n: number) =>
+  FAT_COLOR_MIN * Math.pow(FAT_COLOR_MAX / FAT_COLOR_MIN, Math.max(0, Math.min(1, n)));
 
 export function eqIsFlat(strip: ChannelStrip | undefined): boolean {
   return !strip || strip.bypass || strip.eq.bands.every((b) => !b.on);

@@ -143,6 +143,8 @@ static STRIP_AN_PRE: [AtomicU32; STRIP_AN_RING] = [const { AtomicU32::new(0) }; 
 static STRIP_AN_POST: [AtomicU32; STRIP_AN_RING] = [const { AtomicU32::new(0) }; STRIP_AN_RING];
 static STRIP_AN_HEAD: AtomicUsize = AtomicUsize::new(0);
 static STRIP_AN_SR: AtomicU32 = AtomicU32::new(48_000);
+// The analysed bus's compressor gain reduction (dB ≥ 0), last block.
+static STRIP_AN_COMP_GR: AtomicU32 = AtomicU32::new(0);
 
 pub fn strip_analyser_on() -> bool {
   STRIP_AN_SLOT.load(Ordering::Relaxed) != 0
@@ -178,6 +180,8 @@ pub struct StripSpectrum {
   // STRIP_AN_BINS dBFS values (full-scale sine ≈ 0), log-spaced 20 Hz → 20 kHz.
   pub pre: Vec<f32>,
   pub post: Vec<f32>,
+  // Compressor gain reduction, dB ≥ 0.
+  pub comp_gr: f32,
 }
 
 // Emitter-thread state: window, twiddles, per-bin smoothing.
@@ -271,7 +275,8 @@ impl StripAnalyser {
     self.fold(&post_p, sr, &mut post);
     self.pre_db = pre.clone();
     self.post_db = post.clone();
-    StripSpectrum { pre, post }
+    let comp_gr = f32::from_bits(STRIP_AN_COMP_GR.load(Ordering::Relaxed));
+    StripSpectrum { pre, post, comp_gr }
   }
 }
 
@@ -1770,34 +1775,58 @@ fn master_infl_halfband() -> [f32; MASTER_INFL_OS_TAPS] {
   out
 }
 
-// Per-channel state. Histories are doubled rings (each sample written at
-// pos and pos+LEN) so the newest LEN samples are always one contiguous
-// slice starting at pos — the FIR is a plain dot product.
-struct InflatorChannel {
+// The halfband's coefficients, split into the interpolator's two phases
+// (×2 gain makes up for the zero-stuffing). Shared by every 2× stage
+// (master inflator, channel-strip FAT).
+struct HalfbandTaps {
+  taps: [f32; MASTER_INFL_OS_TAPS],
+  up_even: [f32; MASTER_INFL_OS_PHASE_TAPS],
+  up_odd: [f32; MASTER_INFL_OS_PHASE_TAPS],
+}
+
+impl HalfbandTaps {
+  fn new() -> Self {
+    let taps = master_infl_halfband();
+    let mut up_even = [0.0f32; MASTER_INFL_OS_PHASE_TAPS];
+    let mut up_odd = [0.0f32; MASTER_INFL_OS_PHASE_TAPS];
+    for (k, &h) in taps.iter().enumerate() {
+      if k % 2 == 0 {
+        up_even[k / 2] = 2.0 * h;
+      } else {
+        up_odd[k / 2] = 2.0 * h;
+      }
+    }
+    Self { taps, up_even, up_odd }
+  }
+}
+
+// One channel of 2× up/down state. Histories are doubled rings (each sample
+// written at pos and pos+LEN) so the newest LEN samples are always one
+// contiguous slice starting at pos — the FIR is a plain dot product.
+// Round trip = MASTER_INFL_OS_LATENCY base-rate samples.
+struct Halfband2x {
   up_hist: [f32; 2 * MASTER_INFL_OS_PHASE_TAPS],
   up_pos: usize,
   dn_hist: [f32; 2 * MASTER_INFL_OS_TAPS],
   dn_pos: usize,
-  lp_lo: f32,
-  lp_hi: f32,
 }
 
-impl InflatorChannel {
+const MASTER_INFL_OS_LATENCY: usize = (MASTER_INFL_OS_TAPS - 1) / 2;
+
+impl Halfband2x {
   fn new() -> Self {
     Self {
       up_hist: [0.0; 2 * MASTER_INFL_OS_PHASE_TAPS],
       up_pos: 0,
       dn_hist: [0.0; 2 * MASTER_INFL_OS_TAPS],
       dn_pos: 0,
-      lp_lo: 0.0,
-      lp_hi: 0.0,
     }
   }
 
-  // Base-rate sample in → the two 2×-rate samples (polyphase interpolator,
-  // ×2 gain makes up for the zero-stuffing).
+  // Base-rate sample in → the two 2×-rate samples.
   #[inline]
-  fn upsample(&mut self, x: f32, even: &[f32], odd: &[f32]) -> (f32, f32) {
+  fn upsample(&mut self, x: f32, t: &HalfbandTaps) -> (f32, f32) {
+    let (even, odd) = (&t.up_even, &t.up_odd);
     const L: usize = MASTER_INFL_OS_PHASE_TAPS;
     self.up_pos = if self.up_pos == 0 { L - 1 } else { self.up_pos - 1 };
     self.up_hist[self.up_pos] = x;
@@ -1824,7 +1853,8 @@ impl InflatorChannel {
   // taken on the even phase (after u0, before u1) so the round trip is a
   // whole number of base samples (23) rather than 22.5.
   #[inline]
-  fn downsample(&mut self, u0: f32, u1: f32, taps: &[f32]) -> f32 {
+  fn downsample(&mut self, u0: f32, u1: f32, t: &HalfbandTaps) -> f32 {
+    let taps = &t.taps;
     const L: usize = MASTER_INFL_OS_TAPS;
     self.push_dn(u0);
     let h = &self.dn_hist[self.dn_pos..self.dn_pos + L];
@@ -1841,7 +1871,26 @@ impl InflatorChannel {
   }
 
   fn probe(&self) -> f32 {
-    self.lp_lo + self.lp_hi + self.dn_hist.iter().sum::<f32>()
+    self.dn_hist.iter().sum::<f32>()
+  }
+}
+
+// Inflator per-channel state: the oversampler + the band-split integrators.
+struct InflatorChannel {
+  os: Halfband2x,
+  lp_lo: f32,
+  lp_hi: f32,
+}
+
+impl InflatorChannel {
+  fn new() -> Self {
+    Self { os: Halfband2x::new(), lp_lo: 0.0, lp_hi: 0.0 }
+  }
+  fn reset(&mut self) {
+    *self = Self::new();
+  }
+  fn probe(&self) -> f32 {
+    self.lp_lo + self.lp_hi + self.os.probe()
   }
 }
 
@@ -1861,9 +1910,7 @@ struct MasterInflator {
   // Mid band is normalised by this into the shaper and back out after, so
   // its peak sits at unity like the low/high bands.
   split_mid_gain: f32,
-  os_taps: [f32; MASTER_INFL_OS_TAPS],
-  os_up_even: [f32; MASTER_INFL_OS_PHASE_TAPS],
-  os_up_odd: [f32; MASTER_INFL_OS_PHASE_TAPS],
+  os: HalfbandTaps,
   ch: [InflatorChannel; 2],
 }
 
@@ -1872,16 +1919,6 @@ impl MasterInflator {
     let os_sr = sr * 2.0;
     let c_lo = tpt_one_pole_coef(MASTER_INFL_SPLIT_LO_HZ, os_sr);
     let c_hi = tpt_one_pole_coef(MASTER_INFL_SPLIT_HI_HZ, os_sr);
-    let os_taps = master_infl_halfband();
-    let mut os_up_even = [0.0f32; MASTER_INFL_OS_PHASE_TAPS];
-    let mut os_up_odd = [0.0f32; MASTER_INFL_OS_PHASE_TAPS];
-    for (k, &h) in os_taps.iter().enumerate() {
-      if k % 2 == 0 {
-        os_up_even[k / 2] = 2.0 * h;
-      } else {
-        os_up_odd[k / 2] = 2.0 * h;
-      }
-    }
     Self {
       on_mix: 0.0,
       on_slew: 1.0 / (MASTER_BYPASS_RAMP_MS * 0.001 * sr).max(1.0),
@@ -1893,9 +1930,7 @@ impl MasterInflator {
       split_coef_lo: c_lo,
       split_coef_hi: c_hi,
       split_mid_gain: c_hi * (1.0 - c_lo) / (c_hi - c_lo),
-      os_taps,
-      os_up_even,
-      os_up_odd,
+      os: HalfbandTaps::new(),
       ch: [InflatorChannel::new(), InflatorChannel::new()],
     }
   }
@@ -1976,14 +2011,14 @@ impl MasterInflator {
   #[inline]
   fn process_channel(&mut self, ch: usize, x: f32, p: &InflatorParams) -> f32 {
     let coefs = master_infl_curve_coefs(self.curve);
-    let (u0, u1) = self.ch[ch].upsample(x, &self.os_up_even, &self.os_up_odd);
+    let (u0, u1) = self.ch[ch].os.upsample(x, &self.os);
     let (mut lp_lo, mut lp_hi) = (self.ch[ch].lp_lo, self.ch[ch].lp_hi);
     let y0 = self.core(&mut lp_lo, &mut lp_hi, u0, p, coefs);
     let y1 = self.core(&mut lp_lo, &mut lp_hi, u1, p, coefs);
     let c = &mut self.ch[ch];
     c.lp_lo = lp_lo;
     c.lp_hi = lp_hi;
-    let y = c.downsample(y0, y1, &self.os_taps);
+    let y = c.os.downsample(y0, y1, &self.os);
     x + (y - x) * self.on_mix
   }
 }
@@ -3135,6 +3170,137 @@ impl SafetyLimiter {
 // Coefficients are recomputed once per block when lo-cut index or
 // hi-cut value change (not per-sample). Per-channel biquad state
 // keeps L/R independent.
+// The BOUM one-knob compressor, shared by the master and every channel strip.
+// Stereo-linked peak+RMS detector, program-dependent release, gain-reduction
+// self-saturation. `amount` maps to threshold/ratio/makeup (negative ratio
+// past 0.9 — louder in, quieter out). Extracted verbatim from MasterStage
+// (the master's output is bit-identical — `master_comp_golden`).
+struct BoumComp {
+  sample_rate: f32,
+  // Per-channel peak envelope + RMS².
+  peak_env: [f32; 2],
+  rms_sq: [f32; 2],
+  // Shared (stereo-linked) gain-reduction state. Linking keeps the
+  // L/R reduction identical so the stereo image doesn't wander under
+  // heavy compression.
+  smoothed_gr_db: f32,
+  active_samples: u32,
+  // Constant-lifetime detector coefficients (peak release ~50ms, RMS
+  // window ~10ms).
+  peak_release_coef: f32,
+  rms_coef: f32,
+}
+
+// Per-block constants for one BoumComp setting.
+struct BoumCompBlock {
+  thresh_db: f32,
+  slope: f32,
+  attack_coef: f32,
+  fast_release_coef: f32,
+  slow_release_coef: f32,
+  makeup_linear: f32,
+}
+
+impl BoumCompBlock {
+  fn new(amount: f32, attack_ms: f32, release_ms: f32, sample_rate: f32) -> Self {
+    let (thresh_db, slope, makeup_db) = master_comp_amount_to_params(amount);
+    Self {
+      thresh_db,
+      slope,
+      attack_coef: one_pole_coef(attack_ms, sample_rate),
+      fast_release_coef: one_pole_coef(release_ms * MASTER_COMP_FAST_RELEASE_FACTOR, sample_rate),
+      slow_release_coef: one_pole_coef(release_ms * MASTER_COMP_SLOW_RELEASE_FACTOR, sample_rate),
+      makeup_linear: 10.0_f32.powf(makeup_db / 20.0),
+    }
+  }
+}
+
+impl BoumComp {
+  fn new(sr: f32) -> Self {
+    Self {
+      sample_rate: sr,
+      peak_env: [0.0; 2],
+      rms_sq: [0.0; 2],
+      smoothed_gr_db: 0.0,
+      active_samples: 0,
+      peak_release_coef: one_pole_coef(50.0, sr),
+      rms_coef: one_pole_coef(10.0, sr),
+    }
+  }
+
+  fn reset_state(&mut self) {
+    self.peak_env = [0.0; 2];
+    self.rms_sq = [0.0; 2];
+    self.smoothed_gr_db = 0.0;
+    self.active_samples = 0;
+  }
+
+  fn probe(&self) -> f32 {
+    self.rms_sq[0] + self.rms_sq[1] + self.smoothed_gr_db
+  }
+
+  #[inline]
+  fn detect(&mut self, ch: usize, x: f32) -> f32 {
+    let a = x.abs();
+    self.peak_env[ch] = if a > self.peak_env[ch] {
+      a
+    } else {
+      self.peak_env[ch] + self.peak_release_coef * (a - self.peak_env[ch])
+    };
+    self.rms_sq[ch] += self.rms_coef * (x * x - self.rms_sq[ch]);
+    let rms = self.rms_sq[ch].sqrt();
+    self.peak_env[ch].max(rms)
+  }
+
+  // Gain-reduction smoothing + self-saturation → total linear gain.
+  #[inline]
+  fn gain_for_level(&mut self, level: f32, c: &BoumCompBlock) -> f32 {
+    let level_db = 20.0 * (level + 1e-10).log10();
+    let target_gr = master_comp_gr_db(level_db, c.thresh_db, c.slope);
+    // Program-dependent release: brief activity → fast (snappy),
+    // sustained activity → slow (musical, doesn't pump).
+    let active_ms = (self.active_samples as f32 / self.sample_rate) * 1000.0;
+    let release_coef = if active_ms <= MASTER_COMP_ACTIVE_FAST_MS {
+      c.fast_release_coef
+    } else if active_ms >= MASTER_COMP_ACTIVE_SLOW_MS {
+      c.slow_release_coef
+    } else {
+      let t = (active_ms - MASTER_COMP_ACTIVE_FAST_MS)
+        / (MASTER_COMP_ACTIVE_SLOW_MS - MASTER_COMP_ACTIVE_FAST_MS);
+      c.fast_release_coef + t * (c.slow_release_coef - c.fast_release_coef)
+    };
+    if target_gr > self.smoothed_gr_db {
+      self.smoothed_gr_db += c.attack_coef * (target_gr - self.smoothed_gr_db);
+    } else {
+      self.smoothed_gr_db += release_coef * (target_gr - self.smoothed_gr_db);
+    }
+    if self.smoothed_gr_db > MASTER_COMP_ACTIVE_GR_DB {
+      self.active_samples = self.active_samples.saturating_add(1);
+    } else {
+      self.active_samples = 0;
+    }
+    // Gain-reduction self-saturation — tanh-shaped so heavy comp
+    // adds its own harmonic content. Transparent at small gr,
+    // saturates ~20dB ceiling at extreme reduction.
+    let gr_saturated =
+      (self.smoothed_gr_db * MASTER_COMP_GR_SAT_SCALE).tanh() / MASTER_COMP_GR_SAT_SCALE;
+    10.0_f32.powf(-gr_saturated / 20.0) * c.makeup_linear
+  }
+
+  #[inline]
+  fn gain_stereo(&mut self, l: f32, r: f32, c: &BoumCompBlock) -> f32 {
+    let level_l = self.detect(0, l);
+    let level_r = self.detect(1, r);
+    self.gain_for_level(level_l.max(level_r), c)
+  }
+
+  #[inline]
+  fn gain_mono(&mut self, s: f32, c: &BoumCompBlock) -> f32 {
+    let level = self.detect(0, s);
+    self.gain_for_level(level, c)
+  }
+}
+
 struct MasterStage {
   sample_rate: f32,
   dc_l: DcBlock,
@@ -3153,20 +3319,7 @@ struct MasterStage {
   tail_r: Biquad,
   last_lo_cut_idx: usize,
   last_hi_cut_hz: f32,
-  // Compressor detector state — per-channel peak envelope + RMS².
-  comp_peak_env_l: f32,
-  comp_peak_env_r: f32,
-  comp_rms_sq_l: f32,
-  comp_rms_sq_r: f32,
-  // Shared (stereo-linked) gain-reduction state. Linking keeps the
-  // L/R reduction identical so the stereo image doesn't wander under
-  // heavy compression.
-  comp_smoothed_gr_db: f32,
-  comp_active_samples: u32,
-  // Constant-lifetime detector coefficients (peak release ~50ms, RMS
-  // window ~10ms). Computed once at construction.
-  comp_peak_release_coef: f32,
-  comp_rms_coef: f32,
+  comp: BoumComp,
   // Distortion stage — pre/de-emphasis high-shelves around the 4-mode
   // shaper. Pre boosts +4dB at 3kHz INTO the shaper so the saturation
   // hits more high-frequency content (and reveals more harmonics);
@@ -3241,14 +3394,7 @@ impl MasterStage {
       tail_r,
       last_lo_cut_idx: usize::MAX,
       last_hi_cut_hz: 0.0,
-      comp_peak_env_l: 0.0,
-      comp_peak_env_r: 0.0,
-      comp_rms_sq_l: 0.0,
-      comp_rms_sq_r: 0.0,
-      comp_smoothed_gr_db: 0.0,
-      comp_active_samples: 0,
-      comp_peak_release_coef: one_pole_coef(50.0, sr),
-      comp_rms_coef: one_pole_coef(10.0, sr),
+      comp: BoumComp::new(sr),
       pre_emph_l,
       pre_emph_r,
       de_emph_l,
@@ -3295,12 +3441,7 @@ impl MasterStage {
     self.pre_emph_r.reset_state();
     self.de_emph_l.reset_state();
     self.de_emph_r.reset_state();
-    self.comp_peak_env_l = 0.0;
-    self.comp_peak_env_r = 0.0;
-    self.comp_rms_sq_l = 0.0;
-    self.comp_rms_sq_r = 0.0;
-    self.comp_smoothed_gr_db = 0.0;
-    self.comp_active_samples = 0;
+    self.comp.reset_state();
     self.dist_prev_y_l = 0.0;
     self.dist_prev_y_r = 0.0;
     self.dist_post_lp_l = 0.0;
@@ -3333,9 +3474,7 @@ impl MasterStage {
       + self.pre_emph_r.y1
       + self.de_emph_l.y1
       + self.de_emph_r.y1
-      + self.comp_rms_sq_l
-      + self.comp_rms_sq_r
-      + self.comp_smoothed_gr_db
+      + self.comp.probe()
       + self.dist_prev_y_l
       + self.dist_prev_y_r
       + self.dist_post_lp_l
@@ -3479,17 +3618,8 @@ impl MasterStage {
     // (don't change mid-block) so we precompute once. Amount is a-rate
     // in the worklet but our LFO pipeline only updates per RAF frame,
     // so treating it as block-constant matches the user's actual flow.
-    let (thresh_db, slope, makeup_db) = master_comp_amount_to_params(comp_amount);
-    let attack_coef = one_pole_coef(comp_attack_ms, self.sample_rate);
-    let fast_release_coef = one_pole_coef(
-      comp_release_ms * MASTER_COMP_FAST_RELEASE_FACTOR,
-      self.sample_rate,
-    );
-    let slow_release_coef = one_pole_coef(
-      comp_release_ms * MASTER_COMP_SLOW_RELEASE_FACTOR,
-      self.sample_rate,
-    );
-    let makeup_linear = 10.0_f32.powf(makeup_db / 20.0);
+    let comp_block =
+      BoumCompBlock::new(comp_amount, comp_attack_ms, comp_release_ms, self.sample_rate);
 
     // Per-block distortion mode constants. mode is k-rate; drive/bias/mix
     // are a-rate in the worklet but RAF-update-limited here, so block-
@@ -3528,47 +3658,7 @@ impl MasterStage {
           s = self.lo_l.process(s);
         }
         // Compressor (mono path uses L state only).
-        let abs_s = s.abs();
-        self.comp_peak_env_l = if abs_s > self.comp_peak_env_l {
-          abs_s
-        } else {
-          self.comp_peak_env_l
-            + self.comp_peak_release_coef * (abs_s - self.comp_peak_env_l)
-        };
-        self.comp_rms_sq_l +=
-          self.comp_rms_coef * (s * s - self.comp_rms_sq_l);
-        let rms = self.comp_rms_sq_l.sqrt();
-        let level = self.comp_peak_env_l.max(rms);
-        let level_db = 20.0 * (level + 1e-10).log10();
-        let target_gr = master_comp_gr_db(level_db, thresh_db, slope);
-        let active_ms =
-          (self.comp_active_samples as f32 / self.sample_rate) * 1000.0;
-        let release_coef = if active_ms <= MASTER_COMP_ACTIVE_FAST_MS {
-          fast_release_coef
-        } else if active_ms >= MASTER_COMP_ACTIVE_SLOW_MS {
-          slow_release_coef
-        } else {
-          let t = (active_ms - MASTER_COMP_ACTIVE_FAST_MS)
-            / (MASTER_COMP_ACTIVE_SLOW_MS - MASTER_COMP_ACTIVE_FAST_MS);
-          fast_release_coef + t * (slow_release_coef - fast_release_coef)
-        };
-        if target_gr > self.comp_smoothed_gr_db {
-          self.comp_smoothed_gr_db +=
-            attack_coef * (target_gr - self.comp_smoothed_gr_db);
-        } else {
-          self.comp_smoothed_gr_db +=
-            release_coef * (target_gr - self.comp_smoothed_gr_db);
-        }
-        if self.comp_smoothed_gr_db > MASTER_COMP_ACTIVE_GR_DB {
-          self.comp_active_samples = self.comp_active_samples.saturating_add(1);
-        } else {
-          self.comp_active_samples = 0;
-        }
-        let gr_saturated = (self.comp_smoothed_gr_db * MASTER_COMP_GR_SAT_SCALE)
-          .tanh()
-          / MASTER_COMP_GR_SAT_SCALE;
-        let total_gain = 10.0_f32.powf(-gr_saturated / 20.0) * makeup_linear;
-        s *= total_gain;
+        s *= self.comp.gain_mono(s, &comp_block);
         // Distortion stage — equal-power dry/wet crossfade around
         // pre-emphasis → shaper → de-emphasis. Mono path uses L state.
         let dry = s;
@@ -3660,66 +3750,9 @@ impl MasterStage {
 
       // Compressor — stereo-linked detector: peak + RMS per channel,
       // then max across both channels for the gain-reduction decision.
-      let abs_l = l.abs();
-      let abs_r = r.abs();
-      self.comp_peak_env_l = if abs_l > self.comp_peak_env_l {
-        abs_l
-      } else {
-        self.comp_peak_env_l
-          + self.comp_peak_release_coef * (abs_l - self.comp_peak_env_l)
-      };
-      self.comp_peak_env_r = if abs_r > self.comp_peak_env_r {
-        abs_r
-      } else {
-        self.comp_peak_env_r
-          + self.comp_peak_release_coef * (abs_r - self.comp_peak_env_r)
-      };
-      self.comp_rms_sq_l +=
-        self.comp_rms_coef * (l * l - self.comp_rms_sq_l);
-      self.comp_rms_sq_r +=
-        self.comp_rms_coef * (r * r - self.comp_rms_sq_r);
-      let rms_l = self.comp_rms_sq_l.sqrt();
-      let rms_r = self.comp_rms_sq_r.sqrt();
-      let level_l = self.comp_peak_env_l.max(rms_l);
-      let level_r = self.comp_peak_env_r.max(rms_r);
-      let level = level_l.max(level_r);
-      let level_db = 20.0 * (level + 1e-10).log10();
-      let target_gr = master_comp_gr_db(level_db, thresh_db, slope);
-
-      // Program-dependent release: brief activity → fast (snappy),
-      // sustained activity → slow (musical, doesn't pump).
-      let active_ms =
-        (self.comp_active_samples as f32 / self.sample_rate) * 1000.0;
-      let release_coef = if active_ms <= MASTER_COMP_ACTIVE_FAST_MS {
-        fast_release_coef
-      } else if active_ms >= MASTER_COMP_ACTIVE_SLOW_MS {
-        slow_release_coef
-      } else {
-        let t = (active_ms - MASTER_COMP_ACTIVE_FAST_MS)
-          / (MASTER_COMP_ACTIVE_SLOW_MS - MASTER_COMP_ACTIVE_FAST_MS);
-        fast_release_coef + t * (slow_release_coef - fast_release_coef)
-      };
-      if target_gr > self.comp_smoothed_gr_db {
-        self.comp_smoothed_gr_db +=
-          attack_coef * (target_gr - self.comp_smoothed_gr_db);
-      } else {
-        self.comp_smoothed_gr_db +=
-          release_coef * (target_gr - self.comp_smoothed_gr_db);
-      }
-      if self.comp_smoothed_gr_db > MASTER_COMP_ACTIVE_GR_DB {
-        self.comp_active_samples = self.comp_active_samples.saturating_add(1);
-      } else {
-        self.comp_active_samples = 0;
-      }
-      // Gain-reduction self-saturation — tanh-shaped so heavy comp
-      // adds its own harmonic content. Transparent at small gr,
-      // saturates ~20dB ceiling at extreme reduction.
-      let gr_saturated = (self.comp_smoothed_gr_db * MASTER_COMP_GR_SAT_SCALE)
-        .tanh()
-        / MASTER_COMP_GR_SAT_SCALE;
-      let total_gain = 10.0_f32.powf(-gr_saturated / 20.0) * makeup_linear;
-      l *= total_gain;
-      r *= total_gain;
+      let comp_gain = self.comp.gain_stereo(l, r, &comp_block);
+      l *= comp_gain;
+      r *= comp_gain;
 
       // Distortion stage — equal-power dry/wet crossfade around
       // pre-emphasis → shaper → de-emphasis. Per-channel state +
@@ -4846,9 +4879,13 @@ struct BusMeta {
 // short crossfade. The JS curve (channelStrip.ts) uses the same math.
 const EQ_BANDS: usize = 6;
 const EQ_WORDS_PER_BAND: usize = 6;
-// + 1 trailing word: whole-strip bypass.
+// After the bands: whole-strip bypass, then the FAT block.
 const STRIP_BYPASS_WORD: usize = EQ_BANDS * EQ_WORDS_PER_BAND;
-const STRIP_WORDS: usize = STRIP_BYPASS_WORD + 1;
+const FAT_WORDS_START: usize = STRIP_BYPASS_WORD + 1;
+const FAT_WORDS: usize = 7;
+const COMP_WORDS_START: usize = FAT_WORDS_START + FAT_WORDS;
+const COMP_WORDS: usize = 4;
+const STRIP_WORDS: usize = COMP_WORDS_START + COMP_WORDS;
 const EQ_SUB: usize = 16;
 const EQ_SMOOTH_MS: f32 = 20.0;
 const EQ_FADE_MS: f32 = 10.0;
@@ -5124,6 +5161,531 @@ impl BusEq {
       if !probe.is_finite() {
         b.reset_state();
       }
+    }
+  }
+}
+
+// --- channel strip: FAT saturator (P3) ---
+//
+// Faturator-shaped controls; the sound is specced from Chris's description
+// rather than the plugin's (unpublished) internals:
+//   - "heavily increasing harmonic overtones and a feeling of girth vs just
+//     adding high end hiss"
+//   - color "would focus the explosive distortion around a specific
+//     frequency even if there was very little signal there"
+//
+// Signal path (per channel):
+//   focus  — the track is band-passed around `color` (two SVF band-pass
+//            stages, 12 dB/oct skirts so distant energy can't leak back in)
+//            and that band is LIFTED to the track's own level by envelope
+//            (up to +30 dB). A faint trace at the color frequency hits the
+//            shaper as hard as the core of the sound would.
+//   drive  — the lifted band, up to 60 dB (40 dB at 0.8 of the knob), into a
+//            LOPSIDED tanh (negative half ceiling FAT_NEG_CEIL) with
+//            tube-style BIAS SHIFT pushing into the lopsided side: the
+//            clipped wave stays asymmetric in time as well as height, which
+//            keeps the 2nd harmonic (the octave, the girth) strong at any
+//            drive. 2× oversampled through the shared halfband.
+//   added  — only what the shaper created is kept: the shaped band, level-
+//            matched to its input by envelope, minus that input (scaling by
+//            1/drive instead collapses at high drive into a clean copy).
+//            Low-passed at 6× color (24 dB/oct) so the 2nd–6th harmonics of
+//            the focus erupt and the hiss above doesn't. It is added at the
+//            lifted level onto the untouched (delay-aligned) track. Nothing
+//            outside the band enters the shaper, so there is no
+//            intermodulation spray from the rest of the sound.
+//   fuzz   — the driven band's 2 kHz high-pass, hard-clipped, blended in.
+//   restore— stereo-linked RMS match (10 ms) of output to input, 1 ms down /
+//            3 ms up, so the explosion doesn't jump the track's level and
+//            transients survive. Boost up to drive + 12 dB, cut 12 dB.
+//   blown  — past 40 dB: bias shift ×1..2.3, the added low-pass opens 6× → 8×
+//            color, RMS windows stretch 10 → 150 ms (transients stop being
+//            restored; the sound flattens into a wall).
+//   turbo  — Haas width: one wet side delayed 0..12 ms (sign picks the side).
+//   mix    — equal-power, dry delay-aligned to the oversampler's latency.
+// Pre-EQ by default (`post` puts it after the EQ).
+const FAT_FOCUS_Q: f32 = 0.9;
+const FAT_LIFT_MAX: f32 = 31.62; // +30 dB
+// Below ~-80 dBFS the track counts as silent — don't lift its noise floor.
+const FAT_LIFT_FLOOR: f32 = 1e-8;
+const FAT_DRIVE_DB: f32 = 60.0;
+// drive^taper × 60 dB puts 40 dB at 0.8 of the knob.
+const FAT_DRIVE_TAPER: f32 = 1.817;
+const FAT_BLOWN_FROM_DB: f32 = 40.0;
+const FAT_BLOWN_BIAS: f32 = 0.45;
+const FAT_BLOWN_RESID_RATIO: f32 = 2.0;
+const FAT_BLOWN_RMS_MS: f32 = 150.0;
+const FAT_NEG_CEIL: f32 = 0.55;
+// Bias = this × the shaper input's envelope, smoothed over FAT_BIAS_MS.
+const FAT_BIAS_SHIFT: f32 = 0.35;
+const FAT_BIAS_MS: f32 = 20.0;
+const FAT_FUZZ_HZ: f32 = 2000.0;
+// Low-pass on the added harmonics = color × this, clamped.
+const FAT_RESIDUAL_RATIO: f32 = 6.0;
+const FAT_RESIDUAL_MIN_HZ: f32 = 1500.0;
+const FAT_RESIDUAL_MAX_HZ: f32 = 18_000.0;
+const FAT_TURBO_MS: f32 = 12.0;
+const FAT_RMS_MS: f32 = 10.0;
+const FAT_RESTORE_ATTACK_MS: f32 = 1.0;
+// Rising gain restores a transient's onset, so it has to be fast too; the
+// 10 ms RMS windows already keep the gain from riding the waveform.
+const FAT_RESTORE_RELEASE_MS: f32 = 3.0;
+const FAT_RESTORE_MAX: f32 = 3.981; // +12 dB
+
+#[derive(Clone, Copy, PartialEq)]
+struct FatParams {
+  on: bool,
+  post: bool,
+  color: f32,
+  drive: f32,
+  fuzz: f32,
+  turbo: f32,
+  mix: f32,
+}
+
+impl Default for FatParams {
+  fn default() -> Self {
+    Self { on: false, post: false, color: 1000.0, drive: 0.35, fuzz: 0.0, turbo: 0.0, mix: 1.0 }
+  }
+}
+
+impl FatParams {
+  fn to_words(self) -> [u32; FAT_WORDS] {
+    [
+      self.on as u32,
+      self.post as u32,
+      self.color.to_bits(),
+      self.drive.to_bits(),
+      self.fuzz.to_bits(),
+      self.turbo.to_bits(),
+      self.mix.to_bits(),
+    ]
+  }
+  fn from_words(w: &[u32]) -> Self {
+    let d = Self::default();
+    let f = |i: usize, lo: f32, hi: f32, dv: f32| {
+      let v = f32::from_bits(w[i]);
+      if v.is_finite() { v.clamp(lo, hi) } else { dv }
+    };
+    // An all-zero block (a strip written before FAT existed) reads as off.
+    Self {
+      on: w[0] != 0,
+      post: w[1] != 0,
+      color: if w[2] == 0 { d.color } else { f(2, 80.0, 8000.0, d.color) },
+      drive: f(3, 0.0, 1.0, d.drive),
+      fuzz: f(4, 0.0, 1.0, d.fuzz),
+      turbo: f(5, -1.0, 1.0, d.turbo),
+      mix: f(6, 0.0, 1.0, d.mix),
+    }
+  }
+}
+
+// Unity-peak band-pass (SVF band output × k).
+fn svf_bandpass(fc: f32, q: f32, sr: f32) -> SvfCoefs {
+  let g = (std::f32::consts::PI * fc.clamp(20.0, sr * 0.49) / sr).tan();
+  let k = 1.0 / q.max(0.1);
+  let a1 = 1.0 / (1.0 + g * (g + k));
+  let a2 = g * a1;
+  let a3 = g * a2;
+  SvfCoefs { a1, a2, a3, m0: 0.0, m1: k, m2: 0.0 }
+}
+
+struct FatChannel {
+  os: Halfband2x,
+  // Focus band-pass, two stages, at 1×.
+  band: [[f32; 2]; 2],
+  // Track and band RMS, for the lift.
+  env_x: f32,
+  env_b: f32,
+  fuzz: [f32; 2],
+  // Low-pass on the added harmonics, two stages (24 dB/oct), at 2×.
+  resid: [[f32; 2]; 2],
+  // Envelope driving the bias shift (|u| follower, at 2×).
+  bias_env: f32,
+  // RMS of the shaper input and of the shaped wave (level-matching).
+  env_u: f32,
+  env_s: f32,
+  dc: DcBlock,
+  // Input, delayed by the oversampler's latency (dry blend + the base the
+  // added harmonics land on).
+  dry: [f32; 32],
+  dry_pos: usize,
+  // Turbo delay line (wet).
+  turbo: Vec<f32>,
+  turbo_pos: usize,
+  env_in: f32,
+  env_out: f32,
+}
+
+impl FatChannel {
+  fn new(sr: f32) -> Self {
+    Self {
+      os: Halfband2x::new(),
+      band: [[0.0; 2]; 2],
+      env_x: 0.0,
+      env_b: 0.0,
+      fuzz: [0.0; 2],
+      resid: [[0.0; 2]; 2],
+      bias_env: 0.0,
+      env_u: 0.0,
+      env_s: 0.0,
+      dc: DcBlock::new(sr, 10.0),
+      dry: [0.0; 32],
+      dry_pos: 0,
+      turbo: vec![0.0; (FAT_TURBO_MS * 0.001 * sr) as usize + 8],
+      turbo_pos: 0,
+      env_in: 0.0,
+      env_out: 0.0,
+    }
+  }
+  fn reset(&mut self) {
+    self.os.reset();
+    self.band = [[0.0; 2]; 2];
+    self.env_x = 0.0;
+    self.env_b = 0.0;
+    self.fuzz = [0.0; 2];
+    self.resid = [[0.0; 2]; 2];
+    self.bias_env = 0.0;
+    self.env_u = 0.0;
+    self.env_s = 0.0;
+    self.dc.reset_state();
+    self.dry = [0.0; 32];
+    self.turbo.fill(0.0);
+    self.env_in = 0.0;
+    self.env_out = 0.0;
+  }
+  fn probe(&self) -> f32 {
+    self.band[0][0] + self.band[1][0] + self.fuzz[0] + self.resid[0][0] + self.resid[1][0]
+      + self.env_out + self.env_s + self.env_b + self.os.probe()
+  }
+}
+
+struct BusFat {
+  target: FatParams,
+  on_mix: f32,
+  // Smoothed (log color, drive, fuzz, turbo, mix).
+  lcolor: f32,
+  drive: f32,
+  fuzz: f32,
+  turbo: f32,
+  mix: f32,
+  band_coefs: SvfCoefs,
+  fuzz_coefs: SvfCoefs,
+  resid_coefs: [SvfCoefs; 2],
+  restore: f32,
+  ch: [FatChannel; 2],
+  os: HalfbandTaps,
+  sr: f32,
+  smooth: f32,
+  fade_step: f32,
+  rms_c: f32,
+  att_c: f32,
+  rel_c: f32,
+  bias_c: f32,
+}
+
+impl BusFat {
+  fn new(sr: f32) -> Self {
+    let d = FatParams::default();
+    let mut f = Self {
+      target: FatParams { on: false, ..d },
+      on_mix: 0.0,
+      lcolor: d.color.ln(),
+      drive: d.drive,
+      fuzz: d.fuzz,
+      turbo: d.turbo,
+      mix: d.mix,
+      band_coefs: SvfCoefs::default(),
+      fuzz_coefs: svf_coefs(EQ_KIND_HP, FAT_FUZZ_HZ, 0.0, 0.707, false, 0, sr * 2.0),
+      resid_coefs: [SvfCoefs::default(); 2],
+      restore: 1.0,
+      ch: [FatChannel::new(sr), FatChannel::new(sr)],
+      os: HalfbandTaps::new(),
+      sr,
+      smooth: 1.0 - (-(EQ_SUB as f32) / (EQ_SMOOTH_MS * 0.001 * sr)).exp(),
+      fade_step: 1.0 / (EQ_FADE_MS * 0.001 * sr).max(1.0),
+      rms_c: one_pole_coef(FAT_RMS_MS, sr),
+      att_c: one_pole_coef(FAT_RESTORE_ATTACK_MS, sr),
+      rel_c: one_pole_coef(FAT_RESTORE_RELEASE_MS, sr),
+      bias_c: one_pole_coef(FAT_BIAS_MS, sr * 2.0),
+    };
+    f.update_color();
+    f
+  }
+
+  // 0 below FAT_BLOWN_FROM_DB, 1 at the top of the knob.
+  fn blown(drive: f32) -> f32 {
+    let db = drive.powf(FAT_DRIVE_TAPER) * FAT_DRIVE_DB;
+    ((db - FAT_BLOWN_FROM_DB) / (FAT_DRIVE_DB - FAT_BLOWN_FROM_DB)).clamp(0.0, 1.0)
+  }
+
+  fn update_color(&mut self) {
+    let hz = self.lcolor.exp();
+    self.band_coefs = svf_bandpass(hz, FAT_FOCUS_Q, self.sr);
+    let ratio = FAT_RESIDUAL_RATIO + FAT_BLOWN_RESID_RATIO * Self::blown(self.drive);
+    let lp = (hz * ratio).clamp(FAT_RESIDUAL_MIN_HZ, FAT_RESIDUAL_MAX_HZ);
+    for st in 0..2 {
+      self.resid_coefs[st] = svf_coefs(EQ_KIND_LP, lp, 0.0, 0.707, true, st, self.sr * 2.0);
+    }
+  }
+
+  fn reset_state(&mut self) {
+    for c in &mut self.ch {
+      c.reset();
+    }
+    self.restore = 1.0;
+  }
+
+  fn active(&self) -> bool {
+    self.target.on || self.on_mix > 0.0
+  }
+
+  fn set_target(&mut self, w: &[u32], bypass: bool) {
+    let mut p = FatParams::from_words(w);
+    p.on &= !bypass;
+    // Switching on from silence starts at the target with clean state.
+    if p.on && !self.active() {
+      self.lcolor = p.color.ln();
+      self.drive = p.drive;
+      self.fuzz = p.fuzz;
+      self.turbo = p.turbo;
+      self.mix = p.mix;
+      self.update_color();
+      self.reset_state();
+    }
+    self.target = p;
+  }
+
+  fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
+    let n = l.len().min(r.len());
+    let t = self.target;
+    let lopsided = |d: f32| {
+      if d >= 0.0 {
+        d.tanh()
+      } else {
+        FAT_NEG_CEIL * (d / FAT_NEG_CEIL).tanh()
+      }
+    };
+    let mut start = 0;
+    while start < n {
+      let end = (start + EQ_SUB).min(n);
+      // Per sub-block smoothing.
+      let k = self.smooth;
+      let prev_blown = Self::blown(self.drive);
+      self.drive += (t.drive - self.drive) * k;
+      let blown = Self::blown(self.drive);
+      let tlc = t.color.ln();
+      if (tlc - self.lcolor).abs() > 1e-4 || blown != prev_blown {
+        self.lcolor += (tlc - self.lcolor) * k;
+        self.update_color();
+      }
+      self.fuzz += (t.fuzz - self.fuzz) * k;
+      self.turbo += (t.turbo - self.turbo) * k;
+      self.mix += (t.mix - self.mix) * k;
+      let bias_shift = FAT_BIAS_SHIFT + FAT_BLOWN_BIAS * blown;
+      let rms_ms = FAT_RMS_MS + (FAT_BLOWN_RMS_MS - FAT_RMS_MS) * blown;
+      let rms_c = if blown > 0.0 { one_pole_coef(rms_ms, self.sr) } else { self.rms_c };
+      let rms_c2 = one_pole_coef(rms_ms, self.sr * 2.0);
+      let drive_lin = 10.0_f32.powf(self.drive.powf(FAT_DRIVE_TAPER) * FAT_DRIVE_DB / 20.0);
+      let fuzz = self.fuzz;
+      let (dry_g, wet_g) = master_dist_mix_gains(self.mix);
+      let delay = (self.turbo.abs() * FAT_TURBO_MS * 0.001 * self.sr).max(0.0);
+      let delayed_side = if self.turbo >= 0.0 { 1 } else { 0 };
+      for i in start..end {
+        let xs = [l[i], r[i]];
+        let mut wet = [0.0f32; 2];
+        let mut dry = [0.0f32; 2];
+        let (mut e_in, mut e_out) = (0.0f32, 0.0f32);
+        for ch in 0..2 {
+          let c = &mut self.ch[ch];
+          let x = xs[ch];
+          // Input, latency-aligned.
+          let dpos = c.dry_pos;
+          dry[ch] = c.dry[(dpos + 32 - MASTER_INFL_OS_LATENCY) % 32];
+          c.dry[dpos] = x;
+          c.dry_pos = (dpos + 1) % 32;
+          // Focus band, lifted to the track's level.
+          let mut band = x;
+          for st in 0..2 {
+            band = svf_tick(&self.band_coefs, &mut c.band[st], band);
+          }
+          c.env_x += rms_c * (x * x - c.env_x);
+          c.env_b += rms_c * (band * band - c.env_b);
+          let lift = if c.env_x > FAT_LIFT_FLOOR {
+            ((c.env_x + FAT_LIFT_FLOOR) / (c.env_b + FAT_LIFT_FLOOR)).sqrt().clamp(1.0, FAT_LIFT_MAX)
+          } else {
+            1.0
+          };
+          let (u0, u1) = c.os.upsample(band * lift, &self.os);
+          let mut ys = [0.0f32; 2];
+          for (y, u) in ys.iter_mut().zip([u0, u1]) {
+            c.bias_env += self.bias_c * (u.abs() - c.bias_env);
+            let b = -bias_shift * c.bias_env;
+            let d = (u + b) * drive_lin;
+            let shaped = lopsided(d) - lopsided(b * drive_lin);
+            c.env_u += rms_c2 * (u * u - c.env_u);
+            c.env_s += rms_c2 * (shaped * shaped - c.env_s);
+            let m = ((c.env_u + 1e-12) / (c.env_s + 1e-12)).sqrt().min(4.0);
+            let mut added = shaped * m - u;
+            for st in 0..2 {
+              added = svf_tick(&self.resid_coefs[st], &mut c.resid[st], added);
+            }
+            let hp = svf_tick(&self.fuzz_coefs, &mut c.fuzz, d);
+            *y = added + fuzz * (hp * 2.0).clamp(-1.0, 1.0) * m;
+          }
+          let w = dry[ch] + c.os.downsample(ys[0], ys[1], &self.os);
+          let w = c.dc.process(w);
+          c.env_in += rms_c * (dry[ch] * dry[ch] - c.env_in);
+          c.env_out += rms_c * (w * w - c.env_out);
+          e_in += c.env_in;
+          e_out += c.env_out;
+          wet[ch] = w;
+        }
+        // Stereo-linked level restore.
+        let target_g = ((e_in + 1e-9) / (e_out + 1e-9))
+          .sqrt()
+          .clamp(1.0 / FAT_RESTORE_MAX, drive_lin * FAT_RESTORE_MAX);
+        let c = if target_g < self.restore { self.att_c } else { self.rel_c };
+        self.restore += (target_g - self.restore) * c;
+        // Turbo: delay one wet side (fractional, linear interp).
+        for ch in 0..2 {
+          let w = wet[ch] * self.restore;
+          let c = &mut self.ch[ch];
+          let len = c.turbo.len();
+          c.turbo[c.turbo_pos] = w;
+          let out = if ch == delayed_side && delay > 0.0 {
+            let rp = c.turbo_pos as f32 - delay;
+            let rp = if rp < 0.0 { rp + len as f32 } else { rp };
+            let i0 = rp.floor() as usize % len;
+            let fr = rp - rp.floor();
+            c.turbo[i0] * (1.0 - fr) + c.turbo[(i0 + 1) % len] * fr
+          } else {
+            w
+          };
+          c.turbo_pos = (c.turbo_pos + 1) % len;
+          wet[ch] = out;
+        }
+        // On/off fade against the undelayed input.
+        self.on_mix = if t.on {
+          (self.on_mix + self.fade_step).min(1.0)
+        } else {
+          (self.on_mix - self.fade_step).max(0.0)
+        };
+        for ch in 0..2 {
+          let y = dry[ch] * dry_g + wet[ch] * wet_g;
+          let o = xs[ch] + (y - xs[ch]) * self.on_mix;
+          if ch == 0 {
+            l[i] = o;
+          } else {
+            r[i] = o;
+          }
+        }
+      }
+      start = end;
+    }
+    let probe = self.restore + self.ch.iter().map(|c| c.probe()).sum::<f32>();
+    if !probe.is_finite() {
+      self.reset_state();
+    }
+    if !t.on && self.on_mix <= 0.0 {
+      self.reset_state();
+    }
+  }
+}
+
+// --- channel strip: COMP (first in the strip) ---
+//
+// The master's BOUM compressor (BoumComp), one per bus: one `amount` knob
+// (threshold + ratio + makeup, negative ratio past 0.9), attack/release from
+// the master's tables. Runs before FAT so each note hits the saturator at a
+// more even level. 10 ms on/off fade; the strip bypass covers it.
+#[derive(Clone, Copy, PartialEq)]
+struct CompParams {
+  on: bool,
+  amount: f32,
+  attack: usize,
+  release: usize,
+}
+
+impl CompParams {
+  fn to_words(self) -> [u32; COMP_WORDS] {
+    [self.on as u32, self.amount.to_bits(), self.attack as u32, self.release as u32]
+  }
+  fn from_words(w: &[u32]) -> Self {
+    let amount = f32::from_bits(w[1]);
+    Self {
+      on: w[0] != 0,
+      amount: if amount.is_finite() { amount.clamp(0.0, 1.0) } else { 0.5 },
+      attack: (w[2] as usize).min(MASTER_COMP_ATTACK_MS.len() - 1),
+      release: (w[3] as usize).min(MASTER_COMP_RELEASE_MS.len() - 1),
+    }
+  }
+}
+
+struct BusComp {
+  comp: BoumComp,
+  target: CompParams,
+  on_mix: f32,
+  fade_step: f32,
+  sr: f32,
+  // Deepest gain reduction (dB) in the last processed block, for the meter.
+  gr_db: f32,
+}
+
+impl BusComp {
+  fn new(sr: f32) -> Self {
+    Self {
+      comp: BoumComp::new(sr),
+      target: CompParams { on: false, amount: 0.5, attack: 4, release: 2 },
+      on_mix: 0.0,
+      fade_step: 1.0 / (EQ_FADE_MS * 0.001 * sr).max(1.0),
+      sr,
+      gr_db: 0.0,
+    }
+  }
+
+  fn active(&self) -> bool {
+    self.target.on || self.on_mix > 0.0
+  }
+
+  fn reset_state(&mut self) {
+    self.comp.reset_state();
+    self.gr_db = 0.0;
+  }
+
+  fn set_target(&mut self, w: &[u32], bypass: bool) {
+    let mut p = CompParams::from_words(w);
+    p.on &= !bypass;
+    if p.on && !self.active() {
+      self.reset_state();
+    }
+    self.target = p;
+  }
+
+  fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
+    let t = self.target;
+    let block = BoumCompBlock::new(
+      t.amount,
+      MASTER_COMP_ATTACK_MS[t.attack],
+      MASTER_COMP_RELEASE_MS[t.release],
+      self.sr,
+    );
+    let mut gr = 0.0f32;
+    for i in 0..l.len().min(r.len()) {
+      let g = self.comp.gain_stereo(l[i], r[i], &block);
+      gr = gr.max(self.comp.smoothed_gr_db);
+      self.on_mix = if t.on {
+        (self.on_mix + self.fade_step).min(1.0)
+      } else {
+        (self.on_mix - self.fade_step).max(0.0)
+      };
+      let gm = 1.0 + (g - 1.0) * self.on_mix;
+      l[i] *= gm;
+      r[i] *= gm;
+    }
+    self.gr_db = gr * self.on_mix;
+    if !self.comp.probe().is_finite() || (!t.on && self.on_mix <= 0.0) {
+      self.reset_state();
     }
   }
 }
@@ -7320,6 +7882,8 @@ fn build_stream(
   let mut bus_r: Vec<Vec<f32>> = (0..MAX_BUSES).map(|_| vec![0.0; REVERB_SCRATCH]).collect();
   let mut bus_meta: [BusMeta; MAX_BUSES] = [BusMeta::default(); MAX_BUSES];
   let mut bus_eq: Vec<BusEq> = (0..MAX_BUSES).map(|_| BusEq::new(sample_rate as f32)).collect();
+  let mut bus_fat: Vec<BusFat> = (0..MAX_BUSES).map(|_| BusFat::new(sample_rate as f32)).collect();
+  let mut bus_comp: Vec<BusComp> = (0..MAX_BUSES).map(|_| BusComp::new(sample_rate as f32)).collect();
   // Frames each bus keeps running its strip after its last voice (tails).
   let mut bus_hang: [usize; MAX_BUSES] = [0; MAX_BUSES];
   let strip_tail_frames = (STRIP_TAIL_SECS * sample_rate as f32) as usize;
@@ -7871,6 +8435,12 @@ fn build_stream(
               master_stage.reset_state();
               for e in bus_eq.iter_mut() {
                 e.reset_state();
+              }
+              for f in bus_fat.iter_mut() {
+                f.reset_state();
+              }
+              for c in bus_comp.iter_mut() {
+                c.reset_state();
               }
               // Panic also drops a held resample loop — it's a sounding
               // source like any other.
@@ -8476,6 +9046,14 @@ fn build_stream(
               bus_r[slot][..frames].fill(0.0);
               if let Some((ver, words)) = tp.read_strip(bus_eq[slot].seen_ver) {
                 bus_eq[slot].set_targets(&words);
+                bus_fat[slot].set_target(
+                  &words[FAT_WORDS_START..FAT_WORDS_START + FAT_WORDS],
+                  words[STRIP_BYPASS_WORD] != 0,
+                );
+                bus_comp[slot].set_target(
+                  &words[COMP_WORDS_START..COMP_WORDS_START + COMP_WORDS],
+                  words[STRIP_BYPASS_WORD] != 0,
+                );
                 bus_eq[slot].seen_ver = ver;
               }
             }
@@ -9364,7 +9942,10 @@ fn build_stream(
           let m = bus_meta[slot];
           // An untouched bus keeps running (on silence) while its strip has
           // a tail to ring out; routing/sends stay as of its last touch.
-          let strip_on = bus_eq[slot].active();
+          let eq_on = bus_eq[slot].active();
+          let fat_on = bus_fat[slot].active();
+          let comp_on = bus_comp[slot].active();
+          let strip_on = eq_on || fat_on || comp_on;
           if m.touched {
             bus_hang[slot] = strip_tail_frames;
           } else if strip_on && bus_hang[slot] > 0 && bus_ok {
@@ -9382,9 +9963,24 @@ fn build_stream(
           }
           if strip_on {
             let (l, r) = (&mut bus_l[slot][..frames], &mut bus_r[slot][..frames]);
-            bus_eq[slot].process(l, r);
+            let fat_post = bus_fat[slot].target.post;
+            // comp → FAT ⇄ EQ.
+            if comp_on {
+              bus_comp[slot].process(l, r);
+            }
+            if fat_on && !fat_post {
+              bus_fat[slot].process(l, r);
+            }
+            if eq_on {
+              bus_eq[slot].process(l, r);
+            }
+            if fat_on && fat_post {
+              bus_fat[slot].process(l, r);
+            }
           }
           if tap {
+            let gr = if comp_on { bus_comp[slot].gr_db } else { 0.0 };
+            STRIP_AN_COMP_GR.store(gr.to_bits(), Ordering::Relaxed);
             if strip_on {
               strip_an_push(
                 &strip_an_pre_scratch_l[..frames],
@@ -10890,11 +11486,34 @@ pub struct EqBandUpdate {
 }
 
 #[derive(serde::Deserialize)]
+pub struct FatUpdate {
+  pub on: bool,
+  pub post: bool,
+  pub color: f32,
+  pub drive: f32,
+  pub fuzz: f32,
+  pub turbo: f32,
+  pub mix: f32,
+}
+
+#[derive(serde::Deserialize)]
 pub struct ChannelStripUpdate {
   pub track_id: String,
   #[serde(default)]
   pub bypass: bool,
   pub eq: Vec<EqBandUpdate>,
+  #[serde(default)]
+  pub fat: Option<FatUpdate>,
+  #[serde(default)]
+  pub comp: Option<CompUpdate>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct CompUpdate {
+  pub on: bool,
+  pub amount: f32,
+  pub attack: u32,
+  pub release: u32,
 }
 
 // Whole strips for the tracks whose strip changed (paramPush diff).
@@ -10914,6 +11533,27 @@ pub fn audio_set_channel_strips_bulk(updates: Vec<ChannelStripUpdate>) -> Result
       words[i * EQ_WORDS_PER_BAND..(i + 1) * EQ_WORDS_PER_BAND].copy_from_slice(&p.to_words());
     }
     words[STRIP_BYPASS_WORD] = u.bypass as u32;
+    if let Some(f) = &u.fat {
+      let p = FatParams {
+        on: f.on,
+        post: f.post,
+        color: f.color,
+        drive: f.drive,
+        fuzz: f.fuzz,
+        turbo: f.turbo,
+        mix: f.mix,
+      };
+      words[FAT_WORDS_START..FAT_WORDS_START + FAT_WORDS].copy_from_slice(&p.to_words());
+    }
+    if let Some(c) = &u.comp {
+      let p = CompParams {
+        on: c.on,
+        amount: c.amount,
+        attack: c.attack as usize,
+        release: c.release as usize,
+      };
+      words[COMP_WORDS_START..COMP_WORDS_START + COMP_WORDS].copy_from_slice(&p.to_words());
+    }
     get_or_create_track_params(&u.track_id).write_strip(&words);
   }
   Ok(())
@@ -11799,5 +12439,394 @@ mod channel_strip_eq_tests {
     let (ver, got) = tp.read_strip(0).expect("fresh snapshot");
     assert_eq!(got, words);
     assert!(tp.read_strip(ver).is_none());
+  }
+}
+
+#[cfg(test)]
+mod channel_strip_fat_tests {
+  use super::*;
+
+  const SR: f32 = 48_000.0;
+
+  fn fat(p: FatParams) -> BusFat {
+    let mut f = BusFat::new(SR);
+    f.set_target(&p.to_words(), false);
+    f
+  }
+
+  fn on(drive: f32) -> FatParams {
+    FatParams { on: true, drive, ..FatParams::default() }
+  }
+
+  fn run(f: &mut BusFat, l: &mut [f32], r: &mut [f32]) {
+    for c in (0..l.len()).step_by(512) {
+      let e = (c + 512).min(l.len());
+      f.process(&mut l[c..e], &mut r[c..e]);
+    }
+  }
+
+  fn sine(hz: f32, amp: f32, n: usize) -> Vec<f32> {
+    (0..n).map(|i| amp * (i as f32 * 2.0 * std::f32::consts::PI * hz / SR).sin()).collect()
+  }
+
+  fn tone_db(x: &[f32], hz: f32) -> f32 {
+    let w = 2.0 * std::f32::consts::PI * hz / SR;
+    let c = 2.0 * w.cos();
+    let (mut s1, mut s2) = (0.0f64, 0.0f64);
+    for &v in x {
+      let s0 = v as f64 + c as f64 * s1 - s2;
+      s2 = s1;
+      s1 = s0;
+    }
+    let pw = s1 * s1 + s2 * s2 - c as f64 * s1 * s2;
+    10.0 * ((pw / (x.len() as f64 * x.len() as f64 / 4.0)) + 1e-30).log10() as f32
+  }
+
+  fn rms(x: &[f32]) -> f32 {
+    (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt()
+  }
+
+  #[test]
+  fn off_is_untouched() {
+    let mut f = BusFat::new(SR);
+    let mut l = sine(440.0, 0.3, 4800);
+    let mut r = l.clone();
+    let orig = l.clone();
+    if f.active() {
+      run(&mut f, &mut l, &mut r);
+    }
+    assert!(!f.active());
+    assert_eq!(l, orig);
+  }
+
+  #[test]
+  fn keeps_dynamics_at_full_drive() {
+    // Loud 50 ms bursts over a quiet bed: the burst/bed ratio survives.
+    let n = 48_000;
+    let mut l: Vec<f32> = (0..n)
+      .map(|i| {
+        let amp = if (i / 2400) % 4 == 0 { 0.5 } else { 0.03 };
+        amp * (i as f32 * 2.0 * std::f32::consts::PI * 220.0 / SR).sin()
+      })
+      .collect();
+    let mut r = l.clone();
+    let x = l.clone();
+    // 40 dB — the top of the dynamics-keeping range (above it is "blown").
+    let mut f = fat(on(0.8));
+    run(&mut f, &mut l, &mut r);
+    // Steady part of a burst (block 8) vs the bed (block 10), in and out.
+    let seg = |v: &[f32], b: usize| rms(&v[b * 2400 + 1200..b * 2400 + 2300]);
+    let in_ratio = 20.0 * (seg(&x, 8) / seg(&x, 10)).log10();
+    let out_ratio = 20.0 * (seg(&l, 8) / seg(&l, 10)).log10();
+    assert!((in_ratio - out_ratio).abs() < 3.0, "in {in_ratio:.1} dB vs out {out_ratio:.1} dB");
+    // And the level lands near the input's.
+    let lvl = 20.0 * (rms(&l[24_000..]) / rms(&x[24_000..])).log10();
+    assert!(lvl.abs() < 1.5, "level change {lvl:.2} dB");
+  }
+
+  #[test]
+  fn drive_adds_harmonics_and_color_focuses_them() {
+    let n = 48_000;
+    // Low-order overtone energy (h2..h5) relative to the fundamental.
+    let overtones = |p: FatParams| {
+      let mut l = sine(500.0, 0.3, n);
+      let mut r = l.clone();
+      let mut f = fat(p);
+      run(&mut f, &mut l, &mut r);
+      let x = &l[24_000..];
+      let p: f32 = (2..=5).map(|k| 10f32.powf(tone_db(x, 500.0 * k as f32) / 10.0)).sum();
+      10.0 * p.log10() - tone_db(x, 500.0)
+    };
+    let light = overtones(FatParams { color: 500.0, ..on(0.05) });
+    let heavy = overtones(FatParams { color: 500.0, ..on(0.8) });
+    assert!(heavy > light + 10.0, "light {light:.1} dB, heavy {heavy:.1} dB");
+  }
+
+  // Chris: color "would focus the explosive distortion around a specific
+  // frequency even if there was very little signal there". A loud 100 Hz
+  // body with a faint 2 kHz partial (−30 dB): color at 2 kHz must erupt
+  // harmonics of the 2 kHz partial; color at 100 Hz must not.
+  #[test]
+  fn color_erupts_even_where_the_signal_is_faint() {
+    let n = 48_000;
+    let partial_h2 = |color: f32| {
+      let mut l: Vec<f32> = (0..n)
+        .map(|i| {
+          let t = i as f32 / SR;
+          0.4 * (t * 100.0 * std::f32::consts::TAU).sin() + 0.0126 * (t * 2000.0 * std::f32::consts::TAU).sin()
+        })
+        .collect();
+      let mut r = l.clone();
+      let mut f = fat(FatParams { color, ..on(0.7) });
+      run(&mut f, &mut l, &mut r);
+      let x = &l[24_000..];
+      // 2nd + 3rd harmonics of the faint partial, vs the loud body.
+      let p = 10f32.powf(tone_db(x, 4000.0) / 10.0) + 10f32.powf(tone_db(x, 6000.0) / 10.0);
+      10.0 * p.log10() - tone_db(x, 100.0)
+    };
+    let focused = partial_h2(2000.0);
+    let elsewhere = partial_h2(100.0);
+    println!("faint 2k partial's h2+h3 vs body: color 2k {focused:.1} dB, color 100 {elsewhere:.1} dB");
+    assert!(focused > -30.0, "focused partial harmonics only {focused:.1} dB under the body");
+    assert!(focused > elsewhere + 20.0, "focused {focused:.1} dB vs elsewhere {elsewhere:.1} dB");
+  }
+
+  #[test]
+  fn zero_mix_is_the_delayed_dry() {
+    let mut l = sine(1000.0, 0.3, 9600);
+    let mut r = l.clone();
+    let x = l.clone();
+    let mut f = fat(FatParams { mix: 0.0, ..on(1.0) });
+    f.on_mix = 1.0;
+    run(&mut f, &mut l, &mut r);
+    for i in 1000..9600 {
+      assert!((l[i] - x[i - MASTER_INFL_OS_LATENCY]).abs() < 1e-5, "i={i}");
+    }
+  }
+
+  #[test]
+  fn turbo_delays_one_side() {
+    let n = 9600;
+    let mut l: Vec<f32> = (0..n).map(|i| if i == 4800 { 1.0 } else { 0.0 }).collect();
+    let mut r = l.clone();
+    let mut f = fat(FatParams { turbo: 0.5, drive: 0.0, ..on(0.0) });
+    f.on_mix = 1.0;
+    run(&mut f, &mut l, &mut r);
+    let peak = |v: &[f32]| v.iter().enumerate().fold((0, 0.0f32), |m, (i, &x)| if x.abs() > m.1 { (i, x.abs()) } else { m }).0;
+    let lag = peak(&r) as i64 - peak(&l) as i64;
+    let want = (0.5 * FAT_TURBO_MS * 0.001 * SR) as i64;
+    assert!((lag - want).abs() <= 3, "R lags L by {lag}, want ~{want}");
+  }
+
+  // Diagnostic (run with --ignored --nocapture): where FAT's energy goes.
+  #[test]
+  #[ignore]
+  fn fizz_report() {
+    let n = 48_000;
+    for &(hz, drive) in &[(110.0f32, 0.35f32), (110.0, 0.8), (110.0, 1.0), (1000.0, 0.35), (1000.0, 0.8), (1000.0, 1.0)] {
+      let mut l = sine(hz, 0.3, n);
+      let mut r = l.clone();
+      let mut f = fat(on(drive));
+      run(&mut f, &mut l, &mut r);
+      let x = &l[24_000..];
+      // Harmonic ladder + a few inharmonic (alias) probes.
+      let fund = tone_db(x, hz);
+      let mut harm = String::new();
+      for k in [2, 3, 5, 7, 9, 15, 25] {
+        let f = hz * k as f32;
+        if f < 20_000.0 {
+          harm += &format!(" h{k}:{:.0}", tone_db(x, f) - fund);
+        }
+      }
+      // Energy above 6 kHz vs total (one-pole-ish split by FFT power sum).
+      let an = StripAnalyser::new();
+      let p = an.power(&x[..STRIP_AN_FFT]);
+      let tot: f32 = p.iter().sum();
+      let k6 = (6000.0 / SR * STRIP_AN_FFT as f32) as usize;
+      let hi: f32 = p[k6..].iter().sum();
+      // Inharmonic energy: bins not within ±2 of a harmonic.
+      let bin = SR / STRIP_AN_FFT as f32;
+      let inh: f32 = p
+        .iter()
+        .enumerate()
+        .filter(|(k, _)| {
+          let f = *k as f32 * bin;
+          let m = (f / hz).round();
+          m < 1.0 || (f - m * hz).abs() > 3.0 * bin
+        })
+        .map(|(_, v)| v)
+        .sum();
+      println!(
+        "{hz} Hz drive {drive}: >6k {:.1} dB, inharmonic {:.1} dB |{harm}",
+        10.0 * (hi / tot).log10(),
+        10.0 * (inh / tot).log10()
+      );
+    }
+  }
+
+  #[test]
+  fn blown_flattens_dynamics_but_keeps_level() {
+    let n = 48_000;
+    let make = || -> Vec<f32> {
+      (0..n)
+        .map(|i| {
+          let amp = if (i / 2400) % 4 == 0 { 0.5 } else { 0.03 };
+          amp * (i as f32 * 2.0 * std::f32::consts::PI * 220.0 / SR).sin()
+        })
+        .collect()
+    };
+    let x = make();
+    let mut l = make();
+    let mut r = make();
+    let mut f = fat(on(1.0));
+    run(&mut f, &mut l, &mut r);
+    let seg = |v: &[f32], b: usize| rms(&v[b * 2400 + 1200..b * 2400 + 2300]);
+    let in_ratio = 20.0 * (seg(&x, 8) / seg(&x, 10)).log10();
+    let out_ratio = 20.0 * (seg(&l, 8) / seg(&l, 10)).log10();
+    assert!(out_ratio < in_ratio - 10.0, "blown should flatten: in {in_ratio:.1} out {out_ratio:.1}");
+    let lvl = 20.0 * (rms(&l[24_000..]) / rms(&x[24_000..])).log10();
+    assert!(lvl.abs() < 6.0, "blown level change {lvl:.1} dB");
+    assert!(l.iter().all(|v| v.is_finite()));
+  }
+
+  // Diagnostic: intermodulation spray. 80 Hz "bass" + quieter 5.2 kHz "hat";
+  // energy above 2 kHz that isn't the hat or a harmonic of either = fizz.
+  #[test]
+  #[ignore]
+  fn imd_report() {
+    let n = 48_000;
+    for &drive in &[0.35f32, 0.6, 0.8, 1.0] {
+      let mk = || -> Vec<f32> {
+        (0..n)
+          .map(|i| {
+            let t = i as f32 / SR;
+            0.4 * (t * 80.0 * std::f32::consts::TAU).sin() + 0.08 * (t * 5200.0 * std::f32::consts::TAU).sin()
+          })
+          .collect()
+      };
+      let mut l = mk();
+      let mut r = mk();
+      let mut f = fat(on(drive));
+      run(&mut f, &mut l, &mut r);
+      let an = StripAnalyser::new();
+      let x = &l[24_000..24_000 + STRIP_AN_FFT];
+      let p = an.power(x);
+      let bin = SR / STRIP_AN_FFT as f32;
+      let tot: f32 = p.iter().sum();
+      let near = |f: f32, target: f32| (f - target).abs() < 3.0 * bin;
+      let spray: f32 = p
+        .iter()
+        .enumerate()
+        .filter(|(k, _)| {
+          let f = *k as f32 * bin;
+          f > 2000.0 && !(1..=3).any(|m| near(f, 5200.0 * m as f32))
+        })
+        .map(|(_, v)| v)
+        .sum();
+      println!("imd drive {drive}: spray above 2 kHz {:.1} dB of total", 10.0 * (spray / tot).log10());
+    }
+  }
+
+  #[test]
+  fn extremes_stay_finite() {
+    let mut l: Vec<f32> = (0..48_000).map(|i| ((i * 7919) % 2000) as f32 / 1000.0 - 1.0).collect();
+    let mut r = l.clone();
+    let mut f = fat(FatParams { on: true, post: false, color: 80.0, drive: 1.0, fuzz: 1.0, turbo: -1.0, mix: 1.0 });
+    run(&mut f, &mut l, &mut r);
+    assert!(l.iter().chain(r.iter()).all(|v| v.is_finite() && v.abs() < 8.0));
+  }
+}
+
+#[cfg(test)]
+mod channel_strip_comp_tests {
+  use super::*;
+
+  #[test]
+  fn compresses_loud_parts_and_reports_gr() {
+    let sr = 48_000.0;
+    let mut c = BusComp::new(sr);
+    // Fastest release, so the quiet stretch is measured after recovery (the
+    // program-dependent release doubles a long 300 ms setting to 600 ms).
+    c.set_target(&CompParams { on: true, amount: 0.7, attack: 2, release: 0 }.to_words(), false);
+    let n = 48_000;
+    let mut l: Vec<f32> = (0..n)
+      .map(|i| {
+        let amp = if (i / 12_000) % 2 == 0 { 0.8 } else { 0.08 };
+        amp * (i as f32 * std::f32::consts::TAU * 220.0 / sr).sin()
+      })
+      .collect();
+    let mut r = l.clone();
+    let x = l.clone();
+    let mut max_gr = 0.0f32;
+    for s in (0..n).step_by(512) {
+      let e = (s + 512).min(n);
+      c.process(&mut l[s..e], &mut r[s..e]);
+      max_gr = max_gr.max(c.gr_db);
+    }
+    let rms = |v: &[f32]| (v.iter().map(|a| a * a).sum::<f32>() / v.len() as f32).sqrt();
+    let in_ratio = 20.0 * (rms(&x[30_000..35_000]) / rms(&x[42_000..47_000])).log10();
+    let out_ratio = 20.0 * (rms(&l[30_000..35_000]) / rms(&l[42_000..47_000])).log10();
+    assert!(out_ratio < in_ratio - 6.0, "in {in_ratio:.1} dB, out {out_ratio:.1} dB");
+    assert!(max_gr > 6.0, "gr meter {max_gr:.1}");
+    assert!(l.iter().all(|v| v.is_finite()));
+  }
+
+  #[test]
+  fn off_is_inactive() {
+    let c = BusComp::new(48_000.0);
+    assert!(!c.active());
+  }
+}
+
+#[cfg(test)]
+mod master_comp_golden {
+  use super::*;
+
+  // Renders a dynamic stereo signal through MasterStage at several comp
+  // settings and returns the output bits. Used to prove the comp extraction
+  // (channel-strip comp) leaves the master bit-identical.
+  pub fn render() -> Vec<u32> {
+    let sr = 48_000u32;
+    let mut out = Vec::new();
+    for &(amount, atk, rel) in &[(0.3f32, 1usize, 2usize), (0.8, 4, 5), (0.95, 0, 0), (1.0, 5, 3)] {
+      let mut m = MasterStage::new(sr);
+      m.update_filters(1, 15_000.0);
+      let frames = 512;
+      for blk in 0..60 {
+        let mut buf = vec![0.0f32; frames * 2];
+        for f in 0..frames {
+          let i = blk * frames + f;
+          let t = i as f32 / sr as f32;
+          let env = if (i / 6000) % 2 == 0 { 0.9 } else { 0.1 };
+          buf[f * 2] = env * (t * 110.0 * std::f32::consts::TAU).sin();
+          buf[f * 2 + 1] = env * 0.8 * (t * 165.0 * std::f32::consts::TAU).sin();
+        }
+        let inflator = InflatorParams {
+          on: false,
+          input_gain: 1.0,
+          effect: 1.0,
+          curve: 0.5,
+          clip: true,
+          split: false,
+          output_gain: 1.0,
+        };
+        m.process_block(
+          &mut buf, frames, 2, 1.2, 0.8, amount,
+          MASTER_COMP_ATTACK_MS[atk], MASTER_COMP_RELEASE_MS[rel],
+          0, 0.3, 0.08, 0.6, false, 0.8, inflator, false,
+        );
+        out.extend(buf.iter().map(|v| v.to_bits()));
+        // Mono path too.
+        let mut mono: Vec<f32> = buf.iter().step_by(2).cloned().collect();
+        m.process_block(
+          &mut mono, frames, 1, 1.2, 0.8, amount,
+          MASTER_COMP_ATTACK_MS[atk], MASTER_COMP_RELEASE_MS[rel],
+          0, 0.3, 0.08, 0.6, false, 0.8, inflator, false,
+        );
+        out.extend(mono.iter().map(|v| v.to_bits()));
+      }
+    }
+    out
+  }
+
+  const GOLDEN: &str = "/private/tmp/claude-501/-Users-chriselkjar-Documents-Claude-Projects-newspeech/7ff8ef5e-4a80-4bbb-9c33-1e986578e8e8/scratchpad/master_golden.bin";
+
+  #[test]
+  #[ignore]
+  fn write_golden() {
+    let bits = render();
+    let bytes: Vec<u8> = bits.iter().flat_map(|b| b.to_le_bytes()).collect();
+    std::fs::write(GOLDEN, bytes).unwrap();
+  }
+
+  #[test]
+  #[ignore]
+  fn matches_golden() {
+    let bytes = std::fs::read(GOLDEN).expect("run write_golden first");
+    let want: Vec<u32> = bytes.chunks(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+    let got = render();
+    assert_eq!(got.len(), want.len());
+    let diffs = got.iter().zip(&want).filter(|(a, b)| a != b).count();
+    assert_eq!(diffs, 0, "{diffs} samples differ from the pre-extraction master");
   }
 }

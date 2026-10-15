@@ -10,25 +10,34 @@ import { PerformPanel } from './PerformPanel';
 import { LoopsPanel } from './LoopsPanel';
 import { NoisePanel } from './NoisePanel';
 
-// The top multi-mode "screen" — ROLL / LFO / EQ / FX / MASTER / PARAMS /
-// AUTOMATION / PERFORM.
+// The top multi-mode "screen". Tabs are grouped (Chris, 2026-10-12):
+// per-track (params / automation / roll / channel) | global (lfo / fx /
+// master / loops / noise) | perform.
 // The mode tabs (`ScreenModeTabs`) live in the app title row beside the logo;
 // `ChannelScreen` is just the body. PARAMS + AUTOMATION are the focused voice's
 // instrument editor (the two halves of the old modal). UI-only — no Launchpad /
 // hardware wiring.
 
-const MODES: { id: ScreenMode; label: string }[] = [
-  { id: 'params', label: 'params' },
-  { id: 'automation', label: 'automation' },
-  { id: 'roll', label: 'roll' },
-  { id: 'lfo', label: 'lfo' },
-  { id: 'eq', label: 'eq' },
-  { id: 'fx', label: 'fx' },
-  { id: 'master', label: 'master' },
-  { id: 'perform', label: 'perform' },
-  { id: 'loops', label: 'loops' },
-  { id: 'noise', label: 'noise' },
+const MODE_GROUPS: { id: ScreenMode; label: string }[][] = [
+  // Per-track — follow the focused track.
+  [
+    { id: 'params', label: 'params' },
+    { id: 'automation', label: 'automation' },
+    { id: 'roll', label: 'roll' },
+    { id: 'channel', label: 'channel' },
+  ],
+  // Global — one per song.
+  [
+    { id: 'lfo', label: 'lfo' },
+    { id: 'fx', label: 'fx' },
+    { id: 'master', label: 'master' },
+    { id: 'loops', label: 'loops' },
+    { id: 'noise', label: 'noise' },
+  ],
+  [{ id: 'perform', label: 'perform' }],
 ];
+// Flat order for the backtick cycle.
+const MODES = MODE_GROUPS.flat();
 
 // Mode tabs + backtick cycle. Rendered on the title line, not above the screen,
 // so they don't take their own row.
@@ -52,19 +61,24 @@ export function ScreenModeTabs() {
 
   return (
     <div className="flex gap-1.5 text-[10px] uppercase tracking-widest">
-      {MODES.map((m) => (
-        <button
-          key={m.id}
-          onClick={() => setScreenMode(m.id)}
-          className={[
-            'px-2.5 py-1 border transition-colors',
-            screenMode === m.id
-              ? 'bg-white text-ink border-white'
-              : 'border-white/15 text-white/60 hover:text-white hover:border-white',
-          ].join(' ')}
-        >
-          {m.label}
-        </button>
+      {MODE_GROUPS.map((group, gi) => (
+        <div key={gi} className="flex gap-1.5 items-stretch">
+          {gi > 0 && <span className="w-px bg-white/20 mx-1.5" aria-hidden />}
+          {group.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setScreenMode(m.id)}
+              className={[
+                'px-2.5 py-1 border transition-colors',
+                screenMode === m.id
+                  ? 'bg-white text-ink border-white'
+                  : 'border-white/15 text-white/60 hover:text-white hover:border-white',
+              ].join(' ')}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
       ))}
     </div>
   );
@@ -93,7 +107,7 @@ export function ChannelScreen() {
             <LFOPanel />
           </div>
         )}
-        {screenMode === 'eq' && <EqPanel />}
+        {screenMode === 'channel' && <EqPanel />}
         {screenMode === 'fx' && (
           <div className="h-full flex items-center justify-center">
             <FXPanel section="fx" />
