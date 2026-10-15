@@ -278,7 +278,7 @@
     <p>rows longer than sixteen steps grow page buttons above the grid. next to them sits a timing-lock dot: locked, mutation only changes notes and leaves the rhythm alone.</p>
 
     <h2>the screen</h2>
-    <p>the panel at the top is tabbed: params · automation · roll · lfo · fx · master · perform · loops · noise. <span class="kbd">`</span> cycles through them. params, automation and roll follow the focused row; everything else is global.</p>
+    <p>the panel at the top is tabbed, in three groups: params · automation · roll · channel follow the focused row; lfo · fx · master · loops · noise are global, one per song; perform stands alone. <span class="kbd">`</span> cycles through them.</p>
 
     <h2 class="sub">params</h2>
     <p>the instrument editor for the focused row's voice. a waveform display with draggable start/end trim (wheel zooms, two-finger scroll pans), four playmodes — <span class="kbd">sample</span>, <span class="kbd">slice</span>, <span class="kbd">wavetable</span>, <span class="kbd">granular</span> — and the sound-shaping stack: volume / tune / finetune, reverb and delay sends, an lp/hp/bp filter, and a drive + bit-crush stage.</p>
@@ -293,6 +293,12 @@
     <p>the inspector edits whichever step you last clicked: velocity / chance / ratchet / timing / gate readouts, per-step chord overrides (degree, extension, inversion, spread) on chord-capable rows, slice choice (or per-hit random) on sliced voices, and the accumulator — a per-step climbing ladder with its own step size, range and wrap / bounce / hold shape.</p>
     <p>the chord dropdowns here show the row default, dimmed, until you change one — that writes an override onto just that step (the labels go bright). <span class="kbd">×</span> clears it back to the row default.</p>
 
+    <h2 class="sub">channel</h2>
+    <p>a mixing strip for the focused row — compressor, saturator and eq, in that order. it's mix fit, not sound design: the strip saves with the song (not the instrument), and a pattern swap never changes it. the sends, stems and output all hear the track after its strip. <span class="kbd">bypass</span> fades the whole strip out with every setting kept, for a quick before/after.</p>
+    <p><span class="kbd">comp</span> evens each track out before the saturator: an <span class="kbd">amount</span> knob, click-to-cycle attack and release, and a gain-reduction meter. the threshold is absolute, so a quiet track needs more amount before it bites — watch the meter.</p>
+    <p><span class="kbd">fat</span> is a focused saturator. <span class="kbd">color</span> picks a frequency (80 hz – 8 khz) and the distortion erupts around it — even where the track has very little energy there. <span class="kbd">drive</span> runs to 60 db; past 40 the readout says <span class="kbd">blown</span> and it starts flattening the dynamics on purpose. <span class="kbd">fuzz</span> blends in hard-clipped highs, <span class="kbd">turbo</span> widens the saturated part, <span class="kbd">mix</span> sets wet against dry. the <span class="kbd">pre / post</span> button runs it before or after the eq.</p>
+    <p>the eq is a curve over the track's live spectrum — the filled shape is after the strip, the faint dashed line before it, so the gap is what the strip is doing. it has a high-pass and low-pass (12 or 24 db/oct) plus four bands that can each be a bell, low shelf, high shelf or notch. drag a node to set frequency and gain, scroll over the curve to set the selected band's width, double-click empty space to drop a band there, double-click a node to switch it off.</p>
+
     <h2 class="sub">lfo</h2>
     <p>four global lfos, each with a depth knob and a shape button (sin · tri · saw · sqr). click a cell to select it, then click any bindable knob anywhere in the app — row knobs, fx, master, loops, noise, instrument sends — to route the lfo there; click again to unroute, <span class="kbd">esc</span> to deselect. a routed knob shows a small <span class="kbd">L#</span> tag and animates with the modulation; grabbing it by hand overrides the lfo.</p>
 
@@ -300,16 +306,18 @@
     <p>the global send-fx chain: a pre-drive, a tape stage (position, length, reverse, hold, grain rate/mix, mix), glitch (chance, mix), reverb (size, diffusion, damping — it's a fully wet return; the amount comes from the per-row and per-instrument sends), and a synced delay (time, feedback, ping-pong, lo-fi).</p>
 
     <h2 class="sub">master</h2>
-    <p>the output chain, with a preset dropdown at the left: input gain and lo-cut, a compressor (amount, attack, release), a distortion stage (mode, drive, bias, mix), then hi-cut, trim, an output gate and bypass.</p>
-
-    <h2 class="sub">perform</h2>
-    <p>live punch-ins over whatever's running. hold a <span class="kbd">repeat</span> pad for momentary beat-repeat; everything else latches on click — tune, filter, bits, scrub, chop, sat, verb, delay, plus a <span class="kbd">rev</span> pad that plays new triggers as reverse one-shots. the track pads along the bottom choose which rows get punched (none selected = all of them). toggle <span class="kbd">set</span> to drag new values into the slots; leave it off so a stray scroll can't rewrite your rig.</p>
+    <p>the output chain, with a preset dropdown at the left: input gain and lo-cut, a compressor (amount, attack, release), a distortion stage (mode, drive, bias, mix), then hi-cut, trim and an output gate, an inflate stage, and bypass.</p>
+    <p><span class="kbd">inflate</span> is the last stage before the output: it makes the mix louder and denser without obviously squashing it. <span class="kbd">input</span> and <span class="kbd">output</span> trim either side, <span class="kbd">effect</span> sets how much, <span class="kbd">curve</span> shapes the character. <span class="kbd">split</span> works the lows, mids and highs separately, and <span class="kbd">clip 0db</span> hard-limits the result at full scale.</p>
+    <p>playing live through outboard processing? settings → live → <span class="kbd">master processing disable</span> bypasses the master section for every song at once. each song keeps its own master settings for when you switch it back.</p>
 
     <h2 class="sub">loops</h2>
     <p>a tape-loop / resampler unit. the capture buttons grab the last 1, 2, 4 or 8 bars of the mix — retroactively, bar-locked, seamless. the loop layer plays the buffer back with thru-zero <span class="kbd">speed</span> (a pitch-<span class="kbd">lock</span> toggle turns that into pure timestretch) while the granular layer chews the same buffer: pitch, grain size, voice count, spawn rate (synced or free), start-point randomness, its own level. shift-drag speed / pitch / size / rate to add per-grain deviation. sends to fx, reverb and delay; <span class="kbd">save</span> bounces the loop's output into your samples library as a new voice.</p>
 
     <h2 class="sub">noise</h2>
     <p>a digital-noise unit built around a wasp-style filter (drive, cutoff, resonance, stereo width, lp/bp taps). its input can be an insert on the loop unit, a parallel return, its own bar-quantized capture with vari-speed playback, or nothing at all — self-sounding clocked noise. the <span class="kbd">noise</span> knob feeds noise into the audio path; <span class="kbd">cv</span> feeds it into the cutoff. the clock can sync to the grid, run free, or derive from signal zero-crossings — its own input, the loop unit, or the whole mix — which is where the interesting cross-rhythms come from.</p>
+
+    <h2 class="sub">perform</h2>
+    <p>live punch-ins over whatever's running. hold a <span class="kbd">repeat</span> pad for momentary beat-repeat; everything else latches on click — tune, filter, bits, scrub, chop, sat, verb, delay, plus a <span class="kbd">rev</span> pad that plays new triggers as reverse one-shots. the track pads along the bottom choose which rows get punched (none selected = all of them). toggle <span class="kbd">set</span> to drag new values into the slots; leave it off so a stray scroll can't rewrite your rig.</p>
 
     <h2>the mutation knob</h2>
     <p>every row has a mutation dial. it introduces controlled randomness within the row's authored material — velocity jitter, pitch jumps within an octave, gate-length wobble, ties flipping on and off.</p>
@@ -332,7 +340,7 @@
     <p><span class="kbd">song</span> opens the arrangement view: rows of scene + pattern + bar count, each with a per-track mute overlay, played top to bottom when engaged. song mode overrides the ghost's autonomous walking.</p>
 
     <h2>recording</h2>
-    <p>arm <span class="kbd">rec</span> in the transport; capture starts on play and keeps writing after stop until the reverb and delay tails ring out. with <span class="kbd">multi</span> off you get one mixed wav; on, a full stems folder — master, fx, reverb and delay buses plus a dry wav per track. <span class="kbd">count</span> adds a one-bar count-in; <span class="kbd">metro</span> is a click that never reaches the recording. takes land in the recordings folder set in settings.</p>
+    <p>arm <span class="kbd">rec</span> in the transport; capture starts on play and keeps writing after stop until the reverb and delay tails ring out. with <span class="kbd">multi</span> off you get one mixed wav; on, a full stems folder — master, fx, reverb and delay buses plus a wav per track (after its channel strip, before the sends). <span class="kbd">count</span> adds a one-bar count-in; <span class="kbd">metro</span> is a click that never reaches the recording. takes land in the recordings folder set in settings.</p>
 
     <h2>midi</h2>
     <p>settings → midi. pick a record-input port, arm a row (the dot next to its knobs), and play: with the transport running, notes overdub quantized under the playhead; stopped, hovering a step writes the note onto that step. incoming notes snap to the current scale.</p>
