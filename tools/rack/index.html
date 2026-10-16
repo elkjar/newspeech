@@ -216,6 +216,10 @@
   #status.err { color: #fff; }
   #status.err::before { content: "! "; }
 
+  /* library units on a pattern edit doesn't hold: the knobs are last-known, not live */
+  #face { transition: opacity .25s; }
+  body.stale #face { opacity: .38; }
+
   /* help line: what the hovered control does + where it lives on the unit */
   #help { margin: 10px 2px 0; height: 3.4em; overflow: hidden; max-width: 1100px; color: var(--dim); text-transform: none; letter-spacing: .04em; font-size: 11px; line-height: 1.7; }
   #help b { color: #fff; font-weight: 400; letter-spacing: .12em; text-transform: uppercase; }

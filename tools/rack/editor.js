@@ -147,6 +147,7 @@ function randomize(params, amount = 1) {
     setValue(p, Math.floor(v >= p.max ? p.max : v), { send: false, from: "load" });
   }
   driver.sendPatch(values);
+  setStale(false); // every value just went out: the knobs describe the sound again
   commitUndo(before);
 }
 
@@ -454,7 +455,7 @@ async function boot() {
   $("#mutknob").replaceWith(mk.el);
   barcode();
   $("#get").onclick = getFromSynth;
-  $("#send").onclick = () => { driver.sendPatch(values); status("sent whole patch to edit buffer"); };
+  $("#send").onclick = () => { driver.sendPatch(values); setStale(false); status("sent whole patch to edit buffer"); };
   $("#hold").onclick = () => heldNote != null ? noteOff() : noteOn(12 * octave + 12);
   $("#undo").onclick = doUndo;
   $("#redo").onclick = doRedo;
@@ -814,7 +815,8 @@ async function runConnect() {
     if (driver.canRead === false) {
       step(schema.liveNote || `the ${schema.name} can't be asked anything — live controls, preset select and bank capture`).ok();
       pickBank = null; renderProgramControls(); setView("edit");
-      status(`${schema.name} · live controls`); return;
+      setStale(true); // nothing read yet — the knobs are guesses until send / a stored pattern
+      status(driver.keepsLibrary ? `${schema.name} · knobs dimmed until edit's sound is on the unit — send, or pick a stored pattern` : `${schema.name} · live controls`); return;
     }
     // 1 — is it there?
     const s1 = step(`talking to the ${schema.name}…`);
@@ -888,17 +890,28 @@ function goProgram(bank, prog) {
   setCurrent(bank, prog);
   Promise.resolve(driver.programChange(bank, prog))
     .catch((e) => status(e.message, true))
-    .then(() => setTimeout(async () => {
-      // synths whose edit buffer doesn't follow program changes (TG-55): read the
-      // selected voice from its memory slot; everything else: read the edit buffer
-      const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
-      if (!got) return getFromSynth();
-      if (got.empty && driver.keepsLibrary) return status(`${slotName(bank, prog)} — the unit's own pattern; edit has no copy yet (knobs show your last sound until you move them or store)`);
-      const before = snapshot();
-      saved = { ...got.values }; applyAll(got.values, { send: false }); commitUndo(before);
-      status(`${slotName(bank, prog)}${nameString() ? ` — “${nameString()}”` : ""}`);
-    }, midi.drainMs() + 150));
+    .then(() => setTimeout(() => adoptProgram(bank, prog), midi.drainMs() + 150));
 }
+
+// after a program change (ours or the synth's panel): synths whose edit buffer doesn't
+// follow program changes (TG-55) read the selected voice from its memory slot, library
+// units (Texture Lab) push edit's copy over it; everything else reads the edit buffer
+async function adoptProgram(bank, prog) {
+  const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
+  if (!got) return getFromSynth();
+  if (got.empty && driver.keepsLibrary) {
+    setStale(true);
+    return status(`${slotName(bank, prog)} — the unit's own pattern; edit has no copy, so the dimmed knobs are your last sound, not this one (send or store makes them true)`);
+  }
+  const before = snapshot();
+  saved = { ...got.values }; applyAll(got.values, { send: false }); commitUndo(before);
+  setStale(false);
+  status(`${slotName(bank, prog)}${nameString() ? ` — “${nameString()}”` : ""}`);
+}
+
+// library units can't be read: after landing on a pattern edit doesn't hold, its knobs
+// stop describing the sound — dim them until edit's values are on the unit again
+function setStale(on) { document.body.classList.toggle("stale", !!on && !!driver?.keepsLibrary); }
 
 // ◂ ▸ walk straight through the banks: last program of one → first of the next
 function stepProgram(dir) {
@@ -919,7 +932,7 @@ function followProgram(ev) {
   let bi = bs.findIndex((b) => !b.backupOnly && (b.msb == null || b.msb === (latched[0] ?? b.msb)) && (b.lsb == null || b.lsb === (latched[32] ?? b.lsb)));
   if (latched[0] == null && latched[32] == null) bi = cur.bank; // no bank select sent: same bank
   setCurrent(bi < 0 ? cur.bank : bi, ev.program); latched = {};
-  getFromSynth();
+  if (driver.keepsLibrary) adoptProgram(cur.bank, cur.prog); else getFromSynth();
   return true;
 }
 
@@ -1174,6 +1187,7 @@ async function doStore() {
     const known = names(); known[slotKey(bank, prog)] = nameString() || "(unnamed)";
     lsSet(`${schema.id}.names`, JSON.stringify(known));
     saved = snapshot(); applyAll(values, { send: false });
+    setStale(false);
     pickBank = null; renderProgPick();
     $("#storedlg").close();
     const how = driver.keepsLibrary ? "kept in edit's library" : driver.canRead === false ? "saved on the pedal (it can't confirm) · edit's copy kept" : "verified";
