@@ -37,7 +37,10 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite", "pro800"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite", "pro800", "obne"];
+
+// units that never answer: they need a MIDI out only (the rack card + connect skip the in port)
+export const OUT_ONLY = ["obne", "tclite"];
 
 // prefs: { get(key), set(key, value) } — per-device settings a driver learns (Yamaha device #)
 export function makeDriver(schema, midi, getChannel, prefs) {
@@ -50,6 +53,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "oberheim") return oberheimDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "tclite") return tcLiteDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "pro800") return pro800Driver(schema, midi, getChannel);
+  if (schema.transport === "obne") return obneDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "korg") return schema.korg.modelId === 0x28 ? wavestationDriver(schema, midi, getChannel, prefs) : korgDwDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
@@ -1489,6 +1493,53 @@ function pro800Driver(schema, midi, getChannel) {
       if (p && lastMsb.has(p.key)) return [{ param: p, value: Math.round((((lastMsb.get(p.key) << 7) | ev.val) * 999) / 16383) }];
       return [];
     },
+  };
+}
+
+// Old Blood Noise Endeavors stereo pedals (Dark Star, Black Fountain): MIDI in only —
+// the out jack is a thru and there's no SysEx, so nothing can be asked. Every control
+// is a CC (p.ccValues for switches: one value per option), presets are PC 0-126 (127 =
+// live mode), and saving works over MIDI: save CC (start) → PC of the slot → save CC
+// (confirm) stores whatever the pedal is running. Since the pedal can't be read, edit's
+// copy of each slot it stored IS the record: kept per device in prefs ("library").
+function obneDriver(schema, midi, getChannel, prefs) {
+  const ch = () => getChannel() & 15;
+  const save = schema.obne;
+  const inPatch = schema.params.filter((p) => p.cc != null && !p.notInPatch);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const lib = () => { try { return JSON.parse(prefs.get("library") || "{}"); } catch { return {}; } };
+  const slotName = (v) => schema.params.filter((p) => p.display === "char").map((p) => String.fromCharCode(v[p.key] ?? 32)).join("").trim();
+  const fromLib = (bi, prog) => {
+    const e = lib()[`${bi}-${prog}`];
+    return e ? { values: e.values, data: e.values, syx: [], name: slotName(e.values) || "(unnamed)", at: e.at }
+      : { values: {}, data: null, syx: [], name: "(not stored from edit)", empty: true };
+  };
+  return {
+    canRead: false,
+    probe: null, // nothing can be asked — the rack shows it as untestable
+    async requestPatch() { return { values: {}, syx: [] }; },
+    sendParam(p, v) { if (p.cc != null) midi.cc(ch(), p.cc, p.ccValues ? p.ccValues[v - p.min] : v); },
+    sendPatch(values) { for (const p of inPatch) if (values[p.key] != null) this.sendParam(p, values[p.key]); },
+    programChange(bi, prog) { midi.send([0xc0 | ch(), prog & 127]); },
+    // the pedal recalls its own copy; the editor shows edit's copy of that slot, if any
+    async adoptSlot(bi, prog) { return fromLib(bi, prog); },
+    async requestProgram(bi, prog) { return fromLib(bi, prog); },
+    // the store dialog reads the slot back after writing: that's edit's copy, so it
+    // always matches — the pedal itself can't confirm
+    async writeProgram(bi, prog, values) {
+      this.sendPatch(values);
+      await wait(midi.drainMs() + 80);
+      midi.cc(ch(), save.cc, save.start); await wait(80);
+      midi.send([0xc0 | ch(), prog & 127]); await wait(80);
+      midi.cc(ch(), save.cc, save.confirm);
+      await wait(midi.drainMs() + 80);
+      const all = lib(); all[`${bi}-${prog}`] = { values: { ...values }, at: new Date().toISOString() };
+      prefs.set("library", JSON.stringify(all));
+      return values;
+    },
+    sameProgram(a, b) { return !!a && !!b && schema.params.every((p) => a[p.key] === b[p.key]); },
+    library: () => Object.entries(lib()).map(([k, e]) => { const [bi, prog] = k.split("-").map(Number); return { bi, prog, name: slotName(e.values), values: e.values, at: e.at }; }),
+    decode() { return []; },
   };
 }
 

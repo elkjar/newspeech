@@ -72,7 +72,7 @@ async function listBackups(device) {
   for (const f of files.filter((f) => f.endsWith(".json"))) {
     try {
       const j = JSON.parse(await fs.readFile(path.join(dir, f), "utf8"));
-      out.push({ file: f.replace(/\.json$/, ".syx"), at: j.at, count: j.slots?.length ?? 0, failed: j.failed ?? 0 });
+      out.push({ file: j.jsonOnly ? f : f.replace(/\.json$/, ".syx"), at: j.at, count: j.slots?.length ?? 0, failed: j.failed ?? 0 });
     } catch {}
   }
   return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
@@ -95,9 +95,9 @@ const server = http.createServer(async (req, res) => {
         const body = JSON.parse(await readBody(req));
         const dir = await dirOf(m[1]);
         const base = path.join(dir, safe(body.stamp));
-        await fs.writeFile(base + ".syx", Buffer.from(body.syx));
-        await fs.writeFile(base + ".json", JSON.stringify({ device: m[1], at: body.at, slots: body.slots, failed: body.failed }, null, 2));
-        return send(res, 200, { ok: true, file: base + ".syx" });
+        if (body.syx?.length) await fs.writeFile(base + ".syx", Buffer.from(body.syx)); // OBNE: edit's copies only, in the .json
+        await fs.writeFile(base + ".json", JSON.stringify({ device: m[1], at: body.at, slots: body.slots, failed: body.failed, ...(body.syx?.length ? {} : { jsonOnly: true }) }, null, 2));
+        return send(res, 200, { ok: true, file: base + (body.syx?.length ? ".syx" : ".json") });
       }
     }
 
@@ -106,7 +106,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req));
       const base = path.join(await dirOf(m[1], "slots"), safe(m[2]));
       await fs.writeFile(base + ".json", JSON.stringify({ ...body, backedUpAt: new Date().toISOString() }, null, 2));
-      if (body.syx) await fs.writeFile(base + ".syx", Buffer.from(body.syx));
+      if (body.syx?.length) await fs.writeFile(base + ".syx", Buffer.from(body.syx));
       return send(res, 200, { ok: true, file: base + ".syx" });
     }
 

@@ -1,5 +1,5 @@
 import { Midi } from "./midi.js";
-import { makeDriver, TRANSPORTS } from "./drivers.js";
+import { makeDriver, TRANSPORTS, OUT_ONLY } from "./drivers.js";
 import { createKnob } from "./knob.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -235,6 +235,10 @@ function renderGroup(g) {
       const cell = h("div", { class: "cell dotcell", title: p.name }, dot, h("span", { class: "clabel" }, c.label));
       return bindAll(ps, { update: (v) => dot.classList.toggle("on", v === p.max), changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
     }
+    if (as === "tap") { // momentary: sends its one value, holds no state (Black Fountain tap = CC 27 value 0)
+      const b = h("button", { class: "btn", title: p.name, onclick: () => driver.sendParam(p, p.min) }, c.label);
+      return h("div", { class: "cell btncell" }, b, h("span", { class: "clabel" }, ""));
+    }
     if (as === "seg") {
       const labels = c.labels || p.options;
       const btns = labels.map((l, i) => h("button", { title: p.options?.[i], onclick: () => { begin(); write(p.min + i); end(); }, onpointerenter: hover }, l));
@@ -377,7 +381,9 @@ async function selectDevice(id) {
   saved = {}; undo = []; redo = [];
   $("#ch").value = channel() + 1;
   $("#pname").hidden = !nameParams().length;
+  $("#hold").closest(".cell").hidden = !!schema.noNotes; // effects pedals: no test note
   document.body.classList.toggle("noread", driver.canRead === false);
+  document.body.classList.toggle("canwrite", !!driver.writeProgram);
   $("#pname").maxLength = nameParams().length || 16;
   $("#synthname").textContent = schema.name;
   fillPorts();
@@ -593,7 +599,12 @@ async function art(id) {
   const svg = el.querySelector("svg"); if (svg) { const hi = svg.cloneNode(true); hi.classList.add("hi"); el.append(hi); } // for the checking sweep
   return el;
 }
-function setView(v) { view = v; document.body.className = `state-${v}`; }
+function setView(v) {
+  view = v; document.body.className = `state-${v}`;
+  // device flags survive view changes: noread = nothing can be asked, canwrite = store still works (OBNE)
+  document.body.classList.toggle("noread", driver?.canRead === false);
+  document.body.classList.toggle("canwrite", !!driver?.writeProgram);
+}
 
 function rackOrder() {
   let order = []; try { order = JSON.parse(lsGet("rackOrder", "[]")); } catch {}
@@ -614,15 +625,16 @@ async function renderRack({ force = false } = {}) {
       if (backups[0]) last = "backed up " + new Date(backups[0].at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     } catch {}
     const supported = TRANSPORTS.includes(d.transport);
-    const state = h("div", { class: "rstate" }, !supported ? "driver coming" : outName && inName ? h("span", { class: "dots" }, "checking") : "ports not set");
+    const cabled = outName && (inName || OUT_ONLY.includes(d.transport)); // pedals that can't be read need MIDI out only
+    const state = h("div", { class: "rstate" }, !supported ? "driver coming" : cabled ? h("span", { class: "dots" }, "checking") : "ports not set");
     const go = h("button", { class: "btn", onclick: (e) => { e.stopPropagation(); startConnect(d.id); } }, "connect");
-    const card = h("fieldset", { class: `grp rackcard${!supported ? " pending" : outName && inName ? " waiting" : ""}`, draggable: "true", "data-id": d.id, onclick: () => (card.classList.contains("online") || card.classList.contains("untested")) && startConnect(d.id) },
+    const card = h("fieldset", { class: `grp rackcard${!supported ? " pending" : cabled ? " waiting" : ""}`, draggable: "true", "data-id": d.id, onclick: () => (card.classList.contains("online") || card.classList.contains("untested")) && startConnect(d.id) },
       h("legend", {}, h("span", { class: "rdot" }), d.name),
       await art(d.id),
       h("div", { class: "rinfo" }, state,
         outName ? `${outName} · ch ${lsGet(`${d.id}.ch`, "") || "—"}` : `ch ${lsGet(`${d.id}.ch`, "") || "—"}`, h("br"), last),
       h("div", { class: "rgo" }, go));
-    return { d, card, state, ready: supported && !!(outName && inName), ports, supported };
+    return { d, card, state, ready: supported && !!cabled, ports, supported };
   }));
   $("#rackcards").replaceChildren(...cards.map((c) => c.card));
   cards.forEach((c) => dragCard(c.card));
@@ -706,7 +718,7 @@ async function startConnect(id, { auto = true } = {}) {
   $("#csteps").replaceChildren(); $("#ctrouble").hidden = true; $("#connect-retry").hidden = true; $("#connect-skip").hidden = true;
   $("#cprogress").classList.add("idle");
   $("#ctrouble-steps").replaceChildren(...(schema.setup || []).map((x) => h("li", {}, x)));
-  const ready = $("#in").value && $("#out").value;
+  const ready = $("#out").value && ($("#in").value || driver.canRead === false);
   status(ready ? "connecting…" : "pick the synth's MIDI in + out and its channel, then connect");
   if (ready && auto) runConnect();
 }
@@ -726,10 +738,10 @@ async function runConnect() {
   if (connecting) return; connecting = true;
   $("#csteps").replaceChildren(); $("#ctrouble").hidden = true; $("#connect-retry").hidden = true; progress(0, 0);
   try {
-    if (!$("#out").value || !$("#in").value) { status("pick both MIDI ports first", true); return; }
+    if (!$("#out").value || (!$("#in").value && driver.canRead !== false)) { status("pick both MIDI ports first", true); return; }
     usePorts(); lsSet(`${schema.id}.ch`, $("#ch").value);
     if (driver.canRead === false) {
-      step(`the ${schema.name} can't be asked anything — live controls, preset select and bank capture`).ok();
+      step(schema.liveNote || `the ${schema.name} can't be asked anything — live controls, preset select and bank capture`).ok();
       pickBank = null; renderProgramControls(); setView("edit");
       status(`${schema.name} · live controls`); return;
     }
@@ -861,6 +873,7 @@ function renderProgramList() {
 // .syx + a name index in Dropbox; the names also fill the program list
 async function createBackup() {
   if (driver.captureBank) return captureBackup();
+  if (driver.library) return libraryBackup();
   if (scanning) { scanning = false; return; }
   const readable = banks().map((b, bi) => ({ ...b, bi })).filter((b) => (b.dump || b.bankDump) && b.write);
   if (!readable.length) return status("this synth can't send its programs over MIDI", true);
@@ -930,6 +943,21 @@ async function captureBackup() {
   } catch (e) { status(e.message, true); }
   capturing = false; btn.classList.remove("running"); label.textContent = "capture bank";
   setTimeout(() => { fillEl.style.width = "0"; }, 1500);
+}
+
+// units that can't be read (OBNE): the backup is edit's own copy of every slot it stored
+async function libraryBackup() {
+  const lib = driver.library();
+  if (!lib.length) return status("nothing stored from edit yet — store a preset first, then back up", true);
+  const at = new Date();
+  const slots = lib.map((e) => ({ bank: banks()[e.bi]?.label ?? String(e.bi), program: e.prog + 1, name: e.name || "(unnamed)", values: e.values, storedAt: e.at }));
+  let file;
+  try {
+    if (LOCAL) file = await saveBackup(schema.id, { stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots, failed: 0, syx: [] });
+    else { file = fileSafe(`${schema.name} ${localStamp(at)}`) + ".json"; download(file, JSON.stringify({ device: schema.id, at: at.toISOString(), slots }, null, 2), "application/json"); file += " (downloaded)"; }
+  } catch (e) { return status(e.message, true); }
+  status(`backed up edit's copies of ${slots.length} presets → ${file}`);
+  refreshBackups();
 }
 
 // local date + time for filenames: 2026-09-30 1042
@@ -1018,7 +1046,8 @@ async function readTarget() {
     const oldName = old.empty ? "(empty)" : nameParams().map((q) => String.fromCharCode(old.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
     stOld.name = oldName;
     $("#st-msg").innerHTML = "";
-    if (old.empty) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where} — it's empty, nothing to back up.`);
+    if (old.empty && driver.canRead === false) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}. edit has no copy of this slot, and the pedal can't be read — whatever it holds there is replaced.`);
+    else if (old.empty) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where} — it's empty, nothing to back up.`);
     else $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}, replacing `, h("b", {}, `“${oldName}”`),
       ". The old one is backed up first.");
     $("#st-go").disabled = false;
@@ -1050,7 +1079,8 @@ async function doStore() {
     saved = snapshot(); applyAll(values, { send: false });
     renderProgramList();
     $("#storedlg").close();
-    status(`stored “${nameString()}” in ${where} — verified` + (stOld.empty ? "" : ` · old “${stOld.name}” backed up`));
+    const how = driver.canRead === false ? "saved on the pedal (it can't confirm) · edit's copy kept" : "verified";
+    status(`stored “${nameString()}” in ${where} — ${how}` + (stOld.empty ? "" : ` · old “${stOld.name}” backed up`));
   } catch (e) {
     $("#st-msg").textContent = e.message;
     $("#st-go").disabled = false;
