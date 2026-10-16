@@ -1360,6 +1360,7 @@ function pro800Driver(schema, midi, getChannel) {
   const byCc = new Map(ccParams.map((p) => [p.cc, p]));
   const byLsb = new Map(ccParams.filter((p) => p.ccLsb != null).map((p) => [p.ccLsb, p]));
   const lastMsb = new Map();
+  let sentAt = -1e9;
 
   const to999 = (u16) => Math.round((u16 * 999) / 65535);
   const from999 = (v) => Math.round((v * 65535) / 999);
@@ -1401,7 +1402,12 @@ function pro800Driver(schema, midi, getChannel) {
     return data;
   }
 
-  async function request(n) {
+  // one SysEx exchange at a time: with soft thru on, a request arriving mid-dump is
+  // echoed into the dump and cuts it short (seen on hardware: 130 of 193 bytes)
+  let busy = Promise.resolve();
+  const serial = (fn) => { const run = busy.then(fn, fn); busy = run.catch(() => {}); return run; };
+  const request = (n) => serial(() => requestNow(n));
+  async function requestNow(n) {
     const lo = n & 127, hi = n >> 7;
     // a bare F0 F7 back = it heard the request but won't dump (seen mid-menu on fw 1.4.5)
     const reply = midi.waitSysex((d) => isMsg(0x78, lo, hi)(d) || (d.length === 2 && d[0] === 0xf0));
@@ -1435,9 +1441,11 @@ function pro800Driver(schema, midi, getChannel) {
     },
 
     async requestPatch() {
-      const reply = midi.waitSysex(isMsg(0x78, 0x7e, 0x03));
-      midi.send([...HDR, 0x77, 0x7e, 0x03, 0xf7]);
-      const sys = dsiUnpack([...(await reply).slice(11, -1)]);
+      const sys = await serial(async () => {
+        const reply = midi.waitSysex(isMsg(0x78, 0x7e, 0x03));
+        midi.send([...HDR, 0x77, 0x7e, 0x03, 0xf7]);
+        return dsiUnpack([...(await reply).slice(11, -1)]);
+      });
       const n = sys[5] | (sys[6] << 8);
       if (!(n >= 0 && n < 400)) throw new Error(`the PRO-800 reported program ${n}`);
       const got = await request(n);
@@ -1445,7 +1453,10 @@ function pro800Driver(schema, midi, getChannel) {
       return { values: toValues(got.data), syx: got.syx, at: { bank: Math.floor(n / 100), prog: n % 100 } };
     },
 
-    programChange(bi, prog) { selectProgram(midi, ch(), schema.programs.banks[bi], prog); },
+    programChange(bi, prog) { sentAt = performance.now(); selectProgram(midi, ch(), schema.programs.banks[bi], prog); },
+    // MIDI Soft Thru (on by default) sends everything back: our own bank select + program
+    // change must not read as a front-panel change, or the editor fetches twice
+    isEcho(ev) { return (ev.type === "program" || (ev.type === "cc" && ev.num === 0)) && performance.now() - sentAt < 400; },
     // its edit buffer is the stored slot until you turn something: read the slot itself
     async adoptSlot(bi, prog) { const got = await request(slot(bi, prog)); lastData = got.data; return named(got); },
     async requestProgram(bi, prog) { return named(await request(slot(bi, prog))); },
