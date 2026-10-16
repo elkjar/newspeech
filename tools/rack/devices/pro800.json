@@ -25,7 +25,7 @@
   ],
   "uncertain": [
     "Nothing here is from Behringer: offsets and the CC table come from probing (samstaton/pro800 + Defros).",
-    "LFO Range (CC 58) and LFO Osc Target (CC 59) have no panel control on the unit (checked on hardware, fw 1.4.5), so the layout leaves them out; they stay modelled so stores keep their bytes. LFO Range: patch tables say 0 = slow, CC table 'Fast-Slow'.",
+    "LFO Range (CC 58) and LFO Osc Target (CC 59) have no panel control on the unit (fw 1.4.5) — MIDI-only, so the editor is the only way to reach them. LFO Range: patch tables say 0 = slow, CC table 'Fast-Slow'; modelled as patch order.",
     "Voice Spread: patch tables say 'On,Off', CC table 'Off-On'. Modelled as 0 = off — direction confirmed on hardware (fw 1.4.5).",
     "LFO Osc Target: bit mask A 0x08 / B 0x10 / VCA 0x20 (Defros; Sam had VCA at 0x40). Treated as one choice of A+B (no bits), A, B or VCA, matching CC 59's four values.",
     "Writing a 78 dump stores straight to flash? Store reads the slot back and compares, so a write that didn't take shows as an error.",
