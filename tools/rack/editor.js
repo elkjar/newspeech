@@ -113,8 +113,15 @@ function applyAll(next, { send = true } = {}) {
   if (send) driver.sendPatch(values);
 }
 
-// knob labels show the value on hover/drag, so nothing else echoes it
-function showLast() {}
+// knob labels show the value on hover/drag; the help line under the program bar
+// says what the control does and where it lives on the unit (params with note/panel)
+function showLast(p, v) {
+  const el = $("#help");
+  if (!el || !p || !(p.note || p.panel)) return;
+  el.replaceChildren(h("b", {}, p.name), " ", fmt(p, v),
+    p.panel ? h("span", { class: "hpanel" }, "on the unit: " + p.panel) : null,
+    p.note ? h("span", {}, p.note) : null);
+}
 
 // ---------- name ----------
 const nameParams = () => schema.params.filter(isName);
@@ -392,6 +399,9 @@ async function selectDevice(id) {
   document.body.classList.toggle("canwrite", !!driver.writeProgram);
   $("#pname").maxLength = nameParams().length || 16;
   $("#synthname").textContent = schema.name;
+  const helps = schema.params.some((p) => p.note || p.panel);
+  $("#help").hidden = !helps;
+  $("#help").textContent = helps ? "hover a control: what it does" + (schema.params.some((p) => p.panel) ? " and where it lives on the unit" : "") : "";
   fillPorts();
   renderProgramControls();
   renderFaceplate();
@@ -478,7 +488,10 @@ async function boot() {
 // readable over sysex (backups, names, store's read-first), write = storable
 // slot numbers as the unit shows them: 001-128 by default, 00-99 where it counts from zero (PRO-800)
 const progBase = () => (schema?.programs?.zeroBased ? 0 : 1);
-const pad3 = (n) => (schema?.programs?.zeroBased ? String(n).padStart(2, "0") : String(n + 1).padStart(3, "0"));
+// perBank: one flat run of program numbers the unit shows as bank·slot (Texture Lab: 8 × 16 → 2·05)
+const pad3 = (n) => { const per = schema?.programs?.perBank;
+  if (per) return `${Math.floor(n / per) + 1}·${String((n % per) + 1).padStart(2, "0")}`;
+  return schema?.programs?.zeroBased ? String(n).padStart(2, "0") : String(n + 1).padStart(3, "0"); };
 const slotKey = (b, p) => `${b}-${p}`;
 const banks = () => schema.programs?.banks || [];
 // banks you can play/step through (patch/timbre memories on the D-110 are backup-only)

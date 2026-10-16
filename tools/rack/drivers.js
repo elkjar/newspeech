@@ -37,7 +37,7 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite", "pro800", "obne"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite", "pro800", "obne", "liven"];
 
 // units that never answer: they need a MIDI out only (the rack card + connect skip the in port)
 export const OUT_ONLY = ["obne", "tclite"];
@@ -54,6 +54,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "tclite") return tcLiteDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "pro800") return pro800Driver(schema, midi, getChannel);
   if (schema.transport === "obne") return obneDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "liven") return livenDriver(schema, midi, getChannel);
   if (schema.transport === "korg") return schema.korg.modelId === 0x28 ? wavestationDriver(schema, midi, getChannel, prefs) : korgDwDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
@@ -1540,6 +1541,29 @@ function obneDriver(schema, midi, getChannel, prefs) {
     sameProgram(a, b) { return !!a && !!b && schema.params.every((p) => a[p.key] === b[p.key]); },
     library: () => Object.entries(lib()).map(([k, e]) => { const [bi, prog] = k.split("-").map(Number); return { bi, prog, name: slotName(e.values), values: e.values, at: e.at }; }),
     decode() { return []; },
+  };
+}
+
+// Sonicware LIVEN Texture Lab: every sound control is a CC, both ways (TX.CC on),
+// but nothing can be requested — its SysEx is pattern/sample transfers started on
+// the panel. Stepped controls are spread across 0-127 at floor(127 / (n-1)) with
+// the last option at 127 (measured: filter type 0/42/84/127, mod assign 0,9…108,127).
+// Program change 0-127 = pattern (8 banks × 16).
+function livenDriver(schema, midi, getChannel) {
+  const ch = () => getChannel() & 15;
+  const stepOf = (p) => Math.floor(127 / (p.max - p.min));
+  const toCc = (p, v) => (!p.options ? v : v >= p.max ? 127 : (v - p.min) * stepOf(p));
+  const fromCc = (p, c) => (!p.options ? c : p.min + Math.min(p.max - p.min, Math.floor(c / stepOf(p))));
+  const byCc = new Map(schema.params.filter((p) => p.cc != null).map((p) => [p.cc, p]));
+  const inPatch = schema.params.filter((p) => p.cc != null && !p.notInPatch);
+  return {
+    canRead: false,
+    probe: null, // ignores identity requests — the rack shows it as untestable
+    async requestPatch() { return { values: {}, syx: [] }; },
+    sendParam(p, v) { if (p.cc != null) midi.cc(ch(), p.cc, toCc(p, v)); },
+    sendPatch(values) { for (const p of inPatch) if (values[p.key] != null) this.sendParam(p, values[p.key]); },
+    programChange(bi, prog) { midi.send([0xc0 | ch(), prog & 127]); },
+    decode(ev) { const p = ev.type === "cc" && ev.ch === ch() && byCc.get(ev.num); return p ? [{ param: p, value: fromCc(p, ev.val) }] : []; },
   };
 }
 

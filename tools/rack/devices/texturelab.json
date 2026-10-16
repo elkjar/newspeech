@@ -1,0 +1,876 @@
+{
+  "id": "texturelab",
+  "name": "Sonicware LIVEN Texture Lab",
+  "transport": "liven",
+  "folder": "Sonicware LIVEN Texture Lab",
+  "source": "Sonicware LIVEN Texture Lab manual r2 + MIDI implementation chart (sonicware.co.jp/DL/LIVEN_TextureLab/DOC/); CC spacing for stepped options measured on hardware 2026-10-16 (filter type 0/42/84/127, mod assign 0,9…108,127)",
+  "liveNote": "the Texture Lab can't be asked for its settings — knobs follow its panel as you turn them, send pushes every control, patterns select by program change",
+  "setup": [
+    "DIN both ways: interface out → Texture Lab MIDI IN, its MIDI OUT → interface in.",
+    "On the unit, FUNC + key 10 (MIDI), pressed repeatedly to step through: RX.CH = edit's channel (or ALL), TX.CH = the same channel, TX.CC = ON (so panel moves reach edit), M.OUT = OUT.",
+    "For pattern select from edit: M.PC = RX.TX and PC.CH = the same channel.",
+    "Nothing can be read back: when you connect, edit's knobs are guesses until you move them (on either side) or press send.",
+    "Edits change the playing pattern only — save on the unit with FUNC + PTN, then OK (or pick a bank + step key to save elsewhere).",
+    "Hover any control: the line under the program bar says what it does and where it lives on the unit (shift = hold A/a, FUNC = hold func)."
+  ],
+  "groups": [
+    {
+      "id": "sample",
+      "name": "Sample"
+    },
+    {
+      "id": "grain",
+      "name": "Grain"
+    },
+    {
+      "id": "rnd",
+      "name": "Random"
+    },
+    {
+      "id": "mod1",
+      "name": "Mod 1"
+    },
+    {
+      "id": "mod2",
+      "name": "Mod 2"
+    },
+    {
+      "id": "eg",
+      "name": "Envelope"
+    },
+    {
+      "id": "filter",
+      "name": "Filter"
+    },
+    {
+      "id": "reverb",
+      "name": "Reverb"
+    },
+    {
+      "id": "voice",
+      "name": "Voice"
+    },
+    {
+      "id": "pattern",
+      "name": "Pattern"
+    },
+    {
+      "id": "efx",
+      "name": "EFX"
+    }
+  ],
+  "programs": {
+    "banks": [
+      {
+        "label": "patterns",
+        "count": 128
+      }
+    ],
+    "perBank": 16,
+    "note": "program change 0-127 = 8 banks × 16 patterns, shown bank·step as on the unit (bank 1 = factory). Needs M.PC = RX on the unit"
+  },
+  "params": [
+    {
+      "key": "sample",
+      "name": "Sample",
+      "group": "sample",
+      "min": 0,
+      "max": 31,
+      "cc": 32,
+      "options": [
+        "01 EPIC",
+        "02 SKY",
+        "03 WIDE",
+        "04 FIZZ",
+        "05 A.SYN",
+        "06 CHR.S",
+        "07 HELL",
+        "08 VOIZ",
+        "09 VR.TX",
+        "10 BELL",
+        "11 VOID",
+        "12 PSY.B",
+        "13 WTR.D",
+        "14 C.GTR",
+        "15 WORD",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31",
+        "32"
+      ],
+      "default": 0,
+      "note": "which of the 32 sample slots the grains are cut from. In EFX mode this knob is line-in level instead",
+      "panel": "SRC/IN LVL knob"
+    },
+    {
+      "key": "pitch",
+      "name": "Pitch",
+      "group": "sample",
+      "min": 0,
+      "max": 127,
+      "cc": 37,
+      "default": 64,
+      "note": "transposes the grains, ±2 octaves (−24.0 … +24.0 semitones); noon = original pitch",
+      "panel": "PITCH knob",
+      "display": "bipolar",
+      "valueOffset": -64
+    },
+    {
+      "key": "position",
+      "name": "Position",
+      "group": "sample",
+      "min": 0,
+      "max": 127,
+      "cc": 38,
+      "default": 0,
+      "note": "where in the sample grains start — 0 … 6 s across the knob. EFX mode: delay time before the first grain (4 ms … 5.9 s)",
+      "panel": "POSITION knob"
+    },
+    {
+      "key": "length",
+      "name": "Length / Feedback",
+      "group": "sample",
+      "min": 0,
+      "max": 127,
+      "cc": 39,
+      "default": 127,
+      "note": "how wide a window after POSITION the grains are drawn from — small = one focused spot, large = smeared across the sample. EFX mode: feedback",
+      "panel": "LENGTH/FB knob"
+    },
+    {
+      "key": "blend",
+      "name": "Blend",
+      "group": "sample",
+      "min": 0,
+      "max": 127,
+      "cc": 41,
+      "default": 127,
+      "note": "plain sample vs grains: 0 = the sample playing straight, 127 = grains only",
+      "panel": "BLEND knob"
+    },
+    {
+      "key": "size",
+      "name": "Size",
+      "group": "grain",
+      "min": 0,
+      "max": 127,
+      "cc": 33,
+      "default": 64,
+      "note": "length of each grain, 2 ms … 1 s. Short = buzzy, pitched texture; long = smooth overlapping chunks",
+      "panel": "SIZE knob"
+    },
+    {
+      "key": "shape",
+      "name": "Shape",
+      "group": "grain",
+      "min": 0,
+      "max": 127,
+      "cc": 42,
+      "default": 64,
+      "note": "the fade-in/out window on every grain: clicky and hard ↔ soft and blurred",
+      "panel": "shift + SIZE"
+    },
+    {
+      "key": "timing",
+      "name": "Timing",
+      "group": "grain",
+      "min": 0,
+      "max": 127,
+      "cc": 34,
+      "default": 64,
+      "note": "how often new grains start. Noon = LUSH (densest); left = longer free intervals (M values); right = tempo-synced 1/32 … 1/1",
+      "panel": "TIMING knob"
+    },
+    {
+      "key": "jitter",
+      "name": "Jitter",
+      "group": "grain",
+      "min": 0,
+      "max": 127,
+      "cc": 43,
+      "default": 0,
+      "note": "random wobble on when each grain starts — 0 = a steady stream, up = scattered",
+      "panel": "shift + TIMING"
+    },
+    {
+      "key": "density",
+      "name": "Density",
+      "group": "grain",
+      "min": 0,
+      "max": 127,
+      "cc": 35,
+      "default": 64,
+      "note": "how many grains overlap, 1 … 64 (cap depends on voice mode: poly 16/voice, mono 32, legato 64). Past noon it also detunes them",
+      "panel": "DENSITY knob"
+    },
+    {
+      "key": "diffusion",
+      "name": "Diffusion",
+      "group": "grain",
+      "min": 0,
+      "max": 127,
+      "cc": 36,
+      "default": 64,
+      "note": "stereo spread — grains scattered across left/right",
+      "panel": "DIFFUSION knob"
+    },
+    {
+      "key": "speed",
+      "name": "Speed",
+      "group": "grain",
+      "min": 0,
+      "max": 127,
+      "cc": 40,
+      "default": 64,
+      "note": "playback speed inside each grain, ¼× … 4×; noon = normal. Off in EFX mode",
+      "panel": "SPEED knob",
+      "display": "bipolar",
+      "valueOffset": -64
+    },
+    {
+      "key": "dir",
+      "name": "Direction",
+      "group": "grain",
+      "min": 0,
+      "max": 14,
+      "cc": 44,
+      "options": [
+        "→ · →",
+        "→ · ←",
+        "← · →",
+        "← · ←",
+        "→ · rnd",
+        "← · rnd",
+        ">< · →",
+        ">< · ←",
+        ">< · ><",
+        ">< · rnd",
+        "<> · →",
+        "<> · ←",
+        "<> · <>",
+        "<> · rnd",
+        "random"
+      ],
+      "default": 0,
+      "note": "first arrow = which way grains travel through the sample, second = which way each grain plays. >< and <> bounce; rnd = random. EFX mode uses only the first three",
+      "panel": "shift + SPEED"
+    },
+    {
+      "key": "posRate",
+      "name": "Pos Rnd Rate",
+      "group": "rnd",
+      "min": 0,
+      "max": 127,
+      "cc": 45,
+      "default": 0,
+      "note": "how fast the grain position jumps around randomly",
+      "panel": "shift + POSITION"
+    },
+    {
+      "key": "posDepth",
+      "name": "Pos Rnd Depth",
+      "group": "rnd",
+      "min": 0,
+      "max": 127,
+      "cc": 46,
+      "default": 0,
+      "note": "how far those random position jumps reach",
+      "panel": "shift + LENGTH/FB"
+    },
+    {
+      "key": "rndSize",
+      "name": "Grain Rnd Size",
+      "group": "rnd",
+      "min": 0,
+      "max": 127,
+      "cc": 47,
+      "default": 0,
+      "note": "random variation of SIZE, rolled per grain",
+      "panel": "FUNC + step 3, then VALUE"
+    },
+    {
+      "key": "rndShape",
+      "name": "Grain Rnd Shape",
+      "group": "rnd",
+      "min": 0,
+      "max": 127,
+      "cc": 48,
+      "default": 0,
+      "note": "random variation of SHAPE, rolled per grain",
+      "panel": "FUNC + step 4, then VALUE"
+    },
+    {
+      "key": "m1assign",
+      "name": "Mod 1 Assign",
+      "group": "mod1",
+      "min": 0,
+      "max": 13,
+      "cc": 49,
+      "options": [
+        "off",
+        "size",
+        "timing",
+        "density",
+        "diffusion",
+        "pitch",
+        "position",
+        "length/fb",
+        "speed",
+        "shape",
+        "jitter",
+        "cutoff",
+        "reso",
+        "blend"
+      ],
+      "default": 0,
+      "note": "what LFO 1 moves",
+      "panel": "FUNC + step 5, then VALUE"
+    },
+    {
+      "key": "m1shape",
+      "name": "Mod 1 Shape",
+      "group": "mod1",
+      "min": 0,
+      "max": 21,
+      "cc": 50,
+      "options": [
+        "sine",
+        "square",
+        "tri",
+        "saw",
+        "rev saw",
+        "random",
+        "smooth rnd",
+        "log",
+        "rev log",
+        "pulse 10%",
+        "pulse 25%",
+        "pulse 75%",
+        "pulse 90%",
+        "2 steps",
+        "3 steps",
+        "4 steps",
+        "5 steps",
+        "6 steps",
+        "7 steps",
+        "steps up",
+        "steps down",
+        "keyboard"
+      ],
+      "default": 0,
+      "note": "LFO 1 waveform; steps = stepped random-ish staircases, keyboard = follows the key played",
+      "panel": "FUNC + step 6, then VALUE"
+    },
+    {
+      "key": "m1rate",
+      "name": "Mod 1 Rate",
+      "group": "mod1",
+      "min": 0,
+      "max": 127,
+      "cc": 53,
+      "default": 64,
+      "note": "LFO 1 speed (4/1 … 1/32 of a bar when MOD SYNC is on)",
+      "panel": "shift + DENSITY"
+    },
+    {
+      "key": "m1depth",
+      "name": "Mod 1 Depth",
+      "group": "mod1",
+      "min": 0,
+      "max": 127,
+      "cc": 54,
+      "default": 0,
+      "note": "how far LFO 1 moves its target",
+      "panel": "shift + DIFFUSION"
+    },
+    {
+      "key": "m1fade",
+      "name": "Mod 1 Fade In",
+      "group": "mod1",
+      "min": 0,
+      "max": 127,
+      "cc": 51,
+      "default": 0,
+      "note": "LFO 1 eases in over 0 … 8 s after each note",
+      "panel": "FUNC + step 7, then VALUE"
+    },
+    {
+      "key": "m1retrig",
+      "name": "Mod 1 Retrig",
+      "group": "mod1",
+      "min": 0,
+      "max": 1,
+      "cc": 52,
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "note": "restart LFO 1 on every note",
+      "panel": "FUNC + step 8"
+    },
+    {
+      "key": "m2assign",
+      "name": "Mod 2 Assign",
+      "group": "mod2",
+      "min": 0,
+      "max": 13,
+      "cc": 55,
+      "options": [
+        "off",
+        "size",
+        "timing",
+        "density",
+        "diffusion",
+        "pitch",
+        "position",
+        "length/fb",
+        "speed",
+        "shape",
+        "jitter",
+        "cutoff",
+        "reso",
+        "blend"
+      ],
+      "default": 0,
+      "note": "what LFO 2 moves",
+      "panel": "FUNC + step 9, then VALUE"
+    },
+    {
+      "key": "m2shape",
+      "name": "Mod 2 Shape",
+      "group": "mod2",
+      "min": 0,
+      "max": 21,
+      "cc": 56,
+      "options": [
+        "sine",
+        "square",
+        "tri",
+        "saw",
+        "rev saw",
+        "random",
+        "smooth rnd",
+        "log",
+        "rev log",
+        "pulse 10%",
+        "pulse 25%",
+        "pulse 75%",
+        "pulse 90%",
+        "2 steps",
+        "3 steps",
+        "4 steps",
+        "5 steps",
+        "6 steps",
+        "7 steps",
+        "steps up",
+        "steps down",
+        "keyboard"
+      ],
+      "default": 0,
+      "note": "LFO 2 waveform",
+      "panel": "FUNC + step 10, then VALUE"
+    },
+    {
+      "key": "m2rate",
+      "name": "Mod 2 Rate",
+      "group": "mod2",
+      "min": 0,
+      "max": 127,
+      "cc": 58,
+      "default": 64,
+      "note": "LFO 2 speed",
+      "panel": "shift + SRC/IN LVL"
+    },
+    {
+      "key": "m2depth",
+      "name": "Mod 2 Depth",
+      "group": "mod2",
+      "min": 0,
+      "max": 127,
+      "cc": 59,
+      "default": 0,
+      "note": "how far LFO 2 moves its target",
+      "panel": "shift + PITCH"
+    },
+    {
+      "key": "m2retrig",
+      "name": "Mod 2 Retrig",
+      "group": "mod2",
+      "min": 0,
+      "max": 1,
+      "cc": 57,
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "note": "restart LFO 2 on every note",
+      "panel": "FUNC + step 11"
+    },
+    {
+      "key": "modSync",
+      "name": "Mod Sync",
+      "group": "mod2",
+      "min": 0,
+      "max": 1,
+      "cc": 60,
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "note": "lock both LFO rates to the tempo (4/1 … 1/32)",
+      "panel": "FUNC + step 12"
+    },
+    {
+      "key": "attack",
+      "name": "Attack",
+      "group": "eg",
+      "min": 0,
+      "max": 127,
+      "cc": 61,
+      "default": 0,
+      "note": "fade-in of each note, 0 … 5 s. Off in EFX mode",
+      "panel": "shift + RELEASE"
+    },
+    {
+      "key": "release",
+      "name": "Release",
+      "group": "eg",
+      "min": 0,
+      "max": 127,
+      "cc": 62,
+      "default": 80,
+      "note": "two zones: 0–41 = gate time (notes cut to 10–90% of their length), 42–127 = release tail 0 … 5 s after the key lets go",
+      "panel": "RELEASE knob"
+    },
+    {
+      "key": "ftype",
+      "name": "Filter Type",
+      "group": "filter",
+      "min": 0,
+      "max": 3,
+      "cc": 68,
+      "options": [
+        "off",
+        "lpf",
+        "hpf",
+        "bpf"
+      ],
+      "default": 0,
+      "note": "low pass, high pass or band pass — off bypasses it",
+      "panel": "FUNC + step 13, then VALUE"
+    },
+    {
+      "key": "cutoff",
+      "name": "Cutoff",
+      "group": "filter",
+      "min": 0,
+      "max": 127,
+      "cc": 69,
+      "default": 127,
+      "note": "filter frequency, 70 Hz … 14.4 kHz",
+      "panel": "CUTOFF knob"
+    },
+    {
+      "key": "reso",
+      "name": "Resonance",
+      "group": "filter",
+      "min": 0,
+      "max": 127,
+      "cc": 70,
+      "default": 0,
+      "note": "filter peak (Q 0.3 … 10); on BPF it sets the band's width instead",
+      "panel": "shift + CUTOFF"
+    },
+    {
+      "key": "rtype",
+      "name": "Reverb Type",
+      "group": "reverb",
+      "min": 0,
+      "max": 6,
+      "cc": 71,
+      "options": [
+        "off",
+        "hall",
+        "room",
+        "arena",
+        "plate",
+        "tunnel",
+        "infinite"
+      ],
+      "default": 1,
+      "note": "reverb space — infinite never decays",
+      "panel": "FUNC + step 14, then VALUE"
+    },
+    {
+      "key": "shimmer",
+      "name": "Shimmer",
+      "group": "reverb",
+      "min": 0,
+      "max": 127,
+      "cc": 72,
+      "default": 0,
+      "note": "how much octave-up shimmer feeds the reverb",
+      "panel": "SHIMMER knob"
+    },
+    {
+      "key": "rmix",
+      "name": "Reverb Mix",
+      "group": "reverb",
+      "min": 0,
+      "max": 127,
+      "cc": 73,
+      "default": 40,
+      "note": "reverb level",
+      "panel": "shift + SHIMMER"
+    },
+    {
+      "key": "lineRev",
+      "name": "Line In → Reverb",
+      "group": "reverb",
+      "min": 0,
+      "max": 127,
+      "cc": 74,
+      "default": 0,
+      "note": "sends whatever is on LINE IN straight into the reverb",
+      "panel": "FUNC + step 15, then VALUE"
+    },
+    {
+      "key": "vmode",
+      "name": "Voice Mode",
+      "group": "voice",
+      "min": 0,
+      "max": 3,
+      "cc": 26,
+      "options": [
+        "poly",
+        "mono",
+        "legato",
+        "arp"
+      ],
+      "default": 0,
+      "note": "poly = 4 voices; mono retriggers each note; legato glides without retriggering; arp arpeggiates held keys",
+      "panel": "FUNC + step 1, then VALUE"
+    },
+    {
+      "key": "vadj",
+      "name": "Voice Adjust",
+      "group": "voice",
+      "min": 0,
+      "max": 127,
+      "cc": 27,
+      "default": 0,
+      "note": "depends on voice mode — mono/legato: glide time 0 … 10 s; arp: arp type (up, down, up-down, … random, play order) in 12 steps across the knob",
+      "panel": "FUNC + step 2, then VALUE"
+    },
+    {
+      "key": "octave",
+      "name": "Octave",
+      "group": "voice",
+      "min": 0,
+      "max": 6,
+      "cc": 28,
+      "options": [
+        "−3",
+        "−2",
+        "−1",
+        "0",
+        "+1",
+        "+2",
+        "+3"
+      ],
+      "default": 3,
+      "note": "keyboard octave",
+      "panel": "< / > (OCTAVE) buttons",
+      "norandom": true
+    },
+    {
+      "key": "velocity",
+      "name": "Velocity",
+      "group": "voice",
+      "min": 0,
+      "max": 127,
+      "cc": 5,
+      "default": 100,
+      "note": "the fixed velocity the keyboard plays at",
+      "panel": "shift + BLEND",
+      "norandom": true
+    },
+    {
+      "key": "ptnLevel",
+      "name": "Pattern Level",
+      "group": "pattern",
+      "min": 0,
+      "max": 127,
+      "cc": 20,
+      "default": 100,
+      "note": "this pattern's output level (before VOL)",
+      "panel": "FUNC + step 16, then VALUE",
+      "norandom": true
+    },
+    {
+      "key": "swing",
+      "name": "Swing",
+      "group": "pattern",
+      "min": 0,
+      "max": 127,
+      "cc": 24,
+      "default": 0,
+      "note": "delays every even step, 0 … 75%",
+      "panel": "FUNC + key 6 (SETTING) → SWNG, then VALUE"
+    },
+    {
+      "key": "transpose",
+      "name": "Transpose",
+      "group": "pattern",
+      "min": 0,
+      "max": 24,
+      "cc": 25,
+      "options": [
+        "-12",
+        "-11",
+        "-10",
+        "-9",
+        "-8",
+        "-7",
+        "-6",
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0",
+        "+1",
+        "+2",
+        "+3",
+        "+4",
+        "+5",
+        "+6",
+        "+7",
+        "+8",
+        "+9",
+        "+10",
+        "+11",
+        "+12"
+      ],
+      "default": 12,
+      "note": "shifts the sequence's notes in semitones",
+      "panel": "FUNC + key 6 (SETTING) → TRPS, then VALUE",
+      "norandom": true
+    },
+    {
+      "key": "rndStep",
+      "name": "Random Step",
+      "group": "pattern",
+      "min": 0,
+      "max": 5,
+      "cc": 23,
+      "options": [
+        "off",
+        "1",
+        "2",
+        "4",
+        "8",
+        "16"
+      ],
+      "default": 0,
+      "note": "the chunk size the sequence random function shuffles, in steps (random itself: FUNC + 1/5)",
+      "panel": "FUNC + key 6 (SETTING) → RND.S, then VALUE"
+    },
+    {
+      "key": "seqMode",
+      "name": "Seq Mode",
+      "group": "pattern",
+      "min": 0,
+      "max": 127,
+      "cc": 22,
+      "default": 0,
+      "note": "not documented — probably normal / random / stutter (the FUNC + 1/5 and 2/6 functions)",
+      "panel": "FUNC + 1/5 (random), FUNC + 2/6 (stutter)",
+      "norandom": true,
+      "notInPatch": true
+    },
+    {
+      "key": "prmLock",
+      "name": "Param Lock",
+      "group": "pattern",
+      "min": 0,
+      "max": 1,
+      "cc": 21,
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 1,
+      "note": "plays back the per-step knob moves recorded into the pattern (hold a step key and turn knobs to record one)",
+      "panel": "PRM LOCK button",
+      "norandom": true,
+      "notInPatch": true
+    },
+    {
+      "key": "efxMode",
+      "name": "EFX Mode",
+      "group": "efx",
+      "min": 0,
+      "max": 1,
+      "cc": 29,
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "note": "granulates LINE IN live instead of a sample; POSITION becomes delay time, LENGTH/FB feedback",
+      "panel": "EFX MODE button",
+      "norandom": true,
+      "notInPatch": true
+    },
+    {
+      "key": "efxNote",
+      "name": "EFX Note",
+      "group": "efx",
+      "min": 0,
+      "max": 1,
+      "cc": 30,
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "note": "in EFX mode, the keys repitch the effect relative to the low C",
+      "panel": "FUNC + step 1 (in EFX mode)",
+      "norandom": true
+    },
+    {
+      "key": "freeze",
+      "name": "Freeze",
+      "group": "efx",
+      "min": 0,
+      "max": 1,
+      "cc": 31,
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": 0,
+      "note": "stops the grain position where it is (EFX mode: freezes the 6 s input buffer). On the unit, hold FREEZE + OK to latch it",
+      "panel": "FREEZE button",
+      "norandom": true,
+      "notInPatch": true
+    }
+  ]
+}

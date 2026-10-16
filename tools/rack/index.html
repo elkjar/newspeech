@@ -216,6 +216,12 @@
   #status.err { color: #fff; }
   #status.err::before { content: "! "; }
 
+  /* help line: what the hovered control does + where it lives on the unit */
+  #help { margin: 10px 2px 0; height: 3.4em; overflow: hidden; max-width: 1100px; color: var(--dim); text-transform: none; letter-spacing: .04em; font-size: 11px; line-height: 1.7; }
+  #help b { color: #fff; font-weight: 400; letter-spacing: .12em; text-transform: uppercase; }
+  #help span::before { content: " · "; color: #444; }
+  #help .hpanel { color: #bbb; }
+
   /* footer telemetry, bottom-right like the plugins */
   #tele { margin-top: 26px; text-align: right; color: #6a6a6a; font-size: 10px; letter-spacing: .22em; line-height: 1.9; }
   #rx { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #222; margin-left: 6px; vertical-align: 1px; }
@@ -318,6 +324,7 @@
       <div class="cell btncell"><div class="seg"><button id="mutate" title="nudge every param by the amount">mutate</button><button id="random" title="roll every param">random</button></div><span class="clabel">whole patch</span></div>
     </div>
   </fieldset>
+  <div id="help" hidden></div>
 </div>
 
 <div id="face"></div>
