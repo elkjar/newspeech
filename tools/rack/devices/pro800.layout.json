@@ -1,0 +1,333 @@
+{
+  "comment": "Plugin-panel pattern. Rows follow the PRO-800 (Prophet-5) panel, plus two MIDI-only LFO params the panel lacks (range, osc target): poly-mod / LFO / vibrato, then the oscillators, mixer and filter, then both envelopes behind one select, then performance. Continuous controls read 0-999 like the unit's display.",
+  "rows": [
+    {
+      "id": "mod",
+      "groups": [
+        {
+          "title": "poly-mod",
+          "controls": [
+            {
+              "k": "pmFilterEnv",
+              "label": "filt env"
+            },
+            {
+              "k": "pmOscB",
+              "label": "osc b"
+            },
+            {
+              "k": "pmFreqA",
+              "label": "→ freq a"
+            },
+            {
+              "k": "pmFilter",
+              "label": "→ filter"
+            }
+          ]
+        },
+        {
+          "title": "lfo",
+          "controls": [
+            {
+              "k": "lfoFreq",
+              "label": "freq"
+            },
+            {
+              "k": "lfoAmt",
+              "label": "amount"
+            },
+            {
+              "k": "lfoShape",
+              "label": "shape",
+              "as": "pick"
+            },
+            {
+              "k": "lfoRange",
+              "label": "fast"
+            },
+            {
+              "k": "lfoToFreq",
+              "label": "→ freq a-b"
+            },
+            {
+              "k": "lfoToPw",
+              "label": "→ pw a-b"
+            },
+            {
+              "k": "lfoToFilter",
+              "label": "→ filter"
+            },
+            {
+              "k": "lfoOsc",
+              "label": "osc",
+              "as": "seg"
+            }
+          ]
+        },
+        {
+          "title": "vibrato",
+          "controls": [
+            {
+              "k": "modDelay",
+              "label": "delay"
+            },
+            {
+              "k": "vibSpeed",
+              "label": "speed"
+            },
+            {
+              "k": "vibAmt",
+              "label": "amount"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "path",
+      "groups": [
+        {
+          "title": "oscillators",
+          "select": {
+            "label": "osc",
+            "options": [
+              {
+                "label": "A",
+                "vars": {
+                  "n": "A"
+                }
+              },
+              {
+                "label": "B",
+                "vars": {
+                  "n": "B"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "osc{n}Freq",
+              "label": "freq"
+            },
+            {
+              "k": "osc{n}Pw",
+              "label": "pw"
+            },
+            {
+              "k": "saw{n}",
+              "label": "saw"
+            },
+            {
+              "k": "tri{n}",
+              "label": "tri"
+            },
+            {
+              "k": "sqr{n}",
+              "label": "sqr"
+            },
+            {
+              "k": "oscBFine",
+              "label": "fine",
+              "only": [
+                "B"
+              ]
+            },
+            {
+              "k": "sync",
+              "label": "sync",
+              "only": [
+                "B"
+              ]
+            },
+            {
+              "k": "osc{n}Mode",
+              "label": "knob",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "mixer",
+          "controls": [
+            {
+              "k": "oscAVol",
+              "label": "osc a"
+            },
+            {
+              "k": "oscBVol",
+              "label": "osc b"
+            },
+            {
+              "k": "noise",
+              "label": "noise"
+            }
+          ]
+        },
+        {
+          "title": "filter",
+          "controls": [
+            {
+              "k": "cutoff",
+              "label": "cutoff"
+            },
+            {
+              "k": "resonance",
+              "label": "res"
+            },
+            {
+              "k": "filterEnvAmt",
+              "label": "env amt"
+            },
+            {
+              "k": "keyTrack",
+              "label": "key trk",
+              "as": "seg"
+            },
+            {
+              "k": "keyTrackRef",
+              "label": "ref",
+              "as": "pick"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "env",
+      "groups": [
+        {
+          "title": "envelopes",
+          "select": {
+            "label": "env",
+            "options": [
+              {
+                "label": "filter",
+                "vars": {
+                  "n": "f"
+                }
+              },
+              {
+                "label": "amp",
+                "vars": {
+                  "n": "a"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{n}Attack",
+              "label": "attack"
+            },
+            {
+              "k": "{n}Decay",
+              "label": "decay"
+            },
+            {
+              "k": "{n}Sustain",
+              "label": "sustain"
+            },
+            {
+              "k": "{n}Release",
+              "label": "release"
+            },
+            {
+              "k": "{n}Shape",
+              "label": "exp"
+            },
+            {
+              "k": "{n}Speed",
+              "label": "slow"
+            }
+          ]
+        },
+        {
+          "title": "voice",
+          "controls": [
+            {
+              "k": "glide",
+              "label": "glide"
+            },
+            {
+              "k": "glideMode",
+              "label": "speed"
+            },
+            {
+              "k": "unison",
+              "label": "unison"
+            },
+            {
+              "k": "detune",
+              "label": "detune"
+            },
+            {
+              "k": "voiceSpread",
+              "label": "spread"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "perf",
+      "groups": [
+        {
+          "title": "velocity",
+          "controls": [
+            {
+              "k": "ampVel",
+              "label": "amp"
+            },
+            {
+              "k": "filtVel",
+              "label": "filter"
+            }
+          ]
+        },
+        {
+          "title": "aftertouch",
+          "controls": [
+            {
+              "k": "vcaAT",
+              "label": "amp"
+            },
+            {
+              "k": "vcfAT",
+              "label": "filter"
+            },
+            {
+              "k": "lfoAT",
+              "label": "lfo"
+            }
+          ]
+        },
+        {
+          "title": "wheels",
+          "controls": [
+            {
+              "k": "bendTarget",
+              "label": "bend",
+              "as": "seg"
+            },
+            {
+              "k": "modwheelAmt",
+              "label": "mod range",
+              "as": "seg"
+            },
+            {
+              "k": "modwheelTarget",
+              "label": "mod → vib"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
