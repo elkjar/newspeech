@@ -509,7 +509,6 @@ function renderProgramControls() {
     ? h("div", { class: "seg" }, bs.map((b) => h("button", { "data-b": b.bi, onclick: () => goProgram(b.bi, cur.prog) }, b.label)))
     : h("select", { class: "box bankpick", onchange: (e) => goProgram(Number(e.target.value), cur.prog) }, bs.map((b) => new Option(b.label, b.bi))));
   showCurrent();
-  renderProgramList();
 }
 
 function setCurrent(bank, prog) {
@@ -522,7 +521,6 @@ function showCurrent() {
   document.querySelectorAll("#banks button").forEach((b) => b.classList.toggle("on", Number(b.dataset.b) === cur.bank));
   const pick = $("#banks select"); if (pick) pick.value = cur.bank;
   renderProgPick();
-  document.querySelectorAll("#programs button").forEach((b) => b.classList.toggle("on", b.dataset.k === slotKey(cur.bank, cur.prog)));
 }
 
 // the program dropdown: every slot in the current bank, by name where known
@@ -594,7 +592,7 @@ async function readBankNames(bi) {
   catch (e) { status(`stopped reading names: ${e.message}`, true); }
   scanningNames = false; pickBank = null;
   if (!b.dump) goProgram(back.bank, back.prog);
-  renderProgramList(); renderProgPick();
+  renderProgPick();
   status(`read ${b.label} names`);
 }
 
@@ -860,26 +858,9 @@ function followProgram(ev) {
   return true;
 }
 
-function renderProgramList() {
-  const known = names(), ul = $("#programs");
-  ul.replaceChildren();
-  if (!Object.keys(known).length) { ul.append(h("li", { class: "dim" }, "create a backup to read the slot names")); return; }
-  banks().forEach((b, bi) => {
-    if (!b.dump || b.backupOnly) return;
-    if (!Array.from({ length: b.count }, (_, p) => known[slotKey(bi, p)]).some(Boolean)) return;
-    ul.append(h("li", { class: "bankhead" }, bankName(bi)));
-    for (let p = 0; p < b.count; p++) {
-      const k = slotKey(bi, p);
-      ul.append(h("li", {}, h("button", { "data-k": k, onclick: () => goProgram(bi, p) },
-        h("span", { class: "dim" }, pad3(p) + " "), known[k] ?? "…")));
-    }
-  });
-  showCurrent();
-}
-
 // ---------- backups ----------
 // read every slot (one program dump each — the sound doesn't change) into one
-// .syx + a name index in Dropbox; the names also fill the program list
+// .syx + a name index in Dropbox; the names also fill the program dropdown
 async function createBackup() {
   if (driver.captureBank) return captureBackup();
   if (driver.library) return libraryBackup();
@@ -920,7 +901,7 @@ async function createBackup() {
   setTimeout(() => { if (!scanning) fillEl.style.width = "0"; }, finished ? 1500 : 0);
   lsSet(`${schema.id}.names`, JSON.stringify(known));
   if (finished) readable.forEach((b) => namesStamp(b.bi));
-  renderProgramList();
+  pickBank = null; renderProgPick();
   if (!slots.length) return status("the synth isn't answering program requests — check MIDI in + sysex", true);
   if (!finished) return status(`backup stopped at ${n}/${total} — nothing written`, true);
   const at = new Date();
@@ -948,7 +929,7 @@ async function captureBackup() {
     const at = new Date();
     const file = await saveBackup(schema.id, { stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots: got.names.map((n, i) => ({ bank: "user", program: i + 1, name: n })), failed: 0, syx: got.syx });
     status(`captured ${got.names.length} presets → ${file}`);
-    refreshBackups(); renderProgramList(); pickBank = null; renderProgPick();
+    refreshBackups(); pickBank = null; renderProgPick();
   } catch (e) { status(e.message, true); }
   capturing = false; btn.classList.remove("running"); label.textContent = "capture bank";
   setTimeout(() => { fillEl.style.width = "0"; }, 1500);
@@ -1124,7 +1105,7 @@ async function doStore() {
     const known = names(); known[slotKey(bank, prog)] = nameString() || "(unnamed)";
     lsSet(`${schema.id}.names`, JSON.stringify(known));
     saved = snapshot(); applyAll(values, { send: false });
-    renderProgramList();
+    pickBank = null; renderProgPick();
     $("#storedlg").close();
     const how = driver.canRead === false ? "saved on the pedal (it can't confirm) · edit's copy kept" : "verified";
     status(`stored “${nameString()}” in ${where} — ${how}` + (stOld.empty ? "" : ` · old “${stOld.name}” backed up`));

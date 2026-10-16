@@ -192,11 +192,6 @@
   select.bankpick { width: 128px; padding: 6px 8px; }
   #progpick { width: 176px; margin: 0 -1px; font-variant-numeric: tabular-nums; color: #fff; padding: 6px 9px; }
   .progrow .seg button#prev, .progrow .seg button#next { padding: 6px 8px; }
-  #programs { list-style: none; margin: 0; padding: 0; max-height: 260px; columns: 2; column-gap: 24px; overflow: auto; text-transform: none; letter-spacing: .06em; }
-  #programs .bankhead { color: var(--legend); letter-spacing: .22em; text-transform: uppercase; font-size: 10px; margin: 10px 0 4px; }
-  #programs button { background: none; border: none; padding: 2px 0; text-align: left; width: 100%; color: #bbb; cursor: pointer; text-transform: none; }
-  #programs button:hover { color: #fff; }
-  #programs button.on { color: #050505; background: #ddd; }
   .lcdcell { width: 250px; align-items: stretch; margin-right: 6px; padding-top: 10px; }
   #lcd { background: var(--panel); border: 1px solid var(--line); height: 29px; padding: 0 12px; display: flex; align-items: center; gap: 12px; }
   #pname { flex: 1; min-width: 0; background: none; border: none; outline: none; color: #fff; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; padding: 0; }
@@ -343,10 +338,6 @@
         <div class="mnote">reads every program on the synth into one dated .syx (~40 s) — the sound doesn't change</div>
         <ul id="backups"></ul>
         <div class="mnote" id="backupdir"></div>
-      </section>
-      <section class="msec">
-        <div class="msec-label">programs on the synth</div>
-        <ul id="programs"></ul>
       </section>
       <section class="msec">
         <div class="msec-label">synth setup</div>
