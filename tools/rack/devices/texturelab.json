@@ -823,7 +823,7 @@
         "on"
       ],
       "default": 1,
-      "note": "plays back the per-step knob moves recorded into the pattern (hold a step key and turn knobs to record one)",
+      "note": "plays back per-step knob values recorded into the pattern — while on, a locked control snaps back every step, so turning it sounds jumpy (factory patterns are full of them); turn off to tweak freely. Record one: hold a step key + turn a knob; clear all: CLR + PRM LOCK",
       "panel": "PRM LOCK button",
       "norandom": true,
       "notInPatch": true
