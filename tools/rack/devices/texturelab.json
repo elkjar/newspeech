@@ -8,7 +8,7 @@
   "setup": [
     "DIN both ways: interface out → Texture Lab MIDI IN, its MIDI OUT → interface in.",
     "On the unit, FUNC + key 10 (MIDI), pressed repeatedly to step through: RX.CH = edit's channel (or ALL), TX.CH = the same channel, TX.CC = ON (so panel moves reach edit), M.OUT = OUT.",
-    "For pattern select from edit: M.PC = RX.TX and PC.CH = the same channel.",
+    "For pattern select from edit: M.PC = RX.TX and PC.CH = the same channel — PC.CH is its own setting and defaults to 16 (a factory reset puts it back), so check it first if the program dropdown does nothing. While a pattern plays, a change waits for the pattern's end.",
     "Nothing can be read back: when you connect, edit's knobs are guesses until you move them (on either side) or press send.",
     "edit keeps your patterns (Dropbox): store files the current sound under the pattern number; selecting that number later loads the unit's pattern and pushes edit's sound on top — no button on the unit, so it works racked. (The Texture Lab itself can only save from its panel: FUNC + PTN, then OK.)",
     "Hover any control: the line under the program bar says what it does and where it lives on the unit (shift = hold A/a, FUNC = hold func)."
