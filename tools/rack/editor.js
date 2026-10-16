@@ -687,7 +687,7 @@ function dragCard(card) {
 }
 
 function renderShelf(ids) {
-  const list = ids.map((id) => devices.find((d) => d.id === id)).filter(Boolean);
+  const list = ids.map((id) => devices.find((d) => d.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
   $("#shelf").classList.toggle("empty", !list.length);
   $("#shelfcount").textContent = list.length ? `· ${list.length}` : "";
   $("#shelfitems").replaceChildren(...list.map((d) => {
