@@ -77,7 +77,8 @@ cp -f "$DMG" "$BUNDLE_DIR/dmg/edit.dmg"
 
 step "commit + push the bump"
 git -C "$REPO" add tools/rack/app/package.json tools/rack/app/src-tauri/Cargo.lock
-git -C "$REPO" commit -q -m "edit.app: $VERSION — $SUMMARY"
+# (nothing to commit when re-cutting the version package.json already says)
+git -C "$REPO" diff --cached --quiet || git -C "$REPO" commit -q -m "edit.app: $VERSION — $SUMMARY"
 git -C "$REPO" push -q origin main
 
 step "GitHub prereleases"
