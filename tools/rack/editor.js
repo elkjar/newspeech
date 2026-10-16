@@ -1,5 +1,6 @@
 import { Midi } from "./midi.js";
 import { makeDriver, TRANSPORTS, OUT_ONLY } from "./drivers.js";
+import { APP, invoke } from "./tauri.js";
 import { createKnob } from "./knob.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -375,7 +376,8 @@ async function selectDevice(id) {
   layout = lr.ok ? await lr.json() : autoLayout();
   lsSet("device", id);
   midi.gapMs = schema.gapMs ?? 2;
-  driver = makeDriver(schema, midi, channel, { get: (k) => lsGet(`${schema.id}.${k}`, null), set: (k, v) => lsSet(`${schema.id}.${k}`, v) });
+  if (APP) await pullLibrary(schema.id);
+  driver = makeDriver(schema, midi, channel, { get: (k) => lsGet(`${schema.id}.${k}`, null), set: (k, v) => { lsSet(`${schema.id}.${k}`, v); if (APP && k === "library") pushLibrary(schema.id, v); } });
   // until GET reads the synth: bipolar params sit at centre, the rest at min
   values = Object.fromEntries(schema.params.map((p) => [p.key, p.default ?? (p.display === "bipolar" ? clamp(p, -(p.valueOffset || 0)) : p.min)]));
   saved = {}; undo = []; redo = [];
@@ -953,7 +955,7 @@ async function libraryBackup() {
   const slots = lib.map((e) => ({ bank: banks()[e.bi]?.label ?? String(e.bi), program: e.prog + 1, name: e.name || "(unnamed)", values: e.values, storedAt: e.at }));
   let file;
   try {
-    if (LOCAL) file = await saveBackup(schema.id, { stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots, failed: 0, syx: [] });
+    if (LOCAL || APP) file = await saveBackup(schema.id, { stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots, failed: 0, syx: [] });
     else { file = fileSafe(`${schema.name} ${localStamp(at)}`) + ".json"; download(file, JSON.stringify({ device: schema.id, at: at.toISOString(), slots }, null, 2), "application/json"); file += " (downloaded)"; }
   } catch (e) { return status(e.message, true); }
   status(`backed up edit's copies of ${slots.length} presets → ${file}`);
@@ -979,12 +981,40 @@ function download(name, bytes, type = "application/octet-stream") {
 const fileSafe = (s) => String(s).replace(/[^\w .\-()+#]/g, "_").trim().slice(0, 80) || "untitled";
 
 async function listBackups(id) {
+  if (APP) return rackCall("rack_list_backups", { folder: folderOf(id) });
   if (LOCAL) return (await fetch(`api/backups/${id}`)).json();
   return { dir: "on the web, backups download to this computer — the list is what this browser saved", backups: backupLog(id) };
 }
 
+// edit.app: files live in Dropbox __RACK/<synth>/ like server.mjs writes them. The
+// folder is found per machine; if it can't be, ask once (rack_pick_root) and retry
+const folderOf = (id) => { const d = devices.find((x) => x.id === id); return d?.folder || d?.name || id; };
+async function rackCall(cmd, args) {
+  try { return await invoke(cmd, args); }
+  catch (e) {
+    if (!/no rack folder/i.test(String(e))) throw new Error(String(e));
+    status("pick your Dropbox __RACK folder — edit keeps backups and pedal libraries there");
+    if (!(await invoke("rack_pick_root"))) throw new Error("no rack folder picked — backups and libraries can't be saved");
+    return invoke(cmd, args);
+  }
+}
+// the pedal library (OBNE: edit's copy is the record) — Dropbox wins; a first run
+// on a machine with only a browser copy uploads it
+async function pullLibrary(id) {
+  try {
+    const txt = await rackCall("rack_read_library", { folder: folderOf(id) });
+    if (txt) lsSet(`${id}.library`, txt);
+    else { const local = lsGet(`${id}.library`, null); if (local) await pushLibrary(id, local); }
+  } catch (e) { status(`couldn't read the library from Dropbox: ${e.message}`, true); }
+}
+async function pushLibrary(id, json) {
+  try { await rackCall("rack_write_library", { folder: folderOf(id), json }); }
+  catch (e) { status(`couldn't save the library to Dropbox: ${e.message}`, true); }
+}
+
 // whole memory: every slot's dump in one .syx (any sysex tool can send it back)
 async function saveBackup(id, body) {
+  if (APP) return rackCall("rack_save_backup", { folder: folderOf(id), device: id, body });
   if (LOCAL) {
     const r = await fetch(`api/backups/${id}`, { method: "PUT", body: JSON.stringify(body) });
     if (!r.ok) throw new Error("writing the backup failed: " + (await r.text()));
@@ -998,6 +1028,7 @@ async function saveBackup(id, body) {
 
 // one slot, just before store overwrites it
 async function saveSlotBackup(id, name, body) {
+  if (APP) return rackCall("rack_save_slot_backup", { folder: folderOf(id), name, body });
   if (LOCAL) {
     const r = await fetch(`api/backup/${id}/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(body) });
     if (!r.ok) throw new Error("backup failed: " + (await r.text()));

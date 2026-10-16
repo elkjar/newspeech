@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "edit",
+  "version": "../package.json",
+  "identifier": "com.newspeechsound.edit",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeDevCommand": "npm run web",
+    "beforeBuildCommand": "npm run web"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      { "label": "main", "title": "edit", "width": 1440, "height": 900, "minWidth": 1100, "minHeight": 680, "resizable": true }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": true,
+    "macOS": { "minimumSystemVersion": "11.0", "hardenedRuntime": true },
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM0NEJGNEExMDk4NDQ2NzgKUldSNFJvUUpvZlJMTkMvVmNkVDNCTEF5WGFwNXdvS1psK3NjQ0NFeksrOVRZNUxlVjNLNms4REUK",
+      "endpoints": ["https://github.com/elkjar/newspeech/releases/download/edit-latest/latest.json"]
+    }
+  }
+}

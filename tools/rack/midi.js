@@ -1,6 +1,8 @@
 // Web MIDI plumbing: port picking (persisted), a paced output queue so old
 // units don't choke, and an NRPN/SysEx input parser.
 
+import { APP, tauriMidiAccess } from "./tauri.js";
+
 const LS = "rack.";
 const lsGet = (k, d) => { try { return localStorage.getItem(LS + k) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(LS + k, v); } catch {} };
@@ -18,7 +20,8 @@ export class Midi {
   }
 
   async init() {
-    this.access = await navigator.requestMIDIAccess({ sysex: true });
+    // edit.app: native MIDI behind a Web MIDI-shaped access object (tauri.js)
+    this.access = APP ? await tauriMidiAccess() : await navigator.requestMIDIAccess({ sysex: true });
     this.access.onstatechange = () => this.onPorts?.();
   }
 

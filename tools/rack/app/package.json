@@ -1,0 +1,15 @@
+{
+  "name": "edit-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "edit.app — the rack synth/pedal editor (tools/rack) as a desktop app: native MIDI, files in Dropbox __RACK",
+  "scripts": {
+    "web": "node ../../build-edit.mjs dist",
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.1"
+  }
+}

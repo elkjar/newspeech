@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "tools/rack");
-const OUT = path.join(ROOT, "_site/edit");
+// edit.app bundles the same files: node tools/build-edit.mjs <outdir>
+const OUT = process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, "_site/edit");
 
 fs.mkdirSync(OUT, { recursive: true });
 for (const f of fs.readdirSync(SRC)) {
@@ -22,8 +23,8 @@ for (const f of fs.readdirSync(path.join(SRC, "devices")).sort()) {
   if (!f.endsWith(".json") || f.includes(".layout.")) continue;
   try {
     const d = JSON.parse(fs.readFileSync(path.join(SRC, "devices", f), "utf8"));
-    devices.push({ id: d.id, name: d.name, transport: d.transport });
+    devices.push({ id: d.id, name: d.name, transport: d.transport, ...(d.folder ? { folder: d.folder } : {}) });
   } catch (e) { console.warn(`edit: skipping ${f} — ${e.message}`); }
 }
 fs.writeFileSync(path.join(OUT, "devices.json"), JSON.stringify(devices));
-console.log(`edit: ${devices.length} devices → _site/edit/`);
+console.log(`edit: ${devices.length} devices → ${path.relative(ROOT, OUT)}/`);
