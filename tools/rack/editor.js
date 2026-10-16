@@ -1,5 +1,6 @@
 import { Midi } from "./midi.js";
 import { makeDriver, TRANSPORTS, OUT_ONLY } from "./drivers.js";
+import { APP, invoke } from "./tauri.js";
 import { createKnob } from "./knob.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -84,11 +85,15 @@ function setValue(p, v, { send = true, from = "ui" } = {}) {
   }
   if (isName(p)) renderName();
   if (from !== "load" && !isName(p)) showLast(p, v);
-  if (send) { pending.set(p.key, p); schedule(); }
+  if (send) { pending.set(p.key, p); schedule(); touched.set(p.key, performance.now()); }
   // driver-state params (Emax edit key) retarget the editor: read what's there now
   if (send && p.msg === "local") { clearTimeout(rereadTimer); rereadTimer = setTimeout(getFromSynth, 400); }
 }
 let rereadTimer = null;
+// last time edit itself changed each param: units with soft thru (PRO-800) bounce every
+// CC straight back, and mid-drag those echoes would yank the knob to an older value
+const touched = new Map();
+const ECHO_MS = 400;
 
 let raf = 0;
 function schedule() {
@@ -375,7 +380,8 @@ async function selectDevice(id) {
   layout = lr.ok ? await lr.json() : autoLayout();
   lsSet("device", id);
   midi.gapMs = schema.gapMs ?? 2;
-  driver = makeDriver(schema, midi, channel, { get: (k) => lsGet(`${schema.id}.${k}`, null), set: (k, v) => lsSet(`${schema.id}.${k}`, v) });
+  if (APP) await pullLibrary(schema.id);
+  driver = makeDriver(schema, midi, channel, { get: (k) => lsGet(`${schema.id}.${k}`, null), set: (k, v) => { lsSet(`${schema.id}.${k}`, v); if (APP && k === "library") pushLibrary(schema.id, v); } });
   // until GET reads the synth: bipolar params sit at centre, the rest at min
   values = Object.fromEntries(schema.params.map((p) => [p.key, p.default ?? (p.display === "bipolar" ? clamp(p, -(p.valueOffset || 0)) : p.min)]));
   saved = {}; undo = []; redo = [];
@@ -405,7 +411,10 @@ async function boot() {
     // synth changed program on its front panel → pull the new sound in
     if (driver.isEcho?.(ev)) return; // our own message bounced back by the synth's soft thru
     if (ev.ch === channel() && banks().length && followProgram(ev)) return;
-    for (const { param, value } of driver.decode(ev)) setValue(param, value, { send: false, from: "synth" });
+    for (const { param, value } of driver.decode(ev)) {
+      if (performance.now() - (touched.get(param.key) ?? -Infinity) < ECHO_MS) continue; // edit is moving it
+      setValue(param, value, { send: false, from: "synth" });
+    }
   });
 
   // skip files that don't parse yet (a device being written right now).
@@ -415,6 +424,13 @@ async function boot() {
   devices = devices.filter((d) => !d.error);
   $("#in").onchange = $("#out").onchange = usePorts;
   $("#back").onclick = disconnect;
+  shelfDrop();
+  // the empty cells after the last card count too: dragging there moves it to the end
+  $("#rackcards").addEventListener("dragover", (e) => {
+    if (!dragging || e.target !== e.currentTarget) return;
+    e.preventDefault();
+    if (e.currentTarget.lastElementChild !== dragging) e.currentTarget.append(dragging);
+  });
   $("#recheck").onclick = () => renderRack({ force: true });
   $("#connect-go").onclick = () => runConnect();
   $("#connect-retry").onclick = () => runConnect();
@@ -500,7 +516,6 @@ function renderProgramControls() {
     ? h("div", { class: "seg" }, bs.map((b) => h("button", { "data-b": b.bi, onclick: () => goProgram(b.bi, cur.prog) }, b.label)))
     : h("select", { class: "box bankpick", onchange: (e) => goProgram(Number(e.target.value), cur.prog) }, bs.map((b) => new Option(b.label, b.bi))));
   showCurrent();
-  renderProgramList();
 }
 
 function setCurrent(bank, prog) {
@@ -513,7 +528,6 @@ function showCurrent() {
   document.querySelectorAll("#banks button").forEach((b) => b.classList.toggle("on", Number(b.dataset.b) === cur.bank));
   const pick = $("#banks select"); if (pick) pick.value = cur.bank;
   renderProgPick();
-  document.querySelectorAll("#programs button").forEach((b) => b.classList.toggle("on", b.dataset.k === slotKey(cur.bank, cur.prog)));
 }
 
 // the program dropdown: every slot in the current bank, by name where known
@@ -585,7 +599,7 @@ async function readBankNames(bi) {
   catch (e) { status(`stopped reading names: ${e.message}`, true); }
   scanningNames = false; pickBank = null;
   if (!b.dump) goProgram(back.bank, back.prog);
-  renderProgramList(); renderProgPick();
+  renderProgPick();
   status(`read ${b.label} names`);
 }
 
@@ -612,10 +626,18 @@ function rackOrder() {
   return [...devices].sort((a, b) => pos(a.id) - pos(b.id));
 }
 
+// the shelf: units not in use right now (sold, lent, in the other room). No card and
+// no checking — drag a card down onto it, or its name back up into the rack
+function shelf() { try { return JSON.parse(lsGet("rackShelf", "[]")); } catch { return []; } }
+const setShelf = (ids) => lsSet("rackShelf", JSON.stringify([...new Set(ids)]));
+const saveOrder = () => lsSet("rackOrder", JSON.stringify([...$("#rackcards").children].map((c) => c.dataset.id)));
+
 async function renderRack({ force = false } = {}) {
   setView("rack");
   $("#synthname").textContent = "";
-  const cards = await Promise.all(rackOrder().map(async (d) => {
+  const shelved = shelf();
+  renderShelf(shelved);
+  const cards = await Promise.all(rackOrder().filter((d) => !shelved.includes(d.id)).map(async (d) => {
     const ports = midi.access ? midi.savedPorts(d.id) : {};
     const outName = midi.access && midi.access.outputs.get(ports.out)?.name;
     const inName = midi.access && midi.access.inputs.get(ports.in)?.name;
@@ -641,13 +663,19 @@ async function renderRack({ force = false } = {}) {
   probeRack(cards, { force });
 }
 
-// drag a card onto another to reorder; the order is kept
+// drag a card onto another to reorder (the order is kept), or onto the shelf
 let dragging = null;
+function dragStart(el, e) {
+  dragging = el; el.classList.add("dragging"); document.body.classList.add("dragcard");
+  e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", el.dataset.id);
+}
+function dragDone(el) { el.classList.remove("dragging"); dragging = null; document.body.classList.remove("dragcard"); $("#shelf").classList.remove("over"); }
 function dragCard(card) {
-  card.addEventListener("dragstart", (e) => { dragging = card; card.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", card.dataset.id); });
+  card.addEventListener("dragstart", (e) => dragStart(card, e));
   card.addEventListener("dragend", () => {
-    card.classList.remove("dragging"); dragging = null;
-    lsSet("rackOrder", JSON.stringify([...document.querySelectorAll("#rackcards .rackcard")].map((c) => c.dataset.id)));
+    dragDone(card);
+    saveOrder();
+    if (shelf().includes(card.dataset.id)) renderRack();
   });
   card.addEventListener("dragover", (e) => {
     if (!dragging || dragging === card) return;
@@ -655,6 +683,36 @@ function dragCard(card) {
     const r = card.getBoundingClientRect();
     const after = e.clientX > r.left + r.width / 2;
     card.parentNode.insertBefore(dragging, after ? card.nextSibling : card);
+  });
+}
+
+function renderShelf(ids) {
+  const list = ids.map((id) => devices.find((d) => d.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+  $("#shelf").classList.toggle("empty", !list.length);
+  $("#shelfcount").textContent = list.length ? `· ${list.length}` : "";
+  $("#shelfitems").replaceChildren(...list.map((d) => {
+    const chip = h("button", { class: "shelfchip", draggable: "true", "data-id": d.id, title: "drag up into the rack to use it again" }, d.name);
+    chip.addEventListener("dragstart", (e) => dragStart(chip, e));
+    chip.addEventListener("dragend", () => {
+      dragDone(chip);
+      // let go among the cards: it's back in the rack, where it was dropped
+      if (chip.parentNode === $("#rackcards")) { setShelf(shelf().filter((x) => x !== d.id)); saveOrder(); renderRack(); }
+      else renderShelf(shelf());
+    });
+    return chip;
+  }));
+}
+function shelfDrop() {
+  const el = $("#shelf");
+  el.addEventListener("dragover", (e) => {
+    if (!dragging) return;
+    e.preventDefault(); el.classList.add("over");
+    if (dragging.classList.contains("shelfchip") && dragging.parentNode !== $("#shelfitems")) $("#shelfitems").append(dragging);
+  });
+  el.addEventListener("dragleave", (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove("over"); });
+  el.addEventListener("drop", (e) => {
+    e.preventDefault(); el.classList.remove("over");
+    if (dragging?.classList.contains("rackcard")) setShelf([...shelf(), dragging.dataset.id]);
   });
 }
 
@@ -851,26 +909,9 @@ function followProgram(ev) {
   return true;
 }
 
-function renderProgramList() {
-  const known = names(), ul = $("#programs");
-  ul.replaceChildren();
-  if (!Object.keys(known).length) { ul.append(h("li", { class: "dim" }, "create a backup to read the slot names")); return; }
-  banks().forEach((b, bi) => {
-    if (!b.dump || b.backupOnly) return;
-    if (!Array.from({ length: b.count }, (_, p) => known[slotKey(bi, p)]).some(Boolean)) return;
-    ul.append(h("li", { class: "bankhead" }, bankName(bi)));
-    for (let p = 0; p < b.count; p++) {
-      const k = slotKey(bi, p);
-      ul.append(h("li", {}, h("button", { "data-k": k, onclick: () => goProgram(bi, p) },
-        h("span", { class: "dim" }, pad3(p) + " "), known[k] ?? "…")));
-    }
-  });
-  showCurrent();
-}
-
 // ---------- backups ----------
 // read every slot (one program dump each — the sound doesn't change) into one
-// .syx + a name index in Dropbox; the names also fill the program list
+// .syx + a name index in Dropbox; the names also fill the program dropdown
 async function createBackup() {
   if (driver.captureBank) return captureBackup();
   if (driver.library) return libraryBackup();
@@ -911,7 +952,7 @@ async function createBackup() {
   setTimeout(() => { if (!scanning) fillEl.style.width = "0"; }, finished ? 1500 : 0);
   lsSet(`${schema.id}.names`, JSON.stringify(known));
   if (finished) readable.forEach((b) => namesStamp(b.bi));
-  renderProgramList();
+  pickBank = null; renderProgPick();
   if (!slots.length) return status("the synth isn't answering program requests — check MIDI in + sysex", true);
   if (!finished) return status(`backup stopped at ${n}/${total} — nothing written`, true);
   const at = new Date();
@@ -939,7 +980,7 @@ async function captureBackup() {
     const at = new Date();
     const file = await saveBackup(schema.id, { stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots: got.names.map((n, i) => ({ bank: "user", program: i + 1, name: n })), failed: 0, syx: got.syx });
     status(`captured ${got.names.length} presets → ${file}`);
-    refreshBackups(); renderProgramList(); pickBank = null; renderProgPick();
+    refreshBackups(); pickBank = null; renderProgPick();
   } catch (e) { status(e.message, true); }
   capturing = false; btn.classList.remove("running"); label.textContent = "capture bank";
   setTimeout(() => { fillEl.style.width = "0"; }, 1500);
@@ -953,7 +994,7 @@ async function libraryBackup() {
   const slots = lib.map((e) => ({ bank: banks()[e.bi]?.label ?? String(e.bi), program: e.prog + 1, name: e.name || "(unnamed)", values: e.values, storedAt: e.at }));
   let file;
   try {
-    if (LOCAL) file = await saveBackup(schema.id, { stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots, failed: 0, syx: [] });
+    if (LOCAL || APP) file = await saveBackup(schema.id, { stamp: `${schema.name} ${localStamp(at)}`, at: at.toISOString(), slots, failed: 0, syx: [] });
     else { file = fileSafe(`${schema.name} ${localStamp(at)}`) + ".json"; download(file, JSON.stringify({ device: schema.id, at: at.toISOString(), slots }, null, 2), "application/json"); file += " (downloaded)"; }
   } catch (e) { return status(e.message, true); }
   status(`backed up edit's copies of ${slots.length} presets → ${file}`);
@@ -979,12 +1020,49 @@ function download(name, bytes, type = "application/octet-stream") {
 const fileSafe = (s) => String(s).replace(/[^\w .\-()+#]/g, "_").trim().slice(0, 80) || "untitled";
 
 async function listBackups(id) {
+  if (APP) return rackCall("rack_list_backups", { folder: folderOf(id) });
   if (LOCAL) return (await fetch(`api/backups/${id}`)).json();
   return { dir: "on the web, backups download to this computer — the list is what this browser saved", backups: backupLog(id) };
 }
 
+// edit.app: files live in Dropbox __RACK/<synth>/ like server.mjs writes them. The
+// folder is found per machine; if it can't be, ask once (rack_pick_root) and retry
+const folderOf = (id) => { const d = devices.find((x) => x.id === id); return d?.folder || d?.name || id; };
+async function rackCall(cmd, args) {
+  try { return await invoke(cmd, args); }
+  catch (e) {
+    if (!/no rack folder/i.test(String(e))) throw new Error(String(e));
+    status("pick your Dropbox __RACK folder — edit keeps backups and pedal libraries there");
+    if (!(await invoke("rack_pick_root"))) throw new Error("no rack folder picked — backups and libraries can't be saved");
+    return invoke(cmd, args);
+  }
+}
+// the pedal library (OBNE: edit's copy is the record) — Dropbox wins; a first run
+// on a machine with only a browser copy uploads it
+async function pullLibrary(id) {
+  try {
+    const txt = await rackCall("rack_read_library", { folder: folderOf(id) });
+    if (txt) { lsSet(`${id}.library`, txt); namesFromLibrary(JSON.parse(txt)); }
+    else { const local = lsGet(`${id}.library`, null); if (local) await pushLibrary(id, local); }
+  } catch (e) { status(`couldn't read the library from Dropbox: ${e.message}`, true); }
+}
+// the slot list reads the names cache, which only store fills — rebuild it from the
+// library so presets stored (or renamed) on another machine list under their names
+function namesFromLibrary(lib) {
+  const chars = schema.params.filter((p) => p.display === "char");
+  if (!chars.length) return;
+  const known = names();
+  for (const [k, e] of Object.entries(lib)) known[k] = chars.map((p) => String.fromCharCode(e.values?.[p.key] ?? 32)).join("").trim() || "(unnamed)";
+  lsSet(`${schema.id}.names`, JSON.stringify(known));
+}
+async function pushLibrary(id, json) {
+  try { await rackCall("rack_write_library", { folder: folderOf(id), json }); }
+  catch (e) { status(`couldn't save the library to Dropbox: ${e.message}`, true); }
+}
+
 // whole memory: every slot's dump in one .syx (any sysex tool can send it back)
 async function saveBackup(id, body) {
+  if (APP) return rackCall("rack_save_backup", { folder: folderOf(id), device: id, body });
   if (LOCAL) {
     const r = await fetch(`api/backups/${id}`, { method: "PUT", body: JSON.stringify(body) });
     if (!r.ok) throw new Error("writing the backup failed: " + (await r.text()));
@@ -998,6 +1076,7 @@ async function saveBackup(id, body) {
 
 // one slot, just before store overwrites it
 async function saveSlotBackup(id, name, body) {
+  if (APP) return rackCall("rack_save_slot_backup", { folder: folderOf(id), name, body });
   if (LOCAL) {
     const r = await fetch(`api/backup/${id}/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(body) });
     if (!r.ok) throw new Error("backup failed: " + (await r.text()));
@@ -1077,7 +1156,7 @@ async function doStore() {
     const known = names(); known[slotKey(bank, prog)] = nameString() || "(unnamed)";
     lsSet(`${schema.id}.names`, JSON.stringify(known));
     saved = snapshot(); applyAll(values, { send: false });
-    renderProgramList();
+    pickBank = null; renderProgPick();
     $("#storedlg").close();
     const how = driver.canRead === false ? "saved on the pedal (it can't confirm) · edit's copy kept" : "verified";
     status(`stored “${nameString()}” in ${where} — ${how}` + (stOld.empty ? "" : ` · old “${stOld.name}” backed up`));

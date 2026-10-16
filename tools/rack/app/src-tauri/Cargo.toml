@@ -1,0 +1,25 @@
+[package]
+name = "edit"
+# Fixed on purpose: the release version lives in ../package.json, which
+# tauri.conf.json reads ("version": "../package.json").
+version = "0.0.0"
+description = "edit — newspeech rack editor"
+authors = ["newspeech"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "edit_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.1", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.1", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+midir = "0.10"
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2.10.1"
+tauri-plugin-process = "2.3.1"

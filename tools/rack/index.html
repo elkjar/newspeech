@@ -40,6 +40,21 @@
   #rackcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px 22px; }
   .rackcard { min-height: 250px; display: flex; flex-direction: column; cursor: grab; }
   .rackcard.dragging { opacity: .35; }
+  #shelf { margin: 16px -16px 0; padding: 14px 16px; outline: 1px dashed transparent; outline-offset: -1px; }
+  #shelf.empty { display: none; }
+  body.dragcard #shelf.empty { display: block; }
+  #shelf .shelfhead { color: var(--legend); font-size: 10px; letter-spacing: .22em; text-transform: uppercase; margin-bottom: 12px; }
+  #shelfitems { display: flex; flex-wrap: wrap; gap: 8px; }
+  #shelf .shelfhint { display: none; color: #555; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; padding: 12px 0; }
+  #shelf.empty .shelfhint { display: block; }
+  /* while a card is dragged the shelf pins to the window bottom, so it's always in reach */
+  body.dragcard #shelf { position: sticky; bottom: 0; z-index: 5; background: var(--bg); box-shadow: 0 -18px 24px var(--bg); outline-color: #3a3a3a; }
+  body.dragcard #shelf.over { outline-color: #888; }
+  .shelfchip { background: none; border: 1px solid var(--line); color: #888; padding: 8px 12px; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; cursor: grab; }
+  .shelfchip:hover { color: #ddd; border-color: #666; }
+  .shelfchip.dragging { opacity: .35; }
+  /* a name dragged up into the rack shows where its card will land */
+  #rackcards .shelfchip { min-height: 250px; border-style: dashed; color: #bbb; }
   .rackcard .art { height: 110px; display: flex; align-items: center; justify-content: center; margin: 4px 0 12px; }
   .rackcard .art svg { max-height: 100%; width: 100%; }
   .rackcard .rgo { margin-top: auto; padding-top: 12px; }
@@ -192,11 +207,6 @@
   select.bankpick { width: 128px; padding: 6px 8px; }
   #progpick { width: 176px; margin: 0 -1px; font-variant-numeric: tabular-nums; color: #fff; padding: 6px 9px; }
   .progrow .seg button#prev, .progrow .seg button#next { padding: 6px 8px; }
-  #programs { list-style: none; margin: 0; padding: 0; max-height: 260px; columns: 2; column-gap: 24px; overflow: auto; text-transform: none; letter-spacing: .06em; }
-  #programs .bankhead { color: var(--legend); letter-spacing: .22em; text-transform: uppercase; font-size: 10px; margin: 10px 0 4px; }
-  #programs button { background: none; border: none; padding: 2px 0; text-align: left; width: 100%; color: #bbb; cursor: pointer; text-transform: none; }
-  #programs button:hover { color: #fff; }
-  #programs button.on { color: #050505; background: #ddd; }
   .lcdcell { width: 250px; align-items: stretch; margin-right: 6px; padding-top: 10px; }
   #lcd { background: var(--panel); border: 1px solid var(--line); height: 29px; padding: 0 12px; display: flex; align-items: center; gap: 12px; }
   #pname { flex: 1; min-width: 0; background: none; border: none; outline: none; color: #fff; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; padding: 0; }
@@ -257,6 +267,9 @@
 <!-- the rack: one panel per synth; nothing else shows until one is connected -->
 <div id="rackview">
   <div class="frow" id="rackcards"></div>
+  <!-- units not in use right now: no card, no checking — drag cards on, names back up -->
+  <div id="shelf" class="empty"><div class="shelfhead">shelf <span id="shelfcount"></span></div>
+    <div id="shelfitems"></div><div class="shelfhint">drop a unit here to shelve it</div></div>
 </div>
 
 <!-- connecting: ports → talk to the synth → read program names → faceplate -->
@@ -343,10 +356,6 @@
         <div class="mnote">reads every program on the synth into one dated .syx (~40 s) — the sound doesn't change</div>
         <ul id="backups"></ul>
         <div class="mnote" id="backupdir"></div>
-      </section>
-      <section class="msec">
-        <div class="msec-label">programs on the synth</div>
-        <ul id="programs"></ul>
       </section>
       <section class="msec">
         <div class="msec-label">synth setup</div>
