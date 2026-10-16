@@ -424,6 +424,7 @@ async function boot() {
   devices = devices.filter((d) => !d.error);
   $("#in").onchange = $("#out").onchange = usePorts;
   $("#back").onclick = disconnect;
+  shelfDrop();
   $("#recheck").onclick = () => renderRack({ force: true });
   $("#connect-go").onclick = () => runConnect();
   $("#connect-retry").onclick = () => runConnect();
@@ -619,10 +620,18 @@ function rackOrder() {
   return [...devices].sort((a, b) => pos(a.id) - pos(b.id));
 }
 
+// the shelf: units not in use right now (sold, lent, in the other room). No card and
+// no checking — drag a card down onto it, or its name back up into the rack
+function shelf() { try { return JSON.parse(lsGet("rackShelf", "[]")); } catch { return []; } }
+const setShelf = (ids) => lsSet("rackShelf", JSON.stringify([...new Set(ids)]));
+const saveOrder = () => lsSet("rackOrder", JSON.stringify([...$("#rackcards").children].map((c) => c.dataset.id)));
+
 async function renderRack({ force = false } = {}) {
   setView("rack");
   $("#synthname").textContent = "";
-  const cards = await Promise.all(rackOrder().map(async (d) => {
+  const shelved = shelf();
+  renderShelf(shelved);
+  const cards = await Promise.all(rackOrder().filter((d) => !shelved.includes(d.id)).map(async (d) => {
     const ports = midi.access ? midi.savedPorts(d.id) : {};
     const outName = midi.access && midi.access.outputs.get(ports.out)?.name;
     const inName = midi.access && midi.access.inputs.get(ports.in)?.name;
@@ -648,13 +657,19 @@ async function renderRack({ force = false } = {}) {
   probeRack(cards, { force });
 }
 
-// drag a card onto another to reorder; the order is kept
+// drag a card onto another to reorder (the order is kept), or onto the shelf
 let dragging = null;
+function dragStart(el, e) {
+  dragging = el; el.classList.add("dragging"); document.body.classList.add("dragcard");
+  e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", el.dataset.id);
+}
+function dragDone(el) { el.classList.remove("dragging"); dragging = null; document.body.classList.remove("dragcard"); $("#shelf").classList.remove("over"); }
 function dragCard(card) {
-  card.addEventListener("dragstart", (e) => { dragging = card; card.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", card.dataset.id); });
+  card.addEventListener("dragstart", (e) => dragStart(card, e));
   card.addEventListener("dragend", () => {
-    card.classList.remove("dragging"); dragging = null;
-    lsSet("rackOrder", JSON.stringify([...document.querySelectorAll("#rackcards .rackcard")].map((c) => c.dataset.id)));
+    dragDone(card);
+    saveOrder();
+    if (shelf().includes(card.dataset.id)) renderRack();
   });
   card.addEventListener("dragover", (e) => {
     if (!dragging || dragging === card) return;
@@ -662,6 +677,36 @@ function dragCard(card) {
     const r = card.getBoundingClientRect();
     const after = e.clientX > r.left + r.width / 2;
     card.parentNode.insertBefore(dragging, after ? card.nextSibling : card);
+  });
+}
+
+function renderShelf(ids) {
+  const list = ids.map((id) => devices.find((d) => d.id === id)).filter(Boolean);
+  $("#shelf").classList.toggle("empty", !list.length);
+  $("#shelfcount").textContent = list.length ? `· ${list.length}` : "";
+  $("#shelfitems").replaceChildren(...list.map((d) => {
+    const chip = h("button", { class: "shelfchip", draggable: "true", "data-id": d.id, title: "drag up into the rack to use it again" }, d.name);
+    chip.addEventListener("dragstart", (e) => dragStart(chip, e));
+    chip.addEventListener("dragend", () => {
+      dragDone(chip);
+      // let go among the cards: it's back in the rack, where it was dropped
+      if (chip.parentNode === $("#rackcards")) { setShelf(shelf().filter((x) => x !== d.id)); saveOrder(); renderRack(); }
+      else renderShelf(shelf());
+    });
+    return chip;
+  }));
+}
+function shelfDrop() {
+  const el = $("#shelf");
+  el.addEventListener("dragover", (e) => {
+    if (!dragging) return;
+    e.preventDefault(); el.classList.add("over");
+    if (dragging.classList.contains("shelfchip") && dragging.parentNode !== $("#shelfitems")) $("#shelfitems").append(dragging);
+  });
+  el.addEventListener("dragleave", (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove("over"); });
+  el.addEventListener("drop", (e) => {
+    e.preventDefault(); el.classList.remove("over");
+    if (dragging?.classList.contains("rackcard")) setShelf([...shelf(), dragging.dataset.id]);
   });
 }
 
