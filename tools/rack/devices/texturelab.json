@@ -4,13 +4,13 @@
   "transport": "liven",
   "folder": "Sonicware LIVEN Texture Lab",
   "source": "Sonicware LIVEN Texture Lab manual r2 + MIDI implementation chart (sonicware.co.jp/DL/LIVEN_TextureLab/DOC/); CC spacing for stepped options measured on hardware 2026-10-16 (filter type 0/42/84/127, mod assign 0,9…108,127)",
-  "liveNote": "the Texture Lab can't be asked for its settings — knobs follow its panel as you turn them, send pushes every control, patterns select by program change",
+  "liveNote": "the Texture Lab can't be asked for its settings — knobs follow its panel as you turn them, send pushes every control, patterns live in edit's library",
   "setup": [
     "DIN both ways: interface out → Texture Lab MIDI IN, its MIDI OUT → interface in.",
     "On the unit, FUNC + key 10 (MIDI), pressed repeatedly to step through: RX.CH = edit's channel (or ALL), TX.CH = the same channel, TX.CC = ON (so panel moves reach edit), M.OUT = OUT.",
     "For pattern select from edit: M.PC = RX.TX and PC.CH = the same channel.",
     "Nothing can be read back: when you connect, edit's knobs are guesses until you move them (on either side) or press send.",
-    "Edits change the playing pattern only — save on the unit with FUNC + PTN, then OK (or pick a bank + step key to save elsewhere).",
+    "edit keeps your patterns (Dropbox): store files the current sound under the pattern number; selecting that number later loads the unit's pattern and pushes edit's sound on top — no button on the unit, so it works racked. (The Texture Lab itself can only save from its panel: FUNC + PTN, then OK.)",
     "Hover any control: the line under the program bar says what it does and where it lives on the unit (shift = hold A/a, FUNC = hold func)."
   ],
   "groups": [
@@ -57,16 +57,22 @@
     {
       "id": "efx",
       "name": "EFX"
+    },
+    {
+      "id": "name",
+      "name": "Name"
     }
   ],
   "programs": {
     "banks": [
       {
         "label": "patterns",
-        "count": 128
+        "count": 128,
+        "write": true
       }
     ],
     "perBank": 16,
+    "bankCCs": [],
     "note": "program change 0-127 = 8 banks × 16 patterns, shown bank·step as on the unit (bank 1 = factory). Needs M.PC = RX on the unit"
   },
   "params": [
@@ -230,12 +236,12 @@
     {
       "key": "speed",
       "name": "Speed",
-      "group": "grain",
+      "group": "sample",
       "min": 0,
       "max": 127,
       "cc": 40,
       "default": 64,
-      "note": "playback speed inside each grain, ¼× … 4×; noon = normal. Off in EFX mode",
+      "note": "playback speed, ¼× … 4×; noon = normal (the manual calls it grain playback speed — it also drives the plain sample). Off in EFX mode",
       "panel": "SPEED knob",
       "display": "bipolar",
       "valueOffset": -64
@@ -243,7 +249,7 @@
     {
       "key": "dir",
       "name": "Direction",
-      "group": "grain",
+      "group": "sample",
       "min": 0,
       "max": 14,
       "cc": 44,
@@ -854,6 +860,150 @@
       "note": "in EFX mode, the keys repitch the effect relative to the low C",
       "panel": "FUNC + step 1 (in EFX mode)",
       "norandom": true
+    },
+    {
+      "key": "name0",
+      "name": "Name 1",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name1",
+      "name": "Name 2",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name2",
+      "name": "Name 3",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name3",
+      "name": "Name 4",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name4",
+      "name": "Name 5",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name5",
+      "name": "Name 6",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name6",
+      "name": "Name 7",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name7",
+      "name": "Name 8",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name8",
+      "name": "Name 9",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name9",
+      "name": "Name 10",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name10",
+      "name": "Name 11",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name11",
+      "name": "Name 12",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name12",
+      "name": "Name 13",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name13",
+      "name": "Name 14",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name14",
+      "name": "Name 15",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name15",
+      "name": "Name 16",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
     },
     {
       "key": "freeze",

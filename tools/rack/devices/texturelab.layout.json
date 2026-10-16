@@ -25,6 +25,15 @@
               "label": "length/fb"
             },
             {
+              "k": "speed",
+              "label": "speed"
+            },
+            {
+              "k": "dir",
+              "label": "dir",
+              "as": "pick"
+            },
+            {
               "k": "blend",
               "label": "blend"
             }
@@ -56,15 +65,6 @@
             {
               "k": "diffusion",
               "label": "diffusion"
-            },
-            {
-              "k": "speed",
-              "label": "speed"
-            },
-            {
-              "k": "dir",
-              "label": "dir",
-              "as": "pick"
             }
           ]
         }

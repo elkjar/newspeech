@@ -893,6 +893,7 @@ function goProgram(bank, prog) {
       // selected voice from its memory slot; everything else: read the edit buffer
       const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
       if (!got) return getFromSynth();
+      if (got.empty && driver.keepsLibrary) return status(`${slotName(bank, prog)} — the unit's own pattern; edit has no copy yet (knobs show your last sound until you move them or store)`);
       const before = snapshot();
       saved = { ...got.values }; applyAll(got.values, { send: false }); commitUndo(before);
       status(`${slotName(bank, prog)}${nameString() ? ` — “${nameString()}”` : ""}`);
@@ -1138,7 +1139,11 @@ async function readTarget() {
     const oldName = old.empty ? "(empty)" : nameParams().map((q) => String.fromCharCode(old.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
     stOld.name = oldName;
     $("#st-msg").innerHTML = "";
-    if (old.empty && driver.canRead === false) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}. edit has no copy of this slot, and the pedal can't be read — whatever it holds there is replaced.`);
+    // units whose memory edit can't write (Texture Lab): the library is the store
+    if (driver.keepsLibrary) $("#st-msg").append(old.empty ? "Keep " : "Replace ", ...(old.empty ? [] : [h("b", {}, `“${oldName}”`), " with "]),
+      h("b", {}, `“${nameString() || "untitled"}”`), ` as ${where} in edit. Selecting ${where} loads the unit's pattern and pushes this sound over it — nothing on the unit needs touching.`,
+      old.empty ? "" : " The old one is backed up first.");
+    else if (old.empty && driver.canRead === false) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}. edit has no copy of this slot, and the pedal can't be read — whatever it holds there is replaced.`);
     else if (old.empty) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where} — it's empty, nothing to back up.`);
     else $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}, replacing `, h("b", {}, `“${oldName}”`),
       ". The old one is backed up first.");
@@ -1171,7 +1176,7 @@ async function doStore() {
     saved = snapshot(); applyAll(values, { send: false });
     pickBank = null; renderProgPick();
     $("#storedlg").close();
-    const how = driver.canRead === false ? "saved on the pedal (it can't confirm) · edit's copy kept" : "verified";
+    const how = driver.keepsLibrary ? "kept in edit's library" : driver.canRead === false ? "saved on the pedal (it can't confirm) · edit's copy kept" : "verified";
     status(`stored “${nameString()}” in ${where} — ${how}` + (stOld.empty ? "" : ` · old “${stOld.name}” backed up`));
   } catch (e) {
     $("#st-msg").textContent = e.message;
