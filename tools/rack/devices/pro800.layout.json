@@ -1,5 +1,5 @@
 {
-  "comment": "Plugin-panel pattern. Rows follow the PRO-800 (Prophet-5) panel: poly-mod / LFO / vibrato, then the oscillators, mixer and filter, then both envelopes behind one select, then performance. Continuous controls read 0-999 like the unit's display.",
+  "comment": "Plugin-panel pattern. Rows follow the PRO-800 (Prophet-5) panel — only controls the unit has; menu-only CCs (LFO range, LFO osc target) stay modelled but unshown: poly-mod / LFO / vibrato, then the oscillators, mixer and filter, then both envelopes behind one select, then performance. Continuous controls read 0-999 like the unit's display.",
   "rows": [
     {
       "id": "mod",
@@ -42,25 +42,16 @@
               "as": "pick"
             },
             {
-              "k": "lfoRange",
-              "label": "fast"
-            },
-            {
               "k": "lfoToFreq",
-              "label": "→ freq"
+              "label": "→ freq a-b"
             },
             {
               "k": "lfoToPw",
-              "label": "→ pw"
+              "label": "→ pw a-b"
             },
             {
               "k": "lfoToFilter",
               "label": "→ filter"
-            },
-            {
-              "k": "lfoOsc",
-              "label": "osc",
-              "as": "seg"
             }
           ]
         },
