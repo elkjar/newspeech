@@ -1015,10 +1015,11 @@ async function readTarget() {
     const old = await driver.requestProgram(stTarget.bank, stTarget.prog);
     if (my !== stSeq) return;
     stOld = old;
-    const oldName = nameParams().map((q) => String.fromCharCode(old.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
+    const oldName = old.empty ? "(empty)" : nameParams().map((q) => String.fromCharCode(old.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
     stOld.name = oldName;
     $("#st-msg").innerHTML = "";
-    $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}, replacing `, h("b", {}, `“${oldName}”`),
+    if (old.empty) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where} — it's empty, nothing to back up.`);
+    else $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}, replacing `, h("b", {}, `“${oldName}”`),
       ". The old one is backed up first.");
     $("#st-go").disabled = false;
   } catch (e) {
@@ -1031,9 +1032,11 @@ async function doStore() {
   const { bank, prog } = stTarget, where = slotName(bank, prog);
   $("#st-go").disabled = true;
   try {
-    $("#st-msg").textContent = "backing up the old program…";
-    await saveSlotBackup(schema.id, `${localStamp()} slot ${banks()[bank].label}-${pad3(prog)} ${stOld.name}`,
-      { device: schema.id, slot: { bank, prog }, name: stOld.name, values: stOld.values, syx: stOld.syx });
+    if (!stOld.empty) {
+      $("#st-msg").textContent = "backing up the old program…";
+      await saveSlotBackup(schema.id, `${localStamp()} slot ${banks()[bank].label}-${pad3(prog)} ${stOld.name}`,
+        { device: schema.id, slot: { bank, prog }, name: stOld.name, values: stOld.values, syx: stOld.syx });
+    }
 
     $("#st-msg").textContent = `writing ${where}…`;
     const sent = await driver.writeProgram(bank, prog, values);
@@ -1047,7 +1050,7 @@ async function doStore() {
     saved = snapshot(); applyAll(values, { send: false });
     renderProgramList();
     $("#storedlg").close();
-    status(`stored “${nameString()}” in ${where} — verified · old “${stOld.name}” backed up`);
+    status(`stored “${nameString()}” in ${where} — verified` + (stOld.empty ? "" : ` · old “${stOld.name}” backed up`));
   } catch (e) {
     $("#st-msg").textContent = e.message;
     $("#st-go").disabled = false;
