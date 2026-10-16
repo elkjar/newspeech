@@ -1571,7 +1571,13 @@ function livenDriver(schema, midi, getChannel, prefs) {
   return {
     canRead: false,
     keepsLibrary: true, // store = edit's copy only; nothing is written to the unit's memory
-    probe: null, // ignores identity requests — the rack shows it as untestable
+    // it ignores every request, but sends clock nonstop (TX.CK, on by default): hearing
+    // anything on its in port within 1.5 s counts as there
+    async probe() {
+      const t0 = performance.now();
+      for (let i = 0; i < 15; i++) { await wait(100); if ((midi.heardAt ?? 0) > t0) return true; }
+      return false;
+    },
     async requestPatch() { return { values: {}, syx: [] }; },
     sendParam(p, v) { if (p.cc != null) midi.cc(ch(), p.cc, toCc(p, v)); },
     sendPatch(values) { for (const p of inPatch) if (values[p.key] != null) this.sendParam(p, values[p.key]); },

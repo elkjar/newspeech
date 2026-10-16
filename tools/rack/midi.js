@@ -80,6 +80,7 @@ export class Midi {
 
   receive(data) {
     const st = data[0];
+    this.heardAt = performance.now(); // anything at all, clock included: drivers with no request use it as presence
     if (st === 0xf0) {
       const i = this.sysexWaiters.findIndex((w) => w.match(data));
       if (i >= 0) this.sysexWaiters.splice(i, 1)[0].resolve(data);

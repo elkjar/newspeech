@@ -1,13 +1,17 @@
 // Native MIDI via midir (CoreMIDI on macOS). WKWebView ships without Web MIDI, so
 // tools/rack/tauri.js wraps these four commands in a Web MIDI-shaped access object
 // and the editor + drivers run unchanged. Adapted from sequencer/src-tauri/src/midi.rs,
-// minus clock handling: edit never needs timing clock, so it's dropped at the source
-// (a synth or pedal sending 24 PPQN would otherwise flood the IPC bridge).
+// minus clock handling: edit never needs timing, so 24 PPQN clock is thinned at the
+// source to a 4 Hz heartbeat — enough for "this unit is there" (the Texture Lab answers
+// no requests but sends clock nonstop), never enough to flood the IPC bridge.
 
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+const CLOCK_HEARTBEAT: Duration = Duration::from_millis(250);
 use tauri::{AppHandle, Emitter, State};
 
 const CLIENT_NAME: &str = "edit";
@@ -73,14 +77,23 @@ pub fn midi_subscribe_input(app: AppHandle, state: State<MidiRegistry>, port_nam
         return Ok(());
     }
     let mut m_in = MidiInput::new(CLIENT_NAME).map_err(|e| format!("MidiInput::new: {e}"))?;
-    m_in.ignore(Ignore::TimeAndActiveSense);
+    m_in.ignore(Ignore::ActiveSense);
     let port = input_port(&m_in, &port_name).ok_or_else(|| format!("input port not found: {port_name}"))?;
     let cb_port = port_name.clone();
+    let mut last_clock: Option<Instant> = None;
     let conn = m_in
         .connect(
             &port,
             "edit input",
             move |_ts, msg, _| {
+                // a lone clock tick: pass one on per heartbeat, drop the rest
+                if msg == [0xF8] {
+                    if last_clock.map_or(true, |t| t.elapsed() >= CLOCK_HEARTBEAT) {
+                        last_clock = Some(Instant::now());
+                        let _ = app.emit("midi://message", MidiMessageEvent { port: cb_port.clone(), bytes: vec![0xF8] });
+                    }
+                    return;
+                }
                 // belt and braces: strip any clock bytes midir let through mid-packet
                 let bytes: Vec<u8> = msg.iter().copied().filter(|&b| b != 0xF8 && b != 0xFE).collect();
                 if !bytes.is_empty() {
