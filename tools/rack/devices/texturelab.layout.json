@@ -95,7 +95,7 @@
           ]
         },
         {
-          "title": "mod 1",
+          "title": "mod 1 · lfo",
           "controls": [
             {
               "k": "m1assign",
@@ -126,7 +126,7 @@
           ]
         },
         {
-          "title": "mod 2",
+          "title": "mod 2 · lfo",
           "controls": [
             {
               "k": "m2assign",
