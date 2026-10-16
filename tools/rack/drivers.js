@@ -1406,20 +1406,31 @@ function pro800Driver(schema, midi, getChannel) {
   // echoed into the dump and cuts it short (seen on hardware: 130 of 193 bytes)
   let busy = Promise.resolve();
   const serial = (fn) => { const run = busy.then(fn, fn); busy = run.catch(() => {}); return run; };
-  const request = (n) => serial(() => requestNow(n));
+  // a bare F0 F7 back means one of two things: the slot is empty (fw 1.4.5 ships with
+  // only bank A filled) or the unit won't dump at all right now (seen mid-menu). Re-ask
+  // a slot that answered before: if that one still dumps, this slot really is empty
+  let lastGood = null;
+  const request = (n) => serial(async () => {
+    const got = await requestNow(n);
+    if (!got.empty) { lastGood = n; return got; }
+    if (lastGood != null && lastGood !== n && !(await requestNow(lastGood)).empty) return got;
+    throw new Error("the PRO-800 sent an empty reply — leave its settings menu (or any edit screen) and retry");
+  });
   async function requestNow(n) {
     const lo = n & 127, hi = n >> 7;
-    // a bare F0 F7 back = it heard the request but won't dump (seen mid-menu on fw 1.4.5)
     const reply = midi.waitSysex((d) => isMsg(0x78, lo, hi)(d) || (d.length === 2 && d[0] === 0xf0));
     midi.send([...HDR, 0x77, lo, hi, 0xf7]);
     const d = await reply;
-    if (d.length === 2) throw new Error("the PRO-800 sent an empty reply — leave its settings menu (or any edit screen) and retry");
+    if (d.length === 2) return { empty: true, syx: [] };
     const data = dsiUnpack([...d.slice(11, d.length - 1)]);
     if (data[0] !== 0xa5) throw new Error("the PRO-800 sent a program in an unknown format");
     return { data, syx: [...d] };
   }
   const slot = (bi, prog) => bi * 100 + prog;
-  const named = ({ data, syx }) => {
+  // an empty slot reads as a blank name; the knobs keep showing what was there before
+  const blank = () => Object.fromEntries(schema.params.filter((p) => p.display === "char").map((p) => [p.key, 32]));
+  const named = ({ data, syx, empty }) => {
+    if (empty) return { values: blank(), data: null, syx: [], name: "(empty)", empty: true };
     const values = toValues(data);
     const name = schema.params.filter((p) => p.display === "char").map((p) => String.fromCharCode(values[p.key])).join("").trim();
     return { values, data, syx, name };
@@ -1448,9 +1459,10 @@ function pro800Driver(schema, midi, getChannel) {
       });
       const n = sys[5] | (sys[6] << 8);
       if (!(n >= 0 && n < 400)) throw new Error(`the PRO-800 reported program ${n}`);
-      const got = await request(n);
+      const got = await request(n), at = { bank: Math.floor(n / 100), prog: n % 100 };
+      if (got.empty) return { values: blank(), syx: [], at };
       lastData = got.data;
-      return { values: toValues(got.data), syx: got.syx, at: { bank: Math.floor(n / 100), prog: n % 100 } };
+      return { values: toValues(got.data), syx: got.syx, at };
     },
 
     programChange(bi, prog) { sentAt = performance.now(); selectProgram(midi, ch(), schema.programs.banks[bi], prog); },
@@ -1458,7 +1470,7 @@ function pro800Driver(schema, midi, getChannel) {
     // change must not read as a front-panel change, or the editor fetches twice
     isEcho(ev) { return (ev.type === "program" || (ev.type === "cc" && ev.num === 0)) && performance.now() - sentAt < 400; },
     // its edit buffer is the stored slot until you turn something: read the slot itself
-    async adoptSlot(bi, prog) { const got = await request(slot(bi, prog)); lastData = got.data; return named(got); },
+    async adoptSlot(bi, prog) { const got = await request(slot(bi, prog)); if (!got.empty) lastData = got.data; return named(got); },
     async requestProgram(bi, prog) { return named(await request(slot(bi, prog))); },
 
     writeProgram(bi, prog, values) {
@@ -1466,7 +1478,7 @@ function pro800Driver(schema, midi, getChannel) {
       midi.send([...HDR, 0x78, n & 127, n >> 7, ...dsiPack(data), 0xf7]);
       return data;
     },
-    sameProgram(a, b) { const va = toValues(a), vb = toValues(b); return schema.params.every((p) => va[p.key] === vb[p.key]); },
+    sameProgram(a, b) { if (!a || !b) return false; const va = toValues(a), vb = toValues(b); return schema.params.every((p) => va[p.key] === vb[p.key]); },
 
     decode(ev) {
       if (ev.type !== "cc" || ev.ch !== ch()) return [];
