@@ -1,0 +1,512 @@
+{
+ "comment": "Same plugin-panel pattern as the mopho/tg55 layouts. Rows follow the ESQ-1 voice path printed on its panel: OSC 1-3 -> DCA 1-3 -> FILTER -> DCA 4 (always ENV 4) -> pan, then the modulators (ENV 1-4, LFO 1-3), then MODES and SPLIT/LAYER. OSC and DCA groups share one select {o} (select.shared = 'osc'), the two envelope groups share {e} ('env'), 'all' writes every copy. Envelopes are time/level (T1 L1 T2 L2 T3 L3 T4), not ADSR, so they are plain knobs in segment order rather than an env cell. Mod source cells are picks (16 sources: LFO1-3, ENV1-4, VEL, VEL2, KYBD, KYBD2, WHEEL, PEDAL, XCTRL, PRESS, OFF). The name is edited in the name field (name1-6 ascii params).",
+ "rows": [
+  {
+   "id": "osc",
+   "groups": [
+    {
+     "title": "osc",
+     "select": {
+      "label": "osc",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "o": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "o": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "o": "3"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "osc"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "osc{o}Oct",
+       "label": "oct"
+      },
+      {
+       "k": "osc{o}Semi",
+       "label": "semi"
+      },
+      {
+       "k": "osc{o}Fine",
+       "label": "fine"
+      },
+      {
+       "k": "osc{o}Wave",
+       "label": "wave",
+       "as": "pick"
+      },
+      {
+       "k": "osc{o}Src1",
+       "label": "mod 1",
+       "as": "pick"
+      },
+      {
+       "k": "osc{o}Amt1",
+       "label": "depth 1"
+      },
+      {
+       "k": "osc{o}Src2",
+       "label": "mod 2",
+       "as": "pick"
+      },
+      {
+       "k": "osc{o}Amt2",
+       "label": "depth 2"
+      }
+     ]
+    },
+    {
+     "title": "dca",
+     "select": {
+      "label": "osc",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "o": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "o": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "o": "3"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "osc"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "dca{o}Level",
+       "label": "level"
+      },
+      {
+       "k": "dca{o}Src1",
+       "label": "mod 1",
+       "as": "pick"
+      },
+      {
+       "k": "dca{o}Amt1",
+       "label": "depth 1"
+      },
+      {
+       "k": "dca{o}Src2",
+       "label": "mod 2",
+       "as": "pick"
+      },
+      {
+       "k": "dca{o}Amt2",
+       "label": "depth 2"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "filter",
+   "groups": [
+    {
+     "title": "filter",
+     "controls": [
+      {
+       "k": "filterFreq",
+       "label": "freq"
+      },
+      {
+       "k": "filterQ",
+       "label": "q"
+      },
+      {
+       "k": "filterKeybd",
+       "label": "keybd"
+      },
+      {
+       "k": "filterSrc1",
+       "label": "mod 1",
+       "as": "pick"
+      },
+      {
+       "k": "filterAmt1",
+       "label": "depth 1"
+      },
+      {
+       "k": "filterSrc2",
+       "label": "mod 2",
+       "as": "pick"
+      },
+      {
+       "k": "filterAmt2",
+       "label": "depth 2"
+      }
+     ]
+    },
+    {
+     "title": "dca 4 / pan",
+     "controls": [
+      {
+       "k": "dca1On",
+       "label": "osc 1",
+       "as": "toggle"
+      },
+      {
+       "k": "dca2On",
+       "label": "osc 2",
+       "as": "toggle"
+      },
+      {
+       "k": "dca3On",
+       "label": "osc 3",
+       "as": "toggle"
+      },
+      {
+       "k": "dca4Amt",
+       "label": "env 4 amt"
+      },
+      {
+       "k": "pan",
+       "label": "pan"
+      },
+      {
+       "k": "panSrc",
+       "label": "pan mod",
+       "as": "pick"
+      },
+      {
+       "k": "panAmt",
+       "label": "pan depth"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "env",
+   "groups": [
+    {
+     "title": "envelopes",
+     "select": {
+      "label": "env",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "e": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "e": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "e": "3"
+        }
+       },
+       {
+        "label": "4",
+        "vars": {
+         "e": "4"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "env"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "env{e}T1",
+       "label": "t1"
+      },
+      {
+       "k": "env{e}L1",
+       "label": "l1"
+      },
+      {
+       "k": "env{e}T2",
+       "label": "t2"
+      },
+      {
+       "k": "env{e}L2",
+       "label": "l2"
+      },
+      {
+       "k": "env{e}T3",
+       "label": "t3"
+      },
+      {
+       "k": "env{e}L3",
+       "label": "l3"
+      },
+      {
+       "k": "env{e}T4",
+       "label": "t4"
+      }
+     ]
+    },
+    {
+     "title": "env velocity / key",
+     "select": {
+      "label": "env",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "e": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "e": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "e": "3"
+        }
+       },
+       {
+        "label": "4",
+        "vars": {
+         "e": "4"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "env"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "env{e}LV",
+       "label": "lv"
+      },
+      {
+       "k": "env{e}T1V",
+       "label": "t1v"
+      },
+      {
+       "k": "env{e}TK",
+       "label": "tk"
+      },
+      {
+       "k": "cycle",
+       "label": "full cyc",
+       "as": "toggle"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "lfo",
+   "groups": [
+    {
+     "title": "lfo",
+     "select": {
+      "label": "lfo",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "l": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "l": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "l": "3"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "lfo"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "lfo{l}Freq",
+       "label": "freq"
+      },
+      {
+       "k": "lfo{l}Wave",
+       "label": "wave",
+       "as": "seg",
+       "labels": [
+        "tri",
+        "saw",
+        "sqr",
+        "noi"
+       ]
+      },
+      {
+       "k": "lfo{l}L1",
+       "label": "l1"
+      },
+      {
+       "k": "lfo{l}Delay",
+       "label": "delay"
+      },
+      {
+       "k": "lfo{l}L2",
+       "label": "l2"
+      },
+      {
+       "k": "lfo{l}Src",
+       "label": "mod",
+       "as": "pick"
+      },
+      {
+       "k": "lfo{l}Reset",
+       "label": "reset",
+       "as": "toggle"
+      },
+      {
+       "k": "lfo{l}Human",
+       "label": "human",
+       "as": "toggle"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "modes",
+   "groups": [
+    {
+     "title": "modes",
+     "controls": [
+      {
+       "k": "sync",
+       "label": "sync",
+       "as": "toggle"
+      },
+      {
+       "k": "am",
+       "label": "am",
+       "as": "toggle"
+      },
+      {
+       "k": "mono",
+       "label": "mono",
+       "as": "toggle"
+      },
+      {
+       "k": "glide",
+       "label": "glide"
+      },
+      {
+       "k": "vc",
+       "label": "vc",
+       "as": "toggle"
+      },
+      {
+       "k": "envRestart",
+       "label": "env",
+       "as": "toggle"
+      },
+      {
+       "k": "oscRestart",
+       "label": "osc",
+       "as": "toggle"
+      },
+      {
+       "k": "cycle",
+       "label": "cyc",
+       "as": "toggle"
+      }
+     ]
+    },
+    {
+     "title": "split / layer",
+     "controls": [
+      {
+       "k": "layerOn",
+       "label": "layer",
+       "as": "toggle"
+      },
+      {
+       "k": "layerProg",
+       "label": "layer prog",
+       "as": "pick"
+      },
+      {
+       "k": "splitMode",
+       "label": "split",
+       "as": "seg",
+       "labels": [
+        "off",
+        "low",
+        "up"
+       ]
+      },
+      {
+       "k": "splitProg",
+       "label": "split prog",
+       "as": "pick"
+      },
+      {
+       "k": "splitKey",
+       "label": "split key",
+       "as": "pick"
+      },
+      {
+       "k": "splitLayerOn",
+       "label": "split/layer",
+       "as": "toggle"
+      },
+      {
+       "k": "splitLayerProg",
+       "label": "s/l prog",
+       "as": "pick"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

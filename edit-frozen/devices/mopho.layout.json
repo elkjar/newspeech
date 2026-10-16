@@ -1,0 +1,559 @@
+{
+  "comment": "Plugin-panel pattern (vibe/slice): bordered groups, legend in the border, one control per fixed-width cell, label under every control. Rows follow the signal path. A group's 'select' picks which copy its knobs edit ({var} in keys); the 'as: select' cell is where that picker sits. 'all' writes every copy at once. 'only' cells dim when their option isn't selected ('fixed' shows a hard-wired destination instead).",
+  "rows": [
+    {
+      "id": "path",
+      "groups": [
+        {
+          "title": "oscillators",
+          "select": {
+            "label": "osc",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              }
+            ],
+            "all": "both"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "osc{n}Freq",
+              "label": "freq"
+            },
+            {
+              "k": "osc{n}Fine",
+              "label": "fine"
+            },
+            {
+              "k": "osc{n}Shape",
+              "label": "shape"
+            },
+            {
+              "k": "osc{n}Glide",
+              "label": "glide"
+            },
+            {
+              "k": "sub{n}Level",
+              "label": "sub"
+            },
+            {
+              "k": "osc{n}Key",
+              "label": "key trk",
+              "as": "toggle"
+            },
+            {
+              "k": "sync",
+              "label": "sync",
+              "as": "toggle"
+            },
+            {
+              "k": "oscSlop",
+              "label": "slop"
+            }
+          ]
+        },
+        {
+          "title": "mixer",
+          "controls": [
+            {
+              "k": "oscMix",
+              "label": "osc 1\u20132"
+            },
+            {
+              "k": "noise",
+              "label": "noise"
+            },
+            {
+              "k": "extIn",
+              "label": "ext in"
+            }
+          ]
+        },
+        {
+          "title": "filter",
+          "controls": [
+            {
+              "k": "filterFreq",
+              "label": "cutoff"
+            },
+            {
+              "k": "resonance",
+              "label": "reso"
+            },
+            {
+              "k": "filterEnvAmt",
+              "label": "env amt"
+            },
+            {
+              "k": "filterEnvVel",
+              "label": "velocity"
+            },
+            {
+              "k": "filterKeyAmt",
+              "label": "key amt"
+            },
+            {
+              "k": "filterAudioMod",
+              "label": "audio mod"
+            },
+            {
+              "k": "filterPoles",
+              "label": "4-pole",
+              "as": "toggle"
+            }
+          ]
+        },
+        {
+          "title": "amp",
+          "controls": [
+            {
+              "k": "vcaLevel",
+              "label": "level"
+            },
+            {
+              "k": "vcaEnvAmt",
+              "label": "env amt"
+            },
+            {
+              "k": "vcaEnvVel",
+              "label": "velocity"
+            },
+            {
+              "k": "voiceVolume",
+              "label": "volume"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "env",
+      "groups": [
+        {
+          "title": "envelopes",
+          "select": {
+            "label": "env",
+            "options": [
+              {
+                "label": "filter",
+                "vars": {
+                  "e": "filterEnv",
+                  "amt": "filterEnvAmt",
+                  "vel": "filterEnvVel",
+                  "to": "cutoff"
+                }
+              },
+              {
+                "label": "amp",
+                "vars": {
+                  "e": "ampEnv",
+                  "amt": "vcaEnvAmt",
+                  "vel": "vcaEnvVel",
+                  "to": "vca"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "e": "env3",
+                  "amt": "env3Amt",
+                  "vel": "env3Vel",
+                  "to": ""
+                }
+              }
+            ],
+            "all": "all"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "as": "env",
+              "label": "shape",
+              "keys": [
+                "{e}Delay",
+                "{e}Attack",
+                "{e}Decay",
+                "{e}Sustain",
+                "{e}Release"
+              ]
+            },
+            {
+              "k": "{e}Delay",
+              "label": "delay"
+            },
+            {
+              "k": "{e}Attack",
+              "label": "attack"
+            },
+            {
+              "k": "{e}Decay",
+              "label": "decay"
+            },
+            {
+              "k": "{e}Sustain",
+              "label": "sustain"
+            },
+            {
+              "k": "{e}Release",
+              "label": "release"
+            },
+            {
+              "k": "{amt}",
+              "label": "amount"
+            },
+            {
+              "k": "{vel}",
+              "label": "velocity"
+            },
+            {
+              "k": "env3Dest",
+              "label": "dest",
+              "only": [
+                "3"
+              ],
+              "fixed": "{to}",
+              "as": "pick"
+            },
+            {
+              "k": "env3Repeat",
+              "label": "repeat",
+              "as": "toggle",
+              "only": [
+                "3"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mod",
+      "groups": [
+        {
+          "title": "lfo",
+          "select": {
+            "label": "lfo",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "n": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "n": "4"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "lfo{n}Shape",
+              "label": "shape",
+              "as": "seg",
+              "labels": [
+                "tri",
+                "rev",
+                "saw",
+                "sqr",
+                "rnd"
+              ]
+            },
+            {
+              "k": "lfo{n}Freq",
+              "label": "rate"
+            },
+            {
+              "k": "lfo{n}Amt",
+              "label": "amount"
+            },
+            {
+              "k": "lfo{n}Dest",
+              "label": "dest",
+              "as": "pick"
+            },
+            {
+              "k": "lfo{n}KeySync",
+              "label": "key sync",
+              "as": "toggle"
+            }
+          ]
+        },
+        {
+          "title": "mod matrix",
+          "select": {
+            "label": "slot",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "n": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "n": "4"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "mod{n}Src",
+              "label": "source"
+            },
+            {
+              "k": "mod{n}Amt",
+              "label": "amount"
+            },
+            {
+              "k": "mod{n}Dest",
+              "label": "dest",
+              "as": "pick"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "seq",
+      "groups": [
+        {
+          "title": "sequencer",
+          "select": {
+            "label": "track",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "n": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "n": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "n": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "n": "4"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "k": "seqOn",
+              "label": "on",
+              "as": "toggle"
+            },
+            {
+              "as": "select"
+            },
+            {
+              "as": "steps",
+              "label": "steps \u00b7 alt-click = rest",
+              "k": "seq{n}Step{i}",
+              "count": 16
+            },
+            {
+              "k": "seq{n}Dest",
+              "label": "dest",
+              "as": "pick"
+            },
+            {
+              "k": "seqTrigger",
+              "label": "trigger",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "clock \u00b7 arp",
+          "controls": [
+            {
+              "k": "bpm",
+              "label": "bpm"
+            },
+            {
+              "k": "clockDivide",
+              "label": "divide"
+            },
+            {
+              "k": "arpOn",
+              "label": "arp",
+              "as": "toggle"
+            },
+            {
+              "k": "arpMode",
+              "label": "mode",
+              "as": "seg",
+              "labels": [
+                "up",
+                "down",
+                "up/dn",
+                "asgn"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "perf",
+      "groups": [
+        {
+          "title": "controllers",
+          "select": {
+            "label": "source",
+            "options": [
+              {
+                "label": "wheel",
+                "vars": {
+                  "c": "modWheel"
+                }
+              },
+              {
+                "label": "press",
+                "vars": {
+                  "c": "pressure"
+                }
+              },
+              {
+                "label": "breath",
+                "vars": {
+                  "c": "breath"
+                }
+              },
+              {
+                "label": "vel",
+                "vars": {
+                  "c": "velocity"
+                }
+              },
+              {
+                "label": "foot",
+                "vars": {
+                  "c": "foot"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "{c}Amt",
+              "label": "amount"
+            },
+            {
+              "k": "{c}Dest",
+              "label": "dest",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "keys",
+          "controls": [
+            {
+              "k": "pitchBendRange",
+              "label": "bend"
+            },
+            {
+              "k": "glideMode",
+              "label": "glide mode",
+              "as": "pick"
+            },
+            {
+              "k": "keyAssign",
+              "label": "key assign",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "assign knobs",
+          "controls": [
+            {
+              "k": "assign1",
+              "label": "knob 1",
+              "as": "pick"
+            },
+            {
+              "k": "assign2",
+              "label": "knob 2",
+              "as": "pick"
+            },
+            {
+              "k": "assign3",
+              "label": "knob 3",
+              "as": "pick"
+            },
+            {
+              "k": "assign4",
+              "label": "knob 4",
+              "as": "pick"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

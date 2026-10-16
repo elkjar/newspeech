@@ -1,0 +1,118 @@
+{
+  "comment": "Rows follow the pedal: time L / time R with their subdivisions and feedback, then rate / depth / tone / grit, then dry / wet / space (the small left column), then switches. Global = clock mode, routing, trails.",
+  "rows": [
+    {
+      "id": "delay",
+      "groups": [
+        {
+          "title": "delay",
+          "controls": [
+            {
+              "k": "timeL",
+              "label": "time l"
+            },
+            {
+              "k": "subL",
+              "label": "sub l",
+              "as": "pick"
+            },
+            {
+              "k": "timeR",
+              "label": "time r"
+            },
+            {
+              "k": "subR",
+              "label": "sub r",
+              "as": "pick"
+            },
+            {
+              "k": "feedback",
+              "label": "feedback"
+            }
+          ]
+        },
+        {
+          "title": "mod",
+          "controls": [
+            {
+              "k": "rate",
+              "label": "rate"
+            },
+            {
+              "k": "depth",
+              "label": "depth"
+            }
+          ]
+        },
+        {
+          "title": "color",
+          "controls": [
+            {
+              "k": "tone",
+              "label": "tone"
+            },
+            {
+              "k": "grit",
+              "label": "grit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mix",
+      "groups": [
+        {
+          "title": "mix",
+          "controls": [
+            {
+              "k": "dry",
+              "label": "dry"
+            },
+            {
+              "k": "wet",
+              "label": "wet"
+            },
+            {
+              "k": "space",
+              "label": "space"
+            }
+          ]
+        },
+        {
+          "title": "switches",
+          "controls": [
+            {
+              "k": "bypass",
+              "label": "on"
+            },
+            {
+              "k": "tap",
+              "label": "tap",
+              "as": "tap"
+            }
+          ]
+        },
+        {
+          "title": "global",
+          "controls": [
+            {
+              "k": "clockMode",
+              "label": "clock",
+              "as": "pick"
+            },
+            {
+              "k": "routing",
+              "label": "routing",
+              "as": "seg"
+            },
+            {
+              "k": "trails",
+              "label": "trails"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

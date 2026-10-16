@@ -1,0 +1,97 @@
+{
+  "comment": "Rows follow the pedal: the seven big knobs, then volume / mix / spread (the small left column), then switches. Global = routing + trails, saved on the pedal for every preset.",
+  "rows": [
+    {
+      "id": "main",
+      "groups": [
+        {
+          "title": "reverb",
+          "controls": [
+            {
+              "k": "filter",
+              "label": "filter"
+            },
+            {
+              "k": "pitch1",
+              "label": "pitch 1"
+            },
+            {
+              "k": "pitch2",
+              "label": "pitch 2"
+            },
+            {
+              "k": "crush",
+              "label": "crush"
+            },
+            {
+              "k": "lag",
+              "label": "lag"
+            },
+            {
+              "k": "multiply",
+              "label": "multiply"
+            },
+            {
+              "k": "decay",
+              "label": "decay"
+            }
+          ]
+        },
+        {
+          "title": "output",
+          "controls": [
+            {
+              "k": "volume",
+              "label": "volume"
+            },
+            {
+              "k": "mix",
+              "label": "mix"
+            },
+            {
+              "k": "spread",
+              "label": "spread"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sw",
+      "groups": [
+        {
+          "title": "switches",
+          "controls": [
+            {
+              "k": "onOff",
+              "label": "on"
+            },
+            {
+              "k": "aux",
+              "label": "aux"
+            },
+            {
+              "k": "auxFunc",
+              "label": "aux does",
+              "as": "seg"
+            }
+          ]
+        },
+        {
+          "title": "global",
+          "controls": [
+            {
+              "k": "routing",
+              "label": "routing",
+              "as": "seg"
+            },
+            {
+              "k": "trails",
+              "label": "trails"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
