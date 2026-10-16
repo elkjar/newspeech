@@ -1403,9 +1403,11 @@ function pro800Driver(schema, midi, getChannel) {
 
   async function request(n) {
     const lo = n & 127, hi = n >> 7;
-    const reply = midi.waitSysex(isMsg(0x78, lo, hi));
+    // a bare F0 F7 back = it heard the request but won't dump (seen mid-menu on fw 1.4.5)
+    const reply = midi.waitSysex((d) => isMsg(0x78, lo, hi)(d) || (d.length === 2 && d[0] === 0xf0));
     midi.send([...HDR, 0x77, lo, hi, 0xf7]);
     const d = await reply;
+    if (d.length === 2) throw new Error("the PRO-800 sent an empty reply — leave its settings menu (or any edit screen) and retry");
     const data = dsiUnpack([...d.slice(11, d.length - 1)]);
     if (data[0] !== 0xa5) throw new Error("the PRO-800 sent a program in an unknown format");
     return { data, syx: [...d] };
