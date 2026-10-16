@@ -1010,9 +1010,18 @@ async function rackCall(cmd, args) {
 async function pullLibrary(id) {
   try {
     const txt = await rackCall("rack_read_library", { folder: folderOf(id) });
-    if (txt) lsSet(`${id}.library`, txt);
+    if (txt) { lsSet(`${id}.library`, txt); namesFromLibrary(JSON.parse(txt)); }
     else { const local = lsGet(`${id}.library`, null); if (local) await pushLibrary(id, local); }
   } catch (e) { status(`couldn't read the library from Dropbox: ${e.message}`, true); }
+}
+// the slot list reads the names cache, which only store fills — rebuild it from the
+// library so presets stored (or renamed) on another machine list under their names
+function namesFromLibrary(lib) {
+  const chars = schema.params.filter((p) => p.display === "char");
+  if (!chars.length) return;
+  const known = names();
+  for (const [k, e] of Object.entries(lib)) known[k] = chars.map((p) => String.fromCharCode(e.values?.[p.key] ?? 32)).join("").trim() || "(unnamed)";
+  lsSet(`${schema.id}.names`, JSON.stringify(known));
 }
 async function pushLibrary(id, json) {
   try { await rackCall("rack_write_library", { folder: folderOf(id), json }); }
