@@ -72,14 +72,16 @@ export function createKnob({ size = 46, label, onBegin, onChange, onEnd, onReset
     if (fromUser || hovering) onHover?.(param, value);
   }
 
-  // full range over ~220px (at least 3px per step so stepped params don't skip)
+  // full range over ~220px; stepped params get 3px a step so they don't skip, but no
+  // knob takes more than ~300px end to end (0-999 params were 3000px at 3px a step)
   svg.addEventListener("pointerdown", (e) => {
     if (!param) return;
     e.preventDefault();
     svg.setPointerCapture(e.pointerId);
     onBegin();
     dragging = true; draw();
-    const pxPerStep = Math.max(3, 220 / (param.max - param.min));
+    const range = param.max - param.min || 1;
+    const pxPerStep = Math.max(220 / range, Math.min(3, 300 / range));
     let lastY = e.clientY, acc = value;
     const move = (ev) => {
       const dy = lastY - ev.clientY; lastY = ev.clientY;

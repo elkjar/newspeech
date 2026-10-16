@@ -85,11 +85,15 @@ function setValue(p, v, { send = true, from = "ui" } = {}) {
   }
   if (isName(p)) renderName();
   if (from !== "load" && !isName(p)) showLast(p, v);
-  if (send) { pending.set(p.key, p); schedule(); }
+  if (send) { pending.set(p.key, p); schedule(); touched.set(p.key, performance.now()); }
   // driver-state params (Emax edit key) retarget the editor: read what's there now
   if (send && p.msg === "local") { clearTimeout(rereadTimer); rereadTimer = setTimeout(getFromSynth, 400); }
 }
 let rereadTimer = null;
+// last time edit itself changed each param: units with soft thru (PRO-800) bounce every
+// CC straight back, and mid-drag those echoes would yank the knob to an older value
+const touched = new Map();
+const ECHO_MS = 400;
 
 let raf = 0;
 function schedule() {
@@ -407,7 +411,10 @@ async function boot() {
     // synth changed program on its front panel → pull the new sound in
     if (driver.isEcho?.(ev)) return; // our own message bounced back by the synth's soft thru
     if (ev.ch === channel() && banks().length && followProgram(ev)) return;
-    for (const { param, value } of driver.decode(ev)) setValue(param, value, { send: false, from: "synth" });
+    for (const { param, value } of driver.decode(ev)) {
+      if (performance.now() - (touched.get(param.key) ?? -Infinity) < ECHO_MS) continue; // edit is moving it
+      setValue(param, value, { send: false, from: "synth" });
+    }
   });
 
   // skip files that don't parse yet (a device being written right now).
