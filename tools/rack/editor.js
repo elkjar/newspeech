@@ -425,6 +425,12 @@ async function boot() {
   $("#in").onchange = $("#out").onchange = usePorts;
   $("#back").onclick = disconnect;
   shelfDrop();
+  // the empty cells after the last card count too: dragging there moves it to the end
+  $("#rackcards").addEventListener("dragover", (e) => {
+    if (!dragging || e.target !== e.currentTarget) return;
+    e.preventDefault();
+    if (e.currentTarget.lastElementChild !== dragging) e.currentTarget.append(dragging);
+  });
   $("#recheck").onclick = () => renderRack({ force: true });
   $("#connect-go").onclick = () => runConnect();
   $("#connect-retry").onclick = () => runConnect();
