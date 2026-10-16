@@ -1,0 +1,484 @@
+{
+  "comment": "Same plugin-panel pattern as the D-110/JV layouts. The TONE being edited is picked with the program selector (banks T1x-T4x = the 32 RAM tones); picking one only moves the edit target, nothing is sent (see s330.json driverNotes 1). Rows follow the S-330 signal path: wave (points/loop of the sample in RAM) + pitch -> TVF + its 8-stage envelope -> TVA envelope, LFO (one LFO, three depths) and velocity -> patch P11 / voice group A context. Envelopes are 8 level/rate pairs with a sustain point and end point, not DADSR, so each envelope group has a stage select (1-8) over one level + one rate knob. Wave points are 24-bit sample indices relative to the tone's first segment; loop length must follow end - loop (driverNotes 4). The patch group edits P11 (the patch voice group A plays by factory default): its tone-to-key map is per key (109 keys x 2 layers), so three picks show layer 1 at C2/C4/C6 rather than a key range.",
+  "rows": [
+    {
+      "id": "tone",
+      "groups": [
+        {
+          "title": "wave",
+          "controls": [
+            {
+              "k": "loopMode",
+              "label": "loop",
+              "as": "seg",
+              "labels": [
+                "fwd",
+                "alt",
+                "1shot",
+                "rev"
+              ]
+            },
+            {
+              "k": "startPoint",
+              "label": "start"
+            },
+            {
+              "k": "loopPoint",
+              "label": "loop pt"
+            },
+            {
+              "k": "endPoint",
+              "label": "end"
+            },
+            {
+              "k": "loopTune",
+              "label": "loop tune"
+            },
+            {
+              "k": "origSub",
+              "label": "org/sub",
+              "as": "seg",
+              "labels": [
+                "org",
+                "sub"
+              ]
+            },
+            {
+              "k": "sourceTone",
+              "label": "source",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "pitch",
+          "controls": [
+            {
+              "k": "origKey",
+              "label": "orig key",
+              "as": "pick"
+            },
+            {
+              "k": "transpose",
+              "label": "shift"
+            },
+            {
+              "k": "fineTune",
+              "label": "fine"
+            },
+            {
+              "k": "pitchFollow",
+              "label": "follow",
+              "as": "toggle"
+            },
+            {
+              "k": "bender",
+              "label": "bend",
+              "as": "toggle"
+            },
+            {
+              "k": "aftertouch",
+              "label": "a.touch",
+              "as": "toggle"
+            },
+            {
+              "k": "outputAssign",
+              "label": "out",
+              "as": "pick"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "filter",
+      "groups": [
+        {
+          "title": "tvf",
+          "controls": [
+            {
+              "k": "tvfSwitch",
+              "label": "on",
+              "as": "toggle"
+            },
+            {
+              "k": "tvfCutoff",
+              "label": "cutoff"
+            },
+            {
+              "k": "tvfResonance",
+              "label": "reso"
+            },
+            {
+              "k": "tvfEgDepth",
+              "label": "env"
+            },
+            {
+              "k": "tvfEgPolarity",
+              "label": "env pol",
+              "as": "seg",
+              "labels": [
+                "+",
+                "-"
+              ]
+            },
+            {
+              "k": "tvfKeyFollow",
+              "label": "key flw"
+            },
+            {
+              "k": "tvfKeyRate",
+              "label": "key rate"
+            }
+          ]
+        },
+        {
+          "title": "tvf env",
+          "select": {
+            "label": "stage",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "s": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "s": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "s": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "s": "4"
+                }
+              },
+              {
+                "label": "5",
+                "vars": {
+                  "s": "5"
+                }
+              },
+              {
+                "label": "6",
+                "vars": {
+                  "s": "6"
+                }
+              },
+              {
+                "label": "7",
+                "vars": {
+                  "s": "7"
+                }
+              },
+              {
+                "label": "8",
+                "vars": {
+                  "s": "8"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "tvfL{s}",
+              "label": "level"
+            },
+            {
+              "k": "tvfR{s}",
+              "label": "rate"
+            },
+            {
+              "k": "tvfSustain",
+              "label": "sus pt",
+              "as": "pick"
+            },
+            {
+              "k": "tvfEnd",
+              "label": "end pt",
+              "as": "pick"
+            },
+            {
+              "k": "envZoom",
+              "label": "zoom",
+              "as": "pick"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "amp",
+      "groups": [
+        {
+          "title": "tva env",
+          "select": {
+            "label": "stage",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "s": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "s": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "s": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "s": "4"
+                }
+              },
+              {
+                "label": "5",
+                "vars": {
+                  "s": "5"
+                }
+              },
+              {
+                "label": "6",
+                "vars": {
+                  "s": "6"
+                }
+              },
+              {
+                "label": "7",
+                "vars": {
+                  "s": "7"
+                }
+              },
+              {
+                "label": "8",
+                "vars": {
+                  "s": "8"
+                }
+              }
+            ]
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "tvaL{s}",
+              "label": "level"
+            },
+            {
+              "k": "tvaR{s}",
+              "label": "rate"
+            },
+            {
+              "k": "tvaSustain",
+              "label": "sus pt",
+              "as": "pick"
+            },
+            {
+              "k": "tvaEnd",
+              "label": "end pt",
+              "as": "pick"
+            },
+            {
+              "k": "tvaKeyRate",
+              "label": "key rate"
+            },
+            {
+              "k": "tvaLevel",
+              "label": "level"
+            }
+          ]
+        },
+        {
+          "title": "lfo",
+          "controls": [
+            {
+              "k": "lfoRate",
+              "label": "rate"
+            },
+            {
+              "k": "lfoDelay",
+              "label": "delay"
+            },
+            {
+              "k": "lfoSync",
+              "label": "sync",
+              "as": "toggle"
+            },
+            {
+              "k": "lfoWave",
+              "label": "wave",
+              "as": "seg",
+              "labels": [
+                "sin",
+                "p.h"
+              ]
+            },
+            {
+              "k": "lfoMode",
+              "label": "mode",
+              "as": "seg",
+              "labels": [
+                "norm",
+                "1shot"
+              ]
+            },
+            {
+              "k": "lfoOffset",
+              "label": "offset"
+            },
+            {
+              "k": "pitchLfoDepth",
+              "label": "→ pitch"
+            },
+            {
+              "k": "tvfLfoDepth",
+              "label": "→ tvf"
+            },
+            {
+              "k": "tvaLfoDepth",
+              "label": "→ tva"
+            }
+          ]
+        },
+        {
+          "title": "velocity",
+          "controls": [
+            {
+              "k": "tvaVelRate",
+              "label": "amp rate"
+            },
+            {
+              "k": "tvaLevelCurve",
+              "label": "amp curve",
+              "as": "pick"
+            },
+            {
+              "k": "tvfVelRate",
+              "label": "tvf rate"
+            },
+            {
+              "k": "tvfLevelCurve",
+              "label": "tvf curve",
+              "as": "pick"
+            },
+            {
+              "k": "patchVswThreshold",
+              "label": "v-sw thr"
+            },
+            {
+              "k": "patchVmixRatio",
+              "label": "v-mix"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "patch",
+      "groups": [
+        {
+          "title": "patch P11",
+          "controls": [
+            {
+              "k": "patchLevel",
+              "label": "level"
+            },
+            {
+              "k": "patchKeyMode",
+              "label": "key mode",
+              "as": "pick"
+            },
+            {
+              "k": "patchBendRange",
+              "label": "bend rng"
+            },
+            {
+              "k": "patchOctave",
+              "label": "octave",
+              "as": "seg",
+              "labels": [
+                "-2",
+                "-1",
+                "0",
+                "+1",
+                "+2"
+              ]
+            },
+            {
+              "k": "patchDetune",
+              "label": "detune"
+            },
+            {
+              "k": "patchOutput",
+              "label": "out",
+              "as": "pick"
+            },
+            {
+              "k": "t2k1_36",
+              "label": "C2 tone",
+              "as": "pick"
+            },
+            {
+              "k": "t2k1_60",
+              "label": "C4 tone",
+              "as": "pick"
+            },
+            {
+              "k": "t2k1_84",
+              "label": "C6 tone",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "group a",
+          "controls": [
+            {
+              "k": "multiPatch1",
+              "label": "patch",
+              "as": "pick"
+            },
+            {
+              "k": "multiCh1",
+              "label": "rx ch",
+              "as": "pick"
+            },
+            {
+              "k": "multiLevel1",
+              "label": "level"
+            },
+            {
+              "k": "voiceMode",
+              "label": "voices",
+              "as": "pick"
+            },
+            {
+              "k": "masterTune",
+              "label": "tune"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

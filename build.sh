@@ -33,7 +33,10 @@ cp -r waves _site/waves
 if [ -d assets ]; then
   cp -r assets _site/assets
 fi
-# edit — the hardware synth editor (tools/rack), unlisted at /edit/
-node tools/build-edit.mjs
+# edit — the hardware synth editor, unlisted at /edit/. FROZEN 2026-10-16: the site
+# serves this snapshot (tools/rack as of PR #31); the editor lives on in edit.app
+# (tools/rack/app), so tools/rack changes no longer reach the site. To re-snapshot:
+# node tools/build-edit.mjs edit-frozen
+cp -r edit-frozen _site/edit
 mkdir -p _site/sequencer
 cp -r sequencer/public/samples _site/sequencer/samples

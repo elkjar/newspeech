@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 29" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="1" y="1" width="318" height="27" rx="1.5"/>
+  <rect x="3.4" y="3.1" width="7.3" height="3.4" rx="1.6"/>
+  <rect x="3.4" y="22.3" width="7.3" height="3.4" rx="1.6"/>
+  <rect x="309.5" y="2.9" width="7.5" height="3.4" rx="1.6"/>
+  <rect x="309.5" y="22.3" width="7.5" height="3.4" rx="1.6"/>
+  <line x1="20" y1="4.4" x2="59.3" y2="4.4"/>
+  <line x1="61" y1="5.2" x2="87.2" y2="5.2"/>
+  <path d="M28.7 15.2 H40.1 L38.8 20.1 H30.0 Z"/>
+  <circle cx="50.7" cy="17.6" r="3.0"/>
+  <circle cx="50.7" cy="17.6" r="1.9"/>
+  <circle cx="64.4" cy="17.5" r="3.0"/>
+  <circle cx="64.4" cy="17.5" r="1.9"/>
+  <circle cx="79.0" cy="17.7" r="5.0"/>
+  <circle cx="79.0" cy="17.7" r="3.9"/>
+  <line x1="79.0" y1="17.7" x2="79.0" y2="14.1"/>
+  <rect x="90.4" y="7.4" width="50.1" height="15.7" rx="1"/>
+  <rect x="94.6" y="10.3" width="41.6" height="9.6" rx="0.5"/>
+  <rect x="144.0" y="10.7" width="9.3" height="2.6" rx="0.6"/>
+  <line x1="147.5" y1="11.4" x2="149.8" y2="11.4"/>
+  <rect x="144.0" y="20.1" width="9.3" height="2.8" rx="0.6"/>
+  <line x1="147.5" y1="20.8" x2="149.8" y2="20.8"/>
+  <rect x="154.0" y="10.6" width="9.7" height="2.7" rx="0.6"/>
+  <line x1="157.8" y1="11.3" x2="160.0" y2="11.3"/>
+  <rect x="154.0" y="20.0" width="9.7" height="2.9" rx="0.6"/>
+  <line x1="157.8" y1="20.7" x2="160.0" y2="20.7"/>
+  <rect x="199.1" y="10.5" width="9.1" height="2.6" rx="0.6"/>
+  <line x1="202.5" y1="11.2" x2="204.8" y2="11.2"/>
+  <rect x="199.1" y="19.9" width="9.1" height="2.8" rx="0.6"/>
+  <line x1="202.5" y1="20.6" x2="204.8" y2="20.6"/>
+  <rect x="166.9" y="10.6" width="9.7" height="2.7" rx="0.6"/>
+  <rect x="166.9" y="20.0" width="9.7" height="2.8" rx="0.6"/>
+  <rect x="177.2" y="10.6" width="8.5" height="2.6" rx="0.6"/>
+  <rect x="177.2" y="20.0" width="8.5" height="2.8" rx="0.6"/>
+  <rect x="186.2" y="10.5" width="9.5" height="2.7" rx="0.6"/>
+  <rect x="186.2" y="19.9" width="9.5" height="2.9" rx="0.6"/>
+  <rect x="213.2" y="6.5" width="64.7" height="16.3" rx="1"/>
+  <path d="M216.6 10.9 H233.6 V8.3 H257.4 V10.9 H274.8 V13.6 H216.6 Z"/>
+  <rect x="230.7" y="13.6" width="29.7" height="6.9" rx="0.4"/>
+  <rect x="224.5" y="18.5" width="3.3" height="1.1" rx="0.4"/>
+  <rect x="262.8" y="17.7" width="7.8" height="2.9" rx="0.5"/>
+  <rect x="283.9" y="6.4" width="10.4" height="1.4" rx="0.5"/>
+  <rect x="283.9" y="12.0" width="10.6" height="10.1" rx="0.8"/>
+</svg>

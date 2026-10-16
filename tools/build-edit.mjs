@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// edit (tools/rack) on the site: the page, its modules and device files go to
-// _site/edit/, and devices.json stands in for server.mjs's /api/devices.
-// server.mjs itself stays local — it's what writes backups into Dropbox.
+// edit (tools/rack) as static files: the page, its modules and device files, plus
+// devices.json standing in for server.mjs's /api/devices. The site's /edit is a
+// frozen snapshot made with this (edit-frozen/, see build.sh); edit.app bundles a
+// fresh one on every build. server.mjs stays local — it writes backups into Dropbox.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

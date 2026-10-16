@@ -1,0 +1,355 @@
+{
+  "comment": "Same plugin-panel pattern as the tg55/d110 layouts. Rows follow the 4-op FM voice: voice common (algorithm, OP4 feedback, transpose, pseudo-reverb, poly/mono, bend) + LFO -> operator (frequency/wave/level) -> operator EG -> operator scaling/sensitivity/mute -> voice function (wheel, portamento, breath, foot). All operator groups share one select var {o} (select.shared = 'op', 'all' writes all four operators). Frequency is coarse + fine: in ratio mode the LCD ratio is tx81z.json freqTables.ratio[crs][fine] (crs 4 fine 0 = 1.00); in fixed mode Hz = (((crs & 0x3C) << 2) + fine + (crs < 4 ? 8 : 0)) << range; the knobs show raw numbers until the editor learns display 'tx81zFreqCoarse'. EG is Yamaha 4-op rate/level (AR, D1R, D1L, D2R, RR; rates 0-31 fast = high, RR 1-15), so plain knobs, not an env cell. OP1's EG shift is fixed off. The TX81Z has no pitch EG (VCED 87-92 are DX21-only); the 'reverb rate' is an EG-release trick, not an effect. 'on' toggles are live operator mutes (not stored). Sustain/portamento/chorus switch bits are stored but have no panel page and are left off the faceplate. The voice name is edited in the name field (name1-10).",
+  "rows": [
+    {
+      "id": "voice",
+      "groups": [
+        {
+          "title": "voice",
+          "controls": [
+            {
+              "k": "algorithm",
+              "label": "algorithm",
+              "as": "pick"
+            },
+            {
+              "k": "feedback",
+              "label": "feedback"
+            },
+            {
+              "k": "transpose",
+              "label": "middle C"
+            },
+            {
+              "k": "reverbRate",
+              "label": "reverb",
+              "as": "pick"
+            },
+            {
+              "k": "polyMode",
+              "label": "mono",
+              "as": "toggle"
+            },
+            {
+              "k": "pbRange",
+              "label": "bend"
+            }
+          ]
+        },
+        {
+          "title": "lfo",
+          "controls": [
+            {
+              "k": "lfoWave",
+              "label": "wave",
+              "as": "seg",
+              "labels": [
+                "saw",
+                "sqr",
+                "tri",
+                "s/h"
+              ]
+            },
+            {
+              "k": "lfoSpeed",
+              "label": "speed"
+            },
+            {
+              "k": "lfoDelay",
+              "label": "delay"
+            },
+            {
+              "k": "lfoPmd",
+              "label": "pm depth"
+            },
+            {
+              "k": "lfoAmd",
+              "label": "am depth"
+            },
+            {
+              "k": "pms",
+              "label": "pm sens"
+            },
+            {
+              "k": "ams",
+              "label": "am sens"
+            },
+            {
+              "k": "lfoSync",
+              "label": "sync",
+              "as": "toggle"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "operator",
+      "groups": [
+        {
+          "title": "operator",
+          "select": {
+            "label": "op",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "o": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "o": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "o": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "o": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "op"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "op{o}Fix",
+              "label": "mode",
+              "as": "seg",
+              "labels": [
+                "ratio",
+                "fixed"
+              ]
+            },
+            {
+              "k": "op{o}Crs",
+              "label": "coarse"
+            },
+            {
+              "k": "op{o}Fine",
+              "label": "fine"
+            },
+            {
+              "k": "op{o}FixRange",
+              "label": "fix range",
+              "as": "pick"
+            },
+            {
+              "k": "op{o}Det",
+              "label": "detune"
+            },
+            {
+              "k": "op{o}Wave",
+              "label": "wave",
+              "as": "pick"
+            },
+            {
+              "k": "op{o}Out",
+              "label": "level"
+            }
+          ]
+        },
+        {
+          "title": "envelope",
+          "select": {
+            "label": "op",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "o": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "o": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "o": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "o": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "op"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "op{o}Ar",
+              "label": "AR"
+            },
+            {
+              "k": "op{o}D1r",
+              "label": "D1R"
+            },
+            {
+              "k": "op{o}D1l",
+              "label": "D1L"
+            },
+            {
+              "k": "op{o}D2r",
+              "label": "D2R"
+            },
+            {
+              "k": "op{o}Rr",
+              "label": "RR"
+            },
+            {
+              "k": "op{o}Shift",
+              "label": "shift",
+              "as": "pick"
+            }
+          ]
+        },
+        {
+          "title": "scaling / sens",
+          "select": {
+            "label": "op",
+            "options": [
+              {
+                "label": "1",
+                "vars": {
+                  "o": "1"
+                }
+              },
+              {
+                "label": "2",
+                "vars": {
+                  "o": "2"
+                }
+              },
+              {
+                "label": "3",
+                "vars": {
+                  "o": "3"
+                }
+              },
+              {
+                "label": "4",
+                "vars": {
+                  "o": "4"
+                }
+              }
+            ],
+            "all": "all",
+            "shared": "op"
+          },
+          "controls": [
+            {
+              "as": "select"
+            },
+            {
+              "k": "op{o}Rs",
+              "label": "rate scl"
+            },
+            {
+              "k": "op{o}Ls",
+              "label": "level scl"
+            },
+            {
+              "k": "op{o}Kvs",
+              "label": "velocity"
+            },
+            {
+              "k": "op{o}Ebs",
+              "label": "eg bias"
+            },
+            {
+              "k": "op{o}Ame",
+              "label": "am",
+              "as": "toggle"
+            },
+            {
+              "k": "op{o}On",
+              "label": "on",
+              "as": "toggle"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "control",
+      "groups": [
+        {
+          "title": "wheel / porta",
+          "controls": [
+            {
+              "k": "mwPitch",
+              "label": "mw pitch"
+            },
+            {
+              "k": "mwAmp",
+              "label": "mw amp"
+            },
+            {
+              "k": "portaMode",
+              "label": "fingered",
+              "as": "toggle"
+            },
+            {
+              "k": "portaTime",
+              "label": "porta"
+            },
+            {
+              "k": "fcVolume",
+              "label": "fc volume"
+            }
+          ]
+        },
+        {
+          "title": "breath / foot",
+          "controls": [
+            {
+              "k": "bcPitch",
+              "label": "bc pitch"
+            },
+            {
+              "k": "bcAmp",
+              "label": "bc amp"
+            },
+            {
+              "k": "bcPitchBias",
+              "label": "bc p bias"
+            },
+            {
+              "k": "bcEgBias",
+              "label": "bc eg bias"
+            },
+            {
+              "k": "fcPitch",
+              "label": "fc pitch"
+            },
+            {
+              "k": "fcAmp",
+              "label": "fc amp"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

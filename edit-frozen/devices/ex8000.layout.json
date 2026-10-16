@@ -1,0 +1,329 @@
+{
+ "comment": "Plugin-panel layout in the DW-8000 signal path: OSC 1/2 (one select, shared 'osc'; the noise level sits with them, as on the panel chart) + auto bend / key assign / portamento -> VCF -> VCF EG -> VCA EG, then the MG, bend/aftertouch and the digital delay. OSC 2's interval and detune are dimmed when OSC 1 is selected ('only'). Envelopes are Korg's six-stage A D B(reak point level) S(lope time) Su(stain) R, shown as plain knobs in stage order, not the DADSR env cell. Waveform cells are picks (16 DWGS waves).",
+ "rows": [
+  {
+   "id": "osc",
+   "groups": [
+    {
+     "title": "osc",
+     "select": {
+      "label": "osc",
+      "options": [
+       {
+        "label": "1",
+        "vars": {
+         "o": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "o": "2"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "osc"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "osc{o}Oct",
+       "label": "octave",
+       "as": "seg",
+       "labels": [
+        "16'",
+        "8'",
+        "4'"
+       ]
+      },
+      {
+       "k": "osc{o}Wave",
+       "label": "wave",
+       "as": "pick"
+      },
+      {
+       "k": "osc{o}Level",
+       "label": "level"
+      },
+      {
+       "k": "osc2Interval",
+       "label": "interval",
+       "as": "pick",
+       "only": [
+        "2"
+       ]
+      },
+      {
+       "k": "osc2Detune",
+       "label": "detune",
+       "only": [
+        "2"
+       ]
+      },
+      {
+       "k": "noiseLevel",
+       "label": "noise"
+      }
+     ]
+    },
+    {
+     "title": "auto bend / voice",
+     "controls": [
+      {
+       "k": "abSelect",
+       "label": "bend osc",
+       "as": "seg",
+       "labels": [
+        "off",
+        "1",
+        "2",
+        "both"
+       ]
+      },
+      {
+       "k": "abMode",
+       "label": "mode",
+       "as": "seg",
+       "labels": [
+        "up",
+        "down"
+       ]
+      },
+      {
+       "k": "abTime",
+       "label": "time"
+      },
+      {
+       "k": "abInt",
+       "label": "intensity"
+      },
+      {
+       "k": "assignMode",
+       "label": "assign",
+       "as": "seg",
+       "labels": [
+        "poly1",
+        "poly2",
+        "uni1",
+        "uni2"
+       ]
+      },
+      {
+       "k": "portamento",
+       "label": "porta"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "vcf",
+   "groups": [
+    {
+     "title": "vcf",
+     "controls": [
+      {
+       "k": "vcfCutoff",
+       "label": "cutoff"
+      },
+      {
+       "k": "vcfReso",
+       "label": "reso"
+      },
+      {
+       "k": "vcfKbdTrack",
+       "label": "kbd",
+       "as": "seg",
+       "labels": [
+        "0",
+        "1/4",
+        "1/2",
+        "1"
+       ]
+      },
+      {
+       "k": "vcfPolarity",
+       "label": "polarity",
+       "as": "seg",
+       "labels": [
+        "norm",
+        "inv"
+       ]
+      },
+      {
+       "k": "vcfEgInt",
+       "label": "eg int"
+      }
+     ]
+    },
+    {
+     "title": "vcf eg",
+     "controls": [
+      {
+       "k": "vcfAttack",
+       "label": "attack"
+      },
+      {
+       "k": "vcfDecay",
+       "label": "decay"
+      },
+      {
+       "k": "vcfBreak",
+       "label": "break"
+      },
+      {
+       "k": "vcfSlope",
+       "label": "slope"
+      },
+      {
+       "k": "vcfSustain",
+       "label": "sustain"
+      },
+      {
+       "k": "vcfRelease",
+       "label": "release"
+      },
+      {
+       "k": "vcfVelSens",
+       "label": "velocity"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "vca",
+   "groups": [
+    {
+     "title": "vca eg",
+     "controls": [
+      {
+       "k": "vcaAttack",
+       "label": "attack"
+      },
+      {
+       "k": "vcaDecay",
+       "label": "decay"
+      },
+      {
+       "k": "vcaBreak",
+       "label": "break"
+      },
+      {
+       "k": "vcaSlope",
+       "label": "slope"
+      },
+      {
+       "k": "vcaSustain",
+       "label": "sustain"
+      },
+      {
+       "k": "vcaRelease",
+       "label": "release"
+      },
+      {
+       "k": "vcaVelSens",
+       "label": "velocity"
+      }
+     ]
+    },
+    {
+     "title": "mg",
+     "controls": [
+      {
+       "k": "mgWave",
+       "label": "wave",
+       "as": "seg",
+       "labels": [
+        "tri",
+        "saw",
+        "ramp",
+        "sqr"
+       ]
+      },
+      {
+       "k": "mgFreq",
+       "label": "freq"
+      },
+      {
+       "k": "mgDelay",
+       "label": "delay"
+      },
+      {
+       "k": "mgOsc",
+       "label": "osc"
+      },
+      {
+       "k": "mgVcf",
+       "label": "vcf"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ctl",
+   "groups": [
+    {
+     "title": "bend / aftertouch",
+     "controls": [
+      {
+       "k": "bendOsc",
+       "label": "bend osc"
+      },
+      {
+       "k": "bendVcf",
+       "label": "bend vcf",
+       "as": "toggle"
+      },
+      {
+       "k": "atOscMg",
+       "label": "at vib"
+      },
+      {
+       "k": "atVcf",
+       "label": "at vcf"
+      },
+      {
+       "k": "atVca",
+       "label": "at vca"
+      }
+     ]
+    },
+    {
+     "title": "delay",
+     "controls": [
+      {
+       "k": "delayTime",
+       "label": "time",
+       "as": "pick"
+      },
+      {
+       "k": "delayFactor",
+       "label": "factor"
+      },
+      {
+       "k": "delayFeedback",
+       "label": "feedback"
+      },
+      {
+       "k": "delayModFreq",
+       "label": "mod freq"
+      },
+      {
+       "k": "delayModInt",
+       "label": "mod int"
+      },
+      {
+       "k": "delayLevel",
+       "label": "level"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

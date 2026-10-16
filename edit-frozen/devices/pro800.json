@@ -1,0 +1,1167 @@
+{
+  "id": "pro800",
+  "name": "Behringer PRO-800",
+  "transport": "pro800",
+  "source": "No official MIDI spec. SysEx reverse-engineered by Sam (github.com/samstaton/pro800, pro800syx.md) with Defros' firmware-1.4.6 additions (defros/pro800syx-defros.md, April 2026): message format, 7-in-8 packing, patch offsets and the CC table. Patch layout verified by decoding the published example dumps (format 0x6F = 173 bytes).",
+  "sysex": {
+    "header": [
+      240,
+      0,
+      32,
+      50,
+      0,
+      1,
+      36,
+      0
+    ],
+    "notes": "77 lo hi = request slot n (0-399, n = bank*100 + program, lo = n & 7F); reply 78 lo hi <packed>, and the same 78 message sent TO the unit writes that slot. 77 7E 03 = system dump (decoded bytes 5-6 = current program, LSB first). 08 00 = version request, reply 09 00 maj min patch. Packed like DSI: each 7 bytes preceded by one holding their top bits (bit 0 = first byte). Decoded patch: A5 16 61 00, version (6D/6E old, 6F fw 1.3.6+), then 16-bit little-endian continuous params and 1-byte switches; name at 150 (0x6F: fixed 16, 0-padded; older: 0-terminated). Unmodelled bytes (arp mode 149, unison chord 86-93, per-note tuning 94-141, pitch-bend range 171) ride along from the last read."
+  },
+  "gapMs": 3,
+  "setup": [
+    "Settings: MIDI channel = the ch picked above.",
+    "Settings: send + receive MIDI CC on, so knob moves show up here and edits land on the synth.",
+    "Cable both ways: interface out → PRO-800 MIDI in, PRO-800 MIDI out → interface in (or use its USB port).",
+    "Firmware 1.3.6 or newer stores 16-character names; older patches still load."
+  ],
+  "uncertain": [
+    "Nothing here is from Behringer: offsets and the CC table come from probing (samstaton/pro800 + Defros).",
+    "LFO Range (CC 58) and LFO Osc Target (CC 59) have no panel control on the unit (fw 1.4.5) — MIDI-only, so the editor is the only way to reach them. LFO Range: patch tables say 0 = slow, CC table 'Fast-Slow'; modelled as patch order.",
+    "Voice Spread: patch tables say 'On,Off', CC table 'Off-On'. Modelled as 0 = off — direction confirmed on hardware (fw 1.4.5).",
+    "LFO Osc Target: bit mask A 0x08 / B 0x10 / VCA 0x20 (Defros; Sam had VCA at 0x40). Treated as one choice of A+B (no bits), A, B or VCA, matching CC 59's four values.",
+    "Writing a 78 dump stores straight to flash? Store reads the slot back and compares, so a write that didn't take shows as an error.",
+    "Continuous CCs: assumed linear 14-bit (MSB n, LSB per table) over the panel's 0-999."
+  ],
+  "params": [
+    {
+      "key": "oscAFreq",
+      "name": "Osc A Frequency",
+      "group": "oscA",
+      "min": 0,
+      "max": 999,
+      "off": 5,
+      "bytes": 2,
+      "cc": 8,
+      "ccLsb": 80
+    },
+    {
+      "key": "oscAPw",
+      "name": "Osc A Pulse Width",
+      "group": "oscA",
+      "min": 0,
+      "max": 999,
+      "off": 9,
+      "bytes": 2,
+      "cc": 10,
+      "ccLsb": 82
+    },
+    {
+      "key": "sawA",
+      "name": "Osc A Saw",
+      "group": "oscA",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 55,
+      "cc": 48,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "triA",
+      "name": "Osc A Triangle",
+      "group": "oscA",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 56,
+      "cc": 49,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "sqrA",
+      "name": "Osc A Square",
+      "group": "oscA",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 57,
+      "cc": 50,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "oscAMode",
+      "name": "Osc A Freq Knob Mode",
+      "group": "oscA",
+      "min": 0,
+      "max": 3,
+      "options": [
+        "free",
+        "semi",
+        "oct",
+        "fixed"
+      ],
+      "off": 74,
+      "cc": 68,
+      "ccValues": [
+        0,
+        32,
+        64,
+        96
+      ]
+    },
+    {
+      "key": "oscBFreq",
+      "name": "Osc B Frequency",
+      "group": "oscB",
+      "min": 0,
+      "max": 999,
+      "off": 11,
+      "bytes": 2,
+      "cc": 11,
+      "ccLsb": 83
+    },
+    {
+      "key": "oscBPw",
+      "name": "Osc B Pulse Width",
+      "group": "oscB",
+      "min": 0,
+      "max": 999,
+      "off": 15,
+      "bytes": 2,
+      "cc": 13,
+      "ccLsb": 85
+    },
+    {
+      "key": "oscBFine",
+      "name": "Osc B Fine",
+      "group": "oscB",
+      "min": 0,
+      "max": 999,
+      "off": 17,
+      "bytes": 2,
+      "cc": 14,
+      "ccLsb": 86
+    },
+    {
+      "key": "sawB",
+      "name": "Osc B Saw",
+      "group": "oscB",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 58,
+      "cc": 51,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "triB",
+      "name": "Osc B Triangle",
+      "group": "oscB",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 59,
+      "cc": 52,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "sqrB",
+      "name": "Osc B Square",
+      "group": "oscB",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 60,
+      "cc": 53,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "sync",
+      "name": "Sync",
+      "group": "oscB",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 61,
+      "cc": 54,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "oscBMode",
+      "name": "Osc B Freq Knob Mode",
+      "group": "oscB",
+      "min": 0,
+      "max": 3,
+      "options": [
+        "free",
+        "semi",
+        "oct",
+        "fixed"
+      ],
+      "off": 75,
+      "cc": 69,
+      "ccValues": [
+        0,
+        32,
+        64,
+        96
+      ]
+    },
+    {
+      "key": "oscAVol",
+      "name": "Osc A Level",
+      "group": "mixer",
+      "min": 0,
+      "max": 999,
+      "off": 7,
+      "bytes": 2,
+      "cc": 9,
+      "ccLsb": 81
+    },
+    {
+      "key": "oscBVol",
+      "name": "Osc B Level",
+      "group": "mixer",
+      "min": 0,
+      "max": 999,
+      "off": 13,
+      "bytes": 2,
+      "cc": 12,
+      "ccLsb": 84
+    },
+    {
+      "key": "noise",
+      "name": "Noise",
+      "group": "mixer",
+      "min": 0,
+      "max": 999,
+      "off": 142,
+      "bytes": 2,
+      "cc": 37,
+      "ccLsb": 113
+    },
+    {
+      "key": "cutoff",
+      "name": "Cutoff",
+      "group": "filter",
+      "min": 0,
+      "max": 999,
+      "off": 19,
+      "bytes": 2,
+      "cc": 15,
+      "ccLsb": 87
+    },
+    {
+      "key": "resonance",
+      "name": "Resonance",
+      "group": "filter",
+      "min": 0,
+      "max": 999,
+      "off": 21,
+      "bytes": 2,
+      "cc": 16,
+      "ccLsb": 88
+    },
+    {
+      "key": "filterEnvAmt",
+      "name": "Filter Env Amount",
+      "group": "filter",
+      "min": 0,
+      "max": 999,
+      "off": 23,
+      "bytes": 2,
+      "cc": 17,
+      "ccLsb": 89
+    },
+    {
+      "key": "keyTrack",
+      "name": "Keyboard Tracking",
+      "group": "filter",
+      "min": 0,
+      "max": 2,
+      "options": [
+        "off",
+        "half",
+        "full"
+      ],
+      "off": 67,
+      "cc": 60,
+      "ccValues": [
+        0,
+        43,
+        86
+      ]
+    },
+    {
+      "key": "keyTrackRef",
+      "name": "Key Tracking Reference",
+      "group": "filter",
+      "min": 0,
+      "max": 3,
+      "options": [
+        "C1",
+        "C2",
+        "C3",
+        "C4"
+      ],
+      "off": 169,
+      "cc": 78,
+      "ccValues": [
+        0,
+        32,
+        64,
+        96
+      ],
+      "since": 111
+    },
+    {
+      "key": "fAttack",
+      "name": "Filter Env Attack",
+      "group": "fenv",
+      "min": 0,
+      "max": 999,
+      "off": 31,
+      "bytes": 2,
+      "cc": 21,
+      "ccLsb": 93
+    },
+    {
+      "key": "fDecay",
+      "name": "Filter Env Decay",
+      "group": "fenv",
+      "min": 0,
+      "max": 999,
+      "off": 29,
+      "bytes": 2,
+      "cc": 20,
+      "ccLsb": 92
+    },
+    {
+      "key": "fSustain",
+      "name": "Filter Env Sustain",
+      "group": "fenv",
+      "min": 0,
+      "max": 999,
+      "off": 27,
+      "bytes": 2,
+      "cc": 19,
+      "ccLsb": 91
+    },
+    {
+      "key": "fRelease",
+      "name": "Filter Env Release",
+      "group": "fenv",
+      "min": 0,
+      "max": 999,
+      "off": 25,
+      "bytes": 2,
+      "cc": 18,
+      "ccLsb": 90
+    },
+    {
+      "key": "fShape",
+      "name": "Filter Env Shape",
+      "group": "fenv",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "lin",
+        "exp"
+      ],
+      "off": 68,
+      "cc": 61,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "fSpeed",
+      "name": "Filter Env Speed",
+      "group": "fenv",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "fast",
+        "slow"
+      ],
+      "off": 69,
+      "cc": 62,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "aAttack",
+      "name": "Amp Env Attack",
+      "group": "aenv",
+      "min": 0,
+      "max": 999,
+      "off": 39,
+      "bytes": 2,
+      "cc": 25,
+      "ccLsb": 101
+    },
+    {
+      "key": "aDecay",
+      "name": "Amp Env Decay",
+      "group": "aenv",
+      "min": 0,
+      "max": 999,
+      "off": 37,
+      "bytes": 2,
+      "cc": 24,
+      "ccLsb": 100
+    },
+    {
+      "key": "aSustain",
+      "name": "Amp Env Sustain",
+      "group": "aenv",
+      "min": 0,
+      "max": 999,
+      "off": 35,
+      "bytes": 2,
+      "cc": 23,
+      "ccLsb": 95
+    },
+    {
+      "key": "aRelease",
+      "name": "Amp Env Release",
+      "group": "aenv",
+      "min": 0,
+      "max": 999,
+      "off": 33,
+      "bytes": 2,
+      "cc": 22,
+      "ccLsb": 94
+    },
+    {
+      "key": "aShape",
+      "name": "Amp Env Shape",
+      "group": "aenv",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "lin",
+        "exp"
+      ],
+      "off": 70,
+      "cc": 63,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "aSpeed",
+      "name": "Amp Env Speed",
+      "group": "aenv",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "fast",
+        "slow"
+      ],
+      "off": 148,
+      "cc": 72,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "pmFilterEnv",
+      "name": "Poly-Mod Filter Env",
+      "group": "polymod",
+      "min": 0,
+      "max": 999,
+      "off": 41,
+      "bytes": 2,
+      "cc": 26,
+      "ccLsb": 102
+    },
+    {
+      "key": "pmOscB",
+      "name": "Poly-Mod Osc B",
+      "group": "polymod",
+      "min": 0,
+      "max": 999,
+      "off": 43,
+      "bytes": 2,
+      "cc": 27,
+      "ccLsb": 103
+    },
+    {
+      "key": "pmFreqA",
+      "name": "Poly-Mod → Freq A",
+      "group": "polymod",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 62,
+      "cc": 55,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "pmFilter",
+      "name": "Poly-Mod → Filter",
+      "group": "polymod",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 63,
+      "cc": 56,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "lfoFreq",
+      "name": "LFO Frequency",
+      "group": "lfo",
+      "min": 0,
+      "max": 999,
+      "off": 45,
+      "bytes": 2,
+      "cc": 28,
+      "ccLsb": 104
+    },
+    {
+      "key": "lfoAmt",
+      "name": "LFO Initial Amount",
+      "group": "lfo",
+      "min": 0,
+      "max": 999,
+      "off": 47,
+      "bytes": 2,
+      "cc": 29,
+      "ccLsb": 105
+    },
+    {
+      "key": "lfoShape",
+      "name": "LFO Shape",
+      "group": "lfo",
+      "min": 0,
+      "max": 5,
+      "options": [
+        "pulse",
+        "triangle",
+        "random",
+        "sine",
+        "noise",
+        "saw"
+      ],
+      "off": 64,
+      "cc": 57,
+      "ccValues": [
+        0,
+        22,
+        44,
+        66,
+        88,
+        110
+      ]
+    },
+    {
+      "key": "lfoRange",
+      "name": "LFO Range",
+      "group": "lfo",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "slow",
+        "fast"
+      ],
+      "off": 65,
+      "cc": 58,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "lfoToFreq",
+      "name": "LFO → Freq",
+      "group": "lfo",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 66,
+      "bit": 0,
+      "cc": 74,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "lfoToFilter",
+      "name": "LFO → Filter",
+      "group": "lfo",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 66,
+      "bit": 1,
+      "cc": 75,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "lfoToPw",
+      "name": "LFO → PW",
+      "group": "lfo",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 66,
+      "bit": 2,
+      "cc": 76,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "lfoOsc",
+      "name": "LFO Osc Target",
+      "group": "lfo",
+      "min": 0,
+      "max": 3,
+      "options": [
+        "A+B",
+        "A",
+        "B",
+        "VCA"
+      ],
+      "off": 66,
+      "mask": 56,
+      "maskValues": [
+        0,
+        8,
+        16,
+        32
+      ],
+      "cc": 59,
+      "ccValues": [
+        0,
+        33,
+        66,
+        99
+      ]
+    },
+    {
+      "key": "modDelay",
+      "name": "Vibrato Delay",
+      "group": "vib",
+      "min": 0,
+      "max": 999,
+      "off": 76,
+      "bytes": 2,
+      "cc": 33,
+      "ccLsb": 109
+    },
+    {
+      "key": "vibSpeed",
+      "name": "Vibrato Speed",
+      "group": "vib",
+      "min": 0,
+      "max": 999,
+      "off": 78,
+      "bytes": 2,
+      "cc": 34,
+      "ccLsb": 110
+    },
+    {
+      "key": "vibAmt",
+      "name": "Vibrato Amount",
+      "group": "vib",
+      "min": 0,
+      "max": 999,
+      "off": 80,
+      "bytes": 2,
+      "cc": 35,
+      "ccLsb": 111
+    },
+    {
+      "key": "glide",
+      "name": "Glide",
+      "group": "perf",
+      "min": 0,
+      "max": 999,
+      "off": 49,
+      "bytes": 2,
+      "cc": 30,
+      "ccLsb": 106
+    },
+    {
+      "key": "glideMode",
+      "name": "Glide Mode",
+      "group": "perf",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "time",
+        "speed"
+      ],
+      "off": 170,
+      "cc": 79,
+      "ccValues": [
+        0,
+        64
+      ],
+      "since": 111
+    },
+    {
+      "key": "unison",
+      "name": "Unison",
+      "group": "perf",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 71,
+      "cc": 65,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "detune",
+      "name": "Unison Detune",
+      "group": "perf",
+      "min": 0,
+      "max": 999,
+      "off": 82,
+      "bytes": 2,
+      "cc": 36,
+      "ccLsb": 112
+    },
+    {
+      "key": "voiceSpread",
+      "name": "Voice Spread",
+      "group": "perf",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "off": 168,
+      "cc": 77,
+      "ccValues": [
+        0,
+        64
+      ],
+      "since": 111
+    },
+    {
+      "key": "bendTarget",
+      "name": "Pitch Bend Target",
+      "group": "perf",
+      "min": 0,
+      "max": 3,
+      "options": [
+        "off",
+        "vco",
+        "vcf",
+        "vol"
+      ],
+      "off": 72,
+      "cc": 66,
+      "ccValues": [
+        0,
+        32,
+        64,
+        96
+      ]
+    },
+    {
+      "key": "modwheelAmt",
+      "name": "Mod Wheel Range",
+      "group": "perf",
+      "min": 0,
+      "max": 3,
+      "options": [
+        "min",
+        "low",
+        "high",
+        "full"
+      ],
+      "off": 73,
+      "cc": 67,
+      "ccValues": [
+        0,
+        32,
+        64,
+        96
+      ]
+    },
+    {
+      "key": "modwheelTarget",
+      "name": "Mod Wheel Target",
+      "group": "perf",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "lfo",
+        "vib"
+      ],
+      "off": 84,
+      "cc": 70,
+      "ccValues": [
+        0,
+        64
+      ]
+    },
+    {
+      "key": "ampVel",
+      "name": "Velocity → Amp",
+      "group": "perf",
+      "min": 0,
+      "max": 999,
+      "off": 51,
+      "bytes": 2,
+      "cc": 31,
+      "ccLsb": 107
+    },
+    {
+      "key": "filtVel",
+      "name": "Velocity → Filter",
+      "group": "perf",
+      "min": 0,
+      "max": 999,
+      "off": 53,
+      "bytes": 2,
+      "cc": 32,
+      "ccLsb": 108
+    },
+    {
+      "key": "vcaAT",
+      "name": "Aftertouch → Amp",
+      "group": "perf",
+      "min": 0,
+      "max": 999,
+      "off": 144,
+      "bytes": 2,
+      "cc": 39,
+      "ccLsb": 114
+    },
+    {
+      "key": "vcfAT",
+      "name": "Aftertouch → Filter",
+      "group": "perf",
+      "min": 0,
+      "max": 999,
+      "off": 146,
+      "bytes": 2,
+      "cc": 40,
+      "ccLsb": 115
+    },
+    {
+      "key": "lfoAT",
+      "name": "Aftertouch → LFO",
+      "group": "perf",
+      "min": 0,
+      "max": 999,
+      "off": 166,
+      "bytes": 2,
+      "cc": 41,
+      "ccLsb": 116,
+      "since": 111
+    },
+    {
+      "key": "name0",
+      "name": "Name 1",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 150
+    },
+    {
+      "key": "name1",
+      "name": "Name 2",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 151
+    },
+    {
+      "key": "name2",
+      "name": "Name 3",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 152
+    },
+    {
+      "key": "name3",
+      "name": "Name 4",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 153
+    },
+    {
+      "key": "name4",
+      "name": "Name 5",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 154
+    },
+    {
+      "key": "name5",
+      "name": "Name 6",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 155
+    },
+    {
+      "key": "name6",
+      "name": "Name 7",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 156
+    },
+    {
+      "key": "name7",
+      "name": "Name 8",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 157
+    },
+    {
+      "key": "name8",
+      "name": "Name 9",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 158
+    },
+    {
+      "key": "name9",
+      "name": "Name 10",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 159
+    },
+    {
+      "key": "name10",
+      "name": "Name 11",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 160
+    },
+    {
+      "key": "name11",
+      "name": "Name 12",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 161
+    },
+    {
+      "key": "name12",
+      "name": "Name 13",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 162
+    },
+    {
+      "key": "name13",
+      "name": "Name 14",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 163
+    },
+    {
+      "key": "name14",
+      "name": "Name 15",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 164
+    },
+    {
+      "key": "name15",
+      "name": "Name 16",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "off": 165
+    }
+  ],
+  "groups": [
+    {
+      "id": "oscA",
+      "name": "Oscillator A"
+    },
+    {
+      "id": "oscB",
+      "name": "Oscillator B"
+    },
+    {
+      "id": "mixer",
+      "name": "Mixer"
+    },
+    {
+      "id": "filter",
+      "name": "Filter"
+    },
+    {
+      "id": "fenv",
+      "name": "Filter Envelope"
+    },
+    {
+      "id": "aenv",
+      "name": "Amp Envelope"
+    },
+    {
+      "id": "polymod",
+      "name": "Poly-Mod"
+    },
+    {
+      "id": "lfo",
+      "name": "LFO"
+    },
+    {
+      "id": "vib",
+      "name": "Vibrato (LFO 2)"
+    },
+    {
+      "id": "perf",
+      "name": "Performance"
+    },
+    {
+      "id": "name",
+      "name": "Program Name"
+    }
+  ],
+  "programs": {
+    "banks": [
+      {
+        "label": "A",
+        "msb": 0,
+        "count": 100,
+        "dump": true,
+        "write": true
+      },
+      {
+        "label": "B",
+        "msb": 1,
+        "count": 100,
+        "dump": true,
+        "write": true
+      },
+      {
+        "label": "C",
+        "msb": 2,
+        "count": 100,
+        "dump": true,
+        "write": true
+      },
+      {
+        "label": "D",
+        "msb": 3,
+        "count": 100,
+        "dump": true,
+        "write": true
+      }
+    ],
+    "bankCCs": [
+      0
+    ],
+    "zeroBased": true,
+    "note": "bank = CC0 (0-3) then Program Change 0-99. CC32 is VCF velocity on this unit, so only CC0 selects banks."
+  }
+}

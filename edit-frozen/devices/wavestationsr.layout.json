@@ -1,0 +1,925 @@
+{
+ "comment": "Patch editor (the Wavestation's sound lives in the patch; performances only layer patches + effects). Top row is the patch-wide vector section: structure/sync, the 5-point mix envelope (one select for the point, 'all' moves every point) and the AC/BD axis modulators. Every per-wave group below shares one select {w} = A-D ('wave'), in signal order: wave/tuning -> pitch -> filter -> amp env -> amp mod -> bus/pan, then envelope 1 and the two LFOs. Times only exist for points 1-4 (dimmed on point 0). 2-osc patches use A and C, 1-osc only A.",
+ "rows": [
+  {
+   "id": "vector",
+   "groups": [
+    {
+     "title": "structure / mix envelope",
+     "select": {
+      "label": "point",
+      "options": [
+       {
+        "label": "0",
+        "vars": {
+         "p": "0"
+        }
+       },
+       {
+        "label": "1",
+        "vars": {
+         "p": "1"
+        }
+       },
+       {
+        "label": "2",
+        "vars": {
+         "p": "2"
+        }
+       },
+       {
+        "label": "3",
+        "vars": {
+         "p": "3"
+        }
+       },
+       {
+        "label": "4",
+        "vars": {
+         "p": "4"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "point"
+     },
+     "controls": [
+      {
+       "k": "structure",
+       "label": "waves",
+       "as": "seg",
+       "labels": [
+        "1",
+        "2",
+        "4"
+       ]
+      },
+      {
+       "k": "hardSync",
+       "label": "sync",
+       "as": "toggle"
+      },
+      {
+       "as": "select"
+      },
+      {
+       "k": "mixX{p}",
+       "label": "ac"
+      },
+      {
+       "k": "mixY{p}",
+       "label": "bd"
+      },
+      {
+       "k": "mixRate{p}",
+       "label": "time",
+       "only": [
+        "1",
+        "2",
+        "3",
+        "4"
+       ]
+      },
+      {
+       "k": "mixLoop",
+       "label": "loop",
+       "as": "pick"
+      },
+      {
+       "k": "mixRepeats",
+       "label": "repeats"
+      }
+     ]
+    },
+    {
+     "title": "mix mod",
+     "select": {
+      "label": "axis",
+      "options": [
+       {
+        "label": "ac",
+        "vars": {
+         "x": "Ac"
+        }
+       },
+       {
+        "label": "bd",
+        "vars": {
+         "x": "Bd"
+        }
+       }
+      ]
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "mix{x}Src1",
+       "label": "src 1",
+       "as": "pick"
+      },
+      {
+       "k": "mix{x}Amt1",
+       "label": "amt 1"
+      },
+      {
+       "k": "mix{x}Src2",
+       "label": "src 2",
+       "as": "pick"
+      },
+      {
+       "k": "mix{x}Amt2",
+       "label": "amt 2"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "wave",
+   "groups": [
+    {
+     "title": "wave",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}Wave",
+       "label": "wave",
+       "as": "pick"
+      },
+      {
+       "k": "{w}Bank",
+       "label": "bank",
+       "as": "pick"
+      },
+      {
+       "k": "{w}Level",
+       "label": "level"
+      },
+      {
+       "k": "{w}Coarse",
+       "label": "semi"
+      },
+      {
+       "k": "{w}Fine",
+       "label": "fine"
+      },
+      {
+       "k": "{w}Slope",
+       "label": "slope"
+      }
+     ]
+    },
+    {
+     "title": "pitch",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}BendRange",
+       "label": "bend",
+       "as": "pick"
+      },
+      {
+       "k": "{w}RampAmt",
+       "label": "ramp"
+      },
+      {
+       "k": "{w}RampTime",
+       "label": "ramp time"
+      },
+      {
+       "k": "{w}RampVel",
+       "label": "ramp vel"
+      },
+      {
+       "k": "{w}PitchSrc1",
+       "label": "src 1",
+       "as": "pick"
+      },
+      {
+       "k": "{w}PitchAmt1",
+       "label": "amt 1"
+      },
+      {
+       "k": "{w}PitchSrc2",
+       "label": "src 2",
+       "as": "pick"
+      },
+      {
+       "k": "{w}PitchAmt2",
+       "label": "amt 2"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "filter",
+   "groups": [
+    {
+     "title": "filter",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}Cutoff",
+       "label": "cutoff"
+      },
+      {
+       "k": "{w}Exciter",
+       "label": "exciter"
+      },
+      {
+       "k": "{w}KeyTrack",
+       "label": "key track"
+      },
+      {
+       "k": "{w}FiltSrc1",
+       "label": "src 1",
+       "as": "pick"
+      },
+      {
+       "k": "{w}FiltAmt1",
+       "label": "amt 1"
+      },
+      {
+       "k": "{w}FiltSrc2",
+       "label": "src 2",
+       "as": "pick"
+      },
+      {
+       "k": "{w}FiltAmt2",
+       "label": "amt 2"
+      }
+     ]
+    },
+    {
+     "title": "bus / pan",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}BusA",
+       "label": "a",
+       "as": "toggle"
+      },
+      {
+       "k": "{w}BusB",
+       "label": "b",
+       "as": "toggle"
+      },
+      {
+       "k": "{w}BusC",
+       "label": "c",
+       "as": "toggle"
+      },
+      {
+       "k": "{w}BusD",
+       "label": "d",
+       "as": "toggle"
+      },
+      {
+       "k": "{w}KeyPan",
+       "label": "pan kbd"
+      },
+      {
+       "k": "{w}VelPan",
+       "label": "pan vel"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "amp",
+   "groups": [
+    {
+     "title": "amp env",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}AmpL0",
+       "label": "l0"
+      },
+      {
+       "k": "{w}AmpT1",
+       "label": "t1"
+      },
+      {
+       "k": "{w}AmpL1",
+       "label": "l1"
+      },
+      {
+       "k": "{w}AmpT2",
+       "label": "t2"
+      },
+      {
+       "k": "{w}AmpL2",
+       "label": "l2"
+      },
+      {
+       "k": "{w}AmpT3",
+       "label": "t3"
+      },
+      {
+       "k": "{w}AmpL3",
+       "label": "sus"
+      },
+      {
+       "k": "{w}AmpT4",
+       "label": "rel"
+      }
+     ]
+    },
+    {
+     "title": "amp mod",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}AmpVel",
+       "label": "vel amt"
+      },
+      {
+       "k": "{w}AmpVelAtk",
+       "label": "vel atk"
+      },
+      {
+       "k": "{w}AmpKbdDcy",
+       "label": "kbd rate"
+      },
+      {
+       "k": "{w}AmpSrc1",
+       "label": "src 1",
+       "as": "pick"
+      },
+      {
+       "k": "{w}AmpAmt1",
+       "label": "amt 1"
+      },
+      {
+       "k": "{w}AmpSrc2",
+       "label": "src 2",
+       "as": "pick"
+      },
+      {
+       "k": "{w}AmpAmt2",
+       "label": "amt 2"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "env1",
+   "groups": [
+    {
+     "title": "env 1",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}Env1T1",
+       "label": "t1"
+      },
+      {
+       "k": "{w}Env1L1",
+       "label": "l1"
+      },
+      {
+       "k": "{w}Env1T2",
+       "label": "t2"
+      },
+      {
+       "k": "{w}Env1L2",
+       "label": "l2"
+      },
+      {
+       "k": "{w}Env1T3",
+       "label": "t3"
+      },
+      {
+       "k": "{w}Env1L3",
+       "label": "sus"
+      },
+      {
+       "k": "{w}Env1T4",
+       "label": "rel"
+      },
+      {
+       "k": "{w}Env1L4",
+       "label": "l4"
+      }
+     ]
+    },
+    {
+     "title": "env 1 mod",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}Env1L0",
+       "label": "l0"
+      },
+      {
+       "k": "{w}Env1Vel",
+       "label": "vel amt"
+      },
+      {
+       "k": "{w}Env1VelAtk",
+       "label": "vel atk"
+      },
+      {
+       "k": "{w}Env1Kbd",
+       "label": "kbd rate"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "lfo",
+   "groups": [
+    {
+     "title": "lfo 1",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}Lfo1Rate",
+       "label": "rate"
+      },
+      {
+       "k": "{w}Lfo1Amt",
+       "label": "amount"
+      },
+      {
+       "k": "{w}Lfo1Shape",
+       "label": "shape",
+       "as": "seg",
+       "labels": [
+        "tri",
+        "sqr",
+        "saw",
+        "ramp",
+        "rnd"
+       ]
+      },
+      {
+       "k": "{w}Lfo1Sync",
+       "label": "sync",
+       "as": "toggle"
+      },
+      {
+       "k": "{w}Lfo1Delay",
+       "label": "delay"
+      },
+      {
+       "k": "{w}Lfo1Fade",
+       "label": "fade"
+      },
+      {
+       "k": "{w}Lfo1DepthSrc",
+       "label": "depth src",
+       "as": "pick"
+      },
+      {
+       "k": "{w}Lfo1DepthAmt",
+       "label": "depth amt"
+      }
+     ]
+    },
+    {
+     "title": "lfo 2",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}Lfo2Rate",
+       "label": "rate"
+      },
+      {
+       "k": "{w}Lfo2Amt",
+       "label": "amount"
+      },
+      {
+       "k": "{w}Lfo2Shape",
+       "label": "shape",
+       "as": "seg",
+       "labels": [
+        "tri",
+        "sqr",
+        "saw",
+        "ramp",
+        "rnd"
+       ]
+      },
+      {
+       "k": "{w}Lfo2Sync",
+       "label": "sync",
+       "as": "toggle"
+      },
+      {
+       "k": "{w}Lfo2Delay",
+       "label": "delay"
+      },
+      {
+       "k": "{w}Lfo2Fade",
+       "label": "fade"
+      },
+      {
+       "k": "{w}Lfo2DepthSrc",
+       "label": "depth src",
+       "as": "pick"
+      },
+      {
+       "k": "{w}Lfo2DepthAmt",
+       "label": "depth amt"
+      }
+     ]
+    },
+    {
+     "title": "lfo rate mod",
+     "select": {
+      "label": "wave",
+      "options": [
+       {
+        "label": "A",
+        "vars": {
+         "w": "a"
+        }
+       },
+       {
+        "label": "B",
+        "vars": {
+         "w": "b"
+        }
+       },
+       {
+        "label": "C",
+        "vars": {
+         "w": "c"
+        }
+       },
+       {
+        "label": "D",
+        "vars": {
+         "w": "d"
+        }
+       }
+      ],
+      "all": "all",
+      "shared": "wave"
+     },
+     "controls": [
+      {
+       "as": "select"
+      },
+      {
+       "k": "{w}Lfo1RateSrc",
+       "label": "1 src",
+       "as": "pick"
+      },
+      {
+       "k": "{w}Lfo1RateAmt",
+       "label": "1 amt"
+      },
+      {
+       "k": "{w}Lfo2RateSrc",
+       "label": "2 src",
+       "as": "pick"
+      },
+      {
+       "k": "{w}Lfo2RateAmt",
+       "label": "2 amt"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
