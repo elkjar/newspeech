@@ -21,6 +21,7 @@ each), 03 end = zlib CRC-32 of the body, little-endian.
 | `probe.py SEED dir [k=i]` / `solve.py dir N…` | mapping rounds: distinct CC values → P.EXP → which byte holds what |
 | `patmap.py` | the pattern-byte map (SQPS/SQPM/SQPR offsets → edit param values) |
 | `import_backup.py backup.syx library.json` | fill edit's library from a full backup (source "unit": shown, never pushed) |
+| `fw_extract.py fw.bin outdir` | unpack a LIVEN system image into load sections + disassemble (binutils tic6x) — see FIRMWARE.md |
 | `gen-texturelab.py [out.json]` | regenerates `tools/rack/devices/texturelab.json` (edit's device file) |
 
 Sending a sample: on the unit select the slot → FUNC + DATA → S.IMP → OK (IMPT) → send → OK to save.
