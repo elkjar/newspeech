@@ -1555,8 +1555,9 @@ function obneDriver(schema, midi, getChannel, prefs) {
 // sound over it.
 function livenDriver(schema, midi, getChannel, prefs) {
   const ch = () => getChannel() & 15;
-  const stepOf = (p) => Math.floor(127 / (p.max - p.min));
-  const toCc = (p, v) => (!p.options ? v : v >= p.max ? 127 : (v - p.min) * stepOf(p));
+  // ccSteps: the unit splits the CC range into more steps than it lists (DIR: 16 × 8 for 15 options)
+  const stepOf = (p) => Math.floor(127 / ((p.ccSteps ?? p.max - p.min + 1) - 1));
+  const toCc = (p, v) => (!p.options ? v : v >= p.max && !p.ccSteps ? 127 : (v - p.min) * stepOf(p));
   const fromCc = (p, c) => (!p.options ? c : p.min + Math.min(p.max - p.min, Math.floor(c / stepOf(p))));
   const byCc = new Map(schema.params.filter((p) => p.cc != null).map((p) => [p.cc, p]));
   const inPatch = schema.params.filter((p) => p.cc != null && !p.notInPatch);
@@ -1582,10 +1583,12 @@ function livenDriver(schema, midi, getChannel, prefs) {
     sendParam(p, v) { if (p.cc != null) midi.cc(ch(), p.cc, toCc(p, v)); },
     sendPatch(values) { for (const p of inPatch) if (values[p.key] != null) this.sendParam(p, values[p.key]); },
     programChange(bi, prog) { midi.send([0xc0 | ch(), prog & 127]); },
-    // the unit has just loaded its own pattern: lay edit's copy of the sound over it
+    // the unit has just loaded its own pattern: lay edit's copy of the sound over it.
+    // Entries read out of a unit backup (source "unit") describe what it just loaded —
+    // show them, don't push them (the decode rounds a few values)
     async adoptSlot(bi, prog) {
       const got = fromLib(bi, prog);
-      if (!got.empty) { await wait(120); this.sendPatch(got.values); }
+      if (!got.empty && lib()[`${bi}-${prog}`]?.source !== "unit") { await wait(120); this.sendPatch(got.values); }
       return got;
     },
     async requestProgram(bi, prog) { return fromLib(bi, prog); },

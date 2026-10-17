@@ -18,6 +18,9 @@ each), 03 end = zlib CRC-32 of the body, little-endian.
 | `paced.py in.syx "port" 00.100 out.txt` | → `sendmidi file out.txt`: one message per 100 ms (the unit drops a blast) |
 | `record_syx.py "port" out.syx [idle s]` | record every SysEx whole (receivemidi dropped bytes on long dumps) |
 | `backup.py backup.syx outdir` | split a full backup into transfers, verify size + CRC each, unpack patterns (.bin) + samples (.wav) |
+| `probe.py SEED dir [k=i]` / `solve.py dir N…` | mapping rounds: distinct CC values → P.EXP → which byte holds what |
+| `patmap.py` | the pattern-byte map (SQPS/SQPM/SQPR offsets → edit param values) |
+| `import_backup.py backup.syx library.json` | fill edit's library from a full backup (source "unit": shown, never pushed) |
 | `gen-texturelab.py [out.json]` | regenerates `tools/rack/devices/texturelab.json` (edit's device file) |
 
 Sending a sample: on the unit select the slot → FUNC + DATA → S.IMP → OK (IMPT) → send → OK to save.

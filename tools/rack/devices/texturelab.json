@@ -272,7 +272,8 @@
       ],
       "default": 0,
       "note": "first arrow = which way grains travel through the sample, second = which way each grain plays. >< and <> bounce; rnd = random. EFX mode uses only the first three",
-      "panel": "shift + SPEED"
+      "panel": "shift + SPEED",
+      "ccSteps": 16
     },
     {
       "key": "posRate",

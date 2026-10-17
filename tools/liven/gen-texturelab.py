@@ -27,7 +27,7 @@ params = [
   knob("density", "Density", "grain", 35, "how many grains overlap, 1 … 64 (cap depends on voice mode: poly 16/voice, mono 32, legato 64). Past noon it also detunes them", "DENSITY knob"),
   knob("diffusion", "Diffusion", "grain", 36, "stereo spread — grains scattered across left/right", "DIFFUSION knob"),
   knob("speed", "Speed", "sample", 40, "playback speed, ¼× … 4×; noon = normal (the manual calls it grain playback speed — it also drives the plain sample). Off in EFX mode", "SPEED knob", 64, display="bipolar", valueOffset=-64),
-  enum("dir", "Direction", "sample", 44, DIR, "first arrow = which way grains travel through the sample, second = which way each grain plays. >< and <> bounce; rnd = random. EFX mode uses only the first three", "shift + SPEED"),
+  enum("dir", "Direction", "sample", 44, DIR, "first arrow = which way grains travel through the sample, second = which way each grain plays. >< and <> bounce; rnd = random. EFX mode uses only the first three", "shift + SPEED", ccSteps=16),
   # random
   knob("posRate", "Pos Rnd Rate", "rnd", 45, "how fast the grain position jumps around randomly", "shift + POSITION", 0),
   knob("posDepth", "Pos Rnd Depth", "rnd", 46, "how far those random position jumps reach", "shift + LENGTH/FB", 0),
