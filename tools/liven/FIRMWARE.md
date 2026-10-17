@@ -17,6 +17,15 @@ unwinding gives unrelated seeds per section). The system image never parses `cmt
 has `pmtd` only) → the container is verified by the **bootloader**, which is not in the update file.
 Solving it needs the unit's flash (bootloader) — don't write firmware before then.
 
+**Family check (2026-10-17)**: all 13 published images share the container + the C674x platform —
+LIVEN 8bit warps 1.1.62/2.0.67/3.0.76 (model 02), XFM 2.0.43/3.0.46 (03), Bass&Beats 1.1.27 (04), Lofi-12 2.0.55/2.1.65 (07),
+Mega Synthesis 1.1.37 (0B), Ambient-Ø 1.5.45 (0D), plus raw-.bin Lofi-12 XT 1.5.205 (0C), CyDrums 1.1.84 (08),
+deconstruct MINIMAL 1.0.58 (10). Texture Lab = 06 (no image published). Byte 0x10 = model, 0x14 = section count.
+`fw_family_hunt.py`: no standard CRC-32/sum/Adler matches ANY of the 28 section checksums. No image carries a
+`bmtd` (boot) section; the XT/CyDrums `pmtd/mmtd/bmtd` strings belong to the SYSTEM INFO version formatter
+(XT 0xC2C7FFA0…, reads RAM copies of each section header, prints *.*.*) — no checksum there either.
+⇒ the checksum algorithm exists only in the bootloader in each unit's flash. Getting it = SPI-flash read.
+
 **Map so far** (system image):
 - 0xC16B4440 `crc32(ptr a4, len b4, prev a6)` — zlib CRC-32, bitwise (poly 0xEDB88320 via mvk/mvkh), chainable.
   Callers: 0xC16A1D60 = SysEx sender (210-byte chunks, running CRC); 0xC167C574 / 0xC168A640 / 0xC1697830 =
