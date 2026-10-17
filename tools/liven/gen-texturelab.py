@@ -86,15 +86,15 @@ schema = {
   "setup": [
     "DIN both ways: interface out → Texture Lab MIDI IN, its MIDI OUT → interface in.",
     "On the unit, FUNC + key 10 (MIDI), pressed repeatedly to step through: RX.CH = edit's channel (or ALL), TX.CH = the same channel, TX.CC = ON (so panel moves reach edit), M.OUT = OUT.",
-    "For pattern select from edit: M.PC = RX.TX and PC.CH = the same channel — PC.CH is its own setting and defaults to 16 (a factory reset puts it back), so check it first if the program dropdown does nothing. While a pattern plays, a change waits for the pattern's end.",
+    "Pattern select rides channel 16 — the unit's PC.CH, which resets to 16 at every power-on — so leave PC.CH alone. It needs M.PC = RX.TX (check it if the dropdown does nothing). While a pattern plays, a change waits for the pattern's end.",
     "Nothing can be read back: when you connect, edit's knobs are guesses until you move them (on either side) or press send.",
     "edit keeps your patterns (Dropbox): store files the current sound under the pattern number; selecting that number later loads the unit's pattern and pushes edit's sound on top — no button on the unit, so it works racked. (The Texture Lab itself can only save from its panel: FUNC + PTN, then OK.)",
     "Hover any control: the line under the program bar says what it does and where it lives on the unit (shift = hold A/a, FUNC = hold func)."
   ],
   "groups": [{"id": g, "name": n} for g, n in [("sample", "Sample"), ("grain", "Grain"), ("rnd", "Random"), ("mod1", "Mod 1"), ("mod2", "Mod 2"),
                                                ("eg", "Envelope"), ("filter", "Filter"), ("reverb", "Reverb"), ("voice", "Voice"), ("pattern", "Pattern"), ("efx", "EFX"), ("name", "Name")]],
-  "programs": {"banks": [{"label": "patterns", "count": 128, "write": True}], "perBank": 16, "bankCCs": [],
-               "note": "program change 0-127 = 8 banks × 16 patterns, shown bank·step as on the unit (bank 1 = factory). Needs M.PC = RX on the unit"},
+  "programs": {"banks": [{"label": "patterns", "count": 128, "write": True}], "perBank": 16, "bankCCs": [], "channel": 16,
+               "note": "program change 0-127 on channel 16 = 8 banks × 16 patterns, shown bank·step as on the unit (bank 1 = factory). Needs M.PC = RX on the unit"},
   "params": params,
 }
 json.dump(schema, open(sys.argv[1] if len(sys.argv) > 1 else __file__.rsplit("/", 2)[0] + "/rack/devices/texturelab.json", "w"), indent=2, ensure_ascii=False)

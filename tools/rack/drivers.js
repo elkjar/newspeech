@@ -1582,7 +1582,8 @@ function livenDriver(schema, midi, getChannel, prefs) {
     async requestPatch() { return { values: {}, syx: [] }; },
     sendParam(p, v) { if (p.cc != null) midi.cc(ch(), p.cc, toCc(p, v)); },
     sendPatch(values) { for (const p of inPatch) if (values[p.key] != null) this.sendParam(p, values[p.key]); },
-    programChange(bi, prog) { midi.send([0xc0 | ch(), prog & 127]); },
+    // its PC.CH resets to 16 at power-on, so pattern changes ride their own channel
+    programChange(bi, prog) { midi.send([0xc0 | ((schema.programs.channel ?? getChannel() + 1) - 1 & 15), prog & 127]); },
     // the unit has just loaded its own pattern: lay edit's copy of the sound over it.
     // Entries read out of a unit backup (source "unit") describe what it just loaded —
     // show them, don't push them (the decode rounds a few values)

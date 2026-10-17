@@ -421,7 +421,9 @@ async function boot() {
     $("#rx").classList.remove("blink"); void $("#rx").offsetWidth; $("#rx").classList.add("blink");
     // synth changed program on its front panel → pull the new sound in
     if (driver.isEcho?.(ev)) return; // our own message bounced back by the synth's soft thru
-    if (ev.ch === channel() && banks().length && followProgram(ev)) return;
+    // units with their own program-change channel (Texture Lab PC.CH, 16 at every power-on)
+    const progCh = schema.programs?.channel ? schema.programs.channel - 1 : channel();
+    if ((ev.type === "program" ? ev.ch === progCh : ev.ch === channel()) && banks().length && followProgram(ev)) return;
     for (const { param, value } of driver.decode(ev)) {
       if (performance.now() - (touched.get(param.key) ?? -Infinity) < ECHO_MS) continue; // edit is moving it
       setValue(param, value, { send: false, from: "synth" });
