@@ -39,3 +39,20 @@ deconstruct MINIMAL 1.0.58 (10). Texture Lab = 06 (no image published). Byte 0x1
 
 **Patch wishlist** (only after the bootloader is understood + a flash backup exists): BPM as a CC, PC.CH
 persisting, arp type CC, sample import without the IMPT button (for a racked unit).
+
+## Texture Lab hardware (opened 2026-10-17)
+
+Main board **"LIZARD Ver 1.1"** (PWB 2020-05-16), keybed on a second board over two ribbons.
+
+| part | what |
+|---|---|
+| IC1 DSP | **TI TMS320C6742EZWT**, 200 MHz, BGA |
+| IC1 (flash, beside the DSP) | **ISSI IS25LP128** — 16 MB SPI NOR, **3.3 V**, SOIC-8 208 mil → clip-readable; holds bootloader + system + patterns + samples |
+| IC2 | Piecemakers PME809416DBR DDR2 |
+| CN1 (back) | **TI 14-pin JTAG** (2×7, keyed — one pin absent), R100/R101 4.7 k pull-ups |
+| CN100 | 7-pin header (pin-1 ▽, TP14/TP5/TP7/TP3/TP6) between DSP and flash — factory SPI programming or UART, untraced |
+
+**Reading the flash:** unit unpowered, SOIC-8 clip on IC1. Use 3.3 V logic — a Raspberry Pi Pico running
+pico-serprog + `flashrom -p serprog:dev=/dev/cu.usbmodem…` (or a CH341A *modded* to 3.3 V I/O; the stock black
+board drives 5 V). Read three times, compare hashes, keep the image in Dropbox before anything is ever written.
+If the DSP fights the bus in-circuit, hold it in reset. JTAG (XDS110 + CCS) = live debugging, later.
