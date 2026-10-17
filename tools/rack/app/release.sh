@@ -44,6 +44,8 @@ step "bump package.json → $VERSION"
 node -e "const f='package.json',p=require('./'+f);p.version='$VERSION';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
 
 step "build (universal, signed + notarized)"
+# a dmg left mounted by an earlier failed run makes bundle_dmg.sh die with "Resource busy"
+hdiutil info | awk '/image-path.*rw\.[0-9]+\.edit_/{getline; print $1}' | while read -r d; do hdiutil detach "$d" -force || true; done
 npm install --silent
 ./node_modules/.bin/tauri build --target universal-apple-darwin
 BUNDLE_DIR="$APP_DIR/src-tauri/target/universal-apple-darwin/release/bundle"
@@ -76,7 +78,7 @@ node -e "
 cp -f "$DMG" "$BUNDLE_DIR/dmg/edit.dmg"
 
 step "commit + push the bump"
-git -C "$REPO" add tools/rack/app/package.json tools/rack/app/src-tauri/Cargo.lock
+git -C "$REPO" add tools/rack/app/package.json tools/rack/app/package-lock.json tools/rack/app/src-tauri/Cargo.lock
 # (nothing to commit when re-cutting the version package.json already says)
 git -C "$REPO" diff --cached --quiet || git -C "$REPO" commit -q -m "edit.app: $VERSION — $SUMMARY"
 git -C "$REPO" push -q origin main
