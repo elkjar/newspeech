@@ -1,7 +1,7 @@
 {
   "name": "edit-app",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "edit.app — the rack synth/pedal editor (tools/rack) as a desktop app: native MIDI, files in Dropbox __RACK",
   "scripts": {
     "web": "node ../../build-edit.mjs dist",
