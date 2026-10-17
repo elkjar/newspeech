@@ -3,7 +3,9 @@ ASSIGN = ["off", "size", "timing", "density", "diffusion", "pitch", "position", 
 WAVES = ["sine", "square", "tri", "saw", "rev saw", "random", "smooth rnd", "log", "rev log", "pulse 10%", "pulse 25%", "pulse 75%", "pulse 90%",
          "2 steps", "3 steps", "4 steps", "5 steps", "6 steps", "7 steps", "steps up", "steps down", "keyboard"]
 DIR = ["→ · →", "→ · ←", "← · →", "← · ←", "→ · rnd", "← · rnd", ">< · →", ">< · ←", ">< · ><", ">< · rnd", "<> · →", "<> · ←", "<> · <>", "<> · rnd", "random"]
-FACTORY = ["EPIC", "SKY", "WIDE", "FIZZ", "A.SYN", "CHR.S", "HELL", "VOIZ", "VR.TX", "BELL", "VOID", "PSY.B", "WTR.D", "C.GTR", "WORD"]
+# slots 1-15 factory; 16-32 = WAVES tables loaded 2026-10-16 (tools/liven/tlwavetable.py, waves/*.wav)
+FACTORY = ["EPIC", "SKY", "WIDE", "FIZZ", "A.SYN", "CHR.S", "HELL", "VOIZ", "VR.TX", "BELL", "VOID", "PSY.B", "WTR.D", "C.GTR", "WORD",
+           "W.MNL", "W.SCP", "W.GRD", "W.PLK", "W.OMN", "W.GLS", "W.TRI", "W.FRS", "W.PLT", "W.ENC", "W.PLS", "W.MDB", "W.PNO", "W.PEA", "W.INV", "W.DRM", "W.SUB"]
 SLOTS = [f"{i+1:02d} {FACTORY[i]}" if i < len(FACTORY) else f"{i+1:02d}" for i in range(32)]
 
 def knob(key, name, group, cc, note, panel, default=64, **kw):
