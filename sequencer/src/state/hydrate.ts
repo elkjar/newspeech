@@ -28,7 +28,11 @@ import {
   type LFODestKnob,
   type LFODestination,
 } from '../audio/lfo';
-import { getInstrument, type TrackSource } from '../instruments/library';
+import {
+  getInstrument,
+  registerMissingInstrument,
+  type TrackSource,
+} from '../instruments/library';
 import { parseAccumulator } from '../audio/accumulator';
 import {
   DEFAULT_CHORD_VOICING,
@@ -155,7 +159,11 @@ const LEGACY_MIDI_TO_INTERNAL: Record<string, string> = {
   'midi-ride': 'rhodes-mk1',
 };
 
-function hydrateSource(saved: unknown, legacyVoice: string | undefined): TrackSource {
+function hydrateSource(
+  saved: unknown,
+  legacyVoice: string | undefined,
+  missing: { section: TrackSection; midi: unknown }
+): TrackSource {
   if (saved && typeof saved === 'object') {
     const obj = saved as { kind?: unknown; id?: unknown };
     if (obj.kind === 'empty') return { kind: 'empty' };
@@ -169,7 +177,25 @@ function hydrateSource(saved: unknown, legacyVoice: string | undefined): TrackSo
       if (obj.kind === 'voice') {
         return { kind: 'voice', id: renamed };
       }
-      if (obj.kind === 'instrument' && getInstrument(obj.id)) {
+      if (obj.kind === 'instrument') {
+        // Not in the library (deleted / renamed / other machine's library):
+        // keep the instrument source and stand one in from the track's saved
+        // routing, so it still plays out its port + channel and shows as
+        // "(missing)". Used to fall through to a silent `kick` voice.
+        if (!getInstrument(obj.id)) {
+          const m = hydrateMidi(missing.midi, { kind: 'empty' });
+          registerMissingInstrument({
+            id: obj.id,
+            label: obj.id,
+            role: missing.section === 'melodic' ? 'lead' : 'drum',
+            channel: m.channel,
+            portName: m.portName,
+            program: m.program,
+            bankMSB: m.bankMSB,
+            bankLSB: m.bankLSB,
+            fixedNote: m.note,
+          });
+        }
         return { kind: 'instrument', id: obj.id };
       }
     }
@@ -255,7 +281,8 @@ export function hydrateTrack(saved: Partial<Track> & { id: string }): Track {
   const legacyVoice = (saved as { voice?: unknown }).voice;
   const source = hydrateSource(
     (saved as { source?: unknown }).source,
-    typeof legacyVoice === 'string' ? legacyVoice : undefined
+    typeof legacyVoice === 'string' ? legacyVoice : undefined,
+    { section, midi: (saved as { midi?: unknown }).midi }
   );
   return {
     id: saved.id,

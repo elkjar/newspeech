@@ -45,6 +45,7 @@ import {
 } from '../midi/launchControlXL3';
 import { attachXL3Bindings, detachXL3Bindings } from '../midi/launchControlXL3Bindings';
 import { scanAndLoadUserSamples } from '../instruments/userSamplesDir';
+import { syncUserInstrumentsFromDisk } from '../instruments/userInstrumentsStore';
 import { modulated, GLOBAL_TRACK_ID } from '../audio/lfo';
 import { initGhost } from '../ghost/ghost';
 import type { TrackOutput } from '../state/store';
@@ -173,6 +174,22 @@ export function startSamplesBoot(): void {
   // fallback until the user adds samples).
   if (samplesBootStarted()) return;
   markSamplesBootStarted();
+  // MIDI instruments: the folder (Dropbox-shareable) replaces the cached
+  // copy hydrate already used, then re-reads on every window focus so edits
+  // made in the other app / on another machine show up here.
+  const syncInstruments = () =>
+    void syncUserInstrumentsFromDisk().then((r) => {
+      if (r.status === 'seeded') console.info(`[instruments] moved ${r.count} to ${r.dir}`);
+      else if (r.status === 'loaded' && r.changed) console.info(`[instruments] ${r.count} from ${r.dir}`);
+    });
+  syncInstruments();
+  let lastFocusSync = 0;
+  window.addEventListener('focus', () => {
+    const now = Date.now();
+    if (now - lastFocusSync < 1000) return;
+    lastFocusSync = now;
+    syncInstruments();
+  });
   void (async () => {
     // loadManifest runs in pathsOnly mode on native — no Web Audio
     // decodeAudioData pass, no JSON-encoded bytes round trip through invoke,

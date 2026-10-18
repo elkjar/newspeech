@@ -11,6 +11,12 @@ import {
   resolveUserSamplesDir,
   scanAndLoadUserSamples,
 } from '../instruments/userSamplesDir';
+import {
+  getConfiguredInstrumentsDir,
+  resolveInstrumentsDir,
+  setConfiguredInstrumentsDir,
+} from '../instruments/instrumentsDir';
+import { syncUserInstrumentsFromDisk } from '../instruments/userInstrumentsStore';
 import { MidiBar } from './MidiBar';
 import { InstrumentLibraryPane } from './InstrumentLibraryPane';
 import { SampleLibraryPane } from './SampleLibraryPane';
@@ -39,6 +45,9 @@ export function SettingsDialog({
   const [userSamplesDir, setUserSamplesDir] = useState<string | null>(null);
   const [isCustomUserSamplesDir, setIsCustomUserSamplesDir] = useState(false);
   const [rescanStatus, setRescanStatus] = useState<string | null>(null);
+  const [instrumentsDir, setInstrumentsDir] = useState<string | null>(null);
+  const [isCustomInstrumentsDir, setIsCustomInstrumentsDir] = useState(false);
+  const [instrumentsStatus, setInstrumentsStatus] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -77,11 +86,21 @@ export function SettingsDialog({
     setUserSamplesDir(dir);
   };
 
+  const refreshInstrumentsDir = async () => {
+    if (!NATIVE) return;
+    const override = getConfiguredInstrumentsDir();
+    setIsCustomInstrumentsDir(!!override);
+    const dir = await resolveInstrumentsDir();
+    // a chosen folder that isn't there right now (Dropbox not mounted)
+    setInstrumentsDir(dir ?? (override ? `${override} — not found` : null));
+  };
+
   useEffect(() => {
     if (!open) return;
     if (NATIVE) {
       void refreshRecordingsDir();
       void refreshUserSamplesDir();
+      void refreshInstrumentsDir();
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -160,6 +179,45 @@ export function SettingsDialog({
     setConfiguredUserSamplesDir(null);
     await refreshUserSamplesDir();
     await runRescan();
+  };
+
+  const revealInstruments = async () => {
+    const dir = await resolveInstrumentsDir();
+    if (!dir) return;
+    try {
+      await invoke('reveal_in_finder', { path: dir });
+    } catch (err) {
+      console.warn('[settings] reveal_in_finder failed:', err);
+    }
+  };
+
+  // Folder switch: an empty folder gets the current library written into
+  // it; a folder that already has instruments replaces the library.
+  const switchInstrumentsDir = async (dir: string | null) => {
+    setConfiguredInstrumentsDir(dir);
+    await refreshInstrumentsDir();
+    const r = await syncUserInstrumentsFromDisk({ seedIfEmpty: true });
+    setInstrumentsStatus(
+      r.status === 'unavailable'
+        ? 'folder not found — library unchanged'
+        : r.status === 'seeded'
+          ? `wrote ${r.count} ${r.count === 1 ? 'instrument' : 'instruments'} into the folder`
+          : `loaded ${r.count} ${r.count === 1 ? 'instrument' : 'instruments'} from the folder`,
+    );
+  };
+
+  const changeInstruments = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: (await resolveInstrumentsDir()) ?? undefined,
+      });
+      if (picked && typeof picked === 'string') await switchInstrumentsDir(picked);
+    } catch (err) {
+      console.warn('[settings] change instruments dir failed:', err);
+    }
   };
 
   const runRescan = async () => {
@@ -256,6 +314,26 @@ export function SettingsDialog({
                 />
                 {rescanStatus && (
                   <div className="text-white/50 text-[11px]">{rescanStatus}</div>
+                )}
+              </Section>
+            )}
+
+            {NATIVE && (
+              <Section label="midi instruments">
+                <SettingRow
+                  label="folder"
+                  description="one .midiinstrument per instrument — point both apps at the same folder to share them"
+                  value={instrumentsDir ?? '…'}
+                  actions={[
+                    { label: 'open in finder', onClick: revealInstruments, disabled: !instrumentsDir },
+                    { label: 'change…', onClick: changeInstruments },
+                    ...(isCustomInstrumentsDir
+                      ? [{ label: 'reset', onClick: () => void switchInstrumentsDir(null) }]
+                      : []),
+                  ]}
+                />
+                {instrumentsStatus && (
+                  <div className="text-white/50 text-[11px]">{instrumentsStatus}</div>
                 )}
               </Section>
             )}

@@ -188,12 +188,32 @@ export const PRESETS: Preset[] = [
   },
 ];
 
+// Stand-ins for instruments a loaded song references but the library
+// doesn't have (deleted, renamed, or another machine's library). Built by
+// hydrate from the track's own saved routing so the track keeps playing out
+// the same port/channel instead of becoming a sample voice. Memory-only —
+// never written to the instruments folder; a real library entry with the
+// same id always wins.
+const missingInstruments = new Map<string, Instrument>();
+
+export function registerMissingInstrument(inst: Instrument): void {
+  if (!missingInstruments.has(inst.id)) missingInstruments.set(inst.id, inst);
+}
+
+export function isMissingInstrument(id: string): boolean {
+  return (
+    !INSTRUMENTS.some((i) => i.id === id) &&
+    !getUserInstrument(id) &&
+    missingInstruments.has(id)
+  );
+}
+
 export function getInstrument(id: string): Instrument | undefined {
   const bundled = INSTRUMENTS.find((i) => i.id === id);
   if (bundled) return bundled;
   // Lazy import to avoid a cycle — userInstrumentsStore lives in the same
   // module folder and we only need a non-React getter.
-  return getUserInstrument(id);
+  return getUserInstrument(id) ?? missingInstruments.get(id);
 }
 
 export function instrumentMutation(id: string): MutationProfile {
@@ -260,7 +280,10 @@ export type TrackSource =
 
 export function sourceLabel(source: TrackSource): string {
   if (source.kind === 'voice') return voiceLabel(source.id);
-  if (source.kind === 'instrument') return getInstrument(source.id)?.label ?? source.id;
+  if (source.kind === 'instrument') {
+    const label = getInstrument(source.id)?.label ?? source.id;
+    return isMissingInstrument(source.id) ? `${label} (missing)` : label;
+  }
   return '—';
 }
 
