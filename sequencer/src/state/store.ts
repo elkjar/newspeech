@@ -3128,6 +3128,25 @@ function applyBankSlot(
   // captures the same overlay — drop it for the same reason.
   clearOverlay();
   unfreezeLFOs();
+  // Patch select for the incoming pattern: a track whose instrument, routing
+  // or program/bank differs from the one it replaces gets its PC now (used
+  // to wait for the next transport start). Unchanged tracks send nothing —
+  // a repeated PC reloads the patch and cuts held notes on a lot of synths.
+  const prevById = new Map(currentTracks.map((t) => [t.id, t]));
+  const { tracks: swapped, midiOutDeviceId } = useSequencerStore.getState();
+  for (const t of swapped) {
+    const prev = prevById.get(t.id);
+    const same =
+      prev &&
+      prev.source.kind === t.source.kind &&
+      (prev.source.kind === 'empty' || prev.source.id === (t.source as { id: string }).id) &&
+      prev.midi.portName === t.midi.portName &&
+      prev.midi.channel === t.midi.channel &&
+      prev.midi.program === t.midi.program &&
+      prev.midi.bankMSB === t.midi.bankMSB &&
+      prev.midi.bankLSB === t.midi.bankLSB;
+    if (!same) fireTrackProgramChange(t, midiOutDeviceId);
+  }
   // Pad voicing-drift counters are keyed by trackId. Reset so a swapped-in
   // pattern's drift cadence starts fresh rather than mid-cycle from the
   // previous pattern's trigger count.

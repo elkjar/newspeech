@@ -123,6 +123,10 @@ export function InstrumentLibraryPane() {
   for (const inst of Object.values(userInstruments)) {
     if (matches(inst)) grouped[inst.role].push(inst);
   }
+  // alphabetical within each role, case-insensitive ("bb tape piano" next to "BB …")
+  for (const list of Object.values(grouped)) {
+    list.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  }
 
   const total = Object.values(userInstruments).length;
   const totalVisible = Object.values(grouped).reduce((n, list) => n + list.length, 0);

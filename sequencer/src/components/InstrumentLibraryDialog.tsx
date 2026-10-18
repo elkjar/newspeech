@@ -119,6 +119,10 @@ export function InstrumentLibraryDialog({
     drum: [],
   };
   for (const inst of Object.values(userInstruments)) grouped[inst.role].push(inst);
+  // alphabetical within each role, case-insensitive ("bb tape piano" next to "BB …")
+  for (const list of Object.values(grouped)) {
+    list.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  }
 
   const total = Object.values(userInstruments).length;
   const hasAny = total > 0;

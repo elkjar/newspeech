@@ -309,28 +309,65 @@ function PortField({
   onChange: (v: string) => void;
 }) {
   const outputs = useMIDIOutputs();
-  // Stable id — multiple dialogs in tree share the same datalist; that's
-  // fine since datalist is read-only.
-  const listId = 'midi-output-ports';
+  const names = [...new Set(outputs.map((o) => o.name))];
+  // Dropdown of connected outputs; "type manually…" opens a text field for a
+  // substring or a port that isn't connected right now. A saved value that
+  // isn't a connected port's full name opens straight in manual mode.
+  const [manualPicked, setManualPicked] = useState(false);
+  const inList = names.includes(value);
+  const manual = manualPicked || (value !== '' && !inList);
+  const selectValue = inList && !manualPicked ? value : manual ? MANUAL : '';
+  const matchesConnected = value.trim() !== '' && names.some((n) => n.includes(value.trim()));
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-widest text-white/55">port substring</span>
-      <input
-        type="text"
-        list={listId}
-        value={value}
-        placeholder="type or pick"
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-transparent border border-white/15 px-2 py-1 focus:outline-none focus:border-white"
-      />
-      <datalist id={listId}>
-        {outputs.map((o) => (
-          <option key={o.id} value={o.name} />
+      <span className="text-[10px] uppercase tracking-widest text-white/55">port</span>
+      <select
+        value={selectValue}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === MANUAL) {
+            setManualPicked(true);
+            return;
+          }
+          setManualPicked(false);
+          onChange(v);
+        }}
+        className="select-chevron bg-transparent border border-white/15 px-2 py-1 focus:outline-none focus:border-white"
+      >
+        <option value="" className="bg-[#050505]">
+          — default output —
+        </option>
+        {names.map((n) => (
+          <option key={n} value={n} className="bg-[#050505]">
+            {n}
+          </option>
         ))}
-      </datalist>
+        <option value={MANUAL} className="bg-[#050505]">
+          type manually…
+        </option>
+      </select>
+      {manual && (
+        <>
+          <input
+            type="text"
+            value={value}
+            autoFocus={manualPicked}
+            placeholder="port name or part of it"
+            onChange={(e) => onChange(e.target.value)}
+            className="bg-transparent border border-white/15 px-2 py-1 focus:outline-none focus:border-white"
+          />
+          {value.trim() !== '' && !matchesConnected && (
+            <span className="text-white/40 text-[11px] normal-case tracking-normal">
+              no connected port matches — used when it&apos;s plugged in
+            </span>
+          )}
+        </>
+      )}
     </label>
   );
 }
+
+const MANUAL = '__manual__';
 
 function ChannelField({
   value,

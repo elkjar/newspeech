@@ -98,6 +98,43 @@ pub fn get_recordings_dir(app: AppHandle) -> Result<String, String> {
     Ok(dir.to_string_lossy().to_string())
 }
 
+// Default MIDI instrument library folder: ~/Documents/Sequence/instruments/,
+// one `<id>.midiinstrument` per instrument. Created on first call.
+#[tauri::command]
+pub fn get_instruments_dir(app: AppHandle) -> Result<String, String> {
+    let docs = app
+        .path()
+        .document_dir()
+        .map_err(|e| format!("document_dir: {e}"))?;
+    let dir = docs.join("Sequence").join("instruments");
+    let _ = fs::create_dir_all(&dir);
+    Ok(dir.to_string_lossy().to_string())
+}
+
+// True when `path` exists and is a directory. The instrument sync checks a
+// user-chosen folder (e.g. in Dropbox) before trusting an empty listing —
+// an unmounted folder must not read as "every instrument was deleted".
+#[tauri::command]
+pub fn path_is_dir(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
+
+// Deletes one instrument file. Refuses anything that isn't a regular
+// `.midiinstrument` file so a bad path can't take out something else.
+#[tauri::command]
+pub fn remove_instrument_file(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    let is_instrument = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("midiinstrument"))
+        .unwrap_or(false);
+    if !is_instrument || !p.is_file() {
+        return Err(format!("not an instrument file: {path}"));
+    }
+    fs::remove_file(p).map_err(|e| format!("remove {path}: {e}"))
+}
+
 #[tauri::command]
 pub fn reveal_in_finder(path: String) -> Result<(), String> {
     // macOS: `open <path>` reveals the directory in Finder. Same shell
