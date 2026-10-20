@@ -47,7 +47,7 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const BASE = `http://127.0.0.1:${server.address().port}/`;
 
 const jobs = [];
-for (const t of ["decay", "drone", "glitch", "slice", "stretch", "plugins", "waves"]) {
+for (const t of ["decay", "drone", "glitch", "slice", "stretch", "plugins", "waves", "edit"]) {
   jobs.push({ name: `comp:${t}`, url: `og-${t}-comp.html`, out: `og-${t}.png`, wait: 400 });
 }
 // miniatures animate — give them a few seconds to get going
