@@ -80,6 +80,7 @@ export class Midi {
 
   receive(data) {
     const st = data[0];
+    this.heardAt = performance.now(); // anything at all, clock included: drivers with no request use it as presence
     if (st === 0xf0) {
       const i = this.sysexWaiters.findIndex((w) => w.match(data));
       if (i >= 0) this.sysexWaiters.splice(i, 1)[0].resolve(data);
@@ -103,13 +104,15 @@ export class Midi {
     };
     if (num === 99) { s.pMsb = val; s.vMsb = s.vLsb = null; return; }
     if (num === 98) { s.pLsb = val; s.vMsb = s.vLsb = null; return; }
-    if (num === 6) {
+    // CC6/38 are data entry only while an NRPN is open — otherwise they're plain
+    // CCs (Texture Lab: CC38 = POSITION)
+    if (num === 6 && s.pMsb != null && s.pLsb != null) {
       s.vMsb = val; s.vLsb = null;
       // most senders follow with CC38; flush without it if it never comes
       clearTimeout(s.timer); s.timer = setTimeout(flush, 8);
       return;
     }
-    if (num === 38) { s.vLsb = val; return flush(); }
+    if (num === 38 && s.timer) { s.vLsb = val; return flush(); }
     this.emit({ type: "cc", ch, num, val });
   }
 }

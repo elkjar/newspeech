@@ -37,7 +37,7 @@ function selectProgram(midi, ch, bank, prog) {
 }
 
 // which schema transports have a driver yet (the rack shows others as "driver coming")
-export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite", "pro800", "obne"];
+export const TRANSPORTS = ["nrpn", "roland", "yamaha", "ensoniq", "emax", "yamaha4op", "oberheim", "korg", "tclite", "pro800", "obne", "liven"];
 
 // units that never answer: they need a MIDI out only (the rack card + connect skip the in port)
 export const OUT_ONLY = ["obne", "tclite"];
@@ -54,6 +54,7 @@ export function makeDriver(schema, midi, getChannel, prefs) {
   if (schema.transport === "tclite") return tcLiteDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "pro800") return pro800Driver(schema, midi, getChannel);
   if (schema.transport === "obne") return obneDriver(schema, midi, getChannel, prefs);
+  if (schema.transport === "liven") return livenDriver(schema, midi, getChannel, prefs);
   if (schema.transport === "korg") return schema.korg.modelId === 0x28 ? wavestationDriver(schema, midi, getChannel, prefs) : korgDwDriver(schema, midi, getChannel, prefs);
   throw new Error(`no driver for transport "${schema.transport}" yet`);
 }
@@ -1540,6 +1541,66 @@ function obneDriver(schema, midi, getChannel, prefs) {
     sameProgram(a, b) { return !!a && !!b && schema.params.every((p) => a[p.key] === b[p.key]); },
     library: () => Object.entries(lib()).map(([k, e]) => { const [bi, prog] = k.split("-").map(Number); return { bi, prog, name: slotName(e.values), values: e.values, at: e.at }; }),
     decode() { return []; },
+  };
+}
+
+// Sonicware LIVEN Texture Lab: every sound control is a CC, both ways (TX.CC on),
+// but nothing can be requested — its SysEx is pattern/sample transfers started on
+// the panel. Stepped controls are spread across 0-127 at floor(127 / (n-1)) with
+// the last option at 127 (measured: filter type 0/42/84/127, mod assign 0,9…108,127).
+// Program change 0-127 = pattern (8 banks × 16).
+// The unit can only save from its panel, so edit houses the patterns (it gets racked
+// out of reach): store keeps the sound in edit's library under the pattern number;
+// selecting that number loads the unit's pattern (its sequence) and pushes edit's
+// sound over it.
+function livenDriver(schema, midi, getChannel, prefs) {
+  const ch = () => getChannel() & 15;
+  // ccSteps: the unit splits the CC range into more steps than it lists (DIR: 16 × 8 for 15 options)
+  const stepOf = (p) => Math.floor(127 / ((p.ccSteps ?? p.max - p.min + 1) - 1));
+  const toCc = (p, v) => (!p.options ? v : v >= p.max && !p.ccSteps ? 127 : (v - p.min) * stepOf(p));
+  const fromCc = (p, c) => (!p.options ? c : p.min + Math.min(p.max - p.min, Math.floor(c / stepOf(p))));
+  const byCc = new Map(schema.params.filter((p) => p.cc != null).map((p) => [p.cc, p]));
+  const inPatch = schema.params.filter((p) => p.cc != null && !p.notInPatch);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const lib = () => { try { return JSON.parse(prefs.get("library") || "{}"); } catch { return {}; } };
+  const slotName = (v) => schema.params.filter((p) => p.display === "char").map((p) => String.fromCharCode(v[p.key] ?? 32)).join("").trim();
+  const fromLib = (bi, prog) => {
+    const e = lib()[`${bi}-${prog}`];
+    return e ? { values: e.values, data: e.values, syx: [], name: slotName(e.values) || "(unnamed)", at: e.at }
+      : { values: {}, data: null, syx: [], name: "(not in edit)", empty: true };
+  };
+  return {
+    canRead: false,
+    keepsLibrary: true, // store = edit's copy only; nothing is written to the unit's memory
+    // it ignores every request, but sends clock nonstop (TX.CK, on by default): hearing
+    // anything on its in port within 1.5 s counts as there
+    async probe() {
+      const t0 = performance.now();
+      for (let i = 0; i < 15; i++) { await wait(100); if ((midi.heardAt ?? 0) > t0) return true; }
+      return false;
+    },
+    async requestPatch() { return { values: {}, syx: [] }; },
+    sendParam(p, v) { if (p.cc != null) midi.cc(ch(), p.cc, toCc(p, v)); },
+    sendPatch(values) { for (const p of inPatch) if (values[p.key] != null) this.sendParam(p, values[p.key]); },
+    // its PC.CH resets to 16 at power-on, so pattern changes ride their own channel
+    programChange(bi, prog) { midi.send([0xc0 | ((schema.programs.channel ?? getChannel() + 1) - 1 & 15), prog & 127]); },
+    // the unit has just loaded its own pattern: lay edit's copy of the sound over it.
+    // Entries read out of a unit backup (source "unit") describe what it just loaded —
+    // show them, don't push them (the decode rounds a few values)
+    async adoptSlot(bi, prog) {
+      const got = fromLib(bi, prog);
+      if (!got.empty && lib()[`${bi}-${prog}`]?.source !== "unit") { await wait(120); this.sendPatch(got.values); }
+      return got;
+    },
+    async requestProgram(bi, prog) { return fromLib(bi, prog); },
+    async writeProgram(bi, prog, values) {
+      const all = lib(); all[`${bi}-${prog}`] = { values: { ...values }, at: new Date().toISOString() };
+      prefs.set("library", JSON.stringify(all));
+      return values;
+    },
+    sameProgram(a, b) { return !!a && !!b && schema.params.every((p) => a[p.key] === b[p.key]); },
+    library: () => Object.entries(lib()).map(([k, e]) => { const [bi, prog] = k.split("-").map(Number); return { bi, prog, name: slotName(e.values), values: e.values, at: e.at }; }),
+    decode(ev) { const p = ev.type === "cc" && ev.ch === ch() && byCc.get(ev.num); return p ? [{ param: p, value: fromCc(p, ev.val) }] : []; },
   };
 }
 

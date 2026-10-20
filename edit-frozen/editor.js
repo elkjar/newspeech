@@ -113,8 +113,15 @@ function applyAll(next, { send = true } = {}) {
   if (send) driver.sendPatch(values);
 }
 
-// knob labels show the value on hover/drag, so nothing else echoes it
-function showLast() {}
+// knob labels show the value on hover/drag; the help line under the program bar
+// says what the control does and where it lives on the unit (params with note/panel)
+function showLast(p, v) {
+  const el = $("#help");
+  if (!el || !p || !(p.note || p.panel)) return;
+  el.replaceChildren(h("b", {}, p.name), " ", fmt(p, v),
+    p.panel ? h("span", { class: "hpanel" }, "on the unit: " + p.panel) : null,
+    p.note ? h("span", {}, p.note) : null);
+}
 
 // ---------- name ----------
 const nameParams = () => schema.params.filter(isName);
@@ -137,9 +144,12 @@ function randomize(params, amount = 1) {
     if (amount >= 1) v = p.min + Math.random() * (span + 1);
     else if (p.options || span <= 1) { if (Math.random() > amount * 0.5) continue; v = p.min + Math.random() * (span + 1); }
     else v = (values[p.key] ?? p.min) + (Math.random() * 2 - 1) * span * amount * 0.5;
-    setValue(p, Math.floor(v >= p.max ? p.max : v), { send: false, from: "load" });
+    v = Math.floor(v >= p.max ? p.max : v);
+    if (p.skip?.includes(v)) v = values[p.key] ?? p.min; // values the unit ignores (JV-2080 TAP-SYNC)
+    setValue(p, v, { send: false, from: "load" });
   }
   driver.sendPatch(values);
+  setStale(false); // every value just went out: the knobs describe the sound again
   commitUndo(before);
 }
 
@@ -245,13 +255,15 @@ function renderGroup(g) {
       return h("div", { class: "cell btncell" }, b, h("span", { class: "clabel" }, ""));
     }
     if (as === "seg") {
-      const labels = c.labels || p.options;
-      const btns = labels.map((l, i) => h("button", { title: p.options?.[i], onclick: () => { begin(); write(p.min + i); end(); }, onpointerenter: hover }, l));
+      // c.values: the raw value behind each label, when some values aren't offered (JV-2080: no PCM card group)
+      const labels = c.labels || p.options, vals = c.values || labels.map((_, i) => p.min + i);
+      const btns = labels.map((l, i) => h("button", { title: p.options?.[vals[i] - p.min], onclick: () => { begin(); write(vals[i]); end(); }, onpointerenter: hover }, l));
       const cell = h("div", { class: "cell segcell" }, h("div", { class: "seg" }, btns), h("span", { class: "clabel" }, c.label));
-      return bindAll(ps, { update: (v) => btns.forEach((b, i) => b.classList.toggle("on", p.min + i === v)), changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
+      return bindAll(ps, { update: (v) => btns.forEach((b, i) => b.classList.toggle("on", vals[i] === v)), changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
     }
     if (as === "pick") {
-      const optionList = () => (p.options || Array.from({ length: p.max - p.min + 1 }, (_, i) => fmt(p, p.min + i))).map((o, i) => new Option(o, p.min + i));
+      const optionList = () => (p.options || Array.from({ length: p.max - p.min + 1 }, (_, i) => fmt(p, p.min + i))).map((o, i) => new Option(o, p.min + i))
+        .filter((o) => !c.values || c.values.includes(Number(o.value)));
       const sel = h("select", { class: "box", onchange: (e) => { begin(); write(Number(e.target.value)); end(); }, onpointerenter: hover }, optionList());
       const cell = h("label", { class: "cell pickcell", title: p.name }, sel, h("span", { class: "clabel" }, c.label));
       // wave names change with the tone's wave group / bank — rebuild the list when they do
@@ -392,6 +404,9 @@ async function selectDevice(id) {
   document.body.classList.toggle("canwrite", !!driver.writeProgram);
   $("#pname").maxLength = nameParams().length || 16;
   $("#synthname").textContent = schema.name;
+  const helps = schema.params.some((p) => p.note || p.panel);
+  $("#help").hidden = !helps;
+  $("#help").textContent = helps ? "hover a control: what it does" + (schema.params.some((p) => p.panel) ? " and where it lives on the unit" : "") : "";
   fillPorts();
   renderProgramControls();
   renderFaceplate();
@@ -410,7 +425,9 @@ async function boot() {
     $("#rx").classList.remove("blink"); void $("#rx").offsetWidth; $("#rx").classList.add("blink");
     // synth changed program on its front panel → pull the new sound in
     if (driver.isEcho?.(ev)) return; // our own message bounced back by the synth's soft thru
-    if (ev.ch === channel() && banks().length && followProgram(ev)) return;
+    // units with their own program-change channel (Texture Lab PC.CH, 16 at every power-on)
+    const progCh = schema.programs?.channel ? schema.programs.channel - 1 : channel();
+    if ((ev.type === "program" ? ev.ch === progCh : ev.ch === channel()) && banks().length && followProgram(ev)) return;
     for (const { param, value } of driver.decode(ev)) {
       if (performance.now() - (touched.get(param.key) ?? -Infinity) < ECHO_MS) continue; // edit is moving it
       setValue(param, value, { send: false, from: "synth" });
@@ -444,7 +461,7 @@ async function boot() {
   $("#mutknob").replaceWith(mk.el);
   barcode();
   $("#get").onclick = getFromSynth;
-  $("#send").onclick = () => { driver.sendPatch(values); status("sent whole patch to edit buffer"); };
+  $("#send").onclick = () => { driver.sendPatch(values); setStale(false); status("sent whole patch to edit buffer"); };
   $("#hold").onclick = () => heldNote != null ? noteOff() : noteOn(12 * octave + 12);
   $("#undo").onclick = doUndo;
   $("#redo").onclick = doRedo;
@@ -478,7 +495,10 @@ async function boot() {
 // readable over sysex (backups, names, store's read-first), write = storable
 // slot numbers as the unit shows them: 001-128 by default, 00-99 where it counts from zero (PRO-800)
 const progBase = () => (schema?.programs?.zeroBased ? 0 : 1);
-const pad3 = (n) => (schema?.programs?.zeroBased ? String(n).padStart(2, "0") : String(n + 1).padStart(3, "0"));
+// perBank: one flat run of program numbers the unit shows as bank·slot (Texture Lab: 8 × 16 → 2·05)
+const pad3 = (n) => { const per = schema?.programs?.perBank;
+  if (per) return `${Math.floor(n / per) + 1}·${String((n % per) + 1).padStart(2, "0")}`;
+  return schema?.programs?.zeroBased ? String(n).padStart(2, "0") : String(n + 1).padStart(3, "0"); };
 const slotKey = (b, p) => `${b}-${p}`;
 const banks = () => schema.programs?.banks || [];
 // banks you can play/step through (patch/timbre memories on the D-110 are backup-only)
@@ -801,7 +821,8 @@ async function runConnect() {
     if (driver.canRead === false) {
       step(schema.liveNote || `the ${schema.name} can't be asked anything — live controls, preset select and bank capture`).ok();
       pickBank = null; renderProgramControls(); setView("edit");
-      status(`${schema.name} · live controls`); return;
+      setStale(true); // nothing read yet — the knobs are guesses until send / a stored pattern
+      status(driver.keepsLibrary ? `${schema.name} · knobs dimmed until edit's sound is on the unit — send, or pick a stored pattern` : `${schema.name} · live controls`); return;
     }
     // 1 — is it there?
     const s1 = step(`talking to the ${schema.name}…`);
@@ -875,16 +896,28 @@ function goProgram(bank, prog) {
   setCurrent(bank, prog);
   Promise.resolve(driver.programChange(bank, prog))
     .catch((e) => status(e.message, true))
-    .then(() => setTimeout(async () => {
-      // synths whose edit buffer doesn't follow program changes (TG-55): read the
-      // selected voice from its memory slot; everything else: read the edit buffer
-      const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
-      if (!got) return getFromSynth();
-      const before = snapshot();
-      saved = { ...got.values }; applyAll(got.values, { send: false }); commitUndo(before);
-      status(`${slotName(bank, prog)}${nameString() ? ` — “${nameString()}”` : ""}`);
-    }, midi.drainMs() + 150));
+    .then(() => setTimeout(() => adoptProgram(bank, prog), midi.drainMs() + 150));
 }
+
+// after a program change (ours or the synth's panel): synths whose edit buffer doesn't
+// follow program changes (TG-55) read the selected voice from its memory slot, library
+// units (Texture Lab) push edit's copy over it; everything else reads the edit buffer
+async function adoptProgram(bank, prog) {
+  const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
+  if (!got) return getFromSynth();
+  if (got.empty && driver.keepsLibrary) {
+    setStale(true);
+    return status(`${slotName(bank, prog)} — the unit's own pattern; edit has no copy, so the dimmed knobs are your last sound, not this one (send or store makes them true)`);
+  }
+  const before = snapshot();
+  saved = { ...got.values }; applyAll(got.values, { send: false }); commitUndo(before);
+  setStale(false);
+  status(`${slotName(bank, prog)}${nameString() ? ` — “${nameString()}”` : ""}`);
+}
+
+// library units can't be read: after landing on a pattern edit doesn't hold, its knobs
+// stop describing the sound — dim them until edit's values are on the unit again
+function setStale(on) { document.body.classList.toggle("stale", !!on && !!driver?.keepsLibrary); }
 
 // ◂ ▸ walk straight through the banks: last program of one → first of the next
 function stepProgram(dir) {
@@ -905,7 +938,7 @@ function followProgram(ev) {
   let bi = bs.findIndex((b) => !b.backupOnly && (b.msb == null || b.msb === (latched[0] ?? b.msb)) && (b.lsb == null || b.lsb === (latched[32] ?? b.lsb)));
   if (latched[0] == null && latched[32] == null) bi = cur.bank; // no bank select sent: same bank
   setCurrent(bi < 0 ? cur.bank : bi, ev.program); latched = {};
-  getFromSynth();
+  if (driver.keepsLibrary) adoptProgram(cur.bank, cur.prog); else getFromSynth();
   return true;
 }
 
@@ -1125,7 +1158,11 @@ async function readTarget() {
     const oldName = old.empty ? "(empty)" : nameParams().map((q) => String.fromCharCode(old.values[q.key] ?? 32)).join("").trim() || "(unnamed)";
     stOld.name = oldName;
     $("#st-msg").innerHTML = "";
-    if (old.empty && driver.canRead === false) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}. edit has no copy of this slot, and the pedal can't be read — whatever it holds there is replaced.`);
+    // units whose memory edit can't write (Texture Lab): the library is the store
+    if (driver.keepsLibrary) $("#st-msg").append(old.empty ? "Keep " : "Replace ", ...(old.empty ? [] : [h("b", {}, `“${oldName}”`), " with "]),
+      h("b", {}, `“${nameString() || "untitled"}”`), ` as ${where} in edit. Selecting ${where} loads the unit's pattern and pushes this sound over it — nothing on the unit needs touching.`,
+      old.empty ? "" : " The old one is backed up first.");
+    else if (old.empty && driver.canRead === false) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}. edit has no copy of this slot, and the pedal can't be read — whatever it holds there is replaced.`);
     else if (old.empty) $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where} — it's empty, nothing to back up.`);
     else $("#st-msg").append("Write ", h("b", {}, `“${nameString() || "untitled"}”`), ` into ${where}, replacing `, h("b", {}, `“${oldName}”`),
       ". The old one is backed up first.");
@@ -1156,9 +1193,10 @@ async function doStore() {
     const known = names(); known[slotKey(bank, prog)] = nameString() || "(unnamed)";
     lsSet(`${schema.id}.names`, JSON.stringify(known));
     saved = snapshot(); applyAll(values, { send: false });
+    setStale(false);
     pickBank = null; renderProgPick();
     $("#storedlg").close();
-    const how = driver.canRead === false ? "saved on the pedal (it can't confirm) · edit's copy kept" : "verified";
+    const how = driver.keepsLibrary ? "kept in edit's library" : driver.canRead === false ? "saved on the pedal (it can't confirm) · edit's copy kept" : "verified";
     status(`stored “${nameString()}” in ${where} — ${how}` + (stOld.empty ? "" : ` · old “${stOld.name}” backed up`));
   } catch (e) {
     $("#st-msg").textContent = e.message;

@@ -5,6 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>edit</title>
+<meta property="og:title" content="NEWSPEECH // edit">
+<meta property="og:description" content="newspeech — editor for the hardware rack.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/edit/">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-edit.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="edit — line drawings of the rack's synths stacked, the JV-1080 lit">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // edit">
+<meta name="twitter:description" content="newspeech — editor for the hardware rack.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-edit.png">
 <style>
   /* the plugin-panel pattern (vibe / slice / glitch / saturate): bordered
      groups with the title set into the border, one control per fixed-width
@@ -216,6 +231,16 @@
   #status.err { color: #fff; }
   #status.err::before { content: "! "; }
 
+  /* library units on a pattern edit doesn't hold: the knobs are last-known, not live */
+  #face { transition: opacity .25s; }
+  body.stale #face { opacity: .38; }
+
+  /* help line: what the hovered control does + where it lives on the unit */
+  #help { margin: 10px 2px 0; height: 3.4em; overflow: hidden; max-width: 1100px; color: var(--dim); text-transform: none; letter-spacing: .04em; font-size: 11px; line-height: 1.7; }
+  #help b { color: #fff; font-weight: 400; letter-spacing: .12em; text-transform: uppercase; }
+  #help span::before { content: " · "; color: #444; }
+  #help .hpanel { color: #bbb; }
+
   /* footer telemetry, bottom-right like the plugins */
   #tele { margin-top: 26px; text-align: right; color: #6a6a6a; font-size: 10px; letter-spacing: .22em; line-height: 1.9; }
   #rx { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #222; margin-left: 6px; vertical-align: 1px; }
@@ -318,6 +343,7 @@
       <div class="cell btncell"><div class="seg"><button id="mutate" title="nudge every param by the amount">mutate</button><button id="random" title="roll every param">random</button></div><span class="clabel">whole patch</span></div>
     </div>
   </fieldset>
+  <div id="help" hidden></div>
 </div>
 
 <div id="face"></div>

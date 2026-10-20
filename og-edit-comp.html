@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; background: #000; overflow: hidden; }
+  /* the rack: edit's own line drawings of the units (edit-frozen/devices/*.svg),
+     stacked the way the bottom rack holds them, between two rails */
+  #rack { position: absolute; left: 300px; top: 50%; width: 600px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 9px; }
+  #rack::before, #rack::after { content: ""; position: absolute; top: -26px; bottom: -26px; width: 0; border-left: 1.5px solid rgba(255,255,255,0.15); }
+  #rack::before { left: -14px; } #rack::after { right: -14px; }
+  .unit svg { display: block; width: 100%; height: auto; stroke-width: 1.2; }
+  .unit { color: rgba(255,255,255,0.42); }
+  .unit.lit { color: #fff; }
+</style>
+</head>
+<body data-ready="0">
+<div id="rack"></div>
+<script>
+// og-edit comp — same rules as the other share images: no type, the graphic is
+// the whole image. One unit lit (the JV-1080), the rest at rest.
+const UNITS = ["tx81z", "matrix1000", "tg55", "jv1080", "s330", "d110", "u110"];
+const LIT = "jv1080";
+(async () => {
+  const rack = document.getElementById("rack");
+  for (const id of UNITS) {
+    const svg = await (await fetch(`edit-frozen/devices/${id}.svg`)).text();
+    const el = document.createElement("div");
+    el.className = "unit" + (id === LIT ? " lit" : "");
+    el.innerHTML = svg;
+    rack.append(el);
+  }
+  document.body.dataset.ready = "1";
+})();
+</script>
+</body>
+</html>
