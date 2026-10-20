@@ -144,7 +144,9 @@ function randomize(params, amount = 1) {
     if (amount >= 1) v = p.min + Math.random() * (span + 1);
     else if (p.options || span <= 1) { if (Math.random() > amount * 0.5) continue; v = p.min + Math.random() * (span + 1); }
     else v = (values[p.key] ?? p.min) + (Math.random() * 2 - 1) * span * amount * 0.5;
-    setValue(p, Math.floor(v >= p.max ? p.max : v), { send: false, from: "load" });
+    v = Math.floor(v >= p.max ? p.max : v);
+    if (p.skip?.includes(v)) v = values[p.key] ?? p.min; // values the unit ignores (JV-2080 TAP-SYNC)
+    setValue(p, v, { send: false, from: "load" });
   }
   driver.sendPatch(values);
   setStale(false); // every value just went out: the knobs describe the sound again
@@ -253,13 +255,15 @@ function renderGroup(g) {
       return h("div", { class: "cell btncell" }, b, h("span", { class: "clabel" }, ""));
     }
     if (as === "seg") {
-      const labels = c.labels || p.options;
-      const btns = labels.map((l, i) => h("button", { title: p.options?.[i], onclick: () => { begin(); write(p.min + i); end(); }, onpointerenter: hover }, l));
+      // c.values: the raw value behind each label, when some values aren't offered (JV-2080: no PCM card group)
+      const labels = c.labels || p.options, vals = c.values || labels.map((_, i) => p.min + i);
+      const btns = labels.map((l, i) => h("button", { title: p.options?.[vals[i] - p.min], onclick: () => { begin(); write(vals[i]); end(); }, onpointerenter: hover }, l));
       const cell = h("div", { class: "cell segcell" }, h("div", { class: "seg" }, btns), h("span", { class: "clabel" }, c.label));
-      return bindAll(ps, { update: (v) => btns.forEach((b, i) => b.classList.toggle("on", p.min + i === v)), changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
+      return bindAll(ps, { update: (v) => btns.forEach((b, i) => b.classList.toggle("on", vals[i] === v)), changed: (on) => cell.classList.toggle("changed", on), flash: () => flash(cell) }, cell);
     }
     if (as === "pick") {
-      const optionList = () => (p.options || Array.from({ length: p.max - p.min + 1 }, (_, i) => fmt(p, p.min + i))).map((o, i) => new Option(o, p.min + i));
+      const optionList = () => (p.options || Array.from({ length: p.max - p.min + 1 }, (_, i) => fmt(p, p.min + i))).map((o, i) => new Option(o, p.min + i))
+        .filter((o) => !c.values || c.values.includes(Number(o.value)));
       const sel = h("select", { class: "box", onchange: (e) => { begin(); write(Number(e.target.value)); end(); }, onpointerenter: hover }, optionList());
       const cell = h("label", { class: "cell pickcell", title: p.name }, sel, h("span", { class: "clabel" }, c.label));
       // wave names change with the tone's wave group / bank — rebuild the list when they do
