@@ -1,0 +1,292 @@
+{
+  "comment": "Rows follow the sound: sample → grain → movement (random + two LFOs) → envelope/filter/reverb → voice, pattern, EFX. Stepped controls are lists; hover any control for what it does and where it lives on the unit.",
+  "rows": [
+    {
+      "id": "source",
+      "groups": [
+        {
+          "title": "sample",
+          "controls": [
+            {
+              "k": "sample",
+              "label": "sample",
+              "as": "pick"
+            },
+            {
+              "k": "pitch",
+              "label": "pitch"
+            },
+            {
+              "k": "position",
+              "label": "position"
+            },
+            {
+              "k": "length",
+              "label": "length/fb"
+            },
+            {
+              "k": "speed",
+              "label": "speed"
+            },
+            {
+              "k": "dir",
+              "label": "dir",
+              "as": "pick"
+            },
+            {
+              "k": "blend",
+              "label": "blend"
+            }
+          ]
+        },
+        {
+          "title": "grain",
+          "controls": [
+            {
+              "k": "size",
+              "label": "size"
+            },
+            {
+              "k": "shape",
+              "label": "shape"
+            },
+            {
+              "k": "timing",
+              "label": "timing"
+            },
+            {
+              "k": "jitter",
+              "label": "jitter"
+            },
+            {
+              "k": "density",
+              "label": "density"
+            },
+            {
+              "k": "diffusion",
+              "label": "diffusion"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "motion",
+      "groups": [
+        {
+          "title": "random",
+          "controls": [
+            {
+              "k": "posRate",
+              "label": "pos rate"
+            },
+            {
+              "k": "posDepth",
+              "label": "pos depth"
+            },
+            {
+              "k": "rndSize",
+              "label": "size rnd"
+            },
+            {
+              "k": "rndShape",
+              "label": "shape rnd"
+            }
+          ]
+        },
+        {
+          "title": "mod 1 · lfo",
+          "controls": [
+            {
+              "k": "m1assign",
+              "label": "assign",
+              "as": "pick"
+            },
+            {
+              "k": "m1shape",
+              "label": "shape",
+              "as": "pick"
+            },
+            {
+              "k": "m1rate",
+              "label": "rate"
+            },
+            {
+              "k": "m1depth",
+              "label": "depth"
+            },
+            {
+              "k": "m1fade",
+              "label": "fade in"
+            },
+            {
+              "k": "m1retrig",
+              "label": "retrig"
+            }
+          ]
+        },
+        {
+          "title": "mod 2 · lfo",
+          "controls": [
+            {
+              "k": "m2assign",
+              "label": "assign",
+              "as": "pick"
+            },
+            {
+              "k": "m2shape",
+              "label": "shape",
+              "as": "pick"
+            },
+            {
+              "k": "m2rate",
+              "label": "rate"
+            },
+            {
+              "k": "m2depth",
+              "label": "depth"
+            },
+            {
+              "k": "m2retrig",
+              "label": "retrig"
+            },
+            {
+              "k": "modSync",
+              "label": "sync 1+2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "out",
+      "groups": [
+        {
+          "title": "envelope",
+          "controls": [
+            {
+              "k": "attack",
+              "label": "attack"
+            },
+            {
+              "k": "release",
+              "label": "release"
+            }
+          ]
+        },
+        {
+          "title": "filter",
+          "controls": [
+            {
+              "k": "ftype",
+              "label": "type",
+              "as": "seg"
+            },
+            {
+              "k": "cutoff",
+              "label": "cutoff"
+            },
+            {
+              "k": "reso",
+              "label": "reso"
+            }
+          ]
+        },
+        {
+          "title": "reverb",
+          "controls": [
+            {
+              "k": "rtype",
+              "label": "type",
+              "as": "pick"
+            },
+            {
+              "k": "shimmer",
+              "label": "shimmer"
+            },
+            {
+              "k": "rmix",
+              "label": "mix"
+            },
+            {
+              "k": "lineRev",
+              "label": "line in →"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "play",
+      "groups": [
+        {
+          "title": "voice",
+          "controls": [
+            {
+              "k": "vmode",
+              "label": "mode",
+              "as": "seg"
+            },
+            {
+              "k": "vadj",
+              "label": "glide/arp"
+            },
+            {
+              "k": "octave",
+              "label": "octave",
+              "as": "pick"
+            },
+            {
+              "k": "velocity",
+              "label": "velo"
+            }
+          ]
+        },
+        {
+          "title": "pattern",
+          "controls": [
+            {
+              "k": "ptnLevel",
+              "label": "level"
+            },
+            {
+              "k": "swing",
+              "label": "swing"
+            },
+            {
+              "k": "transpose",
+              "label": "transpose",
+              "as": "pick"
+            },
+            {
+              "k": "rndStep",
+              "label": "rnd step",
+              "as": "pick"
+            },
+            {
+              "k": "prmLock",
+              "label": "prm lock"
+            }
+          ]
+        },
+        {
+          "title": "efx",
+          "controls": [
+            {
+              "k": "efxMode",
+              "label": "efx mode"
+            },
+            {
+              "k": "efxNote",
+              "label": "efx note"
+            },
+            {
+              "k": "freeze",
+              "label": "freeze"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
