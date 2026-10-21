@@ -264,8 +264,7 @@ ${headBlock({ title: meta.title, description: meta.dek || meta.title, url, ogIma
   <article>
 ${html}
   </article>
-  <form id="subscribe" name="subscribe" method="POST" action="/" data-netlify="true" netlify-honeypot="bot-field">
-    <input type="hidden" name="form-name" value="subscribe">
+  <form id="subscribe">
     <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
     <label class="sub-label" for="sub-email">mailing list — releases + new tools, straight from the workshop</label>
     <div class="sub-row">
@@ -275,9 +274,9 @@ ${html}
   </form>
   <footer class="post-foot"><a href="../news.html">← all posts</a></footer>
 <script>
-// AJAX post to Netlify Forms so the page never navigates — same form name as
-// the homepage dialog, so submissions land in the same bucket. only works on
-// the deployed site; local POSTs 404 and fall into the error branch.
+// /api/subscribe (Resend), source "news" — the page never navigates. only works
+// on the deployed site (or \`netlify dev\`); a plain local server 404s into the
+// error branch.
 const subForm = document.getElementById("subscribe");
 subForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -286,12 +285,14 @@ subForm.addEventListener("submit", async (e) => {
   const oldMsg = subForm.querySelector(".sub-msg");
   if (oldMsg) oldMsg.remove();
   try {
-    const res = await fetch("/", {
+    const email = subForm.querySelector('input[type="email"]').value.trim();
+    const res = await fetch("/api/subscribe", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(new FormData(subForm)).toString(),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, source: "news", "bot-field": subForm.querySelector('[name="bot-field"]').value }),
     });
     if (!res.ok) throw new Error(String(res.status));
+    try { localStorage.setItem("newspeech.email", email); } catch (_) {}
     subForm.innerHTML = '<span class="sub-msg">signal received — you\\'re on the list</span>';
   } catch (err) {
     btn.disabled = false;
