@@ -27,7 +27,7 @@ let saved = {};           // last loaded/saved — the A/B reference + changed m
 let compareSnapshot = null;
 let undo = [], redo = [];
 let pending = new Map();  // coalesced live sends
-let heldNote = null, octave = 4;
+let octave = 4;
 let mutAmt = Number(lsGet("mutate", "15"));
 const mutateAmount = () => mutAmt / 100;
 let cur = { bank: 0, prog: 0 }, scanning = false;
@@ -367,9 +367,27 @@ async function getFromSynth() {
 // test notes go to the editor channel, unless the schema names a param holding a part's receive
 // channel (U-110: ch 16 is control-only, part 1 listens on its own RCV CH)
 const noteChannel = () => { const k = schema.noteChannelParam; return k && values[k] != null ? values[k] : channel(); };
-let heldCh = 0;
-function noteOn(n) { if (heldNote != null) midi.noteOff(heldCh, heldNote); heldNote = n; heldCh = noteChannel(); midi.noteOn(heldCh, n, 100); $("#hold").classList.add("on"); }
-function noteOff() { if (heldNote != null) midi.noteOff(heldCh, heldNote); heldNote = null; $("#hold").classList.remove("on"); }
+// polyphonic: one entry per source (a computer key, or "hold" for space / the hold button), each
+// remembering the channel + note it started with so an octave or channel change mid-hold still
+// releases the right note
+const held = new Map();
+const sounding = (ch, n) => [...held.values()].some((h) => h.ch === ch && h.n === n);
+function noteOn(id, n) {
+  if (held.has(id)) return;
+  const ch = noteChannel();
+  held.set(id, { ch, n });
+  midi.noteOn(ch, n, 100);
+  $("#hold").classList.add("on");
+}
+function noteOff(id) {
+  const h = held.get(id);
+  if (!h) return;
+  held.delete(id);
+  if (!sounding(h.ch, h.n)) midi.noteOff(h.ch, h.n); // the same note held by another key keeps ringing
+  $("#hold").classList.toggle("on", held.size > 0);
+}
+function allNotesOff() { for (const id of [...held.keys()]) noteOff(id); }
+const toggleHold = () => held.size ? allNotesOff() : noteOn("hold", 12 * octave + 12);
 
 // ---------- setup ----------
 function fillPorts() {
@@ -462,7 +480,7 @@ async function boot() {
   barcode();
   $("#get").onclick = getFromSynth;
   $("#send").onclick = () => { driver.sendPatch(values); setStale(false); status("sent whole patch to edit buffer"); };
-  $("#hold").onclick = () => heldNote != null ? noteOff() : noteOn(12 * octave + 12);
+  $("#hold").onclick = toggleHold;
   $("#undo").onclick = doUndo;
   $("#redo").onclick = doRedo;
   $("#ab").onclick = toggleCompare;
@@ -883,7 +901,7 @@ async function runConnect() {
 function disconnect() {
   probing++;
   scanningNames = false; skipNames = true;
-  noteOff();
+  allNotesOff();
   closeSetup();
   renderRack();
   status("pick a synth");
@@ -1243,16 +1261,18 @@ addEventListener("keydown", (e) => {
     return;
   }
   if (e.repeat) return;
-  if (e.key === " ") { e.preventDefault(); return heldNote != null ? noteOff() : noteOn(12 * octave + 12); }
+  if (e.key === " ") { e.preventDefault(); return toggleHold(); }
   if (e.key === "z") { octave = Math.max(0, octave - 1); return status(`octave ${octave}`); }
   if (e.key === "x") { octave = Math.min(8, octave + 1); return status(`octave ${octave}`); }
   if (e.key === "l") return $("#setup").hidden ? openSetup() : closeSetup();
   if (e.key === "[") return stepProgram(-1);
   if (e.key === "]") return stepProgram(1);
-  if (e.key in KEYS) noteOn(12 * octave + 12 + KEYS[e.key]);
+  if (e.key in KEYS) noteOn(e.key, 12 * octave + 12 + KEYS[e.key]);
 });
 addEventListener("keyup", (e) => {
-  if (e.key in KEYS && heldNote === 12 * octave + 12 + KEYS[e.key]) noteOff();
+  if (e.key in KEYS) noteOff(e.key);
 });
+// keyups are lost once the window loses focus — release everything rather than leave notes stuck
+addEventListener("blur", allNotesOff);
 
 boot();
