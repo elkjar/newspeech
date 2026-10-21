@@ -372,11 +372,11 @@ const noteChannel = () => { const k = schema.noteChannelParam; return k && value
 // releases the right note
 const held = new Map();
 const sounding = (ch, n) => [...held.values()].some((h) => h.ch === ch && h.n === n);
-function noteOn(id, n) {
+function noteOn(id, n, vel = 100) {
   if (held.has(id)) return;
   const ch = noteChannel();
   held.set(id, { ch, n });
-  midi.noteOn(ch, n, 100);
+  midi.noteOn(ch, n, vel);
   $("#hold").classList.add("on");
 }
 function noteOff(id) {
@@ -388,6 +388,25 @@ function noteOff(id) {
 }
 function allNotesOff() { for (const id of [...held.keys()]) noteOff(id); }
 const toggleHold = () => held.size ? allNotesOff() : noteOn("hold", 12 * octave + 12);
+
+// a MIDI keyboard (setup → keyboard in) plays whichever synth is open: notes join the held set
+// (so they release on disconnect / blur like the computer keys); bend, pressure, mod wheel and
+// sustain pass through on the note channel. Its other CCs stay off the synth — edit wouldn't
+// know a param had moved.
+function keyboardIn(data) {
+  if (view !== "edit" || !schema) return;
+  const kind = data[0] & 0xf0;
+  if (kind === 0x90 && data[2] > 0) return noteOn(`in:${data[1]}`, data[1], data[2]);
+  if (kind === 0x90 || kind === 0x80) return noteOff(`in:${data[1]}`);
+  if (kind === 0xa0 || kind === 0xd0 || kind === 0xe0 || (kind === 0xb0 && (data[1] === 1 || data[1] === 64)))
+    midi.send([kind | noteChannel(), ...data.slice(1)]);
+}
+function fillKeyboard() {
+  if (!midi.access) return;
+  const want = midi.savedKeyboard(), ins = midi.inputs();
+  $("#kbd").replaceChildren(h("option", { value: "" }, "—"), ...ins.map((p) => h("option", { value: p.id }, p.name)));
+  $("#kbd").value = ins.some((p) => p.id === want) ? want : "";
+}
 
 // ---------- setup ----------
 function fillPorts() {
@@ -437,7 +456,9 @@ async function selectDevice(id) {
 async function boot() {
   let midiErr = null;
   try { await midi.init(); } catch (e) { midiErr = e; }
-  midi.onPorts = () => schema && fillPorts();
+  midi.onPorts = () => { fillKeyboard(); if (schema) fillPorts(); };
+  midi.onKeyboard = keyboardIn;
+  fillKeyboard();
   midi.on((ev) => {
     if (!driver) return;
     $("#rx").classList.remove("blink"); void $("#rx").offsetWidth; $("#rx").classList.add("blink");
@@ -458,6 +479,7 @@ async function boot() {
   if (!LOCAL) devices = await (await fetch("devices.json")).json();
   devices = devices.filter((d) => !d.error);
   $("#in").onchange = $("#out").onchange = usePorts;
+  $("#kbd").onchange = () => midi.useKeyboard($("#kbd").value);
   $("#back").onclick = disconnect;
   shelfDrop();
   // the empty cells after the last card count too: dragging there moves it to the end

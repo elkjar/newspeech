@@ -22,7 +22,8 @@ export class Midi {
   async init() {
     // edit.app: native MIDI behind a Web MIDI-shaped access object (tauri.js)
     this.access = APP ? await tauriMidiAccess() : await navigator.requestMIDIAccess({ sysex: true });
-    this.access.onstatechange = () => this.onPorts?.();
+    this.access.onstatechange = () => { this.useKeyboard(this.savedKeyboard()); this.onPorts?.(); };
+    this.useKeyboard(this.savedKeyboard());
   }
 
   inputs() { return [...this.access.inputs.values()]; }
@@ -30,14 +31,35 @@ export class Midi {
 
   // ports are remembered per device id so each synth keeps its cable
   usePorts(deviceId, inId, outId) {
-    if (this.input) this.input.onmidimessage = null;
+    const prev = this.input;
     this.input = this.access.inputs.get(inId) || null;
     this.output = this.access.outputs.get(outId) || null;
-    if (this.input) this.input.onmidimessage = (e) => this.receive(e.data);
+    this.bindInputs(prev);
     lsSet(`${deviceId}.in`, inId || "");
     lsSet(`${deviceId}.out`, outId || "");
   }
   savedPorts(deviceId) { return { in: lsGet(`${deviceId}.in`, ""), out: lsGet(`${deviceId}.out`, "") }; }
+
+  // the keyboard input is global (not per synth): its messages go to onKeyboard, which plays
+  // whichever synth is open. Re-resolved on every port change so a replugged keyboard comes back.
+  useKeyboard(inId) {
+    const prev = this.kbdIn;
+    this.kbdIn = this.access.inputs.get(inId) || null;
+    lsSet("kbd.in", inId || "");
+    if (this.kbdIn !== prev) this.bindInputs(prev);
+  }
+  savedKeyboard() { return lsGet("kbd.in", ""); }
+
+  // one handler per port (edit.app's bridge keeps one per port name), so the synth's input and
+  // the keyboard input share it when they're the same port — and then the keyboard isn't
+  // forwarded, or the synth's own keys would play it twice
+  bindInputs(prev) {
+    if (prev && prev !== this.input && prev !== this.kbdIn) prev.onmidimessage = null;
+    for (const p of new Set([this.input, this.kbdIn])) if (p) p.onmidimessage = (e) => {
+      if (p === this.input) this.receive(e.data);
+      else this.onKeyboard?.(e.data);
+    };
+  }
 
   send(bytes) {
     if (!this.output) return false;

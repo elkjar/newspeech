@@ -377,6 +377,11 @@
         <div class="mrow"><span class="mnote" id="conninfo">—</span><button class="btn mini-btn" id="reconnect">change ports / reconnect</button></div>
       </section>
       <section class="msec">
+        <div class="msec-label">keyboard</div>
+        <label class="cell portcell"><select class="box" id="kbd"></select><span class="clabel">keyboard in</span></label>
+        <div class="mnote">a MIDI keyboard on this port plays whichever synth is open — notes, velocity, bend, pressure, mod wheel and sustain, on the synth's note channel. one pick for every synth</div>
+      </section>
+      <section class="msec">
         <div class="msec-label">backups</div>
         <button class="progressbtn" id="backup"><span class="pfill"></span><span class="plabel">create backup</span></button>
         <div class="mnote">reads every program on the synth into one dated .syx (~40 s) — the sound doesn't change</div>
