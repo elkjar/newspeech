@@ -19,6 +19,11 @@ take 1 per root. --takes N keeps N takes and splits the velocity range
 between them (file names <name>-NNN-LO-HI.wav + inst chunk), so how hard a
 note is hit picks the take — a pseudo round-robin at N x the memory.
 
+Fitting 8 long kits (waves prints run ~19 MB each) into one preset:
+--every N keeps every Nth root (2 = 8 of the 16 C/E/G# roots, 8 semitones
+apart, so no note is pitched more than ±4), --max-secs S caps each file at
+S seconds with a 1 s fade (cuts into a printed reverb tail, not the hold).
+
 Output: OUT/<pad>-<name>/ per kit (numbered so the Bitbox's alphabetical
 file list matches pad order). On the Bitbox: open any file in a folder,
 File -> Load All, set that pad's MIDI channel. Keep the total under the
@@ -30,6 +35,7 @@ SAMPLES = os.path.expanduser(
     "~/Library/CloudStorage/Dropbox-Personal/___MUSIC/___NEWSPEECH/__SEQUENCE/SAMPLES")
 THRESH_DB = -60.0
 FADE_S = 0.05
+CAP_FADE_S = 1.0
 RAM_MB = 64
 
 
@@ -96,7 +102,7 @@ def vel_ranges(n):
     return [(edges[k], edges[k + 1] - 1 if k < n - 1 else 127) for k in range(n)]
 
 
-def convert(kit_dir, pad, out, takes, mono):
+def convert(kit_dir, pad, out, takes, mono, every=1, max_secs=None):
     kit = json.load(open(os.path.join(kit_dir, "kit.seqkit")))
     voices = list(kit["voices"].values())
     roots = voices[0]["roots"]
@@ -107,7 +113,7 @@ def convert(kit_dir, pad, out, takes, mono):
     odir = os.path.join(out, f"{pad}-{name}")
     os.makedirs(odir)
     seen, nfiles = set(), 0
-    for r in roots:
+    for r in roots[::every]:
         midi = r["midi"]
         if midi in seen:
             sys.exit(f"{kit_dir}: duplicate root {midi}")
@@ -118,6 +124,9 @@ def convert(kit_dir, pad, out, takes, mono):
             src = os.path.join(kit_dir, f)
             end, dur = last_audible(src)
             keep = int(min(dur, end + FADE_S) * 10000) / 10000  # never past the end
+            fade = FADE_S
+            if max_secs and keep > max_secs:
+                keep, fade = max_secs, CAP_FADE_S
             stem = f"{name}-{midi:03d}" + (f"-{lo:03d}-{hi:03d}" if layered else "")
             dst = os.path.join(odir, stem + ".wav")
             with tempfile.TemporaryDirectory() as td:
@@ -126,7 +135,7 @@ def convert(kit_dir, pad, out, takes, mono):
                 # exporter chunks; remix - = mono mixdown with headroom
                 # -D: no dither, so re-running gives byte-identical files
                 cmd = ["sox", src, "-D", "-b", "16", tmp] + (["remix", "-"] if mono else []) + [
-                    "trim", "0", f"{keep:.4f}", "fade", "t", "0", f"{keep:.4f}", f"{FADE_S}"]
+                    "trim", "0", f"{keep:.4f}", "fade", "t", "0", f"{keep:.4f}", f"{fade}"]
                 subprocess.run(cmd, check=True)
                 add_chunks(tmp, midi, lo if layered else 0, hi if layered else 127)
                 shutil.move(tmp, dst)
@@ -140,6 +149,8 @@ def main():
     ap.add_argument("kits", nargs="+", help="kit folders / library paths / PRINT zips, pad order")
     ap.add_argument("-o", "--out", default="~/Desktop/bitbox-preset", help="output folder (must not exist)")
     ap.add_argument("--takes", type=int, default=1, help="round-robin takes to keep per root, as velocity layers")
+    ap.add_argument("--every", type=int, default=1, help="keep every Nth root (2 = half the roots, half the memory)")
+    ap.add_argument("--max-secs", type=float, help="cap each file at this many seconds (1 s fade)")
     ap.add_argument("--stereo", action="store_true", help="keep stereo files (default: sum to mono)")
     a = ap.parse_args()
     if len(a.kits) > 8:
@@ -151,7 +162,8 @@ def main():
     total = 0
     with tempfile.TemporaryDirectory() as tmp:
         for pad, k in enumerate(a.kits, 1):
-            folder, n, size, lo, hi = convert(find_kit_dir(k, tmp), pad, out, max(1, a.takes), not a.stereo)
+            folder, n, size, lo, hi = convert(find_kit_dir(k, tmp), pad, out, max(1, a.takes), not a.stereo,
+                                              max(1, a.every), a.max_secs)
             total += size
             print(f"pad {pad} / ch {pad}  {folder:22s} {n:3d} files  {size / 1048576:5.1f} MB  roots {lo}-{hi}")
     mb = total / 1048576
