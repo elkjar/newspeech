@@ -88,8 +88,9 @@ function setValue(p, v, { send = true, from = "ui" } = {}) {
   if (send) { pending.set(p.key, p); schedule(); touched.set(p.key, performance.now()); }
   // driver-state params (Emax edit key) retarget the editor: read what's there now
   if (send && p.msg === "local") { clearTimeout(rereadTimer); rereadTimer = setTimeout(getFromSynth, 400); }
+  if (schema.takeover) { clearTimeout(liveTimer); liveTimer = setTimeout(() => lsSet(`${schema.id}.live`, JSON.stringify(values)), 300); }
 }
-let rereadTimer = null;
+let rereadTimer = null, liveTimer = null;
 // last time edit itself changed each param: units with soft thru (PRO-800) bounce every
 // CC straight back, and mid-drag those echoes would yank the knob to an older value
 const touched = new Map();
@@ -433,6 +434,8 @@ async function selectDevice(id) {
   driver = makeDriver(schema, midi, channel, { get: (k) => lsGet(`${schema.id}.${k}`, null), set: (k, v) => { lsSet(`${schema.id}.${k}`, v); if (APP && k === "library") pushLibrary(schema.id, v); } });
   // until GET reads the synth: bipolar params sit at centre, the rest at min
   values = Object.fromEntries(schema.params.map((p) => [p.key, p.default ?? (p.display === "bipolar" ? clamp(p, -(p.valueOffset || 0)) : p.min)]));
+  // takeover units (Hedra): edit's last sound comes back, and connecting pushes it
+  if (schema.takeover) try { Object.assign(values, JSON.parse(lsGet(`${schema.id}.live`, "{}"))); } catch {}
   saved = {}; undo = []; redo = [];
   $("#ch").value = channel() + 1;
   $("#pname").hidden = !nameParams().length;
@@ -892,6 +895,7 @@ async function runConnect() {
     if (driver.canRead === false) {
       step(schema.liveNote || `the ${schema.name} can't be asked anything — live controls, preset select and bank capture`).ok();
       pickBank = null; renderProgramControls(); setView("edit");
+      if (schema.takeover) { driver.sendPatch(values); setStale(false); status(`${schema.name} · edit's sound sent — the pedal now matches the controls`); return; }
       setStale(true); // nothing read yet — the knobs are guesses until send / a stored pattern
       status(driver.keepsLibrary && !schema.noDim ? `${schema.name} · knobs dimmed until edit's sound is on the unit — send, or pick a stored pattern` : `${schema.name} · live controls`); return;
     }
@@ -977,6 +981,7 @@ async function adoptProgram(bank, prog) {
   const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
   if (!got) return getFromSynth();
   if (got.empty && driver.keepsLibrary) {
+    if (schema.takeover) { driver.sendPatch(values); return status(`${slotName(bank, prog)} — edit has no copy, so the current controls were sent over the pedal's preset`); }
     setStale(true);
     if (schema.noDim) return status(`${slotName(bank, prog)} — the pedal's own preset; edit has no copy, so the controls show your last sound, not this one (send or store makes them true)`);
     return status(`${slotName(bank, prog)} — the unit's own pattern; edit has no copy, so the dimmed knobs are your last sound, not this one (send or store makes them true)`);
