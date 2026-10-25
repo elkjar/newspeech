@@ -1,0 +1,442 @@
+{
+  "id": "hedra",
+  "name": "Meris Hedra",
+  "transport": "meris",
+  "folder": "Meris Hedra",
+  "source": "Meris Hedra manual (global settings pp. 2-4, presets §8, MIDI CC table §9), https://www.analoguehaven.com/meris/hedra/manual.pdf; MIDI in via a Chase Bliss MIDIbox (port jumpered for Meris), verified on ch 15 2026-10-24",
+  "liveNote": "the Hedra can't be asked anything — live controls, preset select, and a library of presets kept in edit (saving on the pedal is Alt)",
+  "setup": [
+    "MIDI comes in on the EXP jack through a MIDI-to-TRS box (Meris MIDI I/O, or a Chase Bliss MIDIbox output jumpered for Meris) with a stereo TRS cable. In only — the box sends nothing back.",
+    "On the pedal: hold Alt (left LED switch) while powering up; LEDs blink 3 times. Pitch 3 to max = EXP jack is MIDI. Pitch 2 = channel (binary on the LEDs; max = omni). Power-cycle to save.",
+    "Give it its own channel — CCs shared with the OBNE pedals mean different things there (CC 14 = Hedra bypass, Dark Star mix, Black Fountain dry).",
+    "edit keeps your presets (Dropbox): store files the sound under the preset number; selecting that number later recalls the pedal's preset and pushes edit's copy on top. To keep it in the pedal too, hold Alt on the pedal after.",
+    "MIDI notes tune the pitch voices: one held note sets Pitch 1, two set 1 + 2, three set all three; note off mutes that voice."
+  ],
+  "groups": [
+    {
+      "id": "pitch",
+      "name": "Pitch"
+    },
+    {
+      "id": "alt",
+      "name": "Alt"
+    },
+    {
+      "id": "delay",
+      "name": "Delay"
+    },
+    {
+      "id": "switches",
+      "name": "Switches"
+    },
+    {
+      "id": "name",
+      "name": "Label"
+    }
+  ],
+  "programs": {
+    "banks": [
+      {
+        "label": "presets",
+        "count": 16,
+        "write": true
+      }
+    ],
+    "pcBase": 1,
+    "note": "PC 1-16 = presets 1-16 (1-4 = a 4-button footswitch's)"
+  },
+  "params": [
+    {
+      "key": "key",
+      "name": "Key",
+      "group": "pitch",
+      "min": 0,
+      "max": 127,
+      "cc": 16,
+      "default": 0,
+      "note": "min→max: C, D♭, D, E♭, E, F, G♭, G, A♭, A, B♭, B, chromatic (max)"
+    },
+    {
+      "key": "microTune",
+      "name": "Micro Tune",
+      "group": "pitch",
+      "min": 0,
+      "max": 127,
+      "cc": 17,
+      "default": 0,
+      "note": "slightly detunes all three voices"
+    },
+    {
+      "key": "mix",
+      "name": "Mix",
+      "group": "pitch",
+      "min": 0,
+      "max": 127,
+      "cc": 18,
+      "default": 64,
+      "note": "dry ↔ wet"
+    },
+    {
+      "key": "pitch1",
+      "name": "Pitch 1",
+      "group": "pitch",
+      "min": 0,
+      "max": 127,
+      "cc": 19,
+      "default": 64,
+      "note": "min→max: off, −2 oct, −oct, −7, −5, −3, unison (noon), +3, +5, +7, +oct, +2 oct — diatonic to Key/Scale"
+    },
+    {
+      "key": "pitch2",
+      "name": "Pitch 2",
+      "group": "pitch",
+      "min": 0,
+      "max": 127,
+      "cc": 20,
+      "default": 64,
+      "note": "min→max: off, −2 oct, −oct, −7, −5, −3, unison (noon), +3, +5, +7, +oct, +2 oct — diatonic to Key/Scale"
+    },
+    {
+      "key": "pitch3",
+      "name": "Pitch 3",
+      "group": "pitch",
+      "min": 0,
+      "max": 127,
+      "cc": 21,
+      "default": 64,
+      "note": "min→max: off, −2 oct, −oct, −7, −5, −3, unison (noon), +3, +5, +7, +oct, +2 oct — diatonic to Key/Scale"
+    },
+    {
+      "key": "scale",
+      "name": "Scale Type",
+      "group": "alt",
+      "min": 0,
+      "max": 127,
+      "cc": 22,
+      "default": 0,
+      "note": "Alt + Key. min→max: major, minor, melodic minor, harmonic minor, double harmonic, lydian pentatonic, minor pentatonic"
+    },
+    {
+      "key": "correction",
+      "name": "Pitch Correction + Glide",
+      "group": "alt",
+      "min": 0,
+      "max": 127,
+      "cc": 23,
+      "default": 0,
+      "note": "Alt + Micro Tune. min→mid: none / loose / strict correction; mid→max: glide amount"
+    },
+    {
+      "key": "feedback",
+      "name": "Delay Feedback",
+      "group": "alt",
+      "min": 0,
+      "max": 127,
+      "cc": 24,
+      "default": 64,
+      "note": "Alt + Mix. Series modes: Pitch 3 sets the loop; dual modes: Pitch 1 and 3 feed it"
+    },
+    {
+      "key": "div1",
+      "name": "Time Division 1",
+      "group": "alt",
+      "min": 0,
+      "max": 127,
+      "cc": 25,
+      "default": 64,
+      "note": "Alt + Pitch 1: fraction of the main tempo for voice 1"
+    },
+    {
+      "key": "div2",
+      "name": "Time Division 2",
+      "group": "alt",
+      "min": 0,
+      "max": 127,
+      "cc": 26,
+      "default": 64,
+      "note": "Alt + Pitch 2: fraction of the main tempo for voice 2"
+    },
+    {
+      "key": "div3",
+      "name": "Time Division 3",
+      "group": "alt",
+      "min": 0,
+      "max": 127,
+      "cc": 27,
+      "default": 64,
+      "note": "Alt + Pitch 3: fraction of the main tempo for voice 3"
+    },
+    {
+      "key": "delayMode",
+      "name": "Delay Mode",
+      "group": "delay",
+      "min": 0,
+      "max": 3,
+      "options": [
+        "series + pitch fdbk",
+        "series",
+        "dual + cross fdbk",
+        "dual"
+      ],
+      "cc": 29,
+      "ccValues": [
+        0,
+        63,
+        95,
+        127
+      ],
+      "default": 1,
+      "note": "the mode button: dual = 2 short stereo delays, dual + series = with cross-feedback, series = one long delay, pitch feedback = pitch shifters in the loop"
+    },
+    {
+      "key": "tempo",
+      "name": "Tempo",
+      "group": "delay",
+      "min": 0,
+      "max": 127,
+      "cc": 15,
+      "default": 40,
+      "note": "10 ms steps (40 = 400 ms). Series modes hold 520 ms, dual 260 ms — longer is subdivided to fit"
+    },
+    {
+      "key": "halfSpeed",
+      "name": "Half Speed",
+      "group": "delay",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "cc": 9,
+      "ccValues": [
+        0,
+        127
+      ],
+      "default": 0,
+      "note": "Alt + Tap"
+    },
+    {
+      "key": "smoothing",
+      "name": "Pitch Smoothing",
+      "group": "delay",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "cc": 30,
+      "ccValues": [
+        0,
+        127
+      ],
+      "default": 1,
+      "note": "Alt + Bypass: off = hard steps through the intervals"
+    },
+    {
+      "key": "swell",
+      "name": "Volume Swell",
+      "group": "delay",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "cc": 31,
+      "ccValues": [
+        0,
+        127
+      ],
+      "default": 0,
+      "note": "auto swell on your pick attack (hold Tap on the pedal)"
+    },
+    {
+      "key": "tap",
+      "name": "Tap Tempo",
+      "group": "switches",
+      "min": 127,
+      "max": 127,
+      "cc": 28,
+      "notInPatch": true,
+      "norandom": true
+    },
+    {
+      "key": "onOff",
+      "name": "Bypass",
+      "group": "switches",
+      "min": 0,
+      "max": 1,
+      "options": [
+        "off",
+        "on"
+      ],
+      "cc": 14,
+      "ccValues": [
+        0,
+        127
+      ],
+      "default": 1,
+      "notInPatch": true,
+      "norandom": true,
+      "note": "off = bypassed"
+    },
+    {
+      "key": "expression",
+      "name": "Expression",
+      "group": "switches",
+      "min": 0,
+      "max": 127,
+      "cc": 4,
+      "default": 0,
+      "notInPatch": true,
+      "norandom": true,
+      "note": "the EXP pedal morph, live only"
+    },
+    {
+      "key": "name0",
+      "name": "Label 1",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name1",
+      "name": "Label 2",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name2",
+      "name": "Label 3",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name3",
+      "name": "Label 4",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name4",
+      "name": "Label 5",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name5",
+      "name": "Label 6",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name6",
+      "name": "Label 7",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name7",
+      "name": "Label 8",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name8",
+      "name": "Label 9",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name9",
+      "name": "Label 10",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name10",
+      "name": "Label 11",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name11",
+      "name": "Label 12",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name12",
+      "name": "Label 13",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name13",
+      "name": "Label 14",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name14",
+      "name": "Label 15",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    },
+    {
+      "key": "name15",
+      "name": "Label 16",
+      "group": "name",
+      "min": 32,
+      "max": 126,
+      "display": "char",
+      "default": 32
+    }
+  ]
+}

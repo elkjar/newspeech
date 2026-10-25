@@ -1,0 +1,122 @@
+{
+  "comment": "Rows follow the pedal: Key / Micro Tune / Mix over Pitch 1-3, then the Alt layer under the same knobs, then the mode button and switches.",
+  "rows": [
+    {
+      "id": "main",
+      "groups": [
+        {
+          "title": "pitch",
+          "controls": [
+            {
+              "k": "key",
+              "label": "key"
+            },
+            {
+              "k": "microTune",
+              "label": "micro tune"
+            },
+            {
+              "k": "mix",
+              "label": "mix"
+            },
+            {
+              "k": "pitch1",
+              "label": "pitch 1"
+            },
+            {
+              "k": "pitch2",
+              "label": "pitch 2"
+            },
+            {
+              "k": "pitch3",
+              "label": "pitch 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "alt",
+      "groups": [
+        {
+          "title": "alt",
+          "controls": [
+            {
+              "k": "scale",
+              "label": "scale"
+            },
+            {
+              "k": "correction",
+              "label": "correct/glide"
+            },
+            {
+              "k": "feedback",
+              "label": "feedback"
+            },
+            {
+              "k": "div1",
+              "label": "div 1"
+            },
+            {
+              "k": "div2",
+              "label": "div 2"
+            },
+            {
+              "k": "div3",
+              "label": "div 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sw",
+      "groups": [
+        {
+          "title": "delay",
+          "controls": [
+            {
+              "k": "delayMode",
+              "label": "mode",
+              "as": "seg"
+            },
+            {
+              "k": "tempo",
+              "label": "tempo"
+            },
+            {
+              "k": "halfSpeed",
+              "label": "half"
+            },
+            {
+              "k": "smoothing",
+              "label": "smooth"
+            },
+            {
+              "k": "swell",
+              "label": "swell"
+            }
+          ]
+        },
+        {
+          "title": "switches",
+          "controls": [
+            {
+              "k": "onOff",
+              "label": "on"
+            },
+            {
+              "k": "tap",
+              "label": "tap",
+              "as": "tap"
+            },
+            {
+              "k": "expression",
+              "label": "exp"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
