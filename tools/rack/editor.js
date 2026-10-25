@@ -88,8 +88,9 @@ function setValue(p, v, { send = true, from = "ui" } = {}) {
   if (send) { pending.set(p.key, p); schedule(); touched.set(p.key, performance.now()); }
   // driver-state params (Emax edit key) retarget the editor: read what's there now
   if (send && p.msg === "local") { clearTimeout(rereadTimer); rereadTimer = setTimeout(getFromSynth, 400); }
+  if (schema.takeover) { clearTimeout(liveTimer); liveTimer = setTimeout(() => lsSet(`${schema.id}.live`, JSON.stringify(values)), 300); }
 }
-let rereadTimer = null;
+let rereadTimer = null, liveTimer = null;
 // last time edit itself changed each param: units with soft thru (PRO-800) bounce every
 // CC straight back, and mid-drag those echoes would yank the knob to an older value
 const touched = new Map();
@@ -118,9 +119,9 @@ function applyAll(next, { send = true } = {}) {
 function showLast(p, v) {
   const el = $("#help");
   if (!el || !p || !(p.note || p.panel)) return;
-  el.replaceChildren(h("b", {}, p.name), " ", fmt(p, v),
+  el.replaceChildren(...[h("b", {}, p.name), " ", fmt(p, v),
     p.panel ? h("span", { class: "hpanel" }, "on the unit: " + p.panel) : null,
-    p.note ? h("span", {}, p.note) : null);
+    p.note ? h("span", {}, p.note) : null].filter((k) => k != null));
 }
 
 // ---------- name ----------
@@ -433,6 +434,8 @@ async function selectDevice(id) {
   driver = makeDriver(schema, midi, channel, { get: (k) => lsGet(`${schema.id}.${k}`, null), set: (k, v) => { lsSet(`${schema.id}.${k}`, v); if (APP && k === "library") pushLibrary(schema.id, v); } });
   // until GET reads the synth: bipolar params sit at centre, the rest at min
   values = Object.fromEntries(schema.params.map((p) => [p.key, p.default ?? (p.display === "bipolar" ? clamp(p, -(p.valueOffset || 0)) : p.min)]));
+  // takeover units (Hedra): edit's last sound comes back, and connecting pushes it
+  if (schema.takeover) try { Object.assign(values, JSON.parse(lsGet(`${schema.id}.live`, "{}"))); } catch {}
   saved = {}; undo = []; redo = [];
   $("#ch").value = channel() + 1;
   $("#pname").hidden = !nameParams().length;
@@ -798,7 +801,7 @@ async function probeRack(cards, { force = false } = {}) {
   const fresh = (c) => !force && cache[c.d.id] && Date.now() - cache[c.d.id].at < PROBE_FRESH_MS && cache[c.d.id].ok !== "untested";
   for (const c of cards) if (c.ready && fresh(c)) showProbe(c, cache[c.d.id].ok);
   const all = cards;
-  const summary = () => { const n = all.filter((c) => c.card.classList.contains("online")).length;
+  const summary = rackSummary = () => { const n = all.filter((c) => c.card.matches(".online, .marked")).length;
     status(`${n} of ${all.length} connected${n ? " — click one to open it" : ""}`); };
   cards = cards.filter((c) => !c.ready || !fresh(c));
   const toCheck = cards.filter((c) => c.ready).length;
@@ -816,7 +819,12 @@ async function probeRack(cards, { force = false } = {}) {
       midi.usePorts(c.d.id, c.ports.in, c.ports.out);
       const ch = () => Number(lsGet(`${c.d.id}.ch`, String(sch.defaultChannel ?? 1))) - 1;
       const drv = makeDriver(sch, midi, ch, { get: (k) => lsGet(`${c.d.id}.${k}`, null), set: (k, v) => lsSet(`${c.d.id}.${k}`, v) });
-      if (!drv.probe) { c.card.classList.remove("waiting", "probing"); c.card.classList.add("untested"); c.state.hidden = true; continue; }
+      if (!drv.probe) {
+        c.card.classList.remove("waiting", "probing"); c.card.classList.add("untested"); c.state.hidden = true;
+        if (drv.identify && !c.card.querySelector(".ident")) c.card.querySelector(".rgo").append(identButton(c, sch, drv));
+        markable(c);
+        continue;
+      }
       ok = await drv.probe().catch(() => false);
     } catch { ok = false; }
     if (run !== probing) return;
@@ -825,6 +833,32 @@ async function probeRack(cards, { force = false } = {}) {
     if (ok) online++;
   }
   if (run === probing) summary();
+}
+
+let rackSummary = () => {}; // the rack's "n of m connected" line, set by probeRack
+
+// pedals can't answer, so they can't go green on their own: click the dot to say it's
+// connected (kept until clicked off)
+function markable(c) {
+  const dot = c.card.querySelector(".rdot"), key = `${c.d.id}.here`;
+  const show = () => { const on = lsGet(key, "") === "1"; c.card.classList.toggle("marked", on); dot.title = on ? "marked connected — click to unmark" : "click to mark connected"; };
+  dot.onclick = (e) => { e.stopPropagation(); lsSet(key, lsGet(key, "") === "1" ? "" : "1"); show(); if (!document.querySelector(".rackcard.waiting")) rackSummary(); };
+  show();
+}
+
+// pedals can't answer: a button that blinks the pedal's bypass so you can see it's on the line
+function identButton(c, sch, drv) {
+  const b = h("button", { class: "btn ident", onclick: async (e) => {
+    e.stopPropagation();
+    if (b.disabled) return;
+    b.disabled = true; b.textContent = "blinking…";
+    midi.gapMs = sch.gapMs ?? 2;
+    midi.usePorts(c.d.id, c.ports.in, c.ports.out);
+    await drv.identify().catch(() => {});
+    b.disabled = false; b.textContent = "identify";
+  } }, "identify");
+  b.title = "flicks the pedal's bypass off and on twice (leaves it on)";
+  return b;
 }
 
 async function startConnect(id, { auto = true } = {}) {
@@ -861,8 +895,9 @@ async function runConnect() {
     if (driver.canRead === false) {
       step(schema.liveNote || `the ${schema.name} can't be asked anything — live controls, preset select and bank capture`).ok();
       pickBank = null; renderProgramControls(); setView("edit");
+      if (schema.takeover) { driver.sendPatch(values); setStale(false); status(`${schema.name} · edit's sound sent — the pedal now matches the controls`); return; }
       setStale(true); // nothing read yet — the knobs are guesses until send / a stored pattern
-      status(driver.keepsLibrary ? `${schema.name} · knobs dimmed until edit's sound is on the unit — send, or pick a stored pattern` : `${schema.name} · live controls`); return;
+      status(driver.keepsLibrary && !schema.noDim ? `${schema.name} · knobs dimmed until edit's sound is on the unit — send, or pick a stored pattern` : `${schema.name} · live controls`); return;
     }
     // 1 — is it there?
     const s1 = step(`talking to the ${schema.name}…`);
@@ -946,7 +981,9 @@ async function adoptProgram(bank, prog) {
   const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
   if (!got) return getFromSynth();
   if (got.empty && driver.keepsLibrary) {
+    if (schema.takeover) { driver.sendPatch(values); return status(`${slotName(bank, prog)} — edit has no copy, so the current controls were sent over the pedal's preset`); }
     setStale(true);
+    if (schema.noDim) return status(`${slotName(bank, prog)} — the pedal's own preset; edit has no copy, so the controls show your last sound, not this one (send or store makes them true)`);
     return status(`${slotName(bank, prog)} — the unit's own pattern; edit has no copy, so the dimmed knobs are your last sound, not this one (send or store makes them true)`);
   }
   const before = snapshot();
@@ -957,7 +994,8 @@ async function adoptProgram(bank, prog) {
 
 // library units can't be read: after landing on a pattern edit doesn't hold, its knobs
 // stop describing the sound — dim them until edit's values are on the unit again
-function setStale(on) { document.body.classList.toggle("stale", !!on && !!driver?.keepsLibrary); }
+// (schema.noDim: pedals whose knobs read fine as a guess — Hedra)
+function setStale(on) { document.body.classList.toggle("stale", !!on && !!driver?.keepsLibrary && !schema.noDim); }
 
 // ◂ ▸ walk straight through the banks: last program of one → first of the next
 function stepProgram(dir) {

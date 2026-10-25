@@ -82,8 +82,11 @@
   .rackcard.online .rgo, .rackcard.waiting .rgo { visibility: hidden; }
   .rackcard.pending { opacity: .55; }
   .rackcard.untested { cursor: pointer; }
-  .rackcard.untested .rdot { border-color: #ddd; }
-  .rackcard.untested .rgo { visibility: hidden; }
+  .rackcard.untested .rdot { border-color: #ddd; cursor: pointer; outline: 6px solid transparent; } /* click: mark connected (bigger hit area) */
+  .rackcard.marked .rdot { background: #3ddc6f; border-color: #3ddc6f; box-shadow: 0 0 6px rgba(61,220,111,.6); }
+  .rackcard.marked legend { color: #eee; }
+  .rackcard.marked .art { color: #e0e0e0; }
+  .rackcard.untested .rgo > :not(.ident) { display: none; } /* the card itself connects; pedals keep identify */
   /* units with no read-back (G-Force): no get/send/store/a-b */
   body.noread .cell:has(#get), body.noread:not(.canwrite) #storecell, body.noread .cell:has(#ab) { display: none; }
   .rackcard.pending .rgo { visibility: hidden; }

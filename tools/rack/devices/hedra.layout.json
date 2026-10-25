@@ -1,0 +1,127 @@
+{
+  "comment": "Globals (key/scale/tune/mix/feedback/glide) over the three delay voices (pitch + time division each), then mode and switches.",
+  "rows": [
+    {
+      "id": "main",
+      "groups": [
+        {
+          "title": "globals",
+          "controls": [
+            {
+              "k": "key",
+              "label": "key",
+              "as": "pick"
+            },
+            {
+              "k": "scale",
+              "label": "scale",
+              "as": "pick"
+            },
+            {
+              "k": "microTune",
+              "label": "micro tune"
+            },
+            {
+              "k": "mix",
+              "label": "mix"
+            },
+            {
+              "k": "feedback",
+              "label": "feedback"
+            },
+            {
+              "k": "correction",
+              "label": "correct/glide"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "voices",
+      "groups": [
+        {
+          "title": "delays",
+          "controls": [
+            {
+              "k": "pitch1",
+              "label": "pitch 1",
+              "as": "pick"
+            },
+            {
+              "k": "div1",
+              "label": "div 1"
+            },
+            {
+              "k": "pitch2",
+              "label": "pitch 2",
+              "as": "pick"
+            },
+            {
+              "k": "div2",
+              "label": "div 2"
+            },
+            {
+              "k": "pitch3",
+              "label": "pitch 3",
+              "as": "pick"
+            },
+            {
+              "k": "div3",
+              "label": "div 3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sw",
+      "groups": [
+        {
+          "title": "mode",
+          "controls": [
+            {
+              "k": "delayMode",
+              "label": "mode",
+              "as": "seg"
+            },
+            {
+              "k": "tempo",
+              "label": "tempo"
+            },
+            {
+              "k": "halfSpeed",
+              "label": "half"
+            },
+            {
+              "k": "smoothing",
+              "label": "smooth"
+            },
+            {
+              "k": "swell",
+              "label": "swell"
+            }
+          ]
+        },
+        {
+          "title": "switches",
+          "controls": [
+            {
+              "k": "onOff",
+              "label": "on"
+            },
+            {
+              "k": "tap",
+              "label": "tap",
+              "as": "tap"
+            },
+            {
+              "k": "expression",
+              "label": "exp"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

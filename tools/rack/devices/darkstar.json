@@ -2,6 +2,7 @@
   "id": "darkstar",
   "name": "OBNE Dark Star Stereo",
   "transport": "obne",
+  "identify": "onOff",
   "noNotes": true,
   "folder": "OBNE Dark Star Stereo",
   "source": "Old Blood Noise Endeavors, Dark Star Stereo instruction manual pp. 4-5 (MIDI functions + CC table), https://oldbloodnoise.com/s/Dark-Star-Stereo.pdf",
