@@ -2,6 +2,7 @@
   "id": "hedra",
   "name": "Meris Hedra",
   "transport": "meris",
+  "identify": "onOff",
   "folder": "Meris Hedra",
   "noDim": true,
   "source": "Meris Hedra manual (global settings pp. 2-4, presets §8, MIDI CC table §9), https://www.analoguehaven.com/meris/hedra/manual.pdf; MIDI in via a Chase Bliss MIDIbox (port jumpered for Meris), verified on ch 15 2026-10-24",

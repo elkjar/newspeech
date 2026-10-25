@@ -2,6 +2,7 @@
   "id": "blackfountain",
   "name": "OBNE Black Fountain Stereo",
   "transport": "obne",
+  "identify": "bypass",
   "noNotes": true,
   "folder": "OBNE Black Fountain Stereo",
   "source": "Old Blood Noise Endeavors, Black Fountain (OL2) instruction manual 2025-03-21 pp. 4-5 (MIDI functions + CC table), https://oldbloodnoise.com/s/20250321-Instruction-Manual-Black-Fountain-OL2.pdf",

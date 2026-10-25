@@ -816,7 +816,11 @@ async function probeRack(cards, { force = false } = {}) {
       midi.usePorts(c.d.id, c.ports.in, c.ports.out);
       const ch = () => Number(lsGet(`${c.d.id}.ch`, String(sch.defaultChannel ?? 1))) - 1;
       const drv = makeDriver(sch, midi, ch, { get: (k) => lsGet(`${c.d.id}.${k}`, null), set: (k, v) => lsSet(`${c.d.id}.${k}`, v) });
-      if (!drv.probe) { c.card.classList.remove("waiting", "probing"); c.card.classList.add("untested"); c.state.hidden = true; continue; }
+      if (!drv.probe) {
+        c.card.classList.remove("waiting", "probing"); c.card.classList.add("untested"); c.state.hidden = true;
+        if (drv.identify && !c.card.querySelector(".ident")) c.card.querySelector(".rgo").append(identButton(c, sch, drv));
+        continue;
+      }
       ok = await drv.probe().catch(() => false);
     } catch { ok = false; }
     if (run !== probing) return;
@@ -825,6 +829,21 @@ async function probeRack(cards, { force = false } = {}) {
     if (ok) online++;
   }
   if (run === probing) summary();
+}
+
+// pedals can't answer: a button that blinks the pedal's bypass so you can see it's on the line
+function identButton(c, sch, drv) {
+  const b = h("button", { class: "btn ident", onclick: async (e) => {
+    e.stopPropagation();
+    if (b.disabled) return;
+    b.disabled = true; b.textContent = "blinking…";
+    midi.gapMs = sch.gapMs ?? 2;
+    midi.usePorts(c.d.id, c.ports.in, c.ports.out);
+    await drv.identify().catch(() => {});
+    b.disabled = false; b.textContent = "identify";
+  } }, "identify");
+  b.title = "flicks the pedal's bypass off and on twice (leaves it on)";
+  return b;
 }
 
 async function startConnect(id, { auto = true } = {}) {

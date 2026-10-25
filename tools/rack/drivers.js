@@ -1553,6 +1553,12 @@ function obneDriver(schema, midi, getChannel, prefs) {
     },
     sameProgram(a, b) { return !!a && !!b && schema.params.every((p) => a[p.key] === b[p.key]); },
     library: () => Object.entries(lib()).map(([k, e]) => { const [bi, prog] = k.split("-").map(Number); return { bi, prog, name: slotName(e.values), values: e.values, at: e.at }; }),
+    // nothing comes back, so the rack can't light up: flick schema.identify (the
+    // bypass switch) off/on twice instead so you can see which pedal answers — ends on
+    identify: schema.identify && (async function () {
+      const p = schema.params.find((x) => x.key === schema.identify);
+      for (let i = 0; i < 2; i++) { this.sendParam(p, p.min); await wait(350); this.sendParam(p, p.max); await wait(350); }
+    }),
     decode() { return []; },
   };
 }
