@@ -9,7 +9,8 @@
           "controls": [
             {
               "k": "key",
-              "label": "key"
+              "label": "key",
+              "as": "pick"
             },
             {
               "k": "microTune",
@@ -43,7 +44,8 @@
           "controls": [
             {
               "k": "scale",
-              "label": "scale"
+              "label": "scale",
+              "as": "pick"
             },
             {
               "k": "correction",

@@ -51,10 +51,40 @@
       "name": "Key",
       "group": "pitch",
       "min": 0,
-      "max": 127,
+      "max": 12,
       "cc": 16,
       "default": 0,
-      "note": "min→max: C, D♭, D, E♭, E, F, G♭, G, A♭, A, B♭, B, chromatic (max)"
+      "note": "the Key knob. Sent at the middle of each 1/13 of the CC range (the manual gives no map)",
+      "options": [
+        "C",
+        "D♭",
+        "D",
+        "E♭",
+        "E",
+        "F",
+        "G♭",
+        "G",
+        "A♭",
+        "A",
+        "B♭",
+        "B",
+        "chromatic"
+      ],
+      "ccValues": [
+        5,
+        15,
+        25,
+        34,
+        44,
+        54,
+        64,
+        74,
+        84,
+        94,
+        103,
+        113,
+        123
+      ]
     },
     {
       "key": "microTune",
@@ -111,10 +141,28 @@
       "name": "Scale Type",
       "group": "alt",
       "min": 0,
-      "max": 127,
+      "max": 6,
       "cc": 22,
       "default": 0,
-      "note": "Alt + Key. min→max: major, minor, melodic minor, harmonic minor, double harmonic, lydian pentatonic, minor pentatonic"
+      "note": "Alt + Key. Sent at the middle of each 1/7 of the CC range (the manual gives no map)",
+      "options": [
+        "major",
+        "minor",
+        "melodic minor",
+        "harmonic minor",
+        "double harmonic",
+        "lydian pentatonic",
+        "minor pentatonic"
+      ],
+      "ccValues": [
+        9,
+        27,
+        46,
+        64,
+        82,
+        101,
+        119
+      ]
     },
     {
       "key": "correction",
