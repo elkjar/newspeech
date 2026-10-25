@@ -980,6 +980,7 @@ function goProgram(bank, prog) {
 async function adoptProgram(bank, prog) {
   const got = driver.adoptSlot && await driver.adoptSlot(bank, prog).catch(() => null);
   if (!got) return getFromSynth();
+  repush();
   if (got.empty && driver.keepsLibrary) {
     if (schema.takeover) { driver.sendPatch(values); return status(`${slotName(bank, prog)} — edit has no copy, so the current controls were sent over the pedal's preset`); }
     setStale(true);
@@ -990,6 +991,17 @@ async function adoptProgram(bank, prog) {
   saved = { ...got.values }; applyAll(got.values, { send: false }); commitUndo(before);
   setStale(false);
   status(`${slotName(bank, prog)}${nameString() ? ` — “${nameString()}”` : ""}`);
+}
+
+// pedals still loading their own preset when edit's copy lands keep the preset (Hedra:
+// the PC switched, the CCs ~270 ms later didn't stick; ~400 ms later they did).
+// schema.repushMs: send the controls again at each delay after the switch — current
+// values, so a knob turned meanwhile survives
+let repushTimers = [];
+function repush() {
+  repushTimers.forEach(clearTimeout);
+  const sch = schema;
+  repushTimers = (schema.repushMs || []).map((ms) => setTimeout(() => { if (schema === sch) driver.sendPatch(values); }, ms));
 }
 
 // library units can't be read: after landing on a pattern edit doesn't hold, its knobs
