@@ -159,6 +159,18 @@ ${SHARED_CSS}
   article code { background: rgba(255, 255, 255, 0.07); padding: 1px 5px; font-size: 0.92em; }
   article pre code { background: none; padding: 0; }
   article hr { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.15); width: 120px; margin: 36px auto; }
+  /* reference tables are raw HTML in the post: <div class="table"><table>… scrolls sideways on phones */
+  article .table { overflow-x: auto; margin: 8px 0 28px; }
+  article table { border-collapse: collapse; width: 100%; font-size: 12px; line-height: 1.5; white-space: nowrap; }
+  article th, article td { text-align: left; padding: 6px 18px 6px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+  article th {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #999;
+    border-bottom-color: rgba(255, 255, 255, 0.3);
+  }
 
   /* media — inline figures break the text column slightly: 780 wide, centered */
   figure { margin: 28px 0; }
