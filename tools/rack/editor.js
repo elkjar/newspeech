@@ -862,7 +862,7 @@ async function runConnect() {
       step(schema.liveNote || `the ${schema.name} can't be asked anything — live controls, preset select and bank capture`).ok();
       pickBank = null; renderProgramControls(); setView("edit");
       setStale(true); // nothing read yet — the knobs are guesses until send / a stored pattern
-      status(driver.keepsLibrary ? `${schema.name} · knobs dimmed until edit's sound is on the unit — send, or pick a stored pattern` : `${schema.name} · live controls`); return;
+      status(driver.keepsLibrary && !schema.noDim ? `${schema.name} · knobs dimmed until edit's sound is on the unit — send, or pick a stored pattern` : `${schema.name} · live controls`); return;
     }
     // 1 — is it there?
     const s1 = step(`talking to the ${schema.name}…`);
@@ -947,6 +947,7 @@ async function adoptProgram(bank, prog) {
   if (!got) return getFromSynth();
   if (got.empty && driver.keepsLibrary) {
     setStale(true);
+    if (schema.noDim) return status(`${slotName(bank, prog)} — the pedal's own preset; edit has no copy, so the controls show your last sound, not this one (send or store makes them true)`);
     return status(`${slotName(bank, prog)} — the unit's own pattern; edit has no copy, so the dimmed knobs are your last sound, not this one (send or store makes them true)`);
   }
   const before = snapshot();
@@ -957,7 +958,8 @@ async function adoptProgram(bank, prog) {
 
 // library units can't be read: after landing on a pattern edit doesn't hold, its knobs
 // stop describing the sound — dim them until edit's values are on the unit again
-function setStale(on) { document.body.classList.toggle("stale", !!on && !!driver?.keepsLibrary); }
+// (schema.noDim: pedals whose knobs read fine as a guess — Hedra)
+function setStale(on) { document.body.classList.toggle("stale", !!on && !!driver?.keepsLibrary && !schema.noDim); }
 
 // ◂ ▸ walk straight through the banks: last program of one → first of the next
 function stepProgram(dir) {

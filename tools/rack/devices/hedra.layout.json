@@ -22,15 +22,18 @@
             },
             {
               "k": "pitch1",
-              "label": "pitch 1"
+              "label": "pitch 1",
+              "as": "pick"
             },
             {
               "k": "pitch2",
-              "label": "pitch 2"
+              "label": "pitch 2",
+              "as": "pick"
             },
             {
               "k": "pitch3",
-              "label": "pitch 3"
+              "label": "pitch 3",
+              "as": "pick"
             }
           ]
         }
