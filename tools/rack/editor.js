@@ -119,9 +119,9 @@ function applyAll(next, { send = true } = {}) {
 function showLast(p, v) {
   const el = $("#help");
   if (!el || !p || !(p.note || p.panel)) return;
-  el.replaceChildren(h("b", {}, p.name), " ", fmt(p, v),
+  el.replaceChildren(...[h("b", {}, p.name), " ", fmt(p, v),
     p.panel ? h("span", { class: "hpanel" }, "on the unit: " + p.panel) : null,
-    p.note ? h("span", {}, p.note) : null);
+    p.note ? h("span", {}, p.note) : null].filter((k) => k != null));
 }
 
 // ---------- name ----------
