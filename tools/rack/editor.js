@@ -798,7 +798,7 @@ async function probeRack(cards, { force = false } = {}) {
   const fresh = (c) => !force && cache[c.d.id] && Date.now() - cache[c.d.id].at < PROBE_FRESH_MS && cache[c.d.id].ok !== "untested";
   for (const c of cards) if (c.ready && fresh(c)) showProbe(c, cache[c.d.id].ok);
   const all = cards;
-  const summary = () => { const n = all.filter((c) => c.card.matches(".online, .marked")).length;
+  const summary = rackSummary = () => { const n = all.filter((c) => c.card.matches(".online, .marked")).length;
     status(`${n} of ${all.length} connected${n ? " — click one to open it" : ""}`); };
   cards = cards.filter((c) => !c.ready || !fresh(c));
   const toCheck = cards.filter((c) => c.ready).length;
@@ -832,12 +832,14 @@ async function probeRack(cards, { force = false } = {}) {
   if (run === probing) summary();
 }
 
+let rackSummary = () => {}; // the rack's "n of m connected" line, set by probeRack
+
 // pedals can't answer, so they can't go green on their own: click the dot to say it's
 // connected (kept until clicked off)
 function markable(c) {
   const dot = c.card.querySelector(".rdot"), key = `${c.d.id}.here`;
   const show = () => { const on = lsGet(key, "") === "1"; c.card.classList.toggle("marked", on); dot.title = on ? "marked connected — click to unmark" : "click to mark connected"; };
-  dot.onclick = (e) => { e.stopPropagation(); lsSet(key, lsGet(key, "") === "1" ? "" : "1"); show(); };
+  dot.onclick = (e) => { e.stopPropagation(); lsSet(key, lsGet(key, "") === "1" ? "" : "1"); show(); if (!document.querySelector(".rackcard.waiting")) rackSummary(); };
   show();
 }
 
