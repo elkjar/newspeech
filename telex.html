@@ -176,6 +176,7 @@
         <tbody>
           <tr><td><kbd>F1</kbd>–<kbd>F8</kbd></td><td>Run scripts 1–8 once.</td></tr>
           <tr><td><kbd>Shift</kbd>+<kbd>F1</kbd></td><td>Init: start from nothing. Press it twice. Every script and pattern is emptied, the settings go back to their defaults and the metro stops. The scenes saved on the card stay.</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>F2</kbd> <kbd>F3</kbd></td><td>Undo and redo, up to 16 edits back. The cursor jumps to the line that changed. A line you're still typing goes first: <kbd>Shift</kbd>+<kbd>F2</kbd> puts it back as it was entered. Loading a scene starts the history over.</td></tr>
           <tr><td><kbd>Play</kbd></td><td>Starts and stops the metro, which runs M every <code>M</code> ms. MIDI start and stop do the same.</td></tr>
           <tr><td><kbd>Shift</kbd>+<kbd>Play</kbd></td><td>Runs I again now, so a change to its settings takes effect. Nothing else resets: variables, patterns and the metro stay as they are.</td></tr>
           <tr><td><kbd>Shift</kbd>+<kbd>F8</kbd></td><td>The encoder sets the MIDI out channel: off, 1–16. Notes and CC go out on DIN and USB. Any other key, or three seconds without turning, gives the encoder back to the scripts.</td></tr>
@@ -417,7 +418,7 @@ Y WRAP + Y 4 0 127</pre></div>
       <tr><td class="err">DEL goes first, with ':' after it</td><td>A mod in the middle of a line. Give it its own line.</td></tr>
       <tr><td class="err">nothing after ':'</td><td>A mod with no command.</td></tr>
       <tr><td class="err">too long</td><td>Over 40 characters.</td></tr>
-      <tr><td class="err">too much at once</td><td>The scripts needed more than the box can do in one block of audio, so the rest of that block's work was cut. Usually a big <code>L</code> loop calling <code>SCRIPT</code>.</td></tr>
+      <tr><td class="err">too much at once</td><td>The scripts needed more than the box can do in one block of audio, so the script that ran out stopped where it was and the rest of that run was dropped. Usually a big <code>L</code> loop calling <code>SCRIPT</code>. It shows while it's happening and clears four seconds after.</td></tr>
     </tbody></table></div>
     <p class="sub">Ten scripts, six lines each, 40 characters a line. Six voices: a seventh note takes the oldest. The scripts get about 990 words of work per block of audio (less when the delay or reverb runs), so the box never overloads.</p>
   </section>
