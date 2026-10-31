@@ -37,9 +37,10 @@
   <h2>What it does</h2>
   <dl class="spec">
     <dt>Screen</dt><dd>5″, 800 × 480, the same layout as on the Tracker</dd>
-    <dt>Samples</dt><dd>A library on microSD, with more voices than the Tracker can run</dd>
-    <dt>Console</dt><dd>USB-C to a computer: live script editing, plus USB MIDI</dd>
-    <dt>Keyboard</dt><dd>Any USB keyboard, through a small hub</dd>
+    <dt>Samples</dt><dd>A library on an internal microSD, with more voices than the Tracker can run</dd>
+    <dt>Console</dt><dd>USB-C to a computer: live script editing, USB MIDI, and the card as a USB drive</dd>
+    <dt>Keyboard</dt><dd>Any USB keyboard, through a small hub: all the typing and editing</dd>
+    <dt>Panel</dt><dd>Eight triggers, Play, an encoder with a push, a volume knob</dd>
     <dt>MIDI</dt><dd>5-pin DIN in and out, plus USB MIDI gear on the hub</dd>
     <dt>Audio</dt><dd>Stereo line in, stereo line out, headphones</dd>
     <dt>Power</dt><dd>One 5 V, 3 A supply</dd>
@@ -91,7 +92,7 @@
     <rect x="660" y="50" width="170" height="70" rx="6" class="box"/>
     <text x="745" y="80" class="t c">5″ display</text><text x="745" y="98" class="s c">800 × 480, EVE BT817</text>
     <rect x="660" y="150" width="170" height="56" rx="6" class="box"/>
-    <text x="745" y="183" class="t c">Keys + encoder</text>
+    <text x="745" y="174" class="t c">Keys, encoder</text><text x="745" y="192" class="s c">9 keys, volume</text>
     <rect x="660" y="250" width="170" height="56" rx="6" class="box"/>
     <text x="745" y="274" class="t c">Power in</text><text x="745" y="292" class="s c">5 V, 3 A</text>
 
@@ -99,7 +100,7 @@
     <text x="960" y="283" class="t c">5 V supply</text>
 
     <line x1="162" y1="74" x2="428" y2="74" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
-    <text x="300" y="64" class="ld c">USB-C: console + MIDI</text>
+    <text x="300" y="64" class="ld c">USB-C: console, MIDI, card</text>
     <line x1="160" y1="174" x2="218" y2="174" class="d" marker-end="url(#f1d)"/>
     <line x1="162" y1="234" x2="218" y2="234" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
     <line x1="392" y1="204" x2="428" y2="204" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
@@ -132,83 +133,78 @@
 
 <figure>
   <div class="fig">
-  <svg viewBox="0 0 1040 640" role="img" aria-label="The panels. Front: the 5 inch screen on the left with eight soft keys under it, as on the Tracker; on the right an encoder, four arrow keys, and eight keys for Shift, Insert, Delete, Copy, Play, Pattern, Rec and Master. Back, left to right: USB-C console, two USB-A host ports, MIDI in and out, line in, line out, headphones, microSD and power.">
+  <svg viewBox="0 0 1040 600" role="img" aria-label="The panels. Front: the 5 inch screen with eight trigger keys under it, an encoder with a push, a Play key and a volume knob. Back, left to right: USB-C for the console, MIDI and the card, two USB-A host ports, MIDI in and out, line in, line out, headphones, power and the on switch. The microSD card sits inside.">
     <text x="20" y="22" class="lab">FRONT</text>
-    <rect x="20" y="34" width="1000" height="360" rx="14" class="box"/>
+    <rect x="20" y="34" width="1000" height="340" rx="14" class="box"/>
 
-    <!-- screen, 800 x 480 at half scale -->
-    <rect x="52" y="60" width="480" height="288" rx="4" class="box" style="stroke-width:2"/>
+    <!-- screen, 800 x 480 at 0.6 -->
+    <rect x="52" y="58" width="480" height="288" rx="4" class="box" style="stroke-width:2"/>
     <text x="292" y="196" class="t c">5″ screen</text>
     <text x="292" y="214" class="s c">800 × 480, TELEX's editor as on the Tracker</text>
-    <!-- soft keys under the screen, each under its label on the screen -->
+    <!-- the triggers, each under the label the screen draws for it -->
+    <rect x="52" y="318" width="480" height="28" class="ext" style="stroke-dasharray:2 3"/>
+    <text x="292" y="337" class="s c">run 1 · run 2 · … · run 8 (the screen's soft-key row)</text>
     <g>
-      <rect x="54" y="358" width="54" height="22" rx="3" class="box"/><text x="81" y="374" class="s c">F1</text>
-      <rect x="114" y="358" width="54" height="22" rx="3" class="box"/><text x="141" y="374" class="s c">F2</text>
-      <rect x="174" y="358" width="54" height="22" rx="3" class="box"/><text x="201" y="374" class="s c">F3</text>
-      <rect x="234" y="358" width="54" height="22" rx="3" class="box"/><text x="261" y="374" class="s c">F4</text>
-      <rect x="294" y="358" width="54" height="22" rx="3" class="box"/><text x="321" y="374" class="s c">F5</text>
-      <rect x="354" y="358" width="54" height="22" rx="3" class="box"/><text x="381" y="374" class="s c">F6</text>
-      <rect x="414" y="358" width="54" height="22" rx="3" class="box"/><text x="441" y="374" class="s c">F7</text>
-      <rect x="474" y="358" width="54" height="22" rx="3" class="box"/><text x="501" y="374" class="s c">F8</text>
+      <rect x="54" y="352" width="54" height="16" rx="3" class="box"/>
+      <rect x="114" y="352" width="54" height="16" rx="3" class="box"/>
+      <rect x="174" y="352" width="54" height="16" rx="3" class="box"/>
+      <rect x="234" y="352" width="54" height="16" rx="3" class="box"/>
+      <rect x="294" y="352" width="54" height="16" rx="3" class="box"/>
+      <rect x="354" y="352" width="54" height="16" rx="3" class="box"/>
+      <rect x="414" y="352" width="54" height="16" rx="3" class="box"/>
+      <rect x="474" y="352" width="54" height="16" rx="3" class="box"/>
     </g>
 
-    <!-- encoder -->
-    <circle cx="640" cy="130" r="44" class="box" style="stroke-width:2"/>
-    <circle cx="640" cy="130" r="30" class="ext"/>
-    <text x="640" y="196" class="s c">encoder: script, values</text>
+    <!-- encoder with push -->
+    <circle cx="680" cy="140" r="56" class="box" style="stroke-width:2"/>
+    <circle cx="680" cy="140" r="38" class="ext"/>
+    <text x="680" y="226" class="t c">Encoder</text>
+    <text x="680" y="244" class="s c">turn: script, slot · push: scenes</text>
 
-    <!-- arrows -->
-    <rect x="806" y="70" width="52" height="40" rx="4" class="box"/><text x="832" y="95" class="s c">Up</text>
-    <rect x="748" y="116" width="52" height="40" rx="4" class="box"/><text x="774" y="141" class="s c">Left</text>
-    <rect x="806" y="116" width="52" height="40" rx="4" class="box"/><text x="832" y="141" class="s c">Down</text>
-    <rect x="864" y="116" width="52" height="40" rx="4" class="box"/><text x="890" y="141" class="s c">Right</text>
+    <!-- volume -->
+    <circle cx="900" cy="140" r="36" class="box"/>
+    <line x1="900" y1="140" x2="900" y2="110" class="d"/>
+    <text x="900" y="226" class="t c">Volume</text>
+    <text x="900" y="244" class="s c">the output level</text>
 
-    <!-- function keys, two rows of four -->
-    <rect x="596" y="236" width="88" height="40" rx="4" class="box"/><text x="640" y="261" class="s c">Shift</text>
-    <rect x="696" y="236" width="88" height="40" rx="4" class="box"/><text x="740" y="261" class="s c">Insert</text>
-    <rect x="796" y="236" width="88" height="40" rx="4" class="box"/><text x="840" y="261" class="s c">Delete</text>
-    <rect x="896" y="236" width="88" height="40" rx="4" class="box"/><text x="940" y="261" class="s c">Copy</text>
-    <rect x="596" y="290" width="88" height="40" rx="4" class="box" style="stroke-width:2"/><text x="640" y="315" class="t c">Play</text>
-    <rect x="696" y="290" width="88" height="40" rx="4" class="box"/><text x="740" y="315" class="s c">Pattern</text>
-    <rect x="796" y="290" width="88" height="40" rx="4" class="box"/><text x="840" y="315" class="s c">Rec</text>
-    <rect x="896" y="290" width="88" height="40" rx="4" class="box"/><text x="940" y="315" class="s c">Master</text>
-    <text x="790" y="356" class="s c">metro · scenes · rack · level</text>
+    <!-- play -->
+    <rect x="606" y="282" width="148" height="56" rx="6" class="box" style="stroke-width:2"/>
+    <text x="680" y="315" class="t c">Play</text>
+    <text x="900" y="306" class="s c">everything else:</text>
+    <text x="900" y="324" class="s c">the USB keyboard</text>
 
-    <text x="20" y="438" class="lab">BACK</text>
-    <rect x="20" y="450" width="1000" height="130" rx="14" class="box"/>
+    <text x="20" y="420" class="lab">BACK</text>
+    <rect x="20" y="432" width="1000" height="130" rx="14" class="box"/>
     <g>
-      <rect x="44" y="490" width="44" height="22" rx="8" class="box"/>
-      <text x="66" y="540" class="t c">USB-C</text><text x="66" y="558" class="s c">console</text>
+      <rect x="64" y="472" width="44" height="22" rx="8" class="box" style="stroke-width:2"/>
+      <text x="86" y="522" class="t c">USB-C</text><text x="86" y="540" class="s c">console, MIDI, card</text>
 
-      <rect x="124" y="486" width="52" height="30" rx="2" class="box"/>
-      <rect x="186" y="486" width="52" height="30" rx="2" class="box"/>
-      <text x="181" y="540" class="t c">2 × USB-A</text><text x="181" y="558" class="s c">keyboard, MIDI gear</text>
+      <rect x="196" y="468" width="52" height="30" rx="2" class="box"/>
+      <rect x="258" y="468" width="52" height="30" rx="2" class="box"/>
+      <text x="253" y="522" class="t c">2 × USB-A</text><text x="253" y="540" class="s c">keyboard, MIDI gear</text>
 
-      <circle cx="304" cy="501" r="20" class="box"/><circle cx="304" cy="501" r="4" class="ext"/>
-      <circle cx="356" cy="501" r="20" class="box"/><circle cx="356" cy="501" r="4" class="ext"/>
-      <text x="330" y="540" class="t c">MIDI in, out</text><text x="330" y="558" class="s c">5-pin DIN</text>
+      <circle cx="366" cy="483" r="20" class="box"/><circle cx="366" cy="483" r="4" class="ext"/>
+      <circle cx="418" cy="483" r="20" class="box"/><circle cx="418" cy="483" r="4" class="ext"/>
+      <text x="392" y="522" class="t c">MIDI in, out</text><text x="392" y="540" class="s c">5-pin DIN</text>
 
-      <circle cx="434" cy="501" r="11" class="box"/><circle cx="466" cy="501" r="11" class="box"/>
-      <text x="450" y="540" class="t c">Line in</text><text x="450" y="558" class="s c">L, R</text>
+      <circle cx="484" cy="483" r="11" class="box"/><circle cx="516" cy="483" r="11" class="box"/>
+      <text x="500" y="522" class="t c">Line in</text><text x="500" y="540" class="s c">L, R</text>
 
-      <circle cx="538" cy="501" r="11" class="box"/><circle cx="570" cy="501" r="11" class="box"/>
-      <text x="554" y="540" class="t c">Line out</text><text x="554" y="558" class="s c">L, R</text>
+      <circle cx="594" cy="483" r="11" class="box"/><circle cx="626" cy="483" r="11" class="box"/>
+      <text x="610" y="522" class="t c">Line out</text><text x="610" y="540" class="s c">L, R</text>
 
-      <circle cx="652" cy="501" r="9" class="box"/>
-      <text x="652" y="540" class="t c">Phones</text><text x="652" y="558" class="s c">3.5 mm</text>
+      <circle cx="712" cy="483" r="9" class="box"/>
+      <text x="712" y="522" class="t c">Phones</text><text x="712" y="540" class="s c">3.5 mm</text>
 
-      <rect x="728" y="494" width="48" height="10" rx="2" class="box"/>
-      <text x="752" y="540" class="t c">microSD</text><text x="752" y="558" class="s c">samples, scenes</text>
+      <circle cx="822" cy="483" r="12" class="box" style="stroke-width:2"/><circle cx="822" cy="483" r="4" class="ext"/>
+      <text x="822" y="522" class="t c">Power</text><text x="822" y="540" class="s c">5 V, 3 A</text>
 
-      <circle cx="860" cy="501" r="12" class="box" style="stroke-width:2"/><circle cx="860" cy="501" r="4" class="ext"/>
-      <text x="860" y="540" class="t c">Power</text><text x="860" y="558" class="s c">5 V, 3 A</text>
-
-      <rect x="934" y="492" width="34" height="18" rx="9" class="box"/><circle cx="959" cy="501" r="6" class="ext"/>
-      <text x="951" y="540" class="t c">On</text>
+      <rect x="920" y="474" width="34" height="18" rx="9" class="box"/><circle cx="945" cy="483" r="6" class="ext"/>
+      <text x="937" y="522" class="t c">On</text>
     </g>
   </svg>
   </div>
-  <figcaption><b>Figure 2.</b> The panels. Typing happens on the USB keyboard, so the front keeps only the Tracker keys TELEX uses: eight soft keys under the screen, each under the label the screen draws for it, an encoder, the arrows, and eight function keys. The back carries every cable, so nothing plugs into the front.</figcaption>
+  <figcaption><b>Figure 2.</b> The panels. The USB keyboard does the typing and the editing, so the front keeps only what you play: eight triggers under the screen (each under the label the screen draws for it, as on the Tracker), Play, an encoder that picks a script or a scene slot and opens SCENES when pushed, and a volume knob. With those, a saved scene loads and plays with no keyboard attached. The card lives inside; the computer reaches it over USB-C.</figcaption>
 </figure>
 
 <section class="col">
@@ -217,10 +213,16 @@
     <li><b>CPU.</b> A 600 MHz Cortex-M7, against the Tracker's 180 MHz K66. That headroom is where the extra sample voices come from.</li>
     <li><b>Same codec.</b> The Teensy Audio Shield uses the SGTL5000, the same codec as the Tracker.</li>
     <li><b>Same display family.</b> The Tracker drives an FT812 EVE chip; the box uses a BT817 from the same family, so the drawing code carries over.</li>
-    <li><b>Memory.</b> 16 MB of PSRAM for samples, bought already fitted (ProtoSupplies sells a "Fully Loaded" Teensy 4.1), so there's no fine-pitch soldering. The microSD slot is on the board.</li>
-    <li><b>Two USB ports.</b> The device port carries the console and USB MIDI. A separate host port feeds the hub for the keyboard and MIDI gear.</li>
+    <li><b>Memory.</b> 16 MB of PSRAM for samples, bought already fitted (ProtoSupplies sells a "Fully Loaded" Teensy 4.1), so there's no fine-pitch soldering. The microSD slot is on the board, inside the box.</li>
+    <li><b>Two USB ports.</b> The device port carries the console, USB MIDI and the card. A separate host port feeds the hub for the keyboard and MIDI gear.</li>
   </ul>
   <p>The software port: TELEX sits on a hardware layer written for the Tracker's chip (audio, display, card, USB). That layer gets rewritten for the RT1062. The language, the engine and the screens move over as they are, the same way they already compile for <a href="emulator.html">the browser</a>.</p>
+</section>
+
+<section class="col">
+  <h2>The card</h2>
+  <p>The microSD stays inside, in the Teensy's own slot. Plugged into a computer, the box hands the card over as a USB drive, the way the Tracker firmware already does: while the computer has it, the box stops reading it, and takes it back when it's ejected. Samples, instruments and scenes go on that way. Firmware updates don't need the card at all: the Teensy has its own USB bootloader.</p>
+  <p>The keyboard takes over what the Tracker's other keys did. Enter, Backspace, the arrows, Tab for the encoder, Esc for Play, and Ctrl+Z, C and V already work that way in <a href="emulator.html">the emulator</a>; SCENES, the rack and the level get keyboard shortcuts of their own in the port.</p>
 </section>
 
 <section class="col">
@@ -243,8 +245,8 @@
       <p class="small">Shows: the display layer ported, editing on the box itself.</p>
     </li>
     <li>
-      <h3>The box <span>about $85–170</span></h3>
-      <p>Power, the USB hub, panel sockets, keys and the enclosure.</p>
+      <h3>The box <span>about $70–150</span></h3>
+      <p>Power, the USB hub, panel sockets, the nine keys, the volume knob and the enclosure.</p>
       <p class="small">Shows: a closed box that runs without a computer attached.</p>
     </li>
   </ol>
@@ -272,10 +274,10 @@
       <tr><td>5 V / 3 A supply with a USB-C power-input board <span class="est">est.</span></td><td class="num">$15–25</td></tr>
       <tr><td>Adafruit CH334F 4-port USB hub (#5997)</td><td class="num">$4.95</td></tr>
       <tr><td>Panel sockets: USB-C, 2 × USB-A, audio jacks, headphones <span class="est">est.</span></td><td class="num">$20–40</td></tr>
-      <tr><td>20 panel keys with caps <span class="est">est.</span></td><td class="num">$15–30</td></tr>
+      <tr><td>9 panel keys with caps <span class="est">est.</span></td><td class="num">$8–15</td></tr>
+      <tr><td>Volume knob: a pot the Teensy reads, setting the codec's level <span class="est">est.</span></td><td class="num">$2–4</td></tr>
       <tr><td>Enclosure: aluminium, 3D-printed or laser-cut <span class="est">est.</span></td><td class="num">$20–60</td></tr>
-      <tr><td>microSD extension to the panel, optional <span class="est">est.</span></td><td class="num">$8</td></tr>
-      <tr class="total"><td>Total</td><td class="num">about $270–405</td></tr>
+      <tr class="total"><td>Total</td><td class="num">about $255–385</td></tr>
     </tbody>
   </table>
   </div>
@@ -289,7 +291,8 @@
     <li><b>Grounding.</b> The box shares ground with the computer over USB and with the mixer over audio. Where does the star ground go, and is a USB isolator on the console port worth it?</li>
     <li><b>Display link.</b> The EVE display runs on SPI over a ribbon. How long can that run at 20–30 MHz before it needs buffering or a slower clock?</li>
     <li><b>MIDI.</b> 6N138 or H11L1 for MIDI in on a 3.3 V board? Full 5-pin DIN on the panel, or 3.5 mm TRS to save space?</li>
-    <li><b>Panel keys.</b> 20 mechanical switches: a scan matrix on GPIO, shift registers, or an I²C key controller?</li>
+    <li><b>Internal card.</b> With the card inside and reached over USB, is a slot you get at by opening the case enough of a fallback, for a card that's full or corrupted? Or does it still want a panel slot?</li>
+    <li><b>Volume.</b> A pot read by the Teensy, setting the codec's digital level, keeps audio off the panel wiring. Or is an analog pot on the line and headphone outputs worth the extra path?</li>
     <li><b>Enclosure.</b> An off-the-shelf aluminium case, a 3D print, or laser-cut panels? Any boxes you've had good luck with?</li>
   </ol>
   <p>Beyond this box: <a href="ideas.html">ideas</a>, where CV and gate through an OXI Pipe now live.</p>
