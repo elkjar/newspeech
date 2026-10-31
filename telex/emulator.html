@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // telex emulator</title>
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<meta name="description" content="newspeech — TELEX in the browser: the tracker-box firmware compiled to WebAssembly. Type scripts, run the metro, hear the voice, send MIDI.">
+<meta property="og:title" content="NEWSPEECH // telex emulator">
+<meta property="og:description" content="TELEX in the browser: the box's own firmware, compiled to WebAssembly.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/telex/emulator.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="doc.css">
+<style>
+  /* the box's screen at its own 800 x 480, scaled down to fit; the controls under it are the Tracker keys TELEX uses */
+  .emu { display: grid; gap: 12px; max-width: 832px; outline: none; }
+  .screen { position: relative; border: 1px solid var(--hair); padding: 15px; background: #000; }
+  .emu:focus-visible .screen, .emu.on .screen { border-color: var(--dim); }
+  canvas#screen { display: block; width: 100%; height: auto; aspect-ratio: 800 / 480; background: #000; touch-action: none; cursor: default; }
+  .start { position: absolute; inset: 15px; display: grid; place-items: center; background: rgba(5, 5, 5, 0.72); }
+  .start button { font: 15px var(--mono); letter-spacing: 0.1em; color: var(--bg); background: var(--ink); border: 0; padding: 12px 22px; cursor: pointer; }
+  .start[hidden] { display: none; }
+  .hint { font-size: 11px; color: var(--faint); letter-spacing: 0.04em; min-height: 1.6em; }
+  .keys { display: flex; flex-wrap: wrap; gap: 6px; }
+  .keys button, .bar button, .bar select, .bar label.file { font: 12px var(--mono); color: var(--body); background: var(--panel); border: 1px solid var(--hair);
+    padding: 6px 10px; cursor: pointer; min-width: 44px; }
+  .keys button:hover, .bar button:hover, .bar select:hover, .bar label.file:hover { border-color: var(--dim); color: var(--ink); }
+  .keys button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .keys button.play { color: var(--ink); border-color: var(--dim); }
+  .keys .gap { flex-basis: 10px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; color: var(--dim); }
+  .bar .grp { display: flex; gap: 6px; align-items: center; }
+  .bar input[type="range"] { accent-color: #ddd; width: 110px; }
+  .bar label.file input { display: none; }
+  .map { display: grid; grid-template-columns: max-content 1fr; gap: 0 24px; margin: 0; font-size: 12px; }
+  .map dt, .map dd { margin: 0; padding: 6px 0; border-top: 1px dotted var(--dot); }
+  .map dt { color: var(--ink); white-space: nowrap; }
+  kbd { font: inherit; font-size: 11px; color: var(--ink); border: 1px solid var(--hair); padding: 0 5px; border-radius: 2px; white-space: nowrap; }
+  .err { color: var(--ink); border: 1px solid var(--hair); padding: 12px 14px; }
+  @media (max-width: 560px) {
+    .screen { padding: 6px; }
+    .start { inset: 6px; }
+    .map { grid-template-columns: 1fr; }
+    .map dd { border-top: 0; padding-top: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="col">
+  <nav class="tx" aria-label="TELEX"><a href="./">telex</a><a href="readme.html">readme</a><a href="emulator.html" aria-current="page">emulator</a><a href="hardware.html">hardware</a><a href="ideas.html">ideas</a></nav>
+  <div class="osd"><span>newspeech · telex</span><span>tracker-box 0.16.9, compiled for the browser</span></div>
+  <h1>Emulator</h1>
+  <p class="lede">The box's own firmware, compiled to WebAssembly: the same screen, the same language and the same voice as on the Tracker. Type a line, press <kbd>Enter</kbd>, press <kbd>F1</kbd>.</p>
+</header>
+
+<div class="emu" id="emu" tabindex="0" aria-label="TELEX emulator. Click the screen, then type.">
+  <div class="screen">
+    <canvas id="screen" width="800" height="480" aria-label="the box's screen"></canvas>
+    <div class="start" id="start"><button type="button" id="go">start</button></div>
+  </div>
+  <p class="hint" id="hint">Loading the box…</p>
+  <div class="keys" role="group" aria-label="Tracker keys">
+    <button type="button" data-enc="-1" title="the encoder, back (Shift+Tab)">enc ◀</button>
+    <button type="button" data-enc="1" title="the encoder, on (Tab)">enc ▶</button>
+    <span class="gap"></span>
+    <button type="button" data-btn="up" title="Up">↑</button>
+    <button type="button" data-btn="down" title="Down">↓</button>
+    <button type="button" data-btn="left" title="Left">←</button>
+    <button type="button" data-btn="right" title="Right">→</button>
+    <span class="gap"></span>
+    <button type="button" id="shift" aria-pressed="false" title="Shift (held while pressed here, or hold the computer's Shift)">shift</button>
+    <button type="button" data-btn="insert" title="Insert (Enter)">insert</button>
+    <button type="button" data-btn="delete" title="Delete (Backspace)">delete</button>
+    <button type="button" data-btn="copy" title="Copy (Ctrl+C); with Shift, paste (Ctrl+V)">copy</button>
+    <span class="gap"></span>
+    <button type="button" class="play" data-btn="play" title="Play: the metro (Esc)">play</button>
+    <button type="button" data-btn="pattern" title="Pattern: SCENES">scenes</button>
+    <button type="button" data-btn="rec" title="Rec: the RACK">rack</button>
+  </div>
+  <div class="bar">
+    <span class="grp"><label for="ex">example</label>
+      <select id="ex">
+        <option value="">load a scene…</option>
+        <option value="1">drift</option>
+        <option value="2">steps</option>
+        <option value="3">rain</option>
+        <option value="4">dorian drift</option>
+        <option value="5">collisions</option>
+      </select></span>
+    <span class="grp"><button type="button" id="save">download scene</button>
+      <label class="file">open scene<input type="file" id="open" accept=".txt,text/plain"></label></span>
+    <span class="grp"><label for="vol">volume</label><input type="range" id="vol" min="0" max="100" value="70"></span>
+    <span class="grp"><label for="midi">MIDI out</label><select id="midi"><option value="">off</option></select></span>
+  </div>
+</div>
+
+<section class="col">
+  <h2>Keys</h2>
+  <p>Click the screen first; keys reach the box while it has focus. Letters, digits and the script symbols type on the box's keyboard; you can also click or tap its keys on the screen, and the soft keys along the bottom.</p>
+  <dl class="map">
+    <dt><kbd>Enter</kbd></dt><dd>Insert: enter the line</dd>
+    <dt><kbd>Backspace</kbd></dt><dd>Delete the letter before the cursor; with <kbd>Shift</kbd>, the whole line</dd>
+    <dt><kbd>F1</kbd>–<kbd>F8</kbd></dt><dd>Run scripts 1–8 (with <kbd>Shift</kbd>: init, undo, redo … out)</dd>
+    <dt><kbd>Tab</kbd> <kbd>Shift</kbd>+<kbd>Tab</kbd></dt><dd>The encoder: the next or previous script</dd>
+    <dt>arrows</dt><dd>Move the cursor and the line; with <kbd>Shift</kbd>, move the line itself</dd>
+    <dt><kbd>Esc</kbd></dt><dd>Play: start or stop the metro</dd>
+    <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd> <kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>Undo, redo (the box's <kbd>Shift</kbd>+<kbd>F2</kbd>, <kbd>F3</kbd>)</dd>
+    <dt><kbd>Ctrl</kbd>+<kbd>C</kbd> <kbd>Ctrl</kbd>+<kbd>V</kbd></dt><dd>Copy the line, paste over it</dd>
+    <dt><kbd>Shift</kbd></dt><dd>The box's Shift, held while you hold it</dd>
+  </dl>
+  <p class="small">What's different from the hardware: there are no sample instruments yet (<code>INST</code> plays nothing), no line input, and the CPU readout is the browser's, not the box's. Scenes you save on the SCENES page stay in this browser. MIDI out uses Web MIDI (Chrome, Edge, Safari 18+). <a href="readme.html">The readme</a> has every word.</p>
+</section>
+
+</div>
+
+<script type="module">
+import createBox from "./boxsim.mjs";
+
+const W = 800, H = 480, RATE = 44100;
+const KEY_ROWS = ["1234567890-+", "QWERTYUIOP*/", "ASDFGHJKL:<>", "ZXCVBNM.%=; "].join("");
+const SHIFT_TOP = "!@#$%^&*()_|";
+const STORE = "newspeech.telex.card";  // the card's scenes and TELEX's state, kept in this browser
+const hint = document.getElementById("hint");
+const emu = document.getElementById("emu");
+const canvas = document.getElementById("screen");
+const g = canvas.getContext("2d");
+
+let M, cmd, screenPtr, pcmPtr, midiPtr;
+try {
+  M = await createBox({
+    locateFile: (f) => new URL(f, import.meta.url).href,
+    preRun: [(m) => { m.ENV.BOXSIM_CARD = "/card"; }],  // (read once, at start: before anything asks)
+  });
+} catch (e) {
+  hint.textContent = "The emulator didn't load: " + e.message;
+  throw e;
+}
+
+// --- the card: MEMFS at /card, the examples in Scripts/, what this browser kept laid over them ---
+const FS = M.FS;
+for (const d of ["/card", "/card/Settings", "/card/Scripts", "/card/Instruments", "/card/Recordings", "/card/Samples", "/card/Textures"]) {
+  try { FS.mkdir(d); } catch (e) {}
+}
+FS.writeFile("/card/Settings/box.txt", "start=TELEX\nhotkey.vol=TELEX\nvolume=-8\n");
+const examples = await Promise.all([1, 2, 3, 4, 5].map((n) => fetch(`scenes/0${n}.txt`).then((r) => r.text())));
+examples.forEach((t, i) => FS.writeFile(`/card/Scripts/0${i + 1}.txt`, t));
+FS.writeFile("/card/Settings/telex.txt", examples[0]);
+let kept = {};
+try { kept = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) {}
+for (const [path, text] of Object.entries(kept)) {
+  if (/^\/card\/(Scripts\/\d\d\.txt|Settings\/telex\.txt)$/.test(path)) FS.writeFile(path, text);
+}
+
+if (!M._bx_init()) { hint.textContent = "The box didn't start."; throw new Error("bx_init"); }
+cmd = (line) => M.ccall("bx_cmd", "string", ["string"], [line]);
+pcmPtr = M._malloc(4096 * 4);
+midiPtr = M._malloc(1536);
+
+// --- time: the box runs on the audio clock once sound is on, on the wall clock before ---
+let ctx = null, node = null, gain = null;
+let simMs = 0, base = performance.now(), audioBase = 0, simAtAudio = 0;
+const AHEAD_MS = 120;
+function wanted() {
+  return ctx ? simAtAudio + (ctx.currentTime - audioBase) * 1000 + AHEAD_MS : performance.now() - base;
+}
+function pump() {
+  const w = wanted();
+  let steps = 0;
+  while (simMs < w && steps < 60) {
+    M._bx_tick(5);
+    simMs += 5;
+    steps++;
+    drainPcm();
+  }
+  if (simMs < w - 400) simMs = w;  // behind (a background tab): skip ahead rather than race
+  drainMidi();
+}
+function drainPcm() {
+  for (;;) {
+    const n = M._bx_pcm(pcmPtr, 4096);
+    if (n === 0) return;
+    if (!node) continue;
+    const src = new Int16Array(M.HEAP16.buffer, pcmPtr, n * 2);
+    const f = new Float32Array(n * 2);
+    for (let i = 0; i < f.length; i++) f[i] = src[i] / 32768;
+    node.port.postMessage(f, [f.buffer]);
+    if (n < 4096) return;
+  }
+}
+let midiOut = null;
+function drainMidi() {
+  const n = M._bx_midi(midiPtr, 1536);
+  if (n === 0 || !midiOut) return;
+  const b = new Uint8Array(M.HEAPU8.buffer, midiPtr, n);
+  for (let i = 0; i + 2 < n; i += 3) {
+    try { midiOut.send([b[i], b[i + 1], b[i + 2]]); } catch (e) {}
+  }
+}
+setInterval(pump, 10);
+
+function draw() {
+  const ptr = M._bx_screen();
+  g.putImageData(new ImageData(new Uint8ClampedArray(M.HEAPU8.buffer, ptr, W * H * 4).slice(), W, H), 0, 0);
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+hint.textContent = "Press start for sound. Click the screen, then type.";
+
+// --- sound ---
+const WORKLET = `class Out extends AudioWorkletProcessor {
+  constructor() { super(); this.q = []; this.cur = null; this.i = 0; this.port.onmessage = (e) => { if (this.q.length < 200) this.q.push(e.data); }; }
+  process(_, outs) {
+    const L = outs[0][0], R = outs[0][1] || outs[0][0];
+    for (let n = 0; n < L.length; n++) {
+      if (!this.cur || this.i >= this.cur.length) { this.cur = this.q.shift() || null; this.i = 0; }
+      if (!this.cur) { L[n] = 0; R[n] = 0; continue; }
+      L[n] = this.cur[this.i++]; R[n] = this.cur[this.i++];
+    }
+    return true;
+  }
+}
+registerProcessor("telex-out", Out);`;
+async function startSound() {
+  if (ctx) return;
+  try {
+    ctx = new AudioContext({ sampleRate: RATE, latencyHint: "interactive" });
+  } catch (e) {
+    ctx = new AudioContext();
+  }
+  try { navigator.audioSession && (navigator.audioSession.type = "playback"); } catch (e) {}
+  const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+  await ctx.audioWorklet.addModule(url);
+  node = new AudioWorkletNode(ctx, "telex-out", { numberOfInputs: 0, outputChannelCount: [2] });
+  gain = new GainNode(ctx, { gain: volume() });
+  node.connect(gain).connect(ctx.destination);
+  await ctx.resume();
+  audioBase = ctx.currentTime;
+  simAtAudio = simMs;
+  document.getElementById("start").hidden = true;
+  cmd("telex play");  // (the first press is to hear it: the scene's metro starts)
+  if (ctx.sampleRate !== RATE) hint.textContent = `Your audio runs at ${ctx.sampleRate} Hz; the box makes ${RATE}, so pitch may sit a little off.`;
+  else hint.textContent = "Click the screen, then type. Enter enters a line; F1 runs script 1.";
+  emu.focus();
+}
+document.getElementById("go").addEventListener("click", startSound);
+const vol = document.getElementById("vol");
+const volume = () => Math.pow(vol.value / 100, 2) * 1.2;
+vol.addEventListener("input", () => { if (gain) gain.gain.setTargetAtTime(volume(), ctx.currentTime, 0.02); });
+
+// --- input ---
+let boxShift = false, latched = false;
+function setShift(on) {
+  if (on === boxShift) return;
+  boxShift = on;
+  cmd(`button shift ${on ? "down" : "up"}`);
+  document.getElementById("shift").setAttribute("aria-pressed", String(on));
+}
+function tap(name) { cmd(`button ${name} down`); cmd(`button ${name} up`); }
+function shifted(name) {
+  const was = boxShift;
+  setShift(true); tap(name); setShift(was);
+}
+function typeChar(c) {
+  let pad = KEY_ROWS.indexOf(c.toUpperCase()), need = null;
+  if (pad >= 0) need = pad < 12 ? false : null;
+  else {
+    pad = SHIFT_TOP.indexOf(c);
+    if (pad < 0) return false;
+    need = true;
+  }
+  const was = boxShift;
+  if (need !== null && need !== boxShift) setShift(need);
+  cmd(`pad ${pad} down`); cmd(`pad ${pad} up`);
+  if (boxShift !== was) setShift(was);
+  return true;
+}
+const NAMED = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "insert", Backspace: "delete", Escape: "play" };
+emu.addEventListener("keydown", (e) => {
+  if (e.target !== emu) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (e.key === "Shift") { if (!latched) setShift(true); e.preventDefault(); return; }
+  if (mod) {
+    const k = e.key.toLowerCase();
+    if (k === "z" && !e.shiftKey) shifted("f2");
+    else if ((k === "z" && e.shiftKey) || k === "y") shifted("f3");
+    else if (k === "c") tap("copy");
+    else if (k === "v") shifted("copy");
+    else return;  // the browser keeps the rest (reload, tabs)
+    e.preventDefault();
+    return;
+  }
+  if (/^F[1-8]$/.test(e.key)) { tap("f" + e.key.slice(1)); e.preventDefault(); return; }
+  if (e.key === "Tab") { cmd(`enc ${e.shiftKey ? -1 : 1}`); e.preventDefault(); return; }
+  if (e.key === "PageUp" || e.key === "PageDown") { cmd(`enc ${e.key === "PageUp" ? -1 : 1}`); e.preventDefault(); return; }
+  if (NAMED[e.key]) { tap(NAMED[e.key]); e.preventDefault(); return; }
+  if (e.key.length === 1 && typeChar(e.key)) e.preventDefault();
+});
+emu.addEventListener("keyup", (e) => { if (e.key === "Shift" && !latched) setShift(false); });
+emu.addEventListener("blur", () => { if (!latched) setShift(false); emu.classList.remove("on"); });
+emu.addEventListener("focus", () => emu.classList.add("on"));
+
+document.querySelectorAll("[data-btn]").forEach((b) => b.addEventListener("click", () => { tap(b.dataset.btn); emu.focus(); }));
+document.querySelectorAll("[data-enc]").forEach((b) => b.addEventListener("click", () => { cmd(`enc ${b.dataset.enc}`); emu.focus(); }));
+document.getElementById("shift").addEventListener("click", () => { latched = !boxShift; setShift(!boxShift); emu.focus(); });
+
+// the screen: the keyboard it draws (TELEX's editor) and the soft keys along the bottom take clicks and taps
+let held = null;
+function at(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+}
+canvas.addEventListener("pointerdown", (e) => {
+  emu.focus();
+  if (!ctx) startSound();
+  const { x, y } = at(e);
+  if (y >= 436 && y < 472 && x % 100 >= 4 && x % 100 < 96) {
+    held = `button f${Math.floor(x / 100) + 1}`;
+  } else if (y >= 306 && y < 306 + 4 * 27 && x >= 16 && x < 784) {
+    held = `pad ${Math.floor((y - 306) / 27) * 12 + Math.floor((x - 16) / 64)}`;
+  } else {
+    return;
+  }
+  cmd(held + " down");
+  canvas.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+const release = () => { if (held) { cmd(held + " up"); held = null; } };
+canvas.addEventListener("pointerup", release);
+canvas.addEventListener("pointercancel", release);
+
+// --- scenes: examples, download, open, and this browser's copy of the card ---
+document.getElementById("ex").addEventListener("change", (e) => {
+  if (!e.target.value) return;
+  M.ccall("bx_take_scene", null, ["string"], [examples[e.target.value - 1]]);
+  e.target.value = "";
+  emu.focus();
+});
+document.getElementById("save").addEventListener("click", () => {
+  const text = M.ccall("bx_scene", "string", [], []);
+  const title = (text.split("\n")[0] || "scene").split(":")[0].trim().replace(/[^\w-]+/g, "-").toLowerCase() || "scene";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  a.download = title + ".txt";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+document.getElementById("open").addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  M.ccall("bx_take_scene", null, ["string"], [await f.text()]);
+  e.target.value = "";
+  emu.focus();
+});
+function keep() {
+  const out = {};
+  const add = (p) => { try { out[p] = FS.readFile(p, { encoding: "utf8" }); } catch (e) {} };
+  add("/card/Settings/telex.txt");
+  try { for (const n of FS.readdir("/card/Scripts")) if (/^\d\d\.txt$/.test(n)) add("/card/Scripts/" + n); } catch (e) {}
+  try { localStorage.setItem(STORE, JSON.stringify(out)); } catch (e) {}
+}
+setInterval(keep, 4000);
+addEventListener("pagehide", keep);
+
+// --- MIDI out ---
+const midiSel = document.getElementById("midi");
+if (navigator.requestMIDIAccess) {
+  midiSel.addEventListener("focus", async function once() {
+    midiSel.removeEventListener("focus", once);
+    try {
+      const access = await navigator.requestMIDIAccess();
+      const fill = () => {
+        const cur = midiSel.value;
+        midiSel.length = 1;
+        for (const o of access.outputs.values()) midiSel.add(new Option(o.name, o.id));
+        midiSel.value = cur;
+      };
+      fill();
+      access.onstatechange = fill;
+      midiSel.addEventListener("change", () => { midiOut = access.outputs.get(midiSel.value) || null; });
+    } catch (e) { midiSel.disabled = true; }
+  });
+} else {
+  midiSel.disabled = true;
+}
+</script>
+<script src="../nav.js"></script>
+</body>
+</html>

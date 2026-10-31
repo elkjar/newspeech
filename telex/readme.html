@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
-<title>NEWSPEECH // telex</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<title>NEWSPEECH // telex readme</title>
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <meta name="description" content="newspeech — TELEX field card. Short Teletype-style scripts for the tracker-box firmware: words, mods, the rack, instruments and recipes.">
-<meta property="og:title" content="NEWSPEECH // telex">
+<meta property="og:title" content="NEWSPEECH // telex readme">
 <meta property="og:description" content="newspeech — TELEX field card.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://www.newspeechsound.com/telex.html">
+<meta property="og:url" content="https://www.newspeechsound.com/telex/readme.html">
 <meta property="og:site_name" content="NEWSPEECH">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="NEWSPEECH // telex">
+<meta name="twitter:title" content="NEWSPEECH // telex readme">
 <meta name="twitter:description" content="newspeech — TELEX field card.">
 <style>
   /* the TELEX field card (tracker-box docs/TELEX.md as a page): one reading
@@ -78,6 +78,12 @@
   .keys-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; }
   .keys-grid div { border: 1px solid #333; text-align: center; padding: 6px 0; background: #0e0e0e; color: #ddd; }
   .keys-grid div.sh { color: #666; font-size: 11px; padding: 2px 0; border-style: dashed; }
+  /* the section's own strip, as on the other /telex/ pages */
+  .tx { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+  .tx a { color: #888; text-decoration: none; border: 1px solid #333; padding: 2px 10px; font-size: 12px; letter-spacing: 0.06em; }
+  .tx a:hover, .tx a:focus-visible { color: #eee; border-color: #777; outline: none; }
+  .tx a[aria-current="page"] { color: #050505; background: #eee; border-color: #eee; }
+  .meta a, .lede a { color: #bbb; text-underline-offset: 3px; }
   .note { border-left: 2px solid #555; padding: 4px 0 4px 12px; max-width: 68ch; }
   @media (max-width: 480px) {
     body { padding-left: 14px; padding-right: 14px; }
@@ -91,9 +97,11 @@
 <body>
 <div class="wrap">
   <header>
+    <nav class="tx" aria-label="TELEX"><a href="./">telex</a><a href="readme.html" aria-current="page">readme</a><a href="emulator.html">emulator</a><a href="hardware.html">hardware</a><a href="ideas.html">ideas</a></nav>
     <h1 class="mark">TELEX<span>.</span></h1>
     <p class="lede">Short scripts typed on the pads. They play TELEX's test voice and send MIDI notes and CC to the rack. Ten scripts of six lines each, a metro that runs one of them on a clock, and four lists of numbers to step through.</p>
-    <p class="meta">tracker-box 0.16.3 · the language is Teletype's, cut down and pointed at MIDI</p>
+    <p class="meta">tracker-box 0.16.9 · the language is Teletype's, cut down and pointed at MIDI · <a href="readme.txt">readme.txt</a></p>
+    <p class="lede">No Tracker? All of it but the sample instruments runs in <a href="emulator.html">the emulator</a>.</p>
   </header>
 
   <nav class="toc" aria-label="Sections">
@@ -462,6 +470,6 @@ function select(b) {
   var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
 }
 </script>
-<script src="nav.js"></script>
+<script src="../nav.js"></script>
 </body>
 </html>

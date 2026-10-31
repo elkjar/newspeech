@@ -1,0 +1,11 @@
+rain: sparse plucks, answered later
+#1
+DEL 375: NOTE + X 12
+#M
+PROB 35: X DEG RAND 14
+PROB 35: NOTE X
+PROB 20: SCRIPT 1
+#I
+M 125; X DEG 7
+SCALE 7; ROOT 45
+WAVE 0; DEC 900; TONE 40
