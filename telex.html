@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // telex</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech — TELEX field card. Short Teletype-style scripts for the tracker-box firmware: words, mods, the rack, instruments and recipes.">
+<meta property="og:title" content="NEWSPEECH // telex">
+<meta property="og:description" content="newspeech — TELEX field card.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/telex.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="NEWSPEECH // telex">
+<meta name="twitter:description" content="newspeech — TELEX field card.">
+<style>
+  /* the TELEX field card (tracker-box docs/TELEX.md as a page): one reading
+     column of reference sections, key caps drawn like the Tracker's soft keys */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 13px/1.6 "SF Mono", "Menlo", "Consolas", monospace;
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 80px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+  header { display: flex; flex-direction: column; gap: 10px; }
+  .mark { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0; }
+  .lede { color: #bbb; max-width: 62ch; margin: 0; }
+  .meta { color: #666; margin: 0; }
+  .toc { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid #1c1c1c; }
+  .toc a { color: #999; text-decoration: none; border: 1px solid #333; padding: 2px 8px; }
+  .toc a:hover, .toc a:focus-visible { color: #eee; border-color: #777; outline: none; }
+  section { display: flex; flex-direction: column; gap: 14px; scroll-margin-top: calc(var(--ns-nav-h, 0px) + 16px); }
+  h2 { font-size: 12px; font-weight: 400; letter-spacing: 0.2em; text-transform: uppercase; color: #777; margin: 0;
+    display: flex; align-items: center; gap: 10px; }
+  h2::after { content: ""; flex: 1; height: 1px; background: #1c1c1c; }
+  h3 { font-size: 13px; font-weight: 400; color: #eee; margin: 6px 0 0; }
+  p { margin: 0; max-width: 68ch; }
+  b { color: #eee; font-weight: 600; }
+  .sub { color: #666; }
+  code { color: #eee; background: #111; padding: 1px 5px; white-space: nowrap; }
+  kbd { display: inline-block; font: inherit; font-size: 11px; color: #ddd; border: 1px solid #555; border-radius: 2px; padding: 0 6px;
+    background: #0e0e0e; line-height: 1.6; white-space: nowrap; }
+  .steps { list-style: none; counter-reset: s; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  .steps li { counter-increment: s; display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; }
+  .steps li::before { content: counter(s); color: #555; }
+  .steps li > div { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .line { font-size: 14px; color: #eee; background: #0a0a0a; border: 1px solid #222; padding: 8px 12px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; overflow-x: auto; }
+  .line span { white-space: pre; }
+  .copy { font: inherit; font-size: 11px; color: #666; background: none; border: 1px solid #333; padding: 1px 7px; cursor: pointer; flex: none; }
+  .copy:hover, .copy:focus-visible { color: #eee; border-color: #777; outline: none; }
+  .read { background: #0a0a0a; border: 1px solid #222; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .tokens { display: flex; gap: 8px; flex-wrap: wrap; font-size: 18px; color: #eee; }
+  .tokens span { padding: 2px 8px; border-bottom: 2px solid #444; }
+  .tokens span.n { border-bottom-color: #222; color: #999; }
+  .trace { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; }
+  .trace b { color: #fff; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th { text-align: left; font-weight: 400; font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: #666;
+    border-bottom: 1px solid #444; padding: 6px 10px 6px 0; }
+  td { border-bottom: 1px solid #1a1a1a; padding: 7px 10px 7px 0; vertical-align: top; }
+  td:first-child { white-space: nowrap; }
+  td.w { color: #fff; white-space: nowrap; }
+  td .ex { font-size: 12px; color: #777; white-space: nowrap; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  .recipe { background: #0a0a0a; border: 1px solid #1f1f1f; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .recipe h3 { margin: 0; }
+  .recipe .where { font-size: 11px; color: #666; letter-spacing: 0.06em; }
+  .recipe pre { margin: 0; font: inherit; color: #eee; line-height: 1.6; background: #111; padding: 8px 10px; overflow-x: auto; }
+  .recipe .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .err { color: #fff; white-space: nowrap; }
+  .keys-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; }
+  .keys-grid div { border: 1px solid #333; text-align: center; padding: 6px 0; background: #0e0e0e; color: #ddd; }
+  .keys-grid div.sh { color: #666; font-size: 11px; padding: 2px 0; border-style: dashed; }
+  .note { border-left: 2px solid #555; padding: 4px 0 4px 12px; max-width: 68ch; }
+  @media (max-width: 480px) {
+    body { padding-left: 14px; padding-right: 14px; }
+    .keys-grid { font-size: 11px; gap: 3px; }
+    .tokens { font-size: 16px; }
+    .recipes { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 class="mark">TELEX<span>.</span></h1>
+    <p class="lede">Short scripts typed on the pads. They play TELEX's test voice and send MIDI notes and CC to the rack. Ten scripts of six lines each, a metro that runs one of them on a clock, and four lists of numbers to step through.</p>
+    <p class="meta">tracker-box 0.16.3 · the language is Teletype's, cut down and pointed at MIDI</p>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <a href="#start">first 5 minutes</a><a href="#read">how a line reads</a><a href="#keys">keys</a><a href="#words">words</a><a href="#mods">mods</a><a href="#instruments">instruments</a><a href="#rack">rack</a><a href="#recipes">recipes</a><a href="#errors">errors</a><a href="#files">scene files</a>
+  </nav>
+
+  <section id="start">
+    <h2>First five minutes</h2>
+    <ol class="steps">
+      <li><div><p>Open TELEX: <kbd>Song</kbd>, then <kbd>Down</kbd> to TELEX, <kbd>F1</kbd>. The tabs across the top are the ten scripts. The encoder picks one.</p></div></li>
+      <li><div><p>On script <b>1</b>, line 1, type this on the pads and press <kbd>Insert</kbd> to enter it:</p>
+        <div class="line"><span>NOTE 60</span><button class="copy" type="button">copy</button></div>
+        <p>Press <kbd>F1</kbd>. You hear middle C. <kbd>F1</kbd>–<kbd>F8</kbd> run scripts 1–8.</p></div></li>
+      <li><div><p>Change the line to this, <kbd>Insert</kbd>, and press <kbd>F1</kbd> a few times. Each press is a different note.</p>
+        <div class="line"><span>NOTE + 60 RAND 12</span><button class="copy" type="button">copy</button></div></div></li>
+      <li><div><p>Turn the encoder to <b>M</b>, the metro's script, and enter:</p>
+        <div class="line"><span>NOTE DEG RAND 7</span><button class="copy" type="button">copy</button></div>
+        <p>Press <kbd>Play</kbd>. M now runs every 500 ms, picking a random note of the scale. <kbd>Play</kbd> again stops it.</p></div></li>
+      <li><div><p>Make it sparser: change M's line to this and <kbd>Insert</kbd>.</p>
+        <div class="line"><span>PROB 40: NOTE DEG RAND 14</span><button class="copy" type="button">copy</button></div></div></li>
+      <li><div><p>Make it faster: turn to script 1, go to line 2 (<kbd>Down</kbd>), enter this and press <kbd>F1</kbd>.</p>
+        <div class="line"><span>M 125</span><button class="copy" type="button">copy</button></div>
+        <p>Settings like this belong in <b>I</b>, which runs once when a scene loads.</p></div></li>
+      <li><div><p>Keep it: <kbd>Pattern</kbd> opens SCENES. Choose an empty slot and press <kbd>F2</kbd>.</p></div></li>
+    </ol>
+  </section>
+
+  <section id="read">
+    <h2>How a line reads</h2>
+    <p>Read a line from the <b>right</b>. Each word takes the values to its right and gives back one value. Numbers are just values.</p>
+    <div class="read" aria-label="NOTE + 60 RAND 12, read right to left">
+      <div class="tokens"><span>NOTE</span><span>+</span><span class="n">60</span><span>RAND</span><span class="n">12</span></div>
+      <div class="trace">
+        <b>12</b><span>a value</span>
+        <b>RAND</b><span>takes 12, gives a random 0..12, say 7</span>
+        <b>60</b><span>a value</span>
+        <b>+</b><span>takes 60 and 7, gives 67</span>
+        <b>NOTE</b><span>takes 67 and plays it</span>
+      </div>
+    </div>
+    <p><b>Setting and reading.</b> A variable or setting that starts its line with a value after it is <b>set</b>: <code>X 5</code>. Anywhere else it is <b>read</b>: <code>NOTE X</code>. The same goes for <code>M</code>, <code>VEL</code>, <code>ROOT</code> and the other settings.</p>
+    <p><b>Several commands.</b> Split them with <code>;</code>, as in <code>X + X 1; Y 2</code>.</p>
+    <p><b>Mods.</b> A line may start with a mod, its values, then <code>:</code> and the command it controls: <code>PROB 30: NOTE 72</code>. One mod a line.</p>
+    <p class="sub">Numbers are whole, −32768 to 32767. Division by zero gives 0. Lower case types as capitals.</p>
+  </section>
+
+  <section id="keys">
+    <h2>Keys</h2>
+    <div class="group">
+      <h3>The pads type</h3>
+      <div class="keys-grid" aria-label="Pad keyboard">
+        <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div>0</div><div>-</div><div>+</div>
+        <div class="sh">!</div><div class="sh">@</div><div class="sh">#</div><div class="sh">$</div><div class="sh">%</div><div class="sh">^</div><div class="sh">&amp;</div><div class="sh">*</div><div class="sh">(</div><div class="sh">)</div><div class="sh">_</div><div class="sh">|</div>
+        <div>Q</div><div>W</div><div>E</div><div>R</div><div>T</div><div>Y</div><div>U</div><div>I</div><div>O</div><div>P</div><div>*</div><div>/</div>
+        <div>A</div><div>S</div><div>D</div><div>F</div><div>G</div><div>H</div><div>J</div><div>K</div><div>L</div><div>:</div><div>&lt;</div><div>&gt;</div>
+        <div>Z</div><div>X</div><div>C</div><div>V</div><div>B</div><div>N</div><div>M</div><div>.</div><div>%</div><div>=</div><div>;</div><div>spc</div>
+      </div>
+      <p class="sub">Dashed row: what the top row types with <kbd>Shift</kbd> held. FILE's renames use the same pads (there, Shift also gives lower case).</p>
+    </div>
+    <div class="group">
+      <h3>Editing</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Key</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Insert</kbd></td><td>Enters the line. It runs from then on. A line with an error is not entered; the error shows in red under the lines.</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>Insert</kbd></td><td>Inserts an empty line at the cursor and moves the lines below down a row. Only while line 6 is empty.</td></tr>
+          <tr><td><kbd>Delete</kbd></td><td>Deletes the letter before the cursor. <kbd>Shift</kbd>+<kbd>Delete</kbd> clears the line.</td></tr>
+          <tr><td><kbd>Left</kbd> <kbd>Right</kbd></td><td>Move the cursor. With <kbd>Shift</kbd>: to the start or the end.</td></tr>
+          <tr><td><kbd>Up</kbd> <kbd>Down</kbd></td><td>Change line. A changed line is entered on the way; one with an error keeps you on it.</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>Up</kbd> <kbd>Down</kbd></td><td>Move the line up or down a row. Lines run top to bottom, so this is how you put a setting before the note it should change.</td></tr>
+          <tr><td>encoder</td><td>Changes script: 1–8, M, I.</td></tr>
+          <tr><td><kbd>Copy</kbd></td><td>Copies the line. <kbd>Shift</kbd>+<kbd>Copy</kbd> pastes over it.</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="group">
+      <h3>Playing</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Key</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>F1</kbd>–<kbd>F8</kbd></td><td>Run scripts 1–8 once.</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>F1</kbd></td><td>Init: start from nothing. Press it twice. Every script and pattern is emptied, the settings go back to their defaults and the metro stops. The scenes saved on the card stay.</td></tr>
+          <tr><td><kbd>Play</kbd></td><td>Starts and stops the metro, which runs M every <code>M</code> ms. MIDI start and stop do the same.</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>Play</kbd></td><td>Runs I again now, so a change to its settings takes effect. Nothing else resets: variables, patterns and the metro stay as they are.</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>F8</kbd></td><td>The encoder sets the MIDI out channel: off, 1–16. Notes and CC go out on DIN and USB. Any other key, or three seconds without turning, gives the encoder back to the scripts.</td></tr>
+          <tr><td><kbd>Master</kbd>+<kbd>Shift</kbd>+encoder</td><td>TELEX's output level, as on every mode.</td></tr>
+          <tr><td><kbd>Pattern</kbd></td><td>Opens SCENES.</td></tr>
+          <tr><td><kbd>Rec</kbd></td><td>Opens RACK: the LFOs and clocks as they run. <kbd>Rec</kbd> again goes back.</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="group">
+      <h3>SCENES</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Key</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Up</kbd> <kbd>Down</kbd>, encoder</td><td>Choose a slot, 01–16. <kbd>Left</kbd> <kbd>Right</kbd> jump between the columns.</td></tr>
+          <tr><td><kbd>F1</kbd></td><td>Loads the slot. Variables reset, I runs, and you are back at the scripts. Press <kbd>Play</kbd> to start the metro.</td></tr>
+          <tr><td><kbd>F2</kbd></td><td>Saves the scene into the slot. If the slot holds a different scene, it asks: press <kbd>F2</kbd> again.</td></tr>
+          <tr><td><kbd>Pattern</kbd> or <kbd>F8</kbd></td><td>Back to the scripts.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="sub">The scene you are playing is saved by itself and comes back at power-up. Slots are files on the card: <code>Scripts/01.txt</code> to <code>16.txt</code>.</p>
+    </div>
+    <div class="group">
+      <h3>The screen</h3>
+      <p>A dot on a tab lights each time that script runs. On the right: the variables, then the pattern (<code>P0 3/8 55</code> is pattern 0, step 3 of 8, value 55), the key and scale, the note settings, the voice settings, and six squares that light while each voice sounds.</p>
+    </div>
+  </section>
+
+  <section id="words">
+    <h2>Words</h2>
+    <p class="sub">“set” means the word can start a line with a value after it. The rest only give a value or do something.</p>
+
+    <div class="group"><h3>Variables</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>What it is</th></tr></thead><tbody>
+      <tr><td class="w">A B C D X Y Z T</td><td>Eight numbers every script shares. Start at 0. Set: <code>X 5</code>, <code>T + T 1</code>.</td></tr>
+      <tr><td class="w">I</td><td>The loop counter of <code>L</code>. Each script has its own.</td></tr>
+    </tbody></table></div></div>
+
+    <div class="group"><h3>Notes and the rack</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Does</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">NOTE n</td><td>Plays MIDI note n on the test voice (or on INST's instrument), and sends it out when CH is set.</td><td><span class="ex">NOTE 60</span></td></tr>
+      <tr><td class="w">INST</td><td>The instrument the next notes play: the folder in <code>Instruments/</code> whose name starts with that number (<code>015 rhodes-mk1</code> is 15). 0 is the test voice. Set.</td><td><span class="ex">INST 15</span></td></tr>
+      <tr><td class="w">PAN</td><td>Where the next notes sit: 0 left, 50 the centre, 100 right (50). Set.</td><td><span class="ex">PAN RAND 100</span></td></tr>
+      <tr><td class="w">VEL</td><td>Velocity of the next notes, 1–127 (100). Set.</td><td><span class="ex">VEL RRAND 60 120</span></td></tr>
+      <tr><td class="w">LEN</td><td>How long a MIDI note is held, ms (200). Set.</td><td><span class="ex">LEN 50</span></td></tr>
+      <tr><td class="w">CH</td><td>MIDI out channel, 0 off or 1–16. Set.</td><td><span class="ex">CH 3</span></td></tr>
+      <tr><td class="w">CC n v</td><td>Sends controller n at value v on CH.</td><td><span class="ex">CC 74 RAND 127</span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="group"><h3>Key and scale</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Does</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">ROOT</td><td>The scale's root as a MIDI note (48, C3). Set.</td><td><span class="ex">ROOT 45</span></td></tr>
+      <tr><td class="w">SCALE</td><td>0 major, 1 minor, 2 dorian, 3 phrygian, 4 lydian, 5 mixolydian, 6 pent maj, 7 pent min, 8 chromatic. Set.</td><td><span class="ex">SCALE 7</span></td></tr>
+      <tr><td class="w">DEG d</td><td>The note d steps up the scale from ROOT. 0 is the root; in a 7-note scale 7 is an octave up; below 0 goes down.</td><td><span class="ex">NOTE DEG 4</span></td></tr>
+      <tr><td class="w">Q n</td><td>The scale note nearest to n.</td><td><span class="ex">NOTE Q + 60 RAND 12</span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="group"><h3>The test voice</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Does</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">WAVE</td><td>0 sine, 1 triangle, 2 saw, 3 square (1). Set.</td><td><span class="ex">WAVE 2</span></td></tr>
+      <tr><td class="w">DEC</td><td>Decay, ms to silence (400). Set.</td><td><span class="ex">DEC 150</span></td></tr>
+      <tr><td class="w">TONE</td><td>Brightness, 0–100 (60). Set.</td><td><span class="ex">TONE 80</span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="group"><h3>Chance</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Gives</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">RAND n</td><td>A random whole number, 0 to n.</td><td><span class="ex">NOTE + 48 RAND 24</span></td></tr>
+      <tr><td class="w">RRAND a b</td><td>A random number, a to b.</td><td><span class="ex">VEL RRAND 60 120</span></td></tr>
+      <tr><td class="w">TOSS</td><td>0 or 1.</td><td><span class="ex">IF TOSS: NOTE 72</span></td></tr>
+      <tr><td class="w">DRUNK</td><td>A number that steps −1, 0 or +1 each time it is read. Set to place it.</td><td><span class="ex">NOTE DEG DRUNK</span></td></tr>
+      <tr><td class="w">DRUNK.MIN / .MAX</td><td>The range DRUNK walks in (0 to 255). Set.</td><td><span class="ex">DRUNK.MAX 14</span></td></tr>
+      <tr><td class="w">ER f l s</td><td>1 if step s is a hit of f hits spread over l steps (a Euclidean rhythm), else 0.</td><td><span class="ex">IF ER 3 8 T: NOTE 36</span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="group"><h3>Patterns</h3>
+      <p class="sub">Four lists (0–3) of up to 64 numbers, written in the scene file. P.N picks which one the other words use.</p>
+      <div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Does</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">P.NEXT</td><td>Moves to the next step (wrapping at the end) and gives its number.</td><td><span class="ex">NOTE P.NEXT</span></td></tr>
+      <tr><td class="w">P.PREV</td><td>The same, backwards.</td><td><span class="ex">NOTE P.PREV</span></td></tr>
+      <tr><td class="w">P.HERE</td><td>The number at the current step. Set to change it.</td><td><span class="ex">NOTE + 12 P.HERE</span></td></tr>
+      <tr><td class="w">P i</td><td>The number at step i (below 0 counts from the end). <code>P i v</code> first on a line writes it.</td><td><span class="ex">P 0 60</span></td></tr>
+      <tr><td class="w">P.I</td><td>The current step. Set to jump.</td><td><span class="ex">P.I 0</span></td></tr>
+      <tr><td class="w">P.L</td><td>The pattern's length. Set.</td><td><span class="ex">P.L 5</span></td></tr>
+      <tr><td class="w">P.N</td><td>Which pattern, 0–3. Set.</td><td><span class="ex">P.N 1</span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="group"><h3>Time</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Does</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">M</td><td>The metro's time between ticks, ms (500, at least 10). Set.</td><td><span class="ex">M 125</span></td></tr>
+      <tr><td class="w">M.ACT</td><td>The metro on (1) or off (0), as <kbd>Play</kbd>. Set.</td><td><span class="ex">M.ACT 1</span></td></tr>
+      <tr><td class="w">M.RESET</td><td>Starts the metro's count again from now.</td><td><span class="ex">M.RESET</span></td></tr>
+      <tr><td class="w">BEAT</td><td>One beat at the box's tempo, in ms (500 at 120 bpm).</td><td><span class="ex">M / BEAT 4</span></td></tr>
+      <tr><td class="w">BPM</td><td>The box's tempo (<kbd>Pattern</kbd>+encoder sets it).</td><td><span class="ex">X BPM</span></td></tr>
+    </tbody></table></div></div>
+
+    <div class="group"><h3>Maths and comparing</h3>
+      <p class="sub">Comparisons give 1 for true, 0 for false. Each word also has a symbol.</p>
+      <div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Symbol</th><th>Gives</th></tr></thead><tbody>
+      <tr><td class="w">ADD SUB MUL DIV MOD</td><td><code>+ - * / %</code></td><td>Sum, difference, product, division (whole), remainder.</td></tr>
+      <tr><td class="w">MIN a b / MAX a b</td><td></td><td>The smaller, the larger.</td></tr>
+      <tr><td class="w">LIM x lo hi</td><td></td><td>x held between lo and hi.</td></tr>
+      <tr><td class="w">WRAP x lo hi</td><td></td><td>x wrapped round into lo..hi: past hi starts again at lo.</td></tr>
+      <tr><td class="w">ABS x</td><td></td><td>x without its minus sign.</td></tr>
+      <tr><td class="w">EQ NE LT GT LTE GTE</td><td><code>== != &lt; &gt; &lt;= &gt;=</code></td><td>Equal, not equal, less, greater, less or equal, greater or equal.</td></tr>
+      <tr><td class="w">AND OR NOT</td><td><code>&amp;&amp; || !</code></td><td>Both, either, not.</td></tr>
+      <tr><td class="w">EZ x / NZ x</td><td></td><td>1 if x is zero / is not zero.</td></tr>
+    </tbody></table></div></div>
+
+    <div class="group"><h3>Scripts</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Does</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">SCRIPT n</td><td>Runs script n (1–8) now. Scripts can call scripts, 4 deep.</td><td><span class="ex">SCRIPT 2</span></td></tr>
+      <tr><td class="w">DEL.CLR</td><td>Drops every DEL still waiting.</td><td><span class="ex">DEL.CLR</span></td></tr>
+    </tbody></table></div></div>
+  </section>
+
+  <section id="mods">
+    <h2>Mods</h2>
+    <p>A mod starts the line and decides whether, when or how often the command after its <code>:</code> runs.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Mod</th><th>The command runs</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">PROB n:</td><td>n % of the times the line is reached.</td><td><span class="ex">PROB 30: NOTE 72</span></td></tr>
+      <tr><td class="w">IF x:</td><td>When x is not 0.</td><td><span class="ex">IF GT X 3: NOTE 72</span></td></tr>
+      <tr><td class="w">ELIF x:</td><td>When no IF or ELIF above it in this run took, and x is not 0.</td><td><span class="ex">ELIF EQ X 3: NOTE 67</span></td></tr>
+      <tr><td class="w">ELSE:</td><td>When no IF or ELIF above it took.</td><td><span class="ex">ELSE: NOTE 60</span></td></tr>
+      <tr><td class="w">L a b:</td><td>Once for each I from a to b (up or down, at most 64 times).</td><td><span class="ex">L 1 4: NOTE + 60 I</span></td></tr>
+      <tr><td class="w">EVERY n:</td><td>Every nth time the line is reached.</td><td><span class="ex">EVERY 4: VEL 127</span></td></tr>
+      <tr><td class="w">SKIP n:</td><td>Every time except every nth.</td><td><span class="ex">SKIP 3: NOTE 48</span></td></tr>
+      <tr><td class="w">OTHER:</td><td>When the EVERY or SKIP above it did not run.</td><td><span class="ex">OTHER: VEL 60</span></td></tr>
+      <tr><td class="w">DEL ms:</td><td>Later, ms from now (16 can wait at once).</td><td><span class="ex">DEL 250: NOTE 72</span></td></tr>
+    </tbody></table></div>
+  </section>
+
+  <section id="instruments">
+    <h2>Instruments</h2>
+    <p><code>INST n</code> plays the instruments on the card, the way <code>WAVE</code> picks the test voice's shape. <code>n</code> is the number a folder in <code>Instruments/</code> starts with, the same number a MIDI program change uses. You can switch on every line: <code>INST 3; NOTE 72</code> then <code>INST 15; NOTE DEG RAND 7</code> plays the bells and the Rhodes on the same tick.</p>
+    <ul class="sub" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;max-width:65ch">
+      <li><b>Four at once.</b> The first time a scene names an instrument (best in I), it loads from the card in a second or two. Its notes are silent until it's in. The <b>inst</b> row on the right shows each slot: filled when loaded, outlined while loading, red when there's no such folder. A fifth instrument takes the place of the one played longest ago.</li>
+      <li><b>One-shots, mono, panned.</b> A note picks the instrument's nearest zone and plays it out. Each zone is kept mono, so it takes half the memory and <code>PAN</code> places every note cleanly. <code>WAVE</code>, <code>DEC</code> and <code>TONE</code> only shape the test voice.</li>
+      <li><b>Memory is borrowed.</b> While TELEX is in use its instruments live in SAMPLER's memory and GLITCH's pool. Leave TELEX and they go back: SAMPLER reloads its sound in the background, GLITCH and LOOP start empty (an unsaved LOOP reel is lost). Come back and the instruments load again.</li>
+      <li><b>A big multisample won't all fit.</b> Each instrument gets 8 zones at most, loaded from the one nearest C3 outwards, so it keeps a spread across its range.</li>
+    </ul>
+    <div class="recipes">
+      <div class="recipe"><div class="row"><h3>Rhodes, scattered</h3><span class="where">M</span></div>
+        <pre>INST 15; PAN RAND 100
+NOTE DEG RAND 7</pre></div>
+      <div class="recipe"><div class="row"><h3>Bells answer on a clock</h3><span class="where">I, then 2</span></div>
+        <pre>CLK.T 1 1300; CLK.S 1 2
+INST 3; PAN 80; NOTE + 12 DEG RAND 5</pre></div>
+    </div>
+  </section>
+
+  <section id="rack">
+    <h2>Rack</h2>
+    <p>TELEX has its own small modular rack: four LFOs and four clocks. Like modules patched into a Teletype, each one can <b>fire a script</b> on its own timing and give a <b>value</b> scripts can read. An LFO can also stream itself out as a <b>MIDI CC</b>, which turns TELEX into a modulation source for the rack. Set them from the scripts, usually in I. <kbd>Rec</kbd> shows them running.</p>
+    <p class="sub"><kbd>Play</kbd> starts and stops everything that fires scripts: the metro, the clocks and the LFOs' cycle triggers. The LFOs themselves never stop moving, so their values and CC streams carry on, like a free-running LFO module.</p>
+    <div class="group"><h3>LFOs 1–4</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Does</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">LFO n</td><td>LFO n's value now, 0–100.</td><td><span class="ex">PROB LFO 1: NOTE 60</span></td></tr>
+      <tr><td class="w">LFO.R n ms</td><td>Its cycle, in ms (4000, 6100, 9300, 15700 at first: unsynced).</td><td><span class="ex">LFO.R 1 20000</span></td></tr>
+      <tr><td class="w">LFO.W n w</td><td>Its shape: 0 sine, 1 triangle, 2 saw, 3 square, 4 steps (a new random value each cycle), 5 drift (gliding between random values).</td><td><span class="ex">LFO.W 2 5</span></td></tr>
+      <tr><td class="w">LFO.S n s</td><td>The script (1–8) its cycle fires at the top; 0 none.</td><td><span class="ex">LFO.S 1 3</span></td></tr>
+      <tr><td class="w">LFO.CC n c</td><td>Streams it out as CC c on CH (0–127; 0 off).</td><td><span class="ex">LFO.CC 2 74</span></td></tr>
+      <tr><td class="w">LFO.RESET n</td><td>Back to the start of its cycle.</td><td><span class="ex">LFO.RESET 1</span></td></tr>
+    </tbody></table></div></div>
+    <div class="group"><h3>Clocks 1–4</h3><div class="scroll"><table>
+      <thead><tr><th>Word</th><th>Does</th><th>Example</th></tr></thead><tbody>
+      <tr><td class="w">CLK.T n ms</td><td>Ticks every ms (0 stops it). Each clock is free of the others and of the metro.</td><td><span class="ex">CLK.T 1 700</span></td></tr>
+      <tr><td class="w">CLK.S n s</td><td>The script (1–8) each tick fires; 0 none.</td><td><span class="ex">CLK.S 1 2</span></td></tr>
+      <tr><td class="w">CLK n</td><td>How many times it has ticked. <code>CLK n v</code> first on a line sets the count.</td><td><span class="ex">IF EZ % CLK 1 4: NOTE 36</span></td></tr>
+      <tr><td class="w">CLK.RESET n</td><td>Its next tick now, and its count to 0.</td><td><span class="ex">CLK.RESET 1</span></td></tr>
+    </tbody></table></div></div>
+    <div class="recipes">
+      <div class="recipe"><div class="row"><h3>Three clocks colliding</h3><span class="where">I, and 1–3 play</span></div>
+        <pre>CLK.T 1 700; CLK.S 1 1; CLK.T 2 1100
+CLK.S 2 2; CLK.T 3 1300; CLK.S 3 3</pre></div>
+      <div class="recipe"><div class="row"><h3>Density that breathes</h3><span class="where">I, then 1</span></div>
+        <pre>LFO.R 1 20000
+PROB LFO 1: NOTE DEG RAND 5</pre></div>
+      <div class="recipe"><div class="row"><h3>A slow filter for the rack</h3><span class="where">I (CH set)</span></div>
+        <pre>LFO.R 2 9000; LFO.W 2 5
+LFO.CC 2 74</pre></div>
+      <div class="recipe"><div class="row"><h3>An accent each cycle</h3><span class="where">I, then 4</span></div>
+        <pre>LFO.R 3 4000; LFO.S 3 4
+VEL 127; NOTE ROOT</pre></div>
+    </div>
+    <p class="sub">The demo scene <code>05</code>, "collisions", is built only from the rack: three clocks, one LFO for density and one for velocity and CC 74.</p>
+  </section>
+
+  <section id="recipes">
+    <h2>Recipes</h2>
+    <p class="sub">Each card says which script the lines go in. Every line here has been checked against TELEX's own compiler.</p>
+    <div class="recipes">
+      <div class="recipe"><div class="row"><h3>Random notes in key</h3><span class="where">M</span></div>
+        <pre>NOTE DEG RAND 7</pre></div>
+      <div class="recipe"><div class="row"><h3>Sparse, over two octaves</h3><span class="where">M</span></div>
+        <pre>PROB 40: NOTE DEG RAND 14</pre></div>
+      <div class="recipe"><div class="row"><h3>Sixteenths at the box's tempo</h3><span class="where">I</span></div>
+        <pre>M / BEAT 4</pre></div>
+      <div class="recipe"><div class="row"><h3>Euclidean kick, 3 in 8</h3><span class="where">M</span></div>
+        <pre>IF ER 3 8 T: NOTE ROOT
+T + T 1</pre></div>
+      <div class="recipe"><div class="row"><h3>Arpeggio up the chord</h3><span class="where">M</span></div>
+        <pre>NOTE DEG X
+X WRAP + X 2 0 6</pre></div>
+      <div class="recipe"><div class="row"><h3>Drunk melody</h3><span class="where">I, then M</span></div>
+        <pre>DRUNK.MIN 0; DRUNK.MAX 14
+NOTE DEG DRUNK</pre></div>
+      <div class="recipe"><div class="row"><h3>A chord on a key</h3><span class="where">1 (press F1)</span></div>
+        <pre>L 0 2: NOTE DEG * I 2</pre></div>
+      <div class="recipe"><div class="row"><h3>Note and its echo</h3><span class="where">1</span></div>
+        <pre>NOTE 60
+DEL 250: NOTE 72</pre></div>
+      <div class="recipe"><div class="row"><h3>Accent every fourth</h3><span class="where">M</span></div>
+        <pre>EVERY 4: VEL 127
+OTHER: VEL 60
+NOTE DEG RAND 7</pre></div>
+      <div class="recipe"><div class="row"><h3>Octave jumps by coin toss</h3><span class="where">M</span></div>
+        <pre>IF TOSS: NOTE + 12 DEG RAND 7</pre></div>
+      <div class="recipe"><div class="row"><h3>Filter sweep on the rack</h3><span class="where">M (CH set)</span></div>
+        <pre>CC 74 Y
+Y WRAP + Y 4 0 127</pre></div>
+      <div class="recipe"><div class="row"><h3>Next scale on a key</h3><span class="where">2 (press F2)</span></div>
+        <pre>SCALE WRAP + SCALE 1 0 8</pre></div>
+      <div class="recipe"><div class="row"><h3>Walk a pattern</h3><span class="where">M, and #P in the file</span></div>
+        <pre>NOTE P.NEXT</pre></div>
+    </div>
+  </section>
+
+  <section id="errors">
+    <h2>Errors and limits</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>You see</th><th>It means</th></tr></thead><tbody>
+      <tr><td class="err">unknown word FOO</td><td>A word TELEX does not have, or a typo.</td></tr>
+      <tr><td class="err">NOTE needs more values</td><td>A word is missing the values to its right: <code>NOTE</code> alone.</td></tr>
+      <tr><td class="err">a value left over (set a variable, or NOTE it)</td><td>Something gives a value nothing uses: <code>X</code> alone, or <code>1 2</code>.</td></tr>
+      <tr><td class="err">a ':' after the mod's values</td><td>A mod without its colon: <code>PROB 50 NOTE 60</code>.</td></tr>
+      <tr><td class="err">DEL goes first, with ':' after it</td><td>A mod in the middle of a line. Give it its own line.</td></tr>
+      <tr><td class="err">nothing after ':'</td><td>A mod with no command.</td></tr>
+      <tr><td class="err">too long</td><td>Over 40 characters.</td></tr>
+      <tr><td class="err">too much at once</td><td>The scripts needed more than the box can do in one block of audio, so the rest of that block's work was cut. Usually a big <code>L</code> loop calling <code>SCRIPT</code>.</td></tr>
+    </tbody></table></div>
+    <p class="sub">Ten scripts, six lines each, 40 characters a line. Six voices: a seventh note takes the oldest. The scripts get about 990 words of work per block of audio (less when the delay or reverb runs), so the box never overloads.</p>
+  </section>
+
+  <section id="files">
+    <h2>Scene files</h2>
+    <p>A scene is a text file on the card, <code>Scripts/01.txt</code> to <code>16.txt</code>. You can write one on the computer, or describe a scene to Claude and get one written. The layout is Teletype's: the title on the first line, then each script under its mark.</p>
+    <div class="recipe"><div class="row"><h3>Scripts/02.txt</h3><span class="where">steps</span></div>
+<pre>steps: a pattern walked, euclid accents
+
+#1
+P.I 0; T 0; NOTE P 0
+
+#M
+NOTE P.NEXT
+IF ER 5 16 T: NOTE + P.HERE 12
+T + T 1
+
+#I
+M / BEAT 4
+WAVE 2; DEC 180; TONE 70
+
+#P
+0: 48 51 55 58 60 55 51 63</pre></div>
+    <p class="note">TELEX borrows Teletype's grammar and many of its words, but it is not a Teletype. Teletype's CV and trigger words (<code>CV</code>, <code>TR</code>) are not here; TELEX plays MIDI notes and CC instead. Teletype scenes and monome's Teletype tutorials translate almost line for line once those are swapped.</p>
+  </section>
+</div>
+
+<script>
+document.querySelectorAll(".copy").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var t = b.parentElement.querySelector("span").textContent;
+    var done = function () { b.textContent = "copied"; setTimeout(function () { b.textContent = "copy"; }, 1200); };
+    try {
+      navigator.clipboard.writeText(t).then(done, function () { select(b); });
+    } catch (e) { select(b); }
+  });
+});
+function select(b) {
+  var r = document.createRange(); r.selectNodeContents(b.parentElement.querySelector("span"));
+  var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+</script>
+<script src="nav.js"></script>
+</body>
+</html>
