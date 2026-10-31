@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // telex</title>
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<meta name="description" content="newspeech — TELEX: short Teletype-style scripts that play a voice, samples and MIDI. Runs on an original Polyend Tracker with custom firmware, and in the browser.">
+<meta property="og:title" content="NEWSPEECH // telex">
+<meta property="og:description" content="Short Teletype-style scripts that play a voice, samples and MIDI: the readme, an emulator, the hardware plan and ideas.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/telex/">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="doc.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="col">
+  <nav class="tx" aria-label="TELEX"><a href="./" aria-current="page">telex</a><a href="readme.html">readme</a><a href="emulator.html">emulator</a><a href="hardware.html">hardware</a><a href="ideas.html">ideas</a></nav>
+  <div class="osd"><span>newspeech</span><span>tracker-box 0.16.11</span></div>
+  <h1>Telex</h1>
+  <p class="lede">Short scripts typed on a keyboard. They play a small voice, sample instruments and MIDI out to the rest of the studio. Ten scripts a scene, a metro that runs one on a clock, four LFOs and four clocks that fire the others.</p>
+</header>
+
+<section class="col">
+  <pre>PROB 40: NOTE DEG RAND 14</pre>
+  <p>Read from the right: each time it runs, a 40% chance of a random degree of the scale. The language is Monome Teletype's, cut down and pointed at MIDI. TELEX runs as custom firmware on an original Polyend Tracker, and the same firmware runs in a browser. Through a USB console a computer, Claude included, can read and rewrite the scripts while it keeps playing.</p>
+</section>
+
+<nav class="parts" aria-label="TELEX pages">
+  <a href="readme.html"><h3>Readme</h3><p>The field card: first five minutes, every word and mod, the rack, instruments, recipes, errors and scene files. Also as <code>readme.txt</code>.</p></a>
+  <a href="emulator.html"><h3>Emulator</h3><p>The box's firmware compiled to WebAssembly. The real screen, the real language, sound, and MIDI out to your gear.</p></a>
+  <a href="hardware.html"><h3>Hardware</h3><p>The desktop box TELEX should end up in: a Teensy 4.1, a 5″ screen, a USB keyboard, MIDI and audio. Diagrams, parts and cost.</p></a>
+  <a href="ideas.html"><h3>Ideas</h3><p>Past the box: CV and gate into a modular rack through an OXI Pipe, a box without a screen, a module.</p></a>
+</nav>
+
+</div>
+<script src="../nav.js"></script>
+</body>
+</html>

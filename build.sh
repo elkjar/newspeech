@@ -30,6 +30,8 @@ fi
 cp -r fonts _site/fonts
 # waves.html's wave library (tools/wave-harvest.mjs)
 cp -r waves _site/waves
+# telex: the TELEX section (readme, emulator: tracker-box's sim compiled to WASM, hardware, ideas)
+cp -r telex _site/telex
 if [ -d assets ]; then
   cp -r assets _site/assets
 fi

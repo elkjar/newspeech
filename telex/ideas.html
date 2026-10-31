@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // telex ideas</title>
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<meta name="description" content="newspeech — where TELEX's hardware could go after the desktop box: CV and gate into a modular rack through an OXI Pipe, a box without a screen, and a Eurorack module.">
+<meta property="og:title" content="NEWSPEECH // telex ideas">
+<meta property="og:description" content="Where TELEX's hardware could go next: CV and gate through an OXI Pipe, a headless box, a module.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/telex/ideas.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="doc.css">
+<style>
+  /* the HDMI socket's pins (Figure 2): shaded = a shield return in a normal cable */
+  .pin { fill: var(--bg); stroke: var(--ink); stroke-width: 1.2; }
+  .pin-sh { fill: rgba(255, 255, 255, 0.22); stroke: var(--ink); stroke-width: 1.2; }
+  .pn { fill: currentColor; font-size: 11px; text-anchor: middle; }
+  .lw { fill: currentColor; font-size: 11px; }
+  .vbox { fill: var(--bg); stroke: var(--ink); stroke-width: 1.2; }
+  .lv { fill: var(--dim); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="col">
+  <nav class="tx" aria-label="TELEX"><a href="./">telex</a><a href="readme.html">readme</a><a href="emulator.html">emulator</a><a href="hardware.html">hardware</a><a href="ideas.html" aria-current="page">ideas</a></nav>
+  <div class="osd"><span>newspeech · telex</span><span>ideas · 31 oct 2026 · none of it built</span></div>
+  <h1>Ideas</h1>
+  <p class="lede">Where TELEX's hardware could go after <a href="hardware.html">the desktop box</a>. The first one is planned in detail; the rest are directions.</p>
+</header>
+
+<section class="col">
+  <h2>CV and gate through an OXI Pipe</h2>
+  <p>TELEX plays MIDI today. A modular rack wants voltages: pitch CV, gates, a clock in. The <a href="https://www.perfectcircuit.com/oxi-pipe.html" target="_blank" rel="noopener">OXI Pipe</a> is a 6 HP module made for the OXI One sequencer. It has jacks on the front, an HDMI socket on the back, and only wires in between. No video goes through the HDMI cable; OXI uses it as a cheap 19-conductor cable with good plugs. Retailers list 8 CV out, 8 gate out, a clock in and a reset/CV in.</p>
+  <p>Because the Pipe is passive, the box has to produce finished voltages, as the OXI One does. That means a CV/gate board inside the box, an HDMI socket on its back, and a 12 V supply instead of 5 V so the op-amps can swing the modular range. It's the largest change to the box, which is why it sits here and not in the plan.</p>
+</section>
+
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 1020 330" role="img" aria-label="Signal chains for one channel of each kind. CV out: Teensy, SPI, 16-bit DAC at 0 to 5 volts, op-amp scaling to minus 5 to plus 10 volts, series-resistor protection, HDMI pin, Pipe jack. Gate out: Teensy, SPI, shift register, gate driver at 5 volts, protection, HDMI pin, Pipe jack. Inputs run the other way: Pipe jack, HDMI pin, protection, scaling, buffer, then the Teensy's ADC or an interrupt pin at 3.3 volts maximum.">
+    <defs>
+      <marker id="f2d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="md"/></marker>
+      <marker id="f2v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mv"/></marker>
+    </defs>
+
+    <!-- row 1: CV out -->
+    <text x="20" y="28" class="lab">CV OUT  ×8</text>
+    <rect x="20"  y="40" width="115" height="56" rx="6" class="box"/><text x="77"  y="64" class="t c">Teensy</text><text x="77"  y="82" class="s c">SPI out</text>
+    <rect x="195" y="40" width="115" height="56" rx="6" class="box"/><text x="252" y="64" class="t c">DAC</text><text x="252" y="82" class="s c">16-bit, 0–5 V</text>
+    <rect x="370" y="40" width="115" height="56" rx="6" class="vbox"/><text x="427" y="64" class="t c">Op-amp</text><text x="427" y="82" class="s c">scale + offset</text>
+    <rect x="545" y="40" width="115" height="56" rx="6" class="vbox"/><text x="602" y="64" class="t c">Protection</text><text x="602" y="82" class="s c">1 kΩ series</text>
+    <rect x="720" y="40" width="115" height="56" rx="6" class="vbox"/><text x="777" y="64" class="t c">HDMI pin</text><text x="777" y="82" class="s c">on the box</text>
+    <rect x="895" y="40" width="115" height="56" rx="6" class="ext"/><text x="952" y="64" class="t c">Pipe jack</text><text x="952" y="82" class="s c">CV out</text>
+    <line x1="135" y1="68" x2="193" y2="68" class="d" marker-end="url(#f2d)"/><text x="165" y="58" class="ld c">SPI</text>
+    <line x1="310" y1="68" x2="368" y2="68" class="v" marker-end="url(#f2v)"/><text x="340" y="58" class="lv c">0–5 V</text>
+    <line x1="485" y1="68" x2="543" y2="68" class="v" marker-end="url(#f2v)"/><text x="515" y="58" class="lv c">−5…+10 V</text>
+    <line x1="660" y1="68" x2="718" y2="68" class="v" marker-end="url(#f2v)"/>
+    <line x1="835" y1="68" x2="893" y2="68" class="v" marker-end="url(#f2v)"/><text x="865" y="58" class="lv c">cable</text>
+
+    <!-- row 2: gate out -->
+    <text x="20" y="138" class="lab">GATE OUT  ×8</text>
+    <rect x="20"  y="150" width="115" height="56" rx="6" class="box"/><text x="77"  y="174" class="t c">Teensy</text><text x="77"  y="192" class="s c">SPI out</text>
+    <rect x="195" y="150" width="115" height="56" rx="6" class="box"/><text x="252" y="174" class="t c">Shift register</text><text x="252" y="192" class="s c">74HC595</text>
+    <rect x="370" y="150" width="115" height="56" rx="6" class="vbox"/><text x="427" y="174" class="t c">Gate driver</text><text x="427" y="192" class="s c">transistor</text>
+    <rect x="545" y="150" width="115" height="56" rx="6" class="vbox"/><text x="602" y="174" class="t c">Protection</text><text x="602" y="192" class="s c">1 kΩ series</text>
+    <rect x="720" y="150" width="115" height="56" rx="6" class="vbox"/><text x="777" y="174" class="t c">HDMI pin</text><text x="777" y="192" class="s c">on the box</text>
+    <rect x="895" y="150" width="115" height="56" rx="6" class="ext"/><text x="952" y="174" class="t c">Pipe jack</text><text x="952" y="192" class="s c">gate out</text>
+    <line x1="135" y1="178" x2="193" y2="178" class="d" marker-end="url(#f2d)"/><text x="165" y="168" class="ld c">SPI</text>
+    <line x1="310" y1="178" x2="368" y2="178" class="d" marker-end="url(#f2d)"/><text x="340" y="168" class="ld c">3.3 V</text>
+    <line x1="485" y1="178" x2="543" y2="178" class="v" marker-end="url(#f2v)"/><text x="515" y="168" class="lv c">0 / 5 V</text>
+    <line x1="660" y1="178" x2="718" y2="178" class="v" marker-end="url(#f2v)"/>
+    <line x1="835" y1="178" x2="893" y2="178" class="v" marker-end="url(#f2v)"/><text x="865" y="168" class="lv c">cable</text>
+
+    <!-- row 3: inputs -->
+    <text x="20" y="248" class="lab">CLOCK + RESET/CV IN  ×2</text>
+    <rect x="20"  y="260" width="115" height="56" rx="6" class="box"/><text x="77"  y="284" class="t c">Teensy</text><text x="77"  y="302" class="s c">ADC, interrupt</text>
+    <rect x="195" y="260" width="115" height="56" rx="6" class="vbox"/><text x="252" y="284" class="t c">Buffer</text><text x="252" y="302" class="s c">Schmitt on clock</text>
+    <rect x="370" y="260" width="115" height="56" rx="6" class="vbox"/><text x="427" y="284" class="t c">Scaling</text><text x="427" y="302" class="s c">±10 V → 0–3.3 V</text>
+    <rect x="545" y="260" width="115" height="56" rx="6" class="vbox"/><text x="602" y="284" class="t c">Protection</text><text x="602" y="302" class="s c">100 kΩ + clamp</text>
+    <rect x="720" y="260" width="115" height="56" rx="6" class="vbox"/><text x="777" y="284" class="t c">HDMI pin</text><text x="777" y="302" class="s c">on the box</text>
+    <rect x="895" y="260" width="115" height="56" rx="6" class="ext"/><text x="952" y="284" class="t c">Pipe jack</text><text x="952" y="302" class="s c">clock, reset</text>
+    <line x1="893" y1="288" x2="837" y2="288" class="v" marker-end="url(#f2v)"/><text x="865" y="278" class="lv c">cable</text>
+    <line x1="718" y1="288" x2="662" y2="288" class="v" marker-end="url(#f2v)"/>
+    <line x1="543" y1="288" x2="487" y2="288" class="v" marker-end="url(#f2v)"/>
+    <line x1="368" y1="288" x2="312" y2="288" class="v" marker-end="url(#f2v)"/><text x="340" y="278" class="lv c">0–3.3 V</text>
+    <line x1="193" y1="288" x2="137" y2="288" class="v" marker-end="url(#f2v)"/><text x="165" y="278" class="lv c">≤ 3.3 V</text>
+  </svg>
+  </div>
+  <figcaption><b>Figure 1.</b> One channel of each kind. CV goes through a 16-bit DAC, then an op-amp that scales and offsets 0–5 V into the modular range (−5 to +10 V is a proposal, see the questions). Gates come off a shift register, which saves pins, and a driver lifts 3.3 V logic to 5 V. Inputs run the other way. They're clamped and scaled before they reach the Teensy, whose pins take 3.3 V at most.</figcaption>
+</figure>
+
+<section class="col">
+  <h3>Mapping the Pipe</h3>
+  <p>OXI doesn't publish which HDMI pin goes to which jack, so it gets mapped once:</p>
+  <ol>
+    <li>Plug the Pipe's own cable into the Pipe and fit an HDMI breakout board (about $8) to the free end.</li>
+    <li>Set a multimeter to continuity. Touch each jack's tip and find the pin that beeps. Then the sleeves, for ground.</li>
+    <li>Check whether ground also runs through the cable's shield.</li>
+    <li>Record which Pipe version it is. Retailers say the MKII doesn't work with the original OXI One, so the two may be wired differently.</li>
+  </ol>
+</section>
+
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 820 250" role="img" aria-label="An HDMI Type A socket with its 19 pins: odd pins 1 to 19 on the top row, even pins 2 to 18 on the bottom. Pins 2, 5, 8, 11 and 17 are shield returns in a normal HDMI cable and are highlighted. Pin 18 carries 5 volts from a real HDMI source. The Pipe needs 8 CV, 8 gate, 1 clock, 1 reset and 1 ground, which is 19, every pin.">
+    <path d="M36,40 H500 V150 L470,196 H66 L36,150 Z" class="box" style="stroke-width:1.8"/>
+    <!-- top row: odd pins -->
+    <rect x="52"  y="58" width="28" height="34" rx="3" class="pin"/><text x="66"  y="80" class="pn">1</text>
+    <rect x="96"  y="58" width="28" height="34" rx="3" class="pin"/><text x="110" y="80" class="pn">3</text>
+    <rect x="140" y="58" width="28" height="34" rx="3" class="pin-sh"/><text x="154" y="80" class="pn">5</text>
+    <rect x="184" y="58" width="28" height="34" rx="3" class="pin"/><text x="198" y="80" class="pn">7</text>
+    <rect x="228" y="58" width="28" height="34" rx="3" class="pin"/><text x="242" y="80" class="pn">9</text>
+    <rect x="272" y="58" width="28" height="34" rx="3" class="pin-sh"/><text x="286" y="80" class="pn">11</text>
+    <rect x="316" y="58" width="28" height="34" rx="3" class="pin"/><text x="330" y="80" class="pn">13</text>
+    <rect x="360" y="58" width="28" height="34" rx="3" class="pin"/><text x="374" y="80" class="pn">15</text>
+    <rect x="404" y="58" width="28" height="34" rx="3" class="pin-sh"/><text x="418" y="80" class="pn">17</text>
+    <rect x="448" y="58" width="28" height="34" rx="3" class="pin"/><text x="462" y="80" class="pn">19</text>
+    <!-- bottom row: even pins -->
+    <rect x="74"  y="108" width="28" height="34" rx="3" class="pin-sh"/><text x="88"  y="130" class="pn">2</text>
+    <rect x="118" y="108" width="28" height="34" rx="3" class="pin"/><text x="132" y="130" class="pn">4</text>
+    <rect x="162" y="108" width="28" height="34" rx="3" class="pin"/><text x="176" y="130" class="pn">6</text>
+    <rect x="206" y="108" width="28" height="34" rx="3" class="pin-sh"/><text x="220" y="130" class="pn">8</text>
+    <rect x="250" y="108" width="28" height="34" rx="3" class="pin"/><text x="264" y="130" class="pn">10</text>
+    <rect x="294" y="108" width="28" height="34" rx="3" class="pin"/><text x="308" y="130" class="pn">12</text>
+    <rect x="338" y="108" width="28" height="34" rx="3" class="pin"/><text x="352" y="130" class="pn">14</text>
+    <rect x="382" y="108" width="28" height="34" rx="3" class="pin"/><text x="396" y="130" class="pn">16</text>
+    <rect x="426" y="108" width="28" height="34" rx="3" class="pin" style="stroke-width:2.6"/><text x="440" y="130" class="pn">18</text>
+    <text x="440" y="164" class="lw c">+5 V</text>
+    <text x="268" y="226" class="s c">Type A socket, looking in. Pin to jack: unknown.</text>
+
+    <text x="560" y="58" class="lab">THE PIPE NEEDS</text>
+    <text x="600" y="88"  class="t" text-anchor="end">8</text><text x="614" y="88"  class="s" style="fill:currentColor">CV out</text>
+    <text x="600" y="110" class="t" text-anchor="end">8</text><text x="614" y="110" class="s" style="fill:currentColor">gate out</text>
+    <text x="600" y="132" class="t" text-anchor="end">1</text><text x="614" y="132" class="s" style="fill:currentColor">clock in</text>
+    <text x="600" y="154" class="t" text-anchor="end">1</text><text x="614" y="154" class="s" style="fill:currentColor">reset / CV in</text>
+    <text x="600" y="176" class="t" text-anchor="end">1</text><text x="614" y="176" class="s" style="fill:currentColor">ground</text>
+    <line x1="560" y1="188" x2="770" y2="188" class="n" style="stroke-width:1"/>
+    <text x="600" y="212" class="t" text-anchor="end">19</text><text x="614" y="212" class="t">every pin</text>
+    <rect x="560" y="226" width="14" height="14" rx="2" class="pin-sh"/><text x="582" y="238" class="s">shield return in plain HDMI</text>
+  </svg>
+  </div>
+  <figcaption><b>Figure 2.</b> 18 signals plus a ground take all 19 pins. That means OXI must run signals on some of the pins a normal HDMI cable treats as shield returns (shaded). That only works in cables that keep those wires separate, which may be why OXI recommends HDMI 2.0 cables for longer runs. Pin 18 carries +5 V out of a real HDMI source, such as a laptop. Every pin on the box gets a series resistor and clamp, so plugging a laptop or TV into it by mistake damages nothing.</figcaption>
+</figure>
+
+<section class="col">
+  <p>Because the Pipe is only wires, the box decides which way each pin runs. If two inputs turn out to be too few, a few gate jacks could become trigger inputs. The panel labels would be wrong, but the circuit is the box's to choose.</p>
+  <h3>Power for the analog side</h3>
+  <p>The box would run from one 12 V supply. The Teensy's VUSB–VIN pad stays cut, so a computer on the console port and the 12 V supply never feed the same rail.</p>
+</section>
+
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 1000 270" role="img" aria-label="Power tree. 12 volts DC comes in through a barrel jack and a protection stage, then splits three ways: a buck converter makes 5 volts for the Teensy, display, USB hub and logic; an LC filter passes plus 12 volts to the op-amps; an inverter makes minus 12 volts for the op-amps.">
+    <defs>
+      <marker id="f4n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mn"/></marker>
+      <marker id="f4v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mv"/></marker>
+    </defs>
+    <rect x="20" y="107" width="130" height="56" rx="6" class="ext"/><text x="85" y="131" class="t c">12 V DC in</text><text x="85" y="149" class="s c">barrel, 2 A</text>
+    <rect x="200" y="107" width="140" height="56" rx="6" class="box"/><text x="270" y="131" class="t c">Protection</text><text x="270" y="149" class="s c">reverse diode, PTC</text>
+    <line x1="150" y1="135" x2="198" y2="135" class="n" marker-end="url(#f4n)"/>
+    <line x1="340" y1="135" x2="380" y2="135" class="n"/>
+    <line x1="380" y1="48" x2="380" y2="222" class="n"/>
+
+    <line x1="380" y1="48"  x2="418" y2="48"  class="n" marker-end="url(#f4n)"/>
+    <line x1="380" y1="135" x2="418" y2="135" class="v" marker-end="url(#f4v)"/>
+    <line x1="380" y1="222" x2="418" y2="222" class="v" marker-end="url(#f4v)"/>
+
+    <rect x="420" y="20"  width="180" height="56" rx="6" class="box"/><text x="510" y="44"  class="t c">Buck converter</text><text x="510" y="62"  class="s c">12 → 5 V, 3 A</text>
+    <rect x="420" y="107" width="180" height="56" rx="6" class="vbox"/><text x="510" y="131" class="t c">LC filter</text><text x="510" y="149" class="s c">ferrite + capacitors</text>
+    <rect x="420" y="194" width="180" height="56" rx="6" class="vbox"/><text x="510" y="218" class="t c">Inverter</text><text x="510" y="236" class="s c">charge pump or DC-DC</text>
+
+    <line x1="600" y1="48"  x2="648" y2="48"  class="n" marker-end="url(#f4n)"/><text x="624" y="38"  class="s c" style="fill:currentColor">5 V</text>
+    <line x1="600" y1="135" x2="648" y2="135" class="v" marker-end="url(#f4v)"/><text x="624" y="125" class="lv c">+12 V</text>
+    <line x1="600" y1="222" x2="648" y2="222" class="v" marker-end="url(#f4v)"/><text x="624" y="212" class="lv c">−12 V</text>
+
+    <rect x="650" y="20"  width="330" height="56" rx="6" class="box"/><text x="666" y="44"  class="t">Teensy VIN, display</text><text x="666" y="62"  class="s">USB hub and ports, MIDI, gate logic</text>
+    <rect x="650" y="107" width="330" height="56" rx="6" class="vbox"/><text x="666" y="131" class="t">Op-amps, positive rail</text><text x="666" y="149" class="s">CV output stage, input scaling</text>
+    <rect x="650" y="194" width="330" height="56" rx="6" class="vbox"/><text x="666" y="218" class="t">Op-amps, negative rail</text><text x="666" y="236" class="s">lets CV go below 0 V</text>
+  </svg>
+  </div>
+  <figcaption><b>Figure 3.</b> One 12 V input. A buck converter feeds everything digital. The op-amp rails come from the same input: filtered for the positive side, inverted for the negative. The rails are an open question below. If CV only needs to run 0–10 V, the negative rail can go.</figcaption>
+</figure>
+
+<section class="col">
+  <h3>TELEX words for the modular</h3>
+  <p>Proposed, not built. The names follow Teletype, so Teletype scripts read the same here.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Line</th><th>Does</th></tr></thead>
+    <tbody>
+      <tr><td><code>CV 1 V 3</code></td><td>CV out 1 to 3 V</td></tr>
+      <tr><td><code>CV 2 N 7</code></td><td>CV out 2 to semitone 7, at 1 V per octave</td></tr>
+      <tr><td><code>CV.SLEW 1 200</code></td><td>CV out 1 glides to each new value over 200 ms</td></tr>
+      <tr><td><code>TR.P 3</code></td><td>Pulse gate 3</td></tr>
+      <tr><td><code>TR.TIME 3 20</code></td><td>Gate 3's pulses last 20 ms</td></tr>
+      <tr><td><code>TR 4 1</code></td><td>Hold gate 4 high (<code>TR 4 0</code> drops it)</td></tr>
+      <tr><td><code>IN</code></td><td>Reads the reset/CV input</td></tr>
+      <tr><td><code>M.EXT 1</code></td><td>The metro script M runs on each clock-in pulse instead of its own timer</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>The LFOs that already stream MIDI CC get a CV twin, so an LFO can drive a CV output directly.</p>
+  <h3>What it adds</h3>
+  <p class="small">On top of <a href="hardware.html">the box's parts</a>, estimated: a 12 V / 2 A supply, a 12 → 5 V buck and a −12 V inverter (about $25–32), the CV/gate board: an 8-channel 16-bit DAC, op-amps, gate drivers and input protection (about $35–45), and an HDMI socket plus a breakout for mapping (about $10). The Pipe itself is already on hand.</p>
+  <h3>Open questions</h3>
+  <ol class="qs">
+    <li><b>Analog rails.</b> Run the op-amps straight from the filtered 12 V input plus a charge-pump −12 V, or use an isolated ±12 V module and regulate down to ±10 V? How much supply noise shows up on 1 V/oct pitch CV?</li>
+    <li><b>DAC.</b> An 8-channel 16-bit part (TI DAC8568 or DAC80508), or two cheaper 12-bit MCP4728s? 12 bits over 15 V is about 3.7 mV a step, roughly 4.4 cents at 1 V/oct.</li>
+    <li><b>CV range.</b> −5 to +10 V covers pitch and bipolar modulation. Does it match what the OXI One puts out, and what your modules expect?</li>
+    <li><b>Gate level.</b> 5 V or 10 V gates, and a transistor per gate or a buffer chip?</li>
+    <li><b>Grounding.</b> With the rack on HDMI too, the box shares ground with the computer, the mixer and the rack. How do we keep a loop from humming into the audio?</li>
+    <li><b>CV input.</b> Is the Teensy's built-in 12-bit ADC clean enough for the reset/CV input, or does it want a dedicated ADC?</li>
+    <li><b>HDMI cable.</b> Is the shield-pin reuse in Figure 2 reliable across ordinary cables, or should the box ship with one known cable?</li>
+  </ol>
+</section>
+
+<section class="col">
+  <h2>A box without a screen</h2>
+  <p>The first phase of <a href="hardware.html">the build</a>, a Teensy, an audio shield and MIDI on a board, is already an instrument. With no screen and no keys it would be edited from a computer over the USB console (<code>telex.py</code>, or Claude writing scenes) and then left to play. That makes a small, cheap box that sits in a rack or a case and runs one scene all night, with a few knobs for M and the LFO rates if it wants any.</p>
+</section>
+
+<section class="col">
+  <h2>A Eurorack module</h2>
+  <p>The CV/gate board above, a smaller screen and the Teensy could fit behind a panel the width of a Teletype. Typing would move to a USB keyboard on the front, the way Teletype works. It's the furthest idea from what exists, and the one that would most need someone who has built modules before.</p>
+</section>
+
+<section class="col">
+  <h2>More of the box in the browser</h2>
+  <p><a href="emulator.html">The emulator</a> runs the box's firmware compiled for the web. It could load instruments from a folder of WAVs, take MIDI in as well as send it, and save scenes straight to a card file, so the browser becomes a place to write scenes before they go to the hardware.</p>
+</section>
+
+<footer class="col">
+  <p>References</p>
+  <ul>
+    <li><a href="https://www.perfectcircuit.com/oxi-pipe.html" target="_blank" rel="noopener">OXI Pipe at Perfect Circuit</a> · <a href="https://www.thomann.ae/oxi_instruments_pipe_mkii.htm" target="_blank" rel="noopener">Pipe MKII at Thomann</a></li>
+    <li><a href="https://monome.org/docs/teletype/" target="_blank" rel="noopener">monome Teletype</a></li>
+  </ul>
+</footer>
+
+</div>
+<script src="../nav.js"></script>
+</body>
+</html>

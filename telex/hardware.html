@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // telex hardware</title>
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<meta name="description" content="newspeech — the TELEX desktop box: a Teensy 4.1 instrument for TELEX scripts, with a 5-inch screen, a USB keyboard, TRS and USB MIDI, and stereo audio in and out. Draft hardware plan.">
+<meta property="og:title" content="NEWSPEECH // telex hardware">
+<meta property="og:description" content="The TELEX desktop box: draft hardware plan, block diagram, panels, parts and cost.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/telex/hardware.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="doc.css">
+<style>
+  /* Figure 2's dimension lines */
+  .dim { stroke: var(--faint); stroke-width: 1; fill: none; }
+  .dimbg { fill: var(--bg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="col">
+  <nav class="tx" aria-label="TELEX"><a href="./">telex</a><a href="readme.html">readme</a><a href="emulator.html">emulator</a><a href="hardware.html" aria-current="page">hardware</a><a href="ideas.html">ideas</a></nav>
+  <div class="osd"><span>newspeech · telex</span><span>draft hardware plan · 31 oct 2026 · nothing built yet</span></div>
+  <h1>The Box</h1>
+  <p class="lede">A desktop box of TELEX's own. It plays samples, sends and receives MIDI, has stereo audio in and out, and takes a USB keyboard. This page describes where the hardware should end up.</p>
+  <p class="ask"><strong>If you build hardware:</strong> the diagrams show the plan, and the open questions at the end are the calls someone who builds hardware would make better than we would.</p>
+</header>
+
+<section class="col">
+  <h2>Why a box</h2>
+  <p>TELEX runs today as custom firmware on an original Polyend Tracker. You type short scripts; each scene has ten of them. Scripts 1 to 8 run when triggered, M runs on a metro, and I runs when the scene loads. Around the scripts sit four LFOs and four clocks that fire them, a small test synth, sample instruments loaded from the card, MIDI notes and CC out, and a USB console. Through the console a computer, including Claude, can read and rewrite scripts while the box keeps playing.</p>
+  <p>All of that works on the Tracker now, MIDI in and out included. The Tracker's chip, keys and I/O set the limits: a 180 MHz CPU shared between the scripts, the sample voices and the effects, and a pad grid standing in for a keyboard. A box of its own adds more CPU, a real keyboard, and audio in and out. <a href="emulator.html">The emulator</a> runs the same firmware in a browser.</p>
+</section>
+
+<section class="col">
+  <h2>What it does</h2>
+  <dl class="spec">
+    <dt>Screen</dt><dd>5″, 800 × 480, the same layout as on the Tracker</dd>
+    <dt>Samples</dt><dd>A library on an internal microSD, with more voices than the Tracker can run</dd>
+    <dt>Console</dt><dd>USB-C to a computer: live script editing, USB MIDI, and the card as a USB drive</dd>
+    <dt>Keyboard</dt><dd>Any USB keyboard, through a small hub: all the typing and editing</dd>
+    <dt>Panel</dt><dd>Eight triggers, Play, an encoder with a push, a volume knob</dd>
+    <dt>MIDI</dt><dd>3.5 mm TRS in and out, plus USB MIDI gear on the hub</dd>
+    <dt>Audio</dt><dd>Stereo line in, stereo line out, headphones, each a 3.5 mm jack like the MIDI ones</dd>
+    <dt>Power</dt><dd>One 5 V, 3 A supply</dd>
+  </dl>
+</section>
+
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 1040 580" role="img" aria-label="Block diagram. A Teensy 4.1 sits in the middle of the box. On its left: a USB-C console link to a computer, a USB hub for a keyboard and MIDI gear, a MIDI interface and the audio shield. On its right: the display, the panel keys and the power input, fed by a 5 volt supply.">
+    <defs>
+      <marker id="f1d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="md"/></marker>
+      <marker id="f1v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mv"/></marker>
+      <marker id="f1n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mn"/></marker>
+    </defs>
+
+    <rect x="190" y="16" width="670" height="500" rx="14" class="bound"/>
+    <text x="206" y="38" class="lab">THE BOX</text>
+
+    <rect x="20" y="50" width="140" height="48" rx="6" class="ext"/>
+    <text x="90" y="70" class="t c">Computer</text><text x="90" y="88" class="s c">console, telex.py</text>
+    <rect x="20" y="150" width="140" height="48" rx="6" class="ext"/>
+    <text x="90" y="179" class="t c">USB keyboard</text>
+    <rect x="20" y="210" width="140" height="48" rx="6" class="ext"/>
+    <text x="90" y="239" class="t c">USB MIDI gear</text>
+    <rect x="20" y="300" width="140" height="48" rx="6" class="ext"/>
+    <text x="90" y="329" class="t c">MIDI gear</text>
+    <rect x="20" y="390" width="140" height="48" rx="6" class="ext"/>
+    <text x="90" y="419" class="t c">Line in</text>
+    <rect x="20" y="450" width="140" height="48" rx="6" class="ext"/>
+    <text x="90" y="479" class="t c">Line out, phones</text>
+
+    <rect x="220" y="160" width="170" height="88" rx="6" class="box"/>
+    <text x="305" y="198" class="t c">USB hub</text><text x="305" y="216" class="s c">CH334F, 2 × USB-C</text>
+    <rect x="220" y="296" width="170" height="56" rx="6" class="box"/>
+    <text x="305" y="320" class="t c">MIDI in / out</text><text x="305" y="338" class="s c">opto-isolator + driver</text>
+    <rect x="220" y="388" width="170" height="100" rx="6" class="box"/>
+    <text x="305" y="432" class="t c">Audio shield</text><text x="305" y="450" class="s c">SGTL5000 codec</text>
+
+    <rect x="430" y="40" width="170" height="450" rx="8" class="box" style="stroke-width:2"/>
+    <text x="515" y="128" class="t c" style="font-size:17px">Teensy 4.1</text>
+    <text x="515" y="150" class="s c">i.MX RT1062</text>
+    <text x="515" y="167" class="s c">600 MHz Cortex-M7</text>
+    <rect x="448" y="340" width="134" height="34" rx="4" class="box"/>
+    <text x="515" y="362" class="s c" style="fill:currentColor">16 MB PSRAM</text>
+    <rect x="448" y="384" width="134" height="34" rx="4" class="box"/>
+    <text x="515" y="406" class="s c" style="fill:currentColor">microSD (samples)</text>
+    <text x="515" y="458" class="fw c">TELEX firmware</text>
+
+    <rect x="660" y="50" width="170" height="70" rx="6" class="box"/>
+    <text x="745" y="80" class="t c">5″ display</text><text x="745" y="98" class="s c">800 × 480, EVE BT817</text>
+    <rect x="660" y="150" width="170" height="56" rx="6" class="box"/>
+    <text x="745" y="174" class="t c">Keys, encoder</text><text x="745" y="192" class="s c">9 keys, volume</text>
+    <rect x="660" y="250" width="170" height="56" rx="6" class="box"/>
+    <text x="745" y="274" class="t c">Power in</text><text x="745" y="292" class="s c">5 V, 3 A</text>
+
+    <rect x="900" y="254" width="120" height="48" rx="6" class="ext"/>
+    <text x="960" y="283" class="t c">5 V supply</text>
+
+    <line x1="162" y1="74" x2="428" y2="74" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
+    <text x="300" y="64" class="ld c">USB-C: console, MIDI, card</text>
+    <line x1="160" y1="174" x2="218" y2="174" class="d" marker-end="url(#f1d)"/>
+    <line x1="162" y1="234" x2="218" y2="234" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
+    <line x1="392" y1="204" x2="428" y2="204" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
+    <text x="410" y="194" class="ld c">host</text>
+    <line x1="162" y1="324" x2="218" y2="324" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
+    <line x1="392" y1="324" x2="428" y2="324" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
+    <text x="410" y="314" class="ld c">UART</text>
+    <line x1="392" y1="438" x2="428" y2="438" class="d" marker-start="url(#f1d)" marker-end="url(#f1d)"/>
+    <text x="410" y="428" class="ld c">I²S</text>
+    <line x1="600" y1="85" x2="658" y2="85" class="d" marker-end="url(#f1d)"/>
+    <text x="630" y="75" class="ld c">SPI</text>
+    <line x1="660" y1="178" x2="602" y2="178" class="d" marker-end="url(#f1d)"/>
+    <text x="630" y="168" class="ld c">GPIO</text>
+
+    <line x1="160" y1="414" x2="218" y2="414" class="v" marker-end="url(#f1v)"/>
+    <line x1="220" y1="474" x2="162" y2="474" class="v" marker-end="url(#f1v)"/>
+
+    <line x1="900" y1="278" x2="832" y2="278" class="n" marker-end="url(#f1n)"/>
+    <line x1="660" y1="278" x2="602" y2="278" class="n" marker-end="url(#f1n)"/>
+    <text x="630" y="268" class="s c" style="fill:currentColor">VIN</text>
+
+    <line x1="200" y1="550" x2="236" y2="550" class="d"/><text x="244" y="554" class="s">digital data</text>
+    <line x1="360" y1="550" x2="396" y2="550" class="v"/><text x="404" y="554" class="s">audio</text>
+    <line x1="470" y1="550" x2="506" y2="550" class="n"/><text x="514" y="554" class="s">power</text>
+    <rect x="590" y="541" width="36" height="18" rx="4" class="bound"/><text x="634" y="554" class="s">inside the box</text>
+  </svg>
+  </div>
+  <figcaption><b>Figure 1.</b> Everything inside the dashed line is the box. The Teensy talks to each block over its own bus. Two USB ports do different jobs: the device port is the console to a computer, and the host port feeds the hub for a keyboard and MIDI gear.</figcaption>
+</figure>
+
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 1040 983" role="img" aria-label="The panels to scale, 4.5 pixels a millimetre. Top panel, 206 by 134 millimetres: the 5 inch screen's glass, 136 by 92.8 millimetres, with its 108 by 64.8 millimetre picture; under the glass, eight 12 millimetre square trigger keys, each centred under one of the screen's soft-key labels, 13.5 millimetres apart; to the right, a 30 millimetre encoder knob, an 18 millimetre volume knob, and a Play key level with the triggers. Back panel, 206 by 40 millimetres: three USB-C (one to the computer, two for the hub), five 3.5 millimetre jacks for MIDI in, MIDI out, line in, line out and phones, a 5 volt barrel jack and a power switch.">
+    <text x="24.0" y="30" class="lab">TOP</text>
+    <rect x="24.0" y="44.0" width="927.0" height="603.0" rx="22.5" class="box"/>
+    <rect x="78.0" y="98.0" width="612.0" height="417.6" rx="6.8" class="ext"/>
+    <rect x="141.0" y="161.0" width="486.0" height="291.6" class="box" style="stroke-width:2"/>
+    <text x="384.0" y="300.8" class="t c">5″ screen, 108 × 64.8 mm</text>
+    <text x="384.0" y="318.8" class="s c">800 × 480 · glass 136 × 92.8 mm</text>
+    <rect x="143.4" y="425.9" width="55.9" height="21.9" class="ext" style="stroke-dasharray:2 2"/>
+    <rect x="204.2" y="425.9" width="55.9" height="21.9" class="ext" style="stroke-dasharray:2 2"/>
+    <rect x="264.9" y="425.9" width="55.9" height="21.9" class="ext" style="stroke-dasharray:2 2"/>
+    <rect x="325.7" y="425.9" width="55.9" height="21.9" class="ext" style="stroke-dasharray:2 2"/>
+    <rect x="386.4" y="425.9" width="55.9" height="21.9" class="ext" style="stroke-dasharray:2 2"/>
+    <rect x="447.2" y="425.9" width="55.9" height="21.9" class="ext" style="stroke-dasharray:2 2"/>
+    <rect x="507.9" y="425.9" width="55.9" height="21.9" class="ext" style="stroke-dasharray:2 2"/>
+    <rect x="568.7" y="425.9" width="55.9" height="21.9" class="ext" style="stroke-dasharray:2 2"/>
+    <rect x="144.4" y="539.0" width="54.0" height="54.0" rx="4.5" class="box"/><text x="171.4" y="570.0" class="s c">1</text>
+    <rect x="205.1" y="539.0" width="54.0" height="54.0" rx="4.5" class="box"/><text x="232.1" y="570.0" class="s c">2</text>
+    <rect x="265.9" y="539.0" width="54.0" height="54.0" rx="4.5" class="box"/><text x="292.9" y="570.0" class="s c">3</text>
+    <rect x="326.6" y="539.0" width="54.0" height="54.0" rx="4.5" class="box"/><text x="353.6" y="570.0" class="s c">4</text>
+    <rect x="387.4" y="539.0" width="54.0" height="54.0" rx="4.5" class="box"/><text x="414.4" y="570.0" class="s c">5</text>
+    <rect x="448.1" y="539.0" width="54.0" height="54.0" rx="4.5" class="box"/><text x="475.1" y="570.0" class="s c">6</text>
+    <rect x="508.9" y="539.0" width="54.0" height="54.0" rx="4.5" class="box"/><text x="535.9" y="570.0" class="s c">7</text>
+    <rect x="569.6" y="539.0" width="54.0" height="54.0" rx="4.5" class="box"/><text x="596.6" y="570.0" class="s c">8</text>
+    <circle cx="820.5" cy="206.0" r="67.5" class="box" style="stroke-width:2"/>
+    <circle cx="820.5" cy="206.0" r="49.5" class="ext"/>
+    <line x1="820.5" y1="156.5" x2="820.5" y2="183.5" class="d"/>
+    <text x="820.5" y="296.0" class="s c">ENCODER · push: scenes</text>
+    <circle cx="820.5" cy="395.0" r="40.5" class="box"/>
+    <line x1="820.5" y1="395.0" x2="820.5" y2="363.5" class="d"/>
+    <text x="820.5" y="464.8" class="s c">VOLUME</text>
+    <rect x="763.1" y="539.0" width="114.8" height="54.0" rx="4.5" class="box" style="stroke-width:2"/><text x="820.5" y="570.0" class="t c">PLAY</text>
+    <line x1="967.0" y1="44.0" x2="967.0" y2="647.0" class="dim"/><line x1="962.0" y1="44.0" x2="972.0" y2="44.0" class="dim"/><line x1="962.0" y1="647.0" x2="972.0" y2="647.0" class="dim"/>
+    <text x="977.0" y="349.5" class="s">134 mm</text>
+    <text x="24.0" y="703.0" class="lab">BACK</text>
+    <rect x="24.0" y="717.0" width="927.0" height="180.0" rx="13.5" class="box"/>
+    <rect x="74.6" y="784.5" width="42.8" height="18.0" rx="9.0" class="box" style="stroke-width:2"/><text x="96.0" y="852.0" class="s c">COMPUTER</text>
+    <rect x="164.6" y="784.5" width="42.8" height="18.0" rx="9.0" class="box"/><text x="186.0" y="852.0" class="s c">HOST</text>
+    <rect x="236.6" y="784.5" width="42.8" height="18.0" rx="9.0" class="box"/><text x="258.0" y="852.0" class="s c">HOST</text>
+    <circle cx="384.0" cy="793.5" r="18.0" class="box"/><circle cx="384.0" cy="793.5" r="7.9" class="ext"/>
+    <text x="384.0" y="852.0" class="s c">MIDI IN</text>
+    <circle cx="451.5" cy="793.5" r="18.0" class="box"/><circle cx="451.5" cy="793.5" r="7.9" class="ext"/>
+    <text x="451.5" y="852.0" class="s c">MIDI OUT</text>
+    <circle cx="541.5" cy="793.5" r="18.0" class="box"/><circle cx="541.5" cy="793.5" r="7.9" class="ext"/>
+    <text x="541.5" y="852.0" class="s c">LINE IN</text>
+    <circle cx="609.0" cy="793.5" r="18.0" class="box"/><circle cx="609.0" cy="793.5" r="7.9" class="ext"/>
+    <text x="609.0" y="852.0" class="s c">LINE OUT</text>
+    <circle cx="676.5" cy="793.5" r="18.0" class="box"/><circle cx="676.5" cy="793.5" r="7.9" class="ext"/>
+    <text x="676.5" y="852.0" class="s c">PHONES</text>
+    <circle cx="780.0" cy="793.5" r="24.8" class="box" style="stroke-width:2"/><circle cx="780.0" cy="793.5" r="5.4" class="ext"/>
+    <text x="780.0" y="852.0" class="s c">5 V</text>
+    <circle cx="879.0" cy="793.5" r="20.2" class="box"/><line x1="879.0" y1="793.5" x2="890.2" y2="782.3" class="d"/>
+    <text x="879.0" y="852.0" class="s c">ON</text>
+    <line x1="967.0" y1="717.0" x2="967.0" y2="897.0" class="dim"/><line x1="962.0" y1="717.0" x2="972.0" y2="717.0" class="dim"/><line x1="962.0" y1="897.0" x2="972.0" y2="897.0" class="dim"/>
+    <text x="977.0" y="811.0" class="s">40 mm</text>
+    <line x1="24.0" y1="927.0" x2="951.0" y2="927.0" class="dim"/><line x1="24.0" y1="922.0" x2="24.0" y2="932.0" class="dim"/><line x1="951.0" y1="922.0" x2="951.0" y2="932.0" class="dim"/>
+    <rect x="453.5" y="919.0" width="68" height="16" class="dimbg"/><text x="487.5" y="931.0" class="s c">206 mm</text>
+    <line x1="861.0" y1="961.0" x2="951.0" y2="961.0" class="d"/><line x1="861.0" y1="956.0" x2="861.0" y2="966.0" class="d"/><line x1="906.0" y1="958.0" x2="906.0" y2="964.0" class="d"/><line x1="951.0" y1="956.0" x2="951.0" y2="966.0" class="d"/>
+    <text x="853.0" y="965.0" class="s" text-anchor="end">20 mm</text>
+  </svg>
+  </div>
+  <figcaption><b>Figure 2.</b> The panels, to scale (the bar is 20 mm). The keyboard does the typing and editing, so the top keeps only what you play. Each trigger sits under the soft-key label the screen draws for it: a label is 100 pixels, 13.5 mm, so the triggers are 12 mm caps on a 13.5 mm pitch. Beside them, a 30 mm encoder knob (turn: a script or a scene slot; push: SCENES), an 18 mm volume knob, and Play, level with the triggers. Every jack on the back is the same 3.5 mm socket, MIDI included, and every USB port is USB-C: the heavier one goes to the computer, the two host ports to the keyboard and MIDI gear. The card lives inside. The glass is the Riverdi part's 136 × 92.8 mm, with the picture drawn centred in it; the 40 mm height is a guess until the parts inside are stacked.</figcaption>
+</figure>
+
+<section class="col">
+  <h2>The brain: Teensy 4.1</h2>
+  <ul>
+    <li><b>CPU.</b> A 600 MHz Cortex-M7, against the Tracker's 180 MHz K66. That headroom is where the extra sample voices come from.</li>
+    <li><b>Same codec.</b> The Teensy Audio Shield uses the SGTL5000, the same codec as the Tracker.</li>
+    <li><b>Same display family.</b> The Tracker drives an FT812 EVE chip; the box uses a BT817 from the same family, so the drawing code carries over.</li>
+    <li><b>Memory.</b> 16 MB of PSRAM for samples, bought already fitted (ProtoSupplies sells a "Fully Loaded" Teensy 4.1), so there's no fine-pitch soldering. The microSD slot is on the board, inside the box.</li>
+    <li><b>Two USB ports.</b> The device port carries the console, USB MIDI and the card. A separate host port feeds the hub for the keyboard and MIDI gear.</li>
+  </ul>
+  <p>The software port: TELEX sits on a hardware layer written for the Tracker's chip (audio, display, card, USB). That layer gets rewritten for the RT1062. The language, the engine and the screens move over as they are, the same way they already compile for <a href="emulator.html">the browser</a>.</p>
+</section>
+
+<section class="col">
+  <h2>The card</h2>
+  <p>The microSD stays inside, in the Teensy's own slot. Plugged into a computer, the box hands the card over as a USB drive, the way the Tracker firmware already does: while the computer has it, the box stops reading it, and takes it back when it's ejected. Samples, instruments and scenes go on that way. Firmware updates don't need the card at all: the Teensy has its own USB bootloader.</p>
+  <p>The keyboard takes over what the Tracker's other keys did. Enter, Backspace, the arrows, Tab for the encoder, Esc for Play, and Ctrl+Z, C and V already work that way in <a href="emulator.html">the emulator</a>; SCENES, the rack and the level get keyboard shortcuts of their own in the port.</p>
+</section>
+
+<section class="col">
+  <h2>Power</h2>
+  <p>One 5 V, 3 A supply feeds the Teensy, the display and the USB ports. The Teensy's VUSB–VIN pad is cut, so a computer on the console port and the supply never feed the same rail.</p>
+</section>
+
+<section class="col">
+  <h2>Build order</h2>
+  <p>Each phase works on its own before the next starts.</p>
+  <ol class="phases">
+    <li>
+      <h3>Bench core <span>about $88–104</span></h3>
+      <p>Teensy, audio shield, MIDI and an encoder on a breadboard, no screen.</p>
+      <p class="small">Shows: TELEX ported and making sound, MIDI in and out, the console working.</p>
+    </li>
+    <li>
+      <h3>Screen <span>about $95–130</span></h3>
+      <p>The 5″ EVE display on SPI, running the same screens as the Tracker.</p>
+      <p class="small">Shows: the display layer ported, editing on the box itself.</p>
+    </li>
+    <li>
+      <h3>The box <span>about $68–144</span></h3>
+      <p>Power, the USB hub, panel sockets, the nine keys, the volume knob and the enclosure.</p>
+      <p class="small">Shows: a closed box that runs without a computer attached.</p>
+    </li>
+  </ol>
+</section>
+
+<section class="col">
+  <h2>Parts and cost</h2>
+  <p class="small">USD. Board prices are ProtoSupplies, SparkFun and Adafruit list prices. Rows marked est. are estimates. Shipping and tax aren't included.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Part</th><th class="num">Price</th></tr></thead>
+    <tbody>
+      <tr class="group"><td colspan="2">Core</td></tr>
+      <tr><td>Teensy 4.1 "Fully Loaded": 16 MB PSRAM fitted, with pins (ProtoSupplies)</td><td class="num">$46.95</td></tr>
+      <tr><td>Teensy 4 Audio Shield, Rev D (SparkFun DEV-15845)</td><td class="num">$9.80</td></tr>
+      <tr><td>USB host cable for Teensy 4.1 (SparkFun CAB-28389)</td><td class="num">$3.00</td></tr>
+      <tr><td>Fast microSD card, 32 GB <span class="est">est.</span></td><td class="num">$10–15</td></tr>
+      <tr><td>MIDI: opto-isolator, 2 × 3.5 mm TRS sockets, resistors, diode <span class="est">est.</span></td><td class="num">$6–10</td></tr>
+      <tr><td>Encoder with push <span class="est">est.</span></td><td class="num">$2–4</td></tr>
+      <tr><td>Breadboard and jumper wires <span class="est">est.</span></td><td class="num">$10–15</td></tr>
+      <tr class="group"><td colspan="2">Screen</td></tr>
+      <tr><td>5″ 800 × 480 EVE display: Riverdi RVT50HQBNWC00 (BT817) or BridgeTek VM816C50A-D (BT816)</td><td class="num">$90–115</td></tr>
+      <tr><td>Ribbon cable or adapter <span class="est">est.</span></td><td class="num">$5–15</td></tr>
+      <tr class="group"><td colspan="2">The box</td></tr>
+      <tr><td>5 V / 3 A supply with a USB-C power-input board <span class="est">est.</span></td><td class="num">$15–25</td></tr>
+      <tr><td>Adafruit CH334F 4-port USB hub (#5997)</td><td class="num">$4.95</td></tr>
+      <tr><td>Panel sockets: 3 × USB-C, 3 × 3.5 mm audio jacks; CC resistors and a 5 V current-limit switch for the two host ports <span class="est">est.</span></td><td class="num">$18–34</td></tr>
+      <tr><td>9 panel keys with caps <span class="est">est.</span></td><td class="num">$8–15</td></tr>
+      <tr><td>Volume knob: a pot the Teensy reads, setting the codec's level <span class="est">est.</span></td><td class="num">$2–4</td></tr>
+      <tr><td>Enclosure: aluminium, 3D-printed or laser-cut <span class="est">est.</span></td><td class="num">$20–60</td></tr>
+      <tr class="total"><td>Total</td><td class="num">about $250–380</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">The display is the largest and most variable cost. The same part lists for $90–115 at smaller distributors and $200 or more at others, so get a quote with stock confirmed. The hub board has solder pads, not USB sockets; the two USB-C host sockets wire to it, each with 56 kΩ pull-ups on its CC pins so plugged-in gear sees a host. A keyboard with a USB-A cable needs a C adapter.</p>
+</section>
+
+<section class="col">
+  <h2>Open questions</h2>
+  <ol class="qs">
+    <li><b>Power input.</b> A USB-C PD trigger board asking for 5 V, or a plain 5 V barrel jack? Which keeps hum out of the audio best at 3 A?</li>
+    <li><b>Grounding.</b> The box shares ground with the computer over USB and with the mixer over audio. Where does the star ground go, and is a USB isolator on the console port worth it?</li>
+    <li><b>Display link.</b> The EVE display runs on SPI over a ribbon. How long can that run at 20–30 MHz before it needs buffering or a slower clock?</li>
+    <li><b>MIDI.</b> 6N138 or H11L1 for MIDI in on a 3.3 V board? And TRS Type A, the MIDI standard, or Type B? A Type A to DIN adapter cable covers older gear either way.</li>
+    <li><b>Internal card.</b> With the card inside and reached over USB, is a slot you get at by opening the case enough of a fallback, for a card that's full or corrupted? Or does it still want a panel slot?</li>
+    <li><b>Volume.</b> A pot read by the Teensy, setting the codec's digital level, keeps audio off the panel wiring. Or is an analog pot on the line and headphone outputs worth the extra path?</li>
+    <li><b>Enclosure.</b> An off-the-shelf aluminium case, a 3D print, or laser-cut panels? Any boxes you've had good luck with?</li>
+  </ol>
+  <p>Beyond this box: <a href="ideas.html">ideas</a>, where CV and gate through an OXI Pipe now live.</p>
+</section>
+
+<footer class="col">
+  <p>References</p>
+  <ul>
+    <li><a href="https://protosupplies.com/?p=9329" target="_blank" rel="noopener">Teensy 4.1 Fully Loaded (ProtoSupplies)</a> · <a href="https://www.sparkfun.com/teensy-4-audio-shield-rev-d.html" target="_blank" rel="noopener">Audio Shield Rev D</a> · <a href="https://www.sparkfun.com/usb-host-cable-for-teensy-4-1-and-teensy-3-6.html" target="_blank" rel="noopener">USB host cable</a></li>
+    <li><a href="https://www.adafruit.com/product/5997" target="_blank" rel="noopener">Adafruit CH334F hub</a></li>
+    <li><a href="https://ichome.com/product-detail/riverdi/rvt50hqbnwc00" target="_blank" rel="noopener">Riverdi RVT50HQBNWC00</a> · <a href="https://ichome.com/product-detail/bridgetek/vm816c50a-d" target="_blank" rel="noopener">BridgeTek VM816C50A-D</a></li>
+  </ul>
+</footer>
+
+</div>
+<script src="../nav.js"></script>
+</body>
+</html>

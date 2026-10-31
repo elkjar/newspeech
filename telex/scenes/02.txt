@@ -1,0 +1,12 @@
+steps: a pattern walked, euclid accents
+#1
+P.I 0; T 0; NOTE P 0
+#M
+NOTE P.NEXT
+IF ER 5 16 T: NOTE + P.HERE 12
+T + T 1
+#I
+M / BEAT 4
+WAVE 2; DEC 180; TONE 70
+#P
+0: 48 51 55 58 60 55 51 63

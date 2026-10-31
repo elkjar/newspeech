@@ -1,0 +1,13 @@
+drift: a slow line wandering the scale
+#1
+X 0; NOTE DEG X
+#2
+L 0 2: NOTE DEG * I 2
+#M
+X WRAP + X RRAND -2 2 0 14
+PROB 80: NOTE DEG X
+EVERY 8: NOTE DEG - X 7
+#I
+M 250
+SCALE 2; ROOT 48
+WAVE 1; DEC 600; TONE 50
