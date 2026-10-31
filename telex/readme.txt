@@ -58,8 +58,9 @@ Z X C V B N M . % = ; space
 
 SCENES: Up/Down or the encoder choose a slot (Left/Right the other column); F1 loads (variables reset, I runs, back to the
 scripts; Play starts the metro); F2 saves (twice when the slot holds a different scene); F3 renames (the slot's title typed on
-the pads, lower case unless Shift; F1 or Insert keeps it, F8 cancels); Pattern or F8 back. The scene being played saves itself
-and comes back at power-up. From the console: `telex rename <slot> <text>` (`_` for spaces).
+the pads, lower case unless Shift; F1 or Insert keeps it, F8 cancels); F4 twice deletes (the slot empties; the card keeps its
+last scene as `Scripts/NN.txt.bak` until the slot is saved again); Pattern or F8 back. The scene being played saves itself and
+comes back at power-up. From the console: `telex rename <slot> <text>` (`_` for spaces), `telex delete <slot> yes`.
 
 ## Words
 
