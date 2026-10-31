@@ -133,78 +133,77 @@
 
 <figure>
   <div class="fig">
-  <svg viewBox="0 0 1040 600" role="img" aria-label="The panels. Front: the 5 inch screen with eight trigger keys under it, an encoder with a push, a Play key and a volume knob. Back, left to right: USB-C for the console, MIDI and the card, two USB-A host ports, MIDI in and out, line in, line out, headphones, power and the on switch. The microSD card sits inside.">
+  <svg viewBox="0 0 1040 640" role="img" aria-label="The panels. Front: the 5 inch screen with eight square trigger keys in a row under it; to the right, stacked top to bottom, the encoder with a push, the volume knob and the Play key, Play level with the triggers. Back, left to right: USB-C for the console and the card, two USB-A host ports, MIDI in and out, line in, line out, headphones, power and the on switch. The microSD card sits inside.">
+    <g transform="translate(160 0)">
     <text x="20" y="22" class="lab">FRONT</text>
-    <rect x="20" y="34" width="1000" height="340" rx="14" class="box"/>
+    <rect x="20" y="34" width="700" height="410" rx="14" class="box"/>
 
     <!-- screen, 800 x 480 at 0.6 -->
-    <rect x="52" y="58" width="480" height="288" rx="4" class="box" style="stroke-width:2"/>
+    <rect x="52" y="62" width="480" height="288" rx="4" class="box" style="stroke-width:2"/>
     <text x="292" y="196" class="t c">5″ screen</text>
     <text x="292" y="214" class="s c">800 × 480, TELEX's editor as on the Tracker</text>
-    <!-- the triggers, each under the label the screen draws for it -->
-    <rect x="52" y="318" width="480" height="28" class="ext" style="stroke-dasharray:2 3"/>
-    <text x="292" y="337" class="s c">run 1 · run 2 · … · run 8 (the screen's soft-key row)</text>
+    <line x1="52" y1="322" x2="532" y2="322" class="n" style="stroke-width:1"/>
+    <text x="292" y="340" class="s c">the soft-key row: run 1 … run 8</text>
+
+    <!-- the triggers: square, each under its label on the screen -->
     <g>
-      <rect x="54" y="352" width="54" height="16" rx="3" class="box"/>
-      <rect x="114" y="352" width="54" height="16" rx="3" class="box"/>
-      <rect x="174" y="352" width="54" height="16" rx="3" class="box"/>
-      <rect x="234" y="352" width="54" height="16" rx="3" class="box"/>
-      <rect x="294" y="352" width="54" height="16" rx="3" class="box"/>
-      <rect x="354" y="352" width="54" height="16" rx="3" class="box"/>
-      <rect x="414" y="352" width="54" height="16" rx="3" class="box"/>
-      <rect x="474" y="352" width="54" height="16" rx="3" class="box"/>
+      <rect x="56" y="366" width="52" height="52" rx="4" class="box"/><text x="82" y="397" class="s c">1</text>
+      <rect x="116" y="366" width="52" height="52" rx="4" class="box"/><text x="142" y="397" class="s c">2</text>
+      <rect x="176" y="366" width="52" height="52" rx="4" class="box"/><text x="202" y="397" class="s c">3</text>
+      <rect x="236" y="366" width="52" height="52" rx="4" class="box"/><text x="262" y="397" class="s c">4</text>
+      <rect x="296" y="366" width="52" height="52" rx="4" class="box"/><text x="322" y="397" class="s c">5</text>
+      <rect x="356" y="366" width="52" height="52" rx="4" class="box"/><text x="382" y="397" class="s c">6</text>
+      <rect x="416" y="366" width="52" height="52" rx="4" class="box"/><text x="442" y="397" class="s c">7</text>
+      <rect x="476" y="366" width="52" height="52" rx="4" class="box"/><text x="502" y="397" class="s c">8</text>
     </g>
 
-    <!-- encoder with push -->
-    <circle cx="680" cy="140" r="56" class="box" style="stroke-width:2"/>
-    <circle cx="680" cy="140" r="38" class="ext"/>
-    <text x="680" y="226" class="t c">Encoder</text>
-    <text x="680" y="244" class="s c">turn: script, slot · push: scenes</text>
+    <!-- the column beside the screen: encoder, volume, play -->
+    <circle cx="626" cy="122" r="50" class="box" style="stroke-width:2"/>
+    <circle cx="626" cy="122" r="34" class="ext"/>
+    <text x="626" y="194" class="t c">Encoder</text>
+    <text x="626" y="211" class="s c">turn: script, slot</text>
+    <text x="626" y="226" class="s c">push: scenes</text>
 
-    <!-- volume -->
-    <circle cx="900" cy="140" r="36" class="box"/>
-    <line x1="900" y1="140" x2="900" y2="110" class="d"/>
-    <text x="900" y="226" class="t c">Volume</text>
-    <text x="900" y="244" class="s c">the output level</text>
+    <circle cx="626" cy="282" r="32" class="box"/>
+    <line x1="626" y1="282" x2="626" y2="256" class="d"/>
+    <text x="626" y="336" class="t c">Volume</text>
 
-    <!-- play -->
-    <rect x="606" y="282" width="148" height="56" rx="6" class="box" style="stroke-width:2"/>
-    <text x="680" y="315" class="t c">Play</text>
-    <text x="900" y="306" class="s c">everything else:</text>
-    <text x="900" y="324" class="s c">the USB keyboard</text>
+    <rect x="574" y="366" width="104" height="52" rx="4" class="box" style="stroke-width:2"/>
+    <text x="626" y="397" class="t c">Play</text>
 
-    <text x="20" y="420" class="lab">BACK</text>
-    <rect x="20" y="432" width="1000" height="130" rx="14" class="box"/>
+    <text x="20" y="490" class="lab">BACK</text>
+    <rect x="20" y="502" width="700" height="118" rx="14" class="box"/>
     <g>
-      <rect x="64" y="472" width="44" height="22" rx="8" class="box" style="stroke-width:2"/>
-      <text x="86" y="522" class="t c">USB-C</text><text x="86" y="540" class="s c">console, MIDI, card</text>
+      <rect x="50" y="540" width="44" height="20" rx="8" class="box" style="stroke-width:2"/>
+      <text x="72" y="588" class="t c">USB-C</text><text x="72" y="605" class="s c">console, card</text>
 
-      <rect x="196" y="468" width="52" height="30" rx="2" class="box"/>
-      <rect x="258" y="468" width="52" height="30" rx="2" class="box"/>
-      <text x="253" y="522" class="t c">2 × USB-A</text><text x="253" y="540" class="s c">keyboard, MIDI gear</text>
+      <rect x="150" y="536" width="30" height="28" rx="2" class="box"/>
+      <rect x="188" y="536" width="30" height="28" rx="2" class="box"/>
+      <text x="184" y="588" class="t c">2 × USB-A</text><text x="184" y="605" class="s c">keyboard, gear</text>
 
-      <circle cx="366" cy="483" r="20" class="box"/><circle cx="366" cy="483" r="4" class="ext"/>
-      <circle cx="418" cy="483" r="20" class="box"/><circle cx="418" cy="483" r="4" class="ext"/>
-      <text x="392" y="522" class="t c">MIDI in, out</text><text x="392" y="540" class="s c">5-pin DIN</text>
+      <circle cx="270" cy="550" r="17" class="box"/><circle cx="270" cy="550" r="3.5" class="ext"/>
+      <circle cx="312" cy="550" r="17" class="box"/><circle cx="312" cy="550" r="3.5" class="ext"/>
+      <text x="291" y="588" class="t c">MIDI</text><text x="291" y="605" class="s c">in, out</text>
 
-      <circle cx="484" cy="483" r="11" class="box"/><circle cx="516" cy="483" r="11" class="box"/>
-      <text x="500" y="522" class="t c">Line in</text><text x="500" y="540" class="s c">L, R</text>
+      <circle cx="372" cy="550" r="10" class="box"/><circle cx="398" cy="550" r="10" class="box"/>
+      <text x="385" y="588" class="t c">Line in</text><text x="385" y="605" class="s c">L, R</text>
 
-      <circle cx="594" cy="483" r="11" class="box"/><circle cx="626" cy="483" r="11" class="box"/>
-      <text x="610" y="522" class="t c">Line out</text><text x="610" y="540" class="s c">L, R</text>
+      <circle cx="458" cy="550" r="10" class="box"/><circle cx="484" cy="550" r="10" class="box"/>
+      <text x="471" y="588" class="t c">Line out</text><text x="471" y="605" class="s c">L, R</text>
 
-      <circle cx="712" cy="483" r="9" class="box"/>
-      <text x="712" y="522" class="t c">Phones</text><text x="712" y="540" class="s c">3.5 mm</text>
+      <circle cx="550" cy="550" r="8" class="box"/>
+      <text x="550" y="588" class="t c">Phones</text><text x="550" y="605" class="s c">3.5 mm</text>
 
-      <circle cx="822" cy="483" r="12" class="box" style="stroke-width:2"/><circle cx="822" cy="483" r="4" class="ext"/>
-      <text x="822" y="522" class="t c">Power</text><text x="822" y="540" class="s c">5 V, 3 A</text>
+      <circle cx="622" cy="550" r="11" class="box" style="stroke-width:2"/><circle cx="622" cy="550" r="3.5" class="ext"/>
+      <text x="622" y="588" class="t c">Power</text><text x="622" y="605" class="s c">5 V</text>
 
-      <rect x="920" y="474" width="34" height="18" rx="9" class="box"/><circle cx="945" cy="483" r="6" class="ext"/>
-      <text x="937" y="522" class="t c">On</text>
+      <rect x="670" y="541" width="32" height="18" rx="9" class="box"/><circle cx="693" cy="550" r="6" class="ext"/>
+      <text x="686" y="588" class="t c">On</text>
+    </g>
     </g>
   </svg>
   </div>
-  <figcaption><b>Figure 2.</b> The panels. The USB keyboard does the typing and the editing, so the front keeps only what you play: eight triggers under the screen (each under the label the screen draws for it, as on the Tracker), Play, an encoder that picks a script or a scene slot and opens SCENES when pushed, and a volume knob. With those, a saved scene loads and plays with no keyboard attached. The card lives inside; the computer reaches it over USB-C.</figcaption>
+  <figcaption><b>Figure 2.</b> The panels. The USB keyboard does the typing and the editing, so the front keeps only what you play: eight square triggers under the screen, each under the label the screen draws for it, as on the Tracker, and beside them a column of the encoder (turn: a script or a scene slot; push: SCENES), the volume knob, and Play, level with the triggers. With those, a saved scene loads and plays with no keyboard attached. The card lives inside; the computer reaches it over USB-C.</figcaption>
 </figure>
 
 <section class="col">
