@@ -9,10 +9,17 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="description" content="newspeech - murmurations">
 <style>
+  @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
   body { width: 100vw; height: 100vh; font-family: ui-monospace, Menlo, monospace; color: #ddd; }
   #bg { position: fixed; inset: 0; display: block; z-index: 1; }
+  #credit {
+    position: fixed; left: 3vmin; top: 3vmin; z-index: 5; pointer-events: none;
+    font-family: "zxx-sans", ui-monospace, monospace; font-size: max(11px, 1.6vmin);
+    line-height: 1.5; letter-spacing: 0.06em; text-transform: lowercase; color: #ddd;
+  }
+  #meters { display: block; margin-top: 0.9em; width: 11em; height: 2.6em; }
   #start, .dialog { position: fixed; z-index: 30; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
   #start { left: 50%; bottom: 40px; transform: translateX(-50%); opacity: 0.55; pointer-events: none; }
   #start[hidden], .dialog[hidden] { display: none; }
@@ -31,6 +38,14 @@
 </head>
 <body>
 <canvas id="bg"></canvas>
+
+<div id="credit">
+  <div>newspeech</div>
+  <div>murmurations</div>
+  <div>metabolic studio</div>
+  <div>www.newspeechsound.com</div>
+  <canvas id="meters"></canvas>
+</div>
 
 <div id="start" hidden>click to start audio</div>
 
@@ -171,46 +186,28 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// camera stays on the flock centroid; flock fills most of the frame
-const DIST = 90;
-const cam = { x: 0, y: 0, z: 0, span: 12 };
-function updateCamera(dt) {
-  const s = flock.stats;
-  const a = 1 - Math.exp(-dt / 0.4);
-  cam.x += (s.cx - cam.x) * a;
-  cam.y += (s.cy - cam.y) * a;
-  cam.z += (s.cz - cam.z) * a;
-  const want = Math.max(5, s.extent * 1.35);
-  cam.span += (want - cam.span) * (1 - Math.exp(-dt / 4));
+// fixed view: the arena circle sits in the middle of the screen
+let scale = 1;
+const proj = [0, 0];
+function project(x, y) {
+  proj[0] = cw * 0.5 + x * scale;
+  proj[1] = ch * 0.5 - y * scale;
 }
-let focal = 1;
-const proj = [0, 0, 0];
-function project(x, y, z) {
-  const dz = DIST - (z - cam.z);
-  if (dz < 8) return false;
-  const f = focal * DIST / dz;
-  proj[0] = cw * 0.5 + (x - cam.x) * f;
-  proj[1] = ch * 0.5 - (y - cam.y) * f;
-  proj[2] = f / focal;
-  return true;
-}
-// flock position → room: x = left/right, depth = front/back
-function roomPos(x, z) {
-  const r = Math.max(2, flock.stats.extent * 1.4);
-  const u = Math.max(-1, Math.min(1, (x - cam.x) / r));
-  const w = Math.max(-1, Math.min(1, (z - cam.z) / r));
-  return [u, w];
+// arena position → room: x = left/right, screen top = front (by the screen)
+function roomPos(x, y) {
+  const r = 0.75 * flock.params.arena;
+  return [Math.max(-1, Math.min(1, x / r)), Math.max(-1, Math.min(1, -y / r))];
 }
 
 // ---- strikes (mic / click) ----
 // birds within `radius` of the point turn away at once; the rest follow by contagion
-function strikeAt(x, y, z, radius) { flock.strike(simT, x, y, z, radius); }
+function strikeAt(x, y, radius) { flock.strike(simT, x, y, radius); }
 function peripheralBird() {
   const s = flock.stats;
   let best = 0, far = -1;
   for (let n = 0; n < 8; n++) {
     const i = (Math.random() * flock.n) | 0;
-    const d = (flock.px[i] - s.cx) ** 2 + (flock.py[i] - s.cy) ** 2 + (flock.pz[i] - s.cz) ** 2;
+    const d = (flock.px[i] - s.cx) ** 2 + (flock.py[i] - s.cy) ** 2;
     if (d > far) { far = d; best = i; }
   }
   return best;
@@ -229,7 +226,7 @@ function tickMic(dt) {
   const excess = lvl - micBase - params.falcon - outLevel * 0.6;
   if (excess > 0 && falconCool <= 0) {
     const i = peripheralBird();
-    strikeAt(flock.px[i], flock.py[i], flock.pz[i], 3 + 30 * Math.min(0.4, excess));
+    strikeAt(flock.px[i], flock.py[i], 3 + 30 * Math.min(0.4, excess));
     falconCool = 2.5;
   }
 }
@@ -331,6 +328,8 @@ function releaseNote(n, t, secs) {
 // ---- audio ----
 let ac = null, buses = [], reverbIn = null, master = null, meter = null, meterBuf = null;
 let outLevel = 0, activeVoices = 0, hushed = false, quad = false;
+let busMeters = [];
+const busLevel = [0, 0, 0, 0], busBuf = new Float32Array(512);
 const bed = { out: [], notes: [] };
 
 function quadGains(u, w) {
@@ -388,7 +387,7 @@ async function startAudio(sinkId) {
   meter.fftSize = 1024;
   meterBuf = new Float32Array(meter.fftSize);
 
-  buses = [];
+  buses = []; busMeters = [];
   for (let c = 0; c < 4; c++) {
     const bus = ac.createGain();
     const lim = ac.createDynamicsCompressor();
@@ -398,6 +397,9 @@ async function startAudio(sinkId) {
     // stereo: FL+RL → L, FR+RR → R
     lim.connect(merger, 0, quad ? c : c % 2);
     lim.connect(meter);
+    const m = ac.createAnalyser(); m.fftSize = 512;
+    lim.connect(m);
+    busMeters.push(m);
     buses.push(bus);
   }
 
@@ -461,6 +463,14 @@ function tickBed(dt) {
   let sum = 0;
   for (let i = 0; i < meterBuf.length; i++) sum += meterBuf[i] * meterBuf[i];
   outLevel += (Math.sqrt(sum / meterBuf.length) - outLevel) * 0.3;
+
+  // per-speaker peak, fast up, slow down
+  busMeters.forEach((m, c) => {
+    m.getFloatTimeDomainData(busBuf);
+    let pk = 0;
+    for (let i = 0; i < busBuf.length; i++) pk = Math.max(pk, Math.abs(busBuf[i]));
+    busLevel[c] = pk > busLevel[c] ? pk : busLevel[c] * Math.exp(-dt / 0.35);
+  });
 }
 
 function playSinger(i, midi, vel, u, w, t) {
@@ -496,7 +506,7 @@ function drainEvents() {
     if (!ac || params.voices <= 0) continue;
     const w = e.wave;
     const vel = params.voices * (w.kind === "strike" ? 0.9 : 0.45 + 0.3 * Math.random());
-    const [u, wz] = roomPos(flock.px[e.i], flock.pz[e.i]);
+    const [u, wz] = roomPos(flock.px[e.i], flock.py[e.i]);
     const lag = Math.max(0, e.t - simT);
     playSinger(e.i, singerNote(e.i, w.chord || CHORDS[chordIdx]), vel, u, wz, ac.currentTime + 0.02 + lag);
   }
@@ -504,8 +514,27 @@ function drainEvents() {
 }
 
 // ---- render ----
+const meterCanvas = document.getElementById("meters");
+const mctx = meterCanvas.getContext("2d");
+function drawMeters() {
+  const w = Math.round(meterCanvas.clientWidth * dpr), h = Math.round(meterCanvas.clientHeight * dpr);
+  if (meterCanvas.width !== w || meterCanvas.height !== h) { meterCanvas.width = w; meterCanvas.height = h; }
+  mctx.clearRect(0, 0, w, h);
+  // four bars, one per speaker, -60..0 dBFS
+  const bh = Math.max(1, Math.round(h / 7)), gap = (h - 4 * bh) / 3;
+  for (let c = 0; c < 4; c++) {
+    const y = Math.round(c * (bh + gap));
+    const db = 20 * Math.log10(Math.max(1e-6, busLevel[c]));
+    const f = Math.max(0, Math.min(1, (db + 60) / 60));
+    mctx.fillStyle = "rgba(255,255,255,0.15)";
+    mctx.fillRect(0, y, w, bh);
+    mctx.fillStyle = "rgba(255,255,255,0.9)";
+    mctx.fillRect(0, y, Math.round(w * f), bh);
+  }
+}
+
 function draw(dt) {
-  focal = Math.min(cw, ch) * 0.5 / cam.span;
+  scale = 0.46 * Math.min(cw, ch) / flock.params.arena;
   // trails fade to transparent
   ctx.save();
   ctx.globalCompositeOperation = "destination-out";
@@ -513,29 +542,29 @@ function draw(dt) {
   ctx.fillRect(0, 0, cw, ch);
   ctx.restore();
 
-  const n = flock.n, px = flock.px, py = flock.py, pz = flock.pz, vx = flock.vx, vy = flock.vy, vz = flock.vz;
-  const calm = [new Path2D(), new Path2D(), new Path2D()];
-  const lit = new Path2D();
+  const n = flock.n, px = flock.px, py = flock.py;
+  const d = Math.max(2, Math.round(3 * unit)), D = Math.round(d * 1.7);
+  ctx.fillStyle = "rgba(225,225,225,0.7)";
   for (let i = 0; i < n; i++) {
-    if (!project(px[i], py[i], pz[i])) continue;
-    const ax = proj[0], ay = proj[1], depth = proj[2];
-    if (!project(px[i] - vx[i] * 0.06, py[i] - vy[i] * 0.06, pz[i] - vz[i] * 0.06)) continue;
-    const path = flock.turning(i) ? lit : calm[depth > 1.06 ? 2 : depth > 0.95 ? 1 : 0];
-    path.moveTo(ax, ay); path.lineTo(proj[0], proj[1]);
+    if (flock.turning(i)) continue;
+    project(px[i], py[i]);
+    ctx.fillRect(proj[0] - d / 2, proj[1] - d / 2, d, d);
   }
-  ctx.lineCap = "round";
-  ctx.lineWidth = Math.max(1.5, 2.6 * unit);
-  [0.4, 0.62, 0.85].forEach((a, b) => { ctx.strokeStyle = `rgba(225,225,225,${a})`; ctx.stroke(calm[b]); });
-  ctx.lineWidth = Math.max(2, 3.2 * unit);
-  ctx.strokeStyle = "rgba(255,255,255,1)";
-  ctx.stroke(lit);
+  ctx.fillStyle = "#fff";
+  for (let i = 0; i < n; i++) {
+    if (!flock.turning(i)) continue;
+    project(px[i], py[i]);
+    ctx.fillRect(proj[0] - D / 2, proj[1] - D / 2, D, D);
+  }
 
   for (let f = flashes.length - 1; f >= 0; f--) {
     const fl = flashes[f], age = simT - fl.t0;
     if (age > 0.6 || fl.i >= n) { flashes.splice(f, 1); continue; }
-    if (age < 0 || !project(px[fl.i], py[fl.i], pz[fl.i])) continue;
-    drawSoftDot(ctx, proj[0], proj[1], 60 * unit * proj[2], 0.75 * (1 - age / 0.6));
+    if (age < 0) continue;
+    project(px[fl.i], py[fl.i]);
+    drawSoftDot(ctx, proj[0], proj[1], 50 * unit, 0.75 * (1 - age / 0.6));
   }
+  drawMeters();
 }
 
 // ---- loop ----
@@ -551,7 +580,6 @@ function frame(now) {
     simT += STEP;
     acc -= STEP;
   }
-  updateCamera(dt);
   tickMic(dt);
   tickBed(dt);
   drainEvents();
@@ -683,11 +711,11 @@ window.addEventListener("click", (e) => {
   let best = -1, bd = Infinity;
   const mx = e.clientX * dpr, my = e.clientY * dpr;
   for (let i = 0; i < flock.n; i++) {
-    if (!project(flock.px[i], flock.py[i], flock.pz[i])) continue;
+    project(flock.px[i], flock.py[i]);
     const d = (proj[0] - mx) ** 2 + (proj[1] - my) ** 2;
     if (d < bd) { bd = d; best = i; }
   }
-  if (best >= 0) strikeAt(flock.px[best], flock.py[best], flock.pz[best], 6);
+  if (best >= 0) strikeAt(flock.px[best], flock.py[best], 6);
 });
 
 window.addEventListener("keydown", (e) => {
@@ -707,7 +735,7 @@ window.onParamChange = () => { syncFlockParams(); saveParams(); };
 installPanel(params);
 
 // debug hooks for headless checks
-window.murm = { flock, params, cam, voiceCfg, buffers, kits, get simT() { return simT; }, get ac() { return ac; }, get activeVoices() { return activeVoices; }, get bedNotes() { return bed.notes.length; }, begin, strikeAt };
+window.murm = { flock, params, voiceCfg, buffers, kits, get simT() { return simT; }, get ac() { return ac; }, get activeVoices() { return activeVoices; }, get bedNotes() { return bed.notes.length; }, begin, strikeAt };
 </script>
 </body>
 </html>
