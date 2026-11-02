@@ -83,7 +83,7 @@
   <div class="row"><span>chord</span><select id="chord-secs" class="ch"></select></div>
   <div id="layer-rows"></div>
   <div class="row"><button id="layer-add">add layer</button></div>
-  <div class="note">Each layer holds the current chord on a MIDI channel. Chord = four tones close · open = the same spread over two octaves · root = bass note · top = highest tone. Tones both chords share keep ringing. Chord: seconds per chord, or a new chord on every wave; strikes always jump. The sampled pad fades after ~4 s.</div>
+  <div class="note">Each layer holds the current chord on a MIDI channel. Chord = four tones close · open = the same spread over two octaves · root = bass note · top = highest tone. Tones both chords share keep ringing. Chord: seconds per chord, or a new chord on every wave; strikes always jump. The sampled pad fades after ~4 s. Sweep: a slow rise and fall of one CC between the two percentages, once per period; PRO-800 targets are 14-bit.</div>
 </div>
 
 <div id="panel">
@@ -370,6 +370,34 @@ function voiceLayers(chord, t) {
     for (const [n, [key, tok]] of on) if (!want.has(n)) { midiOff(key, tok, midiTime(t)); on.delete(n); }
   }
 }
+// slow CC sweep per layer: a cosine between lo and hi (% of the CC's range)
+// over `mins` minutes, starting at lo when the page loads. PRO-800 targets
+// are 14-bit (MSB CC + LSB CC, as edit sends them); a plain CC is 7-bit.
+// sent at most every 50 ms, and only when the value moves
+const SWEEP_TARGETS = [["", "no sweep"], ["15:87", "PRO-800 cutoff"], ["16:88", "PRO-800 resonance"], ["17:89", "PRO-800 env amount"],
+  ...Array.from({ length: 119 }, (_, i) => [`${i + 1}:`, "CC " + (i + 1)])];
+const SWEEP_DEFAULT = { target: "", lo: 20, hi: 70, mins: 10 };
+const sweepSent = new Map();   // layer → { v, at }
+function tickSweeps(now) {
+  for (const layer of midiOut.layers) {
+    const s = layer.sweep;
+    if (!s || !s.target) continue;
+    const port = findPort(layer.port);
+    if (!port) continue;
+    const [msb, lsb] = s.target.split(":").map(x => (x === "" ? null : +x));
+    const ph = 0.5 - 0.5 * Math.cos(2 * Math.PI * now / (s.mins * 60000));
+    const v = Math.round((s.lo + (s.hi - s.lo) * ph) / 100 * (lsb != null ? 16383 : 127));
+    const last = sweepSent.get(layer);
+    if (last && (last.v === v || now - last.at < 50)) continue;
+    sweepSent.set(layer, { v, at: now });
+    const st = 0xb0 + Math.max(1, Math.min(16, layer.ch)) - 1;
+    try {
+      if (lsb != null) { port.send([st, msb, v >> 7]); port.send([st, lsb, v & 127]); }
+      else port.send([st, msb, v]);
+    } catch (e) {}
+  }
+}
+
 // let a layer go and strike it again in the current chord (after an edit, or as its test)
 function restrikeLayer(layer) {
   for (const [key, tok] of (layerOn.get(layer) || new Map()).values()) midiOff(key, tok);
@@ -887,6 +915,7 @@ function frame(now) {
   }
   tickMic(dt);
   tickBed(dt);
+  if (ac) tickSweeps(now);
   drainEvents();
   draw(dt);
   requestAnimationFrame(frame);
@@ -1095,8 +1124,29 @@ function buildLayerRows() {
     };
     for (const el of [port, chan, role, oct, vel]) el.addEventListener("change", change);
     sub.append(role, oct, vel, button("test", () => restrikeLayer(layer)));
-    rows.append(top, sub);
+    rows.append(top, sub, sweepRow(layer));
   });
+}
+// sweep: target CC, low %, high %, period
+function sweepRow(layer) {
+  const s = layer.sweep = Object.assign({}, SWEEP_DEFAULT, layer.sweep);
+  const row = document.createElement("div");
+  row.className = "row sub";
+  const target = selectOf("", SWEEP_TARGETS, s.target);
+  const pct = Array.from({ length: 21 }, (_, i) => [i * 5, i * 5 + " %"]);
+  const lo = selectOf("ch", pct, s.lo), hi = selectOf("ch", pct, s.hi);
+  const mins = selectOf("oct", [[0.5, "30 s"], [1, "1 min"], [2, "2 min"], [5, "5 min"], [10, "10 min"], [20, "20 min"], [40, "40 min"]], s.mins);
+  mins.style.flex = "0 0 76px";
+  const change = () => {
+    Object.assign(s, { target: target.value, lo: +lo.value, hi: +hi.value, mins: +mins.value });
+    lo.disabled = hi.disabled = mins.disabled = !s.target;
+    sweepSent.delete(layer);
+    saveMidi();
+  };
+  lo.disabled = hi.disabled = mins.disabled = !s.target;
+  for (const el of [target, lo, hi, mins]) el.addEventListener("change", change);
+  row.append(target, lo, hi, mins);
+  return row;
 }
 document.getElementById("layer-add").addEventListener("click", (e) => {
   e.currentTarget.blur();
