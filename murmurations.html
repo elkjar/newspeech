@@ -100,6 +100,10 @@
     <span class="name">mic threshold</span><span class="val"></span>
     <input type="range" min="0.01" max="0.5" step="0.01" data-k="falcon">
   </label>
+  <label>
+    <span class="name">octave spread</span><span class="val"></span>
+    <input type="range" min="0" max="3" step="1" data-k="spread">
+  </label>
 </div>
 
 <script src="core.js"></script>
@@ -119,6 +123,7 @@ const params = {
   voices: 0.8,
   bed: 0.5,
   falcon: 0.12,
+  spread: 2,
 };
 try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params") || "{}")); } catch (e) {}
 function saveParams() { try { localStorage.setItem(STORE + ".params", JSON.stringify(params)); } catch (e) {} }
@@ -166,11 +171,21 @@ flock.onWave = (w) => {
   bedChord(w.chord);
 };
 
-// singer i: slot = i % SINGERS, chord tone = floor(i / SINGERS) % 7
+// each bird's octave: triangular draw in [-1, 1], scaled by `spread`
+const birdOct = Float32Array.from({ length: MurmFlock.NMAX }, () => Math.random() + Math.random() - 1);
+
+// singer i: slot = i % SINGERS, chord tone = floor(i / SINGERS) % 4,
+// octave = slot octave + its own offset, kept inside the pack's sampled range
 function singerNote(i, chord) {
-  const tone = Math.floor(i / SINGERS) % 7;
-  const deg = chord[tone % chord.length] + (tone >= chord.length ? 7 : 0);
-  return ROOT + 12 * voiceCfg[(i % SINGERS) + 1][1] + degSemis(deg);
+  const [pack, oct] = voiceCfg[(i % SINGERS) + 1];
+  let note = ROOT + 12 * (oct + Math.round(birdOct[i] * params.spread)) + degSemis(chord[Math.floor(i / SINGERS) % chord.length]);
+  const kit = kits.get(pack);
+  if (kit) {
+    const lo = kit.roots[0].midi - kit.shift, hi = kit.roots[kit.roots.length - 1].midi - kit.shift;
+    while (note > hi + 2) note -= 12;
+    while (note < lo - 2) note += 12;
+  }
+  return note;
 }
 
 // ---- canvas + camera ----
@@ -279,10 +294,11 @@ function loadBuffer(url) {
   return buffers.get(url);
 }
 // load only the zones the given notes will use
+// notes = null loads every zone
 async function preload(pack, notes) {
   const kit = await loadKit(pack);
   if (!kit) return;
-  const zones = new Set(notes.map(m => nearestRoot(kit, m + kit.shift)));
+  const zones = notes ? new Set(notes.map(m => nearestRoot(kit, m + kit.shift))) : kit.roots;
   await Promise.all([...zones].flatMap(z => z.files.map(f => loadBuffer(`${SAMPLE_BASE}/${pack}/${f}`))));
 }
 function slotNotes(slot) {
@@ -294,7 +310,8 @@ function slotNotes(slot) {
   }
   return [...out];
 }
-function preloadSlot(slot) { return preload(voiceCfg[slot][0], slotNotes(slot)); }
+// singers can land in any octave, so they load every zone
+function preloadSlot(slot) { return preload(voiceCfg[slot][0], slot === "pad" ? slotNotes(slot) : null); }
 function preloadAll() { return Promise.all(VOICE_SLOTS.map(preloadSlot)); }
 
 // one sample note: pitched from the nearest zone, gain envelope, returns

@@ -170,12 +170,12 @@
       return w;
     }
 
-    // new target: of 4 random points inside 50 % of the space, the one
+    // new target: of 4 random points inside 70 % of the space, the one
     // furthest from the flock
     function pickTarget(t) {
       let best = -1;
       for (let s = 0; s < 4; s++) {
-        const x = rnd(-0.5, 0.5) * p.halfW, y = rnd(-0.5, 0.5) * p.halfH;
+        const x = rnd(-0.7, 0.7) * p.halfW, y = rnd(-0.7, 0.7) * p.halfH;
         const d = (x - stats.cx) ** 2 + (y - stats.cy) ** 2;
         if (d > best) { best = d; tx = x; ty = y; }
       }
@@ -241,7 +241,7 @@
       const k = kNow();
       const v0 = p.speed;
       const rSep = 1.4;
-      const W = p.halfW, H = p.halfH, wallX = 0.92 * W, wallY = 0.92 * H;
+      const W = p.halfW, H = p.halfH;
       // flock radius at its usual spacing (~1.3 m between birds)
       const r0 = 0.6 * Math.sqrt(N) * 1.3;
       for (let i = 0; i < N; i++) {
@@ -266,9 +266,10 @@
           const f = p.cohesion * (gd - r0) / gd;
           ax += gx * f; ay += gy * f;
         }
-        // wall, last resort: birds past 92 % of a half-size are pushed back
-        if (px[i] > wallX) ax -= 3 * (px[i] - wallX); else if (px[i] < -wallX) ax -= 3 * (px[i] + wallX);
-        if (py[i] > wallY) ay -= 3 * (py[i] - wallY); else if (py[i] < -wallY) ay -= 3 * (py[i] + wallY);
+        // edge: birds past the screen edge are pushed back, harder the
+        // further out; at 10 m/s they turn around within ~6 m (√(v²/3))
+        if (px[i] > W) ax -= 3 * (px[i] - W); else if (px[i] < -W) ax -= 3 * (px[i] + W);
+        if (py[i] > H) ay -= 3 * (py[i] - H); else if (py[i] < -H) ay -= 3 * (py[i] + H);
         // noise
         ax += rnd(-0.6, 0.6); ay += rnd(-0.6, 0.6);
 
