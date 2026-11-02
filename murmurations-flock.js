@@ -27,7 +27,7 @@
 //
 // No DOM. window.MurmFlock in the browser, module.exports in node.
 (function (root) {
-  const NMAX = 2000;
+  const NMAX = 8000;
   const KMAX = 24;
 
   function createFlock(opts) {
@@ -45,7 +45,14 @@
       cohesion: 0.6,    // pull back toward the centre for birds outside the flock radius
       local: 0.3,       // pull toward the centre of each bird's k neighbours
       pull: 0.04,       // gentle pull toward the flock centre, everywhere
+      align: 2.6,       // how hard a bird matches its neighbours' velocity
+      sep: 30,          // how hard birds push apart inside sepRadius
+      sepRadius: 1.4,   // m, personal space
+      noise: 0.6,       // m/s², random wing noise per bird
       steer: 0.45,      // rad/s, fastest whole-flock turn toward the target
+      roam: 0.7,        // steering targets fall inside this share of the space
+      edge: 6,          // push-back past the screen edge (turn-around ≈ v/√edge m)
+      turnAngle: 1.5,   // rad, largest spontaneous turn (smallest = 0.4×)
       depth: 10,        // m, half-thickness of the slab birds fly in (0 = flat)
       bank: 3,          // m/s, vertical kick when a bird joins a wave
     }, opts);
@@ -112,26 +119,72 @@
 
     function kNow() { return Math.max(1, Math.min(KMAX, Math.round(p.k), N - 1)); }
 
-    // brute-force k nearest. half the flock per frame.
+    // k nearest via a uniform 3D grid (CELL m): each bird searches shells
+    // of cells outward until no unseen bird can be closer than its kth.
+    // Rebuilt every frame; half the flock re-searches per frame.
+    const CELL = 2;
+    let gCount = new Int32Array(1), gStart = new Int32Array(1);
+    const gItems = new Int32Array(NMAX), cellOf = new Int32Array(NMAX);
+    let gx0 = 0, gy0 = 0, gz0 = 0, gnx = 1, gny = 1, gnz = 1;
+    function buildGrid() {
+      let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+      for (let i = 0; i < N; i++) {
+        if (px[i] < x0) x0 = px[i]; if (px[i] > x1) x1 = px[i];
+        if (py[i] < y0) y0 = py[i]; if (py[i] > y1) y1 = py[i];
+        if (pz[i] < z0) z0 = pz[i]; if (pz[i] > z1) z1 = pz[i];
+      }
+      gx0 = x0; gy0 = y0; gz0 = z0;
+      gnx = Math.floor((x1 - x0) / CELL) + 1; gny = Math.floor((y1 - y0) / CELL) + 1; gnz = Math.floor((z1 - z0) / CELL) + 1;
+      const cells = gnx * gny * gnz;
+      if (gCount.length < cells + 1) { gCount = new Int32Array(cells + 1); gStart = new Int32Array(cells + 1); }
+      gCount.fill(0, 0, cells + 1);
+      for (let i = 0; i < N; i++) {
+        const c = (Math.floor((pz[i] - z0) / CELL) * gny + Math.floor((py[i] - y0) / CELL)) * gnx + Math.floor((px[i] - x0) / CELL);
+        cellOf[i] = c; gCount[c]++;
+      }
+      gStart[0] = 0;
+      for (let c = 0; c < cells; c++) gStart[c + 1] = gStart[c] + gCount[c];
+      for (let c = 0; c < cells; c++) gCount[c] = gStart[c];
+      for (let i = 0; i < N; i++) gItems[gCount[cellOf[i]]++] = i;
+    }
     function updateNeighbours() {
       const k = kNow();
       const parity = frame & 1;
+      buildGrid();
+      const rMax = Math.max(gnx, gny, gnz);
       for (let i = parity; i < N; i += 2) {
         let filled = 0;
         const xi = px[i], yi = py[i], zi = pz[i];
-        for (let j = 0; j < N; j++) {
-          if (j === i) continue;
-          const dx = px[j] - xi, dy = py[j] - yi, dz = pz[j] - zi;
-          const d = dx * dx + dy * dy + dz * dz;
-          if (filled < k) {
-            let s = filled++;
-            while (s > 0 && bestD[s - 1] > d) { bestD[s] = bestD[s - 1]; bestJ[s] = bestJ[s - 1]; s--; }
-            bestD[s] = d; bestJ[s] = j;
-          } else if (d < bestD[k - 1]) {
-            let s = k - 1;
-            while (s > 0 && bestD[s - 1] > d) { bestD[s] = bestD[s - 1]; bestJ[s] = bestJ[s - 1]; s--; }
-            bestD[s] = d; bestJ[s] = j;
+        const ci = Math.floor((xi - gx0) / CELL), cj = Math.floor((yi - gy0) / CELL), ck = Math.floor((zi - gz0) / CELL);
+        for (let r = 0; r <= rMax; r++) {
+          for (let dz = -r; dz <= r; dz++) {
+            const z = ck + dz; if (z < 0 || z >= gnz) continue;
+            for (let dy = -r; dy <= r; dy++) {
+              const y = cj + dy; if (y < 0 || y >= gny) continue;
+              const onShell = Math.abs(dz) === r || Math.abs(dy) === r;
+              for (let dx = -r; dx <= r; dx += (onShell || r === 0) ? 1 : 2 * r) {
+                const x = ci + dx; if (x < 0 || x >= gnx) continue;
+                const c = (z * gny + y) * gnx + x;
+                for (let q = gStart[c], e = gStart[c + 1]; q < e; q++) {
+                  const j = gItems[q];
+                  if (j === i) continue;
+                  const ddx = px[j] - xi, ddy = py[j] - yi, ddz = pz[j] - zi;
+                  const d = ddx * ddx + ddy * ddy + ddz * ddz;
+                  if (filled < k) {
+                    let s = filled++;
+                    while (s > 0 && bestD[s - 1] > d) { bestD[s] = bestD[s - 1]; bestJ[s] = bestJ[s - 1]; s--; }
+                    bestD[s] = d; bestJ[s] = j;
+                  } else if (d < bestD[k - 1]) {
+                    let s = k - 1;
+                    while (s > 0 && bestD[s - 1] > d) { bestD[s] = bestD[s - 1]; bestJ[s] = bestJ[s - 1]; s--; }
+                    bestD[s] = d; bestJ[s] = j;
+                  }
+                }
+              }
+            }
           }
+          // every cell in shell r+1 is at least r·CELL away
+          if (filled >= k && bestD[k - 1] <= (r * CELL) * (r * CELL)) break;
         }
         const base = i * KMAX;
         for (let s = 0; s < k; s++) { nbr[base + s] = bestJ[s]; nbrD[base + s] = Math.sqrt(bestD[s]); }
@@ -176,7 +229,7 @@
         const d = (px[i] - stats.cx) ** 2 + (py[i] - stats.cy) ** 2;
         if (d > far) { far = d; seed = i; }
       }
-      const w = newWave("turn", rnd(0.6, 1.5) * (Math.random() < 0.5 ? -1 : 1), t);
+      const w = newWave("turn", rnd(0.4, 1) * p.turnAngle * (Math.random() < 0.5 ? -1 : 1), t);
       seedAround(seed, w, t);
       return w;
     }
@@ -186,7 +239,7 @@
     function pickTarget(t) {
       let best = -1;
       for (let s = 0; s < 4; s++) {
-        const x = rnd(-0.7, 0.7) * p.halfW, y = rnd(-0.7, 0.7) * p.halfH;
+        const x = rnd(-1, 1) * p.roam * p.halfW, y = rnd(-1, 1) * p.roam * p.halfH;
         const d = (x - stats.cx) ** 2 + (y - stats.cy) ** 2;
         if (d > best) { best = d; tx = x; ty = y; }
       }
@@ -251,7 +304,7 @@
     function integrate(dt, omega) {
       const k = kNow();
       const v0 = p.speed;
-      const rSep = 1.4;
+      const rSep = p.sepRadius;
       const W = p.halfW, H = p.halfH;
       // flock radius at its usual spacing (~1.3 m between birds)
       const r0 = 0.6 * Math.sqrt(N) * 1.3;
@@ -271,8 +324,8 @@
         const ik = 1 / k;
         // local pull kept low: in 3D a strong one packs birds into balls
         // whose 7 neighbours are all inside the ball, and the flock splits
-        let ax = 2.6 * (mx * ik - vx[i]) + p.local * (cx * ik - px[i]) + 30 * sx;
-        let ay = 2.6 * (my * ik - vy[i]) + p.local * (cy * ik - py[i]) + 30 * sy;
+        let ax = p.align * (mx * ik - vx[i]) + p.local * (cx * ik - px[i]) + p.sep * sx;
+        let ay = p.align * (my * ik - vy[i]) + p.local * (cy * ik - py[i]) + p.sep * sy;
         // cohesion: birds outside the flock radius are pulled toward the centre
         const gx = stats.cx - px[i], gy = stats.cy - py[i], gd = Math.hypot(gx, gy);
         ax += p.pull * gx; ay += p.pull * gy;
@@ -283,15 +336,15 @@
         // edge: birds past the screen edge are pushed back, harder the
         // further out; at 10 m/s they turn around within ~4 m (√(v²/6)),
         // 10 % of the 40 m half-height
-        if (px[i] > W) ax -= 6 * (px[i] - W); else if (px[i] < -W) ax -= 6 * (px[i] + W);
-        if (py[i] > H) ay -= 6 * (py[i] - H); else if (py[i] < -H) ay -= 6 * (py[i] + H);
+        if (px[i] > W) ax -= p.edge * (px[i] - W); else if (px[i] < -W) ax -= p.edge * (px[i] + W);
+        if (py[i] > H) ay -= p.edge * (py[i] - H); else if (py[i] < -H) ay -= p.edge * (py[i] + H);
         // noise
-        ax += rnd(-0.6, 0.6); ay += rnd(-0.6, 0.6);
+        ax += rnd(-1, 1) * p.noise; ay += rnd(-1, 1) * p.noise;
 
         vx[i] += ax * dt; vy[i] += ay * dt;
 
         // height: neighbours + spacing in 3D, banking decays, slab walls
-        let az = 0.45 * (cz * ik - pz[i]) + 30 * sz - 1.2 * vz[i] + rnd(-0.3, 0.3);
+        let az = 0.45 * (cz * ik - pz[i]) + p.sep * sz - 1.2 * vz[i] + rnd(-0.5, 0.5) * p.noise;
         if (pz[i] > p.depth) az -= 4 * (pz[i] - p.depth); else if (pz[i] < -p.depth) az -= 4 * (pz[i] + p.depth);
         vz[i] += az * dt;
         pz[i] += vz[i] * dt;

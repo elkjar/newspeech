@@ -20,6 +20,11 @@
     line-height: 1.5; letter-spacing: 0.06em; text-transform: lowercase; color: #ddd;
   }
   #meters { display: block; margin-top: 0.9em; width: 11em; height: 2.6em; }
+  #panel { max-height: calc(100vh - 64px); overflow-y: auto; }
+  #panel .panel-sub { margin-top: 14px; }
+  #flock-stats { font-size: 10px; opacity: 0.6; line-height: 1.5; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  #flock-reset { font-size: 10px; text-transform: uppercase; letter-spacing: 0.10em; opacity: 0.6; cursor: pointer; margin-bottom: 10px; }
+  #flock-reset:hover { opacity: 1; }
   #start, .dialog { position: fixed; z-index: 30; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
   #start { left: 50%; bottom: 40px; transform: translateX(-50%); opacity: 0.55; pointer-events: none; }
   #start[hidden], .dialog[hidden] { display: none; }
@@ -116,6 +121,77 @@
     <span class="name">depth</span><span class="val"></span>
     <input type="range" min="0" max="20" step="1" data-k="depth">
   </label>
+  <div class="panel-title panel-sub">flock</div>
+  <div id="flock-stats"></div>
+  <div id="flock-reset">reset flock</div>
+  <label>
+    <span class="name">birds</span><span class="val"></span>
+    <input type="range" min="200" max="8000" step="100" data-k="birds">
+  </label>
+  <label>
+    <span class="name">dot size</span><span class="val"></span>
+    <input type="range" min="0.5" max="4" step="0.1" data-k="dot">
+  </label>
+  <label>
+    <span class="name">view m</span><span class="val"></span>
+    <input type="range" min="40" max="200" step="5" data-k="view">
+  </label>
+  <label>
+    <span class="name">speed m/s</span><span class="val"></span>
+    <input type="range" min="4" max="20" step="0.5" data-k="speed">
+  </label>
+  <label>
+    <span class="name">align</span><span class="val"></span>
+    <input type="range" min="0" max="6" step="0.1" data-k="align">
+  </label>
+  <label>
+    <span class="name">local pull</span><span class="val"></span>
+    <input type="range" min="0" max="2" step="0.05" data-k="local">
+  </label>
+  <label>
+    <span class="name">centre pull</span><span class="val"></span>
+    <input type="range" min="0" max="0.2" step="0.005" data-k="pull">
+  </label>
+  <label>
+    <span class="name">outer pull</span><span class="val"></span>
+    <input type="range" min="0" max="2" step="0.05" data-k="cohesion">
+  </label>
+  <label>
+    <span class="name">separation</span><span class="val"></span>
+    <input type="range" min="0" max="60" step="1" data-k="sep">
+  </label>
+  <label>
+    <span class="name">personal space m</span><span class="val"></span>
+    <input type="range" min="0.5" max="3" step="0.1" data-k="sepRadius">
+  </label>
+  <label>
+    <span class="name">noise</span><span class="val"></span>
+    <input type="range" min="0" max="3" step="0.05" data-k="noise">
+  </label>
+  <label>
+    <span class="name">steer</span><span class="val"></span>
+    <input type="range" min="0" max="1.5" step="0.05" data-k="steer">
+  </label>
+  <label>
+    <span class="name">roam</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.05" data-k="roam">
+  </label>
+  <label>
+    <span class="name">edge push</span><span class="val"></span>
+    <input type="range" min="1" max="20" step="0.5" data-k="edge">
+  </label>
+  <label>
+    <span class="name">bank</span><span class="val"></span>
+    <input type="range" min="0" max="8" step="0.25" data-k="bank">
+  </label>
+  <label>
+    <span class="name">turn size</span><span class="val"></span>
+    <input type="range" min="0.2" max="3" step="0.05" data-k="turnAngle">
+  </label>
+  <label>
+    <span class="name">turn time s</span><span class="val"></span>
+    <input type="range" min="0.1" max="2" step="0.05" data-k="turnTime">
+  </label>
 </div>
 
 <script src="core.js"></script>
@@ -140,6 +216,27 @@ const params = {
   reverbSize: 0.5,
   depth: 10,
 };
+// flock shape controls: page key = flock param, except birds / dot / view
+const FLOCK_DEFAULTS = {
+  birds: 4000,
+  dot: 1.6,
+  view: 100,
+  speed: 10,
+  align: 2.6,
+  local: 0.3,
+  pull: 0.04,
+  cohesion: 0.6,
+  sep: 30,
+  sepRadius: 1.4,
+  noise: 0.6,
+  steer: 0.45,
+  roam: 0.7,
+  edge: 6,
+  bank: 3,
+  turnAngle: 1.5,
+  turnTime: 0.45,
+};
+Object.assign(params, FLOCK_DEFAULTS);
 try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params") || "{}")); } catch (e) {}
 function saveParams() { try { localStorage.setItem(STORE + ".params", JSON.stringify(params)); } catch (e) {} }
 
@@ -162,15 +259,19 @@ const TUNE = {
   "instruments/plaits-soft-rev": 5,    // measured +1..-12
 };
 
-const birds = +new URLSearchParams(location.search).get("n") || 1200;
-const flock = MurmFlock.createFlock({ n: birds, k: params.k, contagion: params.contagion, reaction: params.reaction / 1000, depth: params.depth });
+const urlBirds = +new URLSearchParams(location.search).get("n");
+if (urlBirds) params.birds = urlBirds;
+const flock = MurmFlock.createFlock({ n: params.birds });
 
 function syncFlockParams() {
   flock.params.k = params.k;
   flock.params.contagion = params.contagion;
   flock.params.reaction = params.reaction / 1000;
   flock.params.depth = params.depth;
+  for (const k in FLOCK_DEFAULTS) if (k in flock.params) flock.params[k] = params[k];
+  if (flock.n !== params.birds) flock.setCount(params.birds);
 }
+syncFlockParams();
 
 // ---- harmony: D minor, one seventh chord per wave ----
 const ROOT = 50; // D3
@@ -225,10 +326,10 @@ function resize() {
   canvas.style.height = window.innerHeight + "px";
   // drawing sizes scale with the screen, so a projector gets thick marks
   unit = Math.min(cw, ch) / 1000;
-  // the flock's space matches the screen: short side = 80 m
-  const a = cw / ch;
-  flock.params.halfW = a >= 1 ? 40 * a : 40;
-  flock.params.halfH = a >= 1 ? 40 : 40 / a;
+  // the flock's space matches the screen: short side = `view` m
+  const a = cw / ch, h = params.view / 2;
+  flock.params.halfW = a >= 1 ? h * a : h;
+  flock.params.halfH = a >= 1 ? h : h / a;
   scale = Math.min(cw / (2 * flock.params.halfW), ch / (2 * flock.params.halfH));
 }
 window.addEventListener("resize", resize);
@@ -566,7 +667,7 @@ function draw(dt) {
   ctx.restore();
 
   const n = flock.n, px = flock.px, py = flock.py;
-  const d = Math.max(2, Math.round(3 * unit)), D = Math.round(d * 1.7);
+  const d = Math.max(1, Math.round(params.dot * unit)), D = Math.max(2, Math.round(d * 1.7));
   // three layers by height: lower birds dimmer, so overlaps read as depth
   const pz = flock.pz, third = Math.max(0.5, params.depth / 3);
   [[-Infinity, -third, 0.4], [-third, third, 0.65], [third, Infinity, 0.9]].forEach(([lo, hi, a]) => {
@@ -761,11 +862,51 @@ window.addEventListener("keydown", (e) => {
 window.onParamChange = (k) => {
   syncFlockParams();
   saveParams();
+  if (k === "view") resize();
   if (!ac) return;
   if (k === "reverb") for (const r of plateRet) r.gain.setTargetAtTime(reverbReturn(), ac.currentTime, 0.05);
   if (k === "reverbSize" && plate) plate.port.postMessage({ size: params.reverbSize });
 };
 installPanel(params);
+
+// reset flock: defaults back into the sliders (each fires onParamChange)
+document.getElementById("flock-reset").addEventListener("click", () => {
+  for (const k in FLOCK_DEFAULTS) {
+    const input = document.querySelector(`#panel input[data-k="${k}"]`);
+    input.value = FLOCK_DEFAULTS[k];
+    input.dispatchEvent(new Event("input"));
+  }
+});
+
+// readout, twice a second: alignment, pieces (birds within 3 m on screen
+// are joined), spread (RMS radius), turning share
+const statsEl = document.getElementById("flock-stats");
+const ufPar = new Int32Array(MurmFlock.NMAX);
+function ufFind(a) { while (ufPar[a] !== a) { ufPar[a] = ufPar[ufPar[a]]; a = ufPar[a]; } return a; }
+function flockPieces() {
+  const n = flock.n, L = 3, cells = new Map();
+  for (let i = 0; i < n; i++) {
+    ufPar[i] = i;
+    const key = Math.floor(flock.px[i] / L) * 100003 + Math.floor(flock.py[i] / L);
+    const c = cells.get(key); if (c) c.push(i); else cells.set(key, [i]);
+  }
+  for (let i = 0; i < n; i++) {
+    const gx = Math.floor(flock.px[i] / L), gy = Math.floor(flock.py[i] / L);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const c = cells.get((gx + dx) * 100003 + gy + dy); if (!c) continue;
+      for (const j of c) if (j > i && (flock.px[i] - flock.px[j]) ** 2 + (flock.py[i] - flock.py[j]) ** 2 < L * L) ufPar[ufFind(i)] = ufFind(j);
+    }
+  }
+  const size = new Map();
+  for (let i = 0; i < n; i++) { const r = ufFind(i); size.set(r, (size.get(r) || 0) + 1); }
+  const sizes = [...size.values()];
+  return [sizes.filter(v => v >= 0.05 * n).length, Math.max(...sizes) / n];
+}
+setInterval(() => {
+  if (document.getElementById("panel").hidden) return;
+  const s = flock.stats, [pc, big] = flockPieces();
+  statsEl.textContent = `alignment ${s.polarization.toFixed(2)} · pieces ${pc} (${Math.round(100 * big)}%) · spread ${s.extent.toFixed(0)} m · turning ${Math.round(100 * s.turning)}%`;
+}, 500);
 
 // debug hooks for headless checks
 window.murm = { flock, params, voiceCfg, buffers, kits, get simT() { return simT; }, get ac() { return ac; }, get activeVoices() { return activeVoices; }, get bedNotes() { return bed.notes.length; }, begin, strikeAt };
