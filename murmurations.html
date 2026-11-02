@@ -39,7 +39,10 @@
   .dialog button { background: none; color: #ddd; border: 1px solid rgba(255, 255, 255, 0.4); font: inherit; padding: 5px 10px; cursor: pointer; }
   .dialog button:hover { border-color: #fff; color: #fff; }
   .dialog .note { opacity: 0.5; margin-top: 12px; line-height: 1.6; text-transform: none; letter-spacing: 0.02em; }
-  #voices { width: 480px; }
+  #voices { width: 480px; max-height: calc(100vh - 40px); overflow-y: auto; }
+  .dialog .head { margin-top: 22px; }
+  .dialog select.role { flex: 0 0 80px; }
+  #chord-secs { flex: 0 0 120px; }
   .dialog .row.sub { margin-top: 4px; padding-left: 44px; }
   .dialog select { min-width: 0; }
   .dialog select.ch { flex: 0 0 64px; }
@@ -75,7 +78,12 @@
   <div>voices</div>
   <div id="voice-rows"></div>
   <div class="row"><span>midi gate</span><select id="midi-gate" class="ch"></select></div>
-  <div class="note">1–4: singers. Octave is relative to D3. Out: internal samples or a MIDI port + channel; a slot whose port is unplugged plays its samples. Quad: the bird's quadrant (FL, FR, RL, RR) adds 0–3 to the channel. Midi gate = singer note length.</div>
+  <div class="note">1–4: singers. Octave is relative to D3. Out: internal samples or a MIDI port + channel; a slot whose port is unplugged plays its samples. Quad: the bird's quadrant (FL, FR, RL, RR) adds 0–3 to the channel. Midi gate = singer note length. Pad: the sampled bed (bed slider; 0 = off).</div>
+  <div class="head">bed layers</div>
+  <div class="row"><span>chord</span><select id="chord-secs" class="ch"></select></div>
+  <div id="layer-rows"></div>
+  <div class="row"><button id="layer-add">add layer</button></div>
+  <div class="note">Each layer holds the current chord on a MIDI channel. Chord = four tones close · open = the same spread over two octaves · root = bass note · top = highest tone. Tones both chords share keep ringing. Chord: seconds per chord, or a new chord on every wave; strikes always jump. The sampled pad fades after ~4 s.</div>
 </div>
 
 <div id="panel">
@@ -271,13 +279,17 @@ function saveVoices() { try { localStorage.setItem(STORE + ".voices2", JSON.stri
 // ---- MIDI out: any slot can play a hardware voice instead (saved) ----
 // port = output name ("" = internal samples), ch 1–16. quad (singers): the
 // bird's quadrant adds 0–3 to the channel, so four hardware voices on
-// ch..ch+3 can be patched to the four speakers
-const midiOut = { gate: 1, slots: {} };
-for (const s of VOICE_SLOTS) midiOut.slots[s] = { port: "", ch: 1, quad: false };
+// ch..ch+3 can be patched to the four speakers.
+// the bed on hardware = layers (see bed layers below); chordSecs = seconds
+// per chord, 0 = a new chord on every wave
+const midiOut = { gate: 1, chordSecs: 4, slots: {}, layers: [] };
+for (let s = 1; s <= SINGERS; s++) midiOut.slots[s] = { port: "", ch: 1, quad: false };
 try {
   const m = JSON.parse(localStorage.getItem(STORE + ".midi") || "{}");
   if (m.gate) midiOut.gate = m.gate;
+  if (m.chordSecs !== undefined) midiOut.chordSecs = m.chordSecs;
   for (const s in m.slots || {}) if (midiOut.slots[s]) Object.assign(midiOut.slots[s], m.slots[s]);
+  if (Array.isArray(m.layers)) midiOut.layers = m.layers;
 } catch (e) {}
 function saveMidi() { try { localStorage.setItem(STORE + ".midi", JSON.stringify(midiOut)); } catch (e) {} }
 
@@ -288,38 +300,82 @@ async function enableMidiOut() {
   catch (e) { console.warn("midi", e); return; }
   midiAccess.onstatechange = () => { if (!voicesEl.hidden) buildVoiceRows(); };
 }
-if (VOICE_SLOTS.some(s => midiOut.slots[s].port)) enableMidiOut();
+if (midiOut.layers.length || Object.values(midiOut.slots).some(c => c.port)) enableMidiOut();
 
-// the slot's connected port, or null = play the samples
+function findPort(name) {
+  if (!midiAccess || !name) return null;
+  for (const port of midiAccess.outputs.values()) if (port.name === name && port.state === "connected") return port;
+  return null;
+}
+// the singer slot's connected port, or null = play the samples
 function slotMidi(slot) {
   const c = midiOut.slots[slot];
-  if (!midiAccess || !c.port) return null;
-  for (const port of midiAccess.outputs.values()) if (port.name === c.port && port.state === "connected") return { port, c };
-  return null;
+  const port = c && findPort(c.port);
+  return port ? { port, c } : null;
 }
 
 // sounding notes, key = port/channel/note. each note-on gets a token so an
 // older note's note-off can't cut a retriggered one
 const midiOn = new Map();
+function midiTime(t) { return performance.now() + Math.max(0, t - ac.currentTime) * 1000; }
 function midiNote(port, ch, note, vel, t, dur) {
   ch = Math.max(1, Math.min(16, ch));
   note = Math.max(0, Math.min(127, note));
   const key = `${port.id}:${ch}:${note}`, tok = {};
-  const ts = performance.now() + Math.max(0, t - ac.currentTime) * 1000;
+  const ts = midiTime(t);
   if (midiOn.has(key)) port.send([0x80 + ch - 1, note, 0], ts);
   midiOn.set(key, { port, ch, note, tok });
   port.send([0x90 + ch - 1, note, Math.max(1, Math.min(127, Math.round(vel * 127)))], ts);
   if (dur) setTimeout(() => midiOff(key, tok), ts - performance.now() + dur * 1000);
   return [key, tok];
 }
-function midiOff(key, tok) {
+// ts = performance.now() time to send at (default now)
+function midiOff(key, tok, ts) {
   const n = midiOn.get(key);
   if (!n || (tok && n.tok !== tok)) return;
   midiOn.delete(key);
-  try { n.port.send([0x80 + n.ch - 1, n.note, 0]); } catch (e) {}
+  try { n.port.send([0x80 + n.ch - 1, n.note, 0], ts); } catch (e) {}
 }
-function midiAllOff() { for (const key of [...midiOn.keys()]) midiOff(key); }
+function midiAllOff() { for (const key of [...midiOn.keys()]) midiOff(key); layerOn.clear(); }
 window.addEventListener("pagehide", midiAllOff);
+
+// ---- bed layers on hardware ----
+// each layer voices the current chord by its role. tones sit in a window
+// from A below D(3 + oct) up to G#, so the chords move by small steps:
+// chord = the four tones, close · open = the close chord with its 2nd and
+// 4th notes an octave up · root = the root alone · top = the highest tone
+// of the close chord
+const ROLES = ["chord", "open", "root", "top"];
+function windowPitch(d) { const p = SCALE[((d % 7) + 7) % 7]; return p >= 7 ? p - 12 : p; }
+function layerNotes(layer, chord) {
+  const base = ROOT + 12 * layer.oct;
+  const close = chord.map(d => base + windowPitch(d)).sort((a, b) => a - b);
+  if (layer.role === "root") return [base + windowPitch(chord[0])];
+  if (layer.role === "top") return [close[close.length - 1]];
+  if (layer.role === "open") return close.map((n, i) => n + (i % 2 ? 12 : 0));
+  return close;
+}
+
+// sounding notes per layer: note → [key, tok]. on a chord change tones the
+// chords share keep ringing; new tones are struck first, then the old ones
+// let go at the same moment, so a mono synth plays legato
+const layerOn = new Map();
+function voiceLayers(chord, t) {
+  for (const layer of midiOut.layers) {
+    if (!layerOn.has(layer)) layerOn.set(layer, new Map());
+    const on = layerOn.get(layer), port = findPort(layer.port);
+    if (!port) { on.clear(); continue; }
+    const want = new Set(layerNotes(layer, chord));
+    for (const n of want) if (!on.has(n)) on.set(n, midiNote(port, layer.ch, n, layer.vel / 127, t));
+    for (const [n, [key, tok]] of on) if (!want.has(n)) { midiOff(key, tok, midiTime(t)); on.delete(n); }
+  }
+}
+// let a layer go and strike it again in the current chord (after an edit, or as its test)
+function restrikeLayer(layer) {
+  for (const [key, tok] of (layerOn.get(layer) || new Map()).values()) midiOff(key, tok);
+  layerOn.delete(layer);
+  if (ac) voiceLayers(CHORDS[chordIdx], ac.currentTime + 0.05);
+}
 
 // per-pack pitch correction, cents, from measuring the zones these octaves use
 const TUNE = {
@@ -361,10 +417,12 @@ const CHORDS = [[0, 2, 4, 6], [5, 0, 2, 4], [2, 4, 6, 1], [6, 1, 3, 5], [3, 5, 0
 let chordIdx = 0;
 function degSemis(d) { return SCALE[((d % 7) + 7) % 7] + 12 * Math.floor(d / 7); }
 
-// the bed moves through PROGRESSION on its own clock (CHORD_SECS per chord);
-// waves play in the current chord, strikes jump to the next one
+// the bed moves through PROGRESSION on its own clock (midiOut.chordSecs per
+// chord, set in the voices dialog; 0 = a new chord on every wave); waves
+// play in the current chord, strikes jump to the next one.
+// monolith-databent notes sound ~4 s (8.2 s files, near-silent after 5 s),
+// so the sampled pad wants 4 s; longer suits the hardware layers
 const PROGRESSION = [0, 1, 2, 3];   // i, VI, III, VII
-const CHORD_SECS = 4;   // monolith-databent notes sound ~4 s (8.2 s files, near-silent after 5 s)
 let progIdx = 0;
 function nextChord() {
   progIdx = (progIdx + 1) % PROGRESSION.length;
@@ -372,7 +430,7 @@ function nextChord() {
   bedChord(CHORDS[chordIdx]);
 }
 flock.onWave = (w) => {
-  if (w.kind === "strike") nextChord();
+  if (w.kind === "strike" || !midiOut.chordSecs) nextChord();
   w.chord = CHORDS[chordIdx];
 };
 
@@ -570,7 +628,7 @@ let ac = null, buses = [], reverbs = [], master = null, meter = null, meterBuf =
 let outLevel = 0, activeVoices = 0, hushed = false, quad = false;
 let busMeters = [];
 const busLevel = [0, 0, 0, 0], busBuf = new Float32Array(512);
-const bed = { out: [], notes: [], midi: [], next: 0 };
+const bed = { out: [], notes: [], next: 0 };
 
 let plate = null, plateRet = [];
 // reverb slider 0..1 → return gain. 0.55 × 0.6 ≈ the old reverb's level
@@ -656,23 +714,17 @@ function startBed() {
 
 // pad chord on each wave: swells in, rings out, no restrike. equal in all
 // four speakers (0.5 each = equal power), so it sits in the middle of the room.
-// on MIDI: the chord on one channel, held until the next chord, velocity = bed level
+// the hardware layers move with it (voiceLayers)
 function bedChord(chord) {
   if (!ac || !bed.out.length) return;
   const t = ac.currentTime + 0.02;
   for (const n of bed.notes) releaseNote(n, t, 3);
-  for (const [key, tok] of bed.midi) midiOff(key, tok);
-  bed.notes = []; bed.midi = [];
-  bed.next = t + CHORD_SECS;
+  bed.notes = [];
+  bed.next = midiOut.chordSecs ? t + midiOut.chordSecs : 0;
+  voiceLayers(chord, t);
   const [pad, padOct] = voiceCfg.pad;
-  const hw = slotMidi("pad");
   chord.forEach((d) => {
-    const note = ROOT + 12 * padOct + degSemis(d);
-    if (hw) {
-      if (params.bed > 0) bed.midi.push(midiNote(hw.port, hw.c.ch, note, params.bed, t));
-      return;
-    }
-    const n = sampleNote(pad, note, t, 0.45, { attack: 1.2, release: 3 });
+    const n = sampleNote(pad, ROOT + 12 * padOct + degSemis(d), t, 0.45, { attack: 1.2, release: 3 });
     if (!n) return;
     const p = ac.createGain(); p.gain.value = 0.5;
     n.g.connect(p);
@@ -941,63 +993,120 @@ async function buildVoiceRows() {
     oct.addEventListener("change", change);
     row.append(label, pack, oct);
     rows.appendChild(row);
-    rows.appendChild(midiRow(slot));
+    if (slot !== "pad") rows.appendChild(midiRow(slot));
   }
   const gate = document.getElementById("midi-gate");
   gate.innerHTML = "";
-  for (const v of [0.1, 0.25, 0.5, 1, 2, 4]) {
-    const o = document.createElement("option");
-    o.value = v; o.textContent = v + " s"; o.selected = v === midiOut.gate;
-    gate.appendChild(o);
-  }
+  for (const v of [0.1, 0.25, 0.5, 1, 2, 4]) gate.appendChild(option(v, v + " s", v === midiOut.gate));
   gate.onchange = () => { midiOut.gate = +gate.value; saveMidi(); };
+  buildLayerRows();
 }
 
-// out: internal or a MIDI port (by name, so it survives replugging), channel,
-// quad (singers), test
+function option(value, text, selected) {
+  const o = document.createElement("option");
+  o.value = value; o.textContent = text; o.selected = selected;
+  return o;
+}
+function selectOf(className, items, cur) {
+  const sel = document.createElement("select");
+  if (className) sel.className = className;
+  for (const [v, text] of items) sel.appendChild(option(v, text, v === cur));
+  if (!items.some(([v]) => v === cur)) sel.prepend(option(cur, String(cur), true));
+  return sel;
+}
+// MIDI outputs by name (so a choice survives replugging); a saved port
+// that isn't there is listed as not connected
+function portSelect(cur, none) {
+  const names = midiAccess ? [...midiAccess.outputs.values()].filter(p => p.state === "connected").map(p => p.name) : [];
+  const items = [...(none ? [["", none]] : []), ...names.map(n => [n, n])];
+  if (cur && !names.includes(cur)) items.push([cur, cur + " (not connected)"]);
+  if (!items.length) items.push(["", "no MIDI outputs"]);
+  return selectOf("", items, cur);
+}
+function chanSelect(cur) {
+  return selectOf("ch", Array.from({ length: 16 }, (_, i) => [i + 1, "ch " + (i + 1)]), cur);
+}
+function button(text, onClick) {
+  const b = document.createElement("button");
+  b.textContent = text;
+  b.addEventListener("click", () => { b.blur(); onClick(b); });
+  return b;
+}
+
+// singer out: internal or a MIDI port, channel, quad, test
 function midiRow(slot) {
   const c = midiOut.slots[slot];
   const row = document.createElement("div");
   row.className = "row sub";
-  const port = document.createElement("select");
-  const names = midiAccess ? [...midiAccess.outputs.values()].filter(p => p.state === "connected").map(p => p.name) : [];
-  const opts = [["", "internal"], ...names.map(n => [n, n])];
-  if (c.port && !names.includes(c.port)) opts.push([c.port, c.port + " (not connected)"]);
-  for (const [v, text] of opts) {
-    const o = document.createElement("option");
-    o.value = v; o.textContent = text; o.selected = v === c.port;
-    port.appendChild(o);
-  }
-  const chan = document.createElement("select");
-  chan.className = "ch";
-  for (let v = 1; v <= 16; v++) {
-    const o = document.createElement("option");
-    o.value = v; o.textContent = "ch " + v; o.selected = v === c.ch;
-    chan.appendChild(o);
-  }
-  const q = document.createElement("button");
+  const port = portSelect(c.port, "internal"), chan = chanSelect(c.ch);
+  const q = button("quad", () => { midiAllOff(); c.quad = !c.quad; q.classList.toggle("on", c.quad); saveMidi(); relayer(); });
+  q.classList.toggle("on", c.quad);
   const change = () => {
     midiAllOff();
     c.port = port.value; c.ch = +chan.value;
     chan.disabled = q.disabled = !c.port;
     saveMidi();
+    relayer();
   };
   chan.disabled = q.disabled = !c.port;
   port.addEventListener("change", change);
   chan.addEventListener("change", change);
-  row.append(port, chan);
-  if (slot !== "pad") {
-    q.textContent = "quad";
-    q.classList.toggle("on", c.quad);
-    q.addEventListener("click", () => { q.blur(); midiAllOff(); c.quad = !c.quad; q.classList.toggle("on", c.quad); saveMidi(); });
-    row.append(q);
-  }
-  const test = document.createElement("button");
-  test.textContent = "test";
-  test.addEventListener("click", () => { test.blur(); slotTest(slot); });
-  row.append(test);
+  row.append(port, chan, q, button("test", () => slotTest(slot)));
   return row;
 }
+// after an all-notes-off, strike the layers again in the current chord
+function relayer() { if (ac) voiceLayers(CHORDS[chordIdx], ac.currentTime + 0.05); }
+
+// bed layers: port, channel, remove / role, octave, velocity, test (= strike again)
+const CHORD_TIMES = [[4, "4 s"], [8, "8 s"], [16, "16 s"], [32, "32 s"], [64, "64 s"], [0, "every wave"]];
+function buildLayerRows() {
+  const secs = document.getElementById("chord-secs");
+  secs.replaceChildren(...CHORD_TIMES.map(([v, text]) => option(v, text, v === midiOut.chordSecs)));
+  secs.onchange = () => {
+    midiOut.chordSecs = +secs.value;
+    if (ac) bed.next = midiOut.chordSecs ? ac.currentTime + midiOut.chordSecs : 0;
+    saveMidi();
+  };
+  const rows = document.getElementById("layer-rows");
+  rows.innerHTML = "";
+  midiOut.layers.forEach((layer, n) => {
+    const top = document.createElement("div");
+    top.className = "row";
+    const label = document.createElement("span");
+    label.className = "label"; label.textContent = "L" + (n + 1);
+    const port = portSelect(layer.port), chan = chanSelect(layer.ch);
+    const remove = button("×", () => {
+      midiOut.layers.splice(midiOut.layers.indexOf(layer), 1);
+      for (const [key, tok] of (layerOn.get(layer) || new Map()).values()) midiOff(key, tok);
+      layerOn.delete(layer);
+      saveMidi();
+      buildLayerRows();
+    });
+    top.append(label, port, chan, remove);
+    const sub = document.createElement("div");
+    sub.className = "row sub";
+    const role = selectOf("role", ROLES.map(r => [r, r]), layer.role);
+    const oct = selectOf("oct", [-3, -2, -1, 0, 1, 2].map(v => [v, (v > 0 ? "+" : "") + v]), layer.oct);
+    const vel = selectOf("ch", [32, 48, 64, 80, 96, 112, 127].map(v => [v, "v " + v]), layer.vel);
+    const change = () => {
+      Object.assign(layer, { port: port.value, ch: +chan.value, role: role.value, oct: +oct.value, vel: +vel.value });
+      saveMidi();
+      restrikeLayer(layer);
+    };
+    for (const el of [port, chan, role, oct, vel]) el.addEventListener("change", change);
+    sub.append(role, oct, vel, button("test", () => restrikeLayer(layer)));
+    rows.append(top, sub);
+  });
+}
+document.getElementById("layer-add").addEventListener("click", (e) => {
+  e.currentTarget.blur();
+  const first = midiAccess && [...midiAccess.outputs.values()].find(p => p.state === "connected");
+  const layer = { port: first ? first.name : "", ch: 1, role: "chord", oct: 0, vel: 80 };
+  midiOut.layers.push(layer);
+  saveMidi();
+  restrikeLayer(layer);
+  buildLayerRows();
+});
 
 function toggleDialog(el, other) {
   other.hidden = true;
