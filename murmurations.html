@@ -218,23 +218,24 @@ const params = {
   spread: 2,
   reverb: 0.6,
   reverbSize: 0.5,
-  depth: 25,
+  depth: 17,
 };
 // flock shape controls: page key = flock param, except birds / dot / view
 // speed is shown in m/s but plays as slow motion: the flock always flies at
 // 10 m/s and runs at speed / 10 of real time
+// tuned by eye by Chris, 2026-11-01
 const FLOCK_DEFAULTS = {
-  birds: 3400,
+  birds: 4200,
   dot: 1.1,
-  view: 70,
+  view: 40,
   speed: 4,
-  align: 4,
-  local: 15,
-  pull: 0.01,
-  cohesion: 2.5,
-  radius: 1,
+  align: 2.6,
+  local: 10,
+  pull: 0.1,
+  cohesion: 0.85,
+  radius: 0.75,
   sep: 30,
-  sepRadius: 1.1,
+  sepRadius: 1,
   noise: 0.6,
   steer: 0.45,
   roam: 0.45,
@@ -905,7 +906,7 @@ installPanel(params);
 
 // reset flock: defaults back into the sliders (each fires onParamChange),
 // including the wave settings in the top section
-const WAVE_DEFAULTS = { k: 7, contagion: 1, restless: 5, reaction: 70, depth: 25 };
+const WAVE_DEFAULTS = { k: 7, contagion: 1, restless: 5, reaction: 70, depth: 17 };
 document.getElementById("flock-reset").addEventListener("click", () => {
   const all = Object.assign({}, WAVE_DEFAULTS, FLOCK_DEFAULTS);
   for (const k in all) {
