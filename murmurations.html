@@ -118,8 +118,8 @@
     <input type="range" min="0" max="1" step="0.01" data-k="reverbSize">
   </label>
   <label>
-    <span class="name">depth</span><span class="val"></span>
-    <input type="range" min="0" max="20" step="1" data-k="depth">
+    <span class="name">depth m</span><span class="val"></span>
+    <input type="range" min="2" max="60" step="1" data-k="depth">
   </label>
   <div class="panel-title panel-sub">flock</div>
   <div id="flock-stats"></div>
@@ -146,7 +146,7 @@
   </label>
   <label>
     <span class="name">local pull</span><span class="val"></span>
-    <input type="range" min="0" max="2" step="0.05" data-k="local">
+    <input type="range" min="0" max="30" step="0.5" data-k="local">
   </label>
   <label>
     <span class="name">centre pull</span><span class="val"></span>
@@ -154,7 +154,7 @@
   </label>
   <label>
     <span class="name">outer pull</span><span class="val"></span>
-    <input type="range" min="0" max="2" step="0.05" data-k="cohesion">
+    <input type="range" min="0" max="3" step="0.05" data-k="cohesion">
   </label>
   <label>
     <span class="name">separation</span><span class="val"></span>
@@ -182,7 +182,7 @@
   </label>
   <label>
     <span class="name">bank</span><span class="val"></span>
-    <input type="range" min="0" max="8" step="0.25" data-k="bank">
+    <input type="range" min="0" max="1" step="0.05" data-k="bank">
   </label>
   <label>
     <span class="name">turn size</span><span class="val"></span>
@@ -214,31 +214,33 @@ const params = {
   spread: 2,
   reverb: 0.6,
   reverbSize: 0.5,
-  depth: 10,
+  depth: 25,
 };
 // flock shape controls: page key = flock param, except birds / dot / view
+// speed is shown in m/s but plays as slow motion: the flock always flies at
+// 10 m/s and runs at speed / 10 of real time
 const FLOCK_DEFAULTS = {
   birds: 1200,
   dot: 3,
-  view: 30,
+  view: 50,
   speed: 1,
   align: 2.6,
-  local: 0.3,
-  pull: 0.04,
-  cohesion: 0.6,
+  local: 15,
+  pull: 0,
+  cohesion: 1.2,
   sep: 30,
   sepRadius: 1.4,
   noise: 0.6,
   steer: 0.45,
-  roam: 0.7,
+  roam: 0.45,
   edge: 6,
-  bank: 3,
+  bank: 0.6,
   turnAngle: 1.5,
   turnTime: 0.45,
 };
 Object.assign(params, FLOCK_DEFAULTS);
-try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params") || "{}")); } catch (e) {}
-function saveParams() { try { localStorage.setItem(STORE + ".params", JSON.stringify(params)); } catch (e) {} }
+try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params3d") || "{}")); } catch (e) {}
+function saveParams() { try { localStorage.setItem(STORE + ".params3d", JSON.stringify(params)); } catch (e) {} }
 
 // ---- voices: sample pack + octave per slot (saved) ----
 const SINGERS = 4;
@@ -263,15 +265,27 @@ const urlBirds = +new URLSearchParams(location.search).get("n");
 if (urlBirds) params.birds = urlBirds;
 const flock = MurmFlock.createFlock({ n: params.birds });
 
+// fly 30 s of flock time at full speed before anything is shown, so the
+// flock has its shape instead of starting as a ball
+function warmFlock() {
+  const ts = flock.params.timeScale;
+  flock.params.timeScale = 1;
+  for (let i = 0, t = -30; i < 900; i++, t += 1 / 30) flock.step(1 / 30, t);
+  flock.params.timeScale = ts;
+  flock.events.length = 0;
+}
+
 function syncFlockParams() {
   flock.params.k = params.k;
   flock.params.contagion = params.contagion;
   flock.params.reaction = params.reaction / 1000;
-  flock.params.depth = params.depth;
-  for (const k in FLOCK_DEFAULTS) if (k in flock.params) flock.params[k] = params[k];
+  flock.params.halfD = params.depth;
+  for (const k in FLOCK_DEFAULTS) if (k in flock.params && k !== "speed") flock.params[k] = params[k];
+  flock.params.timeScale = params.speed / 10;
   if (flock.n !== params.birds) flock.setCount(params.birds);
 }
 syncFlockParams();
+warmFlock();
 
 // ---- harmony: D minor, one seventh chord per wave ----
 const ROOT = 50; // D3
@@ -335,25 +349,30 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// fixed view: the flock's space is the whole screen
-const proj = [0, 0];
-function project(x, y) {
-  proj[0] = cw * 0.5 + x * scale;
-  proj[1] = ch * 0.5 - y * scale;
+// side view in perspective: the box's middle plane (z = 0) fills the
+// screen; the camera sits 3 half-heights in front of it. proj[2] = scale
+// factor at the bird's depth (> 1 nearer the viewer)
+const proj = [0, 0, 1];
+function project(x, y, z) {
+  const cam = 3 * flock.params.halfH;
+  const f = cam / Math.max(0.2 * cam, cam - z);
+  proj[0] = cw * 0.5 + x * scale * f;
+  proj[1] = ch * 0.5 - y * scale * f;
+  proj[2] = f;
 }
 // screen quadrant → speaker: top = front (by the screen).
 // 0 FL top-left, 1 FR top-right, 2 RL bottom-left, 3 RR bottom-right
-function quadrant(x, y) { return (y > 0 ? 0 : 2) + (x > 0 ? 1 : 0); }
+function quadrant(sx, sy) { return (sy < ch * 0.5 ? 0 : 2) + (sx > cw * 0.5 ? 1 : 0); }
 
 // ---- strikes (mic / click) ----
 // birds within `radius` of the point turn away at once; the rest follow by contagion
-function strikeAt(x, y, radius) { flock.strike(simT, x, y, radius); }
+function strikeAt(x, y, z, radius) { flock.strike(simT, x, y, z, radius); }
 function peripheralBird() {
   const s = flock.stats;
   let best = 0, far = -1;
   for (let n = 0; n < 8; n++) {
     const i = (Math.random() * flock.n) | 0;
-    const d = (flock.px[i] - s.cx) ** 2 + (flock.py[i] - s.cy) ** 2;
+    const d = (flock.px[i] - s.cx) ** 2 + (flock.py[i] - s.cy) ** 2 + (flock.pz[i] - s.cz) ** 2;
     if (d > far) { far = d; best = i; }
   }
   return best;
@@ -376,7 +395,7 @@ function tickMic(dt) {
   const excess = lvl - micBase - params.falcon - outLevel * 0.6 - outRise * 3;
   if (excess > 0 && falconCool <= 0) {
     const i = peripheralBird();
-    strikeAt(flock.px[i], flock.py[i], 3 + 30 * Math.min(0.4, excess));
+    strikeAt(flock.px[i], flock.py[i], flock.pz[i], 3 + 30 * Math.min(0.4, excess));
     falconCool = 4;
     strikeTimes.push(performance.now());
   }
@@ -638,7 +657,8 @@ function drainEvents() {
     const w = e.wave;
     const vel = params.voices * (w.kind === "strike" ? 0.9 : 0.45 + 0.3 * Math.random());
     const lag = Math.max(0, e.t - simT);
-    playSinger(e.i, singerNote(e.i, w.chord || CHORDS[chordIdx]), vel, quadrant(flock.px[e.i], flock.py[e.i]), ac.currentTime + 0.02 + lag);
+    project(flock.px[e.i], flock.py[e.i], flock.pz[e.i]);
+    playSinger(e.i, singerNote(e.i, w.chord || CHORDS[chordIdx]), vel, quadrant(proj[0], proj[1]), ac.currentTime + 0.02 + lag);
   }
   flock.events.length = 0;
 }
@@ -671,31 +691,35 @@ function draw(dt) {
   ctx.fillRect(0, 0, cw, ch);
   ctx.restore();
 
-  const n = flock.n, px = flock.px, py = flock.py;
-  const d = Math.max(1, Math.round(params.dot * unit)), D = Math.max(2, Math.round(d * 1.7));
-  // three layers by height: lower birds dimmer, so overlaps read as depth
-  const pz = flock.pz, third = Math.max(0.5, params.depth / 3);
-  [[-Infinity, -third, 0.4], [-third, third, 0.65], [third, Infinity, 0.9]].forEach(([lo, hi, a]) => {
+  const n = flock.n, px = flock.px, py = flock.py, pz = flock.pz;
+  const d = params.dot * unit;
+  // three depth layers: far birds dimmer, near brighter; size by perspective.
+  // birds that joined a wave in the last 0.5 s are lit: the wave front
+  const third = params.depth / 3;
+  const lit = (i) => simT - flock.joinedAt(i) < 0.5;
+  [[-Infinity, -third, 0.35], [-third, third, 0.6], [third, Infinity, 0.9]].forEach(([lo, hi, a]) => {
     ctx.fillStyle = `rgba(225,225,225,${a})`;
     for (let i = 0; i < n; i++) {
-      if (flock.turning(i) || pz[i] < lo || pz[i] >= hi) continue;
-      project(px[i], py[i]);
-      ctx.fillRect(proj[0] - d / 2, proj[1] - d / 2, d, d);
+      if (lit(i) || pz[i] < lo || pz[i] >= hi) continue;
+      project(px[i], py[i], pz[i]);
+      const s = Math.max(1, Math.round(d * proj[2]));
+      ctx.fillRect(proj[0] - s / 2, proj[1] - s / 2, s, s);
     }
   });
   ctx.fillStyle = "#fff";
   for (let i = 0; i < n; i++) {
-    if (!flock.turning(i)) continue;
-    project(px[i], py[i]);
-    ctx.fillRect(proj[0] - D / 2, proj[1] - D / 2, D, D);
+    if (!lit(i)) continue;
+    project(px[i], py[i], pz[i]);
+    const s = Math.max(2, Math.round(1.7 * d * proj[2]));
+    ctx.fillRect(proj[0] - s / 2, proj[1] - s / 2, s, s);
   }
 
   for (let f = flashes.length - 1; f >= 0; f--) {
     const fl = flashes[f], age = simT - fl.t0;
     if (age > 0.6 || fl.i >= n) { flashes.splice(f, 1); continue; }
     if (age < 0) continue;
-    project(px[fl.i], py[fl.i]);
-    drawSoftDot(ctx, proj[0], proj[1], 50 * unit, 0.75 * (1 - age / 0.6));
+    project(px[fl.i], py[fl.i], pz[fl.i]);
+    drawSoftDot(ctx, proj[0], proj[1], 50 * unit * proj[2], 0.75 * (1 - age / 0.6));
   }
   drawMeters();
 }
@@ -844,11 +868,11 @@ window.addEventListener("click", (e) => {
   let best = -1, bd = Infinity;
   const mx = e.clientX * dpr, my = e.clientY * dpr;
   for (let i = 0; i < flock.n; i++) {
-    project(flock.px[i], flock.py[i]);
+    project(flock.px[i], flock.py[i], flock.pz[i]);
     const d = (proj[0] - mx) ** 2 + (proj[1] - my) ** 2;
     if (d < bd) { bd = d; best = i; }
   }
-  if (best >= 0) strikeAt(flock.px[best], flock.py[best], 6);
+  if (best >= 0) strikeAt(flock.px[best], flock.py[best], flock.pz[best], 6);
 });
 
 window.addEventListener("keydown", (e) => {
@@ -876,7 +900,7 @@ installPanel(params);
 
 // reset flock: defaults back into the sliders (each fires onParamChange),
 // including the wave settings in the top section
-const WAVE_DEFAULTS = { k: 7, contagion: 1.5, restless: 5, reaction: 70, depth: 10 };
+const WAVE_DEFAULTS = { k: 7, contagion: 1.5, restless: 5, reaction: 70, depth: 25 };
 document.getElementById("flock-reset").addEventListener("click", () => {
   const all = Object.assign({}, WAVE_DEFAULTS, FLOCK_DEFAULTS);
   for (const k in all) {
