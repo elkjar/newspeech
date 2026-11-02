@@ -164,11 +164,19 @@ const CHORDS = [[0, 2, 4, 6], [5, 0, 2, 4], [2, 4, 6, 1], [6, 1, 3, 5], [3, 5, 0
 let chordIdx = 0;
 function degSemis(d) { return SCALE[((d % 7) + 7) % 7] + 12 * Math.floor(d / 7); }
 
+// the bed moves through PROGRESSION on its own clock (CHORD_SECS per chord);
+// waves play in the current chord, strikes jump to the next one
+const PROGRESSION = [0, 1, 2, 3];   // i, VI, III, VII
+const CHORD_SECS = 4;   // monolith-databent notes sound ~4 s (8.2 s files, near-silent after 5 s)
+let progIdx = 0;
+function nextChord() {
+  progIdx = (progIdx + 1) % PROGRESSION.length;
+  chordIdx = PROGRESSION[progIdx];
+  bedChord(CHORDS[chordIdx]);
+}
 flock.onWave = (w) => {
-  // next chord: back to i half the time, otherwise a random other chord
-  chordIdx = Math.random() < 0.5 && chordIdx !== 0 ? 0 : 1 + ((Math.random() * (CHORDS.length - 1)) | 0);
+  if (w.kind === "strike") nextChord();
   w.chord = CHORDS[chordIdx];
-  bedChord(w.chord);
 };
 
 // each bird's octave: triangular draw in [-1, 1], scaled by `spread`
@@ -353,7 +361,7 @@ let ac = null, buses = [], reverbs = [], master = null, meter = null, meterBuf =
 let outLevel = 0, activeVoices = 0, hushed = false, quad = false;
 let busMeters = [];
 const busLevel = [0, 0, 0, 0], busBuf = new Float32Array(512);
-const bed = { out: [], notes: [] };
+const bed = { out: [], notes: [], next: 0 };
 
 // mono noise tail, darkening as it decays; a new one per speaker
 function makeIR(secs) {
@@ -442,6 +450,7 @@ function bedChord(chord) {
   const t = ac.currentTime + 0.02;
   for (const n of bed.notes) releaseNote(n, t, 3);
   bed.notes = [];
+  bed.next = t + CHORD_SECS;
   const [pad, padOct] = voiceCfg.pad;
   chord.forEach((d) => {
     const n = sampleNote(pad, ROOT + 12 * padOct + degSemis(d), t, 0.45, { attack: 1.2, release: 3 });
@@ -456,6 +465,7 @@ function bedChord(chord) {
 function tickBed(dt) {
   if (!ac || !bed.out.length) return;
   const t = ac.currentTime;
+  if (bed.next && t >= bed.next) nextChord();
   for (const g of bed.out) g.gain.setTargetAtTime(params.bed, t, 0.3);
 
   meter.getFloatTimeDomainData(meterBuf);
