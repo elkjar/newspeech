@@ -8,11 +8,13 @@
 // Turns are waves. A wave starts on a few birds; a bird joins when
 // `contagion` of its k neighbours are turning in that wave and its reaction
 // delay has passed, then rotates by the wave's angle. Each join is pushed
-// to `events` for the page to play and draw. When the front of the flock
-// is about to reach the edge, the front bird starts a turn toward a random
-// point on the far side, so the flock crosses the space instead of
-// circling it. Birds further than the flock's own radius from its centre
-// are pulled back, so it stays one body.
+// to `events` for the page to play and draw.
+//
+// The flock as a whole steers toward a target point that moves on whenever
+// the flock gets close: every bird rotates by the same small angle per step
+// (at most `steer` rad/s), so the flock sweeps in arcs across the space
+// without losing its alignment. Birds further than the flock's own radius
+// from its centre are pulled back, so it stays one body.
 //
 // Speed and spacing defaults sit inside measured flocks (jackdaws, Ling et
 // al. 2019: 8.6–13.5 m/s, nearest neighbour 1.4–2.2 m).
@@ -35,6 +37,7 @@
       halfW: 107,       // m, half-width of the space (16:9 at halfH 60)
       halfH: 60,        // m, half-height
       cohesion: 0.6,    // pull back toward the centre for birds outside the flock radius
+      steer: 0.45,      // rad/s, fastest whole-flock turn toward the target
     }, opts);
 
     const px = new Float32Array(NMAX), py = new Float32Array(NMAX);
@@ -53,7 +56,7 @@
     let N = 0;
     let frame = 0;
     let waveId = 0;
-    let lastEdgeTurn = -1e9;
+    let tx = 0, ty = 0, nextTarget = 0;   // whole-flock steering target
     const waves = new Map();      // id → wave, pruned once quiet
     const events = [];            // { i, wave, t }: drained by the page
 
@@ -162,35 +165,21 @@
         const d = (px[i] - stats.cx) ** 2 + (py[i] - stats.cy) ** 2;
         if (d > far) { far = d; seed = i; }
       }
-      const w = newWave("turn", rnd(0.9, 2.0) * (Math.random() < 0.5 ? -1 : 1), t);
+      const w = newWave("turn", rnd(0.6, 1.5) * (Math.random() < 0.5 ? -1 : 1), t);
       seedAround(seed, w, t);
       return w;
     }
 
-    // the front bird (furthest along the heading) starts a turn toward a
-    // random point on the far side of the space
-    function frontBird(hx, hy) {
-      let seed = 0, front = -Infinity;
-      for (let i = 0; i < N; i += 2) {
-        const f = px[i] * hx + py[i] * hy;
-        if (f > front) { front = f; seed = i; }
+    // new target: of 4 random points inside 50 % of the space, the one
+    // furthest from the flock
+    function pickTarget(t) {
+      let best = -1;
+      for (let s = 0; s < 4; s++) {
+        const x = rnd(-0.5, 0.5) * p.halfW, y = rnd(-0.5, 0.5) * p.halfH;
+        const d = (x - stats.cx) ** 2 + (y - stats.cy) ** 2;
+        if (d > best) { best = d; tx = x; ty = y; }
       }
-      return seed;
-    }
-    function edgeTurn(t, seed, hx, hy) {
-      const W = p.halfW, H = p.halfH;
-      // in units of the half-sizes: target up to 0.5 past the centre,
-      // opposite the flock, ±0.4 sideways
-      const nx = stats.cx / W, ny = stats.cy / H, nr = Math.hypot(nx, ny) || 1;
-      const ux = -nx / nr, uy = -ny / nr;
-      const along = rnd(0, 0.5), side = rnd(-0.4, 0.4);
-      const tx = (ux * along - uy * side) * W - stats.cx, ty = (uy * along + ux * side) * H - stats.cy;
-      let a = Math.atan2(hx * ty - hy * tx, hx * tx + hy * ty);
-      if (Math.abs(a) < 0.8) a = 0.8 * Math.sign(a || 1);
-      const w = newWave("edge", a, t);
-      seedAround(seed, w, t);
-      lastEdgeTurn = t;
-      return w;
+      nextTarget = t + rnd(10, 20);
     }
 
     // strike at (x,y): birds within `radius` turn away immediately; the
@@ -248,7 +237,7 @@
     }
 
     // ---- motion ----
-    function integrate(dt) {
+    function integrate(dt, omega) {
       const k = kNow();
       const v0 = p.speed;
       const rSep = 1.4;
@@ -281,9 +270,16 @@
         if (px[i] > wallX) ax -= 3 * (px[i] - wallX); else if (px[i] < -wallX) ax -= 3 * (px[i] + wallX);
         if (py[i] > wallY) ay -= 3 * (py[i] - wallY); else if (py[i] < -wallY) ay -= 3 * (py[i] + wallY);
         // noise
-        ax += rnd(-1.5, 1.5); ay += rnd(-1.5, 1.5);
+        ax += rnd(-0.6, 0.6); ay += rnd(-0.6, 0.6);
 
         vx[i] += ax * dt; vy[i] += ay * dt;
+
+        // whole-flock steering: the same rotation for every bird
+        if (omega !== 0) {
+          const c = Math.cos(omega * dt), s = Math.sin(omega * dt), x = vx[i];
+          vx[i] = x * c - vy[i] * s;
+          vy[i] = x * s + vy[i] * c;
+        }
 
         if (turnLeft[i] !== 0) {
           let a = turnRate[i] * dt;
@@ -337,17 +333,13 @@
       if (frame === 0) { updateNeighbours(); frame++; }
       updateNeighbours();
       contagion(t);
-      integrate(dt);
+      // steer the flock's mean heading toward the target
+      if (t > nextTarget || Math.hypot(tx - stats.cx, ty - stats.cy) < 12) pickTarget(t);
+      let diff = Math.atan2(ty - stats.cy, tx - stats.cx) - Math.atan2(stats.mvy, stats.mvx);
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      const omega = Math.max(-p.steer, Math.min(p.steer, 1.2 * diff));
+      integrate(dt, omega);
       measure(t);
-      // front of the flock 1.5 s from now past 80 % of a half-size → turn
-      if (t - lastEdgeTurn > 2) {
-        const m = Math.hypot(stats.mvx, stats.mvy) || 1;
-        const hx = stats.mvx / m, hy = stats.mvy / m;
-        const f = frontBird(hx, hy);
-        const ax = (px[f] + vx[f] * 1.5) / p.halfW, ay = (py[f] + vy[f] * 1.5) / p.halfH;
-        const outward = (px[f] * vx[f]) / (p.halfW * p.halfW) + (py[f] * vy[f]) / (p.halfH * p.halfH);
-        if (Math.max(Math.abs(ax), Math.abs(ay)) > 0.8 && outward > 0) edgeTurn(t, f, hx, hy);
-      }
       frame++;
     }
 

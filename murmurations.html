@@ -16,7 +16,7 @@
   #bg { position: fixed; inset: 0; display: block; z-index: 1; }
   #credit {
     position: fixed; left: 3vmin; top: 3vmin; z-index: 5; pointer-events: none;
-    font-family: "zxx-sans", ui-monospace, monospace; font-size: max(11px, 1.6vmin);
+    font-family: "zxx-sans", ui-monospace, monospace; font-size: max(6px, 0.8vmin);
     line-height: 1.5; letter-spacing: 0.06em; text-transform: lowercase; color: #ddd;
   }
   #meters { display: block; margin-top: 0.9em; width: 11em; height: 2.6em; }
@@ -63,7 +63,7 @@
 <div id="voices" class="dialog" hidden>
   <div>voices</div>
   <div id="voice-rows"></div>
-  <div class="note">1–7: singers. Octave is relative to D3.</div>
+  <div class="note">1–4: singers. Octave is relative to D3.</div>
 </div>
 
 <div id="panel">
@@ -86,7 +86,7 @@
   </label>
   <label>
     <span class="name">singers</span><span class="val"></span>
-    <input type="range" min="7" max="147" step="7" data-k="singers">
+    <input type="range" min="4" max="148" step="4" data-k="singers">
   </label>
   <label>
     <span class="name">voices</span><span class="val"></span>
@@ -115,7 +115,7 @@ const params = {
   contagion: 1.5,
   restless: 5,
   reaction: 70,
-  singers: 49,
+  singers: 48,
   voices: 0.8,
   bed: 0.5,
   falcon: 0.12,
@@ -124,21 +124,23 @@ try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params") |
 function saveParams() { try { localStorage.setItem(STORE + ".params", JSON.stringify(params)); } catch (e) {} }
 
 // ---- voices: sample pack + octave per slot (saved) ----
-const VOICE_SLOTS = ["1", "2", "3", "4", "5", "6", "7", "pad"];
+const SINGERS = 4;
+const VOICE_SLOTS = ["1", "2", "3", "4", "pad"];
 const voiceCfg = {
-  1: ["instruments/broken", 2],
-  2: ["instruments/plucks", 1],
-  3: ["instruments/plaits-soft-rev", 1],
-  4: ["instruments/rhodes_mk1", 1],
-  5: ["instruments/poly6", 0],
-  6: ["instruments/soft_piano", 1],
-  7: ["instruments/dx7-forest-house", 1],
-  pad: ["pads/monolith", -1],
+  1: ["instruments/plaits-soft-rev", 0],
+  2: ["instruments/rhodes_mk1", 1],
+  3: ["instruments/soft_piano", 0],
+  4: ["instruments/grand-piano-ss", 0],
+  pad: ["pads/monolith-databent", -1],
 };
-try { Object.assign(voiceCfg, JSON.parse(localStorage.getItem(STORE + ".voices") || "{}")); } catch (e) {}
-// dx7-bells measured ~400 cents sharp: never load it from a saved config
-for (const k in voiceCfg) if (voiceCfg[k][0] === "instruments/dx7-bells") voiceCfg[k] = ["instruments/broken", voiceCfg[k][1]];
-function saveVoices() { try { localStorage.setItem(STORE + ".voices", JSON.stringify(voiceCfg)); } catch (e) {} }
+try { Object.assign(voiceCfg, JSON.parse(localStorage.getItem(STORE + ".voices2") || "{}")); } catch (e) {}
+function saveVoices() { try { localStorage.setItem(STORE + ".voices2", JSON.stringify(voiceCfg)); } catch (e) {} }
+
+// per-pack pitch correction, cents, from measuring the zones these octaves use
+const TUNE = {
+  "instruments/grand-piano-ss": -13,   // measured +9..+20
+  "instruments/plaits-soft-rev": 5,    // measured +1..-12
+};
 
 const birds = +new URLSearchParams(location.search).get("n") || 1200;
 const flock = MurmFlock.createFlock({ n: birds, k: params.k, contagion: params.contagion, reaction: params.reaction / 1000 });
@@ -164,11 +166,11 @@ flock.onWave = (w) => {
   bedChord(w.chord);
 };
 
-// singer i: slot = i % 7, chord tone = floor(i / 7) % 7
+// singer i: slot = i % SINGERS, chord tone = floor(i / SINGERS) % 7
 function singerNote(i, chord) {
-  const tone = Math.floor(i / 7) % 7;
+  const tone = Math.floor(i / SINGERS) % 7;
   const deg = chord[tone % chord.length] + (tone >= chord.length ? 7 : 0);
-  return ROOT + 12 * voiceCfg[(i % 7) + 1][1] + degSemis(deg);
+  return ROOT + 12 * voiceCfg[(i % SINGERS) + 1][1] + degSemis(deg);
 }
 
 // ---- canvas + camera ----
@@ -306,7 +308,7 @@ function sampleNote(pack, midi, t, vel, opts) {
   if (!(buf instanceof AudioBuffer)) return null;
   const src = ac.createBufferSource();
   src.buffer = buf;
-  src.playbackRate.value = Math.pow(2, (note - zone.midi) / 12);
+  src.playbackRate.value = Math.pow(2, (note - zone.midi + (TUNE[pack] || 0) / 100) / 12);
   const len = buf.duration / src.playbackRate.value;
   const dur = Math.min(len, opts.maxDur || len);
   const atk = opts.attack || 0.003;
@@ -481,7 +483,7 @@ function tickBed(dt) {
 
 function playSinger(i, midi, vel, u, w, t) {
   if (!ac || activeVoices > 96) return;
-  const n = sampleNote(voiceCfg[(i % 7) + 1][0], midi, t, vel, { maxDur: 3.5, release: 0.6 });
+  const n = sampleNote(voiceCfg[(i % SINGERS) + 1][0], midi, t, vel, { maxDur: 3.5, release: 0.6 });
   if (!n) return;
   quadGains(u, w).forEach((g, c) => {
     const p = ac.createGain(); p.gain.value = g;
