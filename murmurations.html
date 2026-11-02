@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<meta name="robots" content="noindex">
+<title>newspeech - murmurations</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech - murmurations">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; overflow: hidden; cursor: none; }
+  body { width: 100vw; height: 100vh; font-family: ui-monospace, Menlo, monospace; color: #ddd; }
+  #bg { position: fixed; inset: 0; display: block; z-index: 1; }
+  #start, #outputs { position: fixed; z-index: 30; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+  #start { left: 50%; bottom: 40px; transform: translateX(-50%); opacity: 0.55; pointer-events: none; }
+  #start[hidden], #outputs[hidden] { display: none; }
+  #outputs {
+    left: 50%; top: 50%; transform: translate(-50%, -50%); width: 360px; padding: 18px 20px;
+    background: rgba(5, 5, 5, 0.92); border: 1px solid rgba(255, 255, 255, 0.25); cursor: default;
+  }
+  #outputs .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  #outputs select { flex: 1; background: #050505; color: #ddd; border: 1px solid rgba(255, 255, 255, 0.3); font: inherit; padding: 4px; text-transform: none; letter-spacing: 0; }
+  #outputs button { background: none; color: #ddd; border: 1px solid rgba(255, 255, 255, 0.4); font: inherit; padding: 5px 10px; cursor: pointer; }
+  #outputs button:hover { border-color: #fff; color: #fff; }
+  #outputs .note { opacity: 0.5; margin-top: 12px; line-height: 1.6; text-transform: none; letter-spacing: 0.02em; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<div id="start" hidden>click to start audio</div>
+
+<div id="outputs" hidden>
+  <div>outputs</div>
+  <div class="row"><select id="sink"></select></div>
+  <div class="row" id="chan-info"></div>
+  <div class="row">test
+    <button data-test="0">1 FL</button><button data-test="1">2 FR</button>
+    <button data-test="2">3 RL</button><button data-test="3">4 RR</button>
+  </div>
+  <div class="note">1–2 front, 3–4 rear. Under 4 channels plays stereo.</div>
+</div>
+
+<div id="panel">
+  <div class="panel-title">murmurations</div>
+  <label>
+    <span class="name">neighbours</span><span class="val"></span>
+    <input type="range" min="1" max="20" step="1" data-k="k">
+  </label>
+  <label>
+    <span class="name">contagion</span><span class="val"></span>
+    <input type="range" min="1" max="4" step="0.1" data-k="contagion">
+  </label>
+  <label>
+    <span class="name">waves / min</span><span class="val"></span>
+    <input type="range" min="0" max="30" step="0.5" data-k="restless">
+  </label>
+  <label>
+    <span class="name">reaction ms</span><span class="val"></span>
+    <input type="range" min="20" max="300" step="5" data-k="reaction">
+  </label>
+  <label>
+    <span class="name">singers</span><span class="val"></span>
+    <input type="range" min="7" max="147" step="7" data-k="singers">
+  </label>
+  <label>
+    <span class="name">voices</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="voices">
+  </label>
+  <label>
+    <span class="name">bed</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="bed">
+  </label>
+  <label>
+    <span class="name">mic threshold</span><span class="val"></span>
+    <input type="range" min="0.01" max="0.5" step="0.01" data-k="falcon">
+  </label>
+</div>
+
+<script src="core.js"></script>
+<script src="murmurations-flock.js"></script>
+<script>
+const { installInputs, tickInputs, installPanel, audioActive, audioLevel, drawSoftDot, poisson } = Newspeech;
+installInputs();
+
+// ---- params (saved to localStorage) ----
+const STORE = "newspeech.murmurations";
+const params = {
+  k: 7,
+  contagion: 1.5,
+  restless: 5,
+  reaction: 70,
+  singers: 49,
+  voices: 0.8,
+  bed: 0.5,
+  falcon: 0.12,
+};
+try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params") || "{}")); } catch (e) {}
+function saveParams() { try { localStorage.setItem(STORE + ".params", JSON.stringify(params)); } catch (e) {} }
+
+const birds = +new URLSearchParams(location.search).get("n") || 700;
+const flock = MurmFlock.createFlock({ n: birds, k: params.k, contagion: params.contagion, reaction: params.reaction / 1000 });
+
+function syncFlockParams() {
+  flock.params.k = params.k;
+  flock.params.contagion = params.contagion;
+  flock.params.reaction = params.reaction / 1000;
+}
+
+// ---- harmony: D dorian, one seventh chord per wave ----
+const ROOT = 50; // D3
+const SCALE = [0, 2, 3, 5, 7, 9, 10];
+const CHORDS = [[0, 2, 4, 6], [3, 5, 0, 2], [4, 6, 1, 3], [5, 0, 2, 4], [1, 3, 5, 0], [6, 1, 3, 5]];
+let chordIdx = 0;
+function degSemis(d) { return SCALE[((d % 7) + 7) % 7] + 12 * Math.floor(d / 7); }
+function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+flock.onWave = (w) => {
+  // next chord: usually +1, sometimes +2..4
+  chordIdx = (chordIdx + (Math.random() < 0.7 ? 1 : 2 + ((Math.random() * 3) | 0))) % CHORDS.length;
+  w.chord = CHORDS[chordIdx];
+  setDroneChord(w.chord);
+};
+
+// singer i: voice = i % 7, chord tone = floor(i / 7) % 7
+const FAMILY_OCT = [2, 1, 1, 2, 3, 0, 0];
+function singerFreq(i, chord) {
+  const fam = i % 7, slot = Math.floor(i / 7) % 7;
+  const deg = chord[slot % chord.length] + (slot >= chord.length ? 7 : 0);
+  return mtof(ROOT + 12 * FAMILY_OCT[fam] + degSemis(deg));
+}
+
+// ---- canvas + camera ----
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d");
+let cw = 0, ch = 0, dpr = 1;
+function resize() {
+  dpr = Math.max(1, window.devicePixelRatio || 1);
+  cw = Math.floor(window.innerWidth * dpr);
+  ch = Math.floor(window.innerHeight * dpr);
+  canvas.width = cw; canvas.height = ch;
+  canvas.style.width = window.innerWidth + "px";
+  canvas.style.height = window.innerHeight + "px";
+}
+window.addEventListener("resize", resize);
+resize();
+
+// camera follows the flock centroid with lag
+const DIST = 90;
+const cam = { x: 0, y: 0, z: 0, span: 20 };
+function updateCamera(dt) {
+  const s = flock.stats;
+  const a = 1 - Math.exp(-dt / 3);
+  cam.x += (s.cx - cam.x) * a;
+  cam.y += (s.cy - cam.y) * a;
+  cam.z += (s.cz - cam.z) * a;
+  const want = Math.max(12, s.extent * 3.4);
+  cam.span += (want - cam.span) * (1 - Math.exp(-dt / 5));
+}
+let focal = 1;
+const proj = [0, 0, 0];
+function project(x, y, z) {
+  const dz = DIST - (z - cam.z);
+  if (dz < 8) return false;
+  const f = focal * DIST / dz;
+  proj[0] = cw * 0.5 + (x - cam.x) * f;
+  proj[1] = ch * 0.5 - (y - cam.y) * f;
+  proj[2] = f / focal;
+  return true;
+}
+// flock position → room: x = left/right, depth = front/back
+function roomPos(x, z) {
+  const u = Math.max(-1, Math.min(1, (x - cam.x) / (cam.span * 0.45)));
+  const w = Math.max(-1, Math.min(1, (z - cam.z) / (cam.span * 0.45)));
+  return [u, w];
+}
+
+// ---- falcons (mic / click) ----
+const falcons = [];
+function launchFalcon(x, y, z, radius) {
+  // starts 22 m out and 14 m up, strikes after `dur`
+  const ang = Math.random() * Math.PI * 2;
+  const from = [x + Math.cos(ang) * 22, y + 14, z + Math.sin(ang) * 22];
+  falcons.push({ from, to: [x, y, z], t0: simT, dur: 0.5, radius, struck: false });
+  playSwoop(x, z, 0.5);
+}
+function peripheralBird() {
+  const s = flock.stats;
+  let best = 0, far = -1;
+  for (let n = 0; n < 8; n++) {
+    const i = (Math.random() * flock.n) | 0;
+    const d = (flock.px[i] - s.cx) ** 2 + (flock.py[i] - s.cy) ** 2 + (flock.pz[i] - s.cz) ** 2;
+    if (d > far) { far = d; best = i; }
+  }
+  return best;
+}
+function tickFalcons() {
+  for (let n = falcons.length - 1; n >= 0; n--) {
+    const f = falcons[n];
+    const u = (simT - f.t0) / f.dur;
+    if (!f.struck && u >= 1) {
+      f.struck = true;
+      flock.strike(simT, f.to[0], f.to[1], f.to[2], f.radius);
+    }
+    if (u > 2.2) falcons.splice(n, 1);
+  }
+}
+function drawFalcons() {
+  ctx.strokeStyle = "rgba(255,255,255,0.95)";
+  ctx.lineWidth = 1.6 * dpr;
+  for (const f of falcons) {
+    const u = (simT - f.t0) / f.dur;
+    // straight line through the strike point
+    const x = f.from[0] + (f.to[0] - f.from[0]) * u;
+    const y = f.from[1] + (f.to[1] - f.from[1]) * u;
+    const z = f.from[2] + (f.to[2] - f.from[2]) * u;
+    if (!project(x, y, z)) continue;
+    const sx = proj[0], sy = proj[1], r = 7 * dpr * Math.min(2, proj[2]);
+    ctx.beginPath();
+    ctx.moveTo(sx - r, sy - r * 0.5); ctx.lineTo(sx, sy); ctx.lineTo(sx + r, sy - r * 0.5);
+    ctx.stroke();
+  }
+}
+
+// ---- mic → falcon ----
+// triggers when mic level jumps above its 6 s average by `falcon`. the
+// threshold also rises with output level (speakers reach the mic), and
+// there's a 2.5 s cooldown.
+let micBase = 0, falconCool = 0;
+function tickMic(dt) {
+  falconCool -= dt;
+  if (!audioActive()) return;
+  const lvl = audioLevel();
+  micBase += (lvl - micBase) * (1 - Math.exp(-dt / 6));
+  const excess = lvl - micBase - params.falcon - outLevel * 0.6;
+  if (excess > 0 && falconCool <= 0) {
+    const i = peripheralBird();
+    launchFalcon(flock.px[i], flock.py[i], flock.pz[i], 3 + 30 * Math.min(0.4, excess));
+    falconCool = 2.5;
+  }
+}
+
+// ---- audio ----
+let ac = null, buses = [], reverbIn = null, master = null, meter = null, meterBuf = null;
+let noiseBuf = null, outLevel = 0, activeVoices = 0, hushed = false, quad = false;
+const drone = { oscs: [], filter: null, pan: [] }, wash = { gain: null, pan: [] };
+
+function quadGains(u, w) {
+  const lr = (u + 1) * 0.25 * Math.PI, fb = (w + 1) * 0.25 * Math.PI;
+  const L = Math.cos(lr), R = Math.sin(lr), F = Math.cos(fb), B = Math.sin(fb);
+  return [L * F, R * F, L * B, R * B];
+}
+
+function makeNoise(secs) {
+  const b = ac.createBuffer(1, ac.sampleRate * secs, ac.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return b;
+}
+function makeIR(secs) {
+  const len = ac.sampleRate * secs;
+  const b = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = b.getChannelData(c);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      // darkens as it decays
+      const k = 0.15 + 0.8 * (1 - i / len);
+      lp += (Math.random() * 2 - 1 - lp) * k;
+      d[i] = lp * Math.pow(1 - i / len, 2.4);
+    }
+  }
+  return b;
+}
+
+// route a source to the four buses through pan gains
+function panNode(u, w, into) {
+  const g = quadGains(u, w);
+  const nodes = g.map((v, c) => {
+    const p = ac.createGain();
+    p.gain.value = v;
+    into.connect(p).connect(buses[c]);
+    return p;
+  });
+  return nodes;
+}
+
+async function startAudio(sinkId) {
+  if (ac) { try { await ac.close(); } catch (e) {} }
+  const opts = { latencyHint: "balanced" };
+  if (sinkId) opts.sinkId = sinkId;
+  try { ac = new AudioContext(opts); } catch (e) { ac = new AudioContext({ latencyHint: "balanced" }); }
+  const dest = ac.destination;
+  quad = dest.maxChannelCount >= 4;
+  dest.channelCount = quad ? 4 : 2;
+  dest.channelCountMode = "explicit";
+  dest.channelInterpretation = "discrete";
+
+  master = ac.createGain();
+  master.gain.value = hushed ? 0.18 : 1;
+  const merger = ac.createChannelMerger(quad ? 4 : 2);
+  merger.connect(master).connect(dest);
+  master.channelCount = quad ? 4 : 2;
+  master.channelCountMode = "explicit";
+  master.channelInterpretation = "discrete";
+
+  meter = ac.createAnalyser();
+  meter.fftSize = 1024;
+  meterBuf = new Float32Array(meter.fftSize);
+
+  buses = [];
+  for (let c = 0; c < 4; c++) {
+    const bus = ac.createGain();
+    const lim = ac.createDynamicsCompressor();
+    lim.threshold.value = -12; lim.knee.value = 6; lim.ratio.value = 12;
+    lim.attack.value = 0.003; lim.release.value = 0.25;
+    bus.connect(lim);
+    // stereo: FL+RL → L, FR+RR → R
+    lim.connect(merger, 0, quad ? c : c % 2);
+    lim.connect(meter);
+    buses.push(bus);
+  }
+
+  // one reverb; return delayed differently into the rear pair
+  reverbIn = ac.createGain();
+  const conv = ac.createConvolver();
+  conv.buffer = makeIR(3.4);
+  const ret = ac.createGain(); ret.gain.value = 0.55;
+  const split = ac.createChannelSplitter(2);
+  reverbIn.connect(conv).connect(ret).connect(split);
+  const dR = ac.createDelay(0.1); dR.delayTime.value = 0.023;
+  const dL = ac.createDelay(0.1); dL.delayTime.value = 0.031;
+  split.connect(buses[0], 0); split.connect(buses[1], 1);
+  split.connect(dR, 0).connect(buses[3]); split.connect(dL, 1).connect(buses[2]);
+
+  noiseBuf = makeNoise(2);
+  startBed();
+  return ac.resume();
+}
+
+function startBed() {
+  // drone: current chord, one octave down, glides on chord change
+  const dg = ac.createGain(); dg.gain.value = 0.05;
+  drone.filter = ac.createBiquadFilter();
+  drone.filter.type = "lowpass"; drone.filter.frequency.value = 240; drone.filter.Q.value = 3;
+  drone.oscs = CHORDS[chordIdx].map((d, n) => {
+    const o = ac.createOscillator();
+    o.type = n % 2 ? "triangle" : "sawtooth";
+    o.frequency.value = mtof(ROOT - 12 + degSemis(d));
+    o.detune.value = (n - 1.5) * 4;
+    o.connect(drone.filter);
+    o.start();
+    return o;
+  });
+  drone.filter.connect(dg);
+  drone.out = dg;
+  drone.pan = panNode(0, 0, dg);
+  const ds = ac.createGain(); ds.gain.value = 0.6; dg.connect(ds).connect(reverbIn);
+
+  // wash: filtered noise, level = share of birds turning
+  const n = ac.createBufferSource(); n.buffer = noiseBuf; n.loop = true;
+  const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 900; bp.Q.value = 0.7;
+  const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 3200;
+  wash.gain = ac.createGain(); wash.gain.gain.value = 0;
+  n.connect(bp).connect(lp).connect(wash.gain);
+  wash.pan = panNode(0, 0, wash.gain);
+  const ws = ac.createGain(); ws.gain.value = 0.4; wash.gain.connect(ws).connect(reverbIn);
+  n.start();
+}
+
+function setDroneChord(chord) {
+  if (!ac || !drone.oscs.length) return;
+  const t = ac.currentTime;
+  drone.oscs.forEach((o, n) => o.frequency.setTargetAtTime(mtof(ROOT - 12 + degSemis(chord[n % chord.length])), t, 1.8));
+}
+
+let turnSmooth = 0;
+function tickBed(dt) {
+  if (!ac) return;
+  const t = ac.currentTime, s = flock.stats;
+  turnSmooth += (s.turning - turnSmooth) * (1 - Math.exp(-dt / 0.25));
+  // wash pans to the centroid of turning birds
+  let tx = 0, tz = 0, tn = 0;
+  for (let i = 0; i < flock.n; i += 3) if (flock.turning(i)) { tx += flock.px[i]; tz += flock.pz[i]; tn++; }
+  const [u, w] = tn ? roomPos(tx / tn, tz / tn) : [0, 0];
+  quadGains(u, w).forEach((g, c) => wash.pan[c].gain.setTargetAtTime(g, t, 0.08));
+  wash.gain.gain.setTargetAtTime(params.bed * (0.012 + 0.5 * Math.min(1, turnSmooth * 1.6)), t, 0.08);
+  // drone filter opens with turning
+  drone.filter.frequency.setTargetAtTime(220 + 1500 * turnSmooth + 300 * (1 - s.polarization), t, 0.3);
+  drone.out.gain.setTargetAtTime(params.bed * 0.06, t, 0.3);
+  const [du, dw] = roomPos(s.cx + (s.cx - cam.x), s.cz + (s.cz - cam.z));
+  quadGains(du * 0.5, dw * 0.5).forEach((g, c) => drone.pan[c].gain.setTargetAtTime(g, t, 0.5));
+
+  meter.getFloatTimeDomainData(meterBuf);
+  let sum = 0;
+  for (let i = 0; i < meterBuf.length; i++) sum += meterBuf[i] * meterBuf[i];
+  outLevel += (Math.sqrt(sum / meterBuf.length) - outLevel) * 0.3;
+}
+
+// ---- voices: seven synth types ----
+function osc(type, f) { const o = ac.createOscillator(); o.type = type; o.frequency.value = f; return o; }
+function env(t, a, d, peak) {
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + a);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
+  return g;
+}
+function run(srcs, t, dur) { for (const s of srcs) { s.start(t); s.stop(t + dur + 0.05); } }
+function noise() { const n = ac.createBufferSource(); n.buffer = noiseBuf; n.loop = true; return n; }
+
+const FAMILIES = [
+  // chirp: sine, falls from 2× to pitch, FM
+  (t, f, v) => {
+    const o = osc("sine", f * 2), m = osc("sine", f * 3.01), mg = ac.createGain();
+    o.frequency.exponentialRampToValueAtTime(f, t + 0.07);
+    mg.gain.value = f * 0.9; m.connect(mg).connect(o.frequency);
+    const e = env(t, 0.004, 0.32, v * 0.5); o.connect(e);
+    run([o, m], t, 0.4); return [e, 0.4];
+  },
+  // pluck: saw, resonant lowpass sweep
+  (t, f, v) => {
+    const o = osc("sawtooth", f), lp = ac.createBiquadFilter();
+    lp.type = "lowpass"; lp.Q.value = 8;
+    lp.frequency.setValueAtTime(f * 7, t); lp.frequency.exponentialRampToValueAtTime(f * 1.2, t + 0.25);
+    const e = env(t, 0.003, 0.7, v * 0.35); o.connect(lp).connect(e);
+    run([o], t, 0.75); return [e, 0.75];
+  },
+  // breath: bandpassed noise
+  (t, f, v) => {
+    const n = noise(), bp = ac.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = 18;
+    const e = env(t, 0.03, 0.45, v * 2.2); n.connect(bp).connect(e);
+    run([n], t, 0.5); return [e, 0.5];
+  },
+  // glass: sines at 1× and 2.76×
+  (t, f, v) => {
+    const a = osc("sine", f), b = osc("sine", f * 2.76), bg = ac.createGain();
+    bg.gain.value = 0.4;
+    const e = env(t, 0.002, 1.6, v * 0.35); a.connect(e); b.connect(bg).connect(e);
+    run([a, b], t, 1.65); return [e, 1.65];
+  },
+  // tick: 45 ms highpassed square
+  (t, f, v) => {
+    const o = osc("square", f), hp = ac.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 2000;
+    const e = env(t, 0.001, 0.045, v * 0.4); o.connect(hp).connect(e);
+    run([o], t, 0.06); return [e, 0.06];
+  },
+  // hum: triangle + detuned sine, slow attack
+  (t, f, v) => {
+    const a = osc("triangle", f), b = osc("sine", f * 1.004);
+    const e = env(t, 0.09, 1.3, v * 0.4); a.connect(e); b.connect(e);
+    run([a, b], t, 1.45); return [e, 1.45];
+  },
+  // reed: detuned squares, lowpass
+  (t, f, v) => {
+    const a = osc("square", f), b = osc("square", f * 1.006), lp = ac.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = f * 3; lp.Q.value = 2;
+    const e = env(t, 0.01, 0.4, v * 0.18); a.connect(lp); b.connect(lp); lp.connect(e);
+    run([a, b], t, 0.45); return [e, 0.45];
+  },
+];
+
+function playVoice(fam, f, vel, u, w, t) {
+  if (!ac || activeVoices > 72) return;
+  const [e, dur] = FAMILIES[fam](t, f, vel);
+  quadGains(u, w).forEach((g, c) => {
+    const p = ac.createGain(); p.gain.value = g;
+    e.connect(p).connect(buses[c]);
+  });
+  const s = ac.createGain(); s.gain.value = 0.35;
+  e.connect(s).connect(reverbIn);
+  activeVoices++;
+  setTimeout(() => { activeVoices--; e.disconnect(); }, (dur + 0.2) * 1000);
+}
+
+function playSwoop(x, z, dur) {
+  if (!ac) return;
+  const t = ac.currentTime + 0.01;
+  const n = noise(), bp = ac.createBiquadFilter();
+  bp.type = "bandpass"; bp.Q.value = 6;
+  bp.frequency.setValueAtTime(4200, t); bp.frequency.exponentialRampToValueAtTime(260, t + dur + 0.15);
+  const e = ac.createGain();
+  e.gain.setValueAtTime(0.0001, t);
+  e.gain.exponentialRampToValueAtTime(1.6 * params.voices, t + dur);
+  e.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.35);
+  n.connect(bp).connect(e);
+  const [u, w] = roomPos(x, z);
+  quadGains(u, w).forEach((g, c) => { const p = ac.createGain(); p.gain.value = g; e.connect(p).connect(buses[c]); });
+  const s = ac.createGain(); s.gain.value = 0.5; e.connect(s).connect(reverbIn);
+  run([n], t, dur + 0.4);
+}
+
+function speakerTest(c) {
+  if (!ac) return;
+  const t = ac.currentTime + 0.02;
+  for (let r = 0; r < 3; r++) {
+    const [e, dur] = FAMILIES[1](t + r * 0.22, mtof(ROOT + 12 + 7 * (c % 2) + 3 * r), 0.9);
+    e.connect(buses[c]);
+    setTimeout(() => e.disconnect(), (dur + r * 0.22 + 0.3) * 1000);
+  }
+}
+
+// ---- events → voices + flashes ----
+const flashes = [];
+function drainEvents() {
+  for (const e of flock.events) {
+    if (e.i >= params.singers) continue;
+    flashes.push({ i: e.i, t0: e.t });
+    if (!ac || params.voices <= 0) continue;
+    const w = e.wave;
+    const vel = params.voices * (w.kind === "strike" ? 1 : 0.55 + 0.35 * Math.random());
+    const [u, wz] = roomPos(flock.px[e.i], flock.pz[e.i]);
+    const lag = Math.max(0, e.t - simT);
+    playVoice(e.i % 7, singerFreq(e.i, w.chord || CHORDS[chordIdx]), vel, u, wz, ac.currentTime + 0.02 + lag);
+  }
+  flock.events.length = 0;
+}
+
+// ---- render ----
+function draw(dt) {
+  focal = Math.min(cw, ch) * 0.5 / cam.span;
+  // trails fade to transparent
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = `rgba(0,0,0,${Math.min(1, dt * 22).toFixed(3)})`;
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.restore();
+
+  const n = flock.n, px = flock.px, py = flock.py, pz = flock.pz, vx = flock.vx, vy = flock.vy, vz = flock.vz;
+  const calm = [new Path2D(), new Path2D(), new Path2D()];
+  const lit = new Path2D();
+  for (let i = 0; i < n; i++) {
+    if (!project(px[i], py[i], pz[i])) continue;
+    const ax = proj[0], ay = proj[1], depth = proj[2];
+    if (!project(px[i] - vx[i] * 0.06, py[i] - vy[i] * 0.06, pz[i] - vz[i] * 0.06)) continue;
+    const path = flock.turning(i) ? lit : calm[depth > 1.06 ? 2 : depth > 0.95 ? 1 : 0];
+    path.moveTo(ax, ay); path.lineTo(proj[0], proj[1]);
+  }
+  ctx.lineCap = "round";
+  ctx.lineWidth = 1.5 * dpr;
+  [0.38, 0.6, 0.82].forEach((a, b) => { ctx.strokeStyle = `rgba(225,225,225,${a})`; ctx.stroke(calm[b]); });
+  ctx.lineWidth = 1.9 * dpr;
+  ctx.strokeStyle = "rgba(255,255,255,1)";
+  ctx.stroke(lit);
+
+  for (let f = flashes.length - 1; f >= 0; f--) {
+    const fl = flashes[f], age = simT - fl.t0;
+    if (age > 0.6 || fl.i >= n) { flashes.splice(f, 1); continue; }
+    if (age < 0 || !project(px[fl.i], py[fl.i], pz[fl.i])) continue;
+    drawSoftDot(ctx, proj[0], proj[1], 26 * dpr * proj[2], 0.75 * (1 - age / 0.6));
+  }
+  drawFalcons();
+}
+
+// ---- loop ----
+let simT = 0, acc = 0, lastT = performance.now();
+const STEP = 1 / 60;
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000);
+  lastT = now;
+  tickInputs(dt);
+  acc += dt;
+  while (acc >= STEP) {
+    flock.step(STEP, simT);
+    simT += STEP;
+    acc -= STEP;
+    tickFalcons();
+  }
+  updateCamera(dt);
+  tickMic(dt);
+  tickBed(dt);
+  drainEvents();
+  draw(dt);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// spontaneous waves
+poisson(() => params.restless / 60, () => { if (!document.hidden) flock.initiate(simT); });
+
+// ---- start, outputs, keys ----
+const startEl = document.getElementById("start");
+const outputsEl = document.getElementById("outputs");
+const sinkEl = document.getElementById("sink");
+startEl.hidden = false;
+
+let wakeLock = null;
+async function holdWake() {
+  try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && ac) holdWake(); });
+
+async function begin() {
+  if (ac) return;
+  let sink = "";
+  try { sink = localStorage.getItem(STORE + ".sink") || ""; } catch (e) {}
+  await startAudio(sink);
+  startEl.hidden = true;
+  holdWake();
+  // mic on at start, via core's "a" key
+  if (!audioActive()) window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+  refreshOutputs();
+}
+
+async function refreshOutputs() {
+  const info = document.getElementById("chan-info");
+  info.textContent = ac
+    ? `${ac.destination.maxChannelCount} channels · ${quad ? "quad" : "stereo"}`
+    : "audio off";
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput");
+  let cur = "";
+  try { cur = localStorage.getItem(STORE + ".sink") || ""; } catch (e) {}
+  sinkEl.innerHTML = "";
+  for (const d of devs) {
+    const o = document.createElement("option");
+    o.value = d.deviceId === "default" ? "" : d.deviceId;
+    o.textContent = d.label || "output " + (sinkEl.length + 1);
+    if (o.value === cur) o.selected = true;
+    sinkEl.appendChild(o);
+  }
+}
+sinkEl.addEventListener("change", async () => {
+  try { localStorage.setItem(STORE + ".sink", sinkEl.value); } catch (e) {}
+  if (ac) { await startAudio(sinkEl.value); refreshOutputs(); }
+});
+outputsEl.querySelectorAll("[data-test]").forEach(b => b.addEventListener("click", () => speakerTest(+b.dataset.test)));
+
+function toggleOutputs() {
+  outputsEl.hidden = !outputsEl.hidden;
+  document.body.style.cursor = outputsEl.hidden ? "" : "default";
+  if (!outputsEl.hidden) refreshOutputs();
+}
+
+function setHush(on) {
+  hushed = on;
+  if (master) master.gain.setTargetAtTime(on ? 0.18 : 1, ac.currentTime, 1.2);
+}
+
+window.addEventListener("click", (e) => {
+  if (e.target.closest("#panel, #outputs, #audio-panel")) return;
+  if (!ac) { begin(); return; }
+  // click: falcon strike at the nearest bird
+  let best = -1, bd = Infinity;
+  const mx = e.clientX * dpr, my = e.clientY * dpr;
+  for (let i = 0; i < flock.n; i++) {
+    if (!project(flock.px[i], flock.py[i], flock.pz[i])) continue;
+    const d = (proj[0] - mx) ** 2 + (proj[1] - my) ** 2;
+    if (d < bd) { bd = d; best = i; }
+  }
+  if (best >= 0) launchFalcon(flock.px[best], flock.py[best], flock.pz[best], 6);
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
+  if (e.key === " ") { e.preventDefault(); flock.initiate(simT); }
+  else if (e.key === "h" || e.key === "H") setHush(!hushed);
+  else if (e.key === "o" || e.key === "O") toggleOutputs();
+  else if (e.key === "f" || e.key === "F") {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  }
+});
+
+window.onParamChange = () => { syncFlockParams(); saveParams(); };
+installPanel(params);
+
+// debug hooks for headless checks
+window.murm = { flock, params, cam, get simT() { return simT; }, get ac() { return ac; }, begin, launchFalcon };
+</script>
+</body>
+</html>
