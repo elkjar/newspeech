@@ -47,6 +47,7 @@
       local: 15,        // pull toward neighbours, scaled by centrality
       pull: 0,          // pull toward the flock centre, everywhere
       cohesion: 1.2,    // pull back for birds outside the flock radius
+      radius: 1,        // flock radius for that pull, as a share of 1.43·∛N m
       sep: 30,          // how hard birds push apart inside sepRadius
       sepRadius: 1.4,   // m, personal space
       noise: 0.6,       // m/s², random wing noise per bird
@@ -321,7 +322,7 @@
       const v0 = p.speed;
       const rSep = p.sepRadius;
       const W = p.halfW, H = p.halfH, D = p.halfD;
-      const r0 = 1.1 * Math.cbrt(N) * 1.3;   // flock radius at usual spacing
+      const r0 = p.radius * 1.1 * Math.cbrt(N) * 1.3;   // flock radius at usual spacing
       for (let i = 0; i < N; i++) {
         const base = i * KMAX;
         let mx = 0, my = 0, mz = 0, cx = 0, cy = 0, cz = 0, sx = 0, sy = 0, sz = 0, ux = 0, uy = 0, uz = 0;

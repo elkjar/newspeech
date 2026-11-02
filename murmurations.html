@@ -157,6 +157,10 @@
     <input type="range" min="0" max="3" step="0.05" data-k="cohesion">
   </label>
   <label>
+    <span class="name">flock radius</span><span class="val"></span>
+    <input type="range" min="0.3" max="2" step="0.05" data-k="radius">
+  </label>
+  <label>
     <span class="name">separation</span><span class="val"></span>
     <input type="range" min="0" max="60" step="1" data-k="sep">
   </label>
@@ -204,7 +208,7 @@ installInputs();
 const STORE = "newspeech.murmurations";
 const params = {
   k: 7,
-  contagion: 1.5,
+  contagion: 1,
   restless: 5,
   reaction: 70,
   singers: 48,
@@ -220,16 +224,17 @@ const params = {
 // speed is shown in m/s but plays as slow motion: the flock always flies at
 // 10 m/s and runs at speed / 10 of real time
 const FLOCK_DEFAULTS = {
-  birds: 1200,
-  dot: 3,
-  view: 50,
-  speed: 1,
-  align: 2.6,
+  birds: 3400,
+  dot: 1.1,
+  view: 70,
+  speed: 4,
+  align: 4,
   local: 15,
-  pull: 0,
-  cohesion: 1.2,
+  pull: 0.01,
+  cohesion: 2.5,
+  radius: 1,
   sep: 30,
-  sepRadius: 1.4,
+  sepRadius: 1.1,
   noise: 0.6,
   steer: 0.45,
   roam: 0.45,
@@ -900,7 +905,7 @@ installPanel(params);
 
 // reset flock: defaults back into the sliders (each fires onParamChange),
 // including the wave settings in the top section
-const WAVE_DEFAULTS = { k: 7, contagion: 1.5, restless: 5, reaction: 70, depth: 25 };
+const WAVE_DEFAULTS = { k: 7, contagion: 1, restless: 5, reaction: 70, depth: 25 };
 document.getElementById("flock-reset").addEventListener("click", () => {
   const all = Object.assign({}, WAVE_DEFAULTS, FLOCK_DEFAULTS);
   for (const k in all) {
