@@ -216,11 +216,9 @@ function project(x, y) {
   proj[0] = cw * 0.5 + x * scale;
   proj[1] = ch * 0.5 - y * scale;
 }
-// screen position → room: x = left/right, screen top = front (by the screen)
-function roomPos(x, y) {
-  const u = x / (0.8 * flock.params.halfW), w = -y / (0.8 * flock.params.halfH);
-  return [Math.max(-1, Math.min(1, u)), Math.max(-1, Math.min(1, w))];
-}
+// screen quadrant → speaker: top = front (by the screen).
+// 0 FL top-left, 1 FR top-right, 2 RL bottom-left, 3 RR bottom-right
+function quadrant(x, y) { return (y > 0 ? 0 : 2) + (x > 0 ? 1 : 0); }
 
 // ---- strikes (mic / click) ----
 // birds within `radius` of the point turn away at once; the rest follow by contagion
@@ -351,42 +349,24 @@ function releaseNote(n, t, secs) {
 }
 
 // ---- audio ----
-let ac = null, buses = [], reverbIn = null, master = null, meter = null, meterBuf = null;
+let ac = null, buses = [], reverbs = [], master = null, meter = null, meterBuf = null;
 let outLevel = 0, activeVoices = 0, hushed = false, quad = false;
 let busMeters = [];
 const busLevel = [0, 0, 0, 0], busBuf = new Float32Array(512);
 const bed = { out: [], notes: [] };
 
-function quadGains(u, w) {
-  const lr = (u + 1) * 0.25 * Math.PI, fb = (w + 1) * 0.25 * Math.PI;
-  const L = Math.cos(lr), R = Math.sin(lr), F = Math.cos(fb), B = Math.sin(fb);
-  return [L * F, R * F, L * B, R * B];
-}
-
+// mono noise tail, darkening as it decays; a new one per speaker
 function makeIR(secs) {
   const len = ac.sampleRate * secs;
-  const b = ac.createBuffer(2, len, ac.sampleRate);
-  for (let c = 0; c < 2; c++) {
-    const d = b.getChannelData(c);
-    let lp = 0;
-    for (let i = 0; i < len; i++) {
-      // darkens as it decays
-      const k = 0.15 + 0.8 * (1 - i / len);
-      lp += (Math.random() * 2 - 1 - lp) * k;
-      d[i] = lp * Math.pow(1 - i / len, 2.4);
-    }
+  const b = ac.createBuffer(1, len, ac.sampleRate);
+  const d = b.getChannelData(0);
+  let lp = 0;
+  for (let i = 0; i < len; i++) {
+    const k = 0.15 + 0.8 * (1 - i / len);
+    lp += (Math.random() * 2 - 1 - lp) * k;
+    d[i] = lp * Math.pow(1 - i / len, 2.4);
   }
   return b;
-}
-
-// route a source to the four buses through pan gains
-function panNode(u, w, into) {
-  return quadGains(u, w).map((v, c) => {
-    const p = ac.createGain();
-    p.gain.value = v;
-    into.connect(p).connect(buses[c]);
-    return p;
-  });
 }
 
 async function startAudio(sinkId) {
@@ -428,53 +408,47 @@ async function startAudio(sinkId) {
     buses.push(bus);
   }
 
-  // one reverb; return delayed differently into the rear pair
-  reverbIn = ac.createGain();
-  const conv = ac.createConvolver();
-  conv.buffer = makeIR(3.4);
-  const ret = ac.createGain(); ret.gain.value = 0.55;
-  const split = ac.createChannelSplitter(2);
-  reverbIn.connect(conv).connect(ret).connect(split);
-  const dR = ac.createDelay(0.1); dR.delayTime.value = 0.023;
-  const dL = ac.createDelay(0.1); dL.delayTime.value = 0.031;
-  split.connect(buses[0], 0); split.connect(buses[1], 1);
-  split.connect(dR, 0).connect(buses[3]); split.connect(dL, 1).connect(buses[2]);
+  // one mono reverb per speaker, so a voice's tail stays where it fired
+  reverbs = buses.map((bus) => {
+    const send = ac.createGain();
+    const conv = ac.createConvolver();
+    conv.buffer = makeIR(3.4);
+    const ret = ac.createGain(); ret.gain.value = 0.55;
+    send.connect(conv).connect(ret).connect(bus);
+    return send;
+  });
 
   startBed();
   return ac.resume();
 }
 
 function startBed() {
-  // one gain per corner (bed level) → bus + reverb send
-  bed.out = buses.map((bus) => {
+  // one gain per speaker (bed level) → bus + that speaker's reverb
+  bed.out = buses.map((bus, c) => {
     const g = ac.createGain();
     g.gain.value = params.bed;
     g.connect(bus);
     const r = ac.createGain(); r.gain.value = 0.5;
-    g.connect(r).connect(reverbIn);
+    g.connect(r).connect(reverbs[c]);
     return g;
   });
   bed.notes = [];
 }
 
-// pad chord on each wave: swells in, rings out, no restrike. each chord
-// tone goes to its own corner.
-const CORNERS = [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]];
+// pad chord on each wave: swells in, rings out, no restrike. equal in all
+// four speakers (0.5 each = equal power), so it sits in the middle of the room.
 function bedChord(chord) {
   if (!ac || !bed.out.length) return;
   const t = ac.currentTime + 0.02;
   for (const n of bed.notes) releaseNote(n, t, 3);
   bed.notes = [];
   const [pad, padOct] = voiceCfg.pad;
-  const corners = CORNERS.slice().sort(() => Math.random() - 0.5);
-  chord.forEach((d, k) => {
+  chord.forEach((d) => {
     const n = sampleNote(pad, ROOT + 12 * padOct + degSemis(d), t, 0.45, { attack: 1.2, release: 3 });
     if (!n) return;
-    const [u, w] = corners[k % 4];
-    quadGains(u, w).forEach((g, c) => {
-      const p = ac.createGain(); p.gain.value = g;
-      n.g.connect(p).connect(bed.out[c]);
-    });
+    const p = ac.createGain(); p.gain.value = 0.5;
+    n.g.connect(p);
+    for (const out of bed.out) p.connect(out);
     bed.notes.push(n);
   });
 }
@@ -498,16 +472,14 @@ function tickBed(dt) {
   });
 }
 
-function playSinger(i, midi, vel, u, w, t) {
+// a singer plays from one speaker only: the quadrant its bird is in
+function playSinger(i, midi, vel, c, t) {
   if (!ac || activeVoices > 96) return;
   const n = sampleNote(voiceCfg[(i % SINGERS) + 1][0], midi, t, vel, { maxDur: 3.5, release: 0.6 });
   if (!n) return;
-  quadGains(u, w).forEach((g, c) => {
-    const p = ac.createGain(); p.gain.value = g;
-    n.g.connect(p).connect(buses[c]);
-  });
+  n.g.connect(buses[c]);
   const s = ac.createGain(); s.gain.value = 0.35;
-  n.g.connect(s).connect(reverbIn);
+  n.g.connect(s).connect(reverbs[c]);
   activeVoices++;
   setTimeout(() => { activeVoices--; n.g.disconnect(); }, (n.dur + 0.2) * 1000 + (t - ac.currentTime) * 1000);
 }
@@ -531,9 +503,8 @@ function drainEvents() {
     if (!ac || params.voices <= 0) continue;
     const w = e.wave;
     const vel = params.voices * (w.kind === "strike" ? 0.9 : 0.45 + 0.3 * Math.random());
-    const [u, wz] = roomPos(flock.px[e.i], flock.py[e.i]);
     const lag = Math.max(0, e.t - simT);
-    playSinger(e.i, singerNote(e.i, w.chord || CHORDS[chordIdx]), vel, u, wz, ac.currentTime + 0.02 + lag);
+    playSinger(e.i, singerNote(e.i, w.chord || CHORDS[chordIdx]), vel, quadrant(flock.px[e.i], flock.py[e.i]), ac.currentTime + 0.02 + lag);
   }
   flock.events.length = 0;
 }
