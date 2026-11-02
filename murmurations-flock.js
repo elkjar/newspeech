@@ -40,6 +40,7 @@
       reaction: 0.07,   // s, mean neighbour-to-neighbour reaction delay
       turnTime: 0.45,   // s, how long one bird takes to complete its turn
       refractory: 1.6,  // s, after turning a bird ignores new waves this long
+      waveLife: 8,      // s, a wave stops spreading this long after it starts
       halfW: 71,        // m, half-width of the space (16:9 at halfH 40)
       halfH: 40,        // m, half-height
       cohesion: 0.6,    // pull back toward the centre for birds outside the flock radius
@@ -287,13 +288,15 @@
           const age = t - startT[n];
           if (age < dj || age > win) continue;
           const id = waveOf[n];
-          if (id === waveOf[j]) continue;   // already rode this one
+          // only waves newer than the last one this bird rode: each wave
+          // passes each bird once, so two waves can't ping-pong forever
+          if (id <= waveOf[j]) continue;
           let m = 0;
           while (m < kinds && tallyId[m] !== id) m++;
           if (m === kinds) { tallyId[m] = id; tally[m] = 0; kinds++; }
           if (++tally[m] >= need) {
             const w = waves.get(id);
-            if (w) join(j, w, t);
+            if (w && t - w.t0 < p.waveLife) join(j, w, t);
             break;
           }
         }

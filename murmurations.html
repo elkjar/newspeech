@@ -138,7 +138,7 @@
   </label>
   <label>
     <span class="name">speed m/s</span><span class="val"></span>
-    <input type="range" min="4" max="20" step="0.5" data-k="speed">
+    <input type="range" min="1" max="20" step="0.5" data-k="speed">
   </label>
   <label>
     <span class="name">align</span><span class="val"></span>
@@ -218,9 +218,9 @@ const params = {
 };
 // flock shape controls: page key = flock param, except birds / dot / view
 const FLOCK_DEFAULTS = {
-  birds: 4000,
-  dot: 1.6,
-  view: 100,
+  birds: 1200,
+  dot: 3,
+  view: 80,
   speed: 10,
   align: 2.6,
   local: 0.3,
@@ -361,19 +361,24 @@ function peripheralBird() {
 
 // ---- mic → strike ----
 // triggers when mic level jumps above its 6 s average by `falcon`. the
-// threshold also rises with output level (speakers reach the mic), and
-// there's a 2.5 s cooldown.
-let micBase = 0, falconCool = 0;
+// threshold also rises with output level (speakers reach the mic) and with
+// any recent rise in our own output (a new pad chord swelling in reaches
+// the mic too), so the room can't loop into itself. 4 s cooldown.
+let micBase = 0, falconCool = 0, outSlow = 0;
+const strikeTimes = [];
 function tickMic(dt) {
   falconCool -= dt;
+  outSlow += (outLevel - outSlow) * (1 - Math.exp(-dt / 1.5));
   if (!audioActive()) return;
   const lvl = audioLevel();
   micBase += (lvl - micBase) * (1 - Math.exp(-dt / 6));
-  const excess = lvl - micBase - params.falcon - outLevel * 0.6;
+  const outRise = Math.max(0, outLevel - outSlow);
+  const excess = lvl - micBase - params.falcon - outLevel * 0.6 - outRise * 3;
   if (excess > 0 && falconCool <= 0) {
     const i = peripheralBird();
     strikeAt(flock.px[i], flock.py[i], 3 + 30 * Math.min(0.4, excess));
-    falconCool = 2.5;
+    falconCool = 4;
+    strikeTimes.push(performance.now());
   }
 }
 
@@ -869,11 +874,14 @@ window.onParamChange = (k) => {
 };
 installPanel(params);
 
-// reset flock: defaults back into the sliders (each fires onParamChange)
+// reset flock: defaults back into the sliders (each fires onParamChange),
+// including the wave settings in the top section
+const WAVE_DEFAULTS = { k: 7, contagion: 1.5, restless: 5, reaction: 70, depth: 10 };
 document.getElementById("flock-reset").addEventListener("click", () => {
-  for (const k in FLOCK_DEFAULTS) {
+  const all = Object.assign({}, WAVE_DEFAULTS, FLOCK_DEFAULTS);
+  for (const k in all) {
     const input = document.querySelector(`#panel input[data-k="${k}"]`);
-    input.value = FLOCK_DEFAULTS[k];
+    input.value = all[k];
     input.dispatchEvent(new Event("input"));
   }
 });
@@ -905,7 +913,9 @@ function flockPieces() {
 setInterval(() => {
   if (document.getElementById("panel").hidden) return;
   const s = flock.stats, [pc, big] = flockPieces();
-  statsEl.textContent = `alignment ${s.polarization.toFixed(2)} · pieces ${pc} (${Math.round(100 * big)}%) · spread ${s.extent.toFixed(0)} m · turning ${Math.round(100 * s.turning)}%`;
+  const now = performance.now();
+  while (strikeTimes.length && now - strikeTimes[0] > 60000) strikeTimes.shift();
+  statsEl.textContent = `alignment ${s.polarization.toFixed(2)} · pieces ${pc} (${Math.round(100 * big)}%) · spread ${s.extent.toFixed(0)} m · turning ${Math.round(100 * s.turning)}% · mic strikes ${strikeTimes.length}/min`;
 }, 500);
 
 // debug hooks for headless checks
