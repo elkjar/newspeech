@@ -39,6 +39,12 @@
   .dialog button { background: none; color: #ddd; border: 1px solid rgba(255, 255, 255, 0.4); font: inherit; padding: 5px 10px; cursor: pointer; }
   .dialog button:hover { border-color: #fff; color: #fff; }
   .dialog .note { opacity: 0.5; margin-top: 12px; line-height: 1.6; text-transform: none; letter-spacing: 0.02em; }
+  #voices { width: 480px; }
+  .dialog .row.sub { margin-top: 4px; padding-left: 44px; }
+  .dialog select { min-width: 0; }
+  .dialog select.ch { flex: 0 0 64px; }
+  .dialog button:disabled, .dialog select:disabled { opacity: 0.35; cursor: default; }
+  .dialog button.on { border-color: #fff; color: #050505; background: #ddd; }
 </style>
 </head>
 <body>
@@ -68,7 +74,8 @@
 <div id="voices" class="dialog" hidden>
   <div>voices</div>
   <div id="voice-rows"></div>
-  <div class="note">1–4: singers. Octave is relative to D3.</div>
+  <div class="row"><span>midi gate</span><select id="midi-gate" class="ch"></select></div>
+  <div class="note">1–4: singers. Octave is relative to D3. Out: internal samples or a MIDI port + channel; a slot whose port is unplugged plays its samples. Quad: the bird's quadrant (FL, FR, RL, RR) adds 0–3 to the channel. Midi gate = singer note length.</div>
 </div>
 
 <div id="panel">
@@ -261,6 +268,59 @@ const voiceCfg = {
 try { Object.assign(voiceCfg, JSON.parse(localStorage.getItem(STORE + ".voices2") || "{}")); } catch (e) {}
 function saveVoices() { try { localStorage.setItem(STORE + ".voices2", JSON.stringify(voiceCfg)); } catch (e) {} }
 
+// ---- MIDI out: any slot can play a hardware voice instead (saved) ----
+// port = output name ("" = internal samples), ch 1–16. quad (singers): the
+// bird's quadrant adds 0–3 to the channel, so four hardware voices on
+// ch..ch+3 can be patched to the four speakers
+const midiOut = { gate: 1, slots: {} };
+for (const s of VOICE_SLOTS) midiOut.slots[s] = { port: "", ch: 1, quad: false };
+try {
+  const m = JSON.parse(localStorage.getItem(STORE + ".midi") || "{}");
+  if (m.gate) midiOut.gate = m.gate;
+  for (const s in m.slots || {}) if (midiOut.slots[s]) Object.assign(midiOut.slots[s], m.slots[s]);
+} catch (e) {}
+function saveMidi() { try { localStorage.setItem(STORE + ".midi", JSON.stringify(midiOut)); } catch (e) {} }
+
+let midiAccess = null;
+async function enableMidiOut() {
+  if (midiAccess || !navigator.requestMIDIAccess) return;
+  try { midiAccess = await navigator.requestMIDIAccess({ sysex: false }); }
+  catch (e) { console.warn("midi", e); return; }
+  midiAccess.onstatechange = () => { if (!voicesEl.hidden) buildVoiceRows(); };
+}
+if (VOICE_SLOTS.some(s => midiOut.slots[s].port)) enableMidiOut();
+
+// the slot's connected port, or null = play the samples
+function slotMidi(slot) {
+  const c = midiOut.slots[slot];
+  if (!midiAccess || !c.port) return null;
+  for (const port of midiAccess.outputs.values()) if (port.name === c.port && port.state === "connected") return { port, c };
+  return null;
+}
+
+// sounding notes, key = port/channel/note. each note-on gets a token so an
+// older note's note-off can't cut a retriggered one
+const midiOn = new Map();
+function midiNote(port, ch, note, vel, t, dur) {
+  ch = Math.max(1, Math.min(16, ch));
+  note = Math.max(0, Math.min(127, note));
+  const key = `${port.id}:${ch}:${note}`, tok = {};
+  const ts = performance.now() + Math.max(0, t - ac.currentTime) * 1000;
+  if (midiOn.has(key)) port.send([0x80 + ch - 1, note, 0], ts);
+  midiOn.set(key, { port, ch, note, tok });
+  port.send([0x90 + ch - 1, note, Math.max(1, Math.min(127, Math.round(vel * 127)))], ts);
+  if (dur) setTimeout(() => midiOff(key, tok), ts - performance.now() + dur * 1000);
+  return [key, tok];
+}
+function midiOff(key, tok) {
+  const n = midiOn.get(key);
+  if (!n || (tok && n.tok !== tok)) return;
+  midiOn.delete(key);
+  try { n.port.send([0x80 + n.ch - 1, n.note, 0]); } catch (e) {}
+}
+function midiAllOff() { for (const key of [...midiOn.keys()]) midiOff(key); }
+window.addEventListener("pagehide", midiAllOff);
+
 // per-pack pitch correction, cents, from measuring the zones these octaves use
 const TUNE = {
   "instruments/grand-piano-ss": -13,   // measured +9..+20
@@ -321,10 +381,12 @@ const birdOct = Float32Array.from({ length: MurmFlock.NMAX }, () => Math.random(
 
 // singer i: slot = i % SINGERS, chord tone = floor(i / SINGERS) % 4,
 // octave = slot octave + its own offset, kept inside the pack's sampled range
+// (MIDI slots keep the full spread)
 function singerNote(i, chord) {
-  const [pack, oct] = voiceCfg[(i % SINGERS) + 1];
+  const slot = (i % SINGERS) + 1;
+  const [pack, oct] = voiceCfg[slot];
   let note = ROOT + 12 * (oct + Math.round(birdOct[i] * params.spread)) + degSemis(chord[Math.floor(i / SINGERS) % chord.length]);
-  const kit = kits.get(pack);
+  const kit = slotMidi(slot) ? null : kits.get(pack);
   if (kit) {
     const lo = kit.roots[0].midi - kit.shift, hi = kit.roots[kit.roots.length - 1].midi - kit.shift;
     while (note > hi + 2) note -= 12;
@@ -508,7 +570,7 @@ let ac = null, buses = [], reverbs = [], master = null, meter = null, meterBuf =
 let outLevel = 0, activeVoices = 0, hushed = false, quad = false;
 let busMeters = [];
 const busLevel = [0, 0, 0, 0], busBuf = new Float32Array(512);
-const bed = { out: [], notes: [], next: 0 };
+const bed = { out: [], notes: [], midi: [], next: 0 };
 
 let plate = null, plateRet = [];
 // reverb slider 0..1 → return gain. 0.55 × 0.6 ≈ the old reverb's level
@@ -594,15 +656,23 @@ function startBed() {
 
 // pad chord on each wave: swells in, rings out, no restrike. equal in all
 // four speakers (0.5 each = equal power), so it sits in the middle of the room.
+// on MIDI: the chord on one channel, held until the next chord, velocity = bed level
 function bedChord(chord) {
   if (!ac || !bed.out.length) return;
   const t = ac.currentTime + 0.02;
   for (const n of bed.notes) releaseNote(n, t, 3);
-  bed.notes = [];
+  for (const [key, tok] of bed.midi) midiOff(key, tok);
+  bed.notes = []; bed.midi = [];
   bed.next = t + CHORD_SECS;
   const [pad, padOct] = voiceCfg.pad;
+  const hw = slotMidi("pad");
   chord.forEach((d) => {
-    const n = sampleNote(pad, ROOT + 12 * padOct + degSemis(d), t, 0.45, { attack: 1.2, release: 3 });
+    const note = ROOT + 12 * padOct + degSemis(d);
+    if (hw) {
+      if (params.bed > 0) bed.midi.push(midiNote(hw.port, hw.c.ch, note, params.bed, t));
+      return;
+    }
+    const n = sampleNote(pad, note, t, 0.45, { attack: 1.2, release: 3 });
     if (!n) return;
     const p = ac.createGain(); p.gain.value = 0.5;
     n.g.connect(p);
@@ -633,8 +703,11 @@ function tickBed(dt) {
 
 // a singer plays from one speaker only: the quadrant its bird is in
 function playSinger(i, midi, vel, c, t) {
+  const slot = (i % SINGERS) + 1;
+  const hw = slotMidi(slot);
+  if (hw) { midiNote(hw.port, hw.c.ch + (hw.c.quad ? c : 0), midi, vel, t, midiOut.gate); return; }
   if (!ac || activeVoices > 96) return;
-  const n = sampleNote(voiceCfg[(i % SINGERS) + 1][0], midi, t, vel, { maxDur: 3.5, release: 0.6 });
+  const n = sampleNote(voiceCfg[slot][0], midi, t, vel, { maxDur: 3.5, release: 0.6 });
   if (!n) return;
   n.g.connect(buses[c]);
   const s = ac.createGain(); s.gain.value = 0.35;
@@ -650,6 +723,23 @@ function speakerTest(c) {
   for (let r = 0; r < 3; r++) {
     const n = sampleNote(voiceCfg[2][0], ROOT + 12 * voiceCfg[2][1] + degSemis(r * 2), t + r * 0.25, 0.9, { maxDur: 1, release: 0.3 });
     if (n) n.g.connect(buses[c]);
+  }
+}
+
+// four rising chord tones from one slot, note r on speaker r (MIDI quad:
+// channel ch + r), to check the routing to each speaker
+function slotTest(slot) {
+  if (!ac) { begin(); return; }
+  const [pack, oct] = voiceCfg[slot];
+  const hw = slotMidi(slot);
+  const t = ac.currentTime + 0.02;
+  for (let r = 0; r < 4; r++) {
+    const note = ROOT + 12 * oct + degSemis(r * 2), tr = t + r * 0.4;
+    if (hw) midiNote(hw.port, hw.c.ch + (hw.c.quad ? r : 0), note, 0.8, tr, 0.35);
+    else {
+      const n = sampleNote(pack, note, tr, 0.8, { maxDur: 1, release: 0.3 });
+      if (n) n.g.connect(buses[quad ? r : r % 2]);
+    }
   }
 }
 
@@ -851,7 +941,62 @@ async function buildVoiceRows() {
     oct.addEventListener("change", change);
     row.append(label, pack, oct);
     rows.appendChild(row);
+    rows.appendChild(midiRow(slot));
   }
+  const gate = document.getElementById("midi-gate");
+  gate.innerHTML = "";
+  for (const v of [0.1, 0.25, 0.5, 1, 2, 4]) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v + " s"; o.selected = v === midiOut.gate;
+    gate.appendChild(o);
+  }
+  gate.onchange = () => { midiOut.gate = +gate.value; saveMidi(); };
+}
+
+// out: internal or a MIDI port (by name, so it survives replugging), channel,
+// quad (singers), test
+function midiRow(slot) {
+  const c = midiOut.slots[slot];
+  const row = document.createElement("div");
+  row.className = "row sub";
+  const port = document.createElement("select");
+  const names = midiAccess ? [...midiAccess.outputs.values()].filter(p => p.state === "connected").map(p => p.name) : [];
+  const opts = [["", "internal"], ...names.map(n => [n, n])];
+  if (c.port && !names.includes(c.port)) opts.push([c.port, c.port + " (not connected)"]);
+  for (const [v, text] of opts) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = text; o.selected = v === c.port;
+    port.appendChild(o);
+  }
+  const chan = document.createElement("select");
+  chan.className = "ch";
+  for (let v = 1; v <= 16; v++) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = "ch " + v; o.selected = v === c.ch;
+    chan.appendChild(o);
+  }
+  const q = document.createElement("button");
+  const change = () => {
+    midiAllOff();
+    c.port = port.value; c.ch = +chan.value;
+    chan.disabled = q.disabled = !c.port;
+    saveMidi();
+  };
+  chan.disabled = q.disabled = !c.port;
+  port.addEventListener("change", change);
+  chan.addEventListener("change", change);
+  row.append(port, chan);
+  if (slot !== "pad") {
+    q.textContent = "quad";
+    q.classList.toggle("on", c.quad);
+    q.addEventListener("click", () => { q.blur(); midiAllOff(); c.quad = !c.quad; q.classList.toggle("on", c.quad); saveMidi(); });
+    row.append(q);
+  }
+  const test = document.createElement("button");
+  test.textContent = "test";
+  test.addEventListener("click", () => { test.blur(); slotTest(slot); });
+  row.append(test);
+  return row;
 }
 
 function toggleDialog(el, other) {
@@ -859,7 +1004,7 @@ function toggleDialog(el, other) {
   el.hidden = !el.hidden;
   document.body.style.cursor = el.hidden ? "" : "default";
   if (!el.hidden && el === outputsEl) refreshOutputs();
-  if (!el.hidden && el === voicesEl) buildVoiceRows();
+  if (!el.hidden && el === voicesEl) enableMidiOut().then(buildVoiceRows);
 }
 
 function setHush(on) {
@@ -949,7 +1094,7 @@ setInterval(() => {
 }, 500);
 
 // debug hooks for headless checks
-window.murm = { flock, params, voiceCfg, buffers, kits, get simT() { return simT; }, get ac() { return ac; }, get activeVoices() { return activeVoices; }, get bedNotes() { return bed.notes.length; }, begin, strikeAt };
+window.murm = { flock, params, voiceCfg, midiOut, midiOn, buffers, kits, get simT() { return simT; }, get ac() { return ac; }, get activeVoices() { return activeVoices; }, get bedNotes() { return bed.notes.length; }, begin, strikeAt };
 </script>
 </body>
 </html>
