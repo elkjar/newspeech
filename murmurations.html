@@ -104,6 +104,14 @@
     <span class="name">octave spread</span><span class="val"></span>
     <input type="range" min="0" max="3" step="1" data-k="spread">
   </label>
+  <label>
+    <span class="name">reverb</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="reverb">
+  </label>
+  <label>
+    <span class="name">reverb size</span><span class="val"></span>
+    <input type="range" min="0" max="1" step="0.01" data-k="reverbSize">
+  </label>
 </div>
 
 <script src="core.js"></script>
@@ -124,6 +132,8 @@ const params = {
   bed: 0.5,
   falcon: 0.12,
   spread: 2,
+  reverb: 0.6,
+  reverbSize: 0.5,
 };
 try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params") || "{}")); } catch (e) {}
 function saveParams() { try { localStorage.setItem(STORE + ".params", JSON.stringify(params)); } catch (e) {} }
@@ -363,19 +373,10 @@ let busMeters = [];
 const busLevel = [0, 0, 0, 0], busBuf = new Float32Array(512);
 const bed = { out: [], notes: [], next: 0 };
 
-// mono noise tail, darkening as it decays; a new one per speaker
-function makeIR(secs) {
-  const len = ac.sampleRate * secs;
-  const b = ac.createBuffer(1, len, ac.sampleRate);
-  const d = b.getChannelData(0);
-  let lp = 0;
-  for (let i = 0; i < len; i++) {
-    const k = 0.15 + 0.8 * (1 - i / len);
-    lp += (Math.random() * 2 - 1 - lp) * k;
-    d[i] = lp * Math.pow(1 - i / len, 2.4);
-  }
-  return b;
-}
+let plate = null, plateRet = [];
+// reverb slider 0..1 → return gain. 0.55 × 0.6 ≈ the old reverb's level
+// (the plate measured 3× louder than it on the same noise burst)
+function reverbReturn() { return 0.55 * params.reverb; }
 
 async function startAudio(sinkId) {
   if (ac) { try { await ac.close(); } catch (e) {} }
@@ -416,14 +417,25 @@ async function startAudio(sinkId) {
     buses.push(bus);
   }
 
-  // one mono reverb per speaker, so a voice's tail stays where it fired
-  reverbs = buses.map((bus) => {
+  // the sequencer's plate (murmurations-plate.js), one per speaker: send c
+  // → plate c → speaker c, so a voice's tail stays where it fired
+  await ac.audioWorklet.addModule("murmurations-plate.js");
+  plate = new AudioWorkletNode(ac, "murm-plate", {
+    numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [4],
+    channelCount: 4, channelCountMode: "explicit", channelInterpretation: "discrete",
+  });
+  plate.port.postMessage({ size: params.reverbSize });
+  const sendMerge = ac.createChannelMerger(4), retSplit = ac.createChannelSplitter(4);
+  sendMerge.connect(plate).connect(retSplit);
+  reverbs = buses.map((bus, c) => {
     const send = ac.createGain();
-    const conv = ac.createConvolver();
-    conv.buffer = makeIR(3.4);
-    const ret = ac.createGain(); ret.gain.value = 0.55;
-    send.connect(conv).connect(ret).connect(bus);
+    send.connect(sendMerge, 0, c);
     return send;
+  });
+  plateRet = buses.map((bus, c) => {
+    const ret = ac.createGain(); ret.gain.value = reverbReturn();
+    retSplit.connect(ret, c).connect(bus);
+    return ret;
   });
 
   startBed();
@@ -736,7 +748,13 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-window.onParamChange = () => { syncFlockParams(); saveParams(); };
+window.onParamChange = (k) => {
+  syncFlockParams();
+  saveParams();
+  if (!ac) return;
+  if (k === "reverb") for (const r of plateRet) r.gain.setTargetAtTime(reverbReturn(), ac.currentTime, 0.05);
+  if (k === "reverbSize" && plate) plate.port.postMessage({ size: params.reverbSize });
+};
 installPanel(params);
 
 // debug hooks for headless checks
