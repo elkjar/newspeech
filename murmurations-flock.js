@@ -16,6 +16,12 @@
 // without losing its alignment. Birds further than the flock's own radius
 // from its centre are pulled back, so it stays one body.
 //
+// Birds also have a height inside a slab of half-thickness `depth` m. The
+// page draws the flock from above, so birds at different heights overlap
+// on screen; spacing and neighbours are measured in 3D. A bird joining a
+// wave banks: it gets a vertical kick of up to `bank` m/s, so turns sweep
+// birds through the layers.
+//
 // Speed and spacing defaults sit inside measured flocks (jackdaws, Ling et
 // al. 2019: 8.6–13.5 m/s, nearest neighbour 1.4–2.2 m).
 //
@@ -34,14 +40,18 @@
       reaction: 0.07,   // s, mean neighbour-to-neighbour reaction delay
       turnTime: 0.45,   // s, how long one bird takes to complete its turn
       refractory: 1.6,  // s, after turning a bird ignores new waves this long
-      halfW: 107,       // m, half-width of the space (16:9 at halfH 60)
-      halfH: 60,        // m, half-height
+      halfW: 71,        // m, half-width of the space (16:9 at halfH 40)
+      halfH: 40,        // m, half-height
       cohesion: 0.6,    // pull back toward the centre for birds outside the flock radius
+      local: 0.3,       // pull toward the centre of each bird's k neighbours
+      pull: 0.04,       // gentle pull toward the flock centre, everywhere
       steer: 0.45,      // rad/s, fastest whole-flock turn toward the target
+      depth: 10,        // m, half-thickness of the slab birds fly in (0 = flat)
+      bank: 3,          // m/s, vertical kick when a bird joins a wave
     }, opts);
 
-    const px = new Float32Array(NMAX), py = new Float32Array(NMAX);
-    const vx = new Float32Array(NMAX), vy = new Float32Array(NMAX);
+    const px = new Float32Array(NMAX), py = new Float32Array(NMAX), pz = new Float32Array(NMAX);
+    const vx = new Float32Array(NMAX), vy = new Float32Array(NMAX), vz = new Float32Array(NMAX);
     const nbr = new Int32Array(NMAX * KMAX);
     const nbrD = new Float32Array(NMAX * KMAX);
     const waveOf = new Int32Array(NMAX).fill(-1);
@@ -71,9 +81,9 @@
 
     function rnd(a, b) { return a + Math.random() * (b - a); }
 
-    function spawn(i, x, y, ux, uy) {
-      px[i] = x; py[i] = y;
-      vx[i] = ux * p.speed; vy[i] = uy * p.speed;
+    function spawn(i, x, y, ux, uy, z) {
+      px[i] = x; py[i] = y; pz[i] = z;
+      vx[i] = ux * p.speed; vy[i] = uy * p.speed; vz[i] = 0;
       waveOf[i] = -1; startT[i] = -1e9; turnLeft[i] = 0; refrUntil[i] = 0;
       delay[i] = rnd(0.6, 1.4);
       nerve[i] = Math.random();
@@ -87,14 +97,14 @@
           // uniform in a disc, heading +x
           let x, y;
           do { x = rnd(-1, 1); y = rnd(-1, 1); } while (x * x + y * y > 1);
-          spawn(i, x * r, y * r, 1, rnd(-0.1, 0.1));
+          spawn(i, x * r, y * r, 1, rnd(-0.1, 0.1), rnd(-1, 1) * p.depth);
         }
       } else {
         for (let i = N; i < n; i++) {
           // new birds spawn beside a random existing one
           const j = (Math.random() * N) | 0;
           const s = Math.hypot(vx[j], vy[j]) || 1;
-          spawn(i, px[j] + rnd(-1, 1), py[j] + rnd(-1, 1), vx[j] / s, vy[j] / s);
+          spawn(i, px[j] + rnd(-1, 1), py[j] + rnd(-1, 1), vx[j] / s, vy[j] / s, pz[j] + rnd(-1, 1));
         }
       }
       N = n;
@@ -108,11 +118,11 @@
       const parity = frame & 1;
       for (let i = parity; i < N; i += 2) {
         let filled = 0;
-        const xi = px[i], yi = py[i];
+        const xi = px[i], yi = py[i], zi = pz[i];
         for (let j = 0; j < N; j++) {
           if (j === i) continue;
-          const dx = px[j] - xi, dy = py[j] - yi;
-          const d = dx * dx + dy * dy;
+          const dx = px[j] - xi, dy = py[j] - yi, dz = pz[j] - zi;
+          const d = dx * dx + dy * dy + dz * dz;
           if (filled < k) {
             let s = filled++;
             while (s > 0 && bestD[s - 1] > d) { bestD[s] = bestD[s - 1]; bestJ[s] = bestJ[s - 1]; s--; }
@@ -130,7 +140,7 @@
 
     // ---- waves ----
     function newWave(kind, angle, t) {
-      const w = { id: waveId++, kind, angle, t0: t, count: 0, last: t };
+      const w = { id: waveId++, kind, angle, t0: t, count: 0, last: t, bank: rnd(0.5, 1) * p.bank * (Math.random() < 0.5 ? -1 : 1) };
       waves.set(w.id, w);
       if (typeof api.onWave === "function") api.onWave(w);
       return w;
@@ -141,6 +151,7 @@
       startT[i] = t;
       turnLeft[i] = w.angle;
       turnRate[i] = w.angle / p.turnTime;
+      if (p.depth > 0.5) vz[i] += w.bank;
       refrUntil[i] = t + p.refractory;
       w.count++;
       w.last = t;
@@ -246,34 +257,44 @@
       const r0 = 0.6 * Math.sqrt(N) * 1.3;
       for (let i = 0; i < N; i++) {
         const base = i * KMAX;
-        let mx = 0, my = 0, cx = 0, cy = 0, sx = 0, sy = 0;
+        let mx = 0, my = 0, cx = 0, cy = 0, cz = 0, sx = 0, sy = 0, sz = 0;
         for (let s = 0; s < k; s++) {
           const j = nbr[base + s];
           mx += vx[j]; my += vy[j];
-          cx += px[j]; cy += py[j];
+          cx += px[j]; cy += py[j]; cz += pz[j];
           const d = nbrD[base + s];
           if (d < rSep && d > 1e-4) {
             const f = (rSep - d) / (rSep * d);
-            sx += (px[i] - px[j]) * f; sy += (py[i] - py[j]) * f;
+            sx += (px[i] - px[j]) * f; sy += (py[i] - py[j]) * f; sz += (pz[i] - pz[j]) * f;
           }
         }
         const ik = 1 / k;
-        let ax = 2.6 * (mx * ik - vx[i]) + 0.9 * (cx * ik - px[i]) + 30 * sx;
-        let ay = 2.6 * (my * ik - vy[i]) + 0.9 * (cy * ik - py[i]) + 30 * sy;
+        // local pull kept low: in 3D a strong one packs birds into balls
+        // whose 7 neighbours are all inside the ball, and the flock splits
+        let ax = 2.6 * (mx * ik - vx[i]) + p.local * (cx * ik - px[i]) + 30 * sx;
+        let ay = 2.6 * (my * ik - vy[i]) + p.local * (cy * ik - py[i]) + 30 * sy;
         // cohesion: birds outside the flock radius are pulled toward the centre
         const gx = stats.cx - px[i], gy = stats.cy - py[i], gd = Math.hypot(gx, gy);
+        ax += p.pull * gx; ay += p.pull * gy;
         if (gd > r0) {
           const f = p.cohesion * (gd - r0) / gd;
           ax += gx * f; ay += gy * f;
         }
         // edge: birds past the screen edge are pushed back, harder the
-        // further out; at 10 m/s they turn around within ~6 m (√(v²/3))
-        if (px[i] > W) ax -= 3 * (px[i] - W); else if (px[i] < -W) ax -= 3 * (px[i] + W);
-        if (py[i] > H) ay -= 3 * (py[i] - H); else if (py[i] < -H) ay -= 3 * (py[i] + H);
+        // further out; at 10 m/s they turn around within ~4 m (√(v²/6)),
+        // 10 % of the 40 m half-height
+        if (px[i] > W) ax -= 6 * (px[i] - W); else if (px[i] < -W) ax -= 6 * (px[i] + W);
+        if (py[i] > H) ay -= 6 * (py[i] - H); else if (py[i] < -H) ay -= 6 * (py[i] + H);
         // noise
         ax += rnd(-0.6, 0.6); ay += rnd(-0.6, 0.6);
 
         vx[i] += ax * dt; vy[i] += ay * dt;
+
+        // height: neighbours + spacing in 3D, banking decays, slab walls
+        let az = 0.45 * (cz * ik - pz[i]) + 30 * sz - 1.2 * vz[i] + rnd(-0.3, 0.3);
+        if (pz[i] > p.depth) az -= 4 * (pz[i] - p.depth); else if (pz[i] < -p.depth) az -= 4 * (pz[i] + p.depth);
+        vz[i] += az * dt;
+        pz[i] += vz[i] * dt;
 
         // whole-flock steering: the same rotation for every bird
         if (omega !== 0) {
@@ -302,7 +323,7 @@
 
         // respawn on NaN or escape
         if (!(px[i] === px[i] && vx[i] === vx[i]) || Math.abs(px[i]) > 1.5 * W || Math.abs(py[i]) > 1.5 * H) {
-          spawn(i, stats.cx + rnd(-2, 2), stats.cy + rnd(-2, 2), 1, 0);
+          spawn(i, stats.cx + rnd(-2, 2), stats.cy + rnd(-2, 2), 1, 0, 0);
         }
       }
     }
@@ -349,7 +370,7 @@
       stats,
       events,
       waves,
-      px, py, vx, vy,
+      px, py, pz, vx, vy, vz,
       nbr, KMAX,
       get n() { return N; },
       turning: (i) => turnLeft[i] !== 0,

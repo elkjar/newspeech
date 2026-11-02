@@ -112,6 +112,10 @@
     <span class="name">reverb size</span><span class="val"></span>
     <input type="range" min="0" max="1" step="0.01" data-k="reverbSize">
   </label>
+  <label>
+    <span class="name">depth</span><span class="val"></span>
+    <input type="range" min="0" max="20" step="1" data-k="depth">
+  </label>
 </div>
 
 <script src="core.js"></script>
@@ -134,6 +138,7 @@ const params = {
   spread: 2,
   reverb: 0.6,
   reverbSize: 0.5,
+  depth: 10,
 };
 try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params") || "{}")); } catch (e) {}
 function saveParams() { try { localStorage.setItem(STORE + ".params", JSON.stringify(params)); } catch (e) {} }
@@ -158,12 +163,13 @@ const TUNE = {
 };
 
 const birds = +new URLSearchParams(location.search).get("n") || 1200;
-const flock = MurmFlock.createFlock({ n: birds, k: params.k, contagion: params.contagion, reaction: params.reaction / 1000 });
+const flock = MurmFlock.createFlock({ n: birds, k: params.k, contagion: params.contagion, reaction: params.reaction / 1000, depth: params.depth });
 
 function syncFlockParams() {
   flock.params.k = params.k;
   flock.params.contagion = params.contagion;
   flock.params.reaction = params.reaction / 1000;
+  flock.params.depth = params.depth;
 }
 
 // ---- harmony: D minor, one seventh chord per wave ----
@@ -219,10 +225,10 @@ function resize() {
   canvas.style.height = window.innerHeight + "px";
   // drawing sizes scale with the screen, so a projector gets thick marks
   unit = Math.min(cw, ch) / 1000;
-  // the flock's space matches the screen: short side = 120 m
+  // the flock's space matches the screen: short side = 80 m
   const a = cw / ch;
-  flock.params.halfW = a >= 1 ? 60 * a : 60;
-  flock.params.halfH = a >= 1 ? 60 : 60 / a;
+  flock.params.halfW = a >= 1 ? 40 * a : 40;
+  flock.params.halfH = a >= 1 ? 40 : 40 / a;
   scale = Math.min(cw / (2 * flock.params.halfW), ch / (2 * flock.params.halfH));
 }
 window.addEventListener("resize", resize);
@@ -561,12 +567,16 @@ function draw(dt) {
 
   const n = flock.n, px = flock.px, py = flock.py;
   const d = Math.max(2, Math.round(3 * unit)), D = Math.round(d * 1.7);
-  ctx.fillStyle = "rgba(225,225,225,0.7)";
-  for (let i = 0; i < n; i++) {
-    if (flock.turning(i)) continue;
-    project(px[i], py[i]);
-    ctx.fillRect(proj[0] - d / 2, proj[1] - d / 2, d, d);
-  }
+  // three layers by height: lower birds dimmer, so overlaps read as depth
+  const pz = flock.pz, third = Math.max(0.5, params.depth / 3);
+  [[-Infinity, -third, 0.4], [-third, third, 0.65], [third, Infinity, 0.9]].forEach(([lo, hi, a]) => {
+    ctx.fillStyle = `rgba(225,225,225,${a})`;
+    for (let i = 0; i < n; i++) {
+      if (flock.turning(i) || pz[i] < lo || pz[i] >= hi) continue;
+      project(px[i], py[i]);
+      ctx.fillRect(proj[0] - d / 2, proj[1] - d / 2, d, d);
+    }
+  });
   ctx.fillStyle = "#fff";
   for (let i = 0; i < n; i++) {
     if (!flock.turning(i)) continue;
