@@ -109,7 +109,7 @@ try { Object.assign(params, JSON.parse(localStorage.getItem(STORE + ".params") |
 function saveParams() { try { localStorage.setItem(STORE + ".params", JSON.stringify(params)); } catch (e) {} }
 
 // ---- voices: sample pack + octave per slot (saved) ----
-const VOICE_SLOTS = ["1", "2", "3", "4", "5", "6", "7", "pad", "bass"];
+const VOICE_SLOTS = ["1", "2", "3", "4", "5", "6", "7", "pad"];
 const voiceCfg = {
   1: ["instruments/dx7-bells", 2],
   2: ["instruments/plucks", 1],
@@ -119,7 +119,6 @@ const voiceCfg = {
   6: ["instruments/soft_piano", 1],
   7: ["instruments/dx7-forest-house", 1],
   pad: ["pads/monolith", -1],
-  bass: ["bass/triangle", -2],
 };
 try { Object.assign(voiceCfg, JSON.parse(localStorage.getItem(STORE + ".voices") || "{}")); } catch (e) {}
 function saveVoices() { try { localStorage.setItem(STORE + ".voices", JSON.stringify(voiceCfg)); } catch (e) {} }
@@ -203,14 +202,9 @@ function roomPos(x, z) {
   return [u, w];
 }
 
-// ---- falcons (mic / click) ----
-const falcons = [];
-function launchFalcon(x, y, z, radius) {
-  // starts 22 m out and 14 m up, strikes after `dur`
-  const ang = Math.random() * Math.PI * 2;
-  const from = [x + Math.cos(ang) * 22, y + 14, z + Math.sin(ang) * 22];
-  falcons.push({ from, to: [x, y, z], t0: simT, dur: 0.5, radius, struck: false });
-}
+// ---- strikes (mic / click) ----
+// birds within `radius` of the point turn away at once; the rest follow by contagion
+function strikeAt(x, y, z, radius) { flock.strike(simT, x, y, z, radius); }
 function peripheralBird() {
   const s = flock.stats;
   let best = 0, far = -1;
@@ -221,35 +215,8 @@ function peripheralBird() {
   }
   return best;
 }
-function tickFalcons() {
-  for (let n = falcons.length - 1; n >= 0; n--) {
-    const f = falcons[n];
-    const u = (simT - f.t0) / f.dur;
-    if (!f.struck && u >= 1) {
-      f.struck = true;
-      flock.strike(simT, f.to[0], f.to[1], f.to[2], f.radius);
-    }
-    if (u > 2.2) falcons.splice(n, 1);
-  }
-}
-function drawFalcons() {
-  ctx.strokeStyle = "rgba(255,255,255,0.95)";
-  ctx.lineWidth = Math.max(2, 3 * unit);
-  for (const f of falcons) {
-    const u = (simT - f.t0) / f.dur;
-    // straight line through the strike point
-    const x = f.from[0] + (f.to[0] - f.from[0]) * u;
-    const y = f.from[1] + (f.to[1] - f.from[1]) * u;
-    const z = f.from[2] + (f.to[2] - f.from[2]) * u;
-    if (!project(x, y, z)) continue;
-    const sx = proj[0], sy = proj[1], r = 16 * unit * Math.min(2, proj[2]);
-    ctx.beginPath();
-    ctx.moveTo(sx - r, sy - r * 0.5); ctx.lineTo(sx, sy); ctx.lineTo(sx + r, sy - r * 0.5);
-    ctx.stroke();
-  }
-}
 
-// ---- mic → falcon ----
+// ---- mic → strike ----
 // triggers when mic level jumps above its 6 s average by `falcon`. the
 // threshold also rises with output level (speakers reach the mic), and
 // there's a 2.5 s cooldown.
@@ -262,7 +229,7 @@ function tickMic(dt) {
   const excess = lvl - micBase - params.falcon - outLevel * 0.6;
   if (excess > 0 && falconCool <= 0) {
     const i = peripheralBird();
-    launchFalcon(flock.px[i], flock.py[i], flock.pz[i], 3 + 30 * Math.min(0.4, excess));
+    strikeAt(flock.px[i], flock.py[i], flock.pz[i], 3 + 30 * Math.min(0.4, excess));
     falconCool = 2.5;
   }
 }
@@ -318,8 +285,7 @@ function slotNotes(slot) {
   const base = ROOT + 12 * oct;
   const out = new Set();
   for (const c of CHORDS) {
-    if (slot === "bass") out.add(base + degSemis(c[0]));
-    else for (const d of c) { out.add(base + degSemis(d)); out.add(base + degSemis(d + 7)); }
+    for (const d of c) { out.add(base + degSemis(d)); out.add(base + degSemis(d + 7)); }
   }
   return [...out];
 }
@@ -365,7 +331,7 @@ function releaseNote(n, t, secs) {
 // ---- audio ----
 let ac = null, buses = [], reverbIn = null, master = null, meter = null, meterBuf = null;
 let outLevel = 0, activeVoices = 0, hushed = false, quad = false;
-const bed = { in: null, filter: null, out: null, pan: [], notes: [], until: 0 };
+const bed = { out: [], notes: [] };
 
 function quadGains(u, w) {
   const lr = (u + 1) * 0.25 * Math.PI, fb = (w + 1) * 0.25 * Math.PI;
@@ -452,46 +418,44 @@ async function startAudio(sinkId) {
 }
 
 function startBed() {
-  // pad + bass samples → lowpass (opens with turning) → bed gain → pan
-  bed.in = ac.createGain();
-  bed.filter = ac.createBiquadFilter();
-  bed.filter.type = "lowpass"; bed.filter.frequency.value = 1800; bed.filter.Q.value = 0.7;
-  bed.out = ac.createGain(); bed.out.gain.value = params.bed;
-  bed.in.connect(bed.filter).connect(bed.out);
-  bed.pan = panNode(0, 0, bed.out);
-  const bs = ac.createGain(); bs.gain.value = 0.5; bed.out.connect(bs).connect(reverbIn);
-  bed.notes = []; bed.until = 0;
-}
-
-// pad chord + bass root. restruck before the samples run out, crossfading.
-function bedChord(chord) {
-  if (!ac || !bed.in) return;
-  const t = ac.currentTime + 0.02;
-  for (const n of bed.notes) releaseNote(n, t, 2.5);
-  bed.notes = [];
-  const [pad, padOct] = voiceCfg.pad, [bass, bassOct] = voiceCfg.bass;
-  chord.forEach((d) => {
-    const n = sampleNote(pad, ROOT + 12 * padOct + degSemis(d), t, 0.45, { attack: 1.5, release: 2 });
-    if (n) { n.g.connect(bed.in); bed.notes.push(n); }
+  // one gain per corner (bed level) → bus + reverb send
+  bed.out = buses.map((bus) => {
+    const g = ac.createGain();
+    g.gain.value = params.bed;
+    g.connect(bus);
+    const r = ac.createGain(); r.gain.value = 0.5;
+    g.connect(r).connect(reverbIn);
+    return g;
   });
-  const b = sampleNote(bass, ROOT + 12 * bassOct + degSemis(chord[0]), t, 0.6, { attack: 0.4, release: 2 });
-  if (b) { b.g.connect(bed.in); bed.notes.push(b); }
-  // restrike 3 s before the shortest note ends (6 s if nothing loaded yet)
-  const left = bed.notes.length ? Math.min(...bed.notes.map(n => n.dur)) - 3 : 6;
-  bed.until = t + Math.max(2, left);
+  bed.notes = [];
 }
 
-let turnSmooth = 0;
+// pad chord on each wave: swells in, rings out, no restrike. each chord
+// tone goes to its own corner.
+const CORNERS = [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]];
+function bedChord(chord) {
+  if (!ac || !bed.out.length) return;
+  const t = ac.currentTime + 0.02;
+  for (const n of bed.notes) releaseNote(n, t, 3);
+  bed.notes = [];
+  const [pad, padOct] = voiceCfg.pad;
+  const corners = CORNERS.slice().sort(() => Math.random() - 0.5);
+  chord.forEach((d, k) => {
+    const n = sampleNote(pad, ROOT + 12 * padOct + degSemis(d), t, 0.45, { attack: 1.2, release: 3 });
+    if (!n) return;
+    const [u, w] = corners[k % 4];
+    quadGains(u, w).forEach((g, c) => {
+      const p = ac.createGain(); p.gain.value = g;
+      n.g.connect(p).connect(bed.out[c]);
+    });
+    bed.notes.push(n);
+  });
+}
+
 function tickBed(dt) {
-  if (!ac || !bed.in) return;
-  const t = ac.currentTime, s = flock.stats;
-  if (t > bed.until) bedChord(CHORDS[chordIdx]);
-  turnSmooth += (s.turning - turnSmooth) * (1 - Math.exp(-dt / 0.25));
-  // bed filter opens with turning
-  bed.filter.frequency.setTargetAtTime(1800 + 9000 * Math.min(1, turnSmooth * 1.5), t, 0.3);
-  bed.out.gain.setTargetAtTime(params.bed, t, 0.3);
-  const [du, dw] = roomPos(s.cx + (s.cx - cam.x), s.cz + (s.cz - cam.z));
-  quadGains(du * 0.5, dw * 0.5).forEach((g, c) => bed.pan[c].gain.setTargetAtTime(g, t, 0.5));
+  if (!ac || !bed.out.length) return;
+  const t = ac.currentTime;
+  for (const g of bed.out) g.gain.setTargetAtTime(params.bed, t, 0.3);
 
   meter.getFloatTimeDomainData(meterBuf);
   let sum = 0;
@@ -572,7 +536,6 @@ function draw(dt) {
     if (age < 0 || !project(px[fl.i], py[fl.i], pz[fl.i])) continue;
     drawSoftDot(ctx, proj[0], proj[1], 60 * unit * proj[2], 0.75 * (1 - age / 0.6));
   }
-  drawFalcons();
 }
 
 // ---- loop ----
@@ -587,7 +550,6 @@ function frame(now) {
     flock.step(STEP, simT);
     simT += STEP;
     acc -= STEP;
-    tickFalcons();
   }
   updateCamera(dt);
   tickMic(dt);
@@ -717,7 +679,7 @@ function setHush(on) {
 window.addEventListener("click", (e) => {
   if (e.target.closest("#panel, .dialog, #audio-panel")) return;
   if (!ac) { begin(); return; }
-  // click: falcon strike at the nearest bird
+  // click: strike at the nearest bird
   let best = -1, bd = Infinity;
   const mx = e.clientX * dpr, my = e.clientY * dpr;
   for (let i = 0; i < flock.n; i++) {
@@ -725,7 +687,7 @@ window.addEventListener("click", (e) => {
     const d = (proj[0] - mx) ** 2 + (proj[1] - my) ** 2;
     if (d < bd) { bd = d; best = i; }
   }
-  if (best >= 0) launchFalcon(flock.px[best], flock.py[best], flock.pz[best], 6);
+  if (best >= 0) strikeAt(flock.px[best], flock.py[best], flock.pz[best], 6);
 });
 
 window.addEventListener("keydown", (e) => {
@@ -745,7 +707,7 @@ window.onParamChange = () => { syncFlockParams(); saveParams(); };
 installPanel(params);
 
 // debug hooks for headless checks
-window.murm = { flock, params, cam, voiceCfg, buffers, kits, get simT() { return simT; }, get ac() { return ac; }, get activeVoices() { return activeVoices; }, get bedNotes() { return bed.notes.length; }, begin, launchFalcon };
+window.murm = { flock, params, cam, voiceCfg, buffers, kits, get simT() { return simT; }, get ac() { return ac; }, get activeVoices() { return activeVoices; }, get bedNotes() { return bed.notes.length; }, begin, strikeAt };
 </script>
 </body>
 </html>
