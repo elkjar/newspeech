@@ -1,14 +1,18 @@
 // murmurations-flock.js — flock sim for murmurations.html.
 //
-// 2D flock inside a circular arena of radius `arena` m. Each bird steers by
+// 2D flock inside a rectangle (half-sizes `halfW` × `halfH` m, set by the
+// page to the screen's aspect). Each bird steers by
 // its k nearest neighbours by rank, not distance (topological interaction,
 // Ballerini et al. 2008: k ≈ 6–7).
 //
 // Turns are waves. A wave starts on a few birds; a bird joins when
 // `contagion` of its k neighbours are turning in that wave and its reaction
 // delay has passed, then rotates by the wave's angle. Each join is pushed
-// to `events` for the page to play and draw. When the flock heads for the
-// arena edge, the front birds start a turn back inward.
+// to `events` for the page to play and draw. When the front of the flock
+// is about to reach the edge, the front bird starts a turn toward a random
+// point on the far side, so the flock crosses the space instead of
+// circling it. Birds further than the flock's own radius from its centre
+// are pulled back, so it stays one body.
 //
 // Speed and spacing defaults sit inside measured flocks (jackdaws, Ling et
 // al. 2019: 8.6–13.5 m/s, nearest neighbour 1.4–2.2 m).
@@ -28,7 +32,9 @@
       reaction: 0.07,   // s, mean neighbour-to-neighbour reaction delay
       turnTime: 0.45,   // s, how long one bird takes to complete its turn
       refractory: 1.6,  // s, after turning a bird ignores new waves this long
-      arena: 70,        // m, radius of the circle the flock stays inside
+      halfW: 107,       // m, half-width of the space (16:9 at halfH 60)
+      halfH: 60,        // m, half-height
+      cohesion: 0.6,    // pull back toward the centre for birds outside the flock radius
     }, opts);
 
     const px = new Float32Array(NMAX), py = new Float32Array(NMAX);
@@ -161,19 +167,27 @@
       return w;
     }
 
-    // flock heading out of the arena: the bird furthest along the heading
-    // starts a turn toward the centre
-    function edgeTurn(t) {
-      const m = Math.hypot(stats.mvx, stats.mvy) || 1;
-      const hx = stats.mvx / m, hy = stats.mvy / m;
+    // the front bird (furthest along the heading) starts a turn toward a
+    // random point on the far side of the space
+    function frontBird(hx, hy) {
       let seed = 0, front = -Infinity;
       for (let i = 0; i < N; i += 2) {
         const f = px[i] * hx + py[i] * hy;
         if (f > front) { front = f; seed = i; }
       }
-      // turn sign that swings the heading toward the centre
-      const cross = hx * -stats.cy - hy * -stats.cx;
-      const w = newWave("edge", rnd(1.4, 2.4) * (cross >= 0 ? 1 : -1), t);
+      return seed;
+    }
+    function edgeTurn(t, seed, hx, hy) {
+      const W = p.halfW, H = p.halfH;
+      // in units of the half-sizes: target up to 0.5 past the centre,
+      // opposite the flock, ±0.4 sideways
+      const nx = stats.cx / W, ny = stats.cy / H, nr = Math.hypot(nx, ny) || 1;
+      const ux = -nx / nr, uy = -ny / nr;
+      const along = rnd(0, 0.5), side = rnd(-0.4, 0.4);
+      const tx = (ux * along - uy * side) * W - stats.cx, ty = (uy * along + ux * side) * H - stats.cy;
+      let a = Math.atan2(hx * ty - hy * tx, hx * tx + hy * ty);
+      if (Math.abs(a) < 0.8) a = 0.8 * Math.sign(a || 1);
+      const w = newWave("edge", a, t);
       seedAround(seed, w, t);
       lastEdgeTurn = t;
       return w;
@@ -238,7 +252,9 @@
       const k = kNow();
       const v0 = p.speed;
       const rSep = 1.4;
-      const R = p.arena, inner = 0.75 * R;
+      const W = p.halfW, H = p.halfH, wallX = 0.92 * W, wallY = 0.92 * H;
+      // flock radius at its usual spacing (~1.3 m between birds)
+      const r0 = 0.6 * Math.sqrt(N) * 1.3;
       for (let i = 0; i < N; i++) {
         const base = i * KMAX;
         let mx = 0, my = 0, cx = 0, cy = 0, sx = 0, sy = 0;
@@ -255,12 +271,15 @@
         const ik = 1 / k;
         let ax = 2.6 * (mx * ik - vx[i]) + 0.9 * (cx * ik - px[i]) + 30 * sx;
         let ay = 2.6 * (my * ik - vy[i]) + 0.9 * (cy * ik - py[i]) + 30 * sy;
-        // arena wall: birds past 75 % of the radius are pushed back
-        const r = Math.hypot(px[i], py[i]);
-        if (r > inner) {
-          const f = 1.2 * (r - inner) / r;
-          ax -= px[i] * f; ay -= py[i] * f;
+        // cohesion: birds outside the flock radius are pulled toward the centre
+        const gx = stats.cx - px[i], gy = stats.cy - py[i], gd = Math.hypot(gx, gy);
+        if (gd > r0) {
+          const f = p.cohesion * (gd - r0) / gd;
+          ax += gx * f; ay += gy * f;
         }
+        // wall, last resort: birds past 92 % of a half-size are pushed back
+        if (px[i] > wallX) ax -= 3 * (px[i] - wallX); else if (px[i] < -wallX) ax -= 3 * (px[i] + wallX);
+        if (py[i] > wallY) ay -= 3 * (py[i] - wallY); else if (py[i] < -wallY) ay -= 3 * (py[i] + wallY);
         // noise
         ax += rnd(-1.5, 1.5); ay += rnd(-1.5, 1.5);
 
@@ -285,7 +304,7 @@
         px[i] += vx[i] * dt; py[i] += vy[i] * dt;
 
         // respawn on NaN or escape
-        if (!(px[i] === px[i] && vx[i] === vx[i]) || r > 1.5 * R) {
+        if (!(px[i] === px[i] && vx[i] === vx[i]) || Math.abs(px[i]) > 1.5 * W || Math.abs(py[i]) > 1.5 * H) {
           spawn(i, stats.cx + rnd(-2, 2), stats.cy + rnd(-2, 2), 1, 0);
         }
       }
@@ -320,9 +339,15 @@
       contagion(t);
       integrate(dt);
       measure(t);
-      // centroid past 40 % of the radius and heading outward → turn back
-      const out = stats.cx * stats.mvx + stats.cy * stats.mvy;
-      if (Math.hypot(stats.cx, stats.cy) > 0.4 * p.arena && out > 0 && t - lastEdgeTurn > 2.5) edgeTurn(t);
+      // front of the flock 1.5 s from now past 80 % of a half-size → turn
+      if (t - lastEdgeTurn > 2) {
+        const m = Math.hypot(stats.mvx, stats.mvy) || 1;
+        const hx = stats.mvx / m, hy = stats.mvy / m;
+        const f = frontBird(hx, hy);
+        const ax = (px[f] + vx[f] * 1.5) / p.halfW, ay = (py[f] + vy[f] * 1.5) / p.halfH;
+        const outward = (px[f] * vx[f]) / (p.halfW * p.halfW) + (py[f] * vy[f]) / (p.halfH * p.halfH);
+        if (Math.max(Math.abs(ax), Math.abs(ay)) > 0.8 && outward > 0) edgeTurn(t, f, hx, hy);
+      }
       frame++;
     }
 
