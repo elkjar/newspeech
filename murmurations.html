@@ -68,11 +68,11 @@
   <div>outputs</div>
   <div class="row"><select id="sink"></select></div>
   <div class="row" id="chan-info"></div>
-  <div class="row"><span class="label">1 FL</span><button data-test="0">test</button><select class="trim" data-trim="0"></select></div>
-  <div class="row"><span class="label">2 FR</span><button data-test="1">test</button><select class="trim" data-trim="1"></select></div>
-  <div class="row"><span class="label">3 RL</span><button data-test="2">test</button><select class="trim" data-trim="2"></select></div>
-  <div class="row"><span class="label">4 RR</span><button data-test="3">test</button><select class="trim" data-trim="3"></select></div>
-  <div class="note">1–2 front, 3–4 rear. Under 4 channels plays stereo. Trim = level cut per speaker, for outputs with no level knob (Apollo line outs 3–4). Meters read before the trim.</div>
+  <div class="row"><span class="label">1 FL</span><button data-test="0">test</button><select class="ch" data-out="0"></select><select class="trim" data-trim="0"></select></div>
+  <div class="row"><span class="label">2 FR</span><button data-test="1">test</button><select class="ch" data-out="1"></select><select class="trim" data-trim="1"></select></div>
+  <div class="row"><span class="label">3 RL</span><button data-test="2">test</button><select class="ch" data-out="2"></select><select class="trim" data-trim="2"></select></div>
+  <div class="row"><span class="label">4 RR</span><button data-test="3">test</button><select class="ch" data-out="3"></select><select class="trim" data-trim="3"></select></div>
+  <div class="note">1–2 front, 3–4 rear. Under 4 channels plays stereo. Out = which device output the speaker plays from (Apollo: 1–2 mon, 3–4 line, 5–8 virtual, 9–10 headphones). Trim = level cut per speaker, for outputs with no level knob (Apollo line outs 3–4). Meters read before the trim.</div>
 </div>
 
 <div id="voices" class="dialog" hidden>
@@ -670,6 +670,19 @@ try {
 } catch (e) {}
 function trimGain(c) { return trimDb[c] === null ? 0 : Math.pow(10, trimDb[c] / 20); }
 
+// speaker → device output (0-based). Default 1–4; saved per machine.
+const outMap = [0, 1, 2, 3];
+let outCount = 2, outMerger = null;
+try {
+  const m = JSON.parse(localStorage.getItem(STORE + ".outmap") || "null");
+  if (Array.isArray(m)) m.slice(0, 4).forEach((v, c) => { if (Number.isInteger(v) && v >= 0) outMap[c] = v; });
+} catch (e) {}
+// stereo: FL+RL → L, FR+RR → R; an output the device doesn't have falls back to 1–4
+function speakerOut(c) {
+  if (!quad) return c % 2;
+  return outMap[c] < outCount ? outMap[c] : c;
+}
+
 let plate = null, plateRet = [];
 // reverb slider 0..1 → return gain. 0.55 × 0.6 ≈ the old reverb's level
 // (the plate measured 3× louder than it on the same noise burst)
@@ -682,15 +695,17 @@ async function startAudio(sinkId) {
   try { ac = new AudioContext(opts); } catch (e) { ac = new AudioContext({ latencyHint: "balanced" }); }
   const dest = ac.destination;
   quad = dest.maxChannelCount >= 4;
-  dest.channelCount = quad ? 4 : 2;
+  // every device output is open, so a speaker can be routed to any of them
+  outCount = quad ? Math.min(dest.maxChannelCount, 32) : 2;
+  dest.channelCount = outCount;
   dest.channelCountMode = "explicit";
   dest.channelInterpretation = "discrete";
 
   master = ac.createGain();
   master.gain.value = hushed ? 0.18 : 1;
-  const merger = ac.createChannelMerger(quad ? 4 : 2);
+  const merger = outMerger = ac.createChannelMerger(outCount);
   merger.connect(master).connect(dest);
-  master.channelCount = quad ? 4 : 2;
+  master.channelCount = outCount;
   master.channelCountMode = "explicit";
   master.channelInterpretation = "discrete";
 
@@ -708,8 +723,7 @@ async function startAudio(sinkId) {
     const trim = ac.createGain();
     trim.gain.value = trimGain(c);
     trims.push(trim);
-    // stereo: FL+RL → L, FR+RR → R
-    lim.connect(trim).connect(merger, 0, quad ? c : c % 2);
+    lim.connect(trim).connect(merger, 0, speakerOut(c));
     lim.connect(meter);
     const m = ac.createAnalyser(); m.fftSize = 512;
     lim.connect(m);
@@ -975,6 +989,17 @@ async function refreshOutputs() {
   info.textContent = ac
     ? `${ac.destination.maxChannelCount} channels · ${quad ? "quad" : "stereo"}`
     : "audio off";
+  outputsEl.querySelectorAll("[data-out]").forEach(sel => {
+    const c = +sel.dataset.out;
+    sel.innerHTML = "";
+    for (let o = 0; o < outCount; o++) {
+      const opt = document.createElement("option");
+      opt.value = o; opt.textContent = `out ${o + 1}`;
+      if (o === speakerOut(c)) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.disabled = !quad;
+  });
   if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
   const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput");
   let cur = "";
@@ -993,6 +1018,15 @@ sinkEl.addEventListener("change", async () => {
   if (ac) { await startAudio(sinkEl.value); bedChord(CHORDS[chordIdx]); refreshOutputs(); }
 });
 outputsEl.querySelectorAll("[data-test]").forEach(b => b.addEventListener("click", () => speakerTest(+b.dataset.test)));
+outputsEl.querySelectorAll("[data-out]").forEach(sel => sel.addEventListener("change", () => {
+  const c = +sel.dataset.out;
+  outMap[c] = +sel.value;
+  try { localStorage.setItem(STORE + ".outmap", JSON.stringify(outMap)); } catch (e) {}
+  if (trims[c] && outMerger) {
+    trims[c].disconnect();
+    trims[c].connect(outMerger, 0, speakerOut(c));
+  }
+}));
 outputsEl.querySelectorAll("[data-trim]").forEach(sel => {
   const c = +sel.dataset.trim;
   for (const db of TRIM_STEPS) {
