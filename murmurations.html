@@ -46,6 +46,7 @@
   .dialog .row.sub { margin-top: 4px; padding-left: 44px; }
   .dialog select { min-width: 0; }
   .dialog select.ch { flex: 0 0 64px; }
+  .dialog select.trim { flex: 0 0 80px; }
   .dialog button:disabled, .dialog select:disabled { opacity: 0.35; cursor: default; }
   .dialog button.on { border-color: #fff; color: #050505; background: #ddd; }
 </style>
@@ -67,11 +68,11 @@
   <div>outputs</div>
   <div class="row"><select id="sink"></select></div>
   <div class="row" id="chan-info"></div>
-  <div class="row">test
-    <button data-test="0">1 FL</button><button data-test="1">2 FR</button>
-    <button data-test="2">3 RL</button><button data-test="3">4 RR</button>
-  </div>
-  <div class="note">1–2 front, 3–4 rear. Under 4 channels plays stereo.</div>
+  <div class="row"><span class="label">1 FL</span><button data-test="0">test</button><select class="trim" data-trim="0"></select></div>
+  <div class="row"><span class="label">2 FR</span><button data-test="1">test</button><select class="trim" data-trim="1"></select></div>
+  <div class="row"><span class="label">3 RL</span><button data-test="2">test</button><select class="trim" data-trim="2"></select></div>
+  <div class="row"><span class="label">4 RR</span><button data-test="3">test</button><select class="trim" data-trim="3"></select></div>
+  <div class="note">1–2 front, 3–4 rear. Under 4 channels plays stereo. Trim = level cut per speaker, for outputs with no level knob (Apollo line outs 3–4). Meters read before the trim.</div>
 </div>
 
 <div id="voices" class="dialog" hidden>
@@ -658,6 +659,17 @@ let busMeters = [];
 const busLevel = [0, 0, 0, 0], busBuf = new Float32Array(512);
 const bed = { out: [], notes: [], next: 0 };
 
+// per-speaker trim in dB (null = off), after the limiters: line outs with no
+// hardware level (Apollo 3–4) come out far hotter than the monitor pair
+const TRIM_STEPS = [0, -1, -2, -3, -4, -6, -8, -10, -12, -15, -18, -21, -24, -30, -36, -42, -48, null];
+const trimDb = [0, 0, 0, 0];
+let trims = [];
+try {
+  const t = JSON.parse(localStorage.getItem(STORE + ".trim") || "null");
+  if (Array.isArray(t)) t.slice(0, 4).forEach((v, c) => { if (v === null || typeof v === "number") trimDb[c] = v; });
+} catch (e) {}
+function trimGain(c) { return trimDb[c] === null ? 0 : Math.pow(10, trimDb[c] / 20); }
+
 let plate = null, plateRet = [];
 // reverb slider 0..1 → return gain. 0.55 × 0.6 ≈ the old reverb's level
 // (the plate measured 3× louder than it on the same noise burst)
@@ -686,15 +698,18 @@ async function startAudio(sinkId) {
   meter.fftSize = 1024;
   meterBuf = new Float32Array(meter.fftSize);
 
-  buses = []; busMeters = [];
+  buses = []; busMeters = []; trims = [];
   for (let c = 0; c < 4; c++) {
     const bus = ac.createGain();
     const lim = ac.createDynamicsCompressor();
     lim.threshold.value = -12; lim.knee.value = 6; lim.ratio.value = 12;
     lim.attack.value = 0.003; lim.release.value = 0.25;
     bus.connect(lim);
+    const trim = ac.createGain();
+    trim.gain.value = trimGain(c);
+    trims.push(trim);
     // stereo: FL+RL → L, FR+RR → R
-    lim.connect(merger, 0, quad ? c : c % 2);
+    lim.connect(trim).connect(merger, 0, quad ? c : c % 2);
     lim.connect(meter);
     const m = ac.createAnalyser(); m.fftSize = 512;
     lim.connect(m);
@@ -978,6 +993,21 @@ sinkEl.addEventListener("change", async () => {
   if (ac) { await startAudio(sinkEl.value); bedChord(CHORDS[chordIdx]); refreshOutputs(); }
 });
 outputsEl.querySelectorAll("[data-test]").forEach(b => b.addEventListener("click", () => speakerTest(+b.dataset.test)));
+outputsEl.querySelectorAll("[data-trim]").forEach(sel => {
+  const c = +sel.dataset.trim;
+  for (const db of TRIM_STEPS) {
+    const o = document.createElement("option");
+    o.value = db === null ? "off" : String(db);
+    o.textContent = db === null ? "off" : `${db} dB`;
+    if (db === trimDb[c]) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.addEventListener("change", () => {
+    trimDb[c] = sel.value === "off" ? null : +sel.value;
+    try { localStorage.setItem(STORE + ".trim", JSON.stringify(trimDb)); } catch (e) {}
+    if (trims[c]) trims[c].gain.setTargetAtTime(trimGain(c), ac.currentTime, 0.02);
+  });
+});
 
 // voices dialog: pack list from samples-manifest.json (instruments, pads, bass)
 let packList = null;
