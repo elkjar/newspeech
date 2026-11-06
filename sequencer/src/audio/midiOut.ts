@@ -245,6 +245,11 @@ export function sendMIDIStop(deviceId: string) {
   tauriSend(deviceId, [MIDI_STOP]);
 }
 
+// A whole SysEx message (F0 … F7), sent now.
+export function sendMIDISysex(deviceId: string, bytes: number[]) {
+  tauriSend(deviceId, bytes);
+}
+
 // HMR cleanup — without this, the Tauri hot-plug polling setInterval gets
 // orphaned on module reload and a new one stacks on next init.
 if (import.meta.hot) {

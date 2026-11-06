@@ -1,6 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore } from '../state/store';
-import { sendMIDIStart, sendMIDIStop } from './midiOut';
+import { sendMIDIStart, sendMIDIStop, sendMIDISysex } from './midiOut';
+import { SCALES } from './scale';
 
 // MIDI clock-out: Sequence drives the rig clock. It emits the 24-PPQN pulse
 // stream + Start/Stop to one or more configured output ports; everything
@@ -62,6 +63,23 @@ export function clockEngineStop(sendStop = true): void {
   );
 }
 
+// Key out: the key Sequence plays in, to the clock's followers, so the Tracker's
+// STEP mode (TELEX firmware) plays in it too. SysEx F0 7D 01 <root 0-11>
+// <scale> F7: 7D is MIDI's non-commercial ID, so other gear ignores it; scale is
+// the index in SCALES (the Tracker maps it to its own). Sent when the root or
+// scale changes, when the clock-out ports come up and on every Start, so a
+// Tracker that boots late catches up at the next play. Not repeated otherwise:
+// a key set by hand on the Tracker stays until Sequence's next change or Start.
+export function sendKey(): void {
+  const ports = clockDestPorts();
+  if (!ports.length) return;
+  const s = useSequencerStore.getState();
+  const root = ((Math.round(s.rootNote) % 12) + 12) % 12;
+  const scale = SCALES.indexOf(s.scale);
+  if (scale < 0) return;
+  for (const port of ports) sendMIDISysex(port, [0xf0, 0x7d, 0x01, root, scale, 0xf7]);
+}
+
 // Play: announce Start to followers. Native rides 0xFA over the top of the
 // free-running pulse stream (engine already running); web sends Start directly.
 export function clockTransportStart(): void {
@@ -71,12 +89,14 @@ export function clockTransportStart(): void {
     // Ensure the free-running stream is up, THEN ride Start over it. Awaiting
     // the (idempotent) start guarantees the thread exists before the transport
     // byte lands — otherwise a first-play-after-config race drops the 0xFA.
-    void clockEngineStart().then(() =>
-      invoke('midi_clock_transport', { byte: 0xfa }).catch((e) =>
+    void clockEngineStart().then(() => {
+      sendKey();
+      return invoke('midi_clock_transport', { byte: 0xfa }).catch((e) =>
         console.warn('[midiClock] transport start failed:', e),
-      ),
-    );
+      );
+    });
   } else {
+    sendKey();
     for (const port of ports) sendMIDIStart(port);
   }
 }

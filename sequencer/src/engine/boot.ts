@@ -3,7 +3,7 @@
 // body of the former useEffect and returns the same cleanup.
 import { useSequencerStore, type SequencerState } from '../state/store';
 import { scheduler } from '../audio/scheduler';
-import { setClockBpm, clockEngineStart, clockEngineStop } from '../audio/midiClock';
+import { setClockBpm, clockEngineStart, clockEngineStop, sendKey } from '../audio/midiClock';
 import { resetTracker } from '../audio/clockFollow';
 import { stopPlaybackLocal, prepareForPlay } from '../audio/transport';
 import { samplePlayer } from '../audio/samplePlayer';
@@ -294,7 +294,7 @@ export function installClockSync(): () => void {
   const master = (syncSource: SequencerState['syncSource'], midiClockOutPorts: string[]) => {
     if (syncSource !== 'internal') return;
     if (midiClockOutPorts.length) {
-      clockEngineStart();
+      void clockEngineStart().then(sendKey);  // (the followers learn the key as the clock reaches them)
     } else {
       clockEngineStop(true);
     }
@@ -308,6 +308,8 @@ export function installClockSync(): () => void {
     if (syncChanged || state.midiClockOutPorts !== prev.midiClockOutPorts) {
       master(state.syncSource, state.midiClockOutPorts);
     }
+    // Key out to the clock's followers (the Tracker's STEP) on a root or scale change.
+    if (state.rootNote % 12 !== prev.rootNote % 12 || state.scale !== prev.scale) sendKey();
   });
 }
 
