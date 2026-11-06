@@ -42,6 +42,15 @@ pub fn save_text_file(path: String, contents: String) -> Result<(), String> {
     fs::write(&path, contents).map_err(|e| format!("write {path}: {e}"))
 }
 
+// Small binary writes from JS (MIDI capture's .mid files). Creates the parent
+// dir — a stems take's folder may not exist yet when the transport stops.
+#[tauri::command]
+pub fn save_binary_file(path: String, contents: Vec<u8>) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+    }
+    fs::write(&path, contents).map_err(|e| format!("write {path}: {e}"))
+}
 
 #[tauri::command]
 pub fn read_text_file(path: String) -> Result<String, String> {

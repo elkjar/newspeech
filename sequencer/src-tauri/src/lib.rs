@@ -353,6 +353,7 @@ pub fn shared_builder() -> tauri::Builder<tauri::Wry> {
     .manage(projectfs::PendingOpenFiles::default())
     .invoke_handler(tauri::generate_handler![
       projectfs::save_text_file,
+      projectfs::save_binary_file,
       projectfs::read_text_file,
       projectfs::get_recordings_dir,
       projectfs::get_instruments_dir,
