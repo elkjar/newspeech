@@ -6,13 +6,16 @@
 // Two modes, selected by the `multitrack` ("multi") flag:
 //   • off → one combined "quick mix" WAV (audio_start_recording_combined).
 //   • on  → the full stems suite (audio_start_recording_stems): master + fx
-//           + reverb + delay bus WAVs + one dry WAV per track, sample-locked.
+//           + reverb + delay bus WAVs + one dry WAV per track, sample-locked,
+//           plus one .mid per external-MIDI destination (midiCapture.ts).
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useSequencerStore } from '../state/store';
 import { sourceLabel } from '../instruments/library';
 import { getConfiguredRecordingsDir } from './recorderConfig';
+import { engineSampleRate, engineTimeToPerfMs } from './engineClock';
+import { beginMidiCapture, endMidiCapture, type SampleTrackFile } from './midiCapture';
 import {
   startRecordingCombined,
   stopRecordingCombined,
@@ -36,6 +39,9 @@ type FinalizedEvent = {
 };
 let pendingFinalized: FinalizedEvent[] = [];
 let finalizeTimer: number | null = null;
+// .mid files the last stems take wrote (at transport stop, ahead of the WAV
+// tail) — folded into that take's toast.
+let pendingMidiCount = 0;
 
 // Tail-aware stop: after the user stops, the recording keeps running (the audio
 // thread keeps pushing the live post-master bus while the producer is alive) so
@@ -79,6 +85,10 @@ function flushFinalizedToast(): void {
     text = `recording saved · ${duration}`;
   } else {
     text = `saved ${takes.length} files · ${duration}`;
+  }
+  if (pendingMidiCount > 0) {
+    text += ` · ${pendingMidiCount} midi`;
+    pendingMidiCount = 0;
   }
   // Always reveal the parent dir — user prefers Finder to land on the
   // folder rather than launching the WAV (which would play in QuickLook
@@ -148,6 +158,9 @@ async function start(): Promise<void> {
       // `_`; nameless/empty tracks fall back to just the `rNN`/`mNN` prefix.
       let rCount = 0;
       let mCount = 0;
+      // Sample tracks also get a same-named .mid (midiCapture) so a part can
+      // be revoiced on a synth — drums on GM channel 10.
+      const sampleMidi = new Map<string, SampleTrackFile>();
       const trackPaths = s.tracks.map((t) => {
         const isRhythm = t.section === 'drum';
         const nn = String(isRhythm ? ++rCount : ++mCount).padStart(2, '0');
@@ -156,8 +169,20 @@ async function start(): Promise<void> {
           .replace(/[^a-z0-9]+/g, '_')
           .replace(/^_+|_+$/g, '');
         const base = `${isRhythm ? 'r' : 'm'}${nn}${slug ? `_${slug}` : ''}`;
+        if (t.source.kind === 'voice') {
+          sampleMidi.set(t.id, { base, channel: isRhythm ? 9 : 0 });
+        }
         return joinPath(stemDir, `${base}.wav`);
       });
+      // MIDI capture shares the stems' downbeat: tick 0 of every .mid is the
+      // first frame of every WAV.
+      beginMidiCapture(
+        stemDir,
+        startFrame > 0
+          ? engineTimeToPerfMs(startFrame / engineSampleRate())
+          : performance.now(),
+        sampleMidi,
+      );
       await startRecordingStems({
         stemDir,
         // Numeric-prefixed so the bus stems sort to the top of the folder,
@@ -235,6 +260,11 @@ async function stop(): Promise<void> {
   // the file keeps capturing the tail in the background until it goes quiet.
   useSequencerStore.getState().setArmed(false);
   const gen = ++stopGeneration;
+  // MIDI has no tail — close it on the stop itself, so notes the stop
+  // cancelled end here rather than after the reverb rings out.
+  void endMidiCapture().then((n) => {
+    pendingMidiCount = n;
+  });
   await waitForTail();
   // A newer take superseded this stop while we waited — it owns finalize now.
   if (gen !== stopGeneration) return;
@@ -282,6 +312,7 @@ if (import.meta.hot) {
     }
     if (cancelTail) cancelTail();
     pendingFinalized = [];
+    pendingMidiCount = 0;
     lastArmedAndPlaying = false;
   });
 }

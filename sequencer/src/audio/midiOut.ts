@@ -90,7 +90,17 @@ function audioToPerfMs(audioTime: number): number {
   return engineTimeToPerfMs(audioTime);
 }
 
-function tauriSend(portName: string, bytes: number[]) {
+// Observer for every outgoing message (midiCapture's take recorder). `atMs` is
+// the message's intended performance.now() time — scheduled sends pass their
+// target, not the setTimeout fire time.
+type SendTap = (portName: string, bytes: number[], atMs: number) => void;
+let sendTap: SendTap | null = null;
+export function setMidiSendTap(tap: SendTap | null): void {
+  sendTap = tap;
+}
+
+function tauriSend(portName: string, bytes: number[], atMs = performance.now()) {
+  sendTap?.(portName, bytes, atMs);
   invoke('midi_send', { portName, bytes }).catch((err) => {
     console.warn(`[midiOut] send to ${portName} failed:`, err);
   });
@@ -111,15 +121,15 @@ function scheduleTauri(
 ) {
   const delay = Math.max(0, whenPerfMs - performance.now());
   if (delay <= 0) {
-    tauriSend(portName, bytes);
+    tauriSend(portName, bytes, whenPerfMs);
   } else if (cancelable) {
     const id = window.setTimeout(() => {
       pendingNoteTimers.delete(id);
-      tauriSend(portName, bytes);
+      tauriSend(portName, bytes, whenPerfMs);
     }, delay);
     pendingNoteTimers.add(id);
   } else {
-    window.setTimeout(() => tauriSend(portName, bytes), delay);
+    window.setTimeout(() => tauriSend(portName, bytes, whenPerfMs), delay);
   }
 }
 
@@ -233,6 +243,11 @@ export function sendMIDIStart(deviceId: string) {
 
 export function sendMIDIStop(deviceId: string) {
   tauriSend(deviceId, [MIDI_STOP]);
+}
+
+// A whole SysEx message (F0 … F7), sent now.
+export function sendMIDISysex(deviceId: string, bytes: number[]) {
+  tauriSend(deviceId, bytes);
 }
 
 // HMR cleanup — without this, the Tauri hot-plug polling setInterval gets

@@ -32,6 +32,7 @@ import {
 import { frameAtTime, engineNow, engineSampleRate } from '../audio/engineClock';
 import { noteBarBoundary } from '../audio/loops';
 import { emitSliceHit } from '../audio/sliceHits';
+import { captureSampleNote, dropSampleNotesFrom } from '../audio/midiCapture';
 import {
   allocRevoiceNoteId,
   registerChord,
@@ -336,6 +337,7 @@ export function installDispatcher(): () => void {
                 const pick = samplePlayer.pickNativeSample(ev.voice, targetMidi, ev.trackId);
                 if (!pick) continue;
                 if (pick.sliceIndex !== null) emitSliceHit(ev.voice, pick.sliceIndex);
+                captureSampleNote(ev.trackId, targetMidi, ev.velocity, fireAt, (perfChop ?? ev.gate) * sub);
                 // Endless voices need a synthetic gate so they don't ring
                 // forever (see the standard-path note below): continuous loop
                 // modes, and the granular / wavetable playmodes, which never end
@@ -482,6 +484,13 @@ export function installDispatcher(): () => void {
               // Slice-mode telemetry: flash the fired slice in the editor
               // waveform (no-op when nobody's watching the params tab).
               if (pick.sliceIndex !== null) emitSliceHit(ev.voice, pick.sliceIndex);
+              captureSampleNote(
+                ev.trackId,
+                targetMidi,
+                ev.velocity,
+                ev.when,
+                (perfChop ?? ev.gate) * ev.stepDuration,
+              );
               const noteId =
                 reVoiceable && targetMidi !== undefined
                   ? allocRevoiceNoteId()
@@ -593,6 +602,7 @@ export function installDispatcher(): () => void {
         // Device not open (transport idle) — nothing queued to flush.
         return;
       }
+      dropSampleNotesFrom(boundary);
       for (const s of scheduler.pendingSteps(boundary)) {
         dispatchTick(s.index, s.when, s.stepDuration, true);
       }
