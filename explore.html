@@ -747,8 +747,13 @@ function pick(x, y) {
   ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hits = ray.intersectObjects(pickables, false);
-  for (const h of hits) if (h.object.visible) return resolve(h.object.userData.node);
-  return null;
+  const seen = hits.filter((h) => h.object.visible);
+  if (!seen.length) return null;
+  // a ray through the seam between a box top's two triangles comes out of the
+  // box's underside, level with the platform: when those tie, the box wins
+  const first = seen[0];
+  const tied = seen.find((h) => h.distance - first.distance < 0.05 && h.object.userData.node.kind === "item");
+  return resolve((tied || first).object.userData.node);
 }
 
 function setHover(n) {
