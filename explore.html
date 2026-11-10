@@ -459,10 +459,8 @@ function solid(w, h, d, fill) {
   mesh.userData.edges = edges;
   return mesh;
 }
-// pushed back a hair in depth so the grid lines on its faces stay on top;
-// double-sided so a pointer ray that slips through a seam between two
-// triangles still lands on the far side of the same box
-const fillMat = (color) => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+// pushed back a hair in depth so the grid lines on its faces stay on top
+const fillMat = (color) => new THREE.MeshBasicMaterial({ color, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 
 let rootSpin;
 const traces = [];   // one path per section along the grid lines, for the packets to ride
@@ -747,13 +745,8 @@ function pick(x, y) {
   ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hits = ray.intersectObjects(pickables, false);
-  const seen = hits.filter((h) => h.object.visible);
-  if (!seen.length) return null;
-  // a ray through the seam between a box top's two triangles comes out of the
-  // box's underside, level with the platform: when those tie, the box wins
-  const first = seen[0];
-  const tied = seen.find((h) => h.distance - first.distance < 0.05 && h.object.userData.node.kind === "item");
-  return resolve((tied || first).object.userData.node);
+  for (const h of hits) if (h.object.visible) return resolve(h.object.userData.node);
+  return null;
 }
 
 function setHover(n) {
