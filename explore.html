@@ -36,6 +36,7 @@
 
   #crumb { top: 18px; left: 20px; right: 20px; display: flex; flex-wrap: wrap; align-items: center; }
   #crumb button { padding: 6px 0; }
+  #crumb .up { padding-right: 12px; }
   #crumb .sep { padding: 0 8px; color: #555; }
   #crumb .here { color: #8a8a8a; cursor: default; text-decoration: none; }
   /* bottom-right box: logo, the way back to the site, camera position, frame rate */
@@ -767,10 +768,17 @@ function nodeFromHash() {
 function drawHud() {
   const crumb = $("crumb");
   crumb.textContent = "";
+  // nothing at the overview; inside, an arrow back up and where you are
   const chain = [];
-  for (let n = focus; n; n = n.parent) chain.unshift(n);
+  for (let n = focus; n.parent; n = n.parent) chain.unshift(n);
+  if (chain.length) {
+    const up = document.createElement("button");
+    up.type = "button"; up.textContent = "←"; up.className = "up"; up.setAttribute("aria-label", "back");
+    up.addEventListener("click", () => focusNode(focus.parent));
+    crumb.append(up);
+  }
   chain.forEach((n, i) => {
-    if (i) { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; crumb.append(s); }
+    if (i) { const sp = document.createElement("span"); sp.className = "sep"; sp.textContent = "/"; crumb.append(sp); }
     const b = document.createElement("button");
     b.type = "button"; b.textContent = n.kind === "item" ? n.id : n.name;
     if (n === focus) { b.className = "here"; b.setAttribute("aria-current", "true"); }
