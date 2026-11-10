@@ -689,12 +689,9 @@ function openNode(n) {
   document.body.classList.add("leaving");
   preload(url);
   const box = n.kind === "item";
-  if (box) {
-    n.fill.color.setHex(0xffffff);
-    n.label.show(false);
-  }
+  if (box) n.label.show(false);
   exit = {
-    url, t: 0, gone: false, box, dur: box ? 1.0 : 0.55,
+    node: n, url, t: 0, gone: false, box, dur: box ? 1.0 : 0.55,
     from: { target: cur.target.clone(), yaw: cur.yaw, pitch: cur.pitch, dist: cur.dist },
     to: box ? new THREE.Vector3(n.world.x, PLAT_H + n.h, n.world.z) : cur.target.clone(),
   };
@@ -713,10 +710,12 @@ function preload(url) {
   }
 }
 
-// the way out. For a box: the camera drops onto its lit top until the white
-// fills the view, then the white settles to the page background and the
-// browser goes. For a section: a short push forward into the same fade.
+// the way out. For a box: the camera drops onto it while its light goes out,
+// so what fills the view is the page background inside a bright outline that
+// widens past the edges of the screen; then the browser goes. For a section:
+// a short push forward into the same fade.
 let exit = null;
+const DARK = new THREE.Color(BG);
 function stepExit(dt) {
   const x = exit;
   x.t = Math.min(1, x.t + dt / x.dur);
@@ -726,12 +725,13 @@ function stepExit(dt) {
   if (x.box) {
     cur.pitch = x.from.pitch + (1.3 - x.from.pitch) * e;
     cur.dist = x.from.dist * Math.pow(0.7 / x.from.dist, e);
+    x.node.fill.color.setHex(sideCols[2]).lerp(DARK, smooth(0, 0.5, x.t));
   } else {
     cur.pitch = x.from.pitch;
     cur.dist = x.from.dist * (1 - 0.35 * e);
   }
   post.uniforms.warp.value = Math.sin(Math.PI * Math.min(1, x.t / 0.8)) * 0.8;
-  post.uniforms.fade.value = smooth(x.box ? 0.7 : 0.25, 1, x.t);
+  post.uniforms.fade.value = smooth(x.box ? 0.6 : 0.25, 1, x.t);
   if (x.t >= 1 && !x.gone) { x.gone = true; location.href = x.url; }
 }
 
