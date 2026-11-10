@@ -50,6 +50,36 @@
   }
   #open:hover { background: #e8e8e8; color: #050505; text-decoration: none; }
   #open[hidden] { display: none; }
+  .leaving .hud { opacity: 0; transition: opacity 0.2s; }
+
+  /* the live page preview: a window-sized frame scaled down (--s) and moved by script */
+  #frame {
+    position: fixed; left: 0; top: 0; z-index: 1; transform-origin: 0 0; will-change: transform;
+    overflow: hidden; background: #050505; pointer-events: none;
+  }
+  #frame::before {
+    content: ""; position: absolute; inset: 0; z-index: 1;
+    border: calc(1.5px / var(--s, 1)) solid #e8e8e8;
+  }
+  #frame[hidden] { display: none; }
+  #frame iframe { display: block; width: 100%; height: 100%; border: 0; filter: grayscale(1); }
+  #frame::after {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(to bottom,
+      transparent 0, transparent calc(2px / var(--s, 1)),
+      rgba(0,0,0,0.3) calc(2px / var(--s, 1)), rgba(0,0,0,0.3) calc(3px / var(--s, 1)));
+  }
+  #frame.on { animation: frame-in 0.32s steps(7) both; }
+  @keyframes frame-in {
+    0%   { clip-path: inset(49% 0 49% 0); opacity: 0.3; }
+    35%  { clip-path: inset(18% 0 36% 0); opacity: 1; }
+    60%  { clip-path: inset(30% 0 4% 0); opacity: 0.5; }
+    100% { clip-path: inset(0); opacity: 1; }
+  }
+  #frame.open { transition: transform 0.5s cubic-bezier(0.7, 0, 0.2, 1); }
+  #frame.open iframe { filter: none; transition: filter 0.5s; }
+  #frame.open::after, #frame.open::before { opacity: 0; transition: opacity 0.5s; }
+
   #veil {
     position: fixed; inset: 0; z-index: 3; display: grid; place-items: center;
     background: #050505; color: #8a8a8a; text-align: center; padding: 24px;
@@ -74,6 +104,7 @@
 <div class="hud" id="keys"></div>
 <div class="hud" id="read" aria-hidden="true"></div>
 <a class="hud" id="open" hidden></a>
+<div id="frame" hidden><iframe title="page preview" tabindex="-1"></iframe></div>
 
 <div id="veil">loading</div>
 <noscript><p style="position:fixed;inset:0;display:grid;place-items:center;margin:0;color:#8a8a8a;z-index:4;background:#050505">this page needs javascript — <a href="index.html" style="color:#e8e8e8;margin-left:8px">standard site</a></p></noscript>
@@ -109,36 +140,30 @@ async function getText(url) {
 }
 
 async function loadTree() {
-  const [feed, newsIndex, vizIndex, ep] = await Promise.allSettled([
-    getText("feed.xml"), getText("news.html"), getText("visualizers.html"), getText("assets/ep/dead-ocean.json"),
+  const [feed, vizIndex, ep] = await Promise.allSettled([
+    getText("feed.xml"), getText("visualizers.html"), getText("assets/ep/dead-ocean.json"),
   ]);
   const parse = (res, type) => res.status === "fulfilled" ? new DOMParser().parseFromString(res.value, type) : null;
 
   // music: the EP and its tracks
-  let music = [{ name: "dead ocean", id: "dead-ocean", href: "dead-ocean.html", dek: "ep", img: "assets/ep/cover.jpg" }];
+  let music = [{ name: "dead ocean", id: "dead-ocean", href: "dead-ocean.html", dek: "ep" }];
   if (ep.status === "fulfilled") {
     try {
       const d = JSON.parse(ep.value);
       const longest = Math.max(...d.tracks.map((t) => t.duration || 1));
       const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
       music = d.tracks.map((t) => ({
-        name: t.title, id: t.slug, href: "dead-ocean.html", img: d.cover,
+        name: t.title, id: t.slug, href: "dead-ocean.html",
         dek: `${d.title} · ${mmss(t.duration)} · ${t.bpm} bpm`,
         height: 2 + 5 * (t.duration / longest),
       }));
     } catch {}
   }
 
-  // news: titles and deks from the feed, thumbnails from the index page
+  // news: from the feed
   let news = [{ name: "news", id: "news", href: "news.html", dek: "" }];
   const feedDoc = parse(feed, "text/xml");
   if (feedDoc && feedDoc.querySelector("item")) {
-    const thumbs = new Map();
-    const idx = parse(newsIndex, "text/html");
-    if (idx) idx.querySelectorAll('a[href^="news/"]').forEach((a) => {
-      const im = a.querySelector("img");
-      if (im && !thumbs.has(a.getAttribute("href"))) thumbs.set(a.getAttribute("href"), im.getAttribute("src"));
-    });
     const items = [...feedDoc.querySelectorAll("item")];
     news = items.map((it, i) => {
       const txt = (q) => (it.querySelector(q)?.textContent || "").trim();
@@ -148,21 +173,20 @@ async function loadTree() {
       return {
         name: txt("title"), id: href.replace(/^news\//, "").replace(/\.html$/, ""), href,
         dek: [isNaN(date) ? "" : date.toISOString().slice(0, 10), txt("description")].filter(Boolean).join(" · "),
-        img: thumbs.get(href) || null,
         height: 1.6 + 5.4 * (1 - i / Math.max(1, items.length - 1)),   // newest tallest
       };
     });
   }
 
   // visuals: whatever visualizers.html lists
-  let visuals = [{ name: "visuals", id: "visuals", href: "visualizers.html", dek: "audio-reactive visual instruments", img: "og-visuals.png" }];
+  let visuals = [{ name: "visuals", id: "visuals", href: "visualizers.html", dek: "audio-reactive visual instruments" }];
   const vizDoc = parse(vizIndex, "text/html");
   if (vizDoc) {
     const links = [...vizDoc.querySelectorAll('a[href$=".html"]')].filter((a) => /^\d+-[\w-]+\.html$/.test(a.getAttribute("href")));
     if (links.length) visuals = links.map((a) => {
       const href = a.getAttribute("href");
       const group = a.closest("section, ol, ul")?.previousElementSibling?.textContent?.trim().toLowerCase() || "";
-      return { name: a.textContent.trim(), id: a.textContent.trim(), href, img: "assets/og/" + href.replace(".html", ".jpg"), dek: group.length < 40 ? group : "" };
+      return { name: a.textContent.trim(), id: a.textContent.trim(), href, dek: group.length < 40 ? group : "" };
     });
   }
 
@@ -170,24 +194,24 @@ async function loadTree() {
     { name: "music", href: "dead-ocean.html", items: music },
     { name: "news", href: "news.html", items: news },
     { name: "sequence", href: "index.html#v-sequence", items: [
-      { name: "sequence", href: "index.html#v-sequence", dek: "the sequencer app", img: "og-sequence.png" },
+      { name: "sequence", href: "index.html#v-sequence", dek: "the sequencer app" },
       { name: "readme", href: "sequencer-readme.html", dek: "sequencer-readme.html" },
     ] },
     { name: "tools", href: "tools.html", items: [
-      { name: "texture", href: "texture.html", dek: "a loop mangler in the browser", img: "og-texture.png" },
-      { name: "slice", href: "slice.html", dek: "a pattern slicer", img: "og-slice.png" },
-      { name: "decay", href: "decay.html", dek: "disintegration loops", img: "og-decay.png" },
-      { name: "drone", href: "drone.html", dek: "a breathing drone instrument", img: "og-drone.png" },
-      { name: "glitch", href: "glitch.html", dek: "audio destruction", img: "og-glitch.png" },
-      { name: "stretch", href: "stretch.html", dek: "sampler timestretch", img: "og-stretch.png" },
-      { name: "samples", href: "samples.html", dek: "the newspeech sample library", img: "og-samples.png" },
+      { name: "texture", href: "texture.html", dek: "a loop mangler in the browser" },
+      { name: "slice", href: "slice.html", dek: "a pattern slicer" },
+      { name: "decay", href: "decay.html", dek: "disintegration loops" },
+      { name: "drone", href: "drone.html", dek: "a breathing drone instrument" },
+      { name: "glitch", href: "glitch.html", dek: "audio destruction" },
+      { name: "stretch", href: "stretch.html", dek: "sampler timestretch" },
+      { name: "samples", href: "samples.html", dek: "the newspeech sample library" },
     ] },
     { name: "visuals", href: "visualizers.html", items: visuals },
     { name: "plugins", href: "plugins.html", items: [
-      { name: "vibe", href: "plugins.html#vibe", dek: "tape loop, tempo-synced repeat, reverb", img: "assets/plugins/vibe.png" },
-      { name: "saturate", href: "plugins.html#saturate", dek: "drive into a squelching filter", img: "assets/plugins/saturate.png" },
-      { name: "slice", href: "plugins.html#slice", dek: "hide messages in music", img: "assets/plugins/slice.png" },
-      { name: "glitch", href: "plugins.html#glitch", dek: "audio destruction masquerading as a step sequencer", img: "assets/plugins/glitch.png" },
+      { name: "vibe", href: "plugins.html#vibe", dek: "tape loop, tempo-synced repeat, reverb" },
+      { name: "saturate", href: "plugins.html#saturate", dek: "drive into a squelching filter" },
+      { name: "slice", href: "plugins.html#slice", dek: "hide messages in music" },
+      { name: "glitch", href: "plugins.html#glitch", dek: "audio destruction masquerading as a step sequencer" },
     ] },
     { name: "about", href: "about.html", items: [
       { name: "about", href: "about.html", dek: "" },
@@ -284,19 +308,20 @@ quad.frustumCulled = false;
 postScene.add(quad);
 
 // ---------------------------------------------------------------------------
-// text: canvas-texture labels with per-character font swaps (each character
-// keeps the cell width of its base font, so swapping never shifts the layout)
+// text: labels that float over whatever is hovered, always facing the camera.
+// Canvas textures with per-character font swaps (each character keeps the
+// cell width of its base font, so swapping never shifts the layout).
 // ---------------------------------------------------------------------------
 const hot = new Set();        // labels currently scrambling
-const idleLabels = [];        // labels that get the occasional stray swap
+const labels = new Set();
 
 class Label {
-  constructor(text, { px = 64, font = "zxx-bold", worldH = 1, maxW = Infinity, tint = 0xffffff } = {}) {
+  constructor(text, { px = 64, font = "zxx-bold", worldH = 1, maxW = Infinity } = {}) {
     this.font = font; this.px = px;
     const c = this.canvas = document.createElement("canvas");
     const g = this.g = c.getContext("2d");
     g.font = `${px}px "${font}"`;
-    const scale = worldH / (px * 1.4);
+    const scale = worldH / (px * 1.5);
     let chars = [...text];
     const width = (arr) => arr.reduce((a, ch) => a + Math.ceil(g.measureText(ch).width), 0) + 8;
     if (width(chars) * scale > maxW) {
@@ -307,15 +332,33 @@ class Label {
     this.cells = chars.map((ch) => Math.ceil(g.measureText(ch).width));
     this.fonts = chars.map(() => font);
     c.width = Math.max(2, width(chars));
-    c.height = Math.ceil(px * 1.4);
+    c.height = Math.ceil(px * 1.5);
     this.tex = new THREE.CanvasTexture(c);
     this.tex.anisotropy = 8;
     this.w = worldH * c.width / c.height;
     const geo = new THREE.PlaneGeometry(this.w, worldH);
-    geo.translate(this.w / 2, 0, 0);
-    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, color: tint, transparent: true, depthWrite: false });
+    geo.translate(0, worldH / 2, 0);   // sits on its anchor point
+    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthTest: false, depthWrite: false, fog: false });
     this.mesh = new THREE.Mesh(geo, this.mat);
+    this.mesh.renderOrder = 20;
+    this.mesh.visible = false;
+    // a thin line tying the label to the thing it names
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+    this.tether = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, fog: false }));
+    this.tether.visible = false; this.tether.frustumCulled = false;
+    this.shown = false; this.t = 1;
+    labels.add(this);
     this.draw();
+  }
+  // x,z of the thing, the height its top is at, and the height the label floats at
+  place(x, top, y, z) {
+    this.mesh.position.set(x, y, z);
+    const p = this.tether.geometry.attributes.position;
+    p.setXYZ(0, x, top, z); p.setXYZ(1, x, y, z);
+    p.needsUpdate = true;
+    scene.add(this.mesh, this.tether);
+    return this;
   }
   draw() {
     const { g, canvas: c } = this;
@@ -324,15 +367,22 @@ class Label {
     let x = 4;
     this.chars.forEach((ch, i) => {
       g.font = `${this.px}px "${this.fonts[i]}"`;
-      g.fillText(ch, x + this.cells[i] / 2, c.height / 2);
+      g.fillText(ch, x + this.cells[i] / 2, c.height * 0.46);
       x += this.cells[i];
     });
+    g.fillRect(4, c.height - Math.ceil(this.px / 16), c.width - 8, Math.ceil(this.px / 16));
     this.tex.needsUpdate = true;
   }
   scramble(ms = 450, density = 0.6) {
     if (REDUCE) return;
     this.hotUntil = performance.now() + ms; this.density = density;
     hot.add(this);
+  }
+  show(on) {
+    if (on === this.shown) return;
+    this.shown = on;
+    this.mesh.visible = this.tether.visible = on;
+    if (on) { this.t = REDUCE ? 1 : 0; this.scramble(420, 0.7); }
   }
 }
 
@@ -347,7 +397,8 @@ setInterval(() => {
     }
     l.draw();
   }
-  if (idleLabels.length && Math.random() < 0.12) idleLabels[(Math.random() * idleLabels.length) | 0].scramble(220, 0.18);
+  // a label that is up keeps slipping a character now and then
+  for (const l of labels) if (l.shown && !hot.has(l) && Math.random() < 0.1) l.scramble(160, 0.15);
 }, 70);
 
 // ---------------------------------------------------------------------------
@@ -357,11 +408,9 @@ setInterval(() => {
 const G = 6;                                 // grid step
 const CENTER = new THREE.Vector3(0, 0, -72); // middle of the flat ground
 const PLAT_H = 1.2;
-const PANEL_W = 18, PANEL_H = PANEL_W * 600 / 1280;
 
 const pickables = [];
 const sideCols = [0x111111, 0x2c2c2c, 0xdadada];
-const topCols = [0xc8c8c8, 0xffffff, 0xffffff];
 
 function terrainH(x, z) {
   const m = smooth(240, 440, Math.hypot(x - CENTER.x, z - CENTER.z));
@@ -459,12 +508,8 @@ function buildWorld(root) {
   const hit = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
   hit.position.y = 9; hit.userData.node = root; pickables.push(hit);
   scene.add(hit);
-  root.label = new Label(root.name, { px: 96, worldH: 5 });
-  root.label.mesh.rotation.x = -Math.PI / 2;
-  root.label.mesh.position.set(-root.label.w / 2, 0.08, 12);
+  root.label = new Label(root.name, { px: 96, worldH: 7 }).place(0, 14, 16.5, 0);
   root.label.mesh.userData.node = root; pickables.push(root.label.mesh);
-  scene.add(root.label.mesh);
-  idleLabels.push(root.label);
   root.world = new THREE.Vector3(0, 0, 0);
 
   // each section is a platform of whole cells: a one-cell margin, then per
@@ -508,12 +553,9 @@ function buildWorld(root) {
     grp.add(plat);
     s.world = toWorld((s.Wr - s.Wl) / 2, -s.D / 2, new THREE.Vector3());
 
-    s.label = new Label(s.name, { px: 96, worldH: 6.5 });
-    s.label.mesh.rotation.x = -Math.PI / 2;
-    s.label.mesh.position.set(-s.Wl, 0.08, 5);
+    // the section's name, floating over the middle of it while it is hovered
+    s.label = new Label(s.name, { px: 96, worldH: 11 }).place(s.world.x, PLAT_H, 14, s.world.z);
     s.label.mesh.userData.node = s; pickables.push(s.label.mesh);
-    grp.add(s.label.mesh);
-    idleLabels.push(s.label);
 
     // the trace runs along grid lines: out from the root, along a bus, in to the platform
     const end = toWorld(0, 2 * G, new THREE.Vector3());
@@ -535,21 +577,18 @@ function buildWorld(root) {
       const bx = -s.Wl + G + colI * 2 * G, bz = -s.D + G + row * 2 * G;   // the block's cell: bx..bx+G, bz..bz+G
       toWorld(bx, bz, v); toWorld(bx + G, bz + G, w);
       raise(v.x, v.z, w.x, w.z, PLAT_H + h, true);
-      it.side = fillMat(sideCols[0]);
-      it.top = fillMat(sideCols[0]);
-      const m = it.side;
-      const blk = it.mesh = solid(G, h, G, [m, m, it.top, m, m, m]);
+      it.fill = fillMat(sideCols[0]);
+      const blk = it.mesh = solid(G, h, G, it.fill);
       blk.position.set(bx + G / 2, PLAT_H, bz + G / 2);
       blk.userData.node = it; pickables.push(blk);
       grp.add(blk);
 
-      it.label = new Label(it.id, { px: 40, font: "zxx-sans", worldH: 1.5, maxW: 2 * G - 0.5, tint: 0x9a9a9a });
-      it.label.mesh.rotation.x = -Math.PI / 2;
-      it.label.mesh.position.set(bx, PLAT_H + 0.05, bz + G * 1.5);
-      grp.add(it.label.mesh);
     });
     grp.updateMatrixWorld(true);
-    for (const it of s.children) it.world = it.mesh.getWorldPosition(new THREE.Vector3());
+    for (const it of s.children) {
+      it.world = it.mesh.getWorldPosition(new THREE.Vector3());
+      it.label = new Label(it.name, { px: 64, worldH: 2.6, maxW: 46 }).place(it.world.x, PLAT_H + it.h, PLAT_H + it.h + 2.4, it.world.z);
+    }
   }
 
   const tg = new THREE.BufferGeometry();
@@ -589,7 +628,7 @@ function tickPackets(dt) {
   pos.needsUpdate = true;
 }
 
-// beam: a column of light dropped on the hovered or selected block
+// beam: a column of light dropped on the lit box
 const beam = (() => {
   const H = 110;
   const geo = new THREE.BoxGeometry(G, H, G, 1, 8, 1);
@@ -607,152 +646,61 @@ const beam = (() => {
 })();
 
 // ---------------------------------------------------------------------------
-// the glass panel that opens over a selected block
+// preview: the real page, in a frame floating over the lit box. Opening the
+// box grows the frame to fill the window, then the browser goes to the page.
 // ---------------------------------------------------------------------------
-const panel = (() => {
-  const c = document.createElement("canvas");
-  c.width = 1280; c.height = 600;
-  const tex = new THREE.CanvasTexture(c);
-  tex.anisotropy = 8;
-  const geo = new THREE.PlaneGeometry(PANEL_W, PANEL_H, 32, 1);
-  const RC = 26, p = geo.attributes.position;   // bend it round the viewer
-  for (let i = 0; i < p.count; i++) {
-    const a = p.getX(i) / RC;
-    p.setX(i, Math.sin(a) * RC);
-    p.setZ(i, (1 - Math.cos(a)) * RC);
-  }
-  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-  mesh.renderOrder = 10;
-  mesh.visible = false;
-  mesh.userData.panel = true;
-  pickables.push(mesh);
-  scene.add(mesh);
-  const lg = new THREE.BufferGeometry();
-  lg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
-  const leader = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, fog: false }));
-  leader.visible = false; leader.frustumCulled = false;
-  scene.add(leader);
-  return { c, g: c.getContext("2d"), tex, mesh, leader, t: 0, node: null, hotUntil: 0 };
-})();
+const frameEl = $("frame"), iframe = frameEl.querySelector("iframe");
+let previewNode = null, previewTimer = 0, opening = false;
+const anchor = new THREE.Vector3();
 
-function wrap(g, text, maxW) {
-  const lines = [];
-  let line = "";
-  for (const w of text.split(/\s+/)) {
-    const tryLine = line ? line + " " + w : w;
-    if (g.measureText(tryLine).width > maxW && line) { lines.push(line); line = w; } else line = tryLine;
-  }
-  if (line) lines.push(line);
-  return lines;
+function showInFrame(url) {
+  // replace(), not src: setting src would add an entry to the back button for every box hovered
+  try { iframe.contentWindow.location.replace(url); } catch { iframe.src = url; }
 }
 
-function drawPanel() {
-  const n = panel.node;
+function placeFrame(n) {
+  anchor.set(n.world.x, PLAT_H + n.h + 6.2, n.world.z).project(camera);
+  if (anchor.z > 1) { frameEl.style.visibility = "hidden"; return; }
+  frameEl.style.visibility = "";
+  const iw = innerWidth, ih = innerHeight;
+  const s = Math.min(420 / iw, 0.45), w = iw * s, h = ih * s;
+  const ax = (anchor.x + 1) / 2 * iw, ay = (1 - anchor.y) / 2 * ih;
+  let x = ax - w / 2, y = ay - h;
+  if (y < 56) {
+    // no room above the label: sit beside it, on whichever side has more space
+    const half = n.label.w / 2 * (ih / (2 * TAN * camera.position.distanceTo(n.label.mesh.position))) + 24;
+    x = ax < iw / 2 ? ax + half : ax - half - w;
+    y = ay - h / 2;
+  }
+  x = clamp(x, 12, iw - w - 12);
+  y = clamp(y, 56, ih - h - 12);
+  frameEl.style.setProperty("--s", s);
+  frameEl.style.transform = `translate(${x}px,${y}px) scale(${s})`;
+}
+
+function setPreview(n) {
+  if (opening) return;
+  if (n && (n.ext || !n.href)) n = null;
+  if (n === previewNode) return;
+  previewNode = n;
+  clearTimeout(previewTimer);
+  frameEl.hidden = true;
+  frameEl.classList.remove("on");
+  showInFrame("about:blank");
   if (!n) return;
-  const { g, c } = panel, W = c.width, H = c.height;
-  const scrambling = performance.now() < panel.hotUntil;
-  g.clearRect(0, 0, W, H);
-  g.fillStyle = "rgba(6,6,6,0.8)"; g.fillRect(0, 0, W, H);
-  g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = 2; g.strokeRect(1, 1, W - 2, H - 2);
-  g.strokeStyle = "#fff"; g.lineWidth = 4;
-  for (const [x, y, sx, sy] of [[2, 2, 1, 1], [W - 2, 2, -1, 1], [2, H - 2, 1, -1], [W - 2, H - 2, -1, -1]]) {
-    g.beginPath(); g.moveTo(x + 34 * sx, y); g.lineTo(x, y); g.lineTo(x, y + 34 * sy); g.stroke();
-  }
-  g.textBaseline = "middle"; g.textAlign = "left";
-  g.font = `22px ${MONO}`; g.fillStyle = "#8a8a8a";
-  g.fillText("/ newspeech / " + pathOf(n).replace("/", " / "), 36, 40);
-  g.fillStyle = "rgba(255,255,255,0.25)"; g.fillRect(36, 66, W - 72, 1);
-
-  let tx = 40;
-  const img = n.imgEl;
-  if (img) {
-    const bx = 40, by = 96, bw = 560, bh = 294;
-    const s = Math.max(bw / img.naturalWidth, bh / img.naturalHeight);
-    const sw = bw / s, sh = bh / s;
-    g.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, bx, by, bw, bh);
-    g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = 2; g.strokeRect(bx, by, bw, bh);
-    tx = 640;
-  }
-  const tw = W - tx - 40;
-
-  // title, per-character fonts while the panel is opening
-  const px = n.name.length > 18 ? 40 : 62;
-  g.font = `${px}px "zxx-bold"`; g.fillStyle = "#fff";
-  let y = 96 + px * 0.6;
-  for (const line of wrap(g, n.name, tw).slice(0, 4)) {
-    let x = tx;
-    for (const ch of line) {
-      g.font = `${px}px "zxx-bold"`;
-      const cw = g.measureText(ch).width;
-      if (scrambling && Math.random() < 0.5) g.font = `${px}px "${FONTS[(Math.random() * FONTS.length) | 0]}"`;
-      g.textAlign = "center"; g.fillText(ch, x + cw / 2, y); g.textAlign = "left";
-      x += cw;
-    }
-    y += px * 1.15;
-  }
-  y += 10;
-  if (n.dek) {
-    g.font = `24px ${MONO}`; g.fillStyle = "#b4b4b4";
-    for (const line of wrap(g, n.dek, tw).slice(0, 6)) { g.fillText(line, tx, y); y += 34; }
-  }
-  // open
-  const label = n.ext ? "open ↗" : "open →";
-  g.font = `24px ${MONO}`;
-  const bw2 = g.measureText(label).width + 44, by2 = H - 108;
-  g.fillStyle = "#e8e8e8"; g.fillRect(tx, by2, bw2, 54);
-  g.fillStyle = "#050505"; g.fillText(label, tx + 22, by2 + 28);
-  g.font = `20px ${MONO}`; g.fillStyle = "#6a6a6a";
-  g.fillText(n.href.replace(/^https?:\/\//, ""), tx + bw2 + 22, by2 + 28);
-  panel.tex.needsUpdate = true;
-}
-
-function showPanel(n) {
-  panel.node = n;
-  if (!n) { panel.mesh.visible = panel.leader.visible = false; return; }
-  const top = PLAT_H + n.h;
-  panel.mesh.position.set(n.world.x, top + 3 + PANEL_H / 2, n.world.z);
-  panel.mesh.rotation.set(-0.3, n.parent.yaw, 0, "YXZ");
-  const lp = panel.leader.geometry.attributes.position;
-  lp.setXYZ(0, n.world.x, top, n.world.z);
-  lp.setXYZ(1, n.world.x, top + 3, n.world.z);
-  lp.needsUpdate = true;
-  panel.mesh.visible = panel.leader.visible = true;
-  panel.t = REDUCE ? 1 : 0;
-  panel.hotUntil = REDUCE ? 0 : performance.now() + 420;
-  drawPanel();
-}
-
-// ---------------------------------------------------------------------------
-// thumbnails load when a section is first approached
-// ---------------------------------------------------------------------------
-function loadImages(sec) {
-  if (sec.imagesAsked) return;
-  sec.imagesAsked = true;
-  for (const it of sec.children) {
-    if (!it.img) continue;
-    const im = new Image();
-    if (/^https?:/.test(it.img)) im.crossOrigin = "anonymous";
-    im.onload = () => {
-      const tex = new THREE.Texture(im);
-      tex.anisotropy = 4;
-      // the block top is square: take the middle of the image
-      const ar = im.naturalWidth / im.naturalHeight;
-      if (ar > 1) { tex.repeat.x = 1 / ar; tex.offset.x = (1 - 1 / ar) / 2; }
-      else { tex.repeat.y = ar; tex.offset.y = (1 - ar) / 2; }
-      tex.needsUpdate = true;
-      it.imgEl = im;
-      it.top.map = tex; it.top.needsUpdate = true;
-      paint(it);
-      if (panel.node === it) drawPanel();
-    };
-    im.src = it.img;
-  }
+  // wait a beat so sweeping across the boxes doesn't load every page on the way
+  previewTimer = setTimeout(() => {
+    showInFrame(new URL(n.href, location.href).href);
+    placeFrame(n);
+    frameEl.hidden = false;
+    if (!REDUCE) frameEl.classList.add("on");
+  }, 350);
 }
 
 // ---------------------------------------------------------------------------
 // focus, hover, camera
 // ---------------------------------------------------------------------------
-let root, focus, hover = null, hoverPanel = false, glitch = 0;
+let root, focus, hover = null, glitch = 0;
 const cur = { target: new THREE.Vector3(0, 0, -84), yaw: 0.7, pitch: 1.1, dist: 800 };
 const goal = { target: new THREE.Vector3(0, 0, -84), yaw: 0, pitch: 0.55, dist: 215 };
 let maxDist = 600;
@@ -760,52 +708,92 @@ let maxDist = 600;
 const fit = (w) => w / (2 * TAN * camera.aspect);
 const overviewDist = () => Math.max(230, fit(470));
 
-function paint(n) {
-  if (!n) return;
-  const st = n === focus ? 2 : n === hover ? 1 : 0;
-  if (n.kind === "item") {
-    n.side.color.setHex(sideCols[st]);
-    n.top.color.setHex(n.top.map ? topCols[st] : sideCols[st]);
-    n.mesh.userData.edges.visible = st > 0;
-    n.label.mat.color.setHex(st ? 0xffffff : 0x9a9a9a);
-  } else if (n.kind === "section") {
-    n.plat.userData.edges.visible = st > 0;
+// the box that is lit: the one under the pointer, else the one stepped to
+const activeItem = () => hover && hover.kind === "item" ? hover : focus.kind === "item" ? focus : null;
+
+function repaint() {
+  const item = activeItem();
+  const sec = hover && hover.kind === "section" ? hover : null;
+  root.label.show(hover === root);
+  for (const s of root.children) {
+    s.plat.userData.edges.visible = s === sec;
+    // no hover on a touch screen: from the overview every section shows its name
+    s.label.show(s === sec || (COARSE && focus === root));
+    for (const it of s.children) {
+      const st = it === item ? 2 : s === sec ? 1 : 0;
+      it.fill.color.setHex(sideCols[st]);
+      it.mesh.userData.edges.visible = st === 2;
+      it.label.show(st === 2);
+    }
   }
+  setPreview(item);
+}
+
+// inside a section its boxes answer for themselves; from anywhere else the
+// whole section answers as one
+function resolve(n) {
+  if (!n || n.kind === "root") return n;
+  const here = focus.kind === "section" ? focus : focus.kind === "item" ? focus.parent : null;
+  if (n.kind === "item") return n.parent === here ? n : n.parent;
+  return n === here ? null : n;
 }
 
 function frame(n) {
+  if (n.kind === "item") n = n.parent;   // a box is shown from its section's view
   if (n.kind === "root") {
     goal.target.set(0, 0, -84); goal.yaw = 0; goal.pitch = 0.55; goal.dist = overviewDist();
-  } else if (n.kind === "section") {
-    // aim a little toward the root so the name on the ground stays in frame
-    goal.target.set(n.world.x + Math.sin(n.yaw) * 5, 2, n.world.z + Math.cos(n.yaw) * 5); goal.yaw = n.yaw; goal.pitch = 0.7;
-    goal.dist = Math.max(48, fit(n.W + 14) * 1.3, (n.D + 26) / (2 * TAN));
   } else {
-    goal.target.set(n.world.x, PLAT_H + n.h + 4.2, n.world.z); goal.yaw = n.parent.yaw; goal.pitch = 0.5;
-    goal.dist = Math.max(27, fit(PANEL_W * 1.2));
+    // aimed a little past and above the middle, so the boxes sit low in the
+    // view with room over them for the names and the preview
+    goal.target.set(n.world.x - Math.sin(n.yaw) * 6, 9, n.world.z - Math.cos(n.yaw) * 6); goal.yaw = n.yaw; goal.pitch = 0.7;
+    goal.dist = Math.max(48, fit(n.W + 14) * 1.3, (n.D + 26) / (2 * TAN));
   }
 }
 
 function focusNode(n, quiet) {
-  const prev = focus;
+  const moved = !focus || (n.kind === "item" ? n.parent : n) !== (focus.kind === "item" ? focus.parent : focus);
   focus = n;
-  paint(prev); paint(n);
-  if (n.kind !== "root") loadImages(n.kind === "section" ? n : n.parent);
-  frame(n);
-  showPanel(n.kind === "item" ? n : null);
-  if (n.label && n.kind !== "item") n.label.scramble();
-  if (!quiet && !REDUCE) burst(0.45);
+  if (hover && resolve(hover) !== hover) hover = null;
+  if (moved) frame(n);
+  repaint();
+  if (!quiet && !REDUCE && moved) burst(0.45);
   drawHud();
   history.replaceState(null, "", pathOf(n) ? "#" + pathOf(n) : location.pathname + location.search);
 }
 
 function openNode(n) {
-  if (!n || !n.href) return;
+  if (!n || !n.href || opening) return;
   if (n.ext) { window.open(n.href, "_blank", "noopener"); return; }
-  if (REDUCE) { location.href = n.href; return; }
+  const url = new URL(n.href, location.href).href;
+  if (REDUCE) { location.href = url; return; }
+  opening = true;
   burst(1);
-  setTimeout(() => { location.href = n.href; }, 170);
+  document.body.classList.add("leaving");
+  if (n.kind !== "item") { setTimeout(() => { location.href = url; }, 170); return; }
+  // make sure the frame is up and holding this page, then grow it to the window
+  clearTimeout(previewTimer);
+  if (previewNode !== n || frameEl.hidden) { previewNode = n; showInFrame(url); }
+  frameEl.classList.remove("on");
+  placeFrame(n);
+  frameEl.style.visibility = "";
+  frameEl.hidden = false;
+  void frameEl.offsetWidth;
+  frameEl.classList.add("open");
+  frameEl.style.setProperty("--s", 1);
+  frameEl.style.transform = "translate(0px,0px) scale(1)";
+  setTimeout(() => { location.href = url; }, 560);
 }
+
+// coming back with the back button: put the frame away again
+addEventListener("pageshow", (e) => {
+  if (!e.persisted) return;
+  opening = false; previewNode = null;
+  document.body.classList.remove("leaving");
+  frameEl.classList.remove("open", "on");
+  frameEl.hidden = true;
+  showInFrame("about:blank");
+  if (root) repaint();
+});
 
 function burst(amount) {
   glitch = Math.max(glitch, amount);
@@ -841,9 +829,14 @@ function drawHud() {
     open.hidden = false;
   } else open.hidden = true;
 }
+$("open").addEventListener("click", (e) => {
+  if (focus.ext || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  openNode(focus);
+});
 $("keys").textContent = COARSE
-  ? "drag look · pinch zoom · tap select · tap again open"
-  : "drag look · scroll zoom · wasd move · click select · arrows step · enter open · esc back";
+  ? "drag look · pinch zoom · tap a section to enter · tap a box, tap again to open"
+  : "drag look · scroll zoom · wasd move · click enter · arrows step · enter open · esc back";
 
 // picking
 const ray = new THREE.Raycaster();
@@ -852,17 +845,14 @@ function pick(x, y) {
   ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hits = ray.intersectObjects(pickables, false);
-  for (const h of hits) if (h.object.visible) return h.object.userData;
+  for (const h of hits) if (h.object.visible) return resolve(h.object.userData.node);
   return null;
 }
 
-function setHover(n, onPanel) {
-  hoverPanel = !!onPanel;
+function setHover(n) {
   if (n === hover) return;
-  const prev = hover;
   hover = n;
-  paint(prev); paint(n);
-  if (n && n.label) n.label.scramble(n.kind === "item" ? 300 : 450);
+  repaint();
 }
 
 // pointer: one finger / mouse drag looks around, two fingers pinch, a press
@@ -895,24 +885,22 @@ canvas.addEventListener("pointermove", (e) => {
 });
 const release = (e) => {
   const had = ptrs.delete(e.pointerId);
-  if (had && e.type === "pointerup" && ptrs.size === 0 && travel <= 5) click(e.clientX, e.clientY);
+  if (had && e.type === "pointerup" && ptrs.size === 0 && travel <= 5) click(e.clientX, e.clientY, e.pointerType !== "mouse");
 };
 canvas.addEventListener("pointerup", release);
 canvas.addEventListener("pointercancel", release);
-canvas.addEventListener("pointerleave", () => { mouse = null; setHover(null, false); });
+canvas.addEventListener("pointerleave", () => { mouse = null; setHover(null); });
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   goal.dist = clamp(goal.dist * Math.exp(e.deltaY * 0.0012), 10, maxDist);
 }, { passive: false });
 
-function click(x, y) {
-  const hit = pick(x, y);
-  if (!hit) return;
-  if (hit.panel) openNode(focus);
-  else if (hit.node) {
-    if (hit.node === focus && hit.node.kind === "item") openNode(hit.node);
-    else focusNode(hit.node);
-  }
+function click(x, y, touch) {
+  const n = pick(x, y);
+  if (!n) return;
+  if (n.kind !== "item") focusNode(n);
+  else if (touch && focus !== n) focusNode(n);   // no hover on touch: first tap lights the box
+  else openNode(n);
 }
 
 // keyboard
@@ -920,7 +908,7 @@ const held = new Set();
 addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if ("wasd".includes(k) && k.length === 1) { held.add(k); return; }
+  if (k.length === 1 && "wasd".includes(k)) { held.add(k); return; }
   const inHud = e.target instanceof HTMLElement && e.target.closest(".hud");
   if (k === "Escape" || k === "Backspace" || k === "ArrowUp") {
     if (focus.parent) focusNode(focus.parent);
@@ -953,6 +941,9 @@ function resize() {
   post.uniforms.px.value.set(1 / (w * dpr), 1 / (h * dpr));
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  // the frame is always the size of the window, scaled down, so the page in it
+  // is already laid out the way it will be once it fills the window
+  frameEl.style.width = w + "px"; frameEl.style.height = h + "px";
   const over = overviewDist();
   maxDist = over * 1.5;
   scene.fog.near = over * 1.3; scene.fog.far = over * 1.3 + 760;
@@ -991,36 +982,35 @@ function tick() {
     Math.max(1.5, cur.target.y + cur.dist * Math.sin(cur.pitch)),
     cur.target.z + cur.dist * Math.cos(yaw) * cp);
   camera.lookAt(cur.target);
-
-  // sections come into range: fetch their thumbnails
-  for (const s of root.children) if (!s.imagesAsked && camera.position.distanceTo(s.world) < 120) loadImages(s);
+  camera.updateMatrixWorld();
 
   // hover
-  if (mouseDirty && mouse && ptrs.size === 0 && !COARSE) {
+  if (mouseDirty && mouse && ptrs.size === 0 && !COARSE && !opening) {
     mouseDirty = false;
-    const hit = pick(mouse.x, mouse.y);
-    setHover(hit && hit.node && hit.node.kind !== "root" ? hit.node : null, hit && hit.panel);
-    canvas.style.cursor = hit ? "pointer" : "crosshair";
+    const n = pick(mouse.x, mouse.y);
+    setHover(n);
+    canvas.style.cursor = n ? "pointer" : "crosshair";
   }
   if (ptrs.size && travel > 5) canvas.style.cursor = "grabbing";
 
-  const lit = hover && hover.kind === "item" ? hover : focus.kind === "item" ? focus : null;
+  const lit = activeItem();
   beam.visible = !!lit;
-  if (lit) { beam.position.set(lit.world.x, PLAT_H + lit.h, lit.world.z); beam.rotation.y = lit.parent.yaw; }
+  if (lit) beam.position.set(lit.world.x, PLAT_H + lit.h, lit.world.z);
 
-  // panel opening
-  if (panel.node) {
-    if (panel.t < 1) {
-      panel.t = Math.min(1, panel.t + dt / 0.38);
-      const e = 1 - Math.pow(1 - panel.t, 3);
-      panel.mesh.scale.set(0.6 + 0.4 * e, Math.max(0.02, e), 1);
-      panel.mesh.material.opacity = Math.random() < 0.25 ? 0.25 : e;
+  // labels face the camera; a new one snaps open and flickers
+  for (const l of labels) {
+    if (!l.shown) continue;
+    l.mesh.quaternion.copy(camera.quaternion);
+    if (l.t < 1) {
+      l.t = Math.min(1, l.t + dt / 0.22);
+      l.mesh.scale.set(1, Math.max(0.05, l.t), 1);
+      l.mat.opacity = Math.random() < 0.35 ? 0.3 : 1;
     } else {
-      panel.mesh.scale.set(1, 1, 1);
-      panel.mesh.material.opacity = hoverPanel ? 1 : 0.94;
+      l.mesh.scale.set(1, 1, 1);
+      l.mat.opacity = !REDUCE && Math.random() < 0.02 ? 0.55 : 1;
     }
-    if (performance.now() < panel.hotUntil + 80) drawPanel();
   }
+  if (previewNode && !frameEl.hidden && !opening) placeFrame(previewNode);
 
   rootSpin.rotation.y = t * 0.3; rootSpin.rotation.x = t * 0.17;
   tickPackets(dt);
@@ -1055,10 +1045,11 @@ function tick() {
   focus = root;
   resize();
   focusNode(nodeFromHash(), true);
+  frame(focus);
   if (REDUCE) { cur.target.copy(goal.target); cur.yaw = goal.yaw; cur.pitch = goal.pitch; cur.dist = goal.dist; }
   renderer.setAnimationLoop(tick);
   $("veil").classList.add("off");
-  window.NSExplore = { root, focusNode, cur, goal };   // handle for the console
+  window.NSExplore = { root, focusNode, cur, goal, camera };   // handle for the console
 })().catch((e) => {
   console.error(e);
   $("veil").innerHTML = 'this page failed to start — <a href="index.html" style="margin-left:8px">standard site</a>';
