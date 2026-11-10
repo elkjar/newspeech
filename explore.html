@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>newspeech - explore</title>
+<meta name="description" content="the newspeech site as a 3d map.">
+<!-- experimental, unlisted: keep it out of search results -->
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); font-display: swap; }
+
+  html, body { margin: 0; height: 100%; background: #050505; overflow: hidden; }
+  body {
+    color: #8a8a8a;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.08em;
+    -webkit-font-smoothing: antialiased;
+  }
+  canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+
+  .hud { position: fixed; z-index: 2; pointer-events: none; }
+  .hud a, .hud button { pointer-events: auto; }
+  .hud a, .hud button {
+    color: #e8e8e8; text-decoration: none; background: none; border: 0; padding: 0;
+    font: inherit; letter-spacing: inherit; cursor: pointer;
+  }
+  .hud a:hover, .hud button:hover { color: #fff; text-decoration: underline; }
+  .hud a:focus-visible, .hud button:focus-visible { outline: 1px solid #e8e8e8; outline-offset: 3px; }
+
+  #crumb { top: 18px; left: 20px; right: 20px; display: flex; flex-wrap: wrap; align-items: center; }
+  #crumb button { padding: 6px 0; }
+  #crumb .up { padding-right: 12px; }
+  #crumb .sep { padding: 0 8px; color: #555; }
+  #crumb .here { color: #8a8a8a; cursor: default; text-decoration: none; }
+  /* bottom-right box: logo, the way back to the site, camera position, frame rate */
+  #info {
+    right: 20px; bottom: 18px; width: 208px; box-sizing: border-box;
+    padding: 14px 14px 12px; border: 1px solid #3a3a3a; background: rgba(5,5,5,0.8);
+  }
+  #info .mark { display: block; }
+  #info .mark img { display: block; width: 100%; height: auto; }
+  #info .site { display: block; margin-top: 12px; padding: 4px 0; }
+  #read { margin-top: 8px; padding-top: 10px; border-top: 1px solid #2a2a2a; color: #666; white-space: pre; font-variant-numeric: tabular-nums; }
+  #open {
+    left: 50%; bottom: 54px; transform: translateX(-50%);
+    pointer-events: auto;
+    padding: 11px 18px; border: 1px solid #e8e8e8; background: rgba(5,5,5,0.8);
+    color: #e8e8e8; text-decoration: none; white-space: nowrap;
+  }
+  #open:hover { background: #e8e8e8; color: #050505; text-decoration: none; }
+  #open[hidden] { display: none; }
+  .leaving .hud { opacity: 0; transition: opacity 0.2s; }
+
+  #veil {
+    position: fixed; inset: 0; z-index: 3; display: grid; place-items: center;
+    background: #050505; color: #8a8a8a; text-align: center; padding: 24px;
+    transition: opacity 0.6s;
+  }
+  #veil.off { opacity: 0; pointer-events: none; }
+  #veil a { color: #e8e8e8; }
+
+  @media (max-width: 700px) {
+    #info { right: 12px; bottom: 12px; width: 176px; padding: 10px 10px 8px; letter-spacing: 0.04em; }
+    #open { left: 12px; bottom: 12px; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gl" aria-label="3d map of the newspeech site"></canvas>
+
+<nav class="hud" id="crumb" aria-label="path"></nav>
+<div class="hud" id="info">
+  <a class="mark" href="index.html" aria-label="newspeech"><img src="assets/ns-text.svg" alt="" draggable="false"></a>
+  <a class="site" href="index.html">standard site →</a>
+  <div id="read" aria-hidden="true"></div>
+</div>
+<a class="hud" id="open" hidden></a>
+
+<div id="veil">loading</div>
+<noscript><p style="position:fixed;inset:0;display:grid;place-items:center;margin:0;color:#8a8a8a;z-index:4;background:#050505">this page needs javascript — <a href="index.html" style="color:#e8e8e8;margin-left:8px">standard site</a></p></noscript>
+
+<script type="module">
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+// Colours are authored as display values and the post pass writes them straight
+// out, so three's colour management stays off.
+THREE.ColorManagement.enabled = false;
+
+const FONTS = ["zxx-bold", "zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
+const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const COARSE = matchMedia("(pointer: coarse)").matches;
+const BG = 0x050505;
+const TAU = Math.PI * 2;
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const slug = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const hash01 = (s) => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return ((h >>> 0) % 1000) / 1000; };
+
+// ---------------------------------------------------------------------------
+// the site tree — fixed sections, plus news / visuals / tracks read from the
+// site's own files so new posts and visualizers show up without edits here
+// ---------------------------------------------------------------------------
+async function getText(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + " " + r.status);
+  return r.text();
+}
+
+async function loadTree() {
+  const [feed, vizIndex, ep] = await Promise.allSettled([
+    getText("feed.xml"), getText("visualizers.html"), getText("assets/ep/dead-ocean.json"),
+  ]);
+  const parse = (res, type) => res.status === "fulfilled" ? new DOMParser().parseFromString(res.value, type) : null;
+
+  // music: the EP and its tracks
+  let music = [{ name: "dead ocean", id: "dead-ocean", href: "dead-ocean.html", dek: "ep" }];
+  if (ep.status === "fulfilled") {
+    try {
+      const d = JSON.parse(ep.value);
+      const longest = Math.max(...d.tracks.map((t) => t.duration || 1));
+      const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+      music = d.tracks.map((t) => ({
+        name: t.title, id: t.slug, href: "dead-ocean.html",
+        dek: `${d.title} · ${mmss(t.duration)} · ${t.bpm} bpm`,
+        height: 2 + 5 * (t.duration / longest),
+      }));
+    } catch {}
+  }
+
+  // news: from the feed
+  let news = [{ name: "news", id: "news", href: "news.html", dek: "" }];
+  const feedDoc = parse(feed, "text/xml");
+  if (feedDoc && feedDoc.querySelector("item")) {
+    const items = [...feedDoc.querySelectorAll("item")];
+    news = items.map((it, i) => {
+      const txt = (q) => (it.querySelector(q)?.textContent || "").trim();
+      let href = txt("link");
+      try { href = new URL(href).pathname.replace(/^\//, ""); } catch {}
+      const date = new Date(txt("pubDate"));
+      return {
+        name: txt("title"), id: href.replace(/^news\//, "").replace(/\.html$/, ""), href,
+        dek: [isNaN(date) ? "" : date.toISOString().slice(0, 10), txt("description")].filter(Boolean).join(" · "),
+        height: 1.6 + 5.4 * (1 - i / Math.max(1, items.length - 1)),   // newest tallest
+      };
+    });
+  }
+
+  // visuals: whatever visualizers.html lists
+  let visuals = [{ name: "visuals", id: "visuals", href: "visualizers.html", dek: "audio-reactive visual instruments" }];
+  const vizDoc = parse(vizIndex, "text/html");
+  if (vizDoc) {
+    const links = [...vizDoc.querySelectorAll('a[href$=".html"]')].filter((a) => /^\d+-[\w-]+\.html$/.test(a.getAttribute("href")));
+    if (links.length) visuals = links.map((a) => {
+      const href = a.getAttribute("href");
+      const group = a.closest("section, ol, ul")?.previousElementSibling?.textContent?.trim().toLowerCase() || "";
+      return { name: a.textContent.trim(), id: a.textContent.trim(), href, dek: group.length < 40 ? group : "" };
+    });
+  }
+
+  const sections = [
+    { name: "music", href: "dead-ocean.html", items: music },
+    { name: "news", href: "news.html", items: news },
+    { name: "sequence", href: "index.html#v-sequence", items: [
+      { name: "sequence", href: "index.html#v-sequence", dek: "the sequencer app" },
+      { name: "readme", href: "sequencer-readme.html", dek: "sequencer-readme.html" },
+    ] },
+    { name: "tools", href: "tools.html", items: [
+      { name: "texture", href: "texture.html", dek: "a loop mangler in the browser" },
+      { name: "slice", href: "slice.html", dek: "a pattern slicer" },
+      { name: "decay", href: "decay.html", dek: "disintegration loops" },
+      { name: "drone", href: "drone.html", dek: "a breathing drone instrument" },
+      { name: "glitch", href: "glitch.html", dek: "audio destruction" },
+      { name: "stretch", href: "stretch.html", dek: "sampler timestretch" },
+      { name: "samples", href: "samples.html", dek: "the newspeech sample library" },
+    ] },
+    { name: "visuals", href: "visualizers.html", items: visuals },
+    { name: "plugins", href: "plugins.html", items: [
+      { name: "vibe", href: "plugins.html#vibe", dek: "tape loop, tempo-synced repeat, reverb" },
+      { name: "saturate", href: "plugins.html#saturate", dek: "drive into a squelching filter" },
+      { name: "slice", href: "plugins.html#slice", dek: "hide messages in music" },
+      { name: "glitch", href: "plugins.html#glitch", dek: "audio destruction masquerading as a step sequencer" },
+    ] },
+    { name: "about", href: "about.html", items: [
+      { name: "about", href: "about.html", dek: "" },
+    ] },
+    { name: "follow", href: null, items: [
+      { name: "instagram", href: "https://www.instagram.com/newspeechsound", ext: true, dek: "@newspeechsound" },
+      { name: "youtube", href: "https://www.youtube.com/@newspeechsound", ext: true, dek: "@newspeechsound" },
+      { name: "discord", href: "https://discord.gg/GgGSXK3WT", ext: true, dek: "discord.gg/GgGSXK3WT" },
+    ] },
+  ];
+
+  const root = { kind: "root", name: "newspeech", id: "", href: "index.html", children: [] };
+  for (const s of sections) {
+    const sec = { kind: "section", name: s.name, id: slug(s.name), href: s.href, parent: root, children: [] };
+    const seen = new Set();
+    for (const it of s.items) {
+      let id = slug(it.id || it.name) || "item";
+      while (seen.has(id)) id += "-2";
+      seen.add(id);
+      sec.children.push({ kind: "item", ...it, id, parent: sec, children: [] });
+    }
+    root.children.push(sec);
+  }
+  return root;
+}
+
+const pathOf = (n) => n.kind === "root" ? "" : n.kind === "section" ? n.id : n.parent.id + "/" + n.id;
+
+// ---------------------------------------------------------------------------
+// renderer
+// ---------------------------------------------------------------------------
+const canvas = $("gl");
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
+} catch (e) {
+  $("veil").innerHTML = 'webgl is not available in this browser — <a href="index.html" style="margin-left:8px">standard site</a>';
+  throw e;
+}
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+renderer.setClearColor(BG, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(BG, 200, 900);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 4000);
+const TAN = Math.tan((camera.fov * Math.PI) / 360);
+
+const rt = new THREE.WebGLRenderTarget(2, 2, { samples: 4, depthBuffer: true });
+
+// post pass: everything to luminance, then lens bend, chroma fringe, halation,
+// scanlines, grain, vignette and the occasional horizontal tear
+const post = new THREE.ShaderMaterial({
+  depthTest: false, depthWrite: false,
+  uniforms: {
+    t: { value: rt.texture }, time: { value: 0 }, glitch: { value: 0 },
+    warp: { value: 0 }, fade: { value: 0 },   // the way out: lens pull, then down to the page background
+    tear: { value: new THREE.Vector3(0.5, 0.03, 0.02) }, px: { value: new THREE.Vector2(1, 1) },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    precision highp float;
+    varying vec2 vUv;
+    uniform sampler2D t; uniform float time; uniform float glitch; uniform vec3 tear; uniform vec2 px;
+    uniform float warp; uniform float fade;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    float tap(vec2 uv){ return dot(texture2D(t, uv).rgb, vec3(0.299, 0.587, 0.114)); }
+    void main(){
+      vec2 c = vUv - 0.5;
+      float r2 = dot(c, c);
+      vec2 uv = 0.5 + c * (0.965 + 0.07 * r2 - warp * 0.5 * r2);
+      float band = step(abs(vUv.y - tear.x), tear.y) * glitch;
+      uv.x += band * tear.z;
+      float row = floor(vUv.y * 90.0);
+      uv.x += glitch * 0.006 * (hash(vec2(row, floor(time * 30.0))) - 0.5);
+      float ca = 0.0007 + 0.007 * r2 + glitch * 0.006 + band * 0.012 + warp * 0.03 * r2;
+      vec3 col = vec3(tap(uv + vec2(ca, 0.0)), tap(uv), tap(uv - vec2(ca, 0.0)));
+      float glow = 0.0;
+      for (int i = 0; i < 8; i++) {
+        float a = float(i) * 0.7854;
+        vec2 d = vec2(cos(a), sin(a));
+        glow += tap(uv + d * px * 3.0) + tap(uv + d * px * 9.0);
+      }
+      col += glow / 16.0 * 0.5;
+      col *= 0.86 + 0.14 * step(0.34, fract(gl_FragCoord.y / 3.0));
+      float roll = smoothstep(0.07, 0.0, abs(fract(time * 0.06) - (1.0 - vUv.y)));
+      col += roll * 0.02;
+      col += (hash(gl_FragCoord.xy + fract(time) * 100.0) - 0.5) * 0.07;
+      col *= mix(1.0, 0.3, smoothstep(0.35, 0.95, length(c) * 1.25));
+      col = mix(max(col, 0.0), vec3(0.0196), fade);   // #050505, what every page opens on
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+const postScene = new THREE.Scene();
+const postCam = new THREE.Camera();
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post);
+quad.frustumCulled = false;
+postScene.add(quad);
+
+// ---------------------------------------------------------------------------
+// text: labels that float over whatever is hovered, always facing the camera.
+// Canvas textures with per-character font swaps (each character keeps the
+// cell width of its base font, so swapping never shifts the layout).
+// ---------------------------------------------------------------------------
+const hot = new Set();        // labels currently scrambling
+const labels = new Set();
+
+class Label {
+  constructor(text, { px = 64, font = "zxx-bold", worldH = 1, maxW = Infinity } = {}) {
+    this.font = font; this.px = px;
+    const c = this.canvas = document.createElement("canvas");
+    const g = this.g = c.getContext("2d");
+    g.font = `${px}px "${font}"`;
+    const scale = worldH / (px * 1.5);
+    let chars = [...text];
+    const width = (arr) => arr.reduce((a, ch) => a + Math.ceil(g.measureText(ch).width), 0) + 8;
+    if (width(chars) * scale > maxW) {
+      while (chars.length > 1 && width([...chars, "…"]) * scale > maxW) chars.pop();
+      chars.push("…");
+    }
+    this.chars = chars;
+    this.cells = chars.map((ch) => Math.ceil(g.measureText(ch).width));
+    this.fonts = chars.map(() => font);
+    c.width = Math.max(2, width(chars));
+    c.height = Math.ceil(px * 1.5);
+    this.tex = new THREE.CanvasTexture(c);
+    this.tex.anisotropy = 8;
+    this.w = worldH * c.width / c.height;
+    const geo = new THREE.PlaneGeometry(this.w, worldH);
+    geo.translate(0, worldH / 2, 0);   // sits on its anchor point
+    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthTest: false, depthWrite: false, fog: false });
+    this.mesh = new THREE.Mesh(geo, this.mat);
+    this.mesh.renderOrder = 20;
+    this.mesh.visible = false;
+    // a thin line tying the label to the thing it names
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+    this.tether = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, fog: false }));
+    this.tether.visible = false; this.tether.frustumCulled = false;
+    this.shown = false; this.t = 1;
+    labels.add(this);
+    this.draw();
+  }
+  // x,z of the thing, the height its top is at, and the height the label floats at
+  place(x, top, y, z) {
+    this.mesh.position.set(x, y, z);
+    const p = this.tether.geometry.attributes.position;
+    p.setXYZ(0, x, top, z); p.setXYZ(1, x, y, z);
+    p.needsUpdate = true;
+    scene.add(this.mesh, this.tether);
+    return this;
+  }
+  draw() {
+    const { g, canvas: c } = this;
+    g.clearRect(0, 0, c.width, c.height);
+    g.fillStyle = "#fff"; g.textBaseline = "middle"; g.textAlign = "center";
+    let x = 4;
+    this.chars.forEach((ch, i) => {
+      g.font = `${this.px}px "${this.fonts[i]}"`;
+      g.fillText(ch, x + this.cells[i] / 2, c.height * 0.46);
+      x += this.cells[i];
+    });
+    g.fillRect(4, c.height - Math.ceil(this.px / 16), c.width - 8, Math.ceil(this.px / 16));
+    this.tex.needsUpdate = true;
+  }
+  scramble(ms = 450, density = 0.6) {
+    if (REDUCE) return;
+    this.hotUntil = performance.now() + ms; this.density = density;
+    hot.add(this);
+  }
+  show(on) {
+    if (on === this.shown) return;
+    this.shown = on;
+    this.mesh.visible = this.tether.visible = on;
+    if (on) { this.t = REDUCE ? 1 : 0; this.scramble(420, 0.7); }
+  }
+}
+
+setInterval(() => {
+  const now = performance.now();
+  for (const l of hot) {
+    if (now < l.hotUntil) {
+      l.fonts = l.fonts.map(() => Math.random() < l.density ? FONTS[(Math.random() * FONTS.length) | 0] : l.font);
+    } else {
+      l.fonts = l.fonts.map(() => l.font);
+      hot.delete(l);
+    }
+    l.draw();
+  }
+  // a label that is up keeps slipping a character now and then
+  for (const l of labels) if (l.shown && !hot.has(l) && Math.random() < 0.1) l.scramble(160, 0.15);
+}, 70);
+
+// ---------------------------------------------------------------------------
+// world — everything is laid out in whole cells of one grid. Platforms and
+// blocks are raised cells: the grid lines themselves climb up and over them.
+// ---------------------------------------------------------------------------
+const G = 6;                                 // grid step
+const CENTER = new THREE.Vector3(0, 0, -72); // middle of the flat ground
+const PLAT_H = 1.2;
+
+const pickables = [];
+const sideCols = [0x111111, 0x2c2c2c, 0xdadada];
+
+function terrainH(x, z) {
+  const m = smooth(240, 440, Math.hypot(x - CENTER.x, z - CENTER.z));
+  if (m <= 0) return 0;
+  const n = Math.sin(x * 0.021 + 1.3) * Math.cos(z * 0.017) + 0.5 * Math.sin(x * 0.047 + z * 0.039) + 0.25 * Math.sin(x * 0.11 - z * 0.09);
+  return m * (18 + 46 * Math.abs(n));
+}
+
+// raised cells, keyed by cell index
+const cells = new Map();
+const cellAt = (ix, iz) => cells.get(ix + "," + iz);
+function raise(ax, az, bx, bz, h, block) {
+  const x0 = Math.round(Math.min(ax, bx) / G), x1 = Math.round(Math.max(ax, bx) / G);
+  const z0 = Math.round(Math.min(az, bz) / G), z1 = Math.round(Math.max(az, bz) / G);
+  for (let ix = x0; ix < x1; ix++) for (let iz = z0; iz < z1; iz++) cells.set(ix + "," + iz, { h, block });
+}
+
+function buildGround() {
+  const pos = [], col = [];
+  const X0 = -112, X1 = 112, Z0 = -124, Z1 = 100;   // lines at x = G*i and z = G*j
+  const GROUND = 0.23, PLAT = 0.55, BLOCK = 0.82;
+  // every other line stops short of the ridges, so the hills keep the wide mesh
+  const fade = (x, z) => 1 - smooth(200, 270, Math.hypot(x - CENTER.x, z - CENTER.z));
+  const push = (a, b, ca, cb) => { pos.push(a[0], a[1], a[2], b[0], b[1], b[2]); col.push(ca, ca, ca, cb, cb, cb); };
+
+  // one grid line: index f on one axis, walked cell by cell along the other.
+  // Over a raised cell it runs along the top; where the height changes it
+  // drops or climbs straight down the wall.
+  const line = (f, alongX, lo, hi) => {
+    const fine = f % 2 !== 0;
+    const P = (k, y) => alongX ? [k * G, y, f * G] : [f * G, y, k * G];
+    let prev = null;
+    for (let i = lo; i < hi; i++) {
+      const a = alongX ? cellAt(i, f - 1) : cellAt(f - 1, i);
+      const b = alongX ? cellAt(i, f) : cellAt(f, i);
+      const top = !a ? b : !b ? a : a.h >= b.h ? a : b;
+      const h = top ? top.h : 0;
+      if (top) {
+        const c = top.block ? BLOCK : PLAT;
+        push(P(i, h), P(i + 1, h), c, c);
+      } else {
+        const p = P(i, 0), q = P(i + 1, 0);
+        let ca = GROUND, cb = GROUND;
+        if (fine) { ca *= fade(p[0], p[2]); cb *= fade(q[0], q[2]); }
+        if (ca > 0.004 || cb > 0.004) {
+          p[1] = terrainH(p[0], p[2]); q[1] = terrainH(q[0], q[2]);
+          push(p, q, ca, cb);
+        }
+      }
+      if (prev && prev.h !== h) {
+        const c = prev.block || (top && top.block) ? BLOCK : PLAT;
+        push(P(i, prev.h), P(i, h), c, c);
+      }
+      prev = { h, block: !!(top && top.block) };
+    }
+  };
+  for (let j = Z0; j <= Z1; j++) line(j, true, X0, X1);
+  for (let i = X0; i <= X1; i++) line(i, false, Z0, Z1);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  scene.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true })));
+}
+
+// the dark body under a raised cell (hides what is behind it, takes clicks),
+// with a white outline that only shows when hovered or selected
+function solid(w, h, d, fill) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  geo.translate(0, h / 2, 0);
+  const mesh = new THREE.Mesh(geo, fill);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff }));
+  edges.visible = false;
+  mesh.add(edges);
+  mesh.userData.edges = edges;
+  return mesh;
+}
+// pushed back a hair in depth so the grid lines on its faces stay on top
+const fillMat = (color) => new THREE.MeshBasicMaterial({ color, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+
+let rootSpin;
+const traces = [];   // one path per section along the grid lines, for the packets to ride
+
+function buildWorld(root) {
+  // root: a raised 2×2 pad, a turning wire solid, and the name in front
+  raise(-G, -G, G, G, PLAT_H, false);
+  const ped = solid(2 * G, PLAT_H, 2 * G, fillMat(0x080808));
+  ped.userData.node = root; pickables.push(ped);
+  scene.add(ped);
+  rootSpin = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(4.6, 0)),
+    new THREE.LineBasicMaterial({ color: 0xffffff }));
+  rootSpin.position.y = 9;
+  scene.add(rootSpin);
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+  hit.position.y = 9; hit.userData.node = root; pickables.push(hit);
+  scene.add(hit);
+  root.label = new Label(root.name, { px: 96, worldH: 7 }).place(0, 14, 16.5, 0);
+  root.label.mesh.userData.node = root; pickables.push(root.label.mesh);
+  root.world = new THREE.Vector3(0, 0, 0);
+
+  // each section is a platform of whole cells: a one-cell margin, then per
+  // page a block cell with a gap cell beside it and a lane for its name in front
+  for (const s of root.children) {
+    const n = s.children.length;
+    s.cols = n <= 4 ? n : Math.ceil(Math.sqrt(n * 1.3));
+    s.rows = Math.ceil(n / s.cols);
+    s.W = (2 * s.cols + 1) * G; s.D = (2 * s.rows + 1) * G;
+    s.Wl = s.cols * G; s.Wr = s.W - s.Wl;     // platform spans local x from -Wl to Wr, z from -D to 0
+  }
+
+  // three walls of a yard around the root: left, back, right
+  const GAP = 2 * G, BACK = 22 * G;
+  const ch = root.children;
+  const left = ch.slice(0, 2), back = ch.slice(2, ch.length - 2), right = ch.slice(-2);
+  const total = back.reduce((a, s) => a + s.W, 0) + GAP * (back.length - 1);
+  const xMin = -Math.round(total / 2 / G) * G;
+  let x = xMin;
+  for (const s of back) { s.yaw = 0; s.origin = new THREE.Vector3(x + s.Wl, 0, -BACK); x += s.W + GAP; }
+  let z = -BACK + GAP;
+  for (const s of [...left].reverse()) { s.yaw = Math.PI / 2; s.origin = new THREE.Vector3(xMin - GAP, 0, z + s.Wr); z += s.W + GAP; }
+  z = -BACK + GAP;
+  for (const s of right) { s.yaw = -Math.PI / 2; s.origin = new THREE.Vector3(x, 0, z + s.Wl); z += s.W + GAP; }
+
+  const tracePts = [];
+  const v = new THREE.Vector3(), w = new THREE.Vector3();
+  for (const s of ch) {
+    const grp = s.group = new THREE.Group();
+    grp.position.copy(s.origin);
+    grp.rotation.y = s.yaw;
+    scene.add(grp);
+    grp.updateMatrixWorld(true);
+    const toWorld = (lx, lz, out) => grp.localToWorld(out.set(lx, 0, lz));
+
+    toWorld(-s.Wl, -s.D, v); toWorld(s.Wr, 0, w);
+    raise(v.x, v.z, w.x, w.z, PLAT_H, false);
+    const plat = s.plat = solid(s.W, PLAT_H, s.D, fillMat(0x080808));
+    plat.position.set((s.Wr - s.Wl) / 2, 0, -s.D / 2);
+    plat.userData.node = s; pickables.push(plat);
+    grp.add(plat);
+    s.world = toWorld((s.Wr - s.Wl) / 2, -s.D / 2, new THREE.Vector3());
+
+    // the section's name, floating over the middle of it while it is hovered
+    s.label = new Label(s.name, { px: 96, worldH: 11 }).place(s.world.x, PLAT_H, 14, s.world.z);
+    s.label.mesh.userData.node = s; pickables.push(s.label.mesh);
+
+    // the trace runs along grid lines: out from the root, along a bus, in to the platform
+    const end = toWorld(0, 2 * G, new THREE.Vector3());
+    const side = Math.sign(-s.yaw);   // -1 left wall, 0 back, 1 right wall
+    const pts = side === 0
+      ? [[0, -G], [0, -11 * G], [end.x, -11 * G], [end.x, end.z]]
+      : [[side * G, 0], [side * 12 * G, 0], [side * 12 * G, end.z], [end.x, end.z]];
+    const path = pts.map(([px, pz]) => new THREE.Vector3(px, 0.06, pz));
+    const cum = [0];
+    for (let i = 1; i < path.length; i++) {
+      cum.push(cum[i - 1] + path[i].distanceTo(path[i - 1]));
+      tracePts.push(path[i - 1].x, 0.06, path[i - 1].z, path[i].x, 0.06, path[i].z);
+    }
+    traces.push({ path, cum, total: cum[cum.length - 1] });
+
+    s.children.forEach((it, i) => {
+      const colI = i % s.cols, row = Math.floor(i / s.cols);
+      const h = it.h = it.height || 1.6 + 5.2 * hash01(s.id + it.id);
+      const bx = -s.Wl + G + colI * 2 * G, bz = -s.D + G + row * 2 * G;   // the block's cell: bx..bx+G, bz..bz+G
+      toWorld(bx, bz, v); toWorld(bx + G, bz + G, w);
+      raise(v.x, v.z, w.x, w.z, PLAT_H + h, true);
+      it.fill = fillMat(sideCols[0]);
+      const blk = it.mesh = solid(G, h, G, it.fill);
+      blk.position.set(bx + G / 2, PLAT_H, bz + G / 2);
+      blk.userData.node = it; pickables.push(blk);
+      grp.add(blk);
+
+    });
+    grp.updateMatrixWorld(true);
+    for (const it of s.children) {
+      it.world = it.mesh.getWorldPosition(new THREE.Vector3());
+      it.label = new Label(it.name, { px: 64, worldH: 2.6, maxW: 46 }).place(it.world.x, PLAT_H + it.h, PLAT_H + it.h + 5, it.world.z);
+    }
+  }
+
+  const tg = new THREE.BufferGeometry();
+  tg.setAttribute("position", new THREE.Float32BufferAttribute(tracePts, 3));
+  scene.add(new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ color: 0x9a9a9a })));
+
+  buildGround();   // last: it needs every raised cell
+}
+
+// packets: bright points riding the traces between the root and the sections
+const PACKETS = 40;
+const packets = [];
+const packetGeo = new THREE.BufferGeometry();
+packetGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(PACKETS * 3).fill(-9999), 3));
+const packetPts = new THREE.Points(packetGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 3, sizeAttenuation: false, fog: false }));
+packetPts.frustumCulled = false;
+scene.add(packetPts);
+
+function tickPackets(dt) {
+  if (!REDUCE && packets.length < PACKETS && Math.random() < dt * 4) {
+    const tr = traces[(Math.random() * traces.length) | 0];
+    packets.push({ tr, t: 0, v: (40 + Math.random() * 60) / tr.total, back: Math.random() < 0.3 });
+  }
+  const pos = packetGeo.attributes.position;
+  for (let i = 0; i < PACKETS; i++) {
+    const p = packets[i];
+    if (!p) { pos.setXYZ(i, 0, -9999, 0); continue; }
+    p.t += p.v * dt;
+    const { path, cum, total } = p.tr;
+    const d = clamp(p.back ? 1 - p.t : p.t, 0, 1) * total;
+    let j = 1;
+    while (j < cum.length - 1 && cum[j] < d) j++;
+    const a = path[j - 1], b = path[j], k = (d - cum[j - 1]) / (cum[j] - cum[j - 1] || 1);
+    pos.setXYZ(i, a.x + (b.x - a.x) * k, 0.25, a.z + (b.z - a.z) * k);
+  }
+  for (let i = packets.length - 1; i >= 0; i--) if (packets[i].t >= 1) packets.splice(i, 1);
+  pos.needsUpdate = true;
+}
+
+// beam: a column of light dropped on the lit box
+const beam = (() => {
+  const H = 110;
+  const geo = new THREE.BoxGeometry(G, H, G, 1, 8, 1);
+  geo.translate(0, H / 2, 0);
+  const col = [];
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) { const v = Math.pow(1 - p.getY(i) / H, 2.2) * 0.11; col.push(v, v, v); }
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+  }));
+  m.visible = false;
+  scene.add(m);
+  return m;
+})();
+
+// ---------------------------------------------------------------------------
+// focus, hover, camera
+// ---------------------------------------------------------------------------
+let root, focus, hover = null, glitch = 0, opening = false;
+const cur = { target: new THREE.Vector3(0, 0, -84), yaw: 0.7, pitch: 1.1, dist: 800 };
+const goal = { target: new THREE.Vector3(0, 0, -84), yaw: 0, pitch: 0.55, dist: 215 };
+let maxDist = 600;
+
+const fit = (w) => w / (2 * TAN * camera.aspect);
+const overviewDist = () => Math.max(230, fit(470));
+
+// the box that is lit: the one under the pointer, else the one stepped to
+const activeItem = () => hover && hover.kind === "item" ? hover : focus.kind === "item" ? focus : null;
+
+function repaint() {
+  const item = activeItem();
+  const sec = hover && hover.kind === "section" ? hover : null;
+  root.label.show(hover === root);
+  for (const s of root.children) {
+    s.plat.userData.edges.visible = s === sec;
+    // no hover on a touch screen: from the overview every section shows its name
+    s.label.show(s === sec || (COARSE && focus === root));
+    for (const it of s.children) {
+      const st = it === item ? 2 : s === sec ? 1 : 0;
+      it.fill.color.setHex(sideCols[st]);
+      it.mesh.userData.edges.visible = st === 2;
+      it.label.show(st === 2);
+    }
+  }
+}
+
+// inside a section its boxes answer for themselves; from anywhere else the
+// whole section answers as one
+function resolve(n) {
+  if (!n || n.kind === "root") return n;
+  const here = focus.kind === "section" ? focus : focus.kind === "item" ? focus.parent : null;
+  if (n.kind === "item") return n.parent === here ? n : n.parent;
+  return n === here ? null : n;
+}
+
+function frame(n) {
+  if (n.kind === "item") n = n.parent;   // a box is shown from its section's view
+  if (n.kind === "root") {
+    goal.target.set(0, 0, -84); goal.yaw = 0; goal.pitch = 0.55; goal.dist = overviewDist();
+  } else {
+    goal.target.set(n.world.x, 5, n.world.z); goal.yaw = n.yaw; goal.pitch = 0.42;
+    goal.dist = Math.max(48, fit(n.W + 14) * 1.3, (n.D + 26) / (2 * TAN));
+  }
+}
+
+function focusNode(n, quiet) {
+  const moved = !focus || (n.kind === "item" ? n.parent : n) !== (focus.kind === "item" ? focus.parent : focus);
+  focus = n;
+  if (hover && resolve(hover) !== hover) hover = null;
+  if (moved) frame(n);
+  repaint();
+  if (!quiet && !REDUCE && moved) burst(0.45);
+  drawHud();
+  history.replaceState(null, "", pathOf(n) ? "#" + pathOf(n) : location.pathname + location.search);
+}
+
+function openNode(n) {
+  if (!n || !n.href || opening) return;
+  if (n.ext) { window.open(n.href, "_blank", "noopener"); return; }
+  const url = new URL(n.href, location.href).href;
+  if (REDUCE) { location.href = url; return; }
+  opening = true;
+  document.body.classList.add("leaving");
+  preload(url);
+  const box = n.kind === "item";
+  if (box) n.label.show(false);
+  exit = {
+    node: n, url, t: 0, gone: false, box, dur: box ? 1.0 : 0.55,
+    from: { target: cur.target.clone(), yaw: cur.yaw, pitch: cur.pitch, dist: cur.dist },
+    to: box ? new THREE.Vector3(n.world.x, PLAT_H + n.h, n.world.z) : cur.target.clone(),
+  };
+}
+
+// start fetching the page while the camera is still on its way in
+function preload(url) {
+  const link = document.createElement("link");
+  link.rel = "prefetch"; link.href = url;
+  document.head.append(link);
+  if (HTMLScriptElement.supports && HTMLScriptElement.supports("speculationrules")) {
+    const sc = document.createElement("script");
+    sc.type = "speculationrules";
+    sc.textContent = JSON.stringify({ prerender: [{ urls: [url] }] });
+    document.head.append(sc);
+  }
+}
+
+// the way out. For a box: the camera drops onto it while its light goes out,
+// so what fills the view is the page background inside a bright outline that
+// widens past the edges of the screen; then the browser goes. For a section:
+// a short push forward into the same fade.
+let exit = null;
+const DARK = new THREE.Color(BG);
+function stepExit(dt) {
+  const x = exit;
+  x.t = Math.min(1, x.t + dt / x.dur);
+  const e = x.t < 0.5 ? 4 * x.t ** 3 : 1 - (-2 * x.t + 2) ** 3 / 2;
+  cur.target.lerpVectors(x.from.target, x.to, e);
+  cur.yaw = x.from.yaw;
+  if (x.box) {
+    cur.pitch = x.from.pitch + (1.3 - x.from.pitch) * e;
+    cur.dist = x.from.dist * Math.pow(0.7 / x.from.dist, e);
+    x.node.fill.color.setHex(sideCols[2]).lerp(DARK, smooth(0, 0.5, x.t));
+  } else {
+    cur.pitch = x.from.pitch;
+    cur.dist = x.from.dist * (1 - 0.35 * e);
+  }
+  post.uniforms.warp.value = Math.sin(Math.PI * Math.min(1, x.t / 0.8)) * 0.8;
+  post.uniforms.fade.value = smooth(x.box ? 0.6 : 0.25, 1, x.t);
+  if (x.t >= 1 && !x.gone) { x.gone = true; location.href = x.url; }
+}
+
+// coming back with the back button
+addEventListener("pageshow", (e) => {
+  if (!e.persisted) return;
+  // the camera is still down on the box: let it ease back out to where it was
+  opening = false; exit = null;
+  post.uniforms.warp.value = 0;
+  document.body.classList.remove("leaving");
+  repaint();
+});
+
+function burst(amount) {
+  glitch = Math.max(glitch, amount);
+  post.uniforms.tear.value.set(Math.random(), 0.01 + Math.random() * 0.05, (Math.random() - 0.5) * 0.12);
+}
+
+function nodeFromHash() {
+  const [a, b] = decodeURIComponent(location.hash.slice(1)).split("/");
+  const sec = root.children.find((s) => s.id === a);
+  if (!sec) return root;
+  return sec.children.find((i) => i.id === b) || sec;
+}
+
+// hud
+function drawHud() {
+  const crumb = $("crumb");
+  crumb.textContent = "";
+  // nothing at the overview; inside, an arrow back up and where you are
+  const chain = [];
+  for (let n = focus; n.parent; n = n.parent) chain.unshift(n);
+  if (chain.length) {
+    const up = document.createElement("button");
+    up.type = "button"; up.textContent = "←"; up.className = "up"; up.setAttribute("aria-label", "back");
+    up.addEventListener("click", () => focusNode(focus.parent));
+    crumb.append(up);
+  }
+  chain.forEach((n, i) => {
+    if (i) { const sp = document.createElement("span"); sp.className = "sep"; sp.textContent = "/"; crumb.append(sp); }
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = n.kind === "item" ? n.id : n.name;
+    if (n === focus) { b.className = "here"; b.setAttribute("aria-current", "true"); }
+    else b.addEventListener("click", () => focusNode(n));
+    crumb.append(b);
+  });
+  const open = $("open");
+  if (focus.kind !== "root" && focus.href) {
+    open.href = focus.href;
+    open.textContent = `open ${focus.name.length > 28 ? focus.id : focus.name} ${focus.ext ? "↗" : "→"}`;
+    if (focus.ext) { open.target = "_blank"; open.rel = "noopener noreferrer"; } else { open.removeAttribute("target"); open.removeAttribute("rel"); }
+    open.hidden = false;
+  } else open.hidden = true;
+}
+$("open").addEventListener("click", (e) => {
+  if (focus.ext || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  openNode(focus);
+});
+
+// picking
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+function pick(x, y) {
+  ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(pickables, false);
+  for (const h of hits) if (h.object.visible) return resolve(h.object.userData.node);
+  return null;
+}
+
+function setHover(n) {
+  if (n === hover) return;
+  hover = n;
+  repaint();
+}
+
+// pointer: one finger / mouse drag looks around, two fingers pinch, a press
+// that doesn't travel is a click
+const ptrs = new Map();
+let travel = 0, pinch0 = 0, dist0 = 0, mouse = null, mouseDirty = false;
+const spread = () => { const [a, b] = [...ptrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+
+canvas.addEventListener("pointerdown", (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) travel = 0;
+  else if (ptrs.size === 2) { pinch0 = spread(); dist0 = goal.dist; travel = 99; }
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse") { mouse = { x: e.clientX, y: e.clientY }; mouseDirty = true; }
+  const p = ptrs.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 1) {
+    travel += Math.abs(dx) + Math.abs(dy);
+    if (travel > 5) {
+      goal.yaw -= dx * 0.005;
+      goal.pitch = clamp(goal.pitch + dy * 0.004, 0.05, 1.45);
+    }
+  } else if (ptrs.size === 2 && pinch0 > 0) {
+    goal.dist = clamp(dist0 * pinch0 / Math.max(1, spread()), 10, maxDist);
+  }
+});
+const release = (e) => {
+  const had = ptrs.delete(e.pointerId);
+  if (had && e.type === "pointerup" && ptrs.size === 0 && travel <= 5) click(e.clientX, e.clientY, e.pointerType !== "mouse");
+};
+canvas.addEventListener("pointerup", release);
+canvas.addEventListener("pointercancel", release);
+canvas.addEventListener("pointerleave", () => { mouse = null; setHover(null); });
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  goal.dist = clamp(goal.dist * Math.exp(e.deltaY * 0.0012), 10, maxDist);
+}, { passive: false });
+
+function click(x, y, touch) {
+  const n = pick(x, y);
+  if (!n) return;
+  if (n.kind !== "item") focusNode(n);
+  else if (touch && focus !== n) focusNode(n);   // no hover on touch: first tap lights the box
+  else openNode(n);
+}
+
+// keyboard
+const held = new Set();
+addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (k.length === 1 && "wasd".includes(k)) { held.add(k); return; }
+  const inHud = e.target instanceof HTMLElement && e.target.closest(".hud");
+  if (k === "Escape" || k === "Backspace" || k === "ArrowUp") {
+    if (focus.parent) focusNode(focus.parent);
+  } else if (k === "Enter") {
+    if (inHud) return;   // a focused hud control handles its own enter
+    if (focus.kind === "root") focusNode(focus.children[0]);
+    else openNode(focus);
+  } else if (k === "ArrowDown") {
+    if (focus.children.length) focusNode(focus.children[0]);
+  } else if (k === "ArrowLeft" || k === "ArrowRight") {
+    const step = k === "ArrowRight" ? 1 : -1;
+    if (focus.kind === "root") focusNode(focus.children[step > 0 ? 0 : focus.children.length - 1]);
+    else {
+      const sib = focus.parent.children;
+      focusNode(sib[(sib.indexOf(focus) + step + sib.length) % sib.length]);
+    }
+  } else return;
+  e.preventDefault();
+});
+addEventListener("keyup", (e) => held.delete(e.key.toLowerCase()));
+addEventListener("blur", () => held.clear());
+addEventListener("hashchange", () => { const n = nodeFromHash(); if (n !== focus) focusNode(n); });
+
+// resize
+function resize() {
+  const w = innerWidth, h = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(w, h, false);
+  rt.setSize(Math.round(w * dpr), Math.round(h * dpr));
+  post.uniforms.px.value.set(1 / (w * dpr), 1 / (h * dpr));
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  const over = overviewDist();
+  maxDist = over * 1.5;
+  scene.fog.near = over * 1.3; scene.fog.far = over * 1.3 + 760;
+  if (focus) frame(focus);
+}
+addEventListener("resize", resize);
+
+// loop
+const clock = new THREE.Clock();
+const fwd = new THREE.Vector3(), right = new THREE.Vector3();
+let readAt = 0, frames = 0, fps = 0;
+
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
+
+  // fly the look-at point with wasd
+  if (held.size) {
+    fwd.set(-Math.sin(cur.yaw), 0, -Math.cos(cur.yaw));
+    right.set(Math.cos(cur.yaw), 0, -Math.sin(cur.yaw));
+    const sp = goal.dist * 0.9 * dt;
+    if (held.has("w")) goal.target.addScaledVector(fwd, sp);
+    if (held.has("s")) goal.target.addScaledVector(fwd, -sp);
+    if (held.has("d")) goal.target.addScaledVector(right, sp);
+    if (held.has("a")) goal.target.addScaledVector(right, -sp);
+  }
+
+  if (exit) stepExit(dt);
+  else {
+    const k = REDUCE ? 1 : 1 - Math.exp(-dt * 3.2);
+    cur.target.lerp(goal.target, k);
+    cur.yaw += (goal.yaw - cur.yaw) * k;
+    cur.pitch += (goal.pitch - cur.pitch) * k;
+    cur.dist += (goal.dist - cur.dist) * k;
+    post.uniforms.fade.value = Math.max(0, post.uniforms.fade.value - dt * 2.5);
+  }
+  const sway = REDUCE ? 0 : Math.sin(t * 0.13) * 0.035;
+  const yaw = cur.yaw + sway, cp = Math.cos(cur.pitch);
+  camera.position.set(
+    cur.target.x + cur.dist * Math.sin(yaw) * cp,
+    Math.max(1.5, cur.target.y + cur.dist * Math.sin(cur.pitch)),
+    cur.target.z + cur.dist * Math.cos(yaw) * cp);
+  camera.lookAt(cur.target);
+  camera.updateMatrixWorld();
+
+  // hover
+  if (mouseDirty && mouse && ptrs.size === 0 && !COARSE && !opening) {
+    mouseDirty = false;
+    const n = pick(mouse.x, mouse.y);
+    setHover(n);
+    canvas.style.cursor = n ? "pointer" : "crosshair";
+  }
+  if (ptrs.size && travel > 5) canvas.style.cursor = "grabbing";
+
+  const lit = activeItem();
+  beam.visible = !!lit && !exit;
+  if (lit) beam.position.set(lit.world.x, PLAT_H + lit.h, lit.world.z);
+
+  // labels face the camera; a new one snaps open and flickers
+  for (const l of labels) {
+    if (!l.shown) continue;
+    l.mesh.quaternion.copy(camera.quaternion);
+    if (l.t < 1) {
+      l.t = Math.min(1, l.t + dt / 0.22);
+      l.mesh.scale.set(1, Math.max(0.05, l.t), 1);
+      l.mat.opacity = Math.random() < 0.35 ? 0.3 : 1;
+    } else {
+      l.mesh.scale.set(1, 1, 1);
+      l.mat.opacity = !REDUCE && Math.random() < 0.02 ? 0.55 : 1;
+    }
+  }
+
+  rootSpin.rotation.y = t * 0.3; rootSpin.rotation.x = t * 0.17;
+  tickPackets(dt);
+
+  // stray tears
+  if (!REDUCE && Math.random() < dt * 0.12) burst(0.5 + Math.random() * 0.5);
+  glitch = Math.max(0, glitch - dt * 3.5);
+  post.uniforms.glitch.value = glitch;
+  post.uniforms.time.value = t;
+
+  renderer.setRenderTarget(rt);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.render(postScene, postCam);
+
+  frames++;
+  if (t - readAt > 0.5) {
+    fps = Math.round(frames / (t - readAt)); frames = 0; readAt = t;
+    const f = (v) => String(Math.round(v)).padStart(4, " ");
+    $("read").textContent = `x${f(camera.position.x)} y${f(camera.position.y)} z${f(camera.position.z)}\n${fps} fps`;
+  }
+}
+
+// boot
+(async () => {
+  const [tree] = await Promise.all([
+    loadTree(),
+    Promise.all(FONTS.map((f) => document.fonts.load(`40px "${f}"`))).catch(() => {}),
+  ]);
+  root = tree;
+  buildWorld(root);
+  focus = root;
+  resize();
+  focusNode(nodeFromHash(), true);
+  frame(focus);
+  if (REDUCE) { cur.target.copy(goal.target); cur.yaw = goal.yaw; cur.pitch = goal.pitch; cur.dist = goal.dist; }
+  renderer.setAnimationLoop(tick);
+  $("veil").classList.add("off");
+  window.NSExplore = { root, focusNode, cur, goal, camera };   // handle for the console
+})().catch((e) => {
+  console.error(e);
+  $("veil").innerHTML = 'this page failed to start — <a href="index.html" style="margin-left:8px">standard site</a>';
+});
+</script>
+</body>
+</html>
