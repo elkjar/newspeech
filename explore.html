@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>newspeech - explore</title>
+<meta name="description" content="the newspeech site as a 3d map.">
+<!-- experimental, unlisted: keep it out of search results -->
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  @font-face { font-family: "zxx-sans";  src: url("fonts/zxx-sans.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-bold";  src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-noise"; src: url("fonts/zxx-noise.woff2")        format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-camo";  src: url("fonts/zxx-camo.woff2")         format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-xed";   src: url("fonts/zxx-xed.woff2")          format("woff2"); font-display: swap; }
+
+  html, body { margin: 0; height: 100%; background: #050505; overflow: hidden; }
+  body {
+    color: #8a8a8a;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.08em;
+    -webkit-font-smoothing: antialiased;
+  }
+  canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+
+  .hud { position: fixed; z-index: 2; pointer-events: none; }
+  .hud a, .hud button { pointer-events: auto; }
+  .hud a, .hud button {
+    color: #e8e8e8; text-decoration: none; background: none; border: 0; padding: 0;
+    font: inherit; letter-spacing: inherit; cursor: pointer;
+  }
+  .hud a:hover, .hud button:hover { color: #fff; text-decoration: underline; }
+  .hud a:focus-visible, .hud button:focus-visible { outline: 1px solid #e8e8e8; outline-offset: 3px; }
+
+  #crumb { top: 18px; left: 20px; right: 150px; display: flex; flex-wrap: wrap; align-items: center; }
+  #crumb button { padding: 6px 0; }
+  #crumb .sep { padding: 0 8px; color: #555; }
+  #crumb .here { color: #8a8a8a; cursor: default; text-decoration: none; }
+  #exit { top: 18px; right: 20px; }
+  #exit a { display: block; padding: 6px 0; }
+  #keys { left: 20px; bottom: 18px; max-width: 46vw; color: #666; }
+  #read { right: 20px; bottom: 18px; text-align: right; color: #666; white-space: pre; font-variant-numeric: tabular-nums; }
+  #open {
+    left: 50%; bottom: 54px; transform: translateX(-50%);
+    pointer-events: auto;
+    padding: 11px 18px; border: 1px solid #e8e8e8; background: rgba(5,5,5,0.8);
+    color: #e8e8e8; text-decoration: none; white-space: nowrap;
+  }
+  #open:hover { background: #e8e8e8; color: #050505; text-decoration: none; }
+  #open[hidden] { display: none; }
+  #veil {
+    position: fixed; inset: 0; z-index: 3; display: grid; place-items: center;
+    background: #050505; color: #8a8a8a; text-align: center; padding: 24px;
+    transition: opacity 0.6s;
+  }
+  #veil.off { opacity: 0; pointer-events: none; }
+  #veil a { color: #e8e8e8; }
+
+  @media (max-width: 700px) {
+    #keys { max-width: 60vw; }
+    #read { display: none; }
+    #open { bottom: 70px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gl" aria-label="3d map of the newspeech site"></canvas>
+
+<nav class="hud" id="crumb" aria-label="path"></nav>
+<div class="hud" id="exit"><a href="index.html">standard site</a></div>
+<div class="hud" id="keys"></div>
+<div class="hud" id="read" aria-hidden="true"></div>
+<a class="hud" id="open" hidden></a>
+
+<div id="veil">loading</div>
+<noscript><p style="position:fixed;inset:0;display:grid;place-items:center;margin:0;color:#8a8a8a;z-index:4;background:#050505">this page needs javascript — <a href="index.html" style="color:#e8e8e8;margin-left:8px">standard site</a></p></noscript>
+
+<script type="module">
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+// Colours are authored as display values and the post pass writes them straight
+// out, so three's colour management stays off.
+THREE.ColorManagement.enabled = false;
+
+const FONTS = ["zxx-bold", "zxx-sans", "zxx-noise", "zxx-camo", "zxx-xed"];
+const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
+const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const COARSE = matchMedia("(pointer: coarse)").matches;
+const BG = 0x050505;
+const TAU = Math.PI * 2;
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const slug = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const hash01 = (s) => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return ((h >>> 0) % 1000) / 1000; };
+
+// ---------------------------------------------------------------------------
+// the site tree — fixed sections, plus news / visuals / tracks read from the
+// site's own files so new posts and visualizers show up without edits here
+// ---------------------------------------------------------------------------
+async function getText(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + " " + r.status);
+  return r.text();
+}
+
+async function loadTree() {
+  const [feed, newsIndex, vizIndex, ep] = await Promise.allSettled([
+    getText("feed.xml"), getText("news.html"), getText("visualizers.html"), getText("assets/ep/dead-ocean.json"),
+  ]);
+  const parse = (res, type) => res.status === "fulfilled" ? new DOMParser().parseFromString(res.value, type) : null;
+
+  // music: the EP and its tracks
+  let music = [{ name: "dead ocean", id: "dead-ocean", href: "dead-ocean.html", dek: "ep", img: "assets/ep/cover.jpg" }];
+  if (ep.status === "fulfilled") {
+    try {
+      const d = JSON.parse(ep.value);
+      const longest = Math.max(...d.tracks.map((t) => t.duration || 1));
+      const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+      music = d.tracks.map((t) => ({
+        name: t.title, id: t.slug, href: "dead-ocean.html", img: d.cover,
+        dek: `${d.title} · ${mmss(t.duration)} · ${t.bpm} bpm`,
+        height: 2 + 5 * (t.duration / longest),
+      }));
+    } catch {}
+  }
+
+  // news: titles and deks from the feed, thumbnails from the index page
+  let news = [{ name: "news", id: "news", href: "news.html", dek: "" }];
+  const feedDoc = parse(feed, "text/xml");
+  if (feedDoc && feedDoc.querySelector("item")) {
+    const thumbs = new Map();
+    const idx = parse(newsIndex, "text/html");
+    if (idx) idx.querySelectorAll('a[href^="news/"]').forEach((a) => {
+      const im = a.querySelector("img");
+      if (im && !thumbs.has(a.getAttribute("href"))) thumbs.set(a.getAttribute("href"), im.getAttribute("src"));
+    });
+    const items = [...feedDoc.querySelectorAll("item")];
+    news = items.map((it, i) => {
+      const txt = (q) => (it.querySelector(q)?.textContent || "").trim();
+      let href = txt("link");
+      try { href = new URL(href).pathname.replace(/^\//, ""); } catch {}
+      const date = new Date(txt("pubDate"));
+      return {
+        name: txt("title"), id: href.replace(/^news\//, "").replace(/\.html$/, ""), href,
+        dek: [isNaN(date) ? "" : date.toISOString().slice(0, 10), txt("description")].filter(Boolean).join(" · "),
+        img: thumbs.get(href) || null,
+        height: 1.6 + 5.4 * (1 - i / Math.max(1, items.length - 1)),   // newest tallest
+      };
+    });
+  }
+
+  // visuals: whatever visualizers.html lists
+  let visuals = [{ name: "visuals", id: "visuals", href: "visualizers.html", dek: "audio-reactive visual instruments", img: "og-visuals.png" }];
+  const vizDoc = parse(vizIndex, "text/html");
+  if (vizDoc) {
+    const links = [...vizDoc.querySelectorAll('a[href$=".html"]')].filter((a) => /^\d+-[\w-]+\.html$/.test(a.getAttribute("href")));
+    if (links.length) visuals = links.map((a) => {
+      const href = a.getAttribute("href");
+      const group = a.closest("section, ol, ul")?.previousElementSibling?.textContent?.trim().toLowerCase() || "";
+      return { name: a.textContent.trim(), id: a.textContent.trim(), href, img: "assets/og/" + href.replace(".html", ".jpg"), dek: group.length < 40 ? group : "" };
+    });
+  }
+
+  const sections = [
+    { name: "music", href: "dead-ocean.html", items: music },
+    { name: "news", href: "news.html", items: news },
+    { name: "sequence", href: "index.html#v-sequence", items: [
+      { name: "sequence", href: "index.html#v-sequence", dek: "the sequencer app", img: "og-sequence.png" },
+      { name: "readme", href: "sequencer-readme.html", dek: "sequencer-readme.html" },
+    ] },
+    { name: "tools", href: "tools.html", items: [
+      { name: "texture", href: "texture.html", dek: "a loop mangler in the browser", img: "og-texture.png" },
+      { name: "slice", href: "slice.html", dek: "a pattern slicer", img: "og-slice.png" },
+      { name: "decay", href: "decay.html", dek: "disintegration loops", img: "og-decay.png" },
+      { name: "drone", href: "drone.html", dek: "a breathing drone instrument", img: "og-drone.png" },
+      { name: "glitch", href: "glitch.html", dek: "audio destruction", img: "og-glitch.png" },
+      { name: "stretch", href: "stretch.html", dek: "sampler timestretch", img: "og-stretch.png" },
+      { name: "samples", href: "samples.html", dek: "the newspeech sample library", img: "og-samples.png" },
+    ] },
+    { name: "visuals", href: "visualizers.html", items: visuals },
+    { name: "plugins", href: "plugins.html", items: [
+      { name: "vibe", href: "plugins.html#vibe", dek: "tape loop, tempo-synced repeat, reverb", img: "assets/plugins/vibe.png" },
+      { name: "saturate", href: "plugins.html#saturate", dek: "drive into a squelching filter", img: "assets/plugins/saturate.png" },
+      { name: "slice", href: "plugins.html#slice", dek: "hide messages in music", img: "assets/plugins/slice.png" },
+      { name: "glitch", href: "plugins.html#glitch", dek: "audio destruction masquerading as a step sequencer", img: "assets/plugins/glitch.png" },
+    ] },
+    { name: "about", href: "about.html", items: [
+      { name: "about", href: "about.html", dek: "" },
+    ] },
+    { name: "follow", href: null, items: [
+      { name: "instagram", href: "https://www.instagram.com/newspeechsound", ext: true, dek: "@newspeechsound" },
+      { name: "youtube", href: "https://www.youtube.com/@newspeechsound", ext: true, dek: "@newspeechsound" },
+      { name: "discord", href: "https://discord.gg/GgGSXK3WT", ext: true, dek: "discord.gg/GgGSXK3WT" },
+    ] },
+  ];
+
+  const root = { kind: "root", name: "newspeech", id: "", href: "index.html", children: [] };
+  for (const s of sections) {
+    const sec = { kind: "section", name: s.name, id: slug(s.name), href: s.href, parent: root, children: [] };
+    const seen = new Set();
+    for (const it of s.items) {
+      let id = slug(it.id || it.name) || "item";
+      while (seen.has(id)) id += "-2";
+      seen.add(id);
+      sec.children.push({ kind: "item", ...it, id, parent: sec, children: [] });
+    }
+    root.children.push(sec);
+  }
+  return root;
+}
+
+const pathOf = (n) => n.kind === "root" ? "" : n.kind === "section" ? n.id : n.parent.id + "/" + n.id;
+
+// ---------------------------------------------------------------------------
+// renderer
+// ---------------------------------------------------------------------------
+const canvas = $("gl");
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
+} catch (e) {
+  $("veil").innerHTML = 'webgl is not available in this browser — <a href="index.html" style="margin-left:8px">standard site</a>';
+  throw e;
+}
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+renderer.setClearColor(BG, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(BG, 200, 900);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 4000);
+const TAN = Math.tan((camera.fov * Math.PI) / 360);
+
+const rt = new THREE.WebGLRenderTarget(2, 2, { samples: 4, depthBuffer: true });
+
+// post pass: everything to luminance, then lens bend, chroma fringe, halation,
+// scanlines, grain, vignette and the occasional horizontal tear
+const post = new THREE.ShaderMaterial({
+  depthTest: false, depthWrite: false,
+  uniforms: {
+    t: { value: rt.texture }, time: { value: 0 }, glitch: { value: 0 },
+    tear: { value: new THREE.Vector3(0.5, 0.03, 0.02) }, px: { value: new THREE.Vector2(1, 1) },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    precision highp float;
+    varying vec2 vUv;
+    uniform sampler2D t; uniform float time; uniform float glitch; uniform vec3 tear; uniform vec2 px;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    float tap(vec2 uv){ return dot(texture2D(t, uv).rgb, vec3(0.299, 0.587, 0.114)); }
+    void main(){
+      vec2 c = vUv - 0.5;
+      float r2 = dot(c, c);
+      vec2 uv = 0.5 + c * (0.965 + 0.07 * r2);
+      float band = step(abs(vUv.y - tear.x), tear.y) * glitch;
+      uv.x += band * tear.z;
+      float row = floor(vUv.y * 90.0);
+      uv.x += glitch * 0.006 * (hash(vec2(row, floor(time * 30.0))) - 0.5);
+      float ca = 0.0007 + 0.007 * r2 + glitch * 0.006 + band * 0.012;
+      vec3 col = vec3(tap(uv + vec2(ca, 0.0)), tap(uv), tap(uv - vec2(ca, 0.0)));
+      float glow = 0.0;
+      for (int i = 0; i < 8; i++) {
+        float a = float(i) * 0.7854;
+        vec2 d = vec2(cos(a), sin(a));
+        glow += tap(uv + d * px * 3.0) + tap(uv + d * px * 9.0);
+      }
+      col += glow / 16.0 * 0.5;
+      col *= 0.86 + 0.14 * step(0.34, fract(gl_FragCoord.y / 3.0));
+      float roll = smoothstep(0.07, 0.0, abs(fract(time * 0.06) - (1.0 - vUv.y)));
+      col += roll * 0.02;
+      col += (hash(gl_FragCoord.xy + fract(time) * 100.0) - 0.5) * 0.07;
+      col *= mix(1.0, 0.3, smoothstep(0.35, 0.95, length(c) * 1.25));
+      gl_FragColor = vec4(max(col, 0.0), 1.0);
+    }`,
+});
+const postScene = new THREE.Scene();
+const postCam = new THREE.Camera();
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post);
+quad.frustumCulled = false;
+postScene.add(quad);
+
+// ---------------------------------------------------------------------------
+// text: canvas-texture labels with per-character font swaps (each character
+// keeps the cell width of its base font, so swapping never shifts the layout)
+// ---------------------------------------------------------------------------
+const hot = new Set();        // labels currently scrambling
+const idleLabels = [];        // labels that get the occasional stray swap
+
+class Label {
+  constructor(text, { px = 64, font = "zxx-bold", worldH = 1, maxW = Infinity, tint = 0xffffff } = {}) {
+    this.font = font; this.px = px;
+    const c = this.canvas = document.createElement("canvas");
+    const g = this.g = c.getContext("2d");
+    g.font = `${px}px "${font}"`;
+    const scale = worldH / (px * 1.4);
+    let chars = [...text];
+    const width = (arr) => arr.reduce((a, ch) => a + Math.ceil(g.measureText(ch).width), 0) + 8;
+    if (width(chars) * scale > maxW) {
+      while (chars.length > 1 && width([...chars, "…"]) * scale > maxW) chars.pop();
+      chars.push("…");
+    }
+    this.chars = chars;
+    this.cells = chars.map((ch) => Math.ceil(g.measureText(ch).width));
+    this.fonts = chars.map(() => font);
+    c.width = Math.max(2, width(chars));
+    c.height = Math.ceil(px * 1.4);
+    this.tex = new THREE.CanvasTexture(c);
+    this.tex.anisotropy = 8;
+    this.w = worldH * c.width / c.height;
+    const geo = new THREE.PlaneGeometry(this.w, worldH);
+    geo.translate(this.w / 2, 0, 0);
+    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, color: tint, transparent: true, depthWrite: false });
+    this.mesh = new THREE.Mesh(geo, this.mat);
+    this.draw();
+  }
+  draw() {
+    const { g, canvas: c } = this;
+    g.clearRect(0, 0, c.width, c.height);
+    g.fillStyle = "#fff"; g.textBaseline = "middle"; g.textAlign = "center";
+    let x = 4;
+    this.chars.forEach((ch, i) => {
+      g.font = `${this.px}px "${this.fonts[i]}"`;
+      g.fillText(ch, x + this.cells[i] / 2, c.height / 2);
+      x += this.cells[i];
+    });
+    this.tex.needsUpdate = true;
+  }
+  scramble(ms = 450, density = 0.6) {
+    if (REDUCE) return;
+    this.hotUntil = performance.now() + ms; this.density = density;
+    hot.add(this);
+  }
+}
+
+setInterval(() => {
+  const now = performance.now();
+  for (const l of hot) {
+    if (now < l.hotUntil) {
+      l.fonts = l.fonts.map(() => Math.random() < l.density ? FONTS[(Math.random() * FONTS.length) | 0] : l.font);
+    } else {
+      l.fonts = l.fonts.map(() => l.font);
+      hot.delete(l);
+    }
+    l.draw();
+  }
+  if (idleLabels.length && Math.random() < 0.12) idleLabels[(Math.random() * idleLabels.length) | 0].scramble(220, 0.18);
+}, 70);
+
+// ---------------------------------------------------------------------------
+// world
+// ---------------------------------------------------------------------------
+const R = 150;                               // radius of the section arc
+const CENTER = new THREE.Vector3(0, 0, -75); // what the overview looks at
+const PLAT_H = 1.2;
+const CELL_W = 7.4, CELL_D = 5.4, BLOCK_W = 4.4, BLOCK_D = 2.3;
+const PANEL_W = 18, PANEL_H = PANEL_W * 600 / 1280;
+
+const pickables = [];
+const sideCols = [0x111111, 0x2c2c2c, 0xdadada];
+const edgeCols = [0xa8a8a8, 0xffffff, 0xffffff];
+const topCols = [0xc8c8c8, 0xffffff, 0xffffff];
+
+function terrainH(x, z) {
+  const m = smooth(240, 440, Math.hypot(x - CENTER.x, z - CENTER.z));
+  if (m <= 0) return 0;
+  const n = Math.sin(x * 0.021 + 1.3) * Math.cos(z * 0.017) + 0.5 * Math.sin(x * 0.047 + z * 0.039) + 0.25 * Math.sin(x * 0.11 - z * 0.09);
+  return m * (18 + 46 * Math.abs(n));
+}
+
+function buildGround() {
+  const pts = [];
+  const STEP = 12, N = 56, SUB = 2;   // lines every 12 units, each cut in 6-unit pieces to follow the ridges
+  const x0 = CENTER.x - STEP * N, z0 = CENTER.z - STEP * N;
+  for (let i = 0; i <= 2 * N; i++) {
+    for (let j = 0; j < 2 * N * SUB; j++) {
+      const a = j * STEP / SUB, b = (j + 1) * STEP / SUB, f = i * STEP;
+      pts.push(x0 + a, terrainH(x0 + a, z0 + f), z0 + f, x0 + b, terrainH(x0 + b, z0 + f), z0 + f);
+      pts.push(x0 + f, terrainH(x0 + f, z0 + a), z0 + a, x0 + f, terrainH(x0 + f, z0 + b), z0 + b);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+  scene.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x3a3a3a })));
+}
+
+function boxWithEdges(w, h, d, fill, edge) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  geo.translate(0, h / 2, 0);
+  const mesh = new THREE.Mesh(geo, fill);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: edge }));
+  mesh.add(edges);
+  mesh.userData.edges = edges;
+  return mesh;
+}
+
+let rootSpin;
+const traces = [];   // one radial line per section, for the packets to ride
+
+function buildWorld(root) {
+  buildGround();
+
+  // root: pedestal, a turning wire solid, and the name on the ground in front
+  const ped = boxWithEdges(14, PLAT_H, 14, new THREE.MeshBasicMaterial({ color: 0x080808 }), 0x8a8a8a);
+  ped.userData.node = root; pickables.push(ped);
+  scene.add(ped);
+  rootSpin = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(4.6, 0)),
+    new THREE.LineBasicMaterial({ color: 0xffffff }));
+  rootSpin.position.y = 9;
+  scene.add(rootSpin);
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+  hit.position.y = 9; hit.userData.node = root; pickables.push(hit);
+  scene.add(hit);
+  root.label = new Label(root.name, { px: 96, worldH: 5 });
+  root.label.mesh.rotation.x = -Math.PI / 2;
+  root.label.mesh.position.set(-root.label.w / 2, 0.08, 12);
+  root.label.mesh.userData.node = root; pickables.push(root.label.mesh);
+  scene.add(root.label.mesh);
+  idleLabels.push(root.label);
+  root.world = new THREE.Vector3(0, 0, 0);
+
+  // sections along an arc, each given as much of it as its platform is wide
+  const GAP = 12;
+  for (const s of root.children) {
+    const n = s.children.length;
+    s.cols = n <= 4 ? n : Math.ceil(Math.sqrt(n * 1.8));
+    s.rows = Math.ceil(n / s.cols);
+    s.W = Math.max(14, s.cols * CELL_W + 2);
+    s.D = s.rows * CELL_D + 1.5;
+  }
+  const total = root.children.reduce((a, s) => a + s.W + GAP, 0);
+  let acc = -total / 2;
+  const tracePts = [];
+  root.children.forEach((s) => {
+    const a = (acc + GAP / 2 + s.W / 2) / R;
+    acc += s.W + GAP;
+    s.yaw = -a;
+    const dir = new THREE.Vector3(Math.sin(a), 0, -Math.cos(a));
+    const grp = s.group = new THREE.Group();
+    grp.position.copy(dir).multiplyScalar(R);
+    grp.rotation.y = -a;
+    scene.add(grp);
+    s.world = grp.position.clone();
+
+    const plat = s.plat = boxWithEdges(s.W, PLAT_H, s.D, new THREE.MeshBasicMaterial({ color: 0x080808 }), 0x808080);
+    plat.userData.node = s; pickables.push(plat);
+    grp.add(plat);
+
+    s.label = new Label(s.name, { px: 96, worldH: 6.5 });
+    s.label.mesh.rotation.x = -Math.PI / 2;
+    s.label.mesh.position.set(-s.W / 2, 0.08, s.D / 2 + 4.6);
+    s.label.mesh.userData.node = s; pickables.push(s.label.mesh);
+    grp.add(s.label.mesh);
+    idleLabels.push(s.label);
+
+    const p0 = dir.clone().multiplyScalar(9), p1 = dir.clone().multiplyScalar(R - s.D / 2 - 9);
+    p0.y = p1.y = 0.06;
+    traces.push([p0, p1]);
+    tracePts.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
+
+    s.children.forEach((it, i) => {
+      const col = i % s.cols, row = Math.floor(i / s.cols);
+      const h = it.h = it.height || 1.6 + 5.2 * hash01(s.id + it.id);
+      const x = -s.W / 2 + 1 + CELL_W * (col + 0.5);
+      const z = -s.D / 2 + 0.75 + CELL_D * row + BLOCK_D / 2 + 0.4;
+      it.side = new THREE.MeshBasicMaterial({ color: sideCols[0] });
+      it.top = new THREE.MeshBasicMaterial({ color: sideCols[0] });
+      const m = it.side;
+      const blk = it.mesh = boxWithEdges(BLOCK_W, h, BLOCK_D, [m, m, it.top, m, m, m], edgeCols[0]);
+      blk.position.set(x, PLAT_H, z);
+      blk.userData.node = it; pickables.push(blk);
+      grp.add(blk);
+
+      it.label = new Label(it.id, { px: 40, font: "zxx-sans", worldH: 1, maxW: CELL_W - 0.4, tint: 0x9a9a9a });
+      it.label.mesh.rotation.x = -Math.PI / 2;
+      it.label.mesh.position.set(x - BLOCK_W / 2, PLAT_H + 0.05, z + BLOCK_D / 2 + 0.85);
+      grp.add(it.label.mesh);
+    });
+    grp.updateMatrixWorld(true);
+    for (const it of s.children) it.world = it.mesh.getWorldPosition(new THREE.Vector3());
+  });
+
+  // ring around the root joining the traces
+  for (let i = 0; i < 64; i++) {
+    const a = (i / 64) * TAU, b = ((i + 1) / 64) * TAU;
+    tracePts.push(Math.sin(a) * 9, 0.06, Math.cos(a) * 9, Math.sin(b) * 9, 0.06, Math.cos(b) * 9);
+  }
+  const tg = new THREE.BufferGeometry();
+  tg.setAttribute("position", new THREE.Float32BufferAttribute(tracePts, 3));
+  scene.add(new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ color: 0x777777 })));
+}
+
+// packets: bright points riding the traces between the root and the sections
+const PACKETS = 40;
+const packets = [];
+const packetGeo = new THREE.BufferGeometry();
+packetGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(PACKETS * 3).fill(-9999), 3));
+const packetPts = new THREE.Points(packetGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 3, sizeAttenuation: false, fog: false }));
+packetPts.frustumCulled = false;
+scene.add(packetPts);
+
+function tickPackets(dt) {
+  if (!REDUCE && packets.length < PACKETS && Math.random() < dt * 4) {
+    packets.push({ tr: (Math.random() * traces.length) | 0, t: 0, v: 0.25 + Math.random() * 0.5, back: Math.random() < 0.3 });
+  }
+  const pos = packetGeo.attributes.position;
+  for (let i = 0; i < PACKETS; i++) {
+    const p = packets[i];
+    if (!p) { pos.setXYZ(i, 0, -9999, 0); continue; }
+    p.t += p.v * dt;
+    const [a, b] = traces[p.tr];
+    const k = p.back ? 1 - p.t : p.t;
+    pos.setXYZ(i, a.x + (b.x - a.x) * k, 0.25, a.z + (b.z - a.z) * k);
+  }
+  for (let i = packets.length - 1; i >= 0; i--) if (packets[i].t >= 1) packets.splice(i, 1);
+  pos.needsUpdate = true;
+}
+
+// beam: a column of light dropped on the hovered or selected block
+const beam = (() => {
+  const H = 110;
+  const geo = new THREE.BoxGeometry(BLOCK_W, H, BLOCK_D, 1, 8, 1);
+  geo.translate(0, H / 2, 0);
+  const col = [];
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) { const v = Math.pow(1 - p.getY(i) / H, 2.2) * 0.11; col.push(v, v, v); }
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+  }));
+  m.visible = false;
+  scene.add(m);
+  return m;
+})();
+
+// ---------------------------------------------------------------------------
+// the glass panel that opens over a selected block
+// ---------------------------------------------------------------------------
+const panel = (() => {
+  const c = document.createElement("canvas");
+  c.width = 1280; c.height = 600;
+  const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 8;
+  const geo = new THREE.PlaneGeometry(PANEL_W, PANEL_H, 32, 1);
+  const RC = 26, p = geo.attributes.position;   // bend it round the viewer
+  for (let i = 0; i < p.count; i++) {
+    const a = p.getX(i) / RC;
+    p.setX(i, Math.sin(a) * RC);
+    p.setZ(i, (1 - Math.cos(a)) * RC);
+  }
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  mesh.renderOrder = 10;
+  mesh.visible = false;
+  mesh.userData.panel = true;
+  pickables.push(mesh);
+  scene.add(mesh);
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+  const leader = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, fog: false }));
+  leader.visible = false; leader.frustumCulled = false;
+  scene.add(leader);
+  return { c, g: c.getContext("2d"), tex, mesh, leader, t: 0, node: null, hotUntil: 0 };
+})();
+
+function wrap(g, text, maxW) {
+  const lines = [];
+  let line = "";
+  for (const w of text.split(/\s+/)) {
+    const tryLine = line ? line + " " + w : w;
+    if (g.measureText(tryLine).width > maxW && line) { lines.push(line); line = w; } else line = tryLine;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function drawPanel() {
+  const n = panel.node;
+  if (!n) return;
+  const { g, c } = panel, W = c.width, H = c.height;
+  const scrambling = performance.now() < panel.hotUntil;
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = "rgba(6,6,6,0.8)"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = 2; g.strokeRect(1, 1, W - 2, H - 2);
+  g.strokeStyle = "#fff"; g.lineWidth = 4;
+  for (const [x, y, sx, sy] of [[2, 2, 1, 1], [W - 2, 2, -1, 1], [2, H - 2, 1, -1], [W - 2, H - 2, -1, -1]]) {
+    g.beginPath(); g.moveTo(x + 34 * sx, y); g.lineTo(x, y); g.lineTo(x, y + 34 * sy); g.stroke();
+  }
+  g.textBaseline = "middle"; g.textAlign = "left";
+  g.font = `22px ${MONO}`; g.fillStyle = "#8a8a8a";
+  g.fillText("/ newspeech / " + pathOf(n).replace("/", " / "), 36, 40);
+  g.fillStyle = "rgba(255,255,255,0.25)"; g.fillRect(36, 66, W - 72, 1);
+
+  let tx = 40;
+  const img = n.imgEl;
+  if (img) {
+    const bx = 40, by = 96, bw = 560, bh = 294;
+    const s = Math.max(bw / img.naturalWidth, bh / img.naturalHeight);
+    const sw = bw / s, sh = bh / s;
+    g.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, bx, by, bw, bh);
+    g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = 2; g.strokeRect(bx, by, bw, bh);
+    tx = 640;
+  }
+  const tw = W - tx - 40;
+
+  // title, per-character fonts while the panel is opening
+  const px = n.name.length > 18 ? 40 : 62;
+  g.font = `${px}px "zxx-bold"`; g.fillStyle = "#fff";
+  let y = 96 + px * 0.6;
+  for (const line of wrap(g, n.name, tw).slice(0, 4)) {
+    let x = tx;
+    for (const ch of line) {
+      g.font = `${px}px "zxx-bold"`;
+      const cw = g.measureText(ch).width;
+      if (scrambling && Math.random() < 0.5) g.font = `${px}px "${FONTS[(Math.random() * FONTS.length) | 0]}"`;
+      g.textAlign = "center"; g.fillText(ch, x + cw / 2, y); g.textAlign = "left";
+      x += cw;
+    }
+    y += px * 1.15;
+  }
+  y += 10;
+  if (n.dek) {
+    g.font = `24px ${MONO}`; g.fillStyle = "#b4b4b4";
+    for (const line of wrap(g, n.dek, tw).slice(0, 6)) { g.fillText(line, tx, y); y += 34; }
+  }
+  // open
+  const label = n.ext ? "open ↗" : "open →";
+  g.font = `24px ${MONO}`;
+  const bw2 = g.measureText(label).width + 44, by2 = H - 108;
+  g.fillStyle = "#e8e8e8"; g.fillRect(tx, by2, bw2, 54);
+  g.fillStyle = "#050505"; g.fillText(label, tx + 22, by2 + 28);
+  g.font = `20px ${MONO}`; g.fillStyle = "#6a6a6a";
+  g.fillText(n.href.replace(/^https?:\/\//, ""), tx + bw2 + 22, by2 + 28);
+  panel.tex.needsUpdate = true;
+}
+
+function showPanel(n) {
+  panel.node = n;
+  if (!n) { panel.mesh.visible = panel.leader.visible = false; return; }
+  const top = PLAT_H + n.h;
+  panel.mesh.position.set(n.world.x, top + 3 + PANEL_H / 2, n.world.z);
+  panel.mesh.rotation.set(-0.3, n.parent.yaw, 0, "YXZ");
+  const lp = panel.leader.geometry.attributes.position;
+  lp.setXYZ(0, n.world.x, top, n.world.z);
+  lp.setXYZ(1, n.world.x, top + 3, n.world.z);
+  lp.needsUpdate = true;
+  panel.mesh.visible = panel.leader.visible = true;
+  panel.t = REDUCE ? 1 : 0;
+  panel.hotUntil = REDUCE ? 0 : performance.now() + 420;
+  drawPanel();
+}
+
+// ---------------------------------------------------------------------------
+// thumbnails load when a section is first approached
+// ---------------------------------------------------------------------------
+function loadImages(sec) {
+  if (sec.imagesAsked) return;
+  sec.imagesAsked = true;
+  for (const it of sec.children) {
+    if (!it.img) continue;
+    const im = new Image();
+    if (/^https?:/.test(it.img)) im.crossOrigin = "anonymous";
+    im.onload = () => {
+      const tex = new THREE.Texture(im);
+      tex.anisotropy = 4; tex.needsUpdate = true;
+      it.imgEl = im;
+      it.top.map = tex; it.top.needsUpdate = true;
+      paint(it);
+      if (panel.node === it) drawPanel();
+    };
+    im.src = it.img;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// focus, hover, camera
+// ---------------------------------------------------------------------------
+let root, focus, hover = null, hoverPanel = false, glitch = 0;
+const cur = { target: CENTER.clone(), yaw: 0.7, pitch: 1.1, dist: 700 };
+const goal = { target: CENTER.clone(), yaw: 0, pitch: 0.55, dist: 200 };
+let maxDist = 600;
+
+const fit = (w) => w / (2 * TAN * camera.aspect);
+
+function paint(n) {
+  if (!n) return;
+  const st = n === focus ? 2 : n === hover ? 1 : 0;
+  if (n.kind === "item") {
+    n.side.color.setHex(sideCols[st]);
+    n.top.color.setHex(n.top.map ? topCols[st] : sideCols[st]);
+    n.mesh.userData.edges.material.color.setHex(edgeCols[st]);
+    n.label.mat.color.setHex(st ? 0xffffff : 0x9a9a9a);
+  } else if (n.kind === "section") {
+    n.plat.userData.edges.material.color.setHex(st ? 0xffffff : 0x808080);
+  }
+}
+
+function frame(n) {
+  if (n.kind === "root") {
+    goal.target.copy(CENTER); goal.yaw = 0; goal.pitch = 0.55; goal.dist = Math.max(170, fit(310));
+  } else if (n.kind === "section") {
+    // aim a little toward the root so the name on the ground stays in frame
+    goal.target.set(n.world.x + Math.sin(n.yaw) * 5, 2, n.world.z + Math.cos(n.yaw) * 5); goal.yaw = n.yaw; goal.pitch = 0.7;
+    goal.dist = Math.max(48, fit(n.W + 14) * 1.3, (n.D + 26) / (2 * TAN));
+  } else {
+    goal.target.set(n.world.x, PLAT_H + n.h + 4.2, n.world.z); goal.yaw = n.parent.yaw; goal.pitch = 0.5;
+    goal.dist = Math.max(27, fit(PANEL_W * 1.2));
+  }
+}
+
+function focusNode(n, quiet) {
+  const prev = focus;
+  focus = n;
+  paint(prev); paint(n);
+  if (n.kind !== "root") loadImages(n.kind === "section" ? n : n.parent);
+  frame(n);
+  showPanel(n.kind === "item" ? n : null);
+  if (n.label && n.kind !== "item") n.label.scramble();
+  if (!quiet && !REDUCE) burst(0.45);
+  drawHud();
+  history.replaceState(null, "", pathOf(n) ? "#" + pathOf(n) : location.pathname + location.search);
+}
+
+function openNode(n) {
+  if (!n || !n.href) return;
+  if (n.ext) { window.open(n.href, "_blank", "noopener"); return; }
+  if (REDUCE) { location.href = n.href; return; }
+  burst(1);
+  setTimeout(() => { location.href = n.href; }, 170);
+}
+
+function burst(amount) {
+  glitch = Math.max(glitch, amount);
+  post.uniforms.tear.value.set(Math.random(), 0.01 + Math.random() * 0.05, (Math.random() - 0.5) * 0.12);
+}
+
+function nodeFromHash() {
+  const [a, b] = decodeURIComponent(location.hash.slice(1)).split("/");
+  const sec = root.children.find((s) => s.id === a);
+  if (!sec) return root;
+  return sec.children.find((i) => i.id === b) || sec;
+}
+
+// hud
+function drawHud() {
+  const crumb = $("crumb");
+  crumb.textContent = "";
+  const chain = [];
+  for (let n = focus; n; n = n.parent) chain.unshift(n);
+  chain.forEach((n, i) => {
+    if (i) { const s = document.createElement("span"); s.className = "sep"; s.textContent = "/"; crumb.append(s); }
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = n.kind === "item" ? n.id : n.name;
+    if (n === focus) { b.className = "here"; b.setAttribute("aria-current", "true"); }
+    else b.addEventListener("click", () => focusNode(n));
+    crumb.append(b);
+  });
+  const open = $("open");
+  if (focus.kind !== "root" && focus.href) {
+    open.href = focus.href;
+    open.textContent = `open ${focus.name.length > 28 ? focus.id : focus.name} ${focus.ext ? "↗" : "→"}`;
+    if (focus.ext) { open.target = "_blank"; open.rel = "noopener noreferrer"; } else { open.removeAttribute("target"); open.removeAttribute("rel"); }
+    open.hidden = false;
+  } else open.hidden = true;
+}
+$("keys").textContent = COARSE
+  ? "drag look · pinch zoom · tap select · tap again open"
+  : "drag look · scroll zoom · wasd move · click select · arrows step · enter open · esc back";
+
+// picking
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+function pick(x, y) {
+  ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(pickables, false);
+  for (const h of hits) if (h.object.visible) return h.object.userData;
+  return null;
+}
+
+function setHover(n, onPanel) {
+  hoverPanel = !!onPanel;
+  if (n === hover) return;
+  const prev = hover;
+  hover = n;
+  paint(prev); paint(n);
+  if (n && n.label) n.label.scramble(n.kind === "item" ? 300 : 450);
+}
+
+// pointer: one finger / mouse drag looks around, two fingers pinch, a press
+// that doesn't travel is a click
+const ptrs = new Map();
+let travel = 0, pinch0 = 0, dist0 = 0, mouse = null, mouseDirty = false;
+const spread = () => { const [a, b] = [...ptrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+
+canvas.addEventListener("pointerdown", (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) travel = 0;
+  else if (ptrs.size === 2) { pinch0 = spread(); dist0 = goal.dist; travel = 99; }
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse") { mouse = { x: e.clientX, y: e.clientY }; mouseDirty = true; }
+  const p = ptrs.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 1) {
+    travel += Math.abs(dx) + Math.abs(dy);
+    if (travel > 5) {
+      goal.yaw -= dx * 0.005;
+      goal.pitch = clamp(goal.pitch + dy * 0.004, 0.05, 1.45);
+    }
+  } else if (ptrs.size === 2 && pinch0 > 0) {
+    goal.dist = clamp(dist0 * pinch0 / Math.max(1, spread()), 10, maxDist);
+  }
+});
+const release = (e) => {
+  const had = ptrs.delete(e.pointerId);
+  if (had && e.type === "pointerup" && ptrs.size === 0 && travel <= 5) click(e.clientX, e.clientY);
+};
+canvas.addEventListener("pointerup", release);
+canvas.addEventListener("pointercancel", release);
+canvas.addEventListener("pointerleave", () => { mouse = null; setHover(null, false); });
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  goal.dist = clamp(goal.dist * Math.exp(e.deltaY * 0.0012), 10, maxDist);
+}, { passive: false });
+
+function click(x, y) {
+  const hit = pick(x, y);
+  if (!hit) return;
+  if (hit.panel) openNode(focus);
+  else if (hit.node) {
+    if (hit.node === focus && hit.node.kind === "item") openNode(hit.node);
+    else focusNode(hit.node);
+  }
+}
+
+// keyboard
+const held = new Set();
+addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if ("wasd".includes(k) && k.length === 1) { held.add(k); return; }
+  const inHud = e.target instanceof HTMLElement && e.target.closest(".hud");
+  if (k === "Escape" || k === "Backspace" || k === "ArrowUp") {
+    if (focus.parent) focusNode(focus.parent);
+  } else if (k === "Enter") {
+    if (inHud) return;   // a focused hud control handles its own enter
+    if (focus.kind === "root") focusNode(focus.children[0]);
+    else openNode(focus);
+  } else if (k === "ArrowDown") {
+    if (focus.children.length) focusNode(focus.children[0]);
+  } else if (k === "ArrowLeft" || k === "ArrowRight") {
+    const step = k === "ArrowRight" ? 1 : -1;
+    if (focus.kind === "root") focusNode(focus.children[step > 0 ? 0 : focus.children.length - 1]);
+    else {
+      const sib = focus.parent.children;
+      focusNode(sib[(sib.indexOf(focus) + step + sib.length) % sib.length]);
+    }
+  } else return;
+  e.preventDefault();
+});
+addEventListener("keyup", (e) => held.delete(e.key.toLowerCase()));
+addEventListener("blur", () => held.clear());
+addEventListener("hashchange", () => { const n = nodeFromHash(); if (n !== focus) focusNode(n); });
+
+// resize
+function resize() {
+  const w = innerWidth, h = innerHeight, dpr = Math.min(devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(w, h, false);
+  rt.setSize(Math.round(w * dpr), Math.round(h * dpr));
+  post.uniforms.px.value.set(1 / (w * dpr), 1 / (h * dpr));
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  const over = Math.max(170, fit(310));
+  maxDist = over * 1.5;
+  scene.fog.near = over * 1.3; scene.fog.far = over * 1.3 + 760;
+  if (focus) frame(focus);
+}
+addEventListener("resize", resize);
+
+// loop
+const clock = new THREE.Clock();
+const fwd = new THREE.Vector3(), right = new THREE.Vector3();
+let readAt = 0, frames = 0, fps = 0;
+
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
+
+  // fly the look-at point with wasd
+  if (held.size) {
+    fwd.set(-Math.sin(cur.yaw), 0, -Math.cos(cur.yaw));
+    right.set(Math.cos(cur.yaw), 0, -Math.sin(cur.yaw));
+    const sp = goal.dist * 0.9 * dt;
+    if (held.has("w")) goal.target.addScaledVector(fwd, sp);
+    if (held.has("s")) goal.target.addScaledVector(fwd, -sp);
+    if (held.has("d")) goal.target.addScaledVector(right, sp);
+    if (held.has("a")) goal.target.addScaledVector(right, -sp);
+  }
+
+  const k = REDUCE ? 1 : 1 - Math.exp(-dt * 3.2);
+  cur.target.lerp(goal.target, k);
+  cur.yaw += (goal.yaw - cur.yaw) * k;
+  cur.pitch += (goal.pitch - cur.pitch) * k;
+  cur.dist += (goal.dist - cur.dist) * k;
+  const sway = REDUCE ? 0 : Math.sin(t * 0.13) * 0.035;
+  const yaw = cur.yaw + sway, cp = Math.cos(cur.pitch);
+  camera.position.set(
+    cur.target.x + cur.dist * Math.sin(yaw) * cp,
+    Math.max(1.5, cur.target.y + cur.dist * Math.sin(cur.pitch)),
+    cur.target.z + cur.dist * Math.cos(yaw) * cp);
+  camera.lookAt(cur.target);
+
+  // sections come into range: fetch their thumbnails
+  for (const s of root.children) if (!s.imagesAsked && camera.position.distanceTo(s.world) < 120) loadImages(s);
+
+  // hover
+  if (mouseDirty && mouse && ptrs.size === 0 && !COARSE) {
+    mouseDirty = false;
+    const hit = pick(mouse.x, mouse.y);
+    setHover(hit && hit.node && hit.node.kind !== "root" ? hit.node : null, hit && hit.panel);
+    canvas.style.cursor = hit ? "pointer" : "crosshair";
+  }
+  if (ptrs.size && travel > 5) canvas.style.cursor = "grabbing";
+
+  const lit = hover && hover.kind === "item" ? hover : focus.kind === "item" ? focus : null;
+  beam.visible = !!lit;
+  if (lit) { beam.position.set(lit.world.x, PLAT_H + lit.h, lit.world.z); beam.rotation.y = lit.parent.yaw; }
+
+  // panel opening
+  if (panel.node) {
+    if (panel.t < 1) {
+      panel.t = Math.min(1, panel.t + dt / 0.38);
+      const e = 1 - Math.pow(1 - panel.t, 3);
+      panel.mesh.scale.set(0.6 + 0.4 * e, Math.max(0.02, e), 1);
+      panel.mesh.material.opacity = Math.random() < 0.25 ? 0.25 : e;
+    } else {
+      panel.mesh.scale.set(1, 1, 1);
+      panel.mesh.material.opacity = hoverPanel ? 1 : 0.94;
+    }
+    if (performance.now() < panel.hotUntil + 80) drawPanel();
+  }
+
+  rootSpin.rotation.y = t * 0.3; rootSpin.rotation.x = t * 0.17;
+  tickPackets(dt);
+
+  // stray tears
+  if (!REDUCE && Math.random() < dt * 0.12) burst(0.5 + Math.random() * 0.5);
+  glitch = Math.max(0, glitch - dt * 3.5);
+  post.uniforms.glitch.value = glitch;
+  post.uniforms.time.value = t;
+
+  renderer.setRenderTarget(rt);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.render(postScene, postCam);
+
+  frames++;
+  if (t - readAt > 0.5) {
+    fps = Math.round(frames / (t - readAt)); frames = 0; readAt = t;
+    const f = (v) => String(Math.round(v)).padStart(5, " ");
+    $("read").textContent = `x${f(camera.position.x)}  y${f(camera.position.y)}  z${f(camera.position.z)}\n${fps} fps`;
+  }
+}
+
+// boot
+(async () => {
+  const [tree] = await Promise.all([
+    loadTree(),
+    Promise.all(FONTS.map((f) => document.fonts.load(`40px "${f}"`))).catch(() => {}),
+  ]);
+  root = tree;
+  buildWorld(root);
+  focus = root;
+  resize();
+  focusNode(nodeFromHash(), true);
+  if (REDUCE) { cur.target.copy(goal.target); cur.yaw = goal.yaw; cur.pitch = goal.pitch; cur.dist = goal.dist; }
+  renderer.setAnimationLoop(tick);
+  $("veil").classList.add("off");
+  window.NSExplore = { root, focusNode, cur, goal };   // handle for the console
+})().catch((e) => {
+  console.error(e);
+  $("veil").innerHTML = 'this page failed to start — <a href="index.html" style="margin-left:8px">standard site</a>';
+});
+</script>
+</body>
+</html>
