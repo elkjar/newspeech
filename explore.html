@@ -351,17 +351,16 @@ setInterval(() => {
 }, 70);
 
 // ---------------------------------------------------------------------------
-// world
+// world — everything is laid out in whole cells of one grid. Platforms and
+// blocks are raised cells: the grid lines themselves climb up and over them.
 // ---------------------------------------------------------------------------
-const R = 150;                               // radius of the section arc
-const CENTER = new THREE.Vector3(0, 0, -75); // what the overview looks at
+const G = 6;                                 // grid step
+const CENTER = new THREE.Vector3(0, 0, -72); // middle of the flat ground
 const PLAT_H = 1.2;
-const CELL_W = 7.4, CELL_D = 5.4, BLOCK_W = 4.4, BLOCK_D = 2.3;
 const PANEL_W = 18, PANEL_H = PANEL_W * 600 / 1280;
 
 const pickables = [];
 const sideCols = [0x111111, 0x2c2c2c, 0xdadada];
-const edgeCols = [0xa8a8a8, 0xffffff, 0xffffff];
 const topCols = [0xc8c8c8, 0xffffff, 0xffffff];
 
 function terrainH(x, z) {
@@ -371,40 +370,85 @@ function terrainH(x, z) {
   return m * (18 + 46 * Math.abs(n));
 }
 
-function buildGround() {
-  const pts = [];
-  const STEP = 12, N = 56, SUB = 2;   // lines every 12 units, each cut in 6-unit pieces to follow the ridges
-  const x0 = CENTER.x - STEP * N, z0 = CENTER.z - STEP * N;
-  for (let i = 0; i <= 2 * N; i++) {
-    for (let j = 0; j < 2 * N * SUB; j++) {
-      const a = j * STEP / SUB, b = (j + 1) * STEP / SUB, f = i * STEP;
-      pts.push(x0 + a, terrainH(x0 + a, z0 + f), z0 + f, x0 + b, terrainH(x0 + b, z0 + f), z0 + f);
-      pts.push(x0 + f, terrainH(x0 + f, z0 + a), z0 + a, x0 + f, terrainH(x0 + f, z0 + b), z0 + b);
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-  scene.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x3a3a3a })));
+// raised cells, keyed by cell index
+const cells = new Map();
+const cellAt = (ix, iz) => cells.get(ix + "," + iz);
+function raise(ax, az, bx, bz, h, block) {
+  const x0 = Math.round(Math.min(ax, bx) / G), x1 = Math.round(Math.max(ax, bx) / G);
+  const z0 = Math.round(Math.min(az, bz) / G), z1 = Math.round(Math.max(az, bz) / G);
+  for (let ix = x0; ix < x1; ix++) for (let iz = z0; iz < z1; iz++) cells.set(ix + "," + iz, { h, block });
 }
 
-function boxWithEdges(w, h, d, fill, edge) {
+function buildGround() {
+  const pos = [], col = [];
+  const X0 = -112, X1 = 112, Z0 = -124, Z1 = 100;   // lines at x = G*i and z = G*j
+  const GROUND = 0.23, PLAT = 0.55, BLOCK = 0.82;
+  // every other line stops short of the ridges, so the hills keep the wide mesh
+  const fade = (x, z) => 1 - smooth(200, 270, Math.hypot(x - CENTER.x, z - CENTER.z));
+  const push = (a, b, ca, cb) => { pos.push(a[0], a[1], a[2], b[0], b[1], b[2]); col.push(ca, ca, ca, cb, cb, cb); };
+
+  // one grid line: index f on one axis, walked cell by cell along the other.
+  // Over a raised cell it runs along the top; where the height changes it
+  // drops or climbs straight down the wall.
+  const line = (f, alongX, lo, hi) => {
+    const fine = f % 2 !== 0;
+    const P = (k, y) => alongX ? [k * G, y, f * G] : [f * G, y, k * G];
+    let prev = null;
+    for (let i = lo; i < hi; i++) {
+      const a = alongX ? cellAt(i, f - 1) : cellAt(f - 1, i);
+      const b = alongX ? cellAt(i, f) : cellAt(f, i);
+      const top = !a ? b : !b ? a : a.h >= b.h ? a : b;
+      const h = top ? top.h : 0;
+      if (top) {
+        const c = top.block ? BLOCK : PLAT;
+        push(P(i, h), P(i + 1, h), c, c);
+      } else {
+        const p = P(i, 0), q = P(i + 1, 0);
+        let ca = GROUND, cb = GROUND;
+        if (fine) { ca *= fade(p[0], p[2]); cb *= fade(q[0], q[2]); }
+        if (ca > 0.004 || cb > 0.004) {
+          p[1] = terrainH(p[0], p[2]); q[1] = terrainH(q[0], q[2]);
+          push(p, q, ca, cb);
+        }
+      }
+      if (prev && prev.h !== h) {
+        const c = prev.block || (top && top.block) ? BLOCK : PLAT;
+        push(P(i, prev.h), P(i, h), c, c);
+      }
+      prev = { h, block: !!(top && top.block) };
+    }
+  };
+  for (let j = Z0; j <= Z1; j++) line(j, true, X0, X1);
+  for (let i = X0; i <= X1; i++) line(i, false, Z0, Z1);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  scene.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true })));
+}
+
+// the dark body under a raised cell (hides what is behind it, takes clicks),
+// with a white outline that only shows when hovered or selected
+function solid(w, h, d, fill) {
   const geo = new THREE.BoxGeometry(w, h, d);
   geo.translate(0, h / 2, 0);
   const mesh = new THREE.Mesh(geo, fill);
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: edge }));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xffffff }));
+  edges.visible = false;
   mesh.add(edges);
   mesh.userData.edges = edges;
   return mesh;
 }
+// pushed back a hair in depth so the grid lines on its faces stay on top
+const fillMat = (color) => new THREE.MeshBasicMaterial({ color, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 
 let rootSpin;
-const traces = [];   // one radial line per section, for the packets to ride
+const traces = [];   // one path per section along the grid lines, for the packets to ride
 
 function buildWorld(root) {
-  buildGround();
-
-  // root: pedestal, a turning wire solid, and the name on the ground in front
-  const ped = boxWithEdges(14, PLAT_H, 14, new THREE.MeshBasicMaterial({ color: 0x080808 }), 0x8a8a8a);
+  // root: a raised 2×2 pad, a turning wire solid, and the name in front
+  raise(-G, -G, G, G, PLAT_H, false);
+  const ped = solid(2 * G, PLAT_H, 2 * G, fillMat(0x080808));
   ped.userData.node = root; pickables.push(ped);
   scene.add(ped);
   rootSpin = new THREE.LineSegments(
@@ -423,75 +467,96 @@ function buildWorld(root) {
   idleLabels.push(root.label);
   root.world = new THREE.Vector3(0, 0, 0);
 
-  // sections along an arc, each given as much of it as its platform is wide
-  const GAP = 12;
+  // each section is a platform of whole cells: a one-cell margin, then per
+  // page a block cell with a gap cell beside it and a lane for its name in front
   for (const s of root.children) {
     const n = s.children.length;
-    s.cols = n <= 4 ? n : Math.ceil(Math.sqrt(n * 1.8));
+    s.cols = n <= 4 ? n : Math.ceil(Math.sqrt(n * 1.3));
     s.rows = Math.ceil(n / s.cols);
-    s.W = Math.max(14, s.cols * CELL_W + 2);
-    s.D = s.rows * CELL_D + 1.5;
+    s.W = (2 * s.cols + 1) * G; s.D = (2 * s.rows + 1) * G;
+    s.Wl = s.cols * G; s.Wr = s.W - s.Wl;     // platform spans local x from -Wl to Wr, z from -D to 0
   }
-  const total = root.children.reduce((a, s) => a + s.W + GAP, 0);
-  let acc = -total / 2;
-  const tracePts = [];
-  root.children.forEach((s) => {
-    const a = (acc + GAP / 2 + s.W / 2) / R;
-    acc += s.W + GAP;
-    s.yaw = -a;
-    const dir = new THREE.Vector3(Math.sin(a), 0, -Math.cos(a));
-    const grp = s.group = new THREE.Group();
-    grp.position.copy(dir).multiplyScalar(R);
-    grp.rotation.y = -a;
-    scene.add(grp);
-    s.world = grp.position.clone();
 
-    const plat = s.plat = boxWithEdges(s.W, PLAT_H, s.D, new THREE.MeshBasicMaterial({ color: 0x080808 }), 0x808080);
+  // three walls of a yard around the root: left, back, right
+  const GAP = 2 * G, BACK = 22 * G;
+  const ch = root.children;
+  const left = ch.slice(0, 2), back = ch.slice(2, ch.length - 2), right = ch.slice(-2);
+  const total = back.reduce((a, s) => a + s.W, 0) + GAP * (back.length - 1);
+  const xMin = -Math.round(total / 2 / G) * G;
+  let x = xMin;
+  for (const s of back) { s.yaw = 0; s.origin = new THREE.Vector3(x + s.Wl, 0, -BACK); x += s.W + GAP; }
+  let z = -BACK + GAP;
+  for (const s of [...left].reverse()) { s.yaw = Math.PI / 2; s.origin = new THREE.Vector3(xMin - GAP, 0, z + s.Wr); z += s.W + GAP; }
+  z = -BACK + GAP;
+  for (const s of right) { s.yaw = -Math.PI / 2; s.origin = new THREE.Vector3(x, 0, z + s.Wl); z += s.W + GAP; }
+
+  const tracePts = [];
+  const v = new THREE.Vector3(), w = new THREE.Vector3();
+  for (const s of ch) {
+    const grp = s.group = new THREE.Group();
+    grp.position.copy(s.origin);
+    grp.rotation.y = s.yaw;
+    scene.add(grp);
+    grp.updateMatrixWorld(true);
+    const toWorld = (lx, lz, out) => grp.localToWorld(out.set(lx, 0, lz));
+
+    toWorld(-s.Wl, -s.D, v); toWorld(s.Wr, 0, w);
+    raise(v.x, v.z, w.x, w.z, PLAT_H, false);
+    const plat = s.plat = solid(s.W, PLAT_H, s.D, fillMat(0x080808));
+    plat.position.set((s.Wr - s.Wl) / 2, 0, -s.D / 2);
     plat.userData.node = s; pickables.push(plat);
     grp.add(plat);
+    s.world = toWorld((s.Wr - s.Wl) / 2, -s.D / 2, new THREE.Vector3());
 
     s.label = new Label(s.name, { px: 96, worldH: 6.5 });
     s.label.mesh.rotation.x = -Math.PI / 2;
-    s.label.mesh.position.set(-s.W / 2, 0.08, s.D / 2 + 4.6);
+    s.label.mesh.position.set(-s.Wl, 0.08, 5);
     s.label.mesh.userData.node = s; pickables.push(s.label.mesh);
     grp.add(s.label.mesh);
     idleLabels.push(s.label);
 
-    const p0 = dir.clone().multiplyScalar(9), p1 = dir.clone().multiplyScalar(R - s.D / 2 - 9);
-    p0.y = p1.y = 0.06;
-    traces.push([p0, p1]);
-    tracePts.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
+    // the trace runs along grid lines: out from the root, along a bus, in to the platform
+    const end = toWorld(0, 2 * G, new THREE.Vector3());
+    const side = Math.sign(-s.yaw);   // -1 left wall, 0 back, 1 right wall
+    const pts = side === 0
+      ? [[0, -G], [0, -11 * G], [end.x, -11 * G], [end.x, end.z]]
+      : [[side * G, 0], [side * 12 * G, 0], [side * 12 * G, end.z], [end.x, end.z]];
+    const path = pts.map(([px, pz]) => new THREE.Vector3(px, 0.06, pz));
+    const cum = [0];
+    for (let i = 1; i < path.length; i++) {
+      cum.push(cum[i - 1] + path[i].distanceTo(path[i - 1]));
+      tracePts.push(path[i - 1].x, 0.06, path[i - 1].z, path[i].x, 0.06, path[i].z);
+    }
+    traces.push({ path, cum, total: cum[cum.length - 1] });
 
     s.children.forEach((it, i) => {
-      const col = i % s.cols, row = Math.floor(i / s.cols);
+      const colI = i % s.cols, row = Math.floor(i / s.cols);
       const h = it.h = it.height || 1.6 + 5.2 * hash01(s.id + it.id);
-      const x = -s.W / 2 + 1 + CELL_W * (col + 0.5);
-      const z = -s.D / 2 + 0.75 + CELL_D * row + BLOCK_D / 2 + 0.4;
-      it.side = new THREE.MeshBasicMaterial({ color: sideCols[0] });
-      it.top = new THREE.MeshBasicMaterial({ color: sideCols[0] });
+      const bx = -s.Wl + G + colI * 2 * G, bz = -s.D + G + row * 2 * G;   // the block's cell: bx..bx+G, bz..bz+G
+      toWorld(bx, bz, v); toWorld(bx + G, bz + G, w);
+      raise(v.x, v.z, w.x, w.z, PLAT_H + h, true);
+      it.side = fillMat(sideCols[0]);
+      it.top = fillMat(sideCols[0]);
       const m = it.side;
-      const blk = it.mesh = boxWithEdges(BLOCK_W, h, BLOCK_D, [m, m, it.top, m, m, m], edgeCols[0]);
-      blk.position.set(x, PLAT_H, z);
+      const blk = it.mesh = solid(G, h, G, [m, m, it.top, m, m, m]);
+      blk.position.set(bx + G / 2, PLAT_H, bz + G / 2);
       blk.userData.node = it; pickables.push(blk);
       grp.add(blk);
 
-      it.label = new Label(it.id, { px: 40, font: "zxx-sans", worldH: 1, maxW: CELL_W - 0.4, tint: 0x9a9a9a });
+      it.label = new Label(it.id, { px: 40, font: "zxx-sans", worldH: 1.5, maxW: 2 * G - 0.5, tint: 0x9a9a9a });
       it.label.mesh.rotation.x = -Math.PI / 2;
-      it.label.mesh.position.set(x - BLOCK_W / 2, PLAT_H + 0.05, z + BLOCK_D / 2 + 0.85);
+      it.label.mesh.position.set(bx, PLAT_H + 0.05, bz + G * 1.5);
       grp.add(it.label.mesh);
     });
     grp.updateMatrixWorld(true);
     for (const it of s.children) it.world = it.mesh.getWorldPosition(new THREE.Vector3());
-  });
-
-  // ring around the root joining the traces
-  for (let i = 0; i < 64; i++) {
-    const a = (i / 64) * TAU, b = ((i + 1) / 64) * TAU;
-    tracePts.push(Math.sin(a) * 9, 0.06, Math.cos(a) * 9, Math.sin(b) * 9, 0.06, Math.cos(b) * 9);
   }
+
   const tg = new THREE.BufferGeometry();
   tg.setAttribute("position", new THREE.Float32BufferAttribute(tracePts, 3));
-  scene.add(new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ color: 0x777777 })));
+  scene.add(new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ color: 0x9a9a9a })));
+
+  buildGround();   // last: it needs every raised cell
 }
 
 // packets: bright points riding the traces between the root and the sections
@@ -505,15 +570,19 @@ scene.add(packetPts);
 
 function tickPackets(dt) {
   if (!REDUCE && packets.length < PACKETS && Math.random() < dt * 4) {
-    packets.push({ tr: (Math.random() * traces.length) | 0, t: 0, v: 0.25 + Math.random() * 0.5, back: Math.random() < 0.3 });
+    const tr = traces[(Math.random() * traces.length) | 0];
+    packets.push({ tr, t: 0, v: (40 + Math.random() * 60) / tr.total, back: Math.random() < 0.3 });
   }
   const pos = packetGeo.attributes.position;
   for (let i = 0; i < PACKETS; i++) {
     const p = packets[i];
     if (!p) { pos.setXYZ(i, 0, -9999, 0); continue; }
     p.t += p.v * dt;
-    const [a, b] = traces[p.tr];
-    const k = p.back ? 1 - p.t : p.t;
+    const { path, cum, total } = p.tr;
+    const d = clamp(p.back ? 1 - p.t : p.t, 0, 1) * total;
+    let j = 1;
+    while (j < cum.length - 1 && cum[j] < d) j++;
+    const a = path[j - 1], b = path[j], k = (d - cum[j - 1]) / (cum[j] - cum[j - 1] || 1);
     pos.setXYZ(i, a.x + (b.x - a.x) * k, 0.25, a.z + (b.z - a.z) * k);
   }
   for (let i = packets.length - 1; i >= 0; i--) if (packets[i].t >= 1) packets.splice(i, 1);
@@ -523,7 +592,7 @@ function tickPackets(dt) {
 // beam: a column of light dropped on the hovered or selected block
 const beam = (() => {
   const H = 110;
-  const geo = new THREE.BoxGeometry(BLOCK_W, H, BLOCK_D, 1, 8, 1);
+  const geo = new THREE.BoxGeometry(G, H, G, 1, 8, 1);
   geo.translate(0, H / 2, 0);
   const col = [];
   const p = geo.attributes.position;
@@ -665,7 +734,12 @@ function loadImages(sec) {
     if (/^https?:/.test(it.img)) im.crossOrigin = "anonymous";
     im.onload = () => {
       const tex = new THREE.Texture(im);
-      tex.anisotropy = 4; tex.needsUpdate = true;
+      tex.anisotropy = 4;
+      // the block top is square: take the middle of the image
+      const ar = im.naturalWidth / im.naturalHeight;
+      if (ar > 1) { tex.repeat.x = 1 / ar; tex.offset.x = (1 - 1 / ar) / 2; }
+      else { tex.repeat.y = ar; tex.offset.y = (1 - ar) / 2; }
+      tex.needsUpdate = true;
       it.imgEl = im;
       it.top.map = tex; it.top.needsUpdate = true;
       paint(it);
@@ -679,11 +753,12 @@ function loadImages(sec) {
 // focus, hover, camera
 // ---------------------------------------------------------------------------
 let root, focus, hover = null, hoverPanel = false, glitch = 0;
-const cur = { target: CENTER.clone(), yaw: 0.7, pitch: 1.1, dist: 700 };
-const goal = { target: CENTER.clone(), yaw: 0, pitch: 0.55, dist: 200 };
+const cur = { target: new THREE.Vector3(0, 0, -84), yaw: 0.7, pitch: 1.1, dist: 800 };
+const goal = { target: new THREE.Vector3(0, 0, -84), yaw: 0, pitch: 0.55, dist: 215 };
 let maxDist = 600;
 
 const fit = (w) => w / (2 * TAN * camera.aspect);
+const overviewDist = () => Math.max(230, fit(470));
 
 function paint(n) {
   if (!n) return;
@@ -691,16 +766,16 @@ function paint(n) {
   if (n.kind === "item") {
     n.side.color.setHex(sideCols[st]);
     n.top.color.setHex(n.top.map ? topCols[st] : sideCols[st]);
-    n.mesh.userData.edges.material.color.setHex(edgeCols[st]);
+    n.mesh.userData.edges.visible = st > 0;
     n.label.mat.color.setHex(st ? 0xffffff : 0x9a9a9a);
   } else if (n.kind === "section") {
-    n.plat.userData.edges.material.color.setHex(st ? 0xffffff : 0x808080);
+    n.plat.userData.edges.visible = st > 0;
   }
 }
 
 function frame(n) {
   if (n.kind === "root") {
-    goal.target.copy(CENTER); goal.yaw = 0; goal.pitch = 0.55; goal.dist = Math.max(170, fit(310));
+    goal.target.set(0, 0, -84); goal.yaw = 0; goal.pitch = 0.55; goal.dist = overviewDist();
   } else if (n.kind === "section") {
     // aim a little toward the root so the name on the ground stays in frame
     goal.target.set(n.world.x + Math.sin(n.yaw) * 5, 2, n.world.z + Math.cos(n.yaw) * 5); goal.yaw = n.yaw; goal.pitch = 0.7;
@@ -878,7 +953,7 @@ function resize() {
   post.uniforms.px.value.set(1 / (w * dpr), 1 / (h * dpr));
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  const over = Math.max(170, fit(310));
+  const over = overviewDist();
   maxDist = over * 1.5;
   scene.fog.near = over * 1.3; scene.fog.far = over * 1.3 + 760;
   if (focus) frame(focus);
