@@ -34,14 +34,19 @@
   .hud a:hover, .hud button:hover { color: #fff; text-decoration: underline; }
   .hud a:focus-visible, .hud button:focus-visible { outline: 1px solid #e8e8e8; outline-offset: 3px; }
 
-  #crumb { top: 18px; left: 20px; right: 150px; display: flex; flex-wrap: wrap; align-items: center; }
+  #crumb { top: 18px; left: 20px; right: 20px; display: flex; flex-wrap: wrap; align-items: center; }
   #crumb button { padding: 6px 0; }
   #crumb .sep { padding: 0 8px; color: #555; }
   #crumb .here { color: #8a8a8a; cursor: default; text-decoration: none; }
-  #exit { top: 18px; right: 20px; }
-  #exit a { display: block; padding: 6px 0; }
-  #keys { left: 20px; bottom: 18px; max-width: 46vw; color: #666; }
-  #read { right: 20px; bottom: 18px; text-align: right; color: #666; white-space: pre; font-variant-numeric: tabular-nums; }
+  /* bottom-right box: logo, the way back to the site, camera position, frame rate */
+  #info {
+    right: 20px; bottom: 18px; width: 208px; box-sizing: border-box;
+    padding: 14px 14px 12px; border: 1px solid #3a3a3a; background: rgba(5,5,5,0.8);
+  }
+  #info .mark { display: block; }
+  #info .mark img { display: block; width: 100%; height: auto; }
+  #info .site { display: block; margin-top: 12px; padding: 4px 0; }
+  #read { margin-top: 8px; padding-top: 10px; border-top: 1px solid #2a2a2a; color: #666; white-space: pre; font-variant-numeric: tabular-nums; }
   #open {
     left: 50%; bottom: 54px; transform: translateX(-50%);
     pointer-events: auto;
@@ -61,9 +66,8 @@
   #veil a { color: #e8e8e8; }
 
   @media (max-width: 700px) {
-    #keys { max-width: 60vw; }
-    #read { display: none; }
-    #open { bottom: 70px; }
+    #info { right: 12px; bottom: 12px; width: 176px; padding: 10px 10px 8px; letter-spacing: 0.04em; }
+    #open { left: 12px; bottom: 12px; transform: none; }
   }
 </style>
 </head>
@@ -72,9 +76,11 @@
 <canvas id="gl" aria-label="3d map of the newspeech site"></canvas>
 
 <nav class="hud" id="crumb" aria-label="path"></nav>
-<div class="hud" id="exit"><a href="index.html">standard site</a></div>
-<div class="hud" id="keys"></div>
-<div class="hud" id="read" aria-hidden="true"></div>
+<div class="hud" id="info">
+  <a class="mark" href="index.html" aria-label="newspeech"><img src="assets/ns-text.svg" alt="" draggable="false"></a>
+  <a class="site" href="index.html">standard site →</a>
+  <div id="read" aria-hidden="true"></div>
+</div>
 <a class="hud" id="open" hidden></a>
 
 <div id="veil">loading</div>
@@ -784,9 +790,6 @@ $("open").addEventListener("click", (e) => {
   e.preventDefault();
   openNode(focus);
 });
-$("keys").textContent = COARSE
-  ? "drag look · pinch zoom · tap a section to enter · tap a box, tap again to open"
-  : "drag look · scroll zoom · wasd move · click enter · arrows step · enter open · esc back";
 
 // picking
 const ray = new THREE.Raycaster();
@@ -979,8 +982,8 @@ function tick() {
   frames++;
   if (t - readAt > 0.5) {
     fps = Math.round(frames / (t - readAt)); frames = 0; readAt = t;
-    const f = (v) => String(Math.round(v)).padStart(5, " ");
-    $("read").textContent = `x${f(camera.position.x)}  y${f(camera.position.y)}  z${f(camera.position.z)}\n${fps} fps`;
+    const f = (v) => String(Math.round(v)).padStart(4, " ");
+    $("read").textContent = `x${f(camera.position.x)} y${f(camera.position.y)} z${f(camera.position.z)}\n${fps} fps`;
   }
 }
 
