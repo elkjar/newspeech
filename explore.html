@@ -52,34 +52,6 @@
   #open[hidden] { display: none; }
   .leaving .hud { opacity: 0; transition: opacity 0.2s; }
 
-  /* the live page preview: a window-sized frame scaled down (--s) and moved by script */
-  #frame {
-    position: fixed; left: 0; top: 0; z-index: 1; transform-origin: 0 0; will-change: transform;
-    overflow: hidden; background: #050505; pointer-events: none;
-  }
-  #frame::before {
-    content: ""; position: absolute; inset: 0; z-index: 1;
-    border: calc(1.5px / var(--s, 1)) solid #e8e8e8;
-  }
-  #frame[hidden] { display: none; }
-  #frame iframe { display: block; width: 100%; height: 100%; border: 0; filter: grayscale(1); }
-  #frame::after {
-    content: ""; position: absolute; inset: 0;
-    background: repeating-linear-gradient(to bottom,
-      transparent 0, transparent calc(2px / var(--s, 1)),
-      rgba(0,0,0,0.3) calc(2px / var(--s, 1)), rgba(0,0,0,0.3) calc(3px / var(--s, 1)));
-  }
-  #frame.on { animation: frame-in 0.32s steps(7) both; }
-  @keyframes frame-in {
-    0%   { clip-path: inset(49% 0 49% 0); opacity: 0.3; }
-    35%  { clip-path: inset(18% 0 36% 0); opacity: 1; }
-    60%  { clip-path: inset(30% 0 4% 0); opacity: 0.5; }
-    100% { clip-path: inset(0); opacity: 1; }
-  }
-  #frame.open { transition: transform 0.5s cubic-bezier(0.7, 0, 0.2, 1); }
-  #frame.open iframe { filter: none; transition: filter 0.5s; }
-  #frame.open::after, #frame.open::before { opacity: 0; transition: opacity 0.5s; }
-
   #veil {
     position: fixed; inset: 0; z-index: 3; display: grid; place-items: center;
     background: #050505; color: #8a8a8a; text-align: center; padding: 24px;
@@ -104,7 +76,6 @@
 <div class="hud" id="keys"></div>
 <div class="hud" id="read" aria-hidden="true"></div>
 <a class="hud" id="open" hidden></a>
-<div id="frame" hidden><iframe title="page preview" tabindex="-1"></iframe></div>
 
 <div id="veil">loading</div>
 <noscript><p style="position:fixed;inset:0;display:grid;place-items:center;margin:0;color:#8a8a8a;z-index:4;background:#050505">this page needs javascript — <a href="index.html" style="color:#e8e8e8;margin-left:8px">standard site</a></p></noscript>
@@ -488,8 +459,10 @@ function solid(w, h, d, fill) {
   mesh.userData.edges = edges;
   return mesh;
 }
-// pushed back a hair in depth so the grid lines on its faces stay on top
-const fillMat = (color) => new THREE.MeshBasicMaterial({ color, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+// pushed back a hair in depth so the grid lines on its faces stay on top;
+// double-sided so a pointer ray that slips through a seam between two
+// triangles still lands on the far side of the same box
+const fillMat = (color) => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 
 let rootSpin;
 const traces = [];   // one path per section along the grid lines, for the packets to ride
@@ -587,7 +560,7 @@ function buildWorld(root) {
     grp.updateMatrixWorld(true);
     for (const it of s.children) {
       it.world = it.mesh.getWorldPosition(new THREE.Vector3());
-      it.label = new Label(it.name, { px: 64, worldH: 2.6, maxW: 46 }).place(it.world.x, PLAT_H + it.h, PLAT_H + it.h + 2.4, it.world.z);
+      it.label = new Label(it.name, { px: 64, worldH: 2.6, maxW: 46 }).place(it.world.x, PLAT_H + it.h, PLAT_H + it.h + 5, it.world.z);
     }
   }
 
@@ -646,61 +619,9 @@ const beam = (() => {
 })();
 
 // ---------------------------------------------------------------------------
-// preview: the real page, in a frame floating over the lit box. Opening the
-// box grows the frame to fill the window, then the browser goes to the page.
-// ---------------------------------------------------------------------------
-const frameEl = $("frame"), iframe = frameEl.querySelector("iframe");
-let previewNode = null, previewTimer = 0, opening = false;
-const anchor = new THREE.Vector3();
-
-function showInFrame(url) {
-  // replace(), not src: setting src would add an entry to the back button for every box hovered
-  try { iframe.contentWindow.location.replace(url); } catch { iframe.src = url; }
-}
-
-function placeFrame(n) {
-  anchor.set(n.world.x, PLAT_H + n.h + 6.2, n.world.z).project(camera);
-  if (anchor.z > 1) { frameEl.style.visibility = "hidden"; return; }
-  frameEl.style.visibility = "";
-  const iw = innerWidth, ih = innerHeight;
-  const s = Math.min(420 / iw, 0.45), w = iw * s, h = ih * s;
-  const ax = (anchor.x + 1) / 2 * iw, ay = (1 - anchor.y) / 2 * ih;
-  let x = ax - w / 2, y = ay - h;
-  if (y < 56) {
-    // no room above the label: sit beside it, on whichever side has more space
-    const half = n.label.w / 2 * (ih / (2 * TAN * camera.position.distanceTo(n.label.mesh.position))) + 24;
-    x = ax < iw / 2 ? ax + half : ax - half - w;
-    y = ay - h / 2;
-  }
-  x = clamp(x, 12, iw - w - 12);
-  y = clamp(y, 56, ih - h - 12);
-  frameEl.style.setProperty("--s", s);
-  frameEl.style.transform = `translate(${x}px,${y}px) scale(${s})`;
-}
-
-function setPreview(n) {
-  if (opening) return;
-  if (n && (n.ext || !n.href)) n = null;
-  if (n === previewNode) return;
-  previewNode = n;
-  clearTimeout(previewTimer);
-  frameEl.hidden = true;
-  frameEl.classList.remove("on");
-  showInFrame("about:blank");
-  if (!n) return;
-  // wait a beat so sweeping across the boxes doesn't load every page on the way
-  previewTimer = setTimeout(() => {
-    showInFrame(new URL(n.href, location.href).href);
-    placeFrame(n);
-    frameEl.hidden = false;
-    if (!REDUCE) frameEl.classList.add("on");
-  }, 350);
-}
-
-// ---------------------------------------------------------------------------
 // focus, hover, camera
 // ---------------------------------------------------------------------------
-let root, focus, hover = null, glitch = 0;
+let root, focus, hover = null, glitch = 0, opening = false;
 const cur = { target: new THREE.Vector3(0, 0, -84), yaw: 0.7, pitch: 1.1, dist: 800 };
 const goal = { target: new THREE.Vector3(0, 0, -84), yaw: 0, pitch: 0.55, dist: 215 };
 let maxDist = 600;
@@ -726,7 +647,6 @@ function repaint() {
       it.label.show(st === 2);
     }
   }
-  setPreview(item);
 }
 
 // inside a section its boxes answer for themselves; from anywhere else the
@@ -743,9 +663,7 @@ function frame(n) {
   if (n.kind === "root") {
     goal.target.set(0, 0, -84); goal.yaw = 0; goal.pitch = 0.55; goal.dist = overviewDist();
   } else {
-    // aimed a little past and above the middle, so the boxes sit low in the
-    // view with room over them for the names and the preview
-    goal.target.set(n.world.x - Math.sin(n.yaw) * 6, 9, n.world.z - Math.cos(n.yaw) * 6); goal.yaw = n.yaw; goal.pitch = 0.7;
+    goal.target.set(n.world.x, 5, n.world.z); goal.yaw = n.yaw; goal.pitch = 0.42;
     goal.dist = Math.max(48, fit(n.W + 14) * 1.3, (n.D + 26) / (2 * TAN));
   }
 }
@@ -769,30 +687,14 @@ function openNode(n) {
   opening = true;
   burst(1);
   document.body.classList.add("leaving");
-  if (n.kind !== "item") { setTimeout(() => { location.href = url; }, 170); return; }
-  // make sure the frame is up and holding this page, then grow it to the window
-  clearTimeout(previewTimer);
-  if (previewNode !== n || frameEl.hidden) { previewNode = n; showInFrame(url); }
-  frameEl.classList.remove("on");
-  placeFrame(n);
-  frameEl.style.visibility = "";
-  frameEl.hidden = false;
-  void frameEl.offsetWidth;
-  frameEl.classList.add("open");
-  frameEl.style.setProperty("--s", 1);
-  frameEl.style.transform = "translate(0px,0px) scale(1)";
-  setTimeout(() => { location.href = url; }, 560);
+  setTimeout(() => { location.href = url; }, 170);
 }
 
-// coming back with the back button: put the frame away again
+// coming back with the back button
 addEventListener("pageshow", (e) => {
   if (!e.persisted) return;
-  opening = false; previewNode = null;
+  opening = false;
   document.body.classList.remove("leaving");
-  frameEl.classList.remove("open", "on");
-  frameEl.hidden = true;
-  showInFrame("about:blank");
-  if (root) repaint();
 });
 
 function burst(amount) {
@@ -941,9 +843,6 @@ function resize() {
   post.uniforms.px.value.set(1 / (w * dpr), 1 / (h * dpr));
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  // the frame is always the size of the window, scaled down, so the page in it
-  // is already laid out the way it will be once it fills the window
-  frameEl.style.width = w + "px"; frameEl.style.height = h + "px";
   const over = overviewDist();
   maxDist = over * 1.5;
   scene.fog.near = over * 1.3; scene.fog.far = over * 1.3 + 760;
@@ -1010,7 +909,6 @@ function tick() {
       l.mat.opacity = !REDUCE && Math.random() < 0.02 ? 0.55 : 1;
     }
   }
-  if (previewNode && !frameEl.hidden && !opening) placeFrame(previewNode);
 
   rootSpin.rotation.y = t * 0.3; rootSpin.rotation.x = t * 0.17;
   tickPackets(dt);
