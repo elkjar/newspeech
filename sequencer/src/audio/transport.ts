@@ -1,7 +1,7 @@
 import { scheduler } from './scheduler';
 import { cancelScheduledMidi, midiPanic } from './midiOut';
 import { clockTransportStart, clockTransportStop } from './midiClock';
-import { useSequencerStore } from '../state/store';
+import { useSequencerStore, arrangementStartRow } from '../state/store';
 import { clearOverlay } from './mutationOverlay';
 
 // Dev: transport functions are captured by hardware bindings + key handlers
@@ -133,16 +133,18 @@ export async function togglePlayback(): Promise<void> {
     }
     // Song mode: every play starts the arrangement from the top (row 0), so a
     // run is deterministic and repeatable for the show timeline rather than
-    // resuming wherever a prior stop left the cursor.
+    // resuming wherever a prior stop left the cursor. A section loop (set in
+    // the song dialog, never saved) starts the run at its first row instead.
     const arr = store.arrangement;
     // Always clear a prior song's end-gate on play, even when song mode is now
     // disengaged — otherwise a stale pendingEnd silences every trigger.
     store.setArrangementPendingEnd(false);
     if (arr.active && arr.rows.length > 0) {
-      store.setArrangementCursor(0, 0);
-      store.setArrangementDisplayCursor(0);
-      store.engageArrangementTarget(arr.rows[0].scene, arr.rows[0].bank);
-      store.applyArrangementRowMutes(0);
+      const first = arrangementStartRow(store);
+      store.setArrangementCursor(first, 0);
+      store.setArrangementDisplayCursor(first);
+      store.engageArrangementTarget(arr.rows[first].scene, arr.rows[first].bank);
+      store.applyArrangementRowMutes(first);
     }
     // Stash the aligned capture frame for the recorder (armed takes read it
     // when the `armed && playing` subscription fires start()). Must be set

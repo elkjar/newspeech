@@ -654,6 +654,16 @@ export interface Arrangement {
   pendingEnd: boolean;
 }
 
+// Row a song run starts on: the section loop's start when one is set and
+// still inside the song, else row 0.
+export function arrangementStartRow(s: {
+  arrangement: Arrangement;
+  arrangementRange: { start: number; end: number | null } | null;
+}): number {
+  const r = s.arrangementRange;
+  return r && r.start >= 0 && r.start < s.arrangement.rows.length ? r.start : 0;
+}
+
 export const DEFAULT_ARRANGEMENT: Arrangement = {
   rows: [],
   active: false,
@@ -1078,12 +1088,23 @@ export interface SequencerState {
   // scene commit (applyScene resets activeBank to the scene's default), landed
   // by commitPendingScene immediately after the scene applies.
   pendingArrangementBank: number | null;
+  // Section loop for composing: play starts at row `start`; with `end` set the
+  // song wraps from row `end` back to `start`; with `end` null it plays on
+  // from `start` as authored. Runtime-only — never saved, cleared when another
+  // song loads, so a reopened song always runs top to bottom.
+  arrangementRange: { start: number; end: number | null } | null;
+  setArrangementRange: (range: { start: number; end: number | null } | null) => void;
   setArrangementActive: (active: boolean) => void;
   addArrangementRow: () => void;
   removeArrangementRow: (idx: number) => void;
   moveArrangementRow: (idx: number, dir: number) => void;
   setArrangementRow: (idx: number, patch: Partial<ArrangementRow>) => void;
   toggleArrangementRowMute: (idx: number, trackId: string) => void;
+  // Copy one track's pattern (steps, length, rate, instrument) from the bank
+  // `fromRow` plays into the bank `toRow` plays, and unmute it on `toRow`.
+  // Writes the BANK, so every row on that bank and the main grid get it. Rows
+  // on the same bank just get the unmute.
+  copyArrangementTrack: (fromRow: number, toRow: number, trackId: string) => void;
   setArrangementCursor: (cursor: number, cursorStartStep: number) => void;
   setArrangementDisplayCursor: (displayCursor: number) => void;
   setArrangementPendingEnd: (pendingEnd: boolean) => void;
@@ -1449,6 +1470,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   sceneStartStep: 0,
   arrangement: DEFAULT_ARRANGEMENT,
   pendingArrangementBank: null,
+  arrangementRange: null,
   playing: false,
   editMode: 'live',
   screenMode: 'roll',
@@ -2497,20 +2519,22 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setArrangementActive: (active) => {
     const s = useSequencerStore.getState();
     set((st) => ({ arrangement: { ...st.arrangement, active } }));
-    // Engaging song mode jumps to row 0 and applies it (immediate when
-    // stopped; queued when playing). Disengaging just stops driving.
+    // Engaging song mode jumps to the first row (the section loop's start
+    // when one is set) and applies it (immediate when stopped; queued when
+    // playing). Disengaging just stops driving.
     if (active && s.arrangement.rows.length > 0) {
+      const first = arrangementStartRow(s);
       set((st) => ({
         arrangement: {
           ...st.arrangement,
-          cursor: 0,
-          displayCursor: 0,
+          cursor: first,
+          displayCursor: first,
           cursorStartStep: s.globalStep,
         },
       }));
-      const row = s.arrangement.rows[0];
+      const row = s.arrangement.rows[first];
       useSequencerStore.getState().engageArrangementTarget(row.scene, row.bank);
-      useSequencerStore.getState().applyArrangementRowMutes(0);
+      useSequencerStore.getState().applyArrangementRowMutes(first);
     }
   },
   addArrangementRow: () =>
@@ -2531,7 +2555,16 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set((s) => {
       const rows = s.arrangement.rows.filter((_, i) => i !== idx);
       const clamp = (n: number) => Math.min(n, Math.max(0, rows.length - 1));
+      // Keep the section loop on the same rows: shift past the removed row,
+      // drop the end (or the whole range) when its own row is the one removed.
+      const shift = (n: number) => (n > idx ? n - 1 : n);
+      const r = s.arrangementRange;
+      const arrangementRange =
+        !r || r.start === idx
+          ? null
+          : { start: shift(r.start), end: r.end === null || r.end === idx ? null : shift(r.end) };
       return {
+        arrangementRange,
         arrangement: {
           ...s.arrangement,
           rows,
@@ -2545,7 +2578,9 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       const rows = s.arrangement.rows.slice();
       const j = idx + dir;
       if (idx < 0 || idx >= rows.length || j < 0 || j >= rows.length) return {};
-      [rows[idx], rows[j]] = [rows[j], rows[idx]];
+      // Lift the row out and drop it at its new position (the rows between
+      // shift by one) — the same as a swap for a one-row move.
+      rows.splice(j, 0, rows.splice(idx, 1)[0]);
       return { arrangement: { ...s.arrangement, rows } };
     }),
   setArrangementRow: (idx, patch) =>
@@ -2573,6 +2608,103 @@ export const useSequencerStore = create<SequencerState>((set) => ({
       }
       return { arrangement: { ...s.arrangement, rows }, tracks };
     }),
+  copyArrangementTrack: (fromRow, toRow, trackId) => {
+    let wroteLive = false;
+    set((s) => {
+      const from = s.arrangement.rows[fromRow];
+      const to = s.arrangement.rows[toRow];
+      if (!from || !to || fromRow === toRow) return {};
+      // Where a row's pattern lives — same resolution the song dialog draws
+      // from: a saved scene's own bank palette, else the live banks (with the
+      // active bank authored live in `tracks`).
+      const savedScene = (r: ArrangementRow) =>
+        r.scene !== s.composition.activeScene ? s.composition.scenes[r.scene] : null;
+      const fromScene = savedScene(from);
+      const toScene = savedScene(to);
+      const srcTracks = fromScene
+        ? fromScene.banks[from.bank]?.tracks
+        : from.bank === s.activeBank
+          ? s.tracks
+          : s.banks[from.bank]?.tracks;
+      const src = srcTracks?.find((t) => t.id === trackId);
+      if (!src) return {};
+      const sameBank =
+        from.bank === to.bank && (fromScene ? from.scene : -1) === (toScene ? to.scene : -1);
+      // The incoming pattern + instrument, keeping the destination's own
+      // channel state: mute/solo, and the band-global mix knobs that bank
+      // swaps carry over rather than read from the bank (see applyBankSlot).
+      const merge = (dst: Track): Track => ({
+        ...cloneTrack(src),
+        mute: dst.mute,
+        solo: dst.solo,
+        inputArmed: dst.inputArmed,
+        viewPage: dst.viewPage,
+        gain: dst.gain,
+        fxSend: dst.fxSend,
+        pan: dst.pan,
+        filterCutoff: dst.filterCutoff,
+        filterResonance: dst.filterResonance,
+        octave: dst.octave,
+        output: dst.output,
+        mutation: dst.mutation,
+      });
+      const put = (list: Track[]) => list.map((t) => (t.id === trackId ? merge(t) : t));
+      const putSlot = (slot: BankSlot): BankSlot => {
+        const next = { ...slot, tracks: put(slot.tracks) };
+        next.entropy = bankEntropyTotal(next);
+        return next;
+      };
+      let tracks = s.tracks;
+      let banks = s.banks;
+      let scenes = s.composition.scenes;
+      if (!sameBank) {
+        if (toScene) {
+          const slot = toScene.banks[to.bank];
+          if (!slot) return {};
+          const sceneBanks = toScene.banks.slice();
+          sceneBanks[to.bank] = putSlot(slot);
+          scenes = scenes.slice();
+          scenes[to.scene] = {
+            ...toScene,
+            banks: sceneBanks,
+            // The scene's own live tracks mirror its active bank.
+            tracks: toScene.activeBank === to.bank ? put(toScene.tracks) : toScene.tracks,
+          };
+        } else {
+          const slot = s.banks[to.bank];
+          const live = to.bank === s.activeBank;
+          if (!slot && !live) return {};
+          if (slot) {
+            banks = banks.slice();
+            banks[to.bank] = putSlot(slot);
+          }
+          if (live) {
+            tracks = put(tracks);
+            wroteLive = true;
+          }
+        }
+      }
+      // Dragged in to be heard: unmute it on the target row (mirrored onto the
+      // channel when that row is the one playing, like toggleArrangementRowMute).
+      const rows = s.arrangement.rows.map((r, i) =>
+        i === toRow && r.mutes.includes(trackId)
+          ? { ...r, mutes: r.mutes.filter((m) => m !== trackId) }
+          : r,
+      );
+      if (s.arrangement.active && toRow === s.arrangement.displayCursor) {
+        tracks = tracks.map((t) => (t.id === trackId && t.mute ? { ...t, mute: false } : t));
+      }
+      return {
+        tracks,
+        banks,
+        composition: { ...s.composition, scenes },
+        arrangement: { ...s.arrangement, rows },
+      };
+    });
+    // The mutation overlay is keyed by track + step index — drop it so the old
+    // pattern's mutated outcomes don't land on the new steps.
+    if (wroteLive) clearOverlay();
+  },
   applyArrangementRowMutes: (rowIdx) =>
     set((s) => {
       const row = s.arrangement.rows[rowIdx];
@@ -2611,6 +2743,7 @@ export const useSequencerStore = create<SequencerState>((set) => ({
     set((s) => ({ arrangement: { ...s.arrangement, pendingEnd } })),
   setArrangementLoop: (loop) =>
     set((s) => ({ arrangement: { ...s.arrangement, loop } })),
+  setArrangementRange: (arrangementRange) => set({ arrangementRange }),
   engageArrangementTarget: (sceneIdx, bankIdx) => {
     const s = useSequencerStore.getState();
     const crossScene =
@@ -3393,6 +3526,7 @@ function applySong(
           pendingEnd: false,
         }
       : { ...DEFAULT_ARRANGEMENT, rows: [] },
+    arrangementRange: null,
     performance: {
       ...state.performance,
       activeSong: i,

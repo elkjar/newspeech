@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { createContext, useContext, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   useSequencerStore,
@@ -15,6 +15,16 @@ import { sourceLabel } from '../instruments/library';
 // non-destructive per-track mute overlay. See [[project_song_mode]].
 
 const sceneLetter = (i: number) => String.fromCharCode(65 + i); // 0 → A
+
+// Dragging a box onto another row copies that track's pattern into the other
+// row's bank. `over` = the row under the pointer (null when off the rows).
+type CellDrag = { fromRow: number; trackId: string; over: number | null };
+const CellDragCtx = createContext<{
+  drag: CellDrag | null;
+  setDrag: (d: CellDrag | null) => void;
+}>({ drag: null, setDrag: () => {} });
+// Pointer travel before a press on a box becomes a drag rather than a click.
+const DRAG_THRESHOLD_PX = 5;
 
 function MuteGrid({
   rowIdx,
@@ -37,6 +47,15 @@ function MuteGrid({
   const activeScene = useSequencerStore((s) => s.composition.activeScene);
   const scenes = useSequencerStore((s) => s.composition.scenes);
   const toggle = useSequencerStore((s) => s.toggleArrangementRowMute);
+  const copyTrack = useSequencerStore((s) => s.copyArrangementTrack);
+  const { drag, setDrag } = useContext(CellDragCtx);
+  // Press origin for the box under the pointer; `dragged` swallows the click
+  // that follows a drag so a drop doesn't also toggle the source's mute.
+  const press = useRef<{ x: number; y: number; trackId: string; dragged: boolean } | null>(null);
+  const rowAt = (x: number, y: number): number | null => {
+    const el = document.elementFromPoint(x, y)?.closest('[data-song-row]');
+    return el ? Number(el.getAttribute('data-song-row')) : null;
+  };
 
   // Resolve the track list whose step content this row addresses, so an empty
   // channel (no active steps in that pattern) reads differently from a muted-
@@ -73,11 +92,56 @@ function MuteGrid({
       <button
         key={t.id}
         type="button"
-        title={`${label} — ${empty ? 'empty' : muted ? 'muted' : 'live'}`}
-        onClick={() => toggle(rowIdx, t.id)}
+        title={`${label} — ${empty ? 'empty' : muted ? 'muted' : 'live'}${
+          empty ? '' : ' · drag to another row to copy this pattern into its bank'
+        }`}
+        onClick={() => {
+          if (press.current?.dragged) {
+            press.current = null;
+            return;
+          }
+          toggle(rowIdx, t.id);
+        }}
+        onPointerDown={(e) => {
+          // An empty channel has no pattern to carry.
+          if (empty || e.button !== 0) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          press.current = { x: e.clientX, y: e.clientY, trackId: t.id, dragged: false };
+        }}
+        onPointerMove={(e) => {
+          const p = press.current;
+          if (!p || p.trackId !== t.id || !(e.buttons & 1)) return;
+          if (
+            !p.dragged &&
+            Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD_PX
+          )
+            return;
+          p.dragged = true;
+          const over = rowAt(e.clientX, e.clientY);
+          if (!drag || drag.over !== over) setDrag({ fromRow: rowIdx, trackId: t.id, over });
+        }}
+        onPointerUp={(e) => {
+          const p = press.current;
+          if (!p?.dragged) {
+            press.current = null;
+            return;
+          }
+          const over = rowAt(e.clientX, e.clientY);
+          setDrag(null);
+          if (over !== null && over !== rowIdx) copyTrack(rowIdx, over, t.id);
+        }}
+        onPointerCancel={() => {
+          press.current = null;
+          setDrag(null);
+        }}
         className={[
-          'flex-1 h-7 transition-colors',
+          'flex-1 h-7 transition-colors touch-none',
           empty ? 'bg-white/5' : muted ? 'bg-white/30' : 'bg-white',
+          // Drop target: this track's box on the row under the pointer.
+          drag && drag.trackId === t.id && drag.over === rowIdx && drag.fromRow !== rowIdx
+            ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0a0a0a]'
+            : '',
+          drag && drag.trackId === t.id && drag.fromRow === rowIdx ? 'opacity-50' : '',
         ].join(' ')}
       />
     );
@@ -86,30 +150,129 @@ function MuteGrid({
     <div className="flex-1 flex items-center gap-[2px]">
       {drums.map((t) => cell(t))}
       {drums.length > 0 && melodic.length > 0 && (
-        <span className="w-px h-7 bg-white/20 mx-1" />
+        <span className="w-px h-7 bg-white/20 mx-3" />
       )}
       {melodic.map((t) => cell(t))}
     </div>
   );
 }
 
-function Row({ idx, row }: { idx: number; row: ArrangementRow }) {
+// Drag state for reordering: the row being dragged and the gap it would drop
+// into (0 = above the first row, rows.length = below the last).
+type RowDrag = { from: number; to: number };
+
+function Row({
+  idx,
+  row,
+  count,
+  drag,
+  setDrag,
+}: {
+  idx: number;
+  row: ArrangementRow;
+  count: number;
+  drag: RowDrag | null;
+  setDrag: (d: RowDrag | null) => void;
+}) {
   const setRow = useSequencerStore((s) => s.setArrangementRow);
   const moveRow = useSequencerStore((s) => s.moveArrangementRow);
+  // Drag the grip to reorder. Pointer events (captured on the grip) rather
+  // than HTML5 drag-and-drop, which the Tauri webview can swallow. The drop
+  // gap is found from the sibling rows' midpoints.
+  const gapAt = (grip: HTMLElement, y: number) => {
+    const list = grip.closest('[data-song-rows]');
+    if (!list) return idx;
+    let gap = 0;
+    for (const el of Array.from(list.children)) {
+      const r = el.getBoundingClientRect();
+      if (y > r.top + r.height / 2) gap++;
+    }
+    return gap;
+  };
+  const dragging = drag?.from === idx;
+  // A drop into the gap directly above or below the dragged row moves nothing.
+  const moves = !!drag && drag.to !== drag.from && drag.to !== drag.from + 1;
+  const dropAbove = moves && drag!.to === idx;
+  const dropBelow = moves && drag!.to === count && idx === count - 1;
   const removeRow = useSequencerStore((s) => s.removeArrangementRow);
   const isPlayhead = useSequencerStore(
     (s) => s.arrangement.active && s.playing && s.arrangement.displayCursor === idx,
   );
+  // Section loop: click a row number to start playback there, shift-click a
+  // row to close the loop on it, click the start row again to clear.
+  const range = useSequencerStore((s) => s.arrangementRange);
+  const setRange = useSequencerStore((s) => s.setArrangementRange);
+  const isStart = range?.start === idx;
+  const inRange =
+    !!range && (range.end === null ? isStart : idx >= range.start && idx <= range.end);
+  const onNumber = (e: React.MouseEvent) => {
+    if (e.shiftKey) {
+      const a = range ? range.start : idx;
+      setRange({ start: Math.min(a, idx), end: Math.max(a, idx) });
+    } else if (isStart) {
+      setRange(null);
+    } else {
+      setRange({ start: idx, end: null });
+    }
+  };
   return (
     <div
+      data-song-row={idx}
       className={[
         'flex items-center gap-2 py-1 border-b border-white/5',
         isPlayhead ? 'bg-white/10' : '',
+        dragging ? 'opacity-40' : '',
       ].join(' ')}
+      style={{
+        boxShadow: dropAbove
+          ? 'inset 0 2px 0 0 #fff'
+          : dropBelow
+            ? 'inset 0 -2px 0 0 #fff'
+            : undefined,
+      }}
     >
-      <span className="w-4 text-[10px] text-white/40 text-right">
+      <button
+        type="button"
+        onClick={onNumber}
+        title={
+          isStart
+            ? 'play starts here — click to clear, shift-click a row to loop to it'
+            : 'click: start play here · shift-click: loop to this row'
+        }
+        className={[
+          'w-9 h-7 pl-3 pr-1 text-[10px] text-right border-l-2 transition-colors',
+          inRange
+            ? 'border-white text-white'
+            : 'border-transparent text-white/40 hover:text-white',
+        ].join(' ')}
+      >
         {isPlayhead ? '▶' : idx + 1}
-      </span>
+      </button>
+      <button
+        type="button"
+        title="drag to move"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setDrag({ from: idx, to: idx });
+        }}
+        onPointerMove={(e) => {
+          if (!dragging) return;
+          const to = gapAt(e.currentTarget, e.clientY);
+          if (to !== drag!.to) setDrag({ from: idx, to });
+        }}
+        onPointerUp={() => {
+          if (!dragging) return;
+          // Gap index → final row index once the dragged row is lifted out.
+          const dest = drag!.to > idx ? drag!.to - 1 : drag!.to;
+          setDrag(null);
+          if (dest !== idx) moveRow(idx, dest - idx);
+        }}
+        onPointerCancel={() => setDrag(null)}
+        className="px-1 h-7 text-[13px] leading-none text-white/40 hover:text-white cursor-grab active:cursor-grabbing touch-none"
+      >
+        ≡
+      </button>
       <select
         value={row.scene}
         onChange={(e) => setRow(idx, { scene: Number(e.target.value) })}
@@ -148,25 +311,9 @@ function Row({ idx, row }: { idx: number; row: ArrangementRow }) {
       <div className="ml-auto flex items-center gap-1">
         <button
           type="button"
-          onClick={() => moveRow(idx, -1)}
-          title="move up"
-          className="px-1 h-[22px] text-[11px] border border-white/15 text-white/50 hover:text-white hover:border-white"
-        >
-          ↑
-        </button>
-        <button
-          type="button"
-          onClick={() => moveRow(idx, 1)}
-          title="move down"
-          className="px-1 h-[22px] text-[11px] border border-white/15 text-white/50 hover:text-white hover:border-white"
-        >
-          ↓
-        </button>
-        <button
-          type="button"
           onClick={() => removeRow(idx)}
           title="delete row"
-          className="px-1 h-[22px] text-[11px] border border-white/15 text-white/50 hover:text-white hover:border-white"
+          className="px-1 h-7 text-[11px] text-white/40 hover:text-white"
         >
           ✕
         </button>
@@ -182,6 +329,11 @@ function SongDialog({ onClose }: { onClose: () => void }) {
   const setActive = useSequencerStore((s) => s.setArrangementActive);
   const setLoop = useSequencerStore((s) => s.setArrangementLoop);
   const addRow = useSequencerStore((s) => s.addArrangementRow);
+  const range = useSequencerStore((s) => s.arrangementRange);
+  const setRange = useSequencerStore((s) => s.setArrangementRange);
+
+  const [drag, setDrag] = useState<RowDrag | null>(null);
+  const [cellDrag, setCellDrag] = useState<CellDrag | null>(null);
 
   return createPortal(
     <div
@@ -212,6 +364,20 @@ function SongDialog({ onClose }: { onClose: () => void }) {
           >
             {loop ? '● loop' : '○ loop'}
           </button>
+          {range && (
+            <button
+              type="button"
+              onClick={() => setRange(null)}
+              title="clear — play the whole song from row 1"
+              className="text-[11px] uppercase tracking-widest text-white/70 hover:text-white"
+            >
+              {range.end === null
+                ? `● from ${range.start + 1}`
+                : range.end === range.start
+                  ? `● loop ${range.start + 1}`
+                  : `● loop ${range.start + 1}–${range.end + 1}`}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => addRow()}
@@ -228,14 +394,18 @@ function SongDialog({ onClose }: { onClose: () => void }) {
             ✕
           </button>
         </div>
-        <div className="overflow-auto">
+        <div className="overflow-auto" data-song-rows={rows.length > 0 ? '' : undefined}>
           {rows.length === 0 ? (
             <p className="text-[11px] text-white/40 py-6 text-center normal-case tracking-normal">
               No rows yet. Add a row to start building a song — each row is a
               scene + bank (e.g. B3) held for some bars, with per-track mutes.
             </p>
           ) : (
-            rows.map((row, i) => <Row key={i} idx={i} row={row} />)
+            <CellDragCtx.Provider value={{ drag: cellDrag, setDrag: setCellDrag }}>
+              {rows.map((row, i) => (
+                <Row key={i} idx={i} row={row} count={rows.length} drag={drag} setDrag={setDrag} />
+              ))}
+            </CellDragCtx.Provider>
           )}
         </div>
       </div>

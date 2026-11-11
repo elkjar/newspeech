@@ -1058,6 +1058,7 @@ export function importProject(json: string): boolean {
     composition: hydrateComposition(data.composition, tracks, banks),
     arrangement: hydrateArrangement(data.arrangement),
     pendingArrangementBank: null,
+    arrangementRange: null,
     // Detach the set linkage: a standalone .seq replaces the live state, and
     // a still-active song slot would fold the imported project over that
     // unrelated slot on the next set export / song switch (see

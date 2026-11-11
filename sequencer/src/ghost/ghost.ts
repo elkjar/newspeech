@@ -639,7 +639,19 @@ function arrangementAdvance(
   const elapsed = Math.floor((globalStep - arr.cursorStartStep) / STEPS_PER_BAR);
   if (elapsed < rowBars - 1) return;
   let next = arr.cursor + 1;
-  if (next >= arr.rows.length) {
+  // Section loop: after its last row, wrap to its first instead of advancing.
+  // A one-row range wraps onto itself (same bank — the pattern just keeps
+  // running, no swap).
+  const range = store.arrangementRange;
+  if (
+    range &&
+    range.end !== null &&
+    arr.cursor === range.end &&
+    range.start <= range.end &&
+    range.end < arr.rows.length
+  ) {
+    next = range.start;
+  } else if (next >= arr.rows.length) {
     // In a BROADCAST set one full pass of the arrangement IS the song — the
     // loop flag is a Sequence-side convenience and doesn't hold the set on
     // one song forever. If nothing is staged yet a looping song wraps and
