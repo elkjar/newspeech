@@ -16,6 +16,94 @@ import { sourceLabel } from '../instruments/library';
 
 const sceneLetter = (i: number) => String.fromCharCode(65 + i); // 0 → A
 
+// Where the song is and what comes next, for following along while playing an
+// instrument. Read off the audible step, so it tracks what's heard.
+//   row  — the row that's sounding          bar/bars — position inside it
+//   next — the row it goes to (null = the song ends after this row)
+//   count — 4·3·2·1 through the row's last bar (null before that); the next
+//           row lands on the beat after "1"
+const STEPS_PER_BAR = 32;
+type SongCue = { row: number; bar: number; bars: number; next: number | null; count: number | null };
+type CueState = ReturnType<typeof useSequencerStore.getState>;
+function songCue(s: CueState): SongCue | null {
+  const arr = s.arrangement;
+  if (!arr.active || !s.playing || arr.rows.length === 0) return null;
+  const row = arr.displayCursor;
+  const cur = arr.rows[row];
+  if (!cur) return null;
+  const bars = Math.max(1, Math.floor(cur.bars));
+  // The engine cursor moves a bar early, when the next row is queued: from
+  // then until the swap lands, the sounding row is in its last bar.
+  const queued = arr.cursor !== row || s.globalStep < arr.cursorStartStep;
+  const elapsed = Math.floor((s.globalStep - arr.cursorStartStep) / STEPS_PER_BAR);
+  const bar = queued ? bars : Math.min(bars, Math.max(1, elapsed + 1));
+  let next: number | null;
+  if (queued) {
+    next = arr.cursor;
+  } else {
+    const r = s.arrangementRange;
+    if (r && r.end !== null && row === r.end && r.start <= r.end) next = r.start;
+    else if (row + 1 < arr.rows.length) next = row + 1;
+    else next = arr.loop ? 0 : null;
+  }
+  const beat = Math.floor((((s.globalStep % STEPS_PER_BAR) + STEPS_PER_BAR) % STEPS_PER_BAR) / 8);
+  const count = bar === bars ? 4 - beat : null;
+  return { row, bar, bars, next, count };
+}
+// One primitive per subscriber, so a component re-renders only when its own
+// piece of the cue changes (the store ticks every step).
+const cueKey = (s: CueState) => {
+  const c = songCue(s);
+  return c ? `${c.row}|${c.bar}|${c.bars}|${c.next ?? ''}|${c.count ?? ''}` : '';
+};
+function useSongCue(): SongCue | null {
+  const key = useSequencerStore(cueKey);
+  if (!key) return null;
+  const [row, bar, bars, next, count] = key.split('|');
+  return {
+    row: Number(row),
+    bar: Number(bar),
+    bars: Number(bars),
+    next: next === '' ? null : Number(next),
+    count: count === '' ? null : Number(count),
+  };
+}
+
+// Header readout: the sounding pattern, bar position, the pattern coming next,
+// and four dots that fill one per beat through the last bar.
+function CueReadout() {
+  const cue = useSongCue();
+  const rows = useSequencerStore((s) => s.arrangement.rows);
+  if (!cue) return null;
+  const name = (i: number) => {
+    const r = rows[i];
+    return r ? `${sceneLetter(r.scene)}${r.bank + 1}` : '';
+  };
+  const last = cue.count !== null;
+  return (
+    <div className="flex items-center gap-3 text-sm tracking-widest text-white">
+      <span>{name(cue.row)}</span>
+      <span className={last ? 'text-white' : 'text-white/60'}>
+        bar {cue.bar}/{cue.bars}
+      </span>
+      <span className={last ? 'text-white' : 'text-white/60'}>
+        {cue.next === null ? 'ends' : `next ${name(cue.next)}`}
+      </span>
+      <span className="flex items-center gap-1" title="counts 4·3·2·1 through the last bar">
+        {[4, 3, 2, 1].map((n) => (
+          <span
+            key={n}
+            className={[
+              'w-3 h-3 border',
+              last && cue.count! <= n ? 'bg-white border-white' : 'border-white/30',
+            ].join(' ')}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
 // Dragging a box onto another row copies that track's pattern into the other
 // row's bank. `over` = the row under the pointer (null when off the rows).
 type CellDrag = { fromRow: number; trackId: string; over: number | null };
@@ -198,6 +286,16 @@ function Row({
   const isPlayhead = useSequencerStore(
     (s) => s.arrangement.active && s.playing && s.arrangement.displayCursor === idx,
   );
+  // 0 = not next, 1 = the row coming next, 2 = next and the count is running.
+  const nextState = useSequencerStore((s) => {
+    const c = songCue(s);
+    return c && c.next === idx && c.row !== idx ? (c.count !== null ? 2 : 1) : 0;
+  });
+  // Bar position inside this row while it sounds ('' otherwise).
+  const barPos = useSequencerStore((s) => {
+    const c = songCue(s);
+    return c && c.row === idx ? `${c.bar}/${c.bars}` : '';
+  });
   // Section loop: click a row number to start playback there, shift-click a
   // row to close the loop on it, click the start row again to clear.
   const range = useSequencerStore((s) => s.arrangementRange);
@@ -220,7 +318,7 @@ function Row({
       data-song-row={idx}
       className={[
         'flex items-center gap-2 py-1 border-b border-white/5',
-        isPlayhead ? 'bg-white/10' : '',
+        isPlayhead ? 'bg-white/10' : nextState === 2 ? 'bg-white/5' : '',
         dragging ? 'opacity-40' : '',
       ].join(' ')}
       style={{
@@ -246,7 +344,7 @@ function Row({
             : 'border-transparent text-white/40 hover:text-white',
         ].join(' ')}
       >
-        {isPlayhead ? '▶' : idx + 1}
+        {isPlayhead ? '▶' : nextState ? '▷' : idx + 1}
       </button>
       <button
         type="button"
@@ -298,7 +396,10 @@ function Row({
         ))}
       </select>
       <label className="flex items-center gap-1 text-[10px] text-white/40 uppercase tracking-widest">
-        bars
+        {/* Fixed width so the playing row's "5 /" doesn't shift the grid. */}
+        <span className={['w-8 text-right', barPos ? 'text-white' : ''].join(' ')}>
+          {barPos ? `${barPos.split('/')[0]} /` : 'bars'}
+        </span>
         <input
           type="number"
           min={1}
@@ -378,10 +479,13 @@ function SongDialog({ onClose }: { onClose: () => void }) {
                   : `● loop ${range.start + 1}–${range.end + 1}`}
             </button>
           )}
+          <div className="flex-1 flex justify-center">
+            <CueReadout />
+          </div>
           <button
             type="button"
             onClick={() => addRow()}
-            className="ml-auto px-2 h-[24px] text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors"
+            className="px-2 h-[24px] text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors"
           >
             + row
           </button>
