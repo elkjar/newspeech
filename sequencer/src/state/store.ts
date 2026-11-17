@@ -3422,7 +3422,7 @@ function applyScene(
 // anything changes. Callers that capture/serialize a composition use this
 // so the active scene reflects current edits (auto-save). Returns shallow
 // references — callers that need deep clones (snapSong) clone downstream.
-function composeLiveActiveScene(state: SequencerState): (Scene | null)[] {
+export function composeLiveActiveScene(state: SequencerState): (Scene | null)[] {
   const { composition } = state;
   if (composition.activeScene === null) return composition.scenes;
   const scenes = composition.scenes.slice();

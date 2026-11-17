@@ -8,6 +8,7 @@ import {
   type Track,
 } from '../state/store';
 import { sourceLabel } from '../instruments/library';
+import { exportSongMidi } from '../audio/songMidiExport';
 
 // Song mode — an authored linear arrangement that overrides the autonomous
 // scene/bank advancement. Each row addresses a fully-qualified pattern as
@@ -436,6 +437,31 @@ function SongDialog({ onClose }: { onClose: () => void }) {
   const [drag, setDrag] = useState<RowDrag | null>(null);
   const [cellDrag, setCellDrag] = useState<CellDrag | null>(null);
 
+  // Offline export: the whole song, one .mid per track (songMidiExport.ts).
+  const playing = useSequencerStore((s) => s.playing);
+  const pushToast = useSequencerStore((s) => s.pushToast);
+  const [exporting, setExporting] = useState(false);
+  const exportMidi = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const r = await exportSongMidi();
+      if (r.ok) {
+        pushToast({
+          kind: 'success',
+          text: `song midi saved · ${r.files} tracks · ${r.bars} bars`,
+          revealPath: r.dir,
+        });
+      } else {
+        pushToast({ kind: 'error', text: `midi export: ${r.reason}` });
+      }
+    } catch (err) {
+      pushToast({ kind: 'error', text: `midi export failed: ${String(err)}` });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[6px]"
@@ -482,6 +508,19 @@ function SongDialog({ onClose }: { onClose: () => void }) {
           <div className="flex-1 flex justify-center">
             <CueReadout />
           </div>
+          <button
+            type="button"
+            onClick={() => void exportMidi()}
+            disabled={playing || exporting || rows.length === 0}
+            title={
+              playing
+                ? 'stop the transport to export'
+                : 'write the whole song as one .mid per track, without playing it (mutation dice rolled; no ghost, lfo or cc moves)'
+            }
+            className="px-2 h-[24px] text-[11px] uppercase tracking-widest border border-white/15 text-white/60 hover:text-white hover:border-white transition-colors disabled:opacity-30 disabled:hover:text-white/60 disabled:hover:border-white/15"
+          >
+            export midi
+          </button>
           <button
             type="button"
             onClick={() => addRow()}

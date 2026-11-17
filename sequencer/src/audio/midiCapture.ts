@@ -52,7 +52,7 @@ export interface SampleTrackFile {
   channel: number;
 }
 
-interface SampleNote {
+export interface SampleNote {
   note: number;
   velocity: number; // 1..127
   onMs: number;
@@ -192,24 +192,10 @@ export async function endMidiCapture(): Promise<number> {
   for (const [trackId, notes] of c.sampleNotes) {
     const file = c.sampleTracks.get(trackId);
     if (!file || notes.length === 0) continue;
-    const ch = file.channel;
-    // A same-pitch retrigger ends the previous note — overlapping same-pitch
-    // notes are ambiguous in SMF and DAWs cut them unpredictably.
-    const sorted = [...notes].sort((a, b) => a.onMs - b.onMs);
-    const nextOn = new Map<number, number>();
-    const offs = new Array<number>(sorted.length);
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      const n = sorted[i];
-      offs[i] = Math.min(n.offMs, nextOn.get(n.note) ?? Infinity, endPerfMs);
-      nextOn.set(n.note, n.onMs);
-    }
-    const events: CapturedEvent[] = [];
-    sorted.forEach((n, i) => {
-      events.push({ atMs: n.onMs, bytes: [0x90 | ch, n.note, n.velocity] });
-      events.push({ atMs: Math.max(n.onMs, offs[i]), bytes: [0x80 | ch, n.note, 0] });
+    files.push({
+      base: file.base,
+      bytes: smfFromNotes(file.base, file.channel, notes, c.startPerfMs, endMs, c.tempos),
     });
-    const dest = { port: '', channel: ch, events };
-    files.push({ base: file.base, bytes: writeSmf(file.base, dest, undefined, c.startPerfMs, endMs, c.tempos) });
   }
 
   let written = 0;
@@ -225,6 +211,37 @@ export async function endMidiCapture(): Promise<number> {
     }
   }
   return written;
+}
+
+// A list of notes → one Type-0 SMF. Times are ms on any clock; `startMs` is
+// that clock's value at tick 0 and `endMs` the file's length from there. Also
+// used by the offline song export (songMidiExport.ts).
+export function smfFromNotes(
+  name: string,
+  channel: number,
+  notes: SampleNote[],
+  startMs: number,
+  endMs: number,
+  tempos: { atMs: number; bpm: number }[],
+): Uint8Array {
+  const ch = channel & 0x0f;
+  const endAbs = startMs + endMs;
+  // A same-pitch retrigger ends the previous note — overlapping same-pitch
+  // notes are ambiguous in SMF and DAWs cut them unpredictably.
+  const sorted = [...notes].sort((a, b) => a.onMs - b.onMs);
+  const nextOn = new Map<number, number>();
+  const offs = new Array<number>(sorted.length);
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const n = sorted[i];
+    offs[i] = Math.min(n.offMs, nextOn.get(n.note) ?? Infinity, endAbs);
+    nextOn.set(n.note, n.onMs);
+  }
+  const events: CapturedEvent[] = [];
+  sorted.forEach((n, i) => {
+    events.push({ atMs: n.onMs, bytes: [0x90 | ch, n.note, n.velocity] });
+    events.push({ atMs: Math.max(n.onMs, offs[i]), bytes: [0x80 | ch, n.note, 0] });
+  });
+  return writeSmf(name, { port: '', channel: ch, events }, undefined, startMs, endMs, tempos);
 }
 
 function slug(s: string): string {

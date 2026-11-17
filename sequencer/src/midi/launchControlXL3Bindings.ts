@@ -44,13 +44,13 @@ import {
 import { sourceIsMelodic, sourceLabel } from '../instruments/library';
 import {
   activeMixerProfile,
-  mixerChannel,
-  setMixerLevel,
-  setMixerReverb,
-  setMixerDelay,
-  setMixerPan,
-  toggleMixerMute,
-  toggleMixerSolo,
+  mixerFaderValue,
+  mixerEncoderValue,
+  mixerButtonOn,
+  setMixerFader,
+  setMixerEncoder,
+  toggleMixerButton,
+  onMixerProfilesChange,
 } from './externalMixer';
 
 type StoreState = ReturnType<typeof useSequencerStore.getState>;
@@ -86,9 +86,9 @@ const TOP_TARGETS: GlobalTarget[] = [
 
 // Which surface the controller is driving. 'sequence' = the existing sequencer
 // strip (macros / mutation / cutoff / mute-solo). 'mixer' = the external-mixer
-// page (faders → channel levels, encoder rows → reverb/delay/pan sends, buttons
-// → mute/solo, emitted as CC to the configured mixer port — see the mixer-page
-// section below + externalMixer.ts). The page-flip button (transport 'page')
+// page (faders, encoder rows and button rows each drive whatever the active
+// mixer profile's file assigns them, emitted as CC to the configured mixer
+// port — see the mixer-page section below + externalMixer.ts). The page-flip button (transport 'page')
 // toggles between them; the page button LED shows which we're on (lit = mixer).
 // With no mixer profile selected the mixer page is inert — page-down is a no-op.
 export type SurfaceMode = 'sequence' | 'mixer';
@@ -357,7 +357,8 @@ function faderName(s: StoreState, i: number): string {
 
 // Push all per-control names. Diffed (lastLabelSig) so it only resends when the
 // names actually change (page flip, track source change). The mixer page's
-// names are static, so its signature is constant and pushes once per entry.
+// names only change when its profile file does, and that path clears
+// lastLabelSig (resetState), so its signature is constant in between.
 let lastLabelSig = '';
 function syncControlLabels(): void {
   const s = useSequencerStore.getState();
@@ -377,52 +378,42 @@ function syncControlLabels(): void {
 }
 
 // --- mixer page (external mixer) ---------------------------------------------
-// Physical layout → mixer params, profile channels in column order:
-//   faders             → channel level     (pickup)
-//   encoder row 1 (top)→ reverb send       (value-sync)
-//   encoder row 2 (mid)→ delay send        (value-sync)
-//   encoder row 3 (bot)→ pan               (value-sync)
-//   button row 1 (top) → mute toggle       (LED = muted)
-//   button row 2 (bot) → solo toggle       (LED = soloed)
-// Columns past the profile's channel count are unused and stay dark. CC
-// numbers + channel labels live in the active profile (externalMixer.ts).
+// Physical layout → mixer params, profile channels in column order. WHAT each
+// row drives comes from the active profile's file (externalMixer.ts):
+//   faders             → profile.fader        (pickup)
+//   encoder rows 1..3  → profile.encoders[0..2] (value-sync), top row first
+//   button rows 1..2   → profile.buttons[0..1]  (toggle, LED = on), top first
+// Columns past the profile's channel count, and rows the profile doesn't
+// define, are unused and stay dark.
 
-type MixerEncKind = 'reverb' | 'delay' | 'pan';
-
-// Encoder index → which channel + param, or null for an unused column.
-function mixerEncoder(i: number, chCount: number): { ch: number; kind: MixerEncKind } | null {
-  const col = i % 8;
-  if (col >= chCount) return null;
+// Encoder index → row + channel, or null for an unused row/column.
+function mixerEncoder(i: number): { row: number; ch: number } | null {
+  const profile = activeMixerProfile();
+  if (!profile) return null;
+  const ch = i % 8;
   const row = Math.floor(i / 8); // 0 top, 1 mid, 2 bottom
-  if (row === 0) return { ch: col, kind: 'reverb' };
-  if (row === 1) return { ch: col, kind: 'delay' };
-  if (row === 2) return { ch: col, kind: 'pan' };
-  return null;
+  if (ch >= profile.channels.length || !profile.encoders[row]) return null;
+  return { row, ch };
 }
 
-// Button index → channel + mute/solo, or null for an unused column.
-function mixerButton(i: number, chCount: number): { ch: number; solo: boolean } | null {
-  const col = i % 8;
-  if (col >= chCount) return null;
-  return { ch: col, solo: i >= 8 };
-}
-
-function mixerEncValue(m: { ch: number; kind: MixerEncKind }): number {
-  const ch = mixerChannel(m.ch);
-  if (!ch) return 0;
-  return m.kind === 'reverb' ? ch.reverb : m.kind === 'delay' ? ch.delay : ch.pan;
+// Button index → row + channel, or null for an unused row/column.
+function mixerButton(i: number): { row: number; ch: number } | null {
+  const profile = activeMixerProfile();
+  if (!profile) return null;
+  const ch = i % 8;
+  const row = Math.floor(i / 8); // 0 top, 1 bottom
+  if (ch >= profile.channels.length || !profile.buttons[row]) return null;
+  return { row, ch };
 }
 
 // Push the mixer page's LEDs + encoder positions (diffed against the shared
-// last* arrays). Encoder rings show send/pan brightness; buttons show mute/solo.
+// last* arrays). Encoder rings show the value as brightness; buttons show on/off.
 function syncMixerSurface(): void {
-  const profile = activeMixerProfile();
-  if (!profile) return;
-  const chCount = profile.channels.length;
+  if (!activeMixerProfile()) return;
   for (let i = 0; i < ENC_COUNT; i++) {
-    const m = mixerEncoder(i, chCount);
-    if (!m) continue; // unused column → leave dark
-    const val = mixerEncValue(m);
+    const m = mixerEncoder(i);
+    if (!m) continue; // unused row/column → leave dark
+    const val = mixerEncoderValue(m.row, m.ch) ?? 0;
     if (Math.abs(val - lastEncPos[i]) > 1) {
       setEncoderValue(i, val);
       lastEncPos[i] = val;
@@ -433,12 +424,8 @@ function syncMixerSurface(): void {
     }
   }
   for (let i = 0; i < BTN_COUNT; i++) {
-    const m = mixerButton(i, chCount);
-    let level = LED_OFF;
-    if (m) {
-      const ch = mixerChannel(m.ch);
-      if (ch) level = (m.solo ? ch.solo : ch.mute) ? LED_ON : LED_OFF;
-    }
+    const m = mixerButton(i);
+    const level = m && mixerButtonOn(m.row, m.ch) ? LED_ON : LED_OFF;
     if (level === lastBtnLed[i]) continue;
     setButtonLed(i, level);
     lastBtnLed[i] = level;
@@ -450,19 +437,20 @@ function syncMixerSurface(): void {
   }
 }
 
-// Per-control names for the mixer page (static per profile — channel names
-// don't change while a profile is active).
+// Per-control names for the mixer page: "<channel> <row label>", both from the
+// active profile.
 function syncMixerLabels(): void {
   const profile = activeMixerProfile();
   if (!profile) return;
   const chCount = profile.channels.length;
+  const name = (ch: number, label: string) => `${profile.channels[ch]} ${label}`.trim();
   for (let i = 0; i < ENC_COUNT; i++) {
-    const m = mixerEncoder(i, chCount);
-    const suffix = m ? (m.kind === 'reverb' ? 'RVB' : m.kind === 'delay' ? 'DLY' : 'PAN') : '';
-    setCtrlLabel(CTRL_ENC_TARGET + i, m ? `${profile.channels[m.ch]} ${suffix}` : '');
+    const m = mixerEncoder(i);
+    setCtrlLabel(CTRL_ENC_TARGET + i, m ? name(m.ch, profile.encoders[m.row].label) : '');
   }
   for (let i = 0; i < 8; i++) {
-    setCtrlLabel(CTRL_FADER_TARGET + i, i < chCount ? `${profile.channels[i]} LVL` : '');
+    const on = profile.fader && i < chCount;
+    setCtrlLabel(CTRL_FADER_TARGET + i, on ? name(i, profile.fader!.label) : '');
   }
 }
 
@@ -470,9 +458,9 @@ function syncMixerLabels(): void {
 // against the channel's app-side level (open-loop; the mixer can't report).
 function handleMixerFader(e: XL3Event): void {
   const c = e.index;
-  const ch = mixerChannel(c);
-  if (!ch) return; // fader past the profile's channel count → no channel
-  const cur01 = ch.level / 127;
+  const cur = mixerFaderValue(c);
+  if (cur === null) return; // fader past the profile's channel count → no channel
+  const cur01 = cur / 127;
   const in01 = e.value / 127;
   let st = mixerFaderPickup[c];
   if (!st) {
@@ -490,19 +478,15 @@ function handleMixerFader(e: XL3Event): void {
   } else {
     st.lastIn = in01;
   }
-  setMixerLevel(c, e.value);
+  setMixerFader(c, e.value);
 }
 
 function handleMixerEncoder(e: XL3Event): void {
-  const profile = activeMixerProfile();
-  if (!profile) return;
-  const m = mixerEncoder(e.index, profile.channels.length);
+  const m = mixerEncoder(e.index);
   if (!m) return;
   // Record the reported position so syncMixerSurface won't fight the turn.
   lastEncPos[e.index] = e.value;
-  if (m.kind === 'reverb') setMixerReverb(m.ch, e.value);
-  else if (m.kind === 'delay') setMixerDelay(m.ch, e.value);
-  else setMixerPan(m.ch, e.value);
+  setMixerEncoder(m.row, m.ch, e.value);
   if (e.value !== lastEncLed[e.index]) {
     setEncoderLed(e.index, e.value);
     lastEncLed[e.index] = e.value;
@@ -511,11 +495,9 @@ function handleMixerEncoder(e: XL3Event): void {
 
 function handleMixerButton(e: XL3Event): void {
   if (!e.pressed) return; // momentary; act on press
-  const profile = activeMixerProfile();
-  if (!profile) return;
-  const m = mixerButton(e.index, profile.channels.length);
+  const m = mixerButton(e.index);
   if (!m) return;
-  const on = m.solo ? toggleMixerSolo(m.ch) : toggleMixerMute(m.ch);
+  const on = toggleMixerButton(m.row, m.ch);
   const level = on ? LED_ON : LED_OFF;
   setButtonLed(e.index, level);
   lastBtnLed[e.index] = level;
@@ -656,6 +638,24 @@ export function attachXL3Bindings(): void {
       // On a page flip the addressed tracks change, so fader pickup must re-arm.
       if (sectionChanged) for (let i = 0; i < 8; i++) faderPickup[i] = null;
       syncSurface();
+      syncControlLabels();
+    })
+  );
+
+  // A mixer profile file changed on disk (re-read on window focus). If we're on
+  // the mixer page, repaint it from the new profile; if the active profile's
+  // file went away, fall back to the sequence page.
+  unsubs.push(
+    onMixerProfilesChange(() => {
+      if (surfaceMode !== 'mixer') return;
+      if (!activeMixerProfile()) {
+        setSurfaceMode('sequence');
+        return;
+      }
+      resetState();
+      darkSurface();
+      syncSurface();
+      syncDisplay();
       syncControlLabels();
     })
   );

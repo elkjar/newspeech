@@ -46,6 +46,7 @@ import {
 import { attachXL3Bindings, detachXL3Bindings } from '../midi/launchControlXL3Bindings';
 import { scanAndLoadUserSamples } from '../instruments/userSamplesDir';
 import { syncUserInstrumentsFromDisk } from '../instruments/userInstrumentsStore';
+import { loadMixerProfilesFromDisk } from '../midi/externalMixer';
 import { modulated, GLOBAL_TRACK_ID } from '../audio/lfo';
 import { initGhost } from '../ghost/ghost';
 import type { TrackOutput } from '../state/store';
@@ -183,12 +184,16 @@ export function startSamplesBoot(): void {
       else if (r.status === 'loaded' && r.changed) console.info(`[instruments] ${r.count} from ${r.dir}`);
     });
   syncInstruments();
+  // External mixer profiles (.mixer files) live in the same folder and follow
+  // the same re-read-on-focus rule.
+  void loadMixerProfilesFromDisk();
   let lastFocusSync = 0;
   window.addEventListener('focus', () => {
     const now = Date.now();
     if (now - lastFocusSync < 1000) return;
     lastFocusSync = now;
     syncInstruments();
+    void loadMixerProfilesFromDisk();
   });
   void (async () => {
     // loadManifest runs in pathsOnly mode on native — no Web Audio

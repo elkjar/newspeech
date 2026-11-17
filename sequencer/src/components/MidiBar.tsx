@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useMidiMapStore } from '../midi/midiMapStore';
 import { useSequencerStore } from '../state/store';
 import { useMIDIOutputs } from '../hooks/useMIDIOutputs';
@@ -20,7 +20,11 @@ import {
   getClockDebug,
   getFollowedBpm,
 } from '../audio/clockFollow';
-import { EXTERNAL_MIXER_PRESETS } from '../midi/externalMixer';
+import {
+  mixerProfiles,
+  mixerProfileErrors,
+  onMixerProfilesChange,
+} from '../midi/externalMixer';
 
 const NATIVE = isTauri();
 
@@ -438,28 +442,47 @@ function MidiClockOutSelector() {
 }
 
 // The XL3 mixer page → external hardware mixer. WHICH mixer is a data profile
-// (channel labels + CC layout — see externalMixer.ts presets); the port is
-// where its CC goes. Profile off = the feature is dark (the XL3 page-flip
-// won't engage) and the port select is hidden.
+// (channel labels + what each control row sends), read from the .mixer files
+// in the instruments folder — see externalMixer.ts; the port is where its CC
+// goes. Profile off = the feature is dark (the XL3 page-flip won't engage) and
+// the port select is hidden.
 function ExternalMixerRow() {
   const profileId = useSequencerStore((s) => s.externalMixerProfileId);
   const setProfileId = useSequencerStore((s) => s.setExternalMixerProfileId);
+  const profiles = useSyncExternalStore(onMixerProfilesChange, mixerProfiles);
+  const errors = useSyncExternalStore(onMixerProfilesChange, mixerProfileErrors);
+  const active = profiles.find((p) => p.id === profileId);
+  // A selected profile whose file is missing stays listed so the choice isn't
+  // silently dropped while Dropbox is still syncing.
+  const missing = !!profileId && !active;
+  const title = [
+    'external mixer the xl3 mixer page drives (off = page disabled)',
+    active ? `file: ${active.path ?? 'built in (no .mixer file found)'}` : '',
+    ...errors.map((e) => `not loaded: ${e.path.split('/').pop()} (${e.reason})`),
+  ]
+    .filter(Boolean)
+    .join('\n');
   return (
     <>
       <select
         value={profileId ?? ''}
         onChange={(e) => setProfileId(e.target.value || null)}
         className={`select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[120px] ${ROW_HEIGHT}`}
-        title="external mixer the xl3 mixer page drives (off = page disabled)"
+        title={title}
       >
         <option value="" className="bg-[#050505]">
           off
         </option>
-        {EXTERNAL_MIXER_PRESETS.map((p) => (
+        {profiles.map((p) => (
           <option key={p.id} value={p.id} className="bg-[#050505]">
             {p.name}
           </option>
         ))}
+        {missing && (
+          <option value={profileId} className="bg-[#050505]">
+            {profileId} (missing)
+          </option>
+        )}
       </select>
       {profileId && <ExternalMixerPortSelector />}
     </>

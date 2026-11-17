@@ -72,7 +72,9 @@ export function Toasts() {
   if (toasts.length === 0) return null;
   return (
     <div
-      className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2 pointer-events-none"
+      // Above the dialogs (z-50, portaled to <body> after this, so an equal
+      // z-index put them and their backdrop blur on top of the toast).
+      className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-2 pointer-events-none"
       aria-live="polite"
     >
       {toasts.map((t) => (

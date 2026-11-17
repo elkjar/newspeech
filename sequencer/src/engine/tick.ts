@@ -552,6 +552,9 @@ export type TickEvent =
     }
   | {
       kind: 'midi';
+      // Source track — the live dispatcher routes by port/channel and ignores
+      // it; the offline song export (audio/songMidiExport.ts) files notes by it.
+      trackId: string;
       portName: string | null;
       channel: number;
       note: number;
@@ -1080,6 +1083,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
         if (track.midi.note !== null) {
           events.push({
             kind: 'midi',
+            trackId: track.id,
             portName: track.midi.portName,
             channel: track.midi.channel,
             note: track.midi.note,
@@ -1091,6 +1095,7 @@ export function runTick(inputs: TickInputs, ctx: TickContext): TickEvent[] {
           for (const interval of voiceIntervals) {
             events.push({
               kind: 'midi',
+              trackId: track.id,
               portName: track.midi.portName,
               channel: track.midi.channel,
               note: rootMidi + interval,
