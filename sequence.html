@@ -30,7 +30,9 @@
 
   :root { --bg: #050505; --panel: #0a0a0a; --fg: #ffffff; --rule: rgba(255, 255, 255, 0.18); }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow-x: hidden; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+  /* clip, not hidden: hidden would make body a scroll container and break the sticky features */
+  body { overflow-x: clip; }
   body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
   p {
@@ -76,62 +78,86 @@
      as padding, so full-bleed backgrounds stay full-bleed */
   :root { --col-pad: max(var(--ns-gutter, 40px), calc((100% - 1280px) / 2 + var(--ns-gutter, 40px))); }
 
-  /* ---- hero: name + download, then the app capture across the column ---- */
+  /* ---- hero: full-screen video (as the homepage), the name + download over
+     its lower left. the nav floats over it as glass (data-ns-glass). until
+     assets/sequence/hero.mp4 exists the homepage's sequence grid draws here ---- */
   #hero {
-    padding: calc(96px + var(--ns-nav-h, 0px)) var(--col-pad) 72px;
+    position: relative;
+    height: 100vh;
+    height: 100svh;
+    min-height: 560px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: calc(40px + var(--ns-nav-h, 0px)) var(--col-pad) 48px;
     border-bottom: 1px solid var(--rule);
   }
+  #hero-video, #hero-viz {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    object-fit: cover;
+    background: var(--bg);
+    pointer-events: none;
+  }
+  #hero::after { /* scrim under the copy */
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(to top, rgba(5, 5, 5, 0.92) 0%, rgba(5, 5, 5, 0.55) 38%, rgba(5, 5, 5, 0) 70%);
+    pointer-events: none;
+  }
+  #hero > .over { position: relative; z-index: 2; }
   #hero h1 {
     font-family: "zxx-sans", ui-monospace, monospace;
     font-size: clamp(54px, 9.35vw, 143px);
     line-height: 0.95;
     letter-spacing: 0.01em;
     font-weight: normal;
-    margin: 0 0 32px;
+    margin: 0 0 28px;
     user-select: none;
   }
+  #hero .badge { margin-bottom: 20px; background: rgba(5, 5, 5, 0.4); }
   #hero .lede { max-width: 58ch; }
-  #hero .lede p { font-size: 15px; line-height: 1.75; color: rgba(255, 255, 255, 0.92); }
-  #hero .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  #hero .lede p { font-size: 15px; line-height: 1.75; color: rgba(255, 255, 255, 0.92); margin: 0; }
+  #hero .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+  #hero .actions .cta { background: rgba(5, 5, 5, 0.4); }
+  #hero .actions .cta:hover { background: rgba(255, 255, 255, 0.12); }
   #hero .specs {
     display: flex;
     flex-wrap: wrap;
-    gap: 14px 28px;
-    margin-top: 28px;
+    gap: 10px 28px;
+    margin-top: 24px;
     font-size: 11px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    opacity: 0.5;
+    opacity: 0.6;
   }
-  #hero .stage { margin-top: 56px; }
-
-  /* ---- the one video frame (hero). until the video exists it holds the
-     homepage's sequence grid and a note ---- */
-  .clip {
-    position: relative;
-    aspect-ratio: 16 / 10;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: #080808;
-    overflow: hidden;
-  }
-  .clip.wide { aspect-ratio: 16 / 9; }
-  .clip video, .clip img, .clip canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
-  .clip .todo {
+  #hero .todo {
     position: absolute;
-    left: 16px;
-    right: 16px;
-    bottom: 14px;
+    z-index: 2;
+    right: var(--col-pad);
+    bottom: 48px;
     font-size: 11px;
-    line-height: 1.6;
     letter-spacing: 0.06em;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.45);
   }
-  .clip .todo b { font-weight: normal; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.8); display: block; margin-bottom: 4px; }
 
-  /* ---- feature blocks: heading left, copy + list right ---- */
-  .feature { border-bottom: 1px solid var(--rule); }
-  .feature.lift { background: var(--panel); }
-  .feature .inner {
+  /* ---- features. static (no js / reduced motion / short screens): six
+     blocks, heading left, copy right. with .pinned on #features the section
+     is one sticky screen: the six words stack on the left, the page's scroll
+     walks through them and the matching copy swaps in on the right ---- */
+  #features { border-bottom: 1px solid var(--rule); }
+  #features .words { display: none; }
+  .panel { border-bottom: 1px solid var(--rule); }
+  .panel:last-child { border-bottom: 0; }
+  .panel:nth-child(even) { background: var(--panel); }
+  .panel .inner {
     max-width: 1280px;
     margin: 0 auto;
     padding: 72px var(--ns-gutter, 40px);
@@ -140,10 +166,10 @@
     gap: 72px;
     align-items: start;
   }
-  .feature h2 { font-size: clamp(38px, 4.2vw, 72px); line-height: 1; margin: 0; }
-  .feature .copy p { max-width: 60ch; font-size: 14px; color: rgba(255, 255, 255, 0.88); }
-  .feature .copy ul { list-style: none; margin: 22px 0 0; padding: 0; max-width: 60ch; }
-  .feature .copy li {
+  .panel h2 { font-size: clamp(38px, 4.2vw, 72px); line-height: 1; margin: 0; }
+  .panel .copy p { max-width: 60ch; font-size: 14px; color: rgba(255, 255, 255, 0.88); }
+  .panel .copy ul { list-style: none; margin: 22px 0 0; padding: 0; max-width: 60ch; }
+  .panel .copy li {
     font-size: 12px;
     line-height: 1.6;
     letter-spacing: 0.03em;
@@ -151,6 +177,88 @@
     padding: 8px 0;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
+
+  #features.pinned { height: calc(100svh + (var(--steps) - 1) * var(--step-len, 70vh)); }
+  #features.pinned .pin {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(300px, 5fr) 7fr;
+    gap: 72px;
+    align-items: center;
+    padding: var(--ns-nav-h, 0px) var(--col-pad) 0;
+  }
+  #features.pinned .words {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    padding-left: 28px;
+  }
+  /* the rail: where the scroll is in the section */
+  #features.pinned .words::before,
+  #features.pinned .words::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.15);
+  }
+  #features.pinned .words::after {
+    background: #fff;
+    transform-origin: top;
+    transform: scaleY(var(--prog, 0));
+  }
+  #features .words a {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(38px, min(5.2vw, 9.5svh), 84px);
+    line-height: 1.08;
+    letter-spacing: 0.01em;
+    color: #fff;
+    text-decoration: none;
+    opacity: 0.16;
+    width: fit-content;
+    white-space: nowrap;
+    transition: opacity 0.35s, transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+    user-select: none;
+  }
+  #features .words a:hover { opacity: 0.4; }
+  #features .words a.on { opacity: 1; transform: translateX(14px); }
+  #features.pinned .panels { position: relative; height: 100%; }
+  #features.pinned .panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
+    background: none;
+    pointer-events: none;
+    visibility: hidden;
+    transition: visibility 0s 0.5s;
+  }
+  #features.pinned .panel.on { pointer-events: auto; visibility: visible; transition-delay: 0s; }
+  #features.pinned .panel .inner { display: block; padding: 0; max-width: none; }
+  #features.pinned .panel h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  /* the copy's lines leave upward and arrive from below, one after another */
+  #features.pinned .panel .copy > *, #features.pinned .panel .copy li {
+    opacity: 0;
+    transform: translateY(26px);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  #features.pinned .panel.past .copy > *, #features.pinned .panel.past .copy li { transform: translateY(-26px); }
+  #features.pinned .panel.on .copy > *, #features.pinned .panel.on .copy li {
+    opacity: 1;
+    transform: none;
+    transition: opacity 0.5s calc(0.12s + var(--n, 0) * 0.07s), transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) calc(0.12s + var(--n, 0) * 0.07s);
+  }
+  #features.pinned .panel .copy > ul { opacity: 1; transform: none; transition: none; }
+  #features.pinned .panel .copy p { font-size: 15px; line-height: 1.75; }
+  #features.pinned .panel .copy li { font-size: 13px; padding: 10px 0; }
 
   /* ---- the rest: a grid of one-line cards ---- */
   .band { padding: 80px var(--col-pad); border-bottom: 1px solid var(--rule); }
@@ -202,9 +310,17 @@
   #signup .msg { display: block; margin-top: 12px; font-size: 11px; letter-spacing: 0.06em; opacity: 0.7; }
 
   @media (max-width: 1000px) {
-    #hero { padding-bottom: 56px; }
-    #hero .stage { margin-top: 40px; }
-    .feature .inner { grid-template-columns: 1fr; gap: 24px; padding: 56px var(--ns-gutter, 40px); }
+    .panel .inner { grid-template-columns: 1fr; gap: 24px; padding: 56px var(--ns-gutter, 40px); }
+    #hero .todo { display: none; }
+    /* pinned, stacked: the words in a tight block above the copy */
+    #features.pinned .pin { grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 28px; align-items: start; padding-top: calc(var(--ns-nav-h, 0px) + 28px); }
+    #features.pinned .words { padding-left: 18px; gap: 2px; }
+    #features .words a { font-size: clamp(26px, min(8vw, 4.6svh), 44px); }
+    #features .words a.on { transform: translateX(8px); }
+    #features.pinned .panel { top: 0; transform: none; }
+    #features.pinned .panel .copy p { font-size: 13px; line-height: 1.65; margin-bottom: 10px; }
+    #features.pinned .panel .copy ul { margin-top: 14px; }
+    #features.pinned .panel .copy li { font-size: 12px; padding: 7px 0; }
     .band { padding-top: 56px; padding-bottom: 56px; }
     #more .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .rows { grid-template-columns: 1fr; gap: 36px; }
@@ -214,7 +330,6 @@
   }
   @media (max-width: 520px) {
     #more .cards { grid-template-columns: 1fr; }
-    .clip .todo { font-size: 10px; }
   }
 </style>
 </head>
@@ -222,30 +337,42 @@
 
 <script src="nav.js"></script>
 
-<section id="hero">
-  <h1>sequence</h1>
-  <span class="badge"><span data-ver>v0.24.0</span> · free</span>
-  <div class="lede">
-    <p>a sample driven (but also midi!) step sequencer with a chord-relative harmonic engine. place steps on a grid like any sequencer, or let it be harmonically aware and shift your patterns beyond where you put them.</p>
-  </div>
-  <div class="actions">
-    <a class="cta" href="https://github.com/elkjar/newspeech/releases/latest/download/Sequence.dmg">download for macos</a>
-    <a class="cta ghost" href="sequencer-readme.html">readme.txt</a>
-  </div>
-  <div class="specs" aria-label="specs">
-    <span>macos 10.15+</span><span>apple silicon + intel</span><span>signed + notarized</span><span>updates itself</span><span>open source</span>
-  </div>
-  <div class="stage">
-    <div class="clip wide">
-      <canvas id="hero-viz"></canvas>
-      <div class="todo"><b>video</b>the macbook running sequence beside the modular rig.</div>
+<section id="hero" data-ns-glass>
+  <!-- the video: <video id="hero-video" autoplay muted loop playsinline preload="auto"
+       poster="assets/sequence/hero.jpg"><source src="assets/sequence/hero.mp4" type="video/mp4"></video>
+       replaces the canvas when the footage exists -->
+  <canvas id="hero-viz"></canvas>
+  <div class="over">
+    <h1>sequence</h1>
+    <span class="badge"><span data-ver>v0.24.0</span> · free</span>
+    <div class="lede">
+      <p>a sample driven (but also midi!) step sequencer with a chord-relative harmonic engine. place steps on a grid like any sequencer, or let it be harmonically aware and shift your patterns beyond where you put them.</p>
+    </div>
+    <div class="actions">
+      <a class="cta" href="https://github.com/elkjar/newspeech/releases/latest/download/Sequence.dmg">download for macos</a>
+      <a class="cta ghost" href="sequencer-readme.html">readme.txt</a>
+    </div>
+    <div class="specs" aria-label="specs">
+      <span>macos 10.15+</span><span>apple silicon + intel</span><span>signed + notarized</span><span>updates itself</span><span>open source</span>
     </div>
   </div>
+  <div class="todo">video goes here — the macbook beside the modular rig</div>
 </section>
 
-<section class="feature" id="grid">
-  <div class="inner">
-  <h2>sequence</h2>
+<section id="features" style="--steps: 6">
+  <div class="pin">
+    <nav class="words" aria-label="features">
+      <a href="#grid">sequence</a>
+      <a href="#mutation">mangle</a>
+      <a href="#sound">polish</a>
+      <a href="#song">arrange</a>
+      <a href="#recording">record</a>
+      <a href="#hardware">control</a>
+    </nav>
+    <div class="panels">
+      <article class="panel" id="grid">
+        <div class="inner">
+        <h2>sequence</h2>
   <div class="copy">
     <p>sixteen rows — eight rhythm, eight melody — up to 64 steps each. every step carries its own pitch, velocity, chance, ratchet, timing and gate.</p>
     <p>the first melody row is the chord master: pick chords by degree and extension, and it publishes them to the rest. the second is the bass. the others follow the chord, walk the scale, drone on the root, or ignore it all.</p>
@@ -255,12 +382,11 @@
       <li>per-step chord overrides, slice choice and an accumulator</li>
     </ul>
   </div>
-  </div>
-</section>
-
-<section class="feature lift" id="mutation">
-  <div class="inner">
-  <h2>mangle</h2>
+        </div>
+      </article>
+      <article class="panel" id="mutation">
+        <div class="inner">
+        <h2>mangle</h2>
   <div class="copy">
     <p>every row has a mutation dial: velocity jitter, pitch jumps, gate wobble, ties flipping. on the chord master it drops tones, borrows chords from the parallel mode and reshuffles voicings.</p>
     <p>six macros move the whole rig at once — density, motion, drift, chaos, tension, voicing. switch on auto and the ghost walks the patterns by itself, morphing the macros and playing fills into each change.</p>
@@ -270,12 +396,11 @@
       <li>a timing lock per row keeps the rhythm and mutates only the notes</li>
     </ul>
   </div>
-  </div>
-</section>
-
-<section class="feature" id="sound">
-  <div class="inner">
-  <h2>polish</h2>
+        </div>
+      </article>
+      <article class="panel" id="sound">
+        <div class="inner">
+        <h2>polish</h2>
   <div class="copy">
     <p>every voice is a sample, played four ways: sample, slice, wavetable or granular. each has trim, tuning, a filter, drive and bit-crush, plus an lfo or envelope per target.</p>
     <p>the send chain is a tape stage, glitch, reverb and a synced delay. the loop unit grabs the last 1–8 bars of the mix and plays them back at any speed with a granular layer on top. the noise unit is clocked digital noise through a wasp-style filter.</p>
@@ -285,12 +410,11 @@
       <li>a master chain with compressor, distortion and inflate</li>
     </ul>
   </div>
-  </div>
-</section>
-
-<section class="feature lift" id="song">
-  <div class="inner">
-  <h2>arrange</h2>
+        </div>
+      </article>
+      <article class="panel" id="song">
+        <div class="inner">
+        <h2>arrange</h2>
   <div class="copy">
     <p>pattern pads snapshot and recall the whole rack, bar-quantized. scene pads do the same one level up. the song view arranges them: rows of scene, pattern and bar count, each with its own track mutes, played top to bottom.</p>
     <ul>
@@ -299,12 +423,11 @@
       <li>perform pads for live punch-ins: repeat, filter, bits, scrub, chop, reverse</li>
     </ul>
   </div>
-  </div>
-</section>
-
-<section class="feature" id="recording">
-  <div class="inner">
-  <h2>record</h2>
+        </div>
+      </article>
+      <article class="panel" id="recording">
+        <div class="inner">
+        <h2>record</h2>
   <div class="copy">
     <p>arm rec and press play. one mixed wav, or a full stems folder: master, the fx, reverb and delay buses, and a wav per track. recording keeps going after stop until the tails ring out.</p>
     <ul>
@@ -313,12 +436,11 @@
       <li>export any voice as a .pti for a polyend tracker</li>
     </ul>
   </div>
-  </div>
-</section>
-
-<section class="feature lift" id="hardware">
-  <div class="inner">
-  <h2>control</h2>
+        </div>
+      </article>
+      <article class="panel" id="hardware">
+        <div class="inner">
+        <h2>control</h2>
   <div class="copy">
     <p>any row can play an external synth over midi instead of a sample. sequence runs as clock master or follower, and records notes in from a keyboard, snapped to the scale.</p>
     <ul>
@@ -327,6 +449,9 @@
       <li>a launch control xl3 preset gives a full pre-built surface</li>
     </ul>
   </div>
+        </div>
+      </article>
+    </div>
   </div>
 </section>
 
@@ -412,7 +537,67 @@
 // hero stand-in until the app capture exists: the homepage's sequence grid
 {
   const cv = document.getElementById("hero-viz");
-  if (cv && window.NSToolViz) NSToolViz.register(cv, "sequence", { bare: true });
+  if (cv && window.NSToolViz) NSToolViz.register(cv, "sequence", { bare: true, observe: document.getElementById("hero") });
+}
+
+// features: pin the section and let the page's scroll walk the six words.
+// nothing is hijacked — the section is tall, its screen is sticky, and the
+// scroll position inside it picks the word. reduced motion and short screens
+// keep the static blocks.
+{
+  const sec = document.getElementById("features");
+  const words = [...sec.querySelectorAll(".words a")];
+  const panels = [...sec.querySelectorAll(".panel")];
+  const N = panels.length;
+  const rm = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const FONTS = ["zxx-noise", "zxx-camo", "zxx-xed", "zxx-bold"];
+  for (const f of ["zxx-noise", "zxx-camo", "zxx-xed"]) {
+    const face = new FontFace(f, `url("fonts/${f}.woff2") format("woff2")`);
+    face.load().then((ff) => document.fonts.add(ff)).catch(() => {});
+  }
+  panels.forEach((p) => p.querySelectorAll(".copy > p, .copy li").forEach((el, n) => el.style.setProperty("--n", n)));
+
+  let cur = -1;
+  let scr = 0;
+  // the word that just became current flickers through the other faces
+  function scramble(el) {
+    clearInterval(scr);
+    words.forEach((w) => { w.style.fontFamily = ""; });
+    let k = 0;
+    scr = setInterval(() => {
+      el.style.fontFamily = k < 5 ? `"${FONTS[(Math.random() * FONTS.length) | 0]}", monospace` : "";
+      if (k++ >= 5) clearInterval(scr);
+    }, 55);
+  }
+  function show(i) {
+    if (i === cur) return;
+    cur = i;
+    words.forEach((w, k) => w.classList.toggle("on", k === i));
+    panels.forEach((p, k) => { p.classList.toggle("on", k === i); p.classList.toggle("past", k < i); });
+    scramble(words[i]);
+  }
+  const span = () => sec.offsetHeight - window.innerHeight;
+  function onScroll() {
+    if (!sec.classList.contains("pinned")) return;
+    const t = Math.max(0, Math.min(1, (window.scrollY - sec.offsetTop) / Math.max(1, span())));
+    sec.style.setProperty("--prog", t.toFixed(4));
+    show(Math.round(t * (N - 1)));
+  }
+  function setup() {
+    const pin = !rm.matches && window.innerHeight >= 600;
+    sec.classList.toggle("pinned", pin);
+    if (!pin) { cur = -1; words.forEach((w) => w.classList.remove("on")); panels.forEach((p) => p.classList.remove("on", "past")); return; }
+    onScroll();
+  }
+  words.forEach((w, i) => w.addEventListener("click", (e) => {
+    if (!sec.classList.contains("pinned")) return;
+    e.preventDefault();
+    window.scrollTo({ top: sec.offsetTop + (span() * i) / (N - 1), behavior: "smooth" });
+  }));
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", setup);
+  rm.addEventListener("change", setup);
+  setup();
 }
 
 // version, size and the versions list from the github releases (the static
