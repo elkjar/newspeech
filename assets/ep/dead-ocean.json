@@ -55,7 +55,8 @@
   "audioBase": "assets/ep/",
   "private": {
     "release": "dead-ocean",
-    "note": "the record is out (bandcamp + streaming), and the site keeps its email door: the stream and the full-res zips sit behind the listen cookie, previews play without it. to open the audio to everyone: delete this block, drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at public files (the zips ride the same cookie, so they go with it)."
+    "open": true,
+    "note": "the record is out and streams here for anyone (\"open\": true, matched by open: true in RELEASES, netlify/lib/listen.mjs): the audio comes from the bucket through /api/stream, and the email is only for the full-res zips. to move the audio to public files: delete this block, drop the release from RELEASES, and point audioBase at them (the zips ride the same door, so they go with it)."
   },
   "quiet": {
     "dim": 0.5,

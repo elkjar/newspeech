@@ -6,7 +6,8 @@
 //                                                 the cookie, so the email can
 //                                                 link the zips directly
 //
-// Everything but the previews is only for a listener (../lib/listen.mjs). The
+// Everything but the previews is only for a listener (../lib/listen.mjs) —
+// unless the release is `open`, where only the zips still are. The
 // audio answers are 302s to short-lived presigned R2 GETs (../lib/r2.mjs) —
 // the bytes never pass through here.
 //
@@ -60,7 +61,8 @@ export default async (req) => {
     let who = listener(req, release), viaLink = false;
     const isDownload = bits.length === 3 && a === "download";
     if (!who && isDownload && url.searchParams.get("k")) { who = verify("link", url.searchParams.get("k"), release); viaLink = !!who; }
-    if (!who) {
+    // an open release streams for anyone; its zips still need the email
+    if (!who && !(rel.open && !isDownload)) {
       // someone clicking an emailed zip link lands on the page, not on json
       if (isDownload) return new Response(null, { status: 302, headers: { Location: `${rel.page}?listen=expired`, "Cache-Control": "no-store" } });
       return deny(401, "locked");

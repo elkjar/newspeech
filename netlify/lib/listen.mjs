@@ -13,8 +13,13 @@
 // (see r2.mjs). The emailed link opens the record AND downloads the zips —
 // the same signed token works on /api/stream/<release>/download/<format>.
 //
-// Going public on release day: delete the release from RELEASES and the
-// `private` block from its EP config, and point the config at public files.
+// `open: true` on a release (and "open": true in its config's `private` block)
+// is the record after release day: anyone can stream it — the manifest and
+// the tracks answer without the cookie — and the email is only the way to the
+// full-res zips. the audio still lives in the bucket, not in git.
+//
+// Going fully public: delete the release from RELEASES and the `private`
+// block from its EP config, and point the config at public files.
 //
 // LISTEN_SECRET (any long random string) signs links and cookies. Rotating it
 // signs everyone out and kills every link already sent.
@@ -22,7 +27,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const RELEASES = {
-  "dead-ocean": { title: "dead ocean", artist: "newspeech", page: "/dead-ocean.html" },
+  "dead-ocean": { title: "dead ocean", artist: "newspeech", page: "/dead-ocean.html", open: true },
 };
 
 export const LINK_DAYS = 90;
