@@ -265,8 +265,8 @@
   @media (max-width: 720px) {
     #side { flex-direction: column; }
   }
-  #buy .win-body, #share .win-body { padding: 22px 28px 24px; gap: 12px; }
-  #buy .row, #share .row { flex-wrap: wrap; justify-content: center; }
+  #share .win-body { padding: 22px 28px 24px; gap: 12px; }
+  #share .row { flex-wrap: wrap; justify-content: center; }
   #share .win-body button { padding: 6px 12px; }
 
   /* the gate: an email for your copy, same door as the plugins */
@@ -421,13 +421,6 @@
     </div>
   </div>
   <div id="side">
-    <div id="buy" class="win">
-      <div class="win-bar"><span class="win-idx">//</span><span class="win-title">listen</span></div>
-      <div class="win-body">
-        <div class="row" id="buy-links"></div>
-        <span class="stream" id="buy-stream" hidden></span>
-      </div>
-    </div>
     <div id="share" class="win">
       <div class="win-bar"><span class="win-idx">//</span><span class="win-title">share</span></div>
       <div class="win-body">
@@ -572,24 +565,6 @@
       soon.forEach((b) => $("avail-soon").appendChild(serviceEl(b, true)));
       if (soon.length) $("avail-soon-dt").hidden = $("avail-soon").hidden = false;
     }
-  }
-
-  // ---- buy / streaming ---------------------------------------------------------
-  {
-    // ep.buy = [{label, url}] — a dashed button until its url is filled in
-    // once the record is streaming, the services join the buy links
-    const s = ep.streaming || {};
-    const links = (Array.isArray(ep.buy) ? ep.buy : ep.buy ? [ep.buy] : []).concat(s.live ? s.services || [] : []);
-    for (const b of links) {
-      const a = document.createElement("a");
-      a.className = "cta" + (b.url ? "" : " pending");
-      a.href = b.url || "#";
-      if (b.url) { a.target = "_blank"; a.rel = "noopener"; }
-      a.textContent = b.label || "buy";
-      a.setAttribute("data-link", "");
-      $("buy-links").appendChild(a);
-    }
-    if (s.date || s.note) { $("buy-stream").textContent = s.date ? `streaming everywhere ${s.date}` : s.note; $("buy-stream").hidden = false; }
   }
 
   // ---- the record: fetched once, decoded once, handed to the worklet ------------
