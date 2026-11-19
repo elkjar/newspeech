@@ -15,47 +15,48 @@
       "mp3"
     ]
   },
-  "platforms": false,
-  "buyLabel": "available nov 20 on",
   "buy": [
     {
-      "label": "subvert",
-      "url": "",
-      "img": "assets/ep/subvert.png"
-    },
-    {
       "label": "bandcamp",
-      "url": "",
+      "url": "https://newspeech.bandcamp.com/album/dead-ocean-ep",
       "icon": "bandcamp"
     }
   ],
   "streaming": {
-    "date": "december 20, 2026",
-    "note": "streaming everywhere one month after release",
+    "live": true,
     "services": [
       {
         "label": "apple music",
-        "url": "",
+        "url": "https://music.apple.com/us/album/dead-ocean-single/6828312483",
         "icon": "applemusic"
       },
       {
         "label": "youtube music",
-        "url": "",
+        "url": "https://music.youtube.com/playlist?list=OLAK5uy_k2XRVAPRcjh8f4CklB8UAihTla9ZvhhmA",
         "icon": "youtubemusic"
       },
       {
         "label": "tidal",
-        "url": "",
+        "url": "https://tidal.com/album/574169173",
         "icon": "tidal"
+      },
+      {
+        "label": "amazon music",
+        "url": "https://music.amazon.com/albums/B0HPNP4972",
+        "icon": "amazonmusic"
+      },
+      {
+        "label": "deezer",
+        "url": "https://www.deezer.com/album/1133562081",
+        "icon": "deezer"
       }
     ]
   },
   "audioBase": "assets/ep/",
   "private": {
     "release": "dead-ocean",
-    "note": "pre-release preview: stream only, behind the email link. release day (bandcamp/subvert): delete this block AND \"ruin\": false, drop \"buyLabel\" and \"platforms\": false, drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at the public files. the full-res zips ride the same cookie, so they go away with it — decide then whether they stay (public files) or not."
+    "note": "the record is out (bandcamp + streaming), and the site keeps its email door: the stream and the full-res zips sit behind the listen cookie, previews play without it. to open the audio to everyone: delete this block, drop the release from RELEASES in netlify/lib/listen.mjs, and point audioBase at public files (the zips ride the same cookie, so they go with it)."
   },
-  "ruin": false,
   "quiet": {
     "dim": 0.5,
     "haze": 0.35,
