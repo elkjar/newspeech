@@ -20,6 +20,17 @@
   to = "/start.html"
   status = 200
 
+# the tester download page from before the public release
+[[redirects]]
+  from = "/sequence-098a79.html"
+  to = "/sequence.html"
+  status = 301
+
+[[redirects]]
+  from = "/sequence-098a79"
+  to = "/sequence.html"
+  status = 301
+
 # dl:vibe begin — managed by vst/release.sh
 [[redirects]]
   from = "/dl/vibe"

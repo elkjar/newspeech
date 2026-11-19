@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>newspeech - sequence</title>
+<meta name="description" content="sequence — a free step sequencer for macos. samples + midi, chord-relative harmony, mutation, song mode, stem recording.">
+<meta property="og:title" content="newspeech - sequence">
+<meta property="og:description" content="a free step sequencer for macos. samples + midi, chord-relative harmony, mutation, song mode, stem recording.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/sequence.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://www.newspeechsound.com/og-sequence.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="sequence — a 16-step grid of lit and dim cells">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="newspeech - sequence">
+<meta name="twitter:description" content="a free step sequencer for macos. samples + midi, chord-relative harmony, mutation, song mode, stem recording.">
+<meta name="twitter:image" content="https://www.newspeechsound.com/og-sequence.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+  /* #signup carries the space above the footer */
+  :root { --ns-foot-gap: 0px; }
+  @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "zxx-bold"; src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
+
+  :root { --bg: #050505; --panel: #0a0a0a; --fg: #ffffff; --rule: rgba(255, 255, 255, 0.18); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow-x: hidden; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  p {
+    font-size: 13px;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.78);
+    margin: 0 0 14px;
+  }
+  p a { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+  .cta {
+    display: inline-flex;
+    width: fit-content;
+    padding: 16px 22px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    color: var(--fg);
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.04em;
+  }
+  .cta:hover { background: rgba(255, 255, 255, 0.08); }
+  .cta.ghost { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.7); }
+  .aux { font-size: 11px; letter-spacing: 0.06em; opacity: 0.5; }
+  .aux a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.3); }
+  .aux a:hover { border-bottom-color: rgba(255, 255, 255, 0.8); }
+  code { font-family: inherit; font-size: 11px; color: rgba(255, 255, 255, 0.8); }
+  .badge {
+    display: inline-block;
+    width: fit-content;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    padding: 6px 10px;
+    margin: 0 0 26px;
+    opacity: 0.85;
+  }
+  h2, h3 { font-family: "zxx-sans", ui-monospace, monospace; font-weight: normal; letter-spacing: 0.01em; user-select: none; }
+  h4 { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: normal; opacity: 0.55; margin: 0 0 14px; }
+
+  /* the site column: the nav's 1280 container with --ns-gutter inside it.
+     as padding, so full-bleed backgrounds stay full-bleed */
+  :root { --col-pad: max(var(--ns-gutter, 40px), calc((100% - 1280px) / 2 + var(--ns-gutter, 40px))); }
+
+  /* ---- hero: name + download, then the app capture across the column ---- */
+  #hero {
+    padding: calc(96px + var(--ns-nav-h, 0px)) var(--col-pad) 72px;
+    border-bottom: 1px solid var(--rule);
+  }
+  #hero h1 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(54px, 9.35vw, 143px);
+    line-height: 0.95;
+    letter-spacing: 0.01em;
+    font-weight: normal;
+    margin: 0 0 32px;
+    user-select: none;
+  }
+  #hero .lede { max-width: 58ch; }
+  #hero .lede p { font-size: 15px; line-height: 1.75; color: rgba(255, 255, 255, 0.92); }
+  #hero .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  #hero .specs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 28px;
+    margin-top: 28px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.5;
+  }
+  #hero .stage { margin-top: 56px; }
+
+  /* ---- media frames. a .clip holds a muted looping <video> of the app; until
+     the capture exists it shows the shot it is waiting for ---- */
+  .clip {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: #080808;
+    overflow: hidden;
+  }
+  .clip.wide { aspect-ratio: 16 / 9; }
+  .clip video, .clip img, .clip canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .clip .todo {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 14px;
+    font-size: 11px;
+    line-height: 1.6;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .clip .todo b { font-weight: normal; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.8); display: block; margin-bottom: 4px; }
+
+  /* ---- feature blocks: copy one side, clip the other, alternating ---- */
+  .feature { border-bottom: 1px solid var(--rule); }
+  .feature.lift { background: var(--panel); }
+  .feature .inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 96px var(--ns-gutter, 40px);
+    display: grid;
+    grid-template-columns: minmax(300px, 5fr) 7fr;
+    gap: 72px;
+    align-items: center;
+  }
+  .feature.flip .inner { grid-template-columns: 7fr minmax(300px, 5fr); }
+  .feature.flip .copy { order: 2; }
+  .feature h2 { font-size: clamp(38px, 4.2vw, 72px); line-height: 1; margin: 0 0 24px; }
+  .feature .copy p { max-width: 44ch; }
+  .feature .copy ul { list-style: none; margin: 22px 0 0; padding: 0; max-width: 44ch; }
+  .feature .copy li {
+    font-size: 12px;
+    line-height: 1.6;
+    letter-spacing: 0.03em;
+    color: rgba(255, 255, 255, 0.6);
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* ---- the rest: a grid of one-line cards ---- */
+  .band { padding: 80px var(--col-pad); border-bottom: 1px solid var(--rule); }
+  .band > h2 { font-size: clamp(30px, 3.2vw, 52px); line-height: 1; margin: 0 0 40px; }
+  #more .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid rgba(255, 255, 255, 0.15); border-left: 1px solid rgba(255, 255, 255, 0.15); }
+  #more .card { padding: 20px 18px 22px; border-right: 1px solid rgba(255, 255, 255, 0.15); border-bottom: 1px solid rgba(255, 255, 255, 0.15); }
+  #more .card h4 { opacity: 0.9; margin-bottom: 10px; }
+  #more .card p { font-size: 12px; line-height: 1.6; color: rgba(255, 255, 255, 0.6); margin: 0; }
+
+  /* ---- made with it + samples: two-up rows ---- */
+  .rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
+  .rows .row h3 { font-size: 26px; line-height: 1.1; margin: 0 0 14px; }
+  .rows .row p { max-width: 52ch; }
+  .rows .row .cta { margin-top: 12px; padding: 7px 16px; font-size: 12px; }
+
+  /* ---- download ---- */
+  #download { background: var(--panel); }
+  #download .top { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; margin-bottom: 14px; }
+  #download .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; margin-top: 56px; }
+  #download .grid p { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+  #versions { list-style: none; margin: 0; padding: 0; }
+  #versions li { font-size: 12px; line-height: 1.6; letter-spacing: 0.03em; color: rgba(255, 255, 255, 0.6); padding: 9px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+  #versions li b { font-weight: normal; color: rgba(255, 255, 255, 0.92); margin-right: 10px; }
+  #versions li i { font-style: normal; opacity: 0.6; margin-right: 10px; }
+
+  /* ---- sign-up: the site's one sign-up spec (index.html #subscribe) ---- */
+  #signup { padding-bottom: 96px; border-bottom: 0; }
+  #signup .hp { display: none; }
+  #signup .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; margin-top: 20px; }
+  #signup input[type="email"] {
+    flex: 1 1 200px;
+    min-width: 0;
+    max-width: 300px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 0;
+    color: var(--fg);
+    font: inherit;
+    font-size: 12px;
+    line-height: 18px;
+    letter-spacing: 0.04em;
+    padding: 7px 12px;
+    outline: none;
+  }
+  #signup input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
+  #signup input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
+  #signup .cta { cursor: pointer; background: none; font-family: inherit; font-size: 12px; padding: 7px 16px; }
+  #signup .cta:disabled { opacity: 0.4; cursor: default; }
+  #signup .msg { display: block; margin-top: 12px; font-size: 11px; letter-spacing: 0.06em; opacity: 0.7; }
+
+  @media (max-width: 1000px) {
+    #hero { padding-bottom: 56px; }
+    #hero .stage { margin-top: 40px; }
+    .feature .inner, .feature.flip .inner { grid-template-columns: 1fr; gap: 36px; padding: 64px var(--ns-gutter, 40px); }
+    .feature.flip .copy { order: 0; } /* stacked: heading + copy, then its clip */
+    .band { padding-top: 56px; padding-bottom: 56px; }
+    #more .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rows { grid-template-columns: 1fr; gap: 36px; }
+    #download .grid { grid-template-columns: 1fr; gap: 28px; margin-top: 40px; }
+    #signup { padding-bottom: 80px; }
+    #signup input[type="email"] { flex: 1 1 100%; max-width: none; font-size: 16px; } /* <16px zooms iOS Safari on focus */
+  }
+  @media (max-width: 520px) {
+    #more .cards { grid-template-columns: 1fr; }
+    .clip .todo { font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<script src="nav.js"></script>
+
+<section id="hero">
+  <h1>sequence</h1>
+  <span class="badge"><span data-ver>v0.24.0</span> · free</span>
+  <div class="lede">
+    <p>a sample driven (but also midi!) step sequencer with a chord-relative harmonic engine. place steps on a grid like any sequencer, or let it be harmonically aware and shift your patterns beyond where you put them.</p>
+  </div>
+  <div class="actions">
+    <a class="cta" href="https://github.com/elkjar/newspeech/releases/latest/download/Sequence.dmg">download for macos</a>
+    <a class="cta ghost" href="sequencer-readme.html">readme.txt</a>
+  </div>
+  <div class="specs" aria-label="specs">
+    <span>macos 10.15+</span><span>apple silicon + intel</span><span>signed + notarized</span><span>updates itself</span><span>open source</span>
+  </div>
+  <div class="stage">
+    <div class="clip wide">
+      <canvas id="hero-viz"></canvas>
+      <div class="todo"><b>capture — hero</b>the whole app window playing a song: grid running, roll tab open, ghost on. 20–30 s loop.</div>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="grid">
+  <div class="inner">
+  <div class="copy">
+    <h2>the grid</h2>
+    <p>sixteen rows — eight rhythm, eight melody — up to 64 steps each. every step carries its own pitch, velocity, chance, ratchet, timing and gate.</p>
+    <p>the first melody row is the chord master: pick chords by degree and extension, and it publishes them to the rest. the second is the bass. the others follow the chord, walk the scale, drone on the root, or ignore it all.</p>
+    <ul>
+      <li>change root or scale mid-play and everything reharmonizes</li>
+      <li>per-row length, euclidean hits, rotation and step rate</li>
+      <li>per-step chord overrides, slice choice and an accumulator</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="clip"><div class="todo"><b>capture — the grid</b>placing notes on a rhythm row, switching to melody, drag-editing velocity, changing the root while it plays.</div></div>
+  </div>
+  </div>
+</section>
+
+<section class="feature lift flip" id="mutation">
+  <div class="inner">
+  <div class="copy">
+    <h2>mutation + ghost</h2>
+    <p>every row has a mutation dial: velocity jitter, pitch jumps, gate wobble, ties flipping. on the chord master it drops tones, borrows chords from the parallel mode and reshuffles voicings.</p>
+    <p>six macros move the whole rig at once — density, motion, drift, chaos, tension, voicing. switch on auto and the ghost walks the patterns by itself, morphing the macros and playing fills into each change.</p>
+    <ul>
+      <li>the grid keeps what you wrote; the roll tab shows what is actually sounding</li>
+      <li>freeze holds the current state</li>
+      <li>a timing lock per row keeps the rhythm and mutates only the notes</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="clip"><div class="todo"><b>capture — mutation + ghost</b>roll tab with the live overlay, a mutation dial turned up, then auto on and the macros moving.</div></div>
+  </div>
+  </div>
+</section>
+
+<section class="feature" id="sound">
+  <div class="inner">
+  <div class="copy">
+    <h2>sound</h2>
+    <p>every voice is a sample, played four ways: sample, slice, wavetable or granular. each has trim, tuning, a filter, drive and bit-crush, plus an lfo or envelope per target.</p>
+    <p>the send chain is a tape stage, glitch, reverb and a synced delay. the loop unit grabs the last 1–8 bars of the mix and plays them back at any speed with a granular layer on top. the noise unit is clocked digital noise through a wasp-style filter.</p>
+    <ul>
+      <li>a compressor, saturator and eq on every track</li>
+      <li>four global lfos, routable to any knob</li>
+      <li>a master chain with compressor, distortion and inflate</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="clip"><div class="todo"><b>capture — sound</b>params tab on a granular voice, then the loops tab: capture 4 bars, pull the speed down, bring up the grains.</div></div>
+  </div>
+  </div>
+</section>
+
+<section class="feature lift flip" id="song">
+  <div class="inner">
+  <div class="copy">
+    <h2>song mode</h2>
+    <p>pattern pads snapshot and recall the whole rack, bar-quantized. scene pads do the same one level up. the song view arranges them: rows of scene, pattern and bar count, each with its own track mutes, played top to bottom.</p>
+    <ul>
+      <li>loop a section, drag rows to reorder</li>
+      <li>a next-pattern cue with a count through the last bar</li>
+      <li>perform pads for live punch-ins: repeat, filter, bits, scrub, chop, reverse</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="clip"><div class="todo"><b>capture — song mode</b>queueing pattern pads on the bar, then the song view playing through rows with the cue counting down.</div></div>
+  </div>
+  </div>
+</section>
+
+<section class="feature" id="recording">
+  <div class="inner">
+  <div class="copy">
+    <h2>recording</h2>
+    <p>arm rec and press play. one mixed wav, or a full stems folder: master, the fx, reverb and delay buses, and a wav per track. recording keeps going after stop until the tails ring out.</p>
+    <ul>
+      <li>a .mid beside every stem and for every hardware synth</li>
+      <li>export a whole song as midi without playing it</li>
+      <li>export any voice as a .pti for a polyend tracker</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="clip"><div class="todo"><b>capture — recording</b>multi on, rec, play a few bars, stop — then the stems folder in finder.</div></div>
+  </div>
+  </div>
+</section>
+
+<section class="feature lift flip" id="hardware">
+  <div class="inner">
+  <div class="copy">
+    <h2>hardware</h2>
+    <p>any row can play an external synth over midi instead of a sample. sequence runs as clock master or follower, and records notes in from a keyboard, snapped to the scale.</p>
+    <ul>
+      <li>bind any hardware cc to any knob or pad with learn mode</li>
+      <li>a launchpad in programmer mode edits the grid directly</li>
+      <li>a launch control xl3 preset gives a full pre-built surface</li>
+    </ul>
+  </div>
+  <div class="shot">
+    <div class="clip"><div class="todo"><b>capture — hardware</b>camera, not screen: launchpad + xl3 driving the app with a synth playing. or the midi settings page if no footage.</div></div>
+  </div>
+  </div>
+</section>
+
+<section class="band" id="more">
+  <h2>also in there</h2>
+  <div class="cards">
+    <div class="card"><h4>edit modes</h4><p>notes, velocity, chance, ratchet, timing, gate — keys 1–6.</p></div>
+    <div class="card"><h4>ties</h4><p>shift-click ties a run of steps on melodic rows.</p></div>
+    <div class="card"><h4>slicing</h4><p>auto or grid slices, with a slice per step or random per hit.</p></div>
+    <div class="card"><h4>accumulator</h4><p>a per-step climbing ladder: wrap, bounce or hold.</p></div>
+    <div class="card"><h4>kits</h4><p>any folder of wavs is a kit. note-named files map themselves.</p></div>
+    <div class="card"><h4>loop to kit</h4><p>bounce the loop unit into the library as a new voice.</p></div>
+    <div class="card"><h4>count-in + metronome</h4><p>a one-bar count and a click that never reaches the recording.</p></div>
+    <div class="card"><h4>output routing</h4><p>per-row outputs on a multi-channel interface.</p></div>
+    <div class="card"><h4>lfo routing</h4><p>select an lfo, click a knob. grab the knob to override it.</p></div>
+    <div class="card"><h4>.seq files</h4><p>songs save as plain json.</p></div>
+    <div class="card"><h4>panic</h4><p>⌘. stops the transport, kills every voice, clears the tails.</p></div>
+    <div class="card"><h4>updates</h4><p>checks on launch and asks before installing.</p></div>
+  </div>
+</section>
+
+<section class="band" id="with">
+  <h2>around it</h2>
+  <div class="rows">
+    <div class="row">
+      <h3>made with sequence</h3>
+      <p>[placeholder — which pieces go here, and a line on how sequence was used in each.]</p>
+      <a class="cta" href="dead-ocean.html">dead ocean</a>
+    </div>
+    <div class="row">
+      <h3>samples</h3>
+      <p>everything audio in sequence is a sample. the newspeech sample library has kits ready to drop in: drums, bass, instruments, pads, textures, breaks and loops.</p>
+      <a class="cta" href="samples.html">newspeech samples</a>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="download">
+  <h2>download</h2>
+  <div class="top">
+    <a class="cta" href="https://github.com/elkjar/newspeech/releases/latest/download/Sequence.dmg">download for macos</a>
+    <span class="aux"><span data-ver>v0.24.0</span> · <span data-size>17 mb</span> · macos 10.15+ · apple silicon + intel · free</span>
+  </div>
+  <div class="aux"><a href="sequencer-readme.html">readme.txt</a> &nbsp; <a href="https://github.com/elkjar/newspeech/tree/main/sequencer" target="_blank" rel="noopener noreferrer">source</a> &nbsp; <a href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer">discord</a></div>
+  <div class="grid">
+    <div>
+      <h4>install</h4>
+      <p>open the dmg, drag sequence to applications.</p>
+      <p>on first run macos asks for microphone access. that is how the app lists audio devices — say yes.</p>
+    </div>
+    <div>
+      <h4>samples</h4>
+      <p>the app reads kits from <code>~/documents/sequence/samples</code>, sorted into <code>drums/ bass/ instruments/ pads/ textures/ breaks/ loops/</code> — one folder of wavs per kit.</p>
+      <p>grab kits from <a href="samples.html">newspeech samples</a> and unzip each into its category folder. to use another folder: settings → user samples → change…</p>
+    </div>
+    <div>
+      <h4>versions</h4>
+      <ul id="versions">
+        <li><b>0.24.0</b><i>2026-11-17</i>song mode: export midi; xl3 mixer page layout from a .mixer file</li>
+        <li><b>0.23.1</b><i>2026-11-12</i>song mode: next-pattern cue in the song dialog</li>
+        <li><b>0.23.0</b><i>2026-11-11</i>song mode: loop a section, drag rows to reorder</li>
+        <li><b>0.22.0</b><i>2026-11-06</i>midi capture in stems takes</li>
+      </ul>
+      <p class="aux" style="margin-top: 14px;"><a href="https://github.com/elkjar/newspeech/releases" target="_blank" rel="noopener noreferrer">all releases</a></p>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="signup">
+  <h4>mailing list</h4>
+  <p>new versions, new tools, new music.</p>
+  <form novalidate>
+    <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+    <div class="row">
+      <input type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email" aria-label="email">
+      <button type="submit" class="cta">subscribe</button>
+    </div>
+  </form>
+</section>
+
+<script src="tool-viz.js"></script>
+<script>
+// hero stand-in until the app capture exists: the homepage's sequence grid
+{
+  const cv = document.getElementById("hero-viz");
+  if (cv && window.NSToolViz) NSToolViz.register(cv, "sequence", { bare: true });
+}
+
+// version, size and the versions list from the github releases (the static
+// markup above is the fallback). Sequence owns releases/latest; other tags in
+// the repo are filtered out by prefix.
+fetch("https://api.github.com/repos/elkjar/newspeech/releases?per_page=30")
+  .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+  .then((all) => {
+    const rels = all.filter((r) => r.tag_name.startsWith("sequence-v") && !r.draft);
+    if (!rels.length) return;
+    const ver = (r) => r.tag_name.replace("sequence-v", "");
+    document.querySelectorAll("[data-ver]").forEach((el) => { el.textContent = "v" + ver(rels[0]); });
+    const dmg = rels[0].assets.find((a) => a.name === "Sequence.dmg");
+    if (dmg) document.querySelector("[data-size]").textContent = Math.round(dmg.size / 1048576) + " mb";
+    const ul = document.getElementById("versions");
+    ul.textContent = "";
+    rels.slice(0, 6).forEach((r) => {
+      const li = document.createElement("li");
+      const b = document.createElement("b"); b.textContent = ver(r);
+      const i = document.createElement("i"); i.textContent = (r.published_at || "").slice(0, 10);
+      li.append(b, i, (r.body || "").split("\n")[0].toLowerCase());
+      ul.appendChild(li);
+    });
+  })
+  .catch(() => {});
+
+// sign-up: /api/subscribe (Resend), source "sequence". locally this needs
+// `netlify dev` for the function.
+{
+  const form = document.querySelector("#signup form");
+  const input = form.querySelector('input[type="email"]');
+  try { input.value = localStorage.getItem("newspeech.email") || ""; } catch (_) {}
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    form.querySelector(".msg")?.remove();
+    const msg = document.createElement("span");
+    msg.className = "msg";
+    if (!input.checkValidity()) {
+      msg.textContent = input.value.trim() ? "that doesn't look like an email" : "an email goes here first";
+      form.appendChild(msg);
+      input.focus();
+      return;
+    }
+    const btn = form.querySelector("button");
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: input.value.trim(), source: "sequence", "bot-field": form.querySelector('[name="bot-field"]').value }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      try { localStorage.setItem("newspeech.email", input.value.trim()); } catch (_) {}
+      msg.textContent = "signal received — you're on the list";
+    } catch (err) {
+      btn.disabled = false;
+      msg.textContent = "transmission failed — try again";
+    }
+    form.appendChild(msg);
+  });
+}
+</script>
+</body>
+</html>
