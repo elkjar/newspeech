@@ -666,16 +666,10 @@ fetch("news-latest.html")
   <canvas class="viz"></canvas>
   <div class="copy">
     <h2 data-link>sequence</h2>
-    <span class="badge">coming soon</span>
+    <span class="badge">free · macos</span>
     <p>a step sequencer with a chord-relative harmonic engine. set a root and a scale, author chords by degree — the rest of the band harmonizes against whatever played last.</p>
-    <p>built to play itself, mostly: mutation dials on every row, five global macros, sixteen banks. arriving as a native macos app.</p>
-    <form class="waitlist" novalidate>
-      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-      <div class="wl-row">
-        <input type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email" aria-label="email">
-        <button type="submit" class="cta" data-link>join the waitlist</button>
-      </div>
-    </form>
+    <p>built to play itself, mostly: mutation dials on every row, six global macros, song mode, stem recording.</p>
+    <a class="cta" href="sequence.html" data-link>sequence →</a>
   </div>
 </section>
 
@@ -1840,40 +1834,6 @@ subForm.addEventListener("submit", async (e) => {
   }
 });
 
-// ---- sequence waitlist: same door, source "sequence" (sets waitlist=sequence
-// on the contact). a known email (any newspeech form) is prefilled. ----
-{
-  const wl = document.querySelector("#v-sequence .waitlist");
-  const input = wl.querySelector('input[type="email"]');
-  try { input.value = localStorage.getItem("newspeech.email") || ""; } catch (_) {}
-  wl.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    wl.querySelector(".wl-msg")?.remove();
-    if (!input.checkValidity()) { input.focus(); return; }
-    const btn = wl.querySelector("button");
-    btn.disabled = true;
-    try {
-      const res = await fetch("/api/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: input.value.trim(),
-          source: "sequence",
-          "bot-field": wl.querySelector('[name="bot-field"]').value,
-        }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      try { localStorage.setItem("newspeech.email", input.value.trim()); } catch (_) {}
-      wl.innerHTML = '<span class="wl-msg">signal received — you\'re on the waitlist</span>';
-    } catch (err) {
-      btn.disabled = false;
-      const msg = document.createElement("span");
-      msg.className = "wl-msg err";
-      msg.textContent = "transmission failed — try again";
-      wl.appendChild(msg);
-    }
-  });
-}
 </script>
 </body>
 </html>
