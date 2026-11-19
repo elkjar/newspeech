@@ -37,6 +37,7 @@
   // text treatment skips them).
   const TOOL_PAGES = ["tools.html", "texture.html", "slice.html", "decay.html", "drone.html", "glitch.html", "stretch.html", "samples.html", "visualizers.html"];
   const IN_TOOLS = TOOL_PAGES.includes(PAGE);
+  const ICON_BC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 18.5L9.5 5.5H21.5L14.5 18.5Z"/></svg>`;
   const ICON_IG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" stroke="none"/></svg>`;
   const ICON_YT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z" fill="currentColor" stroke="none"/></svg>`;
   const ICON_DC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M7.4 6.1Q12 5 16.6 6.1Q20.2 10.4 20.5 16.4Q18.6 17.9 16.1 18.6L15.1 16.9Q12 17.7 8.9 16.9L7.9 18.6Q5.4 17.9 3.5 16.4Q3.8 10.4 7.4 6.1Z"/><ellipse cx="9.2" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/><ellipse cx="14.8" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/></svg>`;
@@ -48,6 +49,7 @@
     `<a href="${ROOT}tools.html"${IN_TOOLS ? " class=\"current\"" : ""} data-ns-link>tools</a>` +
     `<a href="${ROOT}plugins.html"${here("plugins.html")} data-ns-link>plugins</a>` +
     `<span class="ns-socials">` +
+    `<a class="ns-icon" href="https://newspeech.bandcamp.com" target="_blank" rel="noopener noreferrer" aria-label="bandcamp">${ICON_BC}</a>` +
     `<a class="ns-icon" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a class="ns-icon" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
     `<a class="ns-icon" href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>` +
@@ -268,6 +270,7 @@
     `<a class="ov-link${cur("plugins.html")}" href="${ROOT}plugins.html">plugins</a>` +
     `</div>` +
     `<div class="ov-icons">` +
+    `<a href="https://newspeech.bandcamp.com" target="_blank" rel="noopener noreferrer" aria-label="bandcamp">${ICON_BC}</a>` +
     `<a href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
     `<a href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
     `<a href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>` +
