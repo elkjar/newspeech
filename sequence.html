@@ -105,8 +105,8 @@
   }
   #hero .stage { margin-top: 56px; }
 
-  /* ---- media frames. a .clip holds a muted looping <video> of the app; until
-     the capture exists it shows the shot it is waiting for ---- */
+  /* ---- the one video frame (hero). until the video exists it holds the
+     homepage's sequence grid and a note ---- */
   .clip {
     position: relative;
     aspect-ratio: 16 / 10;
@@ -128,23 +128,21 @@
   }
   .clip .todo b { font-weight: normal; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.8); display: block; margin-bottom: 4px; }
 
-  /* ---- feature blocks: copy one side, clip the other, alternating ---- */
+  /* ---- feature blocks: heading left, copy + list right ---- */
   .feature { border-bottom: 1px solid var(--rule); }
   .feature.lift { background: var(--panel); }
   .feature .inner {
     max-width: 1280px;
     margin: 0 auto;
-    padding: 96px var(--ns-gutter, 40px);
+    padding: 72px var(--ns-gutter, 40px);
     display: grid;
     grid-template-columns: minmax(300px, 5fr) 7fr;
     gap: 72px;
-    align-items: center;
+    align-items: start;
   }
-  .feature.flip .inner { grid-template-columns: 7fr minmax(300px, 5fr); }
-  .feature.flip .copy { order: 2; }
-  .feature h2 { font-size: clamp(38px, 4.2vw, 72px); line-height: 1; margin: 0 0 24px; }
-  .feature .copy p { max-width: 44ch; }
-  .feature .copy ul { list-style: none; margin: 22px 0 0; padding: 0; max-width: 44ch; }
+  .feature h2 { font-size: clamp(38px, 4.2vw, 72px); line-height: 1; margin: 0; }
+  .feature .copy p { max-width: 60ch; font-size: 14px; color: rgba(255, 255, 255, 0.88); }
+  .feature .copy ul { list-style: none; margin: 22px 0 0; padding: 0; max-width: 60ch; }
   .feature .copy li {
     font-size: 12px;
     line-height: 1.6;
@@ -206,8 +204,7 @@
   @media (max-width: 1000px) {
     #hero { padding-bottom: 56px; }
     #hero .stage { margin-top: 40px; }
-    .feature .inner, .feature.flip .inner { grid-template-columns: 1fr; gap: 36px; padding: 64px var(--ns-gutter, 40px); }
-    .feature.flip .copy { order: 0; } /* stacked: heading + copy, then its clip */
+    .feature .inner { grid-template-columns: 1fr; gap: 24px; padding: 56px var(--ns-gutter, 40px); }
     .band { padding-top: 56px; padding-bottom: 56px; }
     #more .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .rows { grid-template-columns: 1fr; gap: 36px; }
@@ -241,15 +238,15 @@
   <div class="stage">
     <div class="clip wide">
       <canvas id="hero-viz"></canvas>
-      <div class="todo"><b>capture — hero</b>the whole app window playing a song: grid running, roll tab open, ghost on. 20–30 s loop.</div>
+      <div class="todo"><b>video</b>the macbook running sequence beside the modular rig.</div>
     </div>
   </div>
 </section>
 
 <section class="feature" id="grid">
   <div class="inner">
+  <h2>the grid</h2>
   <div class="copy">
-    <h2>the grid</h2>
     <p>sixteen rows — eight rhythm, eight melody — up to 64 steps each. every step carries its own pitch, velocity, chance, ratchet, timing and gate.</p>
     <p>the first melody row is the chord master: pick chords by degree and extension, and it publishes them to the rest. the second is the bass. the others follow the chord, walk the scale, drone on the root, or ignore it all.</p>
     <ul>
@@ -258,16 +255,13 @@
       <li>per-step chord overrides, slice choice and an accumulator</li>
     </ul>
   </div>
-  <div class="shot">
-    <div class="clip"><div class="todo"><b>capture — the grid</b>placing notes on a rhythm row, switching to melody, drag-editing velocity, changing the root while it plays.</div></div>
-  </div>
   </div>
 </section>
 
-<section class="feature lift flip" id="mutation">
+<section class="feature lift" id="mutation">
   <div class="inner">
+  <h2>mutation + ghost</h2>
   <div class="copy">
-    <h2>mutation + ghost</h2>
     <p>every row has a mutation dial: velocity jitter, pitch jumps, gate wobble, ties flipping. on the chord master it drops tones, borrows chords from the parallel mode and reshuffles voicings.</p>
     <p>six macros move the whole rig at once — density, motion, drift, chaos, tension, voicing. switch on auto and the ghost walks the patterns by itself, morphing the macros and playing fills into each change.</p>
     <ul>
@@ -276,16 +270,13 @@
       <li>a timing lock per row keeps the rhythm and mutates only the notes</li>
     </ul>
   </div>
-  <div class="shot">
-    <div class="clip"><div class="todo"><b>capture — mutation + ghost</b>roll tab with the live overlay, a mutation dial turned up, then auto on and the macros moving.</div></div>
-  </div>
   </div>
 </section>
 
 <section class="feature" id="sound">
   <div class="inner">
+  <h2>sound</h2>
   <div class="copy">
-    <h2>sound</h2>
     <p>every voice is a sample, played four ways: sample, slice, wavetable or granular. each has trim, tuning, a filter, drive and bit-crush, plus an lfo or envelope per target.</p>
     <p>the send chain is a tape stage, glitch, reverb and a synced delay. the loop unit grabs the last 1–8 bars of the mix and plays them back at any speed with a granular layer on top. the noise unit is clocked digital noise through a wasp-style filter.</p>
     <ul>
@@ -294,16 +285,13 @@
       <li>a master chain with compressor, distortion and inflate</li>
     </ul>
   </div>
-  <div class="shot">
-    <div class="clip"><div class="todo"><b>capture — sound</b>params tab on a granular voice, then the loops tab: capture 4 bars, pull the speed down, bring up the grains.</div></div>
-  </div>
   </div>
 </section>
 
-<section class="feature lift flip" id="song">
+<section class="feature lift" id="song">
   <div class="inner">
+  <h2>song mode</h2>
   <div class="copy">
-    <h2>song mode</h2>
     <p>pattern pads snapshot and recall the whole rack, bar-quantized. scene pads do the same one level up. the song view arranges them: rows of scene, pattern and bar count, each with its own track mutes, played top to bottom.</p>
     <ul>
       <li>loop a section, drag rows to reorder</li>
@@ -311,16 +299,13 @@
       <li>perform pads for live punch-ins: repeat, filter, bits, scrub, chop, reverse</li>
     </ul>
   </div>
-  <div class="shot">
-    <div class="clip"><div class="todo"><b>capture — song mode</b>queueing pattern pads on the bar, then the song view playing through rows with the cue counting down.</div></div>
-  </div>
   </div>
 </section>
 
 <section class="feature" id="recording">
   <div class="inner">
+  <h2>recording</h2>
   <div class="copy">
-    <h2>recording</h2>
     <p>arm rec and press play. one mixed wav, or a full stems folder: master, the fx, reverb and delay buses, and a wav per track. recording keeps going after stop until the tails ring out.</p>
     <ul>
       <li>a .mid beside every stem and for every hardware synth</li>
@@ -328,25 +313,19 @@
       <li>export any voice as a .pti for a polyend tracker</li>
     </ul>
   </div>
-  <div class="shot">
-    <div class="clip"><div class="todo"><b>capture — recording</b>multi on, rec, play a few bars, stop — then the stems folder in finder.</div></div>
-  </div>
   </div>
 </section>
 
-<section class="feature lift flip" id="hardware">
+<section class="feature lift" id="hardware">
   <div class="inner">
+  <h2>hardware</h2>
   <div class="copy">
-    <h2>hardware</h2>
     <p>any row can play an external synth over midi instead of a sample. sequence runs as clock master or follower, and records notes in from a keyboard, snapped to the scale.</p>
     <ul>
       <li>bind any hardware cc to any knob or pad with learn mode</li>
       <li>a launchpad in programmer mode edits the grid directly</li>
       <li>a launch control xl3 preset gives a full pre-built surface</li>
     </ul>
-  </div>
-  <div class="shot">
-    <div class="clip"><div class="todo"><b>capture — hardware</b>camera, not screen: launchpad + xl3 driving the app with a synth playing. or the midi settings page if no footage.</div></div>
   </div>
   </div>
 </section>
