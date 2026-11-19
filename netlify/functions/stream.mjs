@@ -1,7 +1,8 @@
 // GET /api/stream/<release>/manifest            {tracks, previews, downloads}
 // GET /api/stream/<release>/<slug>              → the track's stream copy
 // GET /api/stream/<release>/preview/<slug>      → the track's 15s preview — PUBLIC
-// GET /api/stream/<release>/download/<format>   → the full-res zip; takes the
+// GET /api/stream/<release>/download/<format>   → the full-res zip (or the ruined
+//                                                 edition's: ruin<format>); takes the
 //                                                 emailed link's ?k= as well as
 //                                                 the cookie, so the email can
 //                                                 link the zips directly
@@ -75,10 +76,12 @@ export default async (req) => {
       return new Response(JSON.stringify(m), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } });
     }
     if (isDownload) {
-      if (!DOWNLOAD_ID.test(b || "") || !(m.downloads || {})[b]) return deny(404, "format");
+      // the clean zips, or the ruined edition's (manifest.ruined, ids "ruin<format>")
+      const d = DOWNLOAD_ID.test(b || "") && ((m.downloads || {})[b] || (m.ruined || {})[b]);
+      if (!d) return deny(404, "format");
       console.log(`stream: download ${release} ${b}${viaLink ? " (email)" : ""}`);
       // the email link also opens the record in this browser, like the listen link
-      return await serve(`${release}/download/${b}.zip`, DOWNLOAD_TTL, { filename: m.downloads[b].name, ...(viaLink ? { "Set-Cookie": setCookie(req, release) } : {}) });
+      return await serve(`${release}/download/${b}.zip`, DOWNLOAD_TTL, { filename: d.name, ...(viaLink ? { "Set-Cookie": setCookie(req, release) } : {}) });
     }
     if (bits.length === 2 && SLUG.test(a || "") && (m.tracks || {})[a]) {
       return await serve(`${release}/stream/${a}.m4a`, STREAM_TTL);

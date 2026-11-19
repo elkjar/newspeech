@@ -13,13 +13,31 @@
       "alac",
       "wav",
       "mp3"
-    ]
+    ],
+    "ruined": {
+      "note": "the official ruined edition: the record through the page's own ruin at this take (tools/release-audio --ruined prints and zips it)",
+      "name": "Dead Ocean (Ruined)",
+      "title": "dead ocean (ruined)",
+      "cover": "assets/ep/cover-ruined-3000.jpg",
+      "art": "assets/ep/cover-ruined.jpg",
+      "take": {
+        "ruin": 0.26,
+        "speed": 0.5,
+        "verb": 0.72,
+        "seed": "d0ce4a"
+      }
+    }
   },
   "buy": [
     {
       "label": "bandcamp",
       "url": "https://newspeech.bandcamp.com/album/dead-ocean-ep",
       "icon": "bandcamp"
+    },
+    {
+      "label": "subvert",
+      "url": "https://www.subvert.fm/newspeech",
+      "img": "assets/ep/subvert.png"
     }
   ],
   "streaming": {

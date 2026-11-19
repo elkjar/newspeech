@@ -64,6 +64,17 @@
   #album .dl button:hover { background: rgba(255,255,255,.08); }
   #album .dl button:disabled { opacity: .6; cursor: default; }
   @media (max-width: 640px) { #album .dl select { font-size: 16px; } }
+  /* the ruined edition's row: its cover, the height of the controls, opens full size */
+  #album .dl .art { display: block; flex: 0 0 auto; border: 1px solid #333; }
+  #album .dl .art:hover { border-color: #888; }
+  #album .dl .art img { display: block; width: 32px; height: 32px; object-fit: cover; }
+  #album .avail #rdl-dt { align-self: center; }
+  /* phones: labels sit above their rows, so a format picker gets the full width */
+  @media (max-width: 640px) {
+    #album .avail { grid-template-columns: minmax(0, 1fr); gap: 6px 0; }
+    #album .avail dt:not(:first-child) { margin-top: 12px; }
+    #album .dl select { flex: 1 1 0; min-width: 0; }
+  }
   #album .svc { display: inline-flex; align-items: center; gap: 8px; color: #ccc; text-decoration: none; letter-spacing: 0.06em; white-space: nowrap; }
   #album .svc svg { width: 16px; height: 16px; fill: currentColor; display: block; }
   /* a bitmap mark used as a mask so it takes the text colour like the svgs */
@@ -369,6 +380,8 @@
     <dl class="avail">
       <dt id="dl-dt" hidden>download</dt>
       <dd id="dl" class="dl" hidden><select id="dl-fmt" aria-label="format"></select><button type="button" id="dl-go">get ↓</button></dd>
+      <dt id="rdl-dt" hidden>ruined edition</dt>
+      <dd id="rdl" class="dl" hidden><a id="rdl-art" class="art" target="_blank" rel="noopener" title="the ruined edition's cover"><img id="rdl-img" alt="" width="32" height="32"></a><select id="rdl-fmt" aria-label="ruined edition format"></select><button type="button" id="rdl-go">get ↓</button></dd>
       <dt id="avail-now-dt" hidden>available on</dt>
       <dd id="avail-now" hidden></dd>
       <dt id="avail-soon-dt" hidden>coming soon to</dt>
@@ -1101,21 +1114,30 @@
   // in R2, stored with its filename — the browser saves it like any download.
   const dlRow = $("dl"), dlFmt = $("dl-fmt"), dlGo = $("dl-go");
   const mb = (b) => `${Math.round(b / 1048576)} MB`;
+  // the ruined edition (ep.download.ruined + the manifest's `ruined` zips): the
+  // record through the ruin at one fixed take, with its own cover — a second row
+  const rdlFmt = $("rdl-fmt");
   async function offerDownloads() {
     let m;
     try { m = await getManifest(); } catch (_) { return; }
+    const fill = (sel, set) => { sel.innerHTML = ""; for (const [id, d] of set) sel.add(new Option(`${d.label} · ${mb(d.bytes)}`, id)); };
     const ds = Object.entries(m.downloads || {});
-    if (!ds.length) return;
-    dlFmt.innerHTML = "";
-    for (const [id, d] of ds) dlFmt.add(new Option(`${d.label} · ${mb(d.bytes)}`, id));
-    dlRow.hidden = $("dl-dt").hidden = false;
+    if (ds.length) { fill(dlFmt, ds); dlRow.hidden = $("dl-dt").hidden = false; }
+    const rs = Object.entries(m.ruined || {}), red = ep.download && ep.download.ruined;
+    if (rs.length && red) {
+      fill(rdlFmt, rs);
+      if (red.art) { $("rdl-img").src = red.art; $("rdl-img").alt = `${red.title || red.name} — cover`; $("rdl-art").href = red.art; } else $("rdl-art").remove();
+      $("rdl").hidden = $("rdl-dt").hidden = false;
+    }
   }
-  dlGo.addEventListener("click", () => {
-    const d = manifest && manifest.downloads && manifest.downloads[dlFmt.value];
+  const getZip = (set, id) => {
+    const d = manifest && manifest[set] && manifest[set][id];
     if (!d) return;
-    location.href = `/api/stream/${PRIVATE}/download/${encodeURIComponent(dlFmt.value)}`;
+    location.href = `/api/stream/${PRIVATE}/download/${encodeURIComponent(id)}`;
     toast(`${d.name} (${mb(d.bytes)}) — your browser takes it from here`);
-  });
+  };
+  dlGo.addEventListener("click", () => getZip("downloads", dlFmt.value));
+  $("rdl-go").addEventListener("click", () => getZip("ruined", rdlFmt.value));
   function earlySay(text, err) { earlyMsg.hidden = !text; earlyMsg.textContent = text || ""; earlyMsg.classList.toggle("err", !!err); }
   function askEarly(note, err) {
     setLocked(true); earlySay(note, err); earlyGo.disabled = false;

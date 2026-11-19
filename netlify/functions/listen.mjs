@@ -124,13 +124,15 @@ export default async (req) => {
   // the full-res zips, straight from the email: the same signed token opens
   // /api/stream's download route. listed from the uploaded manifest, so the
   // email only ever offers what's in the bucket; no manifest → no list.
-  let zips = [];
+  let zips = [], ruined = [];
   try {
     const m = await manifest(release);
-    zips = Object.entries((m && m.downloads) || {}).map(([id, d]) => ({
+    const list = (set) => Object.entries(set || {}).map(([id, d]) => ({
       label: d.label, size: `${Math.round(d.bytes / 1048576)} MB`,
       href: `${base}/api/stream/${release}/download/${id}?k=${token}`,
     }));
+    zips = list(m && m.downloads);
+    ruined = list(m && m.ruined); // the ruined edition, when one is uploaded
   } catch (e) { console.error("listen: manifest:", e.message); }
 
   try {
@@ -148,6 +150,7 @@ export default async (req) => {
         `listen: ${link}`,
         "",
         ...(zips.length ? ["download the whole ep (zip, full res):", "", ...zips.flatMap((z) => [`${z.label} · ${z.size}`, z.href, ""])] : []),
+        ...(ruined.length ? ["download the ruined edition (zip, full res):", "", ...ruined.flatMap((z) => [`${z.label} · ${z.size}`, z.href, ""])] : []),
         `— ${rel.artist}`,
       ].join("\n"),
       html: `<!doctype html><html><body style="margin:0;padding:32px 24px;background:#ffffff;color:#111111;font:14px/1.6 Menlo,Consolas,monospace">
@@ -156,6 +159,8 @@ export default async (req) => {
 <p style="margin:0 0 24px"><a href="${link}" style="display:inline-block;padding:8px 18px;border:1px solid #111111;color:#111111;text-decoration:none">listen →</a></p>
 ${zips.length ? `<p style="margin:0 0 10px">download the whole ep (zip, full res):</p>
 <p style="margin:0 0 24px">${zips.map((z) => `<a href="${z.href}" style="color:#111111">${z.label}</a> <span style="color:#555555">· ${z.size}</span>`).join("<br>")}</p>
+` : ""}${ruined.length ? `<p style="margin:0 0 10px">download the ruined edition (zip, full res):</p>
+<p style="margin:0 0 24px">${ruined.map((z) => `<a href="${z.href}" style="color:#111111">${z.label}</a> <span style="color:#555555">· ${z.size}</span>`).join("<br>")}</p>
 ` : ""}<p style="margin:0;color:#555555">— ${rel.artist}</p>
 </body></html>`,
     });
