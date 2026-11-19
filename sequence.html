@@ -257,8 +257,8 @@
   #more .card h4 { opacity: 0.9; margin-bottom: 10px; }
   #more .card p { font-size: 12px; line-height: 1.6; color: rgba(255, 255, 255, 0.6); margin: 0; }
 
-  /* ---- download: the button, install + samples side by side, then one card
-     per release in a row that scrolls sideways ---- */
+  /* ---- download: the button, install + samples side by side, then the version
+     history: one card per release in a row that scrolls sideways ---- */
   #download { background: var(--panel); border-bottom: 0; }
   #download .top { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; }
   #download .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin-top: 56px; border: 1px solid rgba(255, 255, 255, 0.15); }
@@ -267,8 +267,11 @@
   #download .grid p { font-size: 12px; color: rgba(255, 255, 255, 0.6); max-width: 60ch; }
   #versions {
     list-style: none;
-    margin: 24px 0 0;
-    padding: 0 0 14px;
+    /* the row runs to both screen edges; the first card starts on the column */
+    --bleed: max(var(--ns-gutter, 40px), calc((100vw - 1280px) / 2 + var(--ns-gutter, 40px)));
+    margin: 24px calc(var(--bleed) * -1) 0;
+    padding: 0 var(--bleed) 14px;
+    scroll-padding-left: var(--bleed);
     display: flex;
     gap: 12px;
     overflow-x: auto;
@@ -277,21 +280,15 @@
     scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
   }
   #versions li { flex: 0 0 300px; scroll-snap-align: start; display: flex; }
-  #versions a {
-    display: flex;
+  #versions li {
     flex-direction: column;
-    width: 100%;
-    padding: 20px 20px 18px;
+    padding: 20px 20px 22px;
     border: 1px solid rgba(255, 255, 255, 0.15);
-    color: inherit;
-    text-decoration: none;
   }
-  #versions a:hover { border-color: rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.04); }
   #versions b { font-family: "zxx-sans", ui-monospace, monospace; font-weight: normal; font-size: 30px; line-height: 1; letter-spacing: 0.01em; }
   #versions i { font-style: normal; font-size: 11px; letter-spacing: 0.12em; opacity: 0.5; margin: 10px 0 14px; }
   #versions span { font-size: 12px; line-height: 1.6; letter-spacing: 0.03em; color: rgba(255, 255, 255, 0.6); }
-  #versions em { font-style: normal; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.5; margin-top: auto; padding-top: 16px; }
-  #versions li:first-child a { border-color: rgba(255, 255, 255, 0.45); }
+  #versions li:first-child { border-color: rgba(255, 255, 255, 0.45); }
 
   @media (max-width: 1000px) {
     .panel .inner { grid-template-columns: 1fr; gap: 24px; padding: 56px var(--ns-gutter, 40px); }
@@ -309,8 +306,6 @@
     #more .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     #download .grid { grid-template-columns: 1fr; margin-top: 40px; }
     #download .grid > div + div { border-left: 0; border-top: 1px solid rgba(255, 255, 255, 0.15); }
-    /* narrow: the row runs to the screen edges */
-    #versions { margin: 24px calc(var(--ns-gutter, 40px) * -1) 0; padding: 0 var(--ns-gutter, 40px) 14px; scroll-padding-left: var(--ns-gutter, 40px); }
     #versions li { flex-basis: 260px; }
   }
   @media (max-width: 520px) {
@@ -474,10 +469,10 @@
     </div>
   </div>
   <ul id="versions" aria-label="releases">
-    <li><a href="https://github.com/elkjar/newspeech/releases/download/sequence-v0.24.0/Sequence_0.24.0_universal.dmg"><b>0.24.0</b><i>2026-11-17</i><span>song mode: export midi (the whole song as one .mid per track, without playing it); xl3 mixer page layout read from a .mixer file in the instruments folder</span><em>download</em></a></li>
-    <li><a href="https://github.com/elkjar/newspeech/releases/download/sequence-v0.23.1/Sequence_0.23.1_universal.dmg"><b>0.23.1</b><i>2026-11-12</i><span>song mode: next-pattern cue in the song dialog (current pattern, bar position, next pattern, and a 4·3·2·1 count through the last bar)</span><em>download</em></a></li>
-    <li><a href="https://github.com/elkjar/newspeech/releases/download/sequence-v0.23.0/Sequence_0.23.0_universal.dmg"><b>0.23.0</b><i>2026-11-11</i><span>song mode: loop a section (click a row number to start there, shift-click to loop a range), drag rows to reorder, drag a box onto another row to copy that track into its bank</span><em>download</em></a></li>
-    <li><a href="https://github.com/elkjar/newspeech/releases/download/sequence-v0.22.0/Sequence_0.22.0_universal.dmg"><b>0.22.0</b><i>2026-11-06</i><span>midi capture in stems takes (.mid per synth and sample track); key out to the tracker's step (sysex on the clock ports)</span><em>download</em></a></li>
+    <li><b>0.24.0</b><i>2026-11-17</i><span>song mode: export midi (the whole song as one .mid per track, without playing it); xl3 mixer page layout read from a .mixer file in the instruments folder</span></li>
+    <li><b>0.23.1</b><i>2026-11-12</i><span>song mode: next-pattern cue in the song dialog (current pattern, bar position, next pattern, and a 4·3·2·1 count through the last bar)</span></li>
+    <li><b>0.23.0</b><i>2026-11-11</i><span>song mode: loop a section (click a row number to start there, shift-click to loop a range), drag rows to reorder, drag a box onto another row to copy that track into its bank</span></li>
+    <li><b>0.22.0</b><i>2026-11-06</i><span>midi capture in stems takes (.mid per synth and sample track); key out to the tracker's step (sysex on the clock ports)</span></li>
   </ul>
 </section>
 
@@ -564,16 +559,11 @@ fetch("https://api.github.com/repos/elkjar/newspeech/releases?per_page=30")
     const ul = document.getElementById("versions");
     ul.textContent = "";
     rels.forEach((r) => {
-      const dmg = r.assets.find((a) => /_universal\.dmg$/.test(a.name)) || r.assets.find((a) => a.name === "Sequence.dmg");
       const li = document.createElement("li");
-      const a = document.createElement("a");
-      a.href = dmg ? dmg.browser_download_url : r.html_url;
       const b = document.createElement("b"); b.textContent = ver(r);
       const i = document.createElement("i"); i.textContent = (r.published_at || "").slice(0, 10);
       const t = document.createElement("span"); t.textContent = (r.body || "").split("\n")[0].toLowerCase();
-      const em = document.createElement("em"); em.textContent = "download";
-      a.append(b, i, t, em);
-      li.appendChild(a);
+      li.append(b, i, t);
       ul.appendChild(li);
     });
   })
