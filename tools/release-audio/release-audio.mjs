@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The audio for a private pre-release (see netlify/lib/listen.mjs + r2.mjs).
 //
-//   node tools/release-audio/release-audio.mjs [assets/ep/dead-ocean.json] [--upload]
+//   node tools/release-audio/release-audio.mjs [assets/ep/dead-ocean.json] [--upload] [--ruined]
 //
 // For every track in the EP config: encode <audioBase><file> to 256k AAC
 // (48k — the rate the page decodes at; never the masters) and cut a 15s
@@ -11,6 +11,13 @@
 // way Bandcamp hands them out: one per format, "<artist> - <album>.zip" holding
 // "<artist> - <album> - 01 <name>.<ext>" per track + cover.jpg, every file
 // tagged (and, where the format carries one, the cover embedded).
+//
+// With `download.ruined` in the config ({ name, cover, take: { ruin, speed,
+// verb, seed } }) it also builds the ruined edition: the whole record printed
+// through the album page's ruin at that take (tools/ruin-print), zipped in the
+// same formats under its own name and cover, listed in the manifest's `ruined`.
+// --ruined builds (and with --upload, uploads) ONLY that, leaving the streams,
+// previews and clean zips already built and uploaded as they are.
 //
 // Everything lands under tools/release-audio/out/<release>/ laid out exactly
 // as the bucket keys (gitignored; LISTEN_LOCAL_DIR=tools/release-audio/out
@@ -32,6 +39,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 const args = process.argv.slice(2);
 const upload = args.includes("--upload");
+const onlyRuined = args.includes("--ruined");
 const epPath = path.resolve(root, args.find((a) => !a.startsWith("--")) || "assets/ep/dead-ocean.json");
 const ep = JSON.parse(readFileSync(epPath, "utf8"));
 const release = ep.private && ep.private.release;
@@ -57,13 +65,15 @@ function loudestStart(src, duration) {
   return best;
 }
 const out = path.join(here, "out", release);
-rmSync(out, { recursive: true, force: true });
+if (!onlyRuined) rmSync(out, { recursive: true, force: true });
 for (const d of ["stream", "preview", "download", "_stage"]) mkdirSync(path.join(out, d), { recursive: true });
 const encoders = execFileSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" });
 const codec = /\baac_at\b/.test(encoders) ? "aac_at" : "aac"; // AudioToolbox on macOS, ffmpeg's own otherwise
 
-const manifest = { release, codec: `aac ${BITRATE}`, made: new Date().toISOString(), tracks: {}, previews: {} };
-for (const t of ep.tracks) {
+const manifest = onlyRuined
+  ? JSON.parse(readFileSync(path.join(out, "manifest.json"), "utf8"))
+  : { release, codec: `aac ${BITRATE}`, made: new Date().toISOString(), tracks: {}, previews: {} };
+for (const t of onlyRuined ? [] : ep.tracks) {
   const src = path.resolve(root, ep.audioBase || "", t.file);
   const m4a = path.join(out, "stream", `${t.slug}.m4a`);
   console.log(`encode  ${path.relative(root, src)} → ${t.slug}.m4a (${codec} ${BITRATE})`);
@@ -93,15 +103,17 @@ const FORMATS = {
   mp3: { label: "mp3 320", ext: "mp3", cover: true, args: ["-c:a", "libmp3lame", "-b:a", "320k", "-id3v2_version", "3"] },
 };
 const dl = ep.download;
-if (dl) {
-  manifest.downloads = {};
-  const artist = ep.artist, album = dl.name || ep.title;
-  const cover = path.resolve(root, dl.cover || ep.cover);
+// one zip per format: album = the name in the tags and filenames, src(t, i) = the
+// track's source file, prefix = what the format ids (and so the bucket keys) start with
+function buildZips({ album, cover, src, prefix = "" }) {
+  const made = {};
+  const artist = ep.artist;
   const zipName = `${artist} - ${album}.zip`;
-  for (const id of dl.formats || Object.keys(FORMATS)) {
-    const f = FORMATS[id];
-    if (!f) { console.error(`download: no format "${id}" (have ${Object.keys(FORMATS).join(", ")})`); process.exit(1); }
+  for (const fmt of dl.formats || Object.keys(FORMATS)) {
+    const f = FORMATS[fmt], id = prefix + fmt;
+    if (!f) { console.error(`download: no format "${fmt}" (have ${Object.keys(FORMATS).join(", ")})`); process.exit(1); }
     const stage = path.join(out, "_stage", id);
+    rmSync(stage, { recursive: true, force: true });
     mkdirSync(stage, { recursive: true });
     const files = [];
     ep.tracks.forEach((t, i) => {
@@ -109,9 +121,9 @@ if (dl) {
       const file = path.join(stage, `${artist} - ${album} - ${n} ${t.name || t.title}.${f.ext}`);
       const tags = { title: t.name || t.title, artist, album_artist: artist, album, date: String(dl.year || ""), genre: dl.genre || "", comment: "newspeechsound.com" };
       // vorbis comments want the number and the total apart; the others take n/total
-      if (id === "flac") Object.assign(tags, { TRACKNUMBER: String(i + 1), TRACKTOTAL: String(ep.tracks.length) });
+      if (fmt === "flac") Object.assign(tags, { TRACKNUMBER: String(i + 1), TRACKTOTAL: String(ep.tracks.length) });
       else tags.track = `${i + 1}/${ep.tracks.length}`;
-      const inputs = ["-i", path.resolve(root, ep.audioBase || "", t.file)];
+      const inputs = ["-i", src(t, i)];
       const maps = ["-map", "0:a"];
       if (f.cover) { inputs.push("-i", cover); maps.push("-map", "1:v", "-c:v", "copy", "-disposition:v", "attached_pic", "-metadata:s:v", "comment=Cover (front)"); }
       execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...inputs, ...maps, "-map_metadata", "-1", ...f.args,
@@ -123,12 +135,35 @@ if (dl) {
     files.push(art);
     // stored, not deflated: the audio doesn't compress and this keeps the zip a plain container
     const zip = path.join(out, "download", `${id}.zip`);
+    rmSync(zip, { force: true });
     execFileSync("zip", ["-0", "-X", "-q", "-j", zip, ...files]);
     const bytes = statSync(zip).size;
-    manifest.downloads[id] = { label: f.label, name: zipName, bytes, type: "application/zip" };
-    console.log(`zip     ${id.padEnd(5)} ${(bytes / 1048576).toFixed(1)} MB`);
+    made[id] = { label: f.label, name: zipName, bytes, type: "application/zip" };
+    console.log(`zip     ${id.padEnd(8)} ${(bytes / 1048576).toFixed(1)} MB`);
   }
+  return made;
 }
+if (dl && !onlyRuined) {
+  manifest.downloads = buildZips({ album: dl.name || ep.title, cover: path.resolve(root, dl.cover || ep.cover), src: (t) => path.resolve(root, ep.audioBase || "", t.file) });
+}
+// ---- the ruined edition ------------------------------------------------------
+// the record printed through the page's own ruin at the config's take, then
+// zipped like the clean one. format ids are "ruin<format>" (bucket keys
+// download/ruin<format>.zip), kept apart in the manifest so the page can give
+// the edition its own row.
+if (dl && dl.ruined) {
+  const r = dl.ruined, k = r.take || {};
+  const prints = path.join(out, "_ruined");
+  rmSync(prints, { recursive: true, force: true });
+  console.log(`ruin    ${k.ruin} · ${k.speed}× · reverb ${k.verb} · seed ${k.seed}`);
+  execFileSync("node", [path.join(root, "tools/ruin-print/print.mjs"), "--ruin", String(k.ruin), "--speed", String(k.speed), "--verb", String(k.verb), "--seed", String(k.seed), "--out", prints], { stdio: ["ignore", "ignore", "inherit"] });
+  manifest.ruined = buildZips({
+    album: r.name, cover: path.resolve(root, r.cover), prefix: "ruin",
+    // ruin-print names its wavs after the clean record's download name
+    src: (t, i) => path.join(prints, `${ep.artist} - ${dl.name} (Ruined) - ${String(i + 1).padStart(2, "0")} ${t.name}.wav`),
+  });
+  manifest.ruinedTake = k;
+} else if (onlyRuined) { console.error("--ruined: the config has no download.ruined"); process.exit(1); }
 
 writeFileSync(path.join(out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 console.log(`wrote   ${path.relative(root, out)}/`);
@@ -152,9 +187,11 @@ if (upload) {
     if (!r.ok) { console.error(`\nR2 ${r.status}: ${await r.text()}`); process.exit(1); }
     console.log(`${((Date.now() - t0) / 1000).toFixed(1)}s`);
   };
-  for (const slug of Object.keys(manifest.tracks)) await put(`stream/${slug}.m4a`, { "Content-Type": "audio/mp4" });
-  for (const slug of Object.keys(manifest.previews)) await put(`preview/${slug}.m4a`, { "Content-Type": "audio/mp4" });
-  for (const [fmt, d] of Object.entries(manifest.downloads || {})) {
+  if (!onlyRuined) {
+    for (const slug of Object.keys(manifest.tracks)) await put(`stream/${slug}.m4a`, { "Content-Type": "audio/mp4" });
+    for (const slug of Object.keys(manifest.previews)) await put(`preview/${slug}.m4a`, { "Content-Type": "audio/mp4" });
+  }
+  for (const [fmt, d] of Object.entries({ ...(onlyRuined ? {} : manifest.downloads), ...manifest.ruined })) {
     // stored with the object, so the signed GET downloads under the right name
     const disp = `attachment; filename="${d.name.replace(/"/g, "")}"; filename*=UTF-8''${encodeURIComponent(d.name)}`;
     await put(`download/${fmt}.zip`, { "Content-Type": "application/zip", "Content-Disposition": disp });
