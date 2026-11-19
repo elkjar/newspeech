@@ -33,81 +33,76 @@
   body { font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace; overflow-x: hidden; }
 
   /* ---- album: cover + the facts, first thing on the page ---- */
-  #album {
+  :is(#album, #album-ruined) {
     position: relative; z-index: 3; max-width: 1280px; margin: 0 auto; min-height: 100vh; box-sizing: border-box;
     padding: calc(40px + var(--ns-nav-h, 0px)) var(--ns-gutter, 40px) 48px;
     display: grid; grid-template-columns: minmax(240px, min(520px, 45%)) 1fr; gap: 56px; /* 520px ≈ 7.5% taller than the locked text stack (483px) */ align-items: center; align-content: center;
   }
-  #album .cover { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border: 1px solid #1c1c1c; background: #0a0a0a; }
-  #album .name { font-family: "zxx-sans", ui-monospace, monospace; font-weight: 400; font-size: clamp(26px, 3vw, 38px); line-height: 1.1; letter-spacing: 0.05em; color: #eee; margin: 0 0 12px; }
-  #album .facts { color: #777; margin: 0 0 34px; }
-  #album .facts b { color: #ccc; font-weight: 400; }
-  #album .avail { display: grid; grid-template-columns: max-content 1fr; gap: 12px 28px; align-items: baseline; }
-  #album .avail dt { color: #555; letter-spacing: 0.12em; }
-  #album .avail dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
-  #album .avail [hidden] { display: none; } /* rows ship hidden; the config reveals the ones it fills */
+  :is(#album, #album-ruined) .cover { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border: 1px solid #1c1c1c; background: #0a0a0a; }
+  :is(#album, #album-ruined) .name { font-family: "zxx-sans", ui-monospace, monospace; font-weight: 400; font-size: clamp(26px, 3vw, 38px); line-height: 1.1; letter-spacing: 0.05em; color: #eee; margin: 0 0 12px; }
+  :is(#album, #album-ruined) .facts { color: #777; margin: 0 0 34px; }
+  :is(#album, #album-ruined) .facts b { color: #ccc; font-weight: 400; }
+  :is(#album, #album-ruined) .avail { display: grid; grid-template-columns: max-content 1fr; gap: 12px 28px; align-items: baseline; }
+  :is(#album, #album-ruined) .avail dt { color: #555; letter-spacing: 0.12em; }
+  :is(#album, #album-ruined) .avail dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  :is(#album, #album-ruined) .avail [hidden] { display: none; } /* rows ship hidden; the config reveals the ones it fills */
   /* the full-res zips — bandcamp's menu: pick a format, get the zip. only a
      browser holding the listen cookie sees the row */
-  #album .avail dd.dl { gap: 12px; align-items: center; }
-  #album .dl select {
+  :is(#album, #album-ruined) .avail dd.dl { gap: 12px; align-items: center; }
+  :is(#album, #album-ruined) .dl select {
     -webkit-appearance: none; appearance: none; background: transparent; border: 1px solid rgba(255,255,255,.45); border-radius: 0; color: #eee;
     font: inherit; font-size: 12px; line-height: 18px; letter-spacing: 0.04em; padding: 7px 30px 7px 12px; cursor: pointer; outline: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.2'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 11px center; background-size: 9px 6px;
   }
-  #album .dl select:focus { border-color: rgba(255,255,255,.9); }
-  #album .dl select option { background: #111; color: #eee; }
-  #album .dl button {
+  :is(#album, #album-ruined) .dl select:focus { border-color: rgba(255,255,255,.9); }
+  :is(#album, #album-ruined) .dl select option { background: #111; color: #eee; }
+  :is(#album, #album-ruined) .dl button {
     background: transparent; border: 1px solid rgba(255,255,255,.7); color: #eee; font: inherit; font-size: 12px; line-height: 18px;
     letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; white-space: nowrap; min-width: 9ch;
   }
-  #album .dl button:hover { background: rgba(255,255,255,.08); }
-  #album .dl button:disabled { opacity: .6; cursor: default; }
-  @media (max-width: 640px) { #album .dl select { font-size: 16px; } }
-  /* the ruined edition's row: its cover, the height of the controls, opens full size */
-  #album .dl .art { display: block; flex: 0 0 auto; border: 1px solid #333; }
-  #album .dl .art:hover { border-color: #888; }
-  #album .dl .art img { display: block; width: 32px; height: 32px; object-fit: cover; }
-  #album .avail #rdl-dt { align-self: center; }
+  :is(#album, #album-ruined) .dl button:hover { background: rgba(255,255,255,.08); }
+  :is(#album, #album-ruined) .dl button:disabled { opacity: .6; cursor: default; }
+  @media (max-width: 640px) { :is(#album, #album-ruined) .dl select { font-size: 16px; } }
   /* phones: labels sit above their rows, so a format picker gets the full width */
   @media (max-width: 640px) {
-    #album .avail { grid-template-columns: minmax(0, 1fr); gap: 6px 0; }
-    #album .avail dt:not(:first-child) { margin-top: 12px; }
-    #album .dl select { flex: 1 1 0; min-width: 0; }
+    :is(#album, #album-ruined) .avail { grid-template-columns: minmax(0, 1fr); gap: 6px 0; }
+    :is(#album, #album-ruined) .avail dt:not(:first-child) { margin-top: 12px; }
+    :is(#album, #album-ruined) .dl select { flex: 1 1 0; min-width: 0; }
   }
-  #album .svc { display: inline-flex; align-items: center; gap: 8px; color: #ccc; text-decoration: none; letter-spacing: 0.06em; white-space: nowrap; }
-  #album .svc svg { width: 16px; height: 16px; fill: currentColor; display: block; }
+  :is(#album, #album-ruined) .svc { display: inline-flex; align-items: center; gap: 8px; color: #ccc; text-decoration: none; letter-spacing: 0.06em; white-space: nowrap; }
+  :is(#album, #album-ruined) .svc svg { width: 16px; height: 16px; fill: currentColor; display: block; }
   /* a bitmap mark used as a mask so it takes the text colour like the svgs */
-  #album .svc .img { width: 16px; height: 16px; display: block; background: currentColor; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
-  #album a.svc:hover { color: #fff; }
-  #album .svc.pending { color: #555; pointer-events: none; }
-  #album .soon dd .svc { color: #666; }
+  :is(#album, #album-ruined) .svc .img { width: 16px; height: 16px; display: block; background: currentColor; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+  :is(#album, #album-ruined) a.svc:hover { color: #fff; }
+  :is(#album, #album-ruined) .svc.pending { color: #555; pointer-events: none; }
+  :is(#album, #album-ruined) .soon dd .svc { color: #666; }
   /* with the ruin section off (ep.ruin false) the player lives here, under the facts */
   #album-player { margin: 0 0 34px; }
   #album-player:empty { display: none; }
   /* before release: the email form sits above the record, which stays locked
      (dimmed, unplayable) until the emailed link sets the cookie */
-  #album .early { margin: 0 0 26px; }
-  #album .early[hidden] { display: none; }
-  #album .early .hp { display: none; }
-  #album .early .lbl { display: block; color: #999; margin: 0 0 12px; }
-  #album .early .row { display: flex; flex-wrap: wrap; gap: 12px; }
-  #album .early input[type="email"] {
+  :is(#album, #album-ruined) .early { margin: 0 0 26px; }
+  :is(#album, #album-ruined) .early[hidden] { display: none; }
+  :is(#album, #album-ruined) .early .hp { display: none; }
+  :is(#album, #album-ruined) .early .lbl { display: block; color: #999; margin: 0 0 12px; }
+  :is(#album, #album-ruined) .early .row { display: flex; flex-wrap: wrap; gap: 12px; }
+  :is(#album, #album-ruined) .early input[type="email"] {
     background: transparent; border: 1px solid rgba(255,255,255,.45); color: #eee; font: inherit; font-size: 12px; line-height: 18px;
     letter-spacing: 0.04em; padding: 7px 12px; width: 260px; max-width: 100%; border-radius: 0; outline: none;
   }
-  #album .early input[type="email"]:focus { border-color: rgba(255,255,255,.9); }
-  #album .early input[type="email"]::placeholder { color: rgba(255,255,255,.3); }
-  #album .early button {
+  :is(#album, #album-ruined) .early input[type="email"]:focus { border-color: rgba(255,255,255,.9); }
+  :is(#album, #album-ruined) .early input[type="email"]::placeholder { color: rgba(255,255,255,.3); }
+  :is(#album, #album-ruined) .early button {
     background: transparent; border: 1px solid rgba(255,255,255,.7); color: #eee; font: inherit; font-size: 12px; line-height: 18px;
     letter-spacing: 0.04em; padding: 7px 16px; cursor: pointer; white-space: nowrap;
   }
-  #album .early button:hover { background: rgba(255,255,255,.08); }
-  #album .early button:disabled { opacity: .4; cursor: default; }
-  #album .early .msg { display: block; margin-top: 10px; color: #ccc; letter-spacing: 0.06em; }
-  #album .early .msg.err { color: #777; }
-  #album .early .msg[hidden] { display: none; }
-  @media (max-width: 640px) { #album .early input[type="email"] { font-size: 16px; } } /* <16px zooms iOS Safari on focus */
+  :is(#album, #album-ruined) .early button:hover { background: rgba(255,255,255,.08); }
+  :is(#album, #album-ruined) .early button:disabled { opacity: .4; cursor: default; }
+  :is(#album, #album-ruined) .early .msg { display: block; margin-top: 10px; color: #ccc; letter-spacing: 0.06em; }
+  :is(#album, #album-ruined) .early .msg.err { color: #777; }
+  :is(#album, #album-ruined) .early .msg[hidden] { display: none; }
+  @media (max-width: 640px) { :is(#album, #album-ruined) .early input[type="email"] { font-size: 16px; } } /* <16px zooms iOS Safari on focus */
   /* locked rows still play — each one's 15s preview — so they dim but keep
      their hover; the transport appears once a preview is playing */
   #album.locked #tracks li, #album.locked #tracks li.current, #album.locked #tracks li.current .num { color: #666; }
@@ -121,7 +116,13 @@
     content: ""; width: 10px; height: 12px; align-self: center; background: #555;
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M3.2 6.5V4.2a2.8 2.8 0 0 1 5.6 0v2.3' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Crect x='1' y='6.5' width='10' height='7.5' rx='1'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M3.2 6.5V4.2a2.8 2.8 0 0 1 5.6 0v2.3' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Crect x='1' y='6.5' width='10' height='7.5' rx='1'/%3E%3C/svg%3E") center / contain no-repeat;
   }
-  @media (max-width: 860px) { #album { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } #album .cover { max-width: 520px; } }
+  @media (max-width: 860px) { :is(#album, #album-ruined) { grid-template-columns: 1fr; gap: 28px; align-items: start; align-content: center; } :is(#album, #album-ruined) .cover { max-width: 520px; } }
+  /* the ruined edition: the same block again under the record, its own cover
+     and its own email / download — no full-viewport hero, no nav to clear */
+  #album-ruined { min-height: 0; padding-top: 72px; padding-bottom: 72px; }
+  #album-ruined[hidden] { display: none; }
+  #album-ruined .facts { margin-bottom: 10px; }
+  #album-ruined .take { color: #555; margin: 0 0 34px; }
 
   /* the ruin section: one viewport tall, the visualizer lives inside it
      and scrolls away with it; the record keeps playing underneath the page */
@@ -380,12 +381,32 @@
     <dl class="avail">
       <dt id="dl-dt" hidden>download</dt>
       <dd id="dl" class="dl" hidden><select id="dl-fmt" aria-label="format"></select><button type="button" id="dl-go">get ↓</button></dd>
-      <dt id="rdl-dt" hidden>ruined edition</dt>
-      <dd id="rdl" class="dl" hidden><a id="rdl-art" class="art" target="_blank" rel="noopener" title="the ruined edition's cover"><img id="rdl-img" alt="" width="32" height="32"></a><select id="rdl-fmt" aria-label="ruined edition format"></select><button type="button" id="rdl-go">get ↓</button></dd>
       <dt id="avail-now-dt" hidden>available on</dt>
       <dd id="avail-now" hidden></dd>
       <dt id="avail-soon-dt" hidden>coming soon to</dt>
       <dd id="avail-soon" class="soon" hidden></dd>
+    </dl>
+  </div>
+</section>
+<!-- the ruined edition (ep.download.ruined): the record through the ruin at one fixed take -->
+<section id="album-ruined" class="ruled" hidden>
+  <img class="cover" id="rcover" alt="" width="1400" height="1400">
+  <div class="info">
+    <h2 class="name" id="ralbum-name"></h2>
+    <p class="facts" id="ralbum-facts"></p>
+    <p class="take" id="ralbum-take"></p>
+    <form id="early-r" class="early" novalidate hidden>
+      <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
+      <label class="lbl" for="early-r-email" id="early-r-lbl"></label>
+      <div class="row">
+        <input id="early-r-email" type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email">
+        <button type="submit" id="early-r-go">send link</button>
+      </div>
+      <span class="msg" id="early-r-msg" hidden></span>
+    </form>
+    <dl class="avail">
+      <dt id="rdl-dt" hidden>download</dt>
+      <dd id="rdl" class="dl" hidden><select id="rdl-fmt" aria-label="ruined edition format"></select><button type="button" id="rdl-go">get ↓</button></dd>
     </dl>
   </div>
 </section>
@@ -1094,14 +1115,20 @@
   // POST /api/listen mails a signed link; opening it sets a cookie and lands
   // back here with ?listen=1. the page asks /api/listen whether this browser
   // holds one; /api/stream refuses the audio without it.
-  const early = $("early"), earlyEmail = $("early-email"), earlyMsg = $("early-msg"), earlyGo = $("early-go"), album = $("album");
+  // two forms, one door: the record's and the ruined edition's — either email
+  // sends the same link, and opening it unlocks both downloads
+  const album = $("album");
+  const earlyForms = ["early", "early-r"].map((id) => ({ form: $(id), email: $(`${id}-email`), msg: $(`${id}-msg`), go: $(`${id}-go`) }));
+  const early = earlyForms[0].form, earlyEmail = earlyForms[0].email;
+  const earlyBusy = (on) => { for (const f of earlyForms) f.go.disabled = on; };
   let unlockedP = Promise.resolve(true);
-  function setLocked(on) { album.classList.toggle("locked", on && !OPEN); early.hidden = !on; }
+  function setLocked(on) { album.classList.toggle("locked", on && !OPEN); for (const f of earlyForms) f.form.hidden = !on; }
   if (PRIVATE) {
     $("early-lbl").textContent = OPEN
       ? `${ep.title} is out now on bandcamp and streaming. share this with anyone you'd like - toss in your email for a link to download the EP directly.`
       : `${ep.title} is out now on bandcamp and streaming. share this with anyone you'd like - toss in your email for a link to unlock this page as well as the option to download the EP directly.`;
-    earlyEmail.value = remembered();
+    $("early-r-lbl").textContent = "toss in your email for a link to download the ruined edition.";
+    for (const f of earlyForms) f.email.value = remembered();
     setLocked(true); // most visitors are; a cookie holder sees it for one round trip
     unlockedP = fetch(`/api/listen?r=${encodeURIComponent(PRIVATE)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { unlocked: false })).then((j) => !!j.unlocked).catch(() => false);
@@ -1115,20 +1142,27 @@
   const dlRow = $("dl"), dlFmt = $("dl-fmt"), dlGo = $("dl-go");
   const mb = (b) => `${Math.round(b / 1048576)} MB`;
   // the ruined edition (ep.download.ruined + the manifest's `ruined` zips): the
-  // record through the ruin at one fixed take, with its own cover — a second row
+  // record through the ruin at one fixed take, as its own block under the
+  // record — its cover and facts show for everyone, its zips once unlocked
   const rdlFmt = $("rdl-fmt");
+  const RUINED = ep.download && ep.download.ruined && ep.download.ruined.art ? ep.download.ruined : null;
+  if (RUINED) {
+    const k = RUINED.take || {};
+    $("rcover").src = RUINED.art; $("rcover").alt = `${RUINED.title || RUINED.name} — cover`;
+    $("ralbum-name").textContent = RUINED.title || RUINED.name;
+    const total = ep.tracks.reduce((x, t) => x + (t.duration || 0), 0) / (k.speed || 1);
+    $("ralbum-facts").innerHTML = `ep · <b>${ep.tracks.length} tracks</b>` + (total ? ` · ${fmt(total)}` : "");
+    $("ralbum-take").textContent = `ruin ${(+k.ruin || 0).toFixed(2)} · speed ${(+k.speed || 1).toFixed(2)}× · reverb ${(+k.verb || 0).toFixed(2)}`;
+    $("album-ruined").hidden = false;
+  }
   async function offerDownloads() {
     let m;
     try { m = await getManifest(); } catch (_) { return; }
     const fill = (sel, set) => { sel.innerHTML = ""; for (const [id, d] of set) sel.add(new Option(`${d.label} · ${mb(d.bytes)}`, id)); };
     const ds = Object.entries(m.downloads || {});
     if (ds.length) { fill(dlFmt, ds); dlRow.hidden = $("dl-dt").hidden = false; }
-    const rs = Object.entries(m.ruined || {}), red = ep.download && ep.download.ruined;
-    if (rs.length && red) {
-      fill(rdlFmt, rs);
-      if (red.art) { $("rdl-img").src = red.art; $("rdl-img").alt = `${red.title || red.name} — cover`; $("rdl-art").href = red.art; } else $("rdl-art").remove();
-      $("rdl").hidden = $("rdl-dt").hidden = false;
-    }
+    const rs = Object.entries(m.ruined || {});
+    if (rs.length && RUINED) { fill(rdlFmt, rs); $("rdl").hidden = $("rdl-dt").hidden = false; }
   }
   const getZip = (set, id) => {
     const d = manifest && manifest[set] && manifest[set][id];
@@ -1138,21 +1172,25 @@
   };
   dlGo.addEventListener("click", () => getZip("downloads", dlFmt.value));
   $("rdl-go").addEventListener("click", () => getZip("ruined", rdlFmt.value));
-  function earlySay(text, err) { earlyMsg.hidden = !text; earlyMsg.textContent = text || ""; earlyMsg.classList.toggle("err", !!err); }
+  // f = the form that was used; a note with no form goes on the record's
+  function earlySay(text, err, f = earlyForms[0]) {
+    for (const x of earlyForms) { const on = x === f && !!text; x.msg.hidden = !on; x.msg.textContent = on ? text : ""; x.msg.classList.toggle("err", on && !!err); }
+  }
   function askEarly(note, err) {
-    setLocked(true); earlySay(note, err); earlyGo.disabled = false;
+    setLocked(true); earlySay(note, err); earlyBusy(false);
     early.scrollIntoView({ block: "center", behavior: "smooth" });
     earlyEmail.focus({ preventScroll: true });
   }
-  early.addEventListener("submit", async (e) => {
+  for (const f of earlyForms) f.form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!earlyEmail.checkValidity()) { earlySay(earlyEmail.value.trim() ? "that doesn't look like an email" : "an email goes here first", true); earlyEmail.focus(); return; }
-    earlyGo.disabled = true; earlySay("");
+    if (!f.email.checkValidity()) { earlySay(f.email.value.trim() ? "that doesn't look like an email" : "an email goes here first", true, f); f.email.focus(); return; }
+    earlyBusy(true); earlySay("");
     try {
-      const email = earlyEmail.value.trim();
+      const email = f.email.value.trim();
+      for (const x of earlyForms) x.email.value = email;
       const res = await fetch("/api/listen", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, release: PRIVATE, "bot-field": early.querySelector('[name="bot-field"]').value }),
+        body: JSON.stringify({ email, release: PRIVATE, "bot-field": f.form.querySelector('[name="bot-field"]').value }),
       });
       if (!res.ok) throw new Error(String(res.status));
       try { localStorage.setItem(EMAIL_KEY, email); } catch (_) {}
@@ -1160,14 +1198,14 @@
       if (j.dev_link) { location.href = j.dev_link; return; } // local dry run: no email, straight through
       if (j.unlocked) { // the email couldn't go out (quota / outage) — the server let this browser in instead
         unlockedP = Promise.resolve(true); setLocked(false); offerDownloads(); keepBtn.hidden = false;
-        earlyGo.disabled = false;
+        earlyBusy(false);
         toast("the email couldn't go out - whoops. oh well, enjoy the download here", 7000);
         return;
       }
-      earlySay(OPEN ? "sent — your download links are in your inbox" : "sent — the link in your inbox opens the record here");
-      earlyGo.disabled = false;
+      earlySay(OPEN ? "sent — your download links are in your inbox" : "sent — the link in your inbox opens the record here", false, f);
+      earlyBusy(false);
     } catch (_) {
-      earlyGo.disabled = false; earlySay("transmission failed — try again", true);
+      earlyBusy(false); earlySay("transmission failed — try again", true, f);
     }
   });
 
