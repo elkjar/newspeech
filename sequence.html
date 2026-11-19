@@ -23,7 +23,7 @@
 <meta name="twitter:image" content="https://www.newspeechsound.com/og-sequence.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
-  /* #signup carries the space above the footer */
+  /* #download carries the space above the footer */
   :root { --ns-foot-gap: 0px; }
   @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
   @font-face { font-family: "zxx-bold"; src: url("fonts/zxx-bold-regular.woff2") format("woff2"); font-display: swap; }
@@ -257,14 +257,8 @@
   #more .card h4 { opacity: 0.9; margin-bottom: 10px; }
   #more .card p { font-size: 12px; line-height: 1.6; color: rgba(255, 255, 255, 0.6); margin: 0; }
 
-  /* ---- made with it + samples: two-up rows ---- */
-  .rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
-  .rows .row h3 { font-size: 26px; line-height: 1.1; margin: 0 0 14px; }
-  .rows .row p { max-width: 52ch; }
-  .rows .row .cta { margin-top: 12px; padding: 7px 16px; font-size: 12px; }
-
   /* ---- download ---- */
-  #download { background: var(--panel); }
+  #download { background: var(--panel); border-bottom: 0; }
   #download .top { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; margin-bottom: 14px; }
   #download .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; margin-top: 56px; }
   #download .grid p { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
@@ -272,31 +266,6 @@
   #versions li { font-size: 12px; line-height: 1.6; letter-spacing: 0.03em; color: rgba(255, 255, 255, 0.6); padding: 9px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
   #versions li b { font-weight: normal; color: rgba(255, 255, 255, 0.92); margin-right: 10px; }
   #versions li i { font-style: normal; opacity: 0.6; margin-right: 10px; }
-
-  /* ---- sign-up: the site's one sign-up spec (index.html #subscribe) ---- */
-  #signup { padding-bottom: 96px; border-bottom: 0; }
-  #signup .hp { display: none; }
-  #signup .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; margin-top: 20px; }
-  #signup input[type="email"] {
-    flex: 1 1 200px;
-    min-width: 0;
-    max-width: 300px;
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    border-radius: 0;
-    color: var(--fg);
-    font: inherit;
-    font-size: 12px;
-    line-height: 18px;
-    letter-spacing: 0.04em;
-    padding: 7px 12px;
-    outline: none;
-  }
-  #signup input[type="email"]:focus { border-color: rgba(255, 255, 255, 0.9); }
-  #signup input[type="email"]::placeholder { color: rgba(255, 255, 255, 0.3); }
-  #signup .cta { cursor: pointer; background: none; font-family: inherit; font-size: 12px; padding: 7px 16px; }
-  #signup .cta:disabled { opacity: 0.4; cursor: default; }
-  #signup .msg { display: block; margin-top: 12px; font-size: 11px; letter-spacing: 0.06em; opacity: 0.7; }
 
   @media (max-width: 1000px) {
     .panel .inner { grid-template-columns: 1fr; gap: 24px; padding: 56px var(--ns-gutter, 40px); }
@@ -312,10 +281,7 @@
     #features.pinned .panel .copy li { font-size: 12px; padding: 7px 0; }
     .band { padding-top: 56px; padding-bottom: 56px; }
     #more .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .rows { grid-template-columns: 1fr; gap: 36px; }
     #download .grid { grid-template-columns: 1fr; gap: 28px; margin-top: 40px; }
-    #signup { padding-bottom: 80px; }
-    #signup input[type="email"] { flex: 1 1 100%; max-width: none; font-size: 16px; } /* <16px zooms iOS Safari on focus */
   }
   @media (max-width: 520px) {
     #more .cards { grid-template-columns: 1fr; }
@@ -458,22 +424,6 @@
   </div>
 </section>
 
-<section class="band" id="with">
-  <h2>around it</h2>
-  <div class="rows">
-    <div class="row">
-      <h3>made with sequence</h3>
-      <p>[placeholder — which pieces go here, and a line on how sequence was used in each.]</p>
-      <a class="cta" href="dead-ocean.html">dead ocean</a>
-    </div>
-    <div class="row">
-      <h3>samples</h3>
-      <p>everything audio in sequence is a sample. the newspeech sample library has kits ready to drop in: drums, bass, instruments, pads, textures, breaks and loops.</p>
-      <a class="cta" href="samples.html">newspeech samples</a>
-    </div>
-  </div>
-</section>
-
 <section class="band" id="download">
   <h2>download</h2>
   <div class="top">
@@ -503,18 +453,6 @@
       <p class="aux" style="margin-top: 14px;"><a href="https://github.com/elkjar/newspeech/releases" target="_blank" rel="noopener noreferrer">all releases</a></p>
     </div>
   </div>
-</section>
-
-<section class="band" id="signup">
-  <h4>mailing list</h4>
-  <p>new versions, new tools, new music.</p>
-  <form novalidate>
-    <p class="hp" aria-hidden="true"><label>leave this empty: <input name="bot-field" tabindex="-1" autocomplete="off"></label></p>
-    <div class="row">
-      <input type="email" name="email" required placeholder="you@…" spellcheck="false" autocomplete="email" aria-label="email">
-      <button type="submit" class="cta">subscribe</button>
-    </div>
-  </form>
 </section>
 
 <script src="tool-viz.js"></script>
@@ -609,41 +547,6 @@ fetch("https://api.github.com/repos/elkjar/newspeech/releases?per_page=30")
   })
   .catch(() => {});
 
-// sign-up: /api/subscribe (Resend), source "sequence". locally this needs
-// `netlify dev` for the function.
-{
-  const form = document.querySelector("#signup form");
-  const input = form.querySelector('input[type="email"]');
-  try { input.value = localStorage.getItem("newspeech.email") || ""; } catch (_) {}
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    form.querySelector(".msg")?.remove();
-    const msg = document.createElement("span");
-    msg.className = "msg";
-    if (!input.checkValidity()) {
-      msg.textContent = input.value.trim() ? "that doesn't look like an email" : "an email goes here first";
-      form.appendChild(msg);
-      input.focus();
-      return;
-    }
-    const btn = form.querySelector("button");
-    btn.disabled = true;
-    try {
-      const res = await fetch("/api/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: input.value.trim(), source: "sequence", "bot-field": form.querySelector('[name="bot-field"]').value }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      try { localStorage.setItem("newspeech.email", input.value.trim()); } catch (_) {}
-      msg.textContent = "signal received — you're on the list";
-    } catch (err) {
-      btn.disabled = false;
-      msg.textContent = "transmission failed — try again";
-    }
-    form.appendChild(msg);
-  });
-}
 </script>
 </body>
 </html>
