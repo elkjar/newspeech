@@ -31,6 +31,7 @@
       ["news", "news.html"], ["about", "about.html"], ["sequence", "index.html#v-sequence"], ["rss", "feed.xml"],
     ]],
     ["follow", null, [
+      ["bandcamp", "https://newspeech.bandcamp.com"],
       ["instagram", "https://www.instagram.com/newspeechsound"],
       ["youtube", "https://www.youtube.com/@newspeechsound"],
       ["discord", "https://discord.gg/GgGSXK3WT"],
