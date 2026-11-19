@@ -17,7 +17,7 @@
     "ruined": {
       "note": "the official ruined edition: the record through the page's own ruin at this take (tools/release-audio --ruined prints and zips it)",
       "name": "Dead Ocean (Ruined)",
-      "title": "dead ocean (ruined)",
+      "title": "dead ocean <ruined>",
       "cover": "assets/ep/cover-ruined-3000.jpg",
       "art": "assets/ep/cover-ruined.jpg",
       "take": {
