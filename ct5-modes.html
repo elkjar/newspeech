@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<meta name="robots" content="noindex">
+<title>newspeech - ct5 modes</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="Choose the quantize modes and boot mode on a Montreal Assembly Count to 5 (firmware 0.971, board rev k/l/m), then flash it from the browser.">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050505; color: #ccc; }
+  body {
+    font: 12px/1.5 "SF Mono", "Menlo", "Consolas", monospace;
+    /* clears the fixed site nav (nav.js maintains --ns-nav-h) */
+    padding: calc(24px + var(--ns-nav-h, 0px)) 20px 60px;
+    max-width: 1060px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 14px; font-weight: 400; letter-spacing: 0.2em; color: #eee; margin: 0 0 4px; }
+  .sub { color: #666; margin: 0 0 20px; }
+  a { color: #aaa; }
+  a:hover { color: #fff; }
+
+  button {
+    font: inherit; background: none; color: #ccc; border: 1px solid #444;
+    padding: 8px 22px; cursor: pointer; letter-spacing: 0.15em;
+  }
+  button:hover:not(:disabled) { border-color: #999; color: #fff; }
+  button:disabled { opacity: 0.35; cursor: default; }
+  button.small { padding: 4px 10px; border-color: #2a2a2a; color: #777; letter-spacing: 0.1em; }
+  .hint { color: #555; }
+  .ok { color: #ddd; }
+  .bad { color: #e88; }
+
+  .group { border: 1px solid #1c1c1c; padding: 14px 16px 14px; margin-bottom: 14px; }
+  .group h2 { font-size: 11px; font-weight: 400; letter-spacing: 0.25em; color: #999; margin: 0 0 12px; text-transform: uppercase; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .row + .row { margin-top: 10px; }
+
+  /* firmware drop */
+  #drop {
+    border: 1px dashed #333; padding: 18px; text-align: center; color: #777; cursor: pointer;
+  }
+  #drop.over { border-color: #aaa; color: #fff; }
+  #fwstatus { margin-top: 10px; min-height: 18px; }
+
+  /* modes table */
+  table { border-collapse: collapse; width: 100%; max-width: 520px; }
+  th { text-align: left; font-weight: 400; color: #666; padding: 4px 10px 6px 0; letter-spacing: 0.1em; }
+  td { padding: 5px 10px 5px 0; border-top: 1px solid #151515; }
+  td.c, th.c { text-align: center; width: 80px; white-space: nowrap; }
+  input[type=checkbox], input[type=radio] { accent-color: #ddd; width: 14px; height: 14px; cursor: pointer; }
+  input:disabled { cursor: default; }
+  #cycle { margin-top: 12px; color: #888; }
+  #cycle div { white-space: pre-wrap; }
+  .presets { margin-top: 12px; }
+
+  code, pre { font: inherit; color: #ddd; }
+  pre { background: #0a0a0a; border: 1px solid #1c1c1c; padding: 8px 10px; margin: 10px 0 0; overflow-x: auto; }
+
+  ol { margin: 0 0 12px; padding-left: 20px; color: #999; }
+  ol li { margin: 2px 0; }
+  label.check { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; color: #aaa; }
+
+  #bar { height: 4px; background: #151515; margin-top: 12px; }
+  #bar div { height: 100%; width: 0; background: #ddd; transition: width 0.1s linear; }
+  #log {
+    margin-top: 10px; background: #0a0a0a; border: 1px solid #1c1c1c; padding: 8px 10px;
+    min-height: 90px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; color: #888;
+  }
+  #log .ok { color: #ddd; }
+  #log .bad { color: #e88; }
+  .hidden { display: none !important; }
+
+  @media (max-width: 720px) {
+    button { padding: 8px 14px; }
+  }
+</style>
+</head>
+<body>
+<h1>NEWSPEECH // CT5 MODES</h1>
+<p class="sub">Quantize modes for the Montreal Assembly Count to 5. Firmware 0.971, board rev k, l or m. Unofficial: not made or supported by Montreal Assembly.</p>
+
+<div class="group">
+  <h2>firmware</h2>
+  <p class="hint" style="margin:0 0 10px">Download <code>application_release_0_971_k_l_m.dfu</code> from the <a href="https://mtlasm.blogspot.com/p/count.html" target="_blank" rel="noopener">Montreal Assembly firmware page</a> and drop it here. It's patched in this page; nothing is uploaded.</p>
+  <div id="drop">drop the .dfu here or click to choose</div>
+  <input type="file" id="fwfile" accept=".dfu" class="hidden">
+  <div id="fwstatus" class="hint">no file</div>
+</div>
+
+<div class="group">
+  <h2>quantize</h2>
+  <table>
+    <thead><tr><th>mode</th><th class="c">q cycle</th><th class="c">boot</th></tr></thead>
+    <tbody id="modes"></tbody>
+  </table>
+  <div class="row presets">
+    <span class="hint">presets</span>
+    <button class="small" data-preset="stock">stock</button>
+    <button class="small" data-preset="fifths">fifths ⇄ none</button>
+    <button class="small" data-preset="fifthsonly">fifths only</button>
+  </div>
+  <div id="cycle"></div>
+</div>
+
+<div class="group">
+  <h2>download</h2>
+  <div class="row">
+    <button id="dl" disabled>download .dfu</button>
+    <span id="dlname" class="hint"></span>
+  </div>
+  <p class="hint" style="margin:12px 0 0">To flash with dfu-util instead of the browser (connect USB before 9V, see below):</p>
+  <pre id="cmd">dfu-util -a 0 -D application_release_0_971_k_l_m_q….dfu</pre>
+</div>
+
+<div class="group">
+  <h2>flash over usb</h2>
+  <p id="nousb" class="bad hidden" style="margin:0 0 12px">This browser has no WebUSB. Use Chrome or Edge on a desktop, or download the .dfu and use dfu-util.</p>
+  <ol>
+    <li>Take the backplate off.</li>
+    <li>Connect USB (mini-B) to the jack beside the ribbon header.</li>
+    <li>Plug in USB first, then 9V. That starts the chip's bootloader instead of the pedal.</li>
+    <li>Connect, back up, then flash. When it's done, unplug USB and 9V and power up normally.</li>
+  </ol>
+  <p class="hint" style="margin:0 0 12px">Windows: the bootloader needs the WinUSB driver (install it with Zadig) before the browser can see it. macOS and Linux need nothing.</p>
+  <div class="row">
+    <label class="check"><input type="checkbox" id="revok"> the board is rev k, l or m (printed on the PCB)</label>
+  </div>
+  <div class="row">
+    <button id="connect">connect</button>
+    <button id="backup" disabled>back up</button>
+    <button id="flash" disabled>flash</button>
+    <span id="devinfo" class="hint"></span>
+  </div>
+  <div class="row">
+    <span class="hint">other</span>
+    <button class="small" id="flashstock" disabled>flash stock 0.971</button>
+    <button class="small" id="restore" disabled>restore a backup .bin</button>
+    <input type="file" id="restorefile" accept=".bin" class="hidden">
+  </div>
+  <div id="bar"><div></div></div>
+  <div id="log"></div>
+</div>
+
+<script src="ct5-modes.js"></script>
+<script src="nav.js"></script>
+<script src="grain.js"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const C = window.CT5;
+
+  // ------------------------------------------------------------------ state
+  let stock = null;            // Uint8Array, verified stock .dfu
+  let enabled = [0, 1, 2, 3, 4, 5];
+  let boot = 0;
+  let dev = null;              // CT5.DfuSe
+  let serial = "";
+  let backedUp = false;
+  let busy = false;
+
+  // ------------------------------------------------------------------ log + progress
+  function log(msg, cls) {
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    $("log").appendChild(line);
+    $("log").scrollTop = $("log").scrollHeight;
+  }
+  const progress = (f) => { $("bar").firstElementChild.style.width = (f * 100).toFixed(1) + "%"; };
+
+  function save(bytes, name) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  // ------------------------------------------------------------------ modes table
+  function renderModes() {
+    const tb = $("modes");
+    tb.innerHTML = "";
+    C.MODES.forEach((name, m) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${name}</td>` +
+        `<td class="c"><input type="checkbox" data-m="${m}" ${enabled.includes(m) ? "checked" : ""}></td>` +
+        `<td class="c"><input type="radio" name="boot" data-m="${m}" ${boot === m ? "checked" : ""} ${enabled.includes(m) ? "" : "disabled"}></td>`;
+      tb.appendChild(tr);
+    });
+    renderCycle();
+  }
+
+  $("modes").addEventListener("change", (e) => {
+    const m = +e.target.dataset.m;
+    if (e.target.type === "checkbox") {
+      if (e.target.checked) enabled = [...enabled, m].sort((a, b) => a - b);
+      else {
+        if (enabled.length === 1) { e.target.checked = true; return; }
+        enabled = enabled.filter((x) => x !== m);
+        if (boot === m) boot = enabled[0];
+      }
+    } else boot = m;
+    renderModes();
+  });
+
+  document.querySelectorAll("[data-preset]").forEach((b) => b.addEventListener("click", () => {
+    const p = b.dataset.preset;
+    if (p === "stock") { enabled = [0, 1, 2, 3, 4, 5]; boot = 0; }
+    if (p === "fifths") { enabled = [0, 5]; boot = 5; }
+    if (p === "fifthsonly") { enabled = [5]; boot = 5; }
+    renderModes();
+  }));
+
+  function walk(table, from) {
+    const seen = [from];
+    let m = table[from];
+    while (!seen.includes(m)) { seen.push(m); m = table[m]; }
+    return [...seen, m].map((x) => C.MODES[x]).join(" → ");
+  }
+
+  function renderCycle() {
+    const t = C.cycleTables(enabled);
+    $("cycle").innerHTML = "";
+    const lines = enabled.length === 1
+      ? [`boots in ${C.MODES[boot]}. Q taps don't change the quantize mode.`]
+      : [`boots in ${C.MODES[boot]}`, `Q up:   ${walk(t.up, boot)}`, `Q down: ${walk(t.down, boot)}`];
+    for (const l of lines) { const d = document.createElement("div"); d.textContent = l; $("cycle").appendChild(d); }
+    const name = C.fileName({ enabled, boot });
+    $("dlname").textContent = stock ? name : "";
+    $("cmd").textContent = `dfu-util -a 0 -D ${name}`;
+    updateButtons();
+  }
+
+  function patched() { return C.patch(stock, { enabled, boot }); }
+
+  // ------------------------------------------------------------------ firmware file
+  async function loadFirmware(file) {
+    const u8 = new Uint8Array(await file.arrayBuffer());
+    const r = await C.checkStock(u8);
+    if (!r.ok) {
+      stock = null;
+      $("fwstatus").className = "bad";
+      $("fwstatus").textContent = `${file.name}: ${r.reason}. This page needs the unmodified ${C.STOCK_NAME}.`;
+    } else {
+      stock = u8;
+      $("fwstatus").className = "ok";
+      $("fwstatus").textContent = `${file.name}: stock 0.971 for rev k/l/m, checksum matches`;
+    }
+    renderCycle();
+  }
+  const drop = $("drop");
+  drop.addEventListener("click", () => $("fwfile").click());
+  $("fwfile").addEventListener("change", (e) => e.target.files[0] && loadFirmware(e.target.files[0]));
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault(); drop.classList.remove("over");
+    if (e.dataTransfer.files[0]) loadFirmware(e.dataTransfer.files[0]);
+  });
+
+  $("dl").addEventListener("click", () => save(patched(), C.fileName({ enabled, boot })));
+
+  // ------------------------------------------------------------------ usb
+  const hasUsb = "usb" in navigator;
+  if (!hasUsb) $("nousb").classList.remove("hidden");
+
+  function updateButtons() {
+    $("dl").disabled = !stock;
+    $("connect").disabled = !hasUsb || busy;
+    $("connect").textContent = dev ? "disconnect" : "connect";
+    const ready = !!dev && !busy;
+    const canWrite = ready && $("revok").checked;
+    $("backup").disabled = !ready;
+    $("flash").disabled = !(canWrite && stock);
+    $("flashstock").disabled = !(canWrite && stock);
+    $("restore").disabled = !canWrite;
+  }
+  $("revok").addEventListener("change", updateButtons);
+
+  async function run(label, fn) {
+    busy = true; updateButtons(); progress(0);
+    try { await fn(); }
+    catch (e) {
+      log(`${label} failed: ${e.message || e}`, "bad");
+      log("The bootloader is in ROM and can't be overwritten: power-cycle (USB first, then 9V), reconnect and try again.");
+    }
+    busy = false; updateButtons();
+  }
+
+  $("connect").addEventListener("click", () => {
+    if (dev) { disconnect("disconnected"); return; }
+    run("connect", async () => {
+      const usb = await C.DfuSe.request();
+      const d = new C.DfuSe(usb);
+      await d.open();
+      dev = d;
+      serial = usb.serialNumber || "unknown";
+      backedUp = false;
+      $("devinfo").textContent = `STM32 bootloader · serial ${serial}`;
+      log(`connected: STM32 bootloader, serial ${serial}`, "ok");
+      log(`flash: ${d.altName || "layout not reported, using STM32F4 1 MB"}`);
+    });
+  });
+
+  async function disconnect(msg) {
+    if (dev) await dev.close();
+    dev = null; backedUp = false;
+    $("devinfo").textContent = "";
+    if (msg) log(msg);
+    updateButtons();
+  }
+  navigator.usb && navigator.usb.addEventListener("disconnect", (e) => {
+    if (dev && e.device === dev.dev) { dev = null; backedUp = false; $("devinfo").textContent = ""; log("device unplugged"); updateButtons(); }
+  });
+
+  // 256 KB = flash sectors 0–5, everything a firmware write erases
+  const BACKUP_LEN = 0x40000;
+
+  $("backup").addEventListener("click", () => run("back up", async () => {
+    log("reading 256 KB…");
+    const data = await dev.read(C.FLASH_BASE, BACKUP_LEN, progress);
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+    save(data, `ct5_${serial}_${stamp}.bin`);
+    backedUp = true;
+    log(`backup saved: ct5_${serial}_${stamp}.bin`, "ok");
+  }));
+
+  async function writeImage(img, what) {
+    if (!backedUp && !confirm("No backup of this pedal yet. Flash anyway?")) return;
+    log(`erasing…`);
+    await dev.erase(C.FLASH_BASE, img.length, (f) => progress(f * 0.2));
+    log(`writing ${img.length} bytes…`);
+    await dev.write(C.FLASH_BASE, img, (f) => progress(0.2 + f * 0.6));
+    log("verifying…");
+    const back = await dev.read(C.FLASH_BASE, img.length, (f) => progress(0.8 + f * 0.2));
+    for (let i = 0; i < img.length; i++) {
+      if (back[i] !== img[i]) throw new Error(`verify failed at 0x${(C.FLASH_BASE + i).toString(16)}`);
+    }
+    progress(1);
+    log(`${what}: written and verified. Unplug USB and 9V, then power up normally.`, "ok");
+  }
+
+  $("flash").addEventListener("click", () => run("flash", async () => {
+    log(`flashing: boot ${C.MODES[boot]}, Q cycle ${enabled.map((m) => C.MODES[m]).join(", ")}`);
+    await writeImage(C.image(patched()), "patched firmware");
+  }));
+
+  $("flashstock").addEventListener("click", () => run("flash stock", async () => {
+    log("flashing stock 0.971");
+    await writeImage(C.image(stock), "stock 0.971");
+  }));
+
+  $("restore").addEventListener("click", () => $("restorefile").click());
+  $("restorefile").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    run("restore", async () => {
+      let img = new Uint8Array(await f.arrayBuffer());
+      if (!img.length || img.length > 0xe0000) throw new Error("backup must be between 1 byte and 896 KB");
+      const sp = img[0] | (img[1] << 8) | (img[2] << 16) | (img[3] << 24);
+      if ((sp >>> 0) >>> 24 !== 0x20) throw new Error("that file doesn't start with an STM32 vector table");
+      if (img.length % 4) { const p = new Uint8Array(img.length + 4 - (img.length % 4)).fill(0xff); p.set(img); img = p; }
+      log(`restoring ${f.name}`);
+      await writeImage(img, f.name);
+    });
+  });
+
+  renderModes();
+  updateButtons();
+})();
+</script>
+</body>
+</html>
