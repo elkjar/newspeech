@@ -262,9 +262,12 @@
   #ns-menu-btn span { display: inline-block; }
   .ns-chev svg { width: 10px; height: 10px; display: block; transition: transform 160ms ease; }
   #ns-menu-btn[aria-expanded="true"] .ns-chev svg { transform: rotate(180deg); }
+  /* open, the panel takes the bar's bottom rule's place: it starts a few px
+     up into the bar's (empty) bottom padding, so the column heads sit on the
+     line's row and the rule itself is covered */
   #ns-mega {
     position: absolute;
-    top: 100%;
+    top: calc(100% - 7px);
     left: 0;
     right: 0;
     background: #050505;
@@ -295,11 +298,10 @@
     #ns-mega.open .mg-head, #ns-mega.open .mg-item { transition: none; transform: none; }
   }
   /* glass bar: the panel stays solid (links over video would be unreadable) */
-  #ns-top.ns-glass #ns-mega { border-top: 1px solid rgba(255, 255, 255, 0.18); }
   #ns-mega .mg-inner {
     max-width: 1280px;
     margin: 0 auto;
-    padding: 16px var(--ns-gutter) 40px;
+    padding: 0 var(--ns-gutter) 40px;
     display: grid;
     grid-template-columns: 1fr 2fr 1fr;
     gap: 48px;
