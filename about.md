@@ -1,7 +1,7 @@
 ---
 title: about
 dek: newspeech is chris elkjar's attempt to react to, and create within, the current apparent end times — crafting his own music tooling and trying to score this hellscape climate apocalypse.
-og_description: newspeech is chris elkjar — musician, designer, toolmaker. records, instruments and plugins, released for free: use them on anything, no credit needed.
+og_description: newspeech is chris elkjar's attempt to react to, and create within, the current apparent end times — crafting his own music tooling and trying to score this hellscape climate apocalypse.
 ---
 
 <!--
