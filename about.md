@@ -1,7 +1,7 @@
 ---
 title: about
-dek: newspeech is a collection of things chris elkjar has made — a music project that turned into a software project, which ended up as a plugin project.
-og_description: newspeech is chris elkjar — musician, designer, toolmaker. records, instruments and plugins, released for free: use them on anything, no credit needed.
+dek: newspeech is chris elkjar's attempt to react to, and create within, the current apparent end times — crafting his own music tooling and trying to score this hellscape climate apocalypse.
+og_description: newspeech is chris elkjar's attempt to react to, and create within, the current apparent end times — crafting his own music tooling and trying to score this hellscape climate apocalypse.
 ---
 
 <!--
@@ -30,16 +30,18 @@ the page is public and in the top nav (third, after news) since 10-07.
 
 ## hello, world.
 
-i'm chris elkjar. newspeech is a collection of things i've made. this started as a music project, which turned into a software project, which ended up as a plugin project. i can't wait to see what comes next.  i've always loved creating and releasing things for free, removing the commerce side of music and focusing on the parts that excited me. the tools are released the same way the music is: use them on anything, commercial or not, no credit needed.
+i'm [chris elkjar](https://www.instagram.com/chriselkjar/). newspeech is my attempt to react to, and create within, the current apparent end times by crafting my own music tooling and trying to score this hellscape climate apocalypse that our dear world leaders are forcing us all to experience.
 
-## about me
-
-i am a musician, designer, toolmaker, sloppy coder, occasionally mechanic. i've always been interested in the collision of technology and music - i've spent a lot more time than i'd like to admit working with my other project *the armed* across all kinds of roles, guitarist, production manager, merch guy, tour manager, noise generator etc etc. 
-
-newspeech is all of these ideas colliding at once: make the instruments, make the music with them, and share as much of the process, ideas and concepts as possible. 
+instrumental music often lacks a point of view or narrative. this project is noisy and often sounds like an alarm because it is.
 
 ## dead ocean EP
 
-dead ocean is a 3 song ep that is my first attempt at scoring our impending climate related apocalypse. these are songs that feature noise and melody in equal parts. the EP was created initially using the sequence software, and then i brought some friends on to add "IRL" instrumentation to em. 
+![dead ocean — the ep cover](assets/ep/cover.jpg)
 
-[listen to the music now](dead-ocean.html)
+dead ocean is a 3 song ep. this is our first attempt at scoring this impending climate apocalypse. these songs are equal parts noise and melody.
+
+on this record [newspeech](https://www.instagram.com/newspeechsound/) is [chris elkjar](https://www.instagram.com/chriselkjar/), [steve lucarelli](https://www.instagram.com/stevewasabankrobber/) and [pj solo](https://www.instagram.com/pjsolo_la/).
+
+[listen to the music](dead-ocean.html)
+
+[watch the videos](video.html)

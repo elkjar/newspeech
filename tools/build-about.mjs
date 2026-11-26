@@ -24,9 +24,15 @@ const body = raw.replace(/^---\n([\s\S]*?)\n---\n/, (_, block) => {
   }
   return "";
 });
+// a line that is only an image (![alt](src)) is the section's artwork: it
+// sits beside the copy, on the side the copy leaves open, and breaks with
+// the page (about.js)
 const sections = body.split(/^## /m).slice(1).map((chunk) => {
   const nl = chunk.indexOf("\n");
-  return { title: chunk.slice(0, nl).trim(), html: mdToHtml(chunk.slice(nl + 1).trim()) };
+  let text = chunk.slice(nl + 1);
+  let art = null;
+  text = text.replace(/^!\[([^\]]*)\]\(([^)\s]+)\)[ \t]*$/m, (_, alt, src) => { art = { alt, src }; return ""; });
+  return { title: chunk.slice(0, nl).trim(), html: mdToHtml(text.trim()), art };
 });
 const climate = JSON.parse(fs.readFileSync(path.join(ROOT, "assets/data/climate.json"), "utf8"));
 
@@ -126,6 +132,14 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   [data-wear] span { display: inline-block; }
   [data-wear] .w { white-space: nowrap; } /* a heading wraps between words, never inside one (about.js) */
 
+  /* artwork: on the side the copy leaves open, level with it */
+  .s.has-art .grid { align-items: center; }
+  .s.has-art .in { grid-row: 1; }
+  .art { position: relative; margin: 0; grid-row: 1; grid-column: 1 / 6; }
+  .s.p-left .art { grid-column: 8 / 13; }
+  .art img { display: block; width: 100%; height: auto; }
+  .art canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
   /* the end of the record */
   .end { padding: 4vh 0 8vh; }
   .end .in { grid-column: 1 / 13; }
@@ -134,6 +148,8 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
   @media (max-width: 900px) {
     .grid { column-gap: 0; } /* everything spans the row here; 11 gaps alone outgrow a 320px phone */
     .s .in, .s.p-right .in, .s.p-wide .in { grid-column: 1 / 13; }
+    .s.has-art .in, .art, .s.p-left .art { grid-column: 1 / 13; grid-row: auto; }
+    .art { margin-bottom: 48px; }
     .s { padding: 16vh 0; }
   }
 </style>
@@ -145,8 +161,8 @@ ${fm.noindex === "true" ? '<meta name="robots" content="noindex, nofollow">\n' :
 <main>
 <canvas id="record" aria-hidden="true"></canvas>
 <div class="wrap">
-${sections.map((s, i) => `  <section class="s ${PLACES[i % PLACES.length]}${i === 0 ? " lead" : ""}">
-    <div class="grid"><div class="in">
+${sections.map((s, i) => `  <section class="s ${PLACES[i % PLACES.length]}${i === 0 ? " lead" : ""}${s.art ? " has-art" : ""}">
+    <div class="grid">${s.art ? `<figure class="art"><img src="${esc(s.art.src)}" alt="${esc(s.art.alt)}" loading="lazy"><canvas aria-hidden="true"></canvas></figure>` : ""}<div class="in">
       <${i === 0 ? "h1" : "h2"} data-wear>${esc(s.title)}</${i === 0 ? "h1" : "h2"}>
       <div class="copy">${s.html}</div>
     </div></div>
