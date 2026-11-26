@@ -270,6 +270,59 @@
     setTimeout(() => { tears = []; draw(); }, 70 + Math.random() * 200);
   });
 
+  // artwork: the picture breaks like the page — torn slices put back wrong,
+  // blocks moved, a row smeared down, chroma, now and then an inverted band.
+  // drawn on a canvas over the (untouched) image and cleared a moment later.
+  for (const fig of document.querySelectorAll(".art")) {
+    const img = fig.querySelector("img"), gc = fig.querySelector("canvas"), g = gc.getContext("2d");
+    const fit = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      gc.width = Math.max(1, Math.round(fig.clientWidth * dpr));
+      gc.height = Math.max(1, Math.round(fig.clientHeight * dpr));
+    };
+    new ResizeObserver(fit).observe(fig);
+    const visible = () => { const r = fig.getBoundingClientRect(); return r.bottom > 0 && r.top < window.innerHeight; };
+    let clearT = 0;
+    poisson(() => (img.complete && img.naturalWidth && visible() ? 0.6 + 9 * Math.pow(wear(), 1.2) : 0), () => {
+      const W = gc.width, H = gc.height, iw = img.naturalWidth, ih = img.naturalHeight;
+      const sx = iw / W, sy = ih / H, w = wear();
+      g.clearRect(0, 0, W, H);
+      // slices, shifted sideways
+      const n = 2 + ((Math.random() * (3 + 14 * w)) | 0);
+      for (let k = 0; k < n; k++) {
+        const y = Math.random() * H, h = rand(2, 8 + H * 0.12 * w);
+        const dx = (Math.random() < 0.5 ? -1 : 1) * rand(4, 20 + W * 0.25 * w);
+        g.drawImage(img, 0, y * sy, iw, h * sy, dx, y, W, h);
+      }
+      const kind = Math.random();
+      // blocks lifted and dropped somewhere else
+      if (kind < 0.5) {
+        const b = 1 + ((Math.random() * (2 + 6 * w)) | 0);
+        for (let k = 0; k < b; k++) {
+          const bw = rand(W * 0.05, W * 0.3), bh = rand(H * 0.02, H * 0.12);
+          g.drawImage(img, rand(0, W - bw) * sx, rand(0, H - bh) * sy, bw * sx, bh * sy, rand(0, W - bw), rand(0, H - bh), bw, bh);
+        }
+      }
+      // one row of pixels smeared down the frame
+      if (kind > 0.72) {
+        const y = rand(0, H * 0.9), hh = rand(H * 0.08, H * 0.4);
+        g.drawImage(img, 0, y * sy, iw, 2 * sy, 0, y, W, hh);
+      }
+      // an inverted band, more often as it warms
+      if (Math.random() < 0.1 + 0.2 * w) {
+        const y = rand(0, H), hh = rand(4, H * 0.18);
+        g.drawImage(img, 0, y * sy, iw, hh * sy, 0, y, W, hh);
+        g.globalCompositeOperation = "difference";
+        g.fillStyle = "#fff";
+        g.fillRect(0, y, W, hh);
+        g.globalCompositeOperation = "source-over";
+      }
+      fig.classList.toggle("chroma", Math.random() < 0.6);
+      clearTimeout(clearT);
+      clearT = setTimeout(() => { g.clearRect(0, 0, W, H); fig.classList.remove("chroma"); }, 60 + Math.random() * 200);
+    });
+  }
+
   // grain: pre-made noise tiles, cycled
   const tiles = Array.from({ length: 4 }, () => {
     const c = document.createElement("canvas"); c.width = c.height = 256;

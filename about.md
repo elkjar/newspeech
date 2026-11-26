@@ -40,6 +40,10 @@ newspeech is all of these ideas colliding at once: make the instruments, make th
 
 ## dead ocean EP
 
-dead ocean is a 3 song ep that is my first attempt at scoring our impending climate related apocalypse. these are songs that feature noise and melody in equal parts. the EP was created initially using the sequence software, and then i brought some friends on to add "IRL" instrumentation to em. 
+![dead ocean — the ep cover](assets/ep/cover.jpg)
 
-[listen to the music now](dead-ocean.html)
+dead ocean is a 3 song ep that is the first attempt at scoring this impending climate apocalypse. these songs are equal parts noise and melody.
+
+[listen to the music](dead-ocean.html)
+
+[watch the videos](video.html)
