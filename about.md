@@ -30,7 +30,7 @@ the page is public and in the top nav (third, after news) since 10-07.
 
 ## hello, world.
 
-i'm chris elkjar. newspeech is my attempt to react to, and create within, the current apparent end times by crafting my own music tooling and trying to score this hellscape climate apocalypse that our dear world leaders are forcing us all to experience.
+i'm [chris elkjar](https://www.instagram.com/chriselkjar/). newspeech is my attempt to react to, and create within, the current apparent end times by crafting my own music tooling and trying to score this hellscape climate apocalypse that our dear world leaders are forcing us all to experience.
 
 instrumental music often lacks a point of view or narrative. this project is noisy and often sounds like an alarm because it is.
 
