@@ -70,8 +70,8 @@
   const ICON_DC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M7.4 6.1Q12 5 16.6 6.1Q20.2 10.4 20.5 16.4Q18.6 17.9 16.1 18.6L15.1 16.9Q12 17.7 8.9 16.9L7.9 18.6Q5.4 17.9 3.5 16.4Q3.8 10.4 7.4 6.1Z"/><ellipse cx="9.2" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/><ellipse cx="14.8" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/></svg>`;
   const PAGES =
     `<a href="${ROOT}dead-ocean.html"${here("dead-ocean.html")} data-ns-link>music</a>` +
-    `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
     `<a href="${ROOT}video.html"${here("video.html")} data-ns-link>video</a>` +
+    `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
     `<a href="${ROOT}about.html"${here("about.html")} data-ns-link>about</a>` +
     `<button id="ns-menu-btn" type="button"${IN_TOOLS ? " class=\"current\"" : ""} aria-expanded="false" aria-controls="ns-mega">` +
     `<span data-ns-link>tools</span><span class="ns-chev">${ICON_CHEV}</span></button>` +
@@ -383,8 +383,8 @@
     `<div class="ov-pane ov-pane-main">` +
     `<div class="ov-list">` +
     `<a class="ov-link${cur("dead-ocean.html")}" href="${ROOT}dead-ocean.html">music</a>` +
-    `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link${cur("video.html")}" href="${ROOT}video.html">video</a>` +
+    `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link${cur("about.html")}" href="${ROOT}about.html">about</a>` +
     `<div class="ov-groups">` +
     MENU.map((g) =>

@@ -28,7 +28,7 @@
       ["slice", "plugins.html#slice"], ["glitch", "plugins.html#glitch"],
     ]],
     ["site", null, [
-      ["news", "news.html"], ["video", "video.html"], ["about", "about.html"], ["sequence", "index.html#v-sequence"], ["rss", "feed.xml"],
+      ["video", "video.html"], ["news", "news.html"], ["about", "about.html"], ["sequence", "index.html#v-sequence"], ["rss", "feed.xml"],
     ]],
     ["follow", null, [
       ["bandcamp", "https://newspeech.bandcamp.com"],
