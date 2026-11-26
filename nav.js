@@ -197,12 +197,37 @@
     opacity: 0.5;
   }
   #ns-overlay .ov-link.current { opacity: 1; }
-  /* the tools menu, opened out: three small groups under the main links */
-  #ns-overlay .ov-groups { width: 100%; display: grid; gap: 26px; margin-top: 22px; padding-top: 26px; border-top: 1px solid rgba(255, 255, 255, 0.14); text-align: center; }
-  #ns-overlay .ov-group-head { color: #fff; opacity: 0.4; text-decoration: none; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; display: block; margin-bottom: 8px; }
-  #ns-overlay .ov-sub { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 4px; }
-  #ns-overlay .ov-sub a { color: #fff; opacity: 0.55; text-decoration: none; font-size: 15px; letter-spacing: 0.08em; padding: 7px 10px; }
+  /* "tools" is a button that slides the takeover across to its own pane */
+  #ns-overlay button.ov-link { background: none; border: 0; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; }
+  #ns-overlay button { -webkit-tap-highlight-color: transparent; }
+  #ns-overlay .ov-more svg { width: 12px; height: 12px; display: block; transform: rotate(-90deg); }
+  #ns-overlay .ov-pane { transition: transform 300ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 220ms ease; }
+  #ns-overlay .ov-pane-tools { transform: translateX(100%); opacity: 0; visibility: hidden; }
+  #ns-overlay.ov-sub-open .ov-pane-main { transform: translateX(-30%); opacity: 0; visibility: hidden; }
+  #ns-overlay.ov-sub-open .ov-pane-tools { transform: none; opacity: 1; visibility: visible; }
+  #ns-overlay .ov-pane-main, #ns-overlay .ov-pane-tools { transition: transform 300ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 220ms ease, visibility 0s linear 300ms; }
+  #ns-overlay.ov-sub-open .ov-pane-tools, #ns-overlay:not(.ov-sub-open) .ov-pane-main { transition: transform 300ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 220ms ease, visibility 0s; }
+  #ns-overlay .ov-back {
+    position: absolute; z-index: 2; top: 10px; left: 12px;
+    background: none; border: 0; color: #fff; font-family: inherit; font-size: 14px; letter-spacing: 0.12em;
+    padding: 18px 12px; cursor: pointer; opacity: 0.7; display: none; align-items: center; gap: 8px;
+  }
+  #ns-overlay .ov-back svg { width: 12px; height: 12px; display: block; transform: rotate(90deg); }
+  #ns-overlay.ov-sub-open .ov-back { display: inline-flex; }
+  #ns-overlay .ov-tools { margin: auto 0; width: 100%; max-width: 420px; padding: 84px 24px 48px; display: grid; gap: 34px; }
+  #ns-overlay .ov-group-head { color: #fff; opacity: 0.4; text-decoration: none; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; display: block; margin-bottom: 10px; }
+  #ns-overlay .ov-sub { display: grid; gap: 2px; }
+  #ns-overlay .ov-group.wide .ov-sub { grid-template-columns: 1fr 1fr; column-gap: 16px; }
+  #ns-overlay .ov-sub a { color: #fff; opacity: 0.6; text-decoration: none; font-size: 18px; letter-spacing: 0.08em; padding: 8px 0; }
   #ns-overlay .ov-sub a.current { opacity: 1; }
+  /* items arrive one after another once the pane is in (--d per item) */
+  #ns-overlay .ov-tools .ov-group-head, #ns-overlay .ov-tools .ov-sub a { transform: translateX(10px); opacity: 0; }
+  #ns-overlay.ov-sub-open .ov-tools .ov-group-head { opacity: 0.4; transform: none; transition: opacity 260ms ease var(--d, 0ms), transform 260ms ease var(--d, 0ms); }
+  #ns-overlay.ov-sub-open .ov-tools .ov-sub a { opacity: 0.6; transform: none; transition: opacity 260ms ease var(--d, 0ms), transform 260ms ease var(--d, 0ms); }
+  #ns-overlay.ov-sub-open .ov-tools .ov-sub a.current { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) {
+    #ns-overlay .ov-pane, #ns-overlay .ov-tools .ov-group-head, #ns-overlay .ov-tools .ov-sub a { transition: none !important; }
+  }
   #ns-overlay .ov-close {
     position: absolute;
     z-index: 2;
@@ -382,18 +407,14 @@
   overlay.id = "ns-overlay";
   overlay.innerHTML =
     `<button class="ov-close" aria-label="close">×</button>` +
+    `<button class="ov-back" type="button" aria-label="back to the menu">${ICON_CHEV}<span>back</span></button>` +
     `<div class="ov-pane ov-pane-main">` +
     `<div class="ov-list">` +
     `<a class="ov-link${cur("dead-ocean.html")}" href="${ROOT}dead-ocean.html">music</a>` +
     `<a class="ov-link${cur("video.html")}" href="${ROOT}video.html">video</a>` +
     `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link${cur("about.html")}" href="${ROOT}about.html">about</a>` +
-    `<div class="ov-groups">` +
-    MENU.map((g) =>
-      `<div><a class="ov-group-head" href="${g.href}">${g.name} →</a><div class="ov-sub">` +
-      g.items.map(([n, h]) => `<a class="${isHere(h) ? "current" : ""}" href="${h}">${n}</a>`).join("") +
-      `</div></div>`).join("") +
-    `</div>` +
+    `<button class="ov-link ov-more${IN_TOOLS ? " current" : ""}" type="button" aria-expanded="false">tools${ICON_CHEV}</button>` +
     `</div>` +
     `<div class="ov-icons">` +
     `<a href="https://newspeech.bandcamp.com" target="_blank" rel="noopener noreferrer" aria-label="bandcamp">${ICON_BC}</a>` +
@@ -401,11 +422,35 @@
     `<a href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="youtube">${ICON_YT}</a>` +
     `<a href="https://discord.gg/GgGSXK3WT" target="_blank" rel="noopener noreferrer" aria-label="discord">${ICON_DC}</a>` +
     `</div>` +
-    `</div>`;
+    `</div>` +
+    // the tools pane: sequence, the browser tools, the plugins
+    `<div class="ov-pane ov-pane-tools" aria-label="tools"><div class="ov-tools">` +
+    (() => {
+      let d = 60;
+      return MENU.map((g) => {
+        const head = `<a class="ov-group-head" href="${g.href}" style="--d:${d}ms">${g.name} →</a>`;
+        d += 40;
+        const items = g.items.map(([n, h]) => { const a = `<a class="${isHere(h) ? "current" : ""}" href="${h}" style="--d:${d}ms"><span>${n}</span></a>`; d += 24; return a; }).join("");
+        return `<div class="ov-group${g.wide ? " wide" : ""}">${head}<div class="ov-sub">${items}</div></div>`;
+      }).join("");
+    })() +
+    `</div></div>`;
   document.body.appendChild(overlay);
 
   const burger = document.getElementById("ns-burger");
+  const moreBtn = overlay.querySelector(".ov-more");
+  function setSub(on) {
+    overlay.classList.toggle("ov-sub-open", on);
+    moreBtn.setAttribute("aria-expanded", String(on));
+    if (on) {
+      overlay.querySelector(".ov-pane-tools").scrollTop = 0;
+      scrambleIn(overlay.querySelectorAll(".ov-tools .ov-sub a span"));
+    }
+  }
+  moreBtn.addEventListener("click", () => setSub(true));
+  overlay.querySelector(".ov-back").addEventListener("click", () => setSub(false));
   function setMenuOpen(open) {
+    if (!open) setSub(false);
     overlay.classList.toggle("open", open);
     burger.setAttribute("aria-expanded", String(open));
     // lock page scroll behind the takeover (scroll-snap lives on <html>)
@@ -414,7 +459,10 @@
   burger.addEventListener("click", () => setMenuOpen(true));
   overlay.querySelector(".ov-close").addEventListener("click", () => setMenuOpen(false));
   overlay.addEventListener("click", (e) => { if (e.target.closest("a")) setMenuOpen(false); });
-  window.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenuOpen(false); });
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !overlay.classList.contains("open")) return;
+    if (overlay.classList.contains("ov-sub-open")) setSub(false); else setMenuOpen(false);
+  });
   window.addEventListener("resize", () => { if (window.innerWidth > BREAK) setMenuOpen(false); });
 
   // ---- tools menu: hover opens it (with a grace period to cross into the
@@ -428,12 +476,13 @@
     const was = mega.classList.contains("open");
     mega.classList.toggle("open", open);
     menuBtn.setAttribute("aria-expanded", String(open));
-    if (open && !was && !reduceMotion) scrambleMenu();
+    if (open && !was) scrambleIn(mega.querySelectorAll(".mg-item b"));
   }
   // on open, each item name resolves out of scramble glyphs as it fades in —
   // the links' ambient scramble, run once, left to right
-  function scrambleMenu() {
-    mega.querySelectorAll(".mg-item b").forEach((b) => {
+  function scrambleIn(nodes) {
+    if (reduceMotion) return;
+    nodes.forEach((b) => {
       const word = b.dataset.word || (b.dataset.word = b.textContent);
       clearTimeout(b._scr);
       const start = parseFloat(b.parentElement.style.getPropertyValue("--d")) || 0;
