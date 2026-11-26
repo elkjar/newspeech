@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050505">
-<meta name="robots" content="noindex">
 <title>NEWSPEECH // waves</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="description" content="newspeech — wave sequencer. Polyphonic, off the clock.">
@@ -131,6 +130,7 @@
 </head>
 <body>
 <script src="nav.js"></script>
+<script src="gate.js"></script>
 <script src="grain.js"></script>
 
 <h1>// WAVES</h1>
@@ -1073,6 +1073,7 @@ async function printKit() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     info.textContent = `printed ${name}.zip · ${(blob.size / 1e6).toFixed(1)} MB`;
+    if (window.NewspeechGate) NewspeechGate.afterExport('waves');
   } catch (err) {
     info.textContent = 'print failed — ' + (err && err.message ? err.message : err);
     throw err;

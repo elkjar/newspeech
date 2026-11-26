@@ -485,6 +485,8 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 40px 28px;
   }
+  /* nine tools: three rows of three, down to the one-column phone layout */
+  .tool-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .home-block .card {
     display: flex;
     flex-direction: column;
@@ -554,7 +556,6 @@
   .home-block .hb-more:hover { color: #ddd; border-bottom-color: rgba(255, 255, 255, 0.7); }
   @media (max-width: 1100px) {
     .plug-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 640px) {
     .plug-grid, .tool-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
@@ -752,6 +753,11 @@ fetch("news-latest.html")
         <span class="shot"><canvas class="viz"></canvas></span>
         <span class="c-t" data-link>stretch</span>
         <span class="c-d">sampler timestretch — akai block splicing, pushed until it breaks, out through a 12- or 8-bit converter.</span>
+      </a>
+      <a class="card" id="v-waves" href="waves.html">
+        <span class="shot"><canvas class="viz"></canvas></span>
+        <span class="c-t" data-link>waves</span>
+        <span class="c-d">a wave sequencer — single cycles crossfading off the clock. print a multisampled kit.</span>
       </a>
       <a class="card" id="v-samples" href="samples.html">
         <span class="shot"><canvas class="viz"></canvas></span>

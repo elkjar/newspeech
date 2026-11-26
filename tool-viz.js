@@ -1,5 +1,5 @@
 // tool-viz.js — the live miniatures of the newspeech tools: one canvas draw
-// function per tool (texture, slice, decay, drone, glitch, stretch), plus
+// function per tool (texture, slice, decay, drone, glitch, stretch, waves), plus
 // samples, visuals and sequence. the homepage cards + sequence vignette and
 // the tools index draw from here.
 //
@@ -933,6 +933,121 @@
   }
 
 
+  // ---- waves: one table's life as a row of single cycles (the og-waves
+  // stack, laid sideways) — a saw walking down to a bare sine. three
+  // voices walk it at once, each on its own clock: step lengths rolled as
+  // they go (jitter) times a per-voice rate (drift), crossfading into the
+  // next wave over half of every step. no tempo anywhere ----
+  const WAVE_STEPS = 8, WAVE_N = 128;
+  function wavesTable() {
+    // saw → square → triangle → sine, band-limited (a little ringing stays)
+    const table = [];
+    for (let s = 0; s < WAVE_STEPS; s++) {
+      const life = s / (WAVE_STEPS - 1);
+      const even = Math.max(0, 1 - life * 2.5); // evens fade: saw → square
+      const roll = 1 + Math.max(0, life * 2 - 0.6); // 1/k → 1/k² → steeper: square → triangle → sine
+      const cyc = new Float32Array(WAVE_N);
+      for (let k = 1; k <= 11; k++) {
+        const a = (k % 2 ? 1 : even) / k ** roll * (k % 4 === 3 && roll > 1.5 ? -1 : 1);
+        for (let i = 0; i < WAVE_N; i++) cyc[i] += a * Math.sin((Math.PI * 2 * k * i) / WAVE_N);
+      }
+      let pk = 0;
+      for (const v of cyc) pk = Math.max(pk, Math.abs(v));
+      for (let i = 0; i < WAVE_N; i++) cyc[i] /= pk || 1;
+      table.push(cyc);
+    }
+    return table;
+  }
+  function wavesRoll(vc, env) {
+    // 180ms base step, jitter ±35%, faster when busier
+    vc.len = (0.18 * (1 + 0.7 * (Math.random() - 0.5)) * vc.drift) / (0.7 + 0.6 * env);
+  }
+  function drawWavesViz(v, t, dt) {
+    const { ctx: c, w, h, state } = v;
+    const laneW = w * 0.86;
+    const lx = (w - laneW) / 2;
+    if (!state.table) {
+      state.table = wavesTable();
+      // a chord: root, fifth, octave — three voices, three clocks
+      state.voices = [1, 1.5, 2].map((cycles, k) => ({
+        cycles, step: k * 2, acc: 0, len: 0, drift: 0.75 + Math.random() * 0.6,
+      }));
+      for (const vc of state.voices) wavesRoll(vc, 0.5);
+    }
+    const env = intensity();
+    const T = state.table;
+    for (const vc of state.voices) {
+      vc.acc += dt;
+      if (vc.acc >= vc.len) {
+        vc.acc -= vc.len;
+        vc.step = (vc.step + 1) % WAVE_STEPS;
+        wavesRoll(vc, env);
+        if (vc.step === 0) vc.drift = 0.75 + Math.random() * 0.6; // a new note
+      }
+    }
+    // morph: the last half of each step crossfades into the next wave
+    const morph = (vc) => {
+      const f = vc.acc / vc.len;
+      const x = Math.max(0, (f - 0.5) / 0.5);
+      return { a: T[vc.step], b: T[(vc.step + 1) % WAVE_STEPS], m: x * x * (3 - 2 * x) };
+    };
+
+    c.clearRect(0, 0, w, h);
+    c.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+    c.textAlign = "left";
+    c.textBaseline = "alphabetic";
+
+    // the sequence strip — each step's cycle, lit where a voice is on it
+    const SY = h * 0.14, SH = Math.max(16, h * 0.13);
+    const cellW = laneW / WAVE_STEPS;
+    c.fillStyle = "rgba(255, 255, 255, 0.35)";
+    c.fillText(`3 voices · no tempo · xfade 50`, lx, SY - 10);
+    for (let s = 0; s < WAVE_STEPS; s++) {
+      const x0 = lx + s * cellW + 3, cw = cellW - 6;
+      let on = 0;
+      for (const vc of state.voices) if (vc.step === s) on++;
+      c.fillStyle = on ? "rgba(255, 255, 255, 0.07)" : "rgba(255, 255, 255, 0.025)";
+      c.fillRect(x0, SY, cw, SH);
+      c.strokeStyle = on ? "rgba(255, 255, 255, 0.8)" : "rgba(255, 255, 255, 0.28)";
+      c.lineWidth = 1;
+      c.beginPath();
+      for (let i = 0; i <= 24; i++) {
+        const y = SY + SH / 2 - T[s][Math.floor((i / 24) * (WAVE_N - 1))] * SH * 0.38;
+        if (i) c.lineTo(x0 + (i / 24) * cw, y); else c.moveTo(x0, y);
+      }
+      c.stroke();
+    }
+    // each voice's head on the strip: one tick per voice, sliding with its step
+    state.voices.forEach((vc, k) => {
+      const f = Math.min(1, vc.acc / vc.len);
+      const x = lx + (vc.step + f) * cellW;
+      c.fillStyle = "#fff";
+      c.fillRect(x, SY + SH + 3 + k * 4, 1.5, 3);
+    });
+
+    // the voices — each one's current wave, mid-morph, at its own pitch
+    const top = SY + SH + 22, bottom = h * 0.94;
+    const lane = (bottom - top) / state.voices.length;
+    state.voices.forEach((vc, k) => {
+      const { a, b, m } = morph(vc);
+      const cy = top + lane * (k + 0.5);
+      const amp = lane * 0.36;
+      c.fillStyle = "rgba(255, 255, 255, 0.08)";
+      c.fillRect(lx, cy, laneW, 1);
+      c.strokeStyle = "rgba(255, 255, 255, 0.78)";
+      c.lineWidth = 1.5;
+      c.beginPath();
+      const PTS = Math.max(80, Math.floor(laneW / 2));
+      for (let i = 0; i <= PTS; i++) {
+        const ph = ((i / PTS) * vc.cycles) % 1;
+        const j = Math.min(WAVE_N - 1, Math.floor(ph * WAVE_N));
+        const y = cy - (a[j] * (1 - m) + b[j] * m) * amp;
+        if (i) c.lineTo(lx + (i / PTS) * laneW, y); else c.moveTo(lx, y);
+      }
+      c.stroke();
+    });
+  }
+
   const DRAW = {
     sequence: drawSeqViz,
     texture: drawTextureViz,
@@ -941,6 +1056,7 @@
     drone: drawDroneViz,
     glitch: drawGlitchViz,
     stretch: drawStretchViz,
+    waves: drawWavesViz,
     samples: drawSamplesViz,
     visuals: drawVisualsViz,
   };

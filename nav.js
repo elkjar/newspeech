@@ -35,7 +35,7 @@
   // vignette). "tools" is the index (tools.html) of the browser tools, the
   // sample library and the visualizers, and stays lit on every one of them. socials are icons (no data-ns-link — the
   // text treatment skips them).
-  const TOOL_PAGES = ["tools.html", "texture.html", "slice.html", "decay.html", "drone.html", "glitch.html", "stretch.html", "samples.html", "visualizers.html"];
+  const TOOL_PAGES = ["tools.html", "texture.html", "slice.html", "decay.html", "drone.html", "glitch.html", "stretch.html", "waves.html", "samples.html", "visualizers.html"];
   const IN_TOOLS = TOOL_PAGES.includes(PAGE);
   const ICON_BC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 18.5L9.5 5.5H21.5L14.5 18.5Z"/></svg>`;
   const ICON_IG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" stroke="none"/></svg>`;
