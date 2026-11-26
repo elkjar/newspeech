@@ -34,10 +34,6 @@ i'm chris elkjar. newspeech is my attempt to react to, and create within, the cu
 
 instrumental music often lacks a point of view or narrative. this project is noisy and often sounds like an alarm because it is.
 
-i am a musician, designer, toolmaker, sloppy coder, occasionally mechanic. i've always been interested in the collision of technology and music - i've spent a lot more time than i'd like to admit working with my other project *the armed* across all kinds of roles, guitarist, production manager, merch guy, tour manager, noise generator etc etc. 
-
-newspeech is all of these ideas colliding at once: make the instruments, make the music with them, and share as much of the process, ideas and concepts as possible. 
-
 ## dead ocean EP
 
 ![dead ocean — the ep cover](assets/ep/cover.jpg)
