@@ -50,8 +50,7 @@
   .block { padding: 72px var(--col-pad); border-bottom: 1px solid var(--rule); }
   .block.lift { background: var(--panel); }
   .block h2 { font-size: 13px; font-weight: normal; letter-spacing: 0.2em; margin: 0 0 32px; opacity: 0.85; }
-  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 28px; }
-  .grid.shorts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 40px 28px; }
   .vcard, .scard {
     display: flex; flex-direction: column; gap: 0;
     background: none; border: 0; padding: 0; margin: 0;
@@ -64,7 +63,7 @@
   .scard .thumb { aspect-ratio: 9 / 16; }
   .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.05); opacity: 0.75; transition: opacity 160ms ease, filter 160ms ease; }
   .vcard:hover img, .scard .thumb:hover img, .vcard:focus-visible img, .scard .thumb:focus-visible img { opacity: 1; filter: none; }
-  .vcard:hover .thumb, .scard .thumb:hover, .vcard.playing .thumb { border-color: rgba(255, 255, 255, 0.55); }
+  .vcard:hover .thumb, .scard .thumb:hover { border-color: rgba(255, 255, 255, 0.55); }
   .vcard:focus-visible, .scard .thumb:focus-visible { outline: none; }
   .vcard:focus-visible .thumb, .scard .thumb:focus-visible { border-color: #fff; }
   .thumb iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
@@ -72,7 +71,7 @@
     border-style: solid; border-width: 11px 0 11px 18px; border-color: transparent transparent transparent rgba(255, 255, 255, 0.85); }
   .v-t { font-size: 13px; letter-spacing: 0.04em; margin-top: 14px; }
   .v-d { font-size: 11px; letter-spacing: 0.04em; opacity: 0.5; margin-top: 4px; }
-  .vcard.playing .v-t::before { content: "▶ "; }
+  .vcard[hidden] { display: none; }
 
   .more { margin-top: 48px; }
   .cta {
@@ -83,7 +82,6 @@
 
   @media (max-width: 1000px) {
     .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .grid.shorts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
   @media (max-width: 640px) {
     #hero { padding-top: calc(48px + var(--ns-nav-h, 0px)); }
@@ -189,7 +187,7 @@
 <script>
 // youtube embeds kept as bare as the player allows (the same parameters as
 // the news posts). the featured player loads the first video; a card swaps
-// itself into it. shorts play in place, in their own vertical frame.
+// itself into it, and the video it replaces goes back into the grid. shorts play in place, in their own vertical frame.
 const EMBED = (id, autoplay) =>
   `https://www.youtube.com/embed/${id}?controls=0&rel=0&iv_load_policy=3&fs=0&color=white&playsinline=1${autoplay ? "&autoplay=1" : ""}`;
 const player = document.getElementById("player");
@@ -199,7 +197,8 @@ function feature(card, autoplay) {
   player.title = card.dataset.title;
   document.getElementById("now-t").textContent = card.dataset.title;
   document.getElementById("now-d").textContent = card.dataset.date;
-  for (const c of cards) c.classList.toggle("playing", c === card);
+  // the grid holds everything except what's in the player
+  for (const c of cards) c.hidden = c === card;
 }
 feature(cards[0], false);
 for (const card of cards) {
