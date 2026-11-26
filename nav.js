@@ -32,22 +32,49 @@
   // wordmark | links — links drive straight into the pages ("music" is the
   // current record's page, dead-ocean.html, until there's more than one); sequence is the
   // one exception (no standalone page yet — it anchors to its homepage
-  // vignette). "tools" is the index (tools.html) of the browser tools, the
-  // sample library and the visualizers, and stays lit on every one of them. socials are icons (no data-ns-link — the
+  // vignette). "tools" is a menu (the #ns-mega panel) holding sequence, the
+  // browser tools + library + visualizers, and the plugins. socials are icons (no data-ns-link — the
   // text treatment skips them).
   const TOOL_PAGES = ["tools.html", "texture.html", "slice.html", "decay.html", "drone.html", "glitch.html", "stretch.html", "waves.html", "samples.html", "visualizers.html"];
-  const IN_TOOLS = TOOL_PAGES.includes(PAGE);
+  // "tools" is one menu now: sequence, the browser tools and the plugins.
+  // it stays lit on every page in it.
+  const IN_TOOLS = TOOL_PAGES.includes(PAGE) || ["plugins.html", "sequencer-readme.html", "sequence.html"].includes(PAGE);
+  const SEQ_HREF = IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence";
+  const MENU = [
+    { name: "sequence", href: SEQ_HREF, items: [
+      ["sequence", SEQ_HREF, "the sequencer app"],
+      ["readme", ROOT + "sequencer-readme.html", "how it works"],
+    ] },
+    { name: "tools", href: ROOT + "tools.html", wide: true, items: [
+      ["texture", ROOT + "texture.html", "a loop mangler"],
+      ["slice", ROOT + "slice.html", "a pattern slicer"],
+      ["decay", ROOT + "decay.html", "disintegration loops"],
+      ["drone", ROOT + "drone.html", "a breathing drone"],
+      ["glitch", ROOT + "glitch.html", "audio destruction"],
+      ["stretch", ROOT + "stretch.html", "sampler timestretch"],
+      ["waves", ROOT + "waves.html", "a wave sequencer"],
+      ["samples", ROOT + "samples.html", "the sample library"],
+      ["visuals", ROOT + "visualizers.html", "audio-reactive visualizers"],
+    ] },
+    { name: "plugins", href: ROOT + "plugins.html", items: [
+      ["vibe", ROOT + "plugins.html#vibe", "tape loop, repeat, reverb"],
+      ["saturate", ROOT + "plugins.html#saturate", "drive into a filter"],
+      ["slice", ROOT + "plugins.html#slice", "hide messages in music"],
+      ["glitch", ROOT + "plugins.html#glitch", "audio destruction"],
+    ] },
+  ];
+  const ICON_CHEV = `<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3.8l3 3 3-3"/></svg>`;
   const ICON_BC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 18.5L9.5 5.5H21.5L14.5 18.5Z"/></svg>`;
   const ICON_IG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" stroke="none"/></svg>`;
   const ICON_YT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z" fill="currentColor" stroke="none"/></svg>`;
   const ICON_DC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M7.4 6.1Q12 5 16.6 6.1Q20.2 10.4 20.5 16.4Q18.6 17.9 16.1 18.6L15.1 16.9Q12 17.7 8.9 16.9L7.9 18.6Q5.4 17.9 3.5 16.4Q3.8 10.4 7.4 6.1Z"/><ellipse cx="9.2" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/><ellipse cx="14.8" cy="12.4" rx="1.3" ry="1.5" fill="currentColor" stroke="none"/></svg>`;
   const PAGES =
     `<a href="${ROOT}dead-ocean.html"${here("dead-ocean.html")} data-ns-link>music</a>` +
+    `<a href="${ROOT}video.html"${here("video.html")} data-ns-link>video</a>` +
     `<a href="${ROOT}news.html"${here("news.html")} data-ns-link>news</a>` +
     `<a href="${ROOT}about.html"${here("about.html")} data-ns-link>about</a>` +
-    `<a href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}" data-ns-link>sequence</a>` +
-    `<a href="${ROOT}tools.html"${IN_TOOLS ? " class=\"current\"" : ""} data-ns-link>tools</a>` +
-    `<a href="${ROOT}plugins.html"${here("plugins.html")} data-ns-link>plugins</a>` +
+    `<button id="ns-menu-btn" type="button"${IN_TOOLS ? " class=\"current\"" : ""} aria-expanded="false" aria-controls="ns-mega">` +
+    `<span data-ns-link>tools</span><span class="ns-chev">${ICON_CHEV}</span></button>` +
     `<span class="ns-socials">` +
     `<a class="ns-icon" href="https://newspeech.bandcamp.com" target="_blank" rel="noopener noreferrer" aria-label="bandcamp">${ICON_BC}</a>` +
     `<a class="ns-icon" href="https://www.instagram.com/newspeechsound" target="_blank" rel="noopener noreferrer" aria-label="instagram">${ICON_IG}</a>` +
@@ -170,6 +197,12 @@
     opacity: 0.5;
   }
   #ns-overlay .ov-link.current { opacity: 1; }
+  /* the tools menu, opened out: three small groups under the main links */
+  #ns-overlay .ov-groups { width: 100%; display: grid; gap: 26px; margin-top: 22px; padding-top: 26px; border-top: 1px solid rgba(255, 255, 255, 0.14); text-align: center; }
+  #ns-overlay .ov-group-head { color: #fff; opacity: 0.4; text-decoration: none; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; display: block; margin-bottom: 8px; }
+  #ns-overlay .ov-sub { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 4px; }
+  #ns-overlay .ov-sub a { color: #fff; opacity: 0.55; text-decoration: none; font-size: 15px; letter-spacing: 0.08em; padding: 7px 10px; }
+  #ns-overlay .ov-sub a.current { opacity: 1; }
   #ns-overlay .ov-close {
     position: absolute;
     z-index: 2;
@@ -209,6 +242,85 @@
   #ns-links a span { display: inline-block; }
   #ns-links a.current { opacity: 1; }
 
+  /* ---- the tools menu: a button in the row, a full-width panel under the bar ---- */
+  #ns-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: #fff;
+    font: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 120ms ease;
+  }
+  #ns-menu-btn:hover, #ns-menu-btn.current, #ns-menu-btn[aria-expanded="true"] { opacity: 1; }
+  #ns-top.ns-glass #ns-menu-btn { opacity: 1; }
+  #ns-menu-btn span { display: inline-block; }
+  .ns-chev svg { width: 10px; height: 10px; display: block; transition: transform 160ms ease; }
+  #ns-menu-btn[aria-expanded="true"] .ns-chev svg { transform: rotate(180deg); }
+  /* open, the panel takes the bar's bottom rule's place: it starts a few px
+     up into the bar's (empty) bottom padding, so the column heads sit on the
+     line's row and the rule itself is covered */
+  #ns-mega {
+    position: absolute;
+    top: calc(100% - 7px);
+    left: 0;
+    right: 0;
+    background: #050505;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    /* closed = clipped to nothing at the bar's edge; opening wipes it down */
+    visibility: hidden;
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 160ms ease-in, visibility 0s linear 160ms;
+  }
+  #ns-mega.open {
+    visibility: visible;
+    clip-path: inset(0 0 0 0);
+    transition: clip-path 300ms cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s;
+  }
+  /* items arrive one after another (--d is set per item: column, then row) */
+  #ns-mega .mg-head, #ns-mega .mg-item {
+    transform: translateY(-6px);
+    transition: opacity 120ms ease, transform 120ms ease;
+  }
+  #ns-mega .mg-item { opacity: 0; }
+  #ns-mega .mg-head { opacity: 0; }
+  #ns-mega.open .mg-head { opacity: 0.45; transform: none; transition: opacity 260ms ease var(--d, 0ms), transform 260ms ease var(--d, 0ms); }
+  #ns-mega.open .mg-item { opacity: 0.55; transform: none; transition: opacity 260ms ease var(--d, 0ms), transform 260ms ease var(--d, 0ms); }
+  #ns-mega.open .mg-head:hover { opacity: 1; transition-delay: 0ms; }
+  #ns-mega.open .mg-item:hover, #ns-mega.open .mg-item:focus-visible, #ns-mega.open .mg-item.current { opacity: 1; transition-delay: 0ms; }
+  @media (prefers-reduced-motion: reduce) {
+    #ns-mega, #ns-mega.open, #ns-mega .mg-head, #ns-mega .mg-item,
+    #ns-mega.open .mg-head, #ns-mega.open .mg-item { transition: none; transform: none; }
+  }
+  /* glass bar: the panel stays solid (links over video would be unreadable) */
+  #ns-mega .mg-inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 var(--ns-gutter) 40px;
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 48px;
+  }
+  #ns-mega .mg-head {
+    display: inline-block;
+    color: #fff;
+    text-decoration: none;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  #ns-mega .mg-list { display: grid; gap: 14px; }
+  #ns-mega .mg-col.wide .mg-list { grid-template-columns: 1fr 1fr; column-gap: 32px; }
+  #ns-mega .mg-item { color: #fff; text-decoration: none; display: block; }
+  #ns-mega .mg-item b { font-weight: normal; display: block; font-size: 13px; }
+  #ns-mega .mg-item i { font-style: normal; display: block; font-size: 11px; opacity: 0.6; margin-top: 2px; }
+
   /* the wordmark: assets/ns-text.svg (ascii-art NEWSPEECH, ~13:1). sized by
      height; the grid column takes its width. */
   #ns-stage {
@@ -235,12 +347,16 @@
   /* the full link row gets cramped below BREAK — switch to burger + takeover */
   @media (max-width: ${BREAK}px) {
     #ns-pages { display: none; }
+    #ns-mega { display: none !important; }
     #ns-burger { display: inline-flex; }
   }`;
 
   const style = document.createElement("style");
   style.textContent = css;
   document.head.appendChild(style);
+
+  // a menu item is "here" when its page (no #anchor) is this page
+  const isHere = (h) => !h.includes("#") && h.split("/").pop() === PAGE;
 
   const root = document.createElement("div");
   root.id = "ns-top";
@@ -249,7 +365,13 @@
     `<nav id="ns-links">` +
     `<a id="ns-stage" href="${ROOT}index.html" aria-label="newspeech"><img src="${ROOT}assets/ns-text.svg" alt="" draggable="false"></a>` +
     `<div id="ns-pages">${PAGES}</div>` +
-    `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>`;
+    `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>` +
+    `<div id="ns-mega"><div class="mg-inner">` +
+    MENU.map((g, c) =>
+      `<div class="mg-col${g.wide ? " wide" : ""}"><a class="mg-head" href="${g.href}" style="--d:${60 + c * 40}ms">${g.name} →</a><div class="mg-list">` +
+      g.items.map(([n, h, d], r) => `<a class="mg-item${isHere(h) ? " current" : ""}" href="${h}" style="--d:${110 + c * 40 + r * 28}ms"><b>${n}</b><i>${d}</i></a>`).join("") +
+      `</div></div>`).join("") +
+    `</div></div>`;
   document.body.insertBefore(root, document.body.firstChild);
 
   // ---- mobile takeover: links centered, socials at the bottom ----
@@ -263,11 +385,15 @@
     `<div class="ov-pane ov-pane-main">` +
     `<div class="ov-list">` +
     `<a class="ov-link${cur("dead-ocean.html")}" href="${ROOT}dead-ocean.html">music</a>` +
+    `<a class="ov-link${cur("video.html")}" href="${ROOT}video.html">video</a>` +
     `<a class="ov-link${cur("news.html")}" href="${ROOT}news.html">news</a>` +
     `<a class="ov-link${cur("about.html")}" href="${ROOT}about.html">about</a>` +
-    `<a class="ov-link" href="${IS_HOME ? "#v-sequence" : ROOT + "index.html#v-sequence"}">sequence</a>` +
-    `<a class="ov-link${IN_TOOLS ? " current" : ""}" href="${ROOT}tools.html">tools</a>` +
-    `<a class="ov-link${cur("plugins.html")}" href="${ROOT}plugins.html">plugins</a>` +
+    `<div class="ov-groups">` +
+    MENU.map((g) =>
+      `<div><a class="ov-group-head" href="${g.href}">${g.name} →</a><div class="ov-sub">` +
+      g.items.map(([n, h]) => `<a class="${isHere(h) ? "current" : ""}" href="${h}">${n}</a>`).join("") +
+      `</div></div>`).join("") +
+    `</div>` +
     `</div>` +
     `<div class="ov-icons">` +
     `<a href="https://newspeech.bandcamp.com" target="_blank" rel="noopener noreferrer" aria-label="bandcamp">${ICON_BC}</a>` +
@@ -290,6 +416,54 @@
   overlay.addEventListener("click", (e) => { if (e.target.closest("a")) setMenuOpen(false); });
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenuOpen(false); });
   window.addEventListener("resize", () => { if (window.innerWidth > BREAK) setMenuOpen(false); });
+
+  // ---- tools menu: hover opens it (with a grace period to cross into the
+  // panel), click toggles it, Esc / outside click / scrolling away closes ----
+  const menuBtn = document.getElementById("ns-menu-btn");
+  const mega = document.getElementById("ns-mega");
+  let menuTimer = null;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function setMega(open) {
+    clearTimeout(menuTimer);
+    const was = mega.classList.contains("open");
+    mega.classList.toggle("open", open);
+    menuBtn.setAttribute("aria-expanded", String(open));
+    if (open && !was && !reduceMotion) scrambleMenu();
+  }
+  // on open, each item name resolves out of scramble glyphs as it fades in —
+  // the links' ambient scramble, run once, left to right
+  function scrambleMenu() {
+    mega.querySelectorAll(".mg-item b").forEach((b) => {
+      const word = b.dataset.word || (b.dataset.word = b.textContent);
+      clearTimeout(b._scr);
+      const start = parseFloat(b.parentElement.style.getPropertyValue("--d")) || 0;
+      let shown = 0;
+      const tick = () => {
+        b.textContent = word.slice(0, shown) +
+          [...word.slice(shown)].map(() => SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0]).join("");
+        if (shown++ < word.length) b._scr = setTimeout(tick, 34);
+      };
+      b.textContent = [...word].map(() => SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0]).join("");
+      b._scr = setTimeout(tick, start);
+    });
+  }
+  const canHover = window.matchMedia("(hover: hover)").matches;
+  menuBtn.addEventListener("click", () => setMega(!mega.classList.contains("open")));
+  if (canHover) {
+    const enter = () => { clearTimeout(menuTimer); setMega(true); };
+    const leave = () => { clearTimeout(menuTimer); menuTimer = setTimeout(() => setMega(false), 220); };
+    menuBtn.addEventListener("mouseenter", enter);
+    menuBtn.addEventListener("mouseleave", leave);
+    mega.addEventListener("mouseenter", () => clearTimeout(menuTimer));
+    mega.addEventListener("mouseleave", leave);
+  }
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#ns-menu-btn, #ns-mega")) setMega(false);
+  });
+  mega.addEventListener("click", (e) => { if (e.target.closest("a")) setMega(false); });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && mega.classList.contains("open")) { setMega(false); menuBtn.focus(); }
+  });
 
   // ---- glass over [data-ns-glass] (see the css) ----
   // nav.js runs at the top of <body>, before the page's sections exist — so
@@ -324,6 +498,7 @@
     if (Math.abs(delta) < 6) return;
     if (y < 80) root.classList.remove("nav-hidden");
     else root.classList.toggle("nav-hidden", delta > 0);
+    if (delta > 0) setMega(false);
     lastScrollTop = y;
   }, { passive: true });
 
