@@ -21,7 +21,7 @@
     ["tools", "tools.html", [
       ["texture", "texture.html"], ["slice", "slice.html"], ["decay", "decay.html"],
       ["drone", "drone.html"], ["glitch", "glitch.html"], ["stretch", "stretch.html"],
-      ["samples", "samples.html"], ["visuals", "visualizers.html"],
+      ["waves", "waves.html"], ["samples", "samples.html"], ["visuals", "visualizers.html"],
     ]],
     ["plugins", "plugins.html", [
       ["vibe", "plugins.html#vibe"], ["saturate", "plugins.html#saturate"],
