@@ -269,9 +269,31 @@
     right: 0;
     background: #050505;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-    display: none;
+    /* closed = clipped to nothing at the bar's edge; opening wipes it down */
+    visibility: hidden;
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 160ms ease-in, visibility 0s linear 160ms;
   }
-  #ns-mega.open { display: block; }
+  #ns-mega.open {
+    visibility: visible;
+    clip-path: inset(0 0 0 0);
+    transition: clip-path 300ms cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s;
+  }
+  /* items arrive one after another (--d is set per item: column, then row) */
+  #ns-mega .mg-head, #ns-mega .mg-item {
+    transform: translateY(-6px);
+    transition: opacity 120ms ease, transform 120ms ease;
+  }
+  #ns-mega .mg-item { opacity: 0; }
+  #ns-mega .mg-head { opacity: 0; }
+  #ns-mega.open .mg-head { opacity: 0.45; transform: none; transition: opacity 260ms ease var(--d, 0ms), transform 260ms ease var(--d, 0ms); }
+  #ns-mega.open .mg-item { opacity: 0.55; transform: none; transition: opacity 260ms ease var(--d, 0ms), transform 260ms ease var(--d, 0ms); }
+  #ns-mega.open .mg-head:hover { opacity: 1; transition-delay: 0ms; }
+  #ns-mega.open .mg-item:hover, #ns-mega.open .mg-item:focus-visible, #ns-mega.open .mg-item.current { opacity: 1; transition-delay: 0ms; }
+  @media (prefers-reduced-motion: reduce) {
+    #ns-mega, #ns-mega.open, #ns-mega .mg-head, #ns-mega .mg-item,
+    #ns-mega.open .mg-head, #ns-mega.open .mg-item { transition: none; transform: none; }
+  }
   /* glass bar: the panel stays solid (links over video would be unreadable) */
   #ns-top.ns-glass #ns-mega { border-top: 1px solid rgba(255, 255, 255, 0.18); }
   #ns-mega .mg-inner {
@@ -285,18 +307,15 @@
   #ns-mega .mg-head {
     display: inline-block;
     color: #fff;
-    opacity: 0.45;
     text-decoration: none;
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     margin-bottom: 18px;
   }
-  #ns-mega .mg-head:hover { opacity: 1; }
   #ns-mega .mg-list { display: grid; gap: 14px; }
   #ns-mega .mg-col.wide .mg-list { grid-template-columns: 1fr 1fr; column-gap: 32px; }
-  #ns-mega .mg-item { color: #fff; text-decoration: none; display: block; opacity: 0.55; transition: opacity 120ms ease; }
-  #ns-mega .mg-item:hover, #ns-mega .mg-item:focus-visible, #ns-mega .mg-item.current { opacity: 1; }
+  #ns-mega .mg-item { color: #fff; text-decoration: none; display: block; }
   #ns-mega .mg-item b { font-weight: normal; display: block; font-size: 13px; }
   #ns-mega .mg-item i { font-style: normal; display: block; font-size: 11px; opacity: 0.6; margin-top: 2px; }
 
@@ -346,9 +365,9 @@
     `<div id="ns-pages">${PAGES}</div>` +
     `<button id="ns-burger" aria-label="menu" aria-expanded="false">${ICON_BURGER}</button></nav>` +
     `<div id="ns-mega"><div class="mg-inner">` +
-    MENU.map((g) =>
-      `<div class="mg-col${g.wide ? " wide" : ""}"><a class="mg-head" href="${g.href}">${g.name} →</a><div class="mg-list">` +
-      g.items.map(([n, h, d]) => `<a class="mg-item${isHere(h) ? " current" : ""}" href="${h}"><b>${n}</b><i>${d}</i></a>`).join("") +
+    MENU.map((g, c) =>
+      `<div class="mg-col${g.wide ? " wide" : ""}"><a class="mg-head" href="${g.href}" style="--d:${60 + c * 40}ms">${g.name} →</a><div class="mg-list">` +
+      g.items.map(([n, h, d], r) => `<a class="mg-item${isHere(h) ? " current" : ""}" href="${h}" style="--d:${110 + c * 40 + r * 28}ms"><b>${n}</b><i>${d}</i></a>`).join("") +
       `</div></div>`).join("") +
     `</div></div>`;
   document.body.insertBefore(root, document.body.firstChild);
@@ -401,10 +420,30 @@
   const menuBtn = document.getElementById("ns-menu-btn");
   const mega = document.getElementById("ns-mega");
   let menuTimer = null;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function setMega(open) {
     clearTimeout(menuTimer);
+    const was = mega.classList.contains("open");
     mega.classList.toggle("open", open);
     menuBtn.setAttribute("aria-expanded", String(open));
+    if (open && !was && !reduceMotion) scrambleMenu();
+  }
+  // on open, each item name resolves out of scramble glyphs as it fades in —
+  // the links' ambient scramble, run once, left to right
+  function scrambleMenu() {
+    mega.querySelectorAll(".mg-item b").forEach((b) => {
+      const word = b.dataset.word || (b.dataset.word = b.textContent);
+      clearTimeout(b._scr);
+      const start = parseFloat(b.parentElement.style.getPropertyValue("--d")) || 0;
+      let shown = 0;
+      const tick = () => {
+        b.textContent = word.slice(0, shown) +
+          [...word.slice(shown)].map(() => SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0]).join("");
+        if (shown++ < word.length) b._scr = setTimeout(tick, 34);
+      };
+      b.textContent = [...word].map(() => SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0]).join("");
+      b._scr = setTimeout(tick, start);
+    });
   }
   const canHover = window.matchMedia("(hover: hover)").matches;
   menuBtn.addEventListener("click", () => setMega(!mega.classList.contains("open")));
