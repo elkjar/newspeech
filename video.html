@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#050505">
+<title>NEWSPEECH // video</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="newspeech video — visualizers, test transmissions and short pieces from the rack.">
+<meta property="og:title" content="NEWSPEECH // video">
+<meta property="og:description" content="newspeech video — visualizers, test transmissions and short pieces from the rack.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.newspeechsound.com/video.html">
+<meta property="og:site_name" content="NEWSPEECH">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://i.ytimg.com/vi/XQP3pM0XNww/maxresdefault.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWSPEECH // video">
+<meta name="twitter:description" content="newspeech video — visualizers, test transmissions and short pieces from the rack.">
+<meta name="twitter:image" content="https://i.ytimg.com/vi/XQP3pM0XNww/maxresdefault.jpg">
+<style>
+  @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
+  :root { --bg: #050505; --panel: #0a0a0a; --fg: #ffffff; --rule: rgba(255, 255, 255, 0.18); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow-x: hidden; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  /* the site column: the nav's 1280 container with --ns-gutter inside it */
+  :root { --col-pad: max(var(--ns-gutter, 40px), calc((100% - 1280px) / 2 + var(--ns-gutter, 40px))); }
+
+  #hero { padding: calc(72px + var(--ns-nav-h, 0px)) var(--col-pad) 40px; }
+  #hero h1 {
+    font-family: "zxx-sans", ui-monospace, monospace;
+    font-size: clamp(54px, 9.35vw, 143px);
+    line-height: 0.95;
+    letter-spacing: 0.01em;
+    font-weight: normal;
+    margin: 0 0 28px;
+    user-select: none;
+  }
+  #hero p { font-size: 15px; line-height: 1.75; letter-spacing: 0.02em; color: rgba(255, 255, 255, 0.85); margin: 0; max-width: 58ch; }
+
+  /* ---- featured player ---- */
+  #featured { padding: 0 var(--col-pad) 72px; border-bottom: 1px solid var(--rule); }
+  .player { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid rgba(255, 255, 255, 0.14); }
+  .player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .now { display: flex; justify-content: space-between; gap: 24px; margin-top: 16px; font-size: 13px; letter-spacing: 0.04em; }
+  .now .n-d { opacity: 0.5; white-space: nowrap; }
+
+  /* ---- grids ---- */
+  .block { padding: 72px var(--col-pad); border-bottom: 1px solid var(--rule); }
+  .block.lift { background: var(--panel); }
+  .block h2 { font-size: 13px; font-weight: normal; letter-spacing: 0.2em; margin: 0 0 32px; opacity: 0.85; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 28px; }
+  .grid.shorts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .vcard, .scard {
+    display: flex; flex-direction: column; gap: 0;
+    background: none; border: 0; padding: 0; margin: 0;
+    color: inherit; font: inherit; text-align: left;
+  }
+  .vcard { cursor: pointer; }
+  .thumb { position: relative; display: block; width: 100%; padding: 0; overflow: hidden; background: #000; border: 1px solid rgba(255, 255, 255, 0.14); }
+  button.thumb { cursor: pointer; color: inherit; font: inherit; }
+  .vcard .thumb { aspect-ratio: 16 / 9; }
+  .scard .thumb { aspect-ratio: 9 / 16; }
+  .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.05); opacity: 0.75; transition: opacity 160ms ease, filter 160ms ease; }
+  .vcard:hover img, .scard .thumb:hover img, .vcard:focus-visible img, .scard .thumb:focus-visible img { opacity: 1; filter: none; }
+  .vcard:hover .thumb, .scard .thumb:hover, .vcard.playing .thumb { border-color: rgba(255, 255, 255, 0.55); }
+  .vcard:focus-visible, .scard .thumb:focus-visible { outline: none; }
+  .vcard:focus-visible .thumb, .scard .thumb:focus-visible { border-color: #fff; }
+  .thumb iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .play { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform: translate(-35%, -50%);
+    border-style: solid; border-width: 11px 0 11px 18px; border-color: transparent transparent transparent rgba(255, 255, 255, 0.85); }
+  .v-t { font-size: 13px; letter-spacing: 0.04em; margin-top: 14px; }
+  .v-d { font-size: 11px; letter-spacing: 0.04em; opacity: 0.5; margin-top: 4px; }
+  .vcard.playing .v-t::before { content: "▶ "; }
+
+  .more { margin-top: 48px; }
+  .cta {
+    display: inline-flex; padding: 16px 22px; border: 1px solid rgba(255, 255, 255, 0.7);
+    color: var(--fg); text-decoration: none; font-size: 13px; line-height: 18px; letter-spacing: 0.04em;
+  }
+  .cta:hover { background: rgba(255, 255, 255, 0.08); }
+
+  @media (max-width: 1000px) {
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.shorts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    #hero { padding-top: calc(48px + var(--ns-nav-h, 0px)); }
+    .block { padding: 56px var(--col-pad); }
+    .grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+    .grid.shorts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 16px; }
+    .now { flex-direction: column; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<script src="nav.js"></script>
+
+<section id="hero">
+  <h1>video</h1>
+  <p>visualizers, test transmissions and short pieces from the rack.</p>
+</section>
+
+<section id="featured" aria-label="now playing">
+  <div class="player"><iframe id="player" src="" title="kiidk&#x27;yaas — visualizer" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+  <div class="now"><span class="n-t" id="now-t">kiidk&#x27;yaas — visualizer</span><span class="n-d" id="now-d">2026-10-11</span></div>
+</section>
+
+<section class="block" id="videos">
+  <h2>// VIDEOS</h2>
+  <div class="grid">
+      <button class="vcard" type="button" data-id="XQP3pM0XNww" data-title="kiidk&#x27;yaas — visualizer" data-date="2026-10-11">
+        <span class="thumb"><img src="https://i.ytimg.com/vi/XQP3pM0XNww/hqdefault.jpg" alt="" loading="lazy"></span>
+        <span class="v-t">kiidk&#x27;yaas</span>
+        <span class="v-d">visualizer · 2026-10-11</span>
+      </button>
+      <button class="vcard" type="button" data-id="o0jXUSVQABs" data-title="broadcast — test transmission 02" data-date="2026-09-23">
+        <span class="thumb"><img src="https://i.ytimg.com/vi/o0jXUSVQABs/hqdefault.jpg" alt="" loading="lazy"></span>
+        <span class="v-t">broadcast</span>
+        <span class="v-d">test transmission 02 · 2026-09-23</span>
+      </button>
+      <button class="vcard" type="button" data-id="7S1kQlclUpw" data-title="broadcast — test transmission 01" data-date="2026-09-23">
+        <span class="thumb"><img src="https://i.ytimg.com/vi/7S1kQlclUpw/hqdefault.jpg" alt="" loading="lazy"></span>
+        <span class="v-t">broadcast</span>
+        <span class="v-d">test transmission 01 · 2026-09-23</span>
+      </button>
+      <button class="vcard" type="button" data-id="yFnVTDXG_tM" data-title="piano swell" data-date="2026-09-09">
+        <span class="thumb"><img src="https://i.ytimg.com/vi/yFnVTDXG_tM/hqdefault.jpg" alt="" loading="lazy"></span>
+        <span class="v-t">piano swell</span>
+        <span class="v-d">2026-09-09</span>
+      </button>
+      <button class="vcard" type="button" data-id="7qpBs0VBgoM" data-title="sequence 0.5.3" data-date="2026-06-14">
+        <span class="thumb"><img src="https://i.ytimg.com/vi/7qpBs0VBgoM/hqdefault.jpg" alt="" loading="lazy"></span>
+        <span class="v-t">sequence 0.5.3</span>
+        <span class="v-d">2026-06-14</span>
+      </button>
+  </div>
+</section>
+
+<section class="block lift" id="shorts">
+  <h2>// SHORTS</h2>
+  <div class="grid shorts">
+      <div class="scard" data-id="aIXu7UcMH4w">
+        <button class="thumb" type="button" aria-label="play polyend tracker firmware experiments"><img src="https://i.ytimg.com/vi/aIXu7UcMH4w/hqdefault.jpg" alt="" loading="lazy"><span class="play" aria-hidden="true"></span></button>
+        <span class="v-t">polyend tracker firmware experiments</span>
+        <span class="v-d">2026-10-29</span>
+      </div>
+      <div class="scard" data-id="bwDw6Syo72E">
+        <button class="thumb" type="button" aria-label="play debris [2d-01]"><img src="https://i.ytimg.com/vi/bwDw6Syo72E/hqdefault.jpg" alt="" loading="lazy"><span class="play" aria-hidden="true"></span></button>
+        <span class="v-t">debris [2d-01]</span>
+        <span class="v-d">2026-10-11</span>
+      </div>
+      <div class="scard" data-id="Z6JcyrMHwks">
+        <button class="thumb" type="button" aria-label="play debris [ky-03]"><img src="https://i.ytimg.com/vi/Z6JcyrMHwks/hqdefault.jpg" alt="" loading="lazy"><span class="play" aria-hidden="true"></span></button>
+        <span class="v-t">debris [ky-03]</span>
+        <span class="v-d">2026-10-11</span>
+      </div>
+      <div class="scard" data-id="UxDX773Hx4M">
+        <button class="thumb" type="button" aria-label="play debris [policy-04]"><img src="https://i.ytimg.com/vi/UxDX773Hx4M/hqdefault.jpg" alt="" loading="lazy"><span class="play" aria-hidden="true"></span></button>
+        <span class="v-t">debris [policy-04]</span>
+        <span class="v-d">2026-10-11</span>
+      </div>
+      <div class="scard" data-id="LB18qXHZL8Q">
+        <button class="thumb" type="button" aria-label="play debris [policy-02]"><img src="https://i.ytimg.com/vi/LB18qXHZL8Q/hqdefault.jpg" alt="" loading="lazy"><span class="play" aria-hidden="true"></span></button>
+        <span class="v-t">debris [policy-02]</span>
+        <span class="v-d">2026-10-09</span>
+      </div>
+      <div class="scard" data-id="4myTylsHwI8">
+        <button class="thumb" type="button" aria-label="play debris [policy-03]"><img src="https://i.ytimg.com/vi/4myTylsHwI8/hqdefault.jpg" alt="" loading="lazy"><span class="play" aria-hidden="true"></span></button>
+        <span class="v-t">debris [policy-03]</span>
+        <span class="v-d">2026-10-09</span>
+      </div>
+      <div class="scard" data-id="SdweeARg5mQ">
+        <button class="thumb" type="button" aria-label="play debris [ky-02]"><img src="https://i.ytimg.com/vi/SdweeARg5mQ/hqdefault.jpg" alt="" loading="lazy"><span class="play" aria-hidden="true"></span></button>
+        <span class="v-t">debris [ky-02]</span>
+        <span class="v-d">2026-10-09</span>
+      </div>
+      <div class="scard" data-id="pi2fvqk1Etk">
+        <button class="thumb" type="button" aria-label="play debris [ns-02]"><img src="https://i.ytimg.com/vi/pi2fvqk1Etk/hqdefault.jpg" alt="" loading="lazy"><span class="play" aria-hidden="true"></span></button>
+        <span class="v-t">debris [ns-02]</span>
+        <span class="v-d">2026-07-05</span>
+      </div>
+  </div>
+  <div class="more"><a class="cta" href="https://www.youtube.com/@newspeechsound" target="_blank" rel="noopener noreferrer">more on youtube</a></div>
+</section>
+
+<script>
+// youtube embeds kept as bare as the player allows (the same parameters as
+// the news posts). the featured player loads the first video; a card swaps
+// itself into it. shorts play in place, in their own vertical frame.
+const EMBED = (id, autoplay) =>
+  `https://www.youtube.com/embed/${id}?controls=0&rel=0&iv_load_policy=3&fs=0&color=white&playsinline=1${autoplay ? "&autoplay=1" : ""}`;
+const player = document.getElementById("player");
+const cards = [...document.querySelectorAll(".vcard")];
+function feature(card, autoplay) {
+  player.src = EMBED(card.dataset.id, autoplay);
+  player.title = card.dataset.title;
+  document.getElementById("now-t").textContent = card.dataset.title;
+  document.getElementById("now-d").textContent = card.dataset.date;
+  for (const c of cards) c.classList.toggle("playing", c === card);
+}
+feature(cards[0], false);
+for (const card of cards) {
+  card.addEventListener("click", () => {
+    feature(card, true);
+    document.getElementById("featured").scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+for (const card of document.querySelectorAll(".scard")) {
+  const btn = card.querySelector("button.thumb");
+  btn.addEventListener("click", () => {
+    // swap the button for a plain frame holding the player (an iframe inside
+    // a button doesn't get clicks in every browser)
+    const frame = document.createElement("div");
+    frame.className = "thumb";
+    const f = document.createElement("iframe");
+    f.src = EMBED(card.dataset.id, true);
+    f.title = card.querySelector(".v-t").textContent;
+    f.allow = "autoplay; encrypted-media; picture-in-picture";
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    frame.appendChild(f);
+    btn.replaceWith(frame);
+  });
+}
+</script>
+</body>
+</html>
