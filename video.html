@@ -19,7 +19,6 @@
 <meta name="twitter:description" content="newspeech video — visualizers, test transmissions and debris.">
 <meta name="twitter:image" content="https://i.ytimg.com/vi/XQP3pM0XNww/maxresdefault.jpg">
 <style>
-  @font-face { font-family: "zxx-sans"; src: url("fonts/zxx-sans.woff2") format("woff2"); font-display: swap; }
   :root { --bg: #050505; --panel: #0a0a0a; --fg: #ffffff; --rule: rgba(255, 255, 255, 0.18); }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); overflow-x: hidden; }
@@ -27,20 +26,11 @@
   /* the site column: the nav's 1280 container with --ns-gutter inside it */
   :root { --col-pad: max(var(--ns-gutter, 40px), calc((100% - 1280px) / 2 + var(--ns-gutter, 40px))); }
 
-  #hero { padding: calc(72px + var(--ns-nav-h, 0px)) var(--col-pad) 40px; }
-  #hero h1 {
-    font-family: "zxx-sans", ui-monospace, monospace;
-    font-size: clamp(54px, 9.35vw, 143px);
-    line-height: 0.95;
-    letter-spacing: 0.01em;
-    font-weight: normal;
-    margin: 0 0 28px;
-    user-select: none;
-  }
-  #hero p { font-size: 15px; line-height: 1.75; letter-spacing: 0.02em; color: rgba(255, 255, 255, 0.85); margin: 0; max-width: 58ch; }
+  /* the page title is for screen readers only — the player leads */
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   /* ---- featured player ---- */
-  #featured { padding: 0 var(--col-pad) 72px; border-bottom: 1px solid var(--rule); }
+  #featured { padding: calc(48px + var(--ns-nav-h, 0px)) var(--col-pad) 72px; border-bottom: 1px solid var(--rule); }
   .player { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid rgba(255, 255, 255, 0.14); }
   .player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
   .now { display: flex; justify-content: space-between; gap: 24px; margin-top: 16px; font-size: 13px; letter-spacing: 0.04em; }
@@ -84,7 +74,7 @@
     .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 640px) {
-    #hero { padding-top: calc(48px + var(--ns-nav-h, 0px)); }
+    #featured { padding-top: calc(24px + var(--ns-nav-h, 0px)); }
     .block { padding: 56px var(--col-pad); }
     .grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
     .grid.shorts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 16px; }
@@ -96,10 +86,7 @@
 
 <script src="nav.js"></script>
 
-<section id="hero">
-  <h1>video</h1>
-  <p>visualizers, test transmissions and debris.</p>
-</section>
+<h1 class="sr-only">video</h1>
 
 <section id="featured" aria-label="now playing">
   <div class="player"><iframe id="player" src="" title="kiidk&#x27;yaas — visualizer" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
