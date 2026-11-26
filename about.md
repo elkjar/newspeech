@@ -40,7 +40,7 @@ instrumental music often lacks a point of view or narrative. this project is noi
 
 dead ocean is a 3 song ep. this is our first attempt at scoring this impending climate apocalypse. these songs are equal parts noise and melody.
 
-on this record newspeech is chris elkjar, [steve lucarelli](https://www.instagram.com/stevewasabankrobber/) and [pj solo](https://www.instagram.com/pjsolo_la/).
+on this record [newspeech](https://www.instagram.com/newspeechsound/) is [chris elkjar](https://www.instagram.com/chriselkjar/), [steve lucarelli](https://www.instagram.com/stevewasabankrobber/) and [pj solo](https://www.instagram.com/pjsolo_la/).
 
 [listen to the music](dead-ocean.html)
 
