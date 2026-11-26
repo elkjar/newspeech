@@ -1,6 +1,6 @@
 ---
 title: about
-dek: newspeech is a collection of things chris elkjar has made — a music project that turned into a software project, which ended up as a plugin project.
+dek: newspeech is chris elkjar's attempt to react to, and create within, the current apparent end times — crafting his own music tooling and trying to score this hellscape climate apocalypse.
 og_description: newspeech is chris elkjar — musician, designer, toolmaker. records, instruments and plugins, released for free: use them on anything, no credit needed.
 ---
 
@@ -30,7 +30,9 @@ the page is public and in the top nav (third, after news) since 10-07.
 
 ## hello, world.
 
-i'm chris elkjar. newspeech is a collection of things i've made. this started as a music project, which turned into a software project, which ended up as a plugin project. i can't wait to see what comes next.  i've always loved creating and releasing things for free, removing the commerce side of music and focusing on the parts that excited me. the tools are released the same way the music is: use them on anything, commercial or not, no credit needed.
+i'm chris elkjar. newspeech is my attempt to react to, and create within, the current apparent end times by crafting my own music tooling and trying to score this hellscape climate apocalypse that our dear world leaders are forcing us all to experience.
+
+instrumental music often lacks a point of view or narrative. this project is noisy and often sounds like an alarm because it is.
 
 i am a musician, designer, toolmaker, sloppy coder, occasionally mechanic. i've always been interested in the collision of technology and music - i've spent a lot more time than i'd like to admit working with my other project *the armed* across all kinds of roles, guitarist, production manager, merch guy, tour manager, noise generator etc etc. 
 
