@@ -38,7 +38,9 @@ instrumental music often lacks a point of view or narrative. this project is noi
 
 ![dead ocean — the ep cover](assets/ep/cover.jpg)
 
-dead ocean is a 3 song ep that is the first attempt at scoring this impending climate apocalypse. these songs are equal parts noise and melody.
+dead ocean is a 3 song ep. this is our first attempt at scoring this impending climate apocalypse. these songs are equal parts noise and melody.
+
+on this record newspeech is chris elkjar, [steve lucarelli](https://www.instagram.com/stevewasabankrobber/) and [pj solo](https://www.instagram.com/pjsolo_la/).
 
 [listen to the music](dead-ocean.html)
 
