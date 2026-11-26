@@ -299,7 +299,7 @@
   #ns-mega .mg-inner {
     max-width: 1280px;
     margin: 0 auto;
-    padding: 36px var(--ns-gutter) 44px;
+    padding: 16px var(--ns-gutter) 40px;
     display: grid;
     grid-template-columns: 1fr 2fr 1fr;
     gap: 48px;
