@@ -48,6 +48,7 @@ import {
   installMixRoutingPush,
   installBpmSync,
   installClockSync,
+  installMidiThru,
   installChordRevoice,
   installGlitchDice,
 } from './engine/boot';
@@ -377,6 +378,7 @@ export function App() {
   useEffect(() => installBpmSync(), []);
 
   useEffect(() => installClockSync(), []);
+  useEffect(() => installMidiThru(), []);
 
 
   useEffect(() => installStreamSnapshot(), []);

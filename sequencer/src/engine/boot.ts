@@ -1,6 +1,7 @@
 // Extracted verbatim from App.tsx (Phase 0 of the broadcast runner,
 // docs/broadcast-set.md). No behavior change: each install* function is the
 // body of the former useEffect and returns the same cleanup.
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useSequencerStore, type SequencerState } from '../state/store';
 import { scheduler } from '../audio/scheduler';
 import { setClockBpm, clockEngineStart, clockEngineStop, sendKey } from '../audio/midiClock';
@@ -316,6 +317,34 @@ export function installClockSync(): () => void {
     // Key out to the clock's followers (the Tracker's STEP) on a root or scale change.
     if (state.rootNote % 12 !== prev.rootNote % 12 || state.scale !== prev.scale) sendKey();
   });
+}
+
+// MIDI thru (native only): hand the route to Rust (midi.rs, the thru section)
+// at boot, when either side changes, and on every output-list change, so a
+// port that comes back (a network session reconnecting, the Tracker replugged)
+// reopens without re-picking: while the output is missing from the list the
+// route goes to Rust as off (dropping the dead connection), and the next list
+// with it back opens a fresh one. midi_set_thru is a no-op for an unchanged
+// route whose port is open.
+export function installMidiThru(): () => void {
+  if (!isTauri()) return () => {};
+  const apply = () => {
+    const { midiThruIn, midiThruOut } = useSequencerStore.getState();
+    const present = getMIDIOutputs().some((o) => o.id === midiThruOut);
+    const to = present ? midiThruOut : null;
+    void invoke<boolean>('midi_set_thru', { from: midiThruIn, to }).catch((e) =>
+      console.warn('[midiThru] set failed:', e),
+    );
+  };
+  apply();
+  const offOutputs = onMIDIOutputsChanged(apply);
+  const offStore = useSequencerStore.subscribe((state, prev) => {
+    if (state.midiThruIn !== prev.midiThruIn || state.midiThruOut !== prev.midiThruOut) apply();
+  });
+  return () => {
+    offOutputs();
+    offStore();
+  };
 }
 
 // Live chord re-voicing for the voicing macro (Increment 2). Native only —

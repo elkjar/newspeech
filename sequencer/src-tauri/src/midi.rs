@@ -74,6 +74,8 @@ fn resolve_output_port(m_out: &MidiOutput, target: &str) -> Option<midir::MidiOu
 pub struct MidiRegistry {
     pub inputs: Mutex<HashMap<String, MidiInputConnection<()>>>,
     pub outputs: Mutex<HashMap<String, MidiOutputConnection>>,
+    // MIDI thru (see the section below): shared with every input callback.
+    pub thru: Arc<Mutex<Thru>>,
 }
 
 #[derive(Serialize)]
@@ -156,6 +158,9 @@ pub fn midi_subscribe_input(
     let port = resolve_input_port(&m_in, &port_name)
         .ok_or_else(|| format!("input port not found: {port_name}"))?;
     let cb_port = port_name.clone();
+    let thru = state.thru.clone();
+    // This port's thru parser (running status, SysEx), owned by the callback.
+    let mut parser = ThruParser::default();
     // Per-connection clock-pulse counter — the connect callback is FnMut, so it
     // owns this across invocations without any shared state. Survives dropped
     // IPC ticks because JS reads cumulative count deltas, not per-tick presence.
@@ -193,10 +198,29 @@ pub fn midi_subscribe_input(
                         );
                     }
                 }
+                // The thru input: its channel messages go straight out the thru
+                // output and NOT to Sequence (its CC map and keyboard), so a
+                // sequencer playing the rack through us can't also move our
+                // knobs. Its realtime bytes still reach Sequence for clock follow.
+                let mut thru_port = false;
+                if let Ok(mut t) = thru.lock() {
+                    if t.from.as_deref() == Some(cb_port.as_str()) {
+                        thru_port = true;
+                        for &b in msg {
+                            if let Some((m, n)) = parser.feed(b) {
+                                t.send(&m[..n]);
+                            }
+                        }
+                    }
+                }
                 // Forward the non-clock remainder (stripping 0xF8 is correct —
                 // realtime bytes may interrupt a running message). Skip the emit
                 // entirely when the buffer was clock-only.
-                let rest: Vec<u8> = msg.iter().copied().filter(|&b| b != 0xF8).collect();
+                let rest: Vec<u8> = if thru_port {
+                    msg.iter().copied().filter(|&b| b > 0xF8).collect()
+                } else {
+                    msg.iter().copied().filter(|&b| b != 0xF8).collect()
+                };
                 if !rest.is_empty() {
                     let _ = app.emit(
                         "midi://message",
@@ -270,6 +294,10 @@ pub fn midi_send(
 // button / transport stop) and from the app-quit hook in lib.rs, which flushes
 // this before CoreMIDI tears down so notes left on external gear don't hang.
 pub fn panic_all(registry: &MidiRegistry) {
+    // Notes held through the thru get their note-offs too.
+    if let Ok(mut t) = registry.thru.lock() {
+        t.release_held();
+    }
     let Ok(mut outputs) = registry.outputs.lock() else {
         return;
     };
@@ -522,4 +550,214 @@ pub fn midi_clock_transport(clock: State<ClockState>, byte: u8) -> Result<(), St
 pub fn midi_clock_stop(clock: State<ClockState>, send_stop: bool) -> Result<(), String> {
     clock_stop_blocking(clock.inner(), send_stop);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// MIDI thru
+//
+// One input port played straight out one output port, merged there with
+// Sequence's own notes (CoreMIDI takes several senders on one destination).
+// Use: another computer (Ableton over a network MIDI session) plays the rack
+// through Sequence's port to it, with no MIDI cables or merge box. It runs in
+// the input callback, so a note goes out the moment it arrives, without a trip
+// through the WebView.
+//
+// Channel messages only (notes, CC, pitch bend, program, aftertouch). Clock
+// and transport are not passed: Sequence's clock owns them (as follower it
+// relays the master's tempo and Start/Stop to the clock-out ports), so the bus
+// never carries two clocks. SysEx and system common are dropped.
+
+/// Splits a MIDI byte stream into channel messages, with running status, across
+/// buffers. Realtime bytes are skipped wherever they fall; SysEx and system
+/// common (with their data) are dropped, and cancel running status.
+#[derive(Default)]
+pub struct ThruParser {
+    status: u8,
+    data: [u8; 2],
+    have: u8,
+    sysex: bool,
+}
+
+impl ThruParser {
+    /// One byte in; a complete channel message (bytes, length 2 or 3) out when
+    /// this byte ends one.
+    pub fn feed(&mut self, b: u8) -> Option<([u8; 3], usize)> {
+        if b >= 0xF8 {
+            return None;
+        }
+        if b >= 0x80 {
+            self.have = 0;
+            self.sysex = b == 0xF0;
+            self.status = if b < 0xF0 { b } else { 0 };
+            return None;
+        }
+        if self.sysex || self.status == 0 {
+            return None;
+        }
+        self.data[self.have as usize] = b;
+        self.have += 1;
+        let need = if matches!(self.status & 0xF0, 0xC0 | 0xD0) { 1 } else { 2 };
+        if self.have < need {
+            return None;
+        }
+        self.have = 0;
+        Some(([self.status, self.data[0], self.data[1]], need as usize + 1))
+    }
+}
+
+/// The notes sounding through the thru, so a change of route, a panic or quit
+/// can end them (a note-off for each, not CC 123, which some gear ignores).
+#[derive(Default)]
+pub struct HeldNotes([u128; 16]);
+
+impl HeldNotes {
+    pub fn track(&mut self, m: &[u8]) {
+        if m.len() < 3 {
+            return;
+        }
+        let (kind, ch, note) = (m[0] & 0xF0, (m[0] & 0x0F) as usize, m[1] & 0x7F);
+        if kind == 0x90 && m[2] > 0 {
+            self.0[ch] |= 1u128 << note;
+        } else if kind == 0x80 || kind == 0x90 {
+            self.0[ch] &= !(1u128 << note);
+        }
+    }
+
+    /// A note-off for every held note, and none held after.
+    pub fn drain(&mut self) -> Vec<[u8; 3]> {
+        let mut offs = Vec::new();
+        for (ch, bits) in self.0.iter_mut().enumerate() {
+            while *bits != 0 {
+                let note = bits.trailing_zeros() as u8;
+                offs.push([0x80 | ch as u8, note, 0]);
+                *bits &= *bits - 1;
+            }
+        }
+        offs
+    }
+}
+
+#[derive(Default)]
+pub struct Thru {
+    from: Option<String>,
+    to: Option<String>,
+    conn: Option<MidiOutputConnection>,
+    held: HeldNotes,
+}
+
+impl Thru {
+    fn send(&mut self, m: &[u8]) {
+        let Some(conn) = self.conn.as_mut() else {
+            return;
+        };
+        if conn.send(m).is_err() {
+            // The port went away: midi_set_thru reopens it when it's back.
+            self.conn = None;
+            return;
+        }
+        self.held.track(m);
+    }
+
+    fn release_held(&mut self) {
+        let offs = self.held.drain();
+        if let Some(conn) = self.conn.as_mut() {
+            for m in offs {
+                let _ = conn.send(&m);
+            }
+        }
+    }
+}
+
+/// Set the thru route (either side None = off). Idempotent: the same route with
+/// its port open is a no-op, so JS re-asserts it on every port-list change to
+/// reopen a port that came back. A changed route ends the old route's notes
+/// first. Returns whether the output is open.
+#[tauri::command]
+pub fn midi_set_thru(
+    state: State<MidiRegistry>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<bool, String> {
+    let from = from.filter(|s| !s.is_empty());
+    let to = to.filter(|s| !s.is_empty());
+    let mut t = state.thru.lock().map_err(|e| format!("lock: {e}"))?;
+    let same = t.from == from && t.to == to;
+    if same && (t.conn.is_some() || from.is_none() || to.is_none()) {
+        return Ok(t.conn.is_some());
+    }
+    if !same {
+        t.release_held();
+        t.conn = None;
+    }
+    t.from = from;
+    t.to = to.clone();
+    if let (Some(_), Some(name)) = (&t.from, &to) {
+        let m_out = MidiOutput::new(CLIENT_NAME).map_err(|e| format!("MidiOutput::new: {e}"))?;
+        if let Some(port) = resolve_output_port(&m_out, name) {
+            t.conn = m_out.connect(&port, "Sequence thru").ok();
+        }
+    }
+    Ok(t.conn.is_some())
+}
+
+#[cfg(test)]
+mod thru_tests {
+    use super::*;
+
+    fn run(bytes: &[u8]) -> Vec<Vec<u8>> {
+        let mut p = ThruParser::default();
+        bytes
+            .iter()
+            .filter_map(|&b| p.feed(b).map(|(m, n)| m[..n].to_vec()))
+            .collect()
+    }
+
+    #[test]
+    fn channel_messages_pass_with_running_status() {
+        assert_eq!(
+            run(&[0x90, 60, 100, 62, 90, 0x80, 60, 0]),
+            vec![vec![0x90, 60, 100], vec![0x90, 62, 90], vec![0x80, 60, 0]]
+        );
+        assert_eq!(run(&[0xC3, 5, 7]), vec![vec![0xC3, 5], vec![0xC3, 7]]);
+        assert_eq!(run(&[0xE0, 0, 64, 0xD1, 40]), vec![vec![0xE0, 0, 64], vec![0xD1, 40]]);
+    }
+
+    #[test]
+    fn clock_and_transport_are_dropped_even_inside_a_message() {
+        assert_eq!(
+            run(&[0xFA, 0xF8, 0x91, 0xF8, 64, 0xF8, 127, 0xFC]),
+            vec![vec![0x91, 64, 127]]
+        );
+    }
+
+    #[test]
+    fn sysex_and_system_common_are_dropped() {
+        assert_eq!(run(&[0xF0, 0x7D, 1, 2, 3, 0xF7, 0xB0, 74, 10]), vec![vec![0xB0, 74, 10]]);
+        // Song position cancels running status: its data bytes and the bytes after it go nowhere.
+        assert_eq!(run(&[0x90, 60, 100, 0xF2, 1, 2, 60, 0]), vec![vec![0x90, 60, 100]]);
+        // Data bytes with no status before them.
+        assert_eq!(run(&[60, 100, 0x90, 61, 1]), vec![vec![0x90, 61, 1]]);
+    }
+
+    #[test]
+    fn a_message_split_across_buffers_completes() {
+        let mut p = ThruParser::default();
+        assert!(p.feed(0x92).is_none());
+        assert!(p.feed(48).is_none());
+        assert_eq!(p.feed(70), Some(([0x92, 48, 70], 3)));
+    }
+
+    #[test]
+    fn held_notes_end_with_note_offs() {
+        let mut h = HeldNotes::default();
+        h.track(&[0x90, 60, 100]);
+        h.track(&[0x9C, 127, 1]);
+        h.track(&[0x90, 62, 100]);
+        h.track(&[0x90, 62, 0]); // note-on velocity 0 = off
+        h.track(&[0x90, 0, 9]);
+        h.track(&[0x80, 0, 0]);
+        h.track(&[0xB0, 64, 127]); // not a note
+        assert_eq!(h.drain(), vec![[0x80, 60, 0], [0x8C, 127, 0]]);
+        assert!(h.drain().is_empty());
+    }
 }

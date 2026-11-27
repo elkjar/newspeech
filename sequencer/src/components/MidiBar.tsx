@@ -725,6 +725,79 @@ function ClockRow() {
   );
 }
 
+// MIDI thru: one input played straight out one output, merged with
+// Sequence's own notes there (midi.rs, the thru section). Notes, CC, bend,
+// program and aftertouch pass; clock and transport don't (Sequence's clock
+// covers them: as follower it relays the master's to the clock-out ports).
+// Sequence itself ignores the thru input's notes and CC. Both sides store
+// their name while disconnected, so a reconnect restores the route.
+function MidiThruRow() {
+  const inputs = useMIDIInputs();
+  const outputs = useMIDIOutputs();
+  const thruIn = useSequencerStore((s) => s.midiThruIn);
+  const thruOut = useSequencerStore((s) => s.midiThruOut);
+  const setThruIn = useSequencerStore((s) => s.setMidiThruIn);
+  const setThruOut = useSequencerStore((s) => s.setMidiThruOut);
+  const staleIn = !!thruIn && !inputs.includes(thruIn);
+  const staleOut = !!thruOut && !outputs.some((o) => o.id === thruOut);
+  const subLabel = 'text-[11px] uppercase tracking-widest opacity-40';
+  const cls = `select-chevron bg-transparent border border-white/15 pl-2 text-[11px] uppercase tracking-widest text-white focus:outline-none focus:border-white max-w-[180px] ${ROW_HEIGHT}`;
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className={subLabel}>in</span>
+      <select
+        value={thruIn ?? ''}
+        onChange={(e) => setThruIn(e.target.value || null)}
+        className={cls}
+        title={
+          thruIn
+            ? `${thruIn}${staleIn ? ' (disconnected)' : ''}: its notes, cc, bend and program go straight out the thru output; sequence ignores them`
+            : 'input to pass straight through (e.g. a network session from another computer)'
+        }
+      >
+        <option value="" className="bg-[#050505]">
+          off
+        </option>
+        {inputs.map((name) => (
+          <option key={name} value={name} className="bg-[#050505]">
+            {name}
+          </option>
+        ))}
+        {staleIn && (
+          <option value={thruIn} className="bg-[#050505]">
+            {thruIn} (disconnected)
+          </option>
+        )}
+      </select>
+      <span className={subLabel}>out</span>
+      <select
+        value={thruOut ?? ''}
+        onChange={(e) => setThruOut(e.target.value || null)}
+        className={cls}
+        title={
+          thruOut
+            ? `thru → ${thruOut}${staleOut ? ' (disconnected)' : ''}, merged with sequence's own midi; clock and transport not passed`
+            : 'output the thru input plays out of'
+        }
+      >
+        <option value="" className="bg-[#050505]">
+          off
+        </option>
+        {outputs.map((o) => (
+          <option key={o.id} value={o.id} className="bg-[#050505]">
+            {o.name}
+          </option>
+        ))}
+        {staleOut && (
+          <option value={thruOut} className="bg-[#050505]">
+            {thruOut} (disconnected)
+          </option>
+        )}
+      </select>
+    </div>
+  );
+}
+
 export function MidiBar() {
   const labelCls = 'text-[11px] uppercase tracking-widest opacity-55 w-[64px] shrink-0';
   return (
@@ -741,6 +814,10 @@ export function MidiBar() {
       <div className="flex items-center gap-2">
         <span className={labelCls}>clock</span>
         <ClockRow />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={labelCls}>thru</span>
+        <MidiThruRow />
       </div>
       <div className="flex items-center gap-2">
         <span className={labelCls}>mixer</span>

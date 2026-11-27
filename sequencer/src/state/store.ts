@@ -443,6 +443,31 @@ function writePersistedSyncSource(v: 'internal' | 'external'): void {
   }
 }
 
+// MIDI thru: one input played straight out one output (midi.rs, the thru
+// section), e.g. Ableton on another Mac over a network session → the rack's
+// bus port. Rig routing, persisted per machine like the clock ports, not in .seq.
+const LS_MIDI_THRU_IN = 'newspeech.sequencer.midiThruIn';
+const LS_MIDI_THRU_OUT = 'newspeech.sequencer.midiThruOut';
+
+function readPersistedString(key: string): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    return localStorage.getItem(key) || null;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedString(key: string, v: string | null): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (v) localStorage.setItem(key, v);
+    else localStorage.removeItem(key);
+  } catch {
+    /* quota / private mode — silent */
+  }
+}
+
 function readPersistedClockIn(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
@@ -875,6 +900,13 @@ export interface SequencerState {
   // (only a master sends clock); null = nothing drives sync.
   midiClockInPort: string | null;
   setMidiClockInPort: (port: string | null) => void;
+  // MIDI thru: this input's channel messages go straight out midiThruOut
+  // (clock and transport excepted; Sequence's own clock covers those). Both
+  // set = on. Rig routing, persisted, not in .seq.
+  midiThruIn: string | null;
+  midiThruOut: string | null;
+  setMidiThruIn: (port: string | null) => void;
+  setMidiThruOut: (port: string | null) => void;
   // True once the tempo tracker has locked onto the incoming clock. Lives in
   // the store (not module state) so the UI indicator is reactive and immune to
   // HMR module-instance drift. Transient — not persisted.
@@ -1479,6 +1511,8 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   midiClockOutPorts: readPersistedClockOut(),
   syncSource: readPersistedSyncSource(),
   midiClockInPort: readPersistedClockIn(),
+  midiThruIn: readPersistedString(LS_MIDI_THRU_IN),
+  midiThruOut: readPersistedString(LS_MIDI_THRU_OUT),
   clockFollowLocked: false,
   externalMixerProfileId: readPersistedExternalMixerProfile(),
   externalMixerPort: readPersistedExternalMixerPort(),
@@ -1655,6 +1689,14 @@ export const useSequencerStore = create<SequencerState>((set) => ({
   setMidiClockInPort: (midiClockInPort) => {
     writePersistedClockIn(midiClockInPort);
     set({ midiClockInPort });
+  },
+  setMidiThruIn: (midiThruIn) => {
+    writePersistedString(LS_MIDI_THRU_IN, midiThruIn);
+    set({ midiThruIn });
+  },
+  setMidiThruOut: (midiThruOut) => {
+    writePersistedString(LS_MIDI_THRU_OUT, midiThruOut);
+    set({ midiThruOut });
   },
   setClockFollowLocked: (clockFollowLocked) => set({ clockFollowLocked }),
   setExternalMixerProfileId: (externalMixerProfileId) => {

@@ -369,6 +369,7 @@ pub fn shared_builder() -> tauri::Builder<tauri::Wry> {
       midi::midi_unsubscribe_all_inputs,
       midi::midi_send,
       midi::midi_panic,
+      midi::midi_set_thru,
       midi::midi_clock_start,
       midi::midi_clock_set_bpm,
       midi::midi_clock_transport,
